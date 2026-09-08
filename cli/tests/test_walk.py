@@ -31,6 +31,7 @@ from cadex_cli.walk import (
     WalkError,
     declare_policy,
     declared_note_subjects,
+    motion_from_trace,
     review_from_outputs,
 )
 
@@ -111,6 +112,101 @@ def test_the_review_is_the_trace_s_policy_block_or_nothing(tmp_path) -> None:
     assert review_from_outputs(outputs[:2]) == {}
 
 
+#: Frames lifted verbatim from the two documented example rollouts
+#: (``examples/lifecycle/{hinged-arm,linear-carriage}``, as they reproduce
+#: on a built engine): the first solved frame and the extreme one. Both
+#: raw traces are 27 frames -- one ``input`` and 26 ``solver_output`` --
+#: and the poses are absolute, which is why ``swing`` starts at
+#: ``[12, 0, 6]`` rather than the origin.
+def _frame(index, kind, seconds, places):
+    return {"frame_index": index, "frame_kind": kind, "nominal_time_s": seconds,
+            "component_placements": places}
+
+
+_ARM_START = {"base": {"position_mm": [0.0, 0.0, 0.0],
+                       "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]},
+              "swing": {"position_mm": [12.0, 0.0, 6.0],
+                        "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}
+_ARM_EXTREME = {"base": _ARM_START["base"],
+                "swing": {"position_mm": [12.0, 0.0, 6.0],
+                          "rotation_xyzw": [0.0, 0.9999481757173622, 0.0,
+                                            0.010180662037381827]}}
+_SLIDE_START = {"base": {"position_mm": [0.0, 0.0, 0.0],
+                         "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]},
+                "slide": {"position_mm": [12.0, 0.0, 40.0],
+                          "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}
+_SLIDE_EXTREME = {"base": _SLIDE_START["base"],
+                  "slide": {"position_mm": [12.0, 0.0, -4699.378322122887],
+                            "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}
+
+
+def test_travel_is_two_channels_because_the_hinged_arm_only_rotates() -> None:
+    """The arm goes nowhere and turns 178.8°; a mm-only report is wrong."""
+
+    motion = motion_from_trace({"frames": [
+        _frame(0, "input", None, _ARM_START),
+        _frame(1, "solver_output", 0.0, _ARM_START),
+        _frame(9, "solver_output", 0.32, _ARM_EXTREME),
+        _frame(26, "solver_output", 1.0, _ARM_START),
+    ]})
+    assert motion["available"] is True
+    # Frame 0 is the pose the solver was given, not one it produced, and is
+    # excluded -- so the count is one short of the raw frame list.
+    assert (motion["frames_counted"], motion["frames_excluded"]) == (3, 1)
+    assert motion["excluded_frame_kind"] == "input" and motion["duration_s"] == 1.0
+    assert motion["components"]["swing"]["max_displacement_mm"] == 0.0
+    assert motion["components"]["swing"]["position_range_mm"] == [0.0, 0.0, 0.0]
+    assert motion["components"]["swing"]["max_rotation_deg"] == pytest.approx(178.8334, abs=1e-4)
+    assert motion["largest_rotation"]["degrees"] == pytest.approx(178.8334, abs=1e-4)
+    assert motion["largest_translation"]["millimetres"] == 0.0
+
+
+def test_travel_reports_the_carriage_s_millimetres_and_no_rotation() -> None:
+    """The other channel, on the other documented example."""
+
+    motion = motion_from_trace({"frames": [
+        _frame(0, "input", None, _SLIDE_START),
+        _frame(1, "solver_output", 0.0, _SLIDE_START),
+        _frame(26, "solver_output", 1.0, _SLIDE_EXTREME),
+    ]})
+    assert motion["largest_translation"] == {
+        "component": "slide", "millimetres": pytest.approx(4739.3783, abs=1e-4)}
+    assert motion["largest_rotation"]["degrees"] == 0.0
+    assert motion["components"]["slide"]["position_range_mm"] == [
+        0.0, 0.0, pytest.approx(4739.3783, abs=1e-4)]
+    # Two examples' travels are not comparable and are never ranked: 4,739
+    # mm of a carriage free-falling on an ideal guide is not "more motion"
+    # than 178.8° of a swing arm doing its job.
+    assert motion["ranking"].startswith("declined:")
+
+
+def test_a_trace_that_never_moves_reports_zero_and_not_unavailable() -> None:
+    """A mechanism that stood still is a measurement, not a missing one."""
+
+    motion = motion_from_trace({"frames": [
+        _frame(0, "input", None, _ARM_START),
+        _frame(1, "solver_output", 0.0, _ARM_START),
+        _frame(2, "solver_output", 0.5, _ARM_START),
+    ]})
+    assert motion["available"] is True and motion["frames_counted"] == 2
+    assert motion["largest_translation"]["millimetres"] == 0.0
+    assert motion["largest_rotation"]["degrees"] == 0.0
+    assert all(component["max_displacement_mm"] == 0.0
+               and component["max_rotation_deg"] == 0.0
+               for component in motion["components"].values())
+
+
+def test_a_trace_with_no_solved_frames_is_unavailable_with_a_reason() -> None:
+    for payload, reason in (
+        ({}, "exported no frames"),
+        ({"frames": []}, "exported no frames"),
+        ({"frames": [_frame(0, "input", None, _ARM_START)]}, "all of kind 'input'"),
+        ({"frames": [_frame(0, "solver_output", 0.0, {})]}, "placed no components"),
+    ):
+        motion = motion_from_trace(payload)
+        assert motion["available"] is False and reason in motion["reason"]
+
+
 # -- the orchestration, against a fake cadex ----------------------------------
 
 #: A ``cadex`` that answers every leg the walk runs, in the envelopes the
@@ -172,10 +268,26 @@ FAKE_CADEX = textwrap.dedent(
         params = {"policy_on": 1.0 if leg == "rollout" else 0.0}
         if leg == "rollout":
             trace = out / "assembly-simulation-trace.json"
+            # Frames in the shape the engine writes them (ADR-259): frame 0
+            # is the pre-solve input pose, placements are absolute world
+            # poses, and this toy's one moving part rotates without
+            # travelling -- the hinged arm's case, in miniature.
+            def frame(index, kind, seconds, w, z):
+                return {"frame_index": index, "frame_kind": kind,
+                        "nominal_time_s": seconds,
+                        "component_placements": {
+                            "base": {"position_mm": [0.0, 0.0, 0.0],
+                                     "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]},
+                            "swing": {"position_mm": [12.0, 0.0, z],
+                                      "rotation_xyzw": [0.0, w, 0.0,
+                                                        (1.0 - w * w) ** 0.5]}}}
             trace.write_text(json.dumps({"policy": {
                 "total_reward": -12.5,
                 "reward_totals": [{"label": "lift", "total": -12.5}],
-                "policy_sha256": "declared"}}))
+                "policy_sha256": "declared"},
+                "frames": [frame(0, "input", None, 0.0, 6.0),
+                           frame(1, "solver_output", 0.0, 0.0, 6.0),
+                           frame(2, "solver_output", 0.5, 0.5, 6.0)]}))
             outputs.append({"name": "run", "files": {"trace": str(trace)}})
         envelope(params=params, outputs=outputs)
     else:
@@ -298,8 +410,25 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
     # cross-check and says so (ADR-248) beside the walk's own note.
     assert envelope["notes"] == [
         "clearance bounds check: unavailable, 0 comparison(s) over 0 pair(s).",
+        "motion: 0 mm (swing), 60° (swing) over 2 solved frame(s).",
         "walk: job.cxpolicy ({:s}) verified; total_reward -12.5 over 3 legs.".format(sha[:12]),
     ]
+    # The travel, in both channels and in the file: this toy rotates 60°
+    # about Y and never leaves its start pose, so a millimetre-only report
+    # would call a working mechanism motionless. Frame 0 is the solver's
+    # input pose and is not one of the two counted.
+    motion = on_disk["motion"]
+    assert motion["available"] is True and motion["reference"] == "first solved frame"
+    assert (motion["frames_counted"], motion["frames_excluded"]) == (2, 1)
+    assert motion["excluded_frame_kind"] == "input"
+    assert motion["duration_s"] == 0.5
+    assert motion["largest_translation"] == {"component": "swing", "millimetres": 0.0}
+    assert motion["largest_rotation"]["component"] == "swing"
+    assert motion["largest_rotation"]["degrees"] == pytest.approx(60.0)
+    assert motion["components"]["swing"]["position_range_mm"] == [0.0, 0.0, 0.0]
+    assert motion["ranking"].startswith("declined:")
+    assert "motion 0 mm (swing), 60° (swing) over 2 solved frame(s)" in (
+        toy_root / "PROGRESS.md").read_text()
 
 
 def test_the_iterate_walk_sweeps_first_and_carries_the_warm_start(

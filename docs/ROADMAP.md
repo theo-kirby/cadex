@@ -2120,6 +2120,17 @@ What makes them experimental, and what would settle it:
   Reported, never written and never fatal: the notes are the design turn's,
   and the generated `ARCHITECTURE.md` scaffold says so where the project's
   next agent reads it.
+- [x] **The walk reports whether the mechanism moved** (2026-09-08, ADR-259).
+  `review.json` gains a `motion` block beside `clearance`, and the walk's
+  `PROGRESS.md` row and notes gain a motion cell: per component the per-axis
+  position range, the largest displacement from the first solved frame, and
+  the largest rotation swing from its orientation. Two channels always, and
+  neither ranked against the other — the repository's own hinged arm travels
+  0.0000 mm and rotates 178.8334°, so a millimetre-only row would call a
+  working revolute rig motionless. Only solved frames count (frame 0 is the
+  solver's input pose), an all-identical trace reports zero rather than
+  unavailable, and the progress row's numbers cell grows to 320 characters so
+  motion does not truncate the documentation half off the row.
 - [x] **The lifecycle examples reproduce on a second machine** (2026-09-08,
   ADR-257). Both documented recipe walks re-run unchanged on `sb1x`, exit 0,
   trainer means bit-identical and rollout totals agreeing to the JAX build's

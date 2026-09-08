@@ -281,6 +281,36 @@ of doing any of them:
    architecture scaffold documents this convention.
    This is neither swept-motion coverage nor large-assembly qualification.
 
+   The `motion` block says whether the mechanism actually moved, in **two
+   channels** (ADR-259). Per component, from the same rollout trace the
+   numbers came from: the per-axis `position_range_mm`, the
+   `max_displacement_mm` from the reference pose, and the
+   `max_rotation_deg` swing — `2·acos(|q₀·q|)` — away from the reference
+   orientation. The reference is the **first solved frame**, and only
+   solved frames are counted: frame 0 of an assembly trace is the pose the
+   solver was *given* (`frame_kind: "input"`, `nominal_time_s: null`), so
+   both documented examples report 26 counted frames out of 27 raw ones,
+   with `frames_counted`, `frames_excluded` and `excluded_frame_kind`
+   saying so. Placements are absolute world poses, not offsets, so every
+   figure is a difference against that first solved pose.
+
+   Both channels every time, because one alone is a wrong answer rather
+   than a partial one: `examples/lifecycle/hinged-arm` travels **0.0000 mm
+   and rotates 178.8334°**, and a millimetre-only report would call a
+   working revolute rig motionless, while `linear-carriage` travels
+   **4739.3783 mm and rotates 0°**. The block names `largest_translation`
+   (in millimetres) and `largest_rotation` (in degrees) and **declines to
+   rank them against each other** — its `ranking` field says so — because
+   millimetres and degrees do not compare, and a scale that made them
+   compare would put a carriage free-falling on an ideal guide above a
+   swing arm doing its job. Travel is a fact about one rollout, never a
+   score, and two projects' travels compare no better than their rewards
+   do. A trace whose frames are all identical reports **zero** travel, not
+   unavailable; a trace with no frames, no solved frames or no placements
+   is `available: false` with a `reason`. The walk's `PROGRESS.md` row and
+   run notes carry both figures — `motion N mm (component), N° (component)
+   over N solved frame(s)`.
+
    The `documentation` block reads the note convention back (ADR-256). The
    walk parses the MJCF it trained on — `DIR/train/<name>-model.xml` — and
    takes each declared section as a note subject: an `<actuator>` section
@@ -339,7 +369,7 @@ The scaffold's `## Training` section carries this same path convention.
 | MJCF / task / training | `runs/<name>/train/` (model, task bundle, returned policy) |
 | Store / declare | `assets/<name>.cxpolicy`, `runs/<name>/script.py` |
 | Verify / rollout | `runs/<name>/rollout/` (including the simulation trace) |
-| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory and clearance summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg` and `summary.json`, `review/section/<accepted-revision>/XZ-3.125/{section.svg,summary.json}`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
+| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory, clearance and motion summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg` and `summary.json`, `review/section/<accepted-revision>/XZ-3.125/{section.svg,summary.json}`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
 
 `cli/tests/test_walk.py` checks local/remote artifact parity through policy
 verification and rollout using a local CPU stand-in for the dispatcher.

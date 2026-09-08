@@ -1441,6 +1441,10 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     review = review_from_outputs(leg.envelope.get("outputs") or [])
     review["weights"] = weights
     review["sha256"] = sha256
+    # No trace at all is a motion answer too, and the same one write_review
+    # would fall back to; setting it here keeps the note and the file equal.
+    review.setdefault("motion", {"available": False,
+                                 "reason": "no trace was exported."})
     with _engine_session(args, RunReport(), restore=False) as (_engine, client):
         accepted_snapshot = acquire_snapshot(client)
         if accepted_snapshot[1]["digest"] != report.digest:
@@ -1508,6 +1512,12 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             "" if check["status"] != "fail"
             else ", {:d} FAILURE(S)".format(int(check["failure_count"])),
         )
+    )
+    # Whether the mechanism moved at all, on both channels, so a reader of
+    # the run does not have to open review.json to find out that a revolute
+    # rig travelled 0 mm because all of its motion was rotation.
+    report.notes.append(
+        "motion: " + _motion_cell(review["motion"]).removeprefix("; motion ") + "."
     )
     # A model that declares nothing asks the project for nothing, and the
     # run says nothing rather than reporting an empty check.
@@ -1684,6 +1694,28 @@ def _documentation_cell(documentation: dict[str, Any]) -> str:
     )
 
 
+def _motion_cell(motion: dict[str, Any]) -> str:
+    """The walk row's motion half: did the mechanism move, and how.
+
+    Both channels every time. A row that carried millimetres alone would
+    report the repository's own hinged-arm example — a working revolute
+    rig — as having gone nowhere, because it travels 0.0000 mm and rotates
+    178.8334°. Neither figure is a score and they are not ranked against
+    each other, so the row names the largest mover on each channel and
+    says over how many frames.
+    """
+
+    if not motion.get("available"):
+        return "; motion unavailable"
+    translation = motion.get("largest_translation") or {}
+    rotation = motion.get("largest_rotation") or {}
+    return "; motion {:.4g} mm ({:s}), {:.4g}° ({:s}) over {:d} solved frame(s)".format(
+        float(translation.get("millimetres") or 0.0), str(translation.get("component") or "?"),
+        float(rotation.get("degrees") or 0.0), str(rotation.get("component") or "?"),
+        int(motion.get("frames_counted") or 0),
+    )
+
+
 def _record_progress(command: str, args: argparse.Namespace, report: RunReport) -> None:
     """One `PROGRESS.md` row per accepted run (ADR-193).
 
@@ -1707,6 +1739,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
                  else "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
                       "pairs checked {pairs_checked} (initial solved pose; {minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)".format(
                           **report.walk["review"]["clearance"]))
+                + _motion_cell(report.walk["review"].get("motion") or {})
                 + _documentation_cell(report.walk["review"].get("documentation") or {})
             ) if command == "walk" else progress_numbers(
                 training=report.training,

@@ -21562,3 +21562,54 @@ README now documents. The three files say so plainly now. The measured numbers
 are unaffected — the same interpreter ran in either case — but a reproduction
 note that overstates which path was exercised is worse than no note, so the
 distinction is stated wherever the reproduction is described.
+
+## ADR-259 — The walk's review reports travel in two channels, and ranks neither (2026-09-08)
+
+**Decision.** `cadex walk`'s review gains a `motion` block beside `clearance`,
+and the walk's `PROGRESS.md` row and run notes gain a motion cell. Per
+component it reports the per-axis position range, the largest displacement
+from the first solved frame's pose, and the largest rotation swing
+`2·acos(|q₀·q|)` from that frame's orientation. It names the largest
+translator in millimetres and the largest rotator in degrees, and its
+`ranking` field states that it declines to rank one against the other.
+
+**Why.** The review could say what a rollout scored and whether its parts
+collided, but not whether the mechanism moved. A retrain that killed the
+motion and a retrain that merely scored worse read identically. Reporting
+displacement alone would have been worse than saying nothing: this
+repository's own `examples/lifecycle/hinged-arm` travels **0.0000 mm** and
+rotates **178.8334°**, so a millimetre-only row calls a working revolute rig
+motionless, while `linear-carriage` travels **4739.3783 mm** with no
+rotation at all. Ranking the two channels against each other would need a
+scale that does not exist, and would rank the carriage's free fall on an
+ideal guide above the arm doing its job — so both are named and neither is
+a score.
+
+**What the measurement counts.** Only solved frames, against the first of
+them. Frame 0 of an assembly trace is the pose the solver was *given*
+(`frame_kind: "input"`, `nominal_time_s: null`); both documented examples
+are 27 raw frames = 1 input + 26 solved, and the block reports
+`frames_counted`, `frames_excluded` and `excluded_frame_kind` so the number
+is not mistaken for the raw one. Placements are absolute world poses — the
+arm's `swing` starts at `[12, 0, 6]`, not the origin — so every figure is a
+difference against that first solved pose and never against the origin. An
+all-identical trace reports **zero** travel, which is a measurement; only a
+trace with no frames, no solved frames or no placements is `available:
+false`, with a reason.
+
+**Also.** `PROGRESS_NUMBERS_LIMIT` raises the progress row's numbers cell
+from 160 to 320 characters. The walk row carries clearance, motion and
+documentation together, and at 160 the motion cell truncated the
+documentation half off the end of the row.
+
+**Risk.** Additive: a new key in `cadex-walk-review-v1` and a longer
+`PROGRESS.md` numbers cell. No engine, protocol, payload or `shell/` diff.
+
+**Evidence.** `pixi run python -m pytest cli/tests` — reported in the
+record node. Four new unit regressions in `cli/tests/test_walk.py` over
+frames lifted from the two documented example rollouts (the rotating case,
+the translating case, an all-identity trace reporting zero, and the
+unavailable reasons), plus the end-to-end walk assertions on the review
+file, the notes and the `PROGRESS.md` row. The real-engine lifecycle test
+reports the hinged arm at `motion 0 mm (swing), 178.8° (swing) over 26
+solved frame(s)`.

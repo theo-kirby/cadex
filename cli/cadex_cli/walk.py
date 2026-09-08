@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -241,6 +242,121 @@ def declared_note_subjects(train_dir: Path | str) -> tuple[list[str], Path | Non
     return [], None
 
 
+#: The frame kind the assembly trace uses for the pose the solver was
+#: *given* rather than one it produced. It is frame 0 on both documented
+#: examples (27 raw frames = 1 input + 26 solved), it carries
+#: ``nominal_time_s: None``, and counting it would report the solver's
+#: input as if it were an output — so travel is measured over the solved
+#: frames only, against the first of them.
+INPUT_FRAME_KIND = "input"
+
+
+def _quaternion_swing_deg(first: Sequence[float], other: Sequence[float]) -> float:
+    """The angle between two orientations, in degrees.
+
+    ``2·acos(|q0·q|)`` — the absolute value because ``q`` and ``-q`` are the
+    same orientation, and the clamp because a dot product of two unit
+    quaternions can land a hair outside [-1, 1] in floating point and
+    ``acos`` would raise.
+    """
+
+    dot = abs(sum(a * b for a, b in zip(first, other)))
+    return 2.0 * math.degrees(math.acos(min(1.0, max(-1.0, dot))))
+
+
+def motion_from_trace(payload: dict[str, Any]) -> dict[str, Any]:
+    """How far, and how much, each component actually moved in the rollout.
+
+    Two channels, because one of them alone is a wrong answer rather than a
+    partial one: the repository's own hinged-arm example travels **0.0000
+    mm** and rotates **178.8334°**, so a displacement-only report says a
+    working revolute mechanism never moved. Per component this reports the
+    per-axis position range, the largest displacement from the reference
+    pose, and the largest rotation swing away from the reference
+    orientation.
+
+    The reference is the **first solved frame**, and only solved frames are
+    counted (see :data:`INPUT_FRAME_KIND`). Placements are absolute world
+    poses, not offsets — the hinged arm's ``swing`` starts at
+    ``[12, 0, 6]`` — so every figure here is a difference against that
+    first solved pose and never against the origin.
+
+    A trace with no frames is unavailable and says why. A trace whose
+    frames are all identical is **zero travel**, which is a measurement,
+    not a missing one.
+    """
+
+    frames = payload.get("frames")
+    if not isinstance(frames, list) or not frames:
+        return {"available": False, "reason": "the trace exported no frames."}
+    solved = [
+        frame for frame in frames
+        if isinstance(frame, dict) and frame.get("frame_kind") != INPUT_FRAME_KIND
+    ]
+    excluded = len(frames) - len(solved)
+    if not solved:
+        return {
+            "available": False,
+            "reason": "the trace exported {:d} frame(s), all of kind {!r}.".format(
+                len(frames), INPUT_FRAME_KIND,
+            ),
+        }
+    reference = solved[0].get("component_placements")
+    if not isinstance(reference, dict) or not reference:
+        return {"available": False, "reason": "the solved frames placed no components."}
+
+    components: dict[str, Any] = {}
+    for name, place in sorted(reference.items()):
+        position0 = [float(value) for value in place.get("position_mm") or (0.0, 0.0, 0.0)]
+        rotation0 = [float(value) for value in place.get("rotation_xyzw") or (0.0, 0.0, 0.0, 1.0)]
+        lows, highs = list(position0), list(position0)
+        displacement = 0.0
+        swing = 0.0
+        for frame in solved:
+            place = (frame.get("component_placements") or {}).get(name)
+            if not isinstance(place, dict):
+                continue
+            position = [float(value) for value in place.get("position_mm") or position0]
+            rotation = [float(value) for value in place.get("rotation_xyzw") or rotation0]
+            for axis in range(3):
+                lows[axis] = min(lows[axis], position[axis])
+                highs[axis] = max(highs[axis], position[axis])
+            displacement = max(displacement, math.dist(position, position0))
+            swing = max(swing, _quaternion_swing_deg(rotation0, rotation))
+        components[name] = {
+            "position_range_mm": [high - low for low, high in zip(lows, highs)],
+            "max_displacement_mm": displacement,
+            "max_rotation_deg": swing,
+        }
+
+    def largest(key: str, unit: str) -> dict[str, Any]:
+        # Ties break on the name so the block is stable across runs.
+        name = max(components, key=lambda item: (components[item][key], item))
+        return {"component": name, unit: components[name][key]}
+
+    times = [
+        float(frame["nominal_time_s"]) for frame in solved
+        if isinstance(frame.get("nominal_time_s"), (int, float))
+    ]
+    return {
+        "available": True,
+        "reference": "first solved frame",
+        "frames_counted": len(solved),
+        "frames_excluded": excluded,
+        "excluded_frame_kind": INPUT_FRAME_KIND if excluded else None,
+        "duration_s": (max(times) - min(times)) if times else None,
+        "components": components,
+        "largest_translation": largest("max_displacement_mm", "millimetres"),
+        "largest_rotation": largest("max_rotation_deg", "degrees"),
+        # Millimetres and degrees do not compare, and inventing a scale to
+        # make them compare would rank a carriage free-falling 4,739 mm on
+        # an ideal guide above a swing arm doing its job through 178.8°.
+        # Both channels are named; neither is a score.
+        "ranking": "declined: millimetres and degrees are not comparable, "
+                   "so both largest movers are named",
+    }
+
+
 def review_from_outputs(outputs: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """The rollout's numbers, read from the exported trace.
 
@@ -268,6 +384,9 @@ def review_from_outputs(outputs: Sequence[dict[str, Any]]) -> dict[str, Any]:
                         "steps", "frames"):
                 if policy.get(key) is not None:
                     review[key] = policy[key]
+            # The same file carries the poses, so the travel is read here
+            # rather than opening the trace a second time.
+            review["motion"] = motion_from_trace(payload)
             return review
     return {}
 
@@ -307,6 +426,8 @@ def write_review(
         "section": dict(review.get("section") or {}),
         "walk_seconds": review.get("walk_seconds"),
         "clearance": dict(review.get("clearance") or {}),
+        "motion": dict(review.get("motion") or {"available": False,
+                                                "reason": "no trace was exported."}),
         "weights": review.get("weights"),
         "sha256": review.get("sha256"),
         "total_reward": review.get("total_reward"),

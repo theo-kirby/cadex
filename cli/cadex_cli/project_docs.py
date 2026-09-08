@@ -364,6 +364,14 @@ def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str
     return "\n\n".join(parts)
 
 
+#: The numbers cell is the one that carries several findings at once --
+#: a walk row states its clearance, its motion in two channels and its
+#: documentation check together -- so it gets more room than a cell that
+#: holds one phrase. It was 160 and truncated the walk's documentation
+#: half the day motion was added beside it (ADR-259).
+PROGRESS_NUMBERS_LIMIT = 320
+
+
 def _cell(text: Any, limit: int = 160) -> str:
     """One table cell: single line, pipes escaped, bounded."""
 
@@ -524,7 +532,7 @@ def append_progress_row(
         rev=_cell(revision[:8] if revision else "—", 12),
         digest=_cell(digest[:8] if digest else "—", 12),
         what=_cell(what),
-        numbers=_cell(numbers),
+        numbers=_cell(numbers, PROGRESS_NUMBERS_LIMIT),
     )
     text = path.read_text(encoding="utf-8")
     if PROGRESS_HEADER not in text:
