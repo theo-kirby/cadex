@@ -80,8 +80,10 @@ per machine:
 
 ```bash
 uv tool install hypergraph-protocol      # provides `hypergraph`
-hypergraph --version                     # this project is on 0.0.7
+hypergraph --version                     # installed CLI version
 ```
+
+The project-copy version is `hypergraph_version` in `.hypergraph/config.yml`.
 
 The CLI and the committed copies are upgraded by two different commands, and one
 cannot see the other:

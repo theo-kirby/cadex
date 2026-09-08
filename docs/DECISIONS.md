@@ -14128,6 +14128,13 @@ remains historical. This prose correction preserves the four protocol rules;
 verification is diff review and graph export/check, with no runtime gate rerun
 or new ROADMAP feature checkbox.
 
+**Version guidance maintenance (2026-09-08).** Remove onboarding's stale
+0.0.7 assertion; `.hypergraph/config.yml` supplies the project-copy version,
+while `hypergraph --version` reports the installed CLI. Both currently report
+0.0.13. Keep the separate CLI and committed-copy upgrade instructions.
+Verification is diff review and graph export/check; no runtime change or
+ROADMAP feature checkbox.
+
 ## ADR-138 — A part travels between projects as one file (2026-08-09)
 
 **Decision.** A part built in one project can be used in another. It travels
