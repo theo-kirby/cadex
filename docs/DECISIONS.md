@@ -20938,3 +20938,50 @@ contact and carriage's 34 mm separation, and qualify different effort units:
 this proves the review pipeline, not policy quality or swept safety. Compact
 evidence lives in `docs/probes/complete-review/`; no runtime change or new
 training dependency. Combined evidence goes to the maintainer for assessment.
+
+
+## ADR-241 — Clearance measures a component where the assembly puts it (2026-09-08)
+
+`_measure_clearance` read `component.Shape`. An `App::Link` *replaces* the
+linked object's placement with its own instead of composing the two, so any
+body whose transform rides on the shape was measured back in the frame it was
+authored in. Every `lib.*` part is exactly that body: `lib._place` moves a
+canonical origin-and-+Z part with one `part.transform`, and `Shape.translate`
+and `Shape.rotate` write a placement rather than moving geometry. Parts
+authored directly in world coordinates were unaffected, which is why the
+defect survived until a walk used catalog parts.
+
+The measured cost, from the pan-tilt walk that found it (`empty-banner-7438`):
+two MG90S standing 26 mm apart reported as one fully contained body
+(8240.943 mm³, exactly one servo), and a 0.4 mm sink into a base plate
+reported at the plate's whole 4 mm thickness — ten times its true volume.
+The render, the section, the MJCF inertials and the exported STL all placed
+the same parts correctly, so clearance alone was lying, and an offending pair
+is a verdict a reader believes.
+
+Compose the two frames in one helper, `_component_world_shape`: the linked
+object's shape with `component.Placement * shape.Placement`. That is the
+composition the MJCF export already uses (body frame from the component,
+geometry from the source shape), so the review surface now agrees with the
+physics. A container source (an authenticated hierarchy) has no readable
+`Shape` of its own and the link already composes the group's placements, so it
+is read as it stands. Published fields, the protocol, the CLI report and the
+content digest are unchanged; only the numbers are now true.
+
+`_clearance_at_frame`, the swept check inside the simulation trace, reads the
+same link shape and has the same defect. It is **not** fixed here: it runs per
+pair per frame over thousands of frames, so composing a copy in that loop is a
+cost that needs its own measurement. Until it lands, a swept breach distance
+for a `lib.*`-placed body is not to be believed either.
+
+Verification: a real-kernel regression (`test_clearance_scope.py::
+test_a_shape_placed_component_is_measured_where_it_is`) drives
+`_measure_clearance` under `FreeCADCmd` over four `App::Link` components —
+shape-placed, world-authored, both-frames-placed, and a genuine 2 mm overlap.
+On the pre-fix source it reports the shape-placed pair 0.0 mm apart sharing
+999.999… mm³; after, 40.0 mm and 0.0 mm³, the composed body at 150–160 mm
+rather than 100–110, and the real overlap at its true 200 mm³ instead of
+1000 mm³. Engine suite: 2076 passed, 52 skipped, no failures. The stub-driven
+tests in the same file are unchanged and still pass. No build, payload, shell
+or protocol change; the installed bundle still carries the old numbers until
+it is rebuilt and staged.

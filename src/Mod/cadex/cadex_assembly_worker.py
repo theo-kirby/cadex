@@ -5311,6 +5311,31 @@ def _component_local_shape(component: Any, *, context: str) -> Any:
     return shape
 
 
+def _component_world_shape(component: Any) -> Any:
+    """The component's geometry in assembly coordinates, both frames applied.
+
+    ``App::Link.Shape`` *replaces* the linked object's placement with the
+    link's own rather than composing the two, so a body that carries its
+    transform on the shape reads back at the frame it was authored in. Every
+    ``lib.*`` part is exactly that body: ``lib._place`` moves a canonical
+    origin-and-+Z part with one ``part.transform``, and ``Shape.translate``/
+    ``rotate`` write a placement rather than moving the geometry. Reading the
+    link alone measured two catalog servos 60 mm apart as fully intersecting.
+
+    A source that is a container (an authenticated hierarchy) has no readable
+    ``Shape`` of its own, and the link already composes the group's
+    placements, so it is read as it stands.
+    """
+
+    linked = getattr(component, "LinkedObject", None)
+    local = getattr(linked, "Shape", None) if linked is not None else None
+    if local is None or local.isNull():
+        return component.Shape
+    world = local.copy()
+    world.Placement = component.Placement.multiply(local.Placement)
+    return world
+
+
 def _measure_clearance(
     components: Mapping[str, Any], *, solved: bool = True
 ) -> list[dict[str, Any]]:
@@ -5328,7 +5353,8 @@ def _measure_clearance(
             try:
                 if not solved:
                     raise ValueError("Assembly solver did not produce a solved pose")
-                a, b = components[first].Shape, components[second].Shape
+                a = _component_world_shape(components[first])
+                b = _component_world_shape(components[second])
                 if a.isNull() or b.isNull():
                     raise ValueError("Component has no measurable shape")
                 distance = float(a.distToShape(b)[0])
