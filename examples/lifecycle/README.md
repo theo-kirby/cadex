@@ -44,7 +44,13 @@ preserve external monitoring when running under a strict memory budget.
 The repo-owned examples retain only source and documentation. Their ignore
 files exclude accepted state, exported geometry, policies, checkpoints and
 traces. Runtime projects under this repository are also owned by its parent
-git work tree; the CLI does not create a nested git repository.
+git work tree: without their own `.git`, the CLI neither initializes nor
+commits them and leaves the parent index untouched. In an external project-root
+repository, accepted runs attempt to commit all working changes, including
+unrelated edits. Default ignore rules are created only during initialization
+and only if `.gitignore` is absent; existing repositories keep their rules.
+Check those rules before generating checkpoints and traces. A progress row
+alone does not confirm a commit; the command notes report `committed <sha>.`.
 The examples' sensor notes demonstrate the domain-doc convention.
 `cli/tests/test_walk.py` exercises the carriage with the real engine and
 trainer and asserts an actual MJCF slide joint and a verified policy trace;

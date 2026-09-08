@@ -2085,10 +2085,12 @@ What makes them experimental, and what would settle it:
 - [x] **Compare and record, in a repository the project owns** (ADR-194).
   A `PROGRESS.md` number an earlier row carried is written with its
   change against that row (delta, digest, value), so the comparison is
-  one recorded row; the project root is `git init`ed on the first visit
-  with a CLI-written `.gitignore`, and every accepted run is one commit
-  whose message is the row's words. Measured on the §7b toy's scratch
-  copy; pinned by `cli/tests/test_project_docs.py`. §7c row 9 closes.
+  one recorded row. Outside another work tree, a fresh root is initialized
+  with default ignore rules only if absent; existing root repositories keep
+  their rules. Accepted runs attempt to commit all working changes with the
+  row's words as the message. Nested projects without their own `.git` get
+  rows but no automatic commits, leaving the parent index untouched. Measured
+  on the §7b toy's scratch copy; pinned by `cli/tests/test_project_docs.py`. §7c row 9 closes.
 - [x] **The `INSPECTION_FAILED` frame is the one tool-failure envelope**
   (ADR-195). `complete_inspection`'s refusal is built by `tool_failure`,
   validated by a test and pinned by an `inspect.failure` golden, so an

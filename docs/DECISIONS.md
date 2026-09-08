@@ -18912,6 +18912,16 @@ is somebody's repository: no `init`, no commit, one note saying so. A
 machine without `git` on `PATH` gets the same note and no history. Neither
 fails a run: history is the record of a success, not a condition of it.
 
+**2026-09-08 documentation correction.** The three-case first-visit
+qualification (`fresh-flint-1505`) distinguishes an existing project-root
+repository (commit all working changes, preserve ignore rules) from a nested
+project without its own `.git` (no initialization or commit, parent index
+untouched). Defaults are written only during initialization when `.gitignore`
+is absent. CLI guidance, project scaffolds and the lifecycle example now state
+these ownership conditions and use `committed <sha>.` as confirmation, rather
+than promising a commit for every row. This corrects the prose above; Git
+behavior is unchanged.
+
 ### 3. Not taken
 
 A `--parent` flag naming the run to compare against: the last row that

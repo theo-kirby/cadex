@@ -502,25 +502,35 @@ that carried it, so a `train` row between two rollouts does not break the
 chain. The rows are read back from `PROGRESS.md` as written, which means
 a row a person adds by hand counts too.
 
-**The project owns a git repository** (ADR-194). The first visit runs
-`git init` in the project root and writes a `.gitignore` that keeps out
-what a rebuild recreates (`script_artifacts/`), what is bulk (`frames/`,
-renders), what is transient (the lock, `.blend1` backups) and, since
-ADR-199, what a walk re-makes — `.cxpolicy` files outside `assets/`
-(the trainer's checkpoints and the copies in a run's `train/`) and the
-`*-trace.json` rollouts, because the store keeps the policy a script
-names and `review.json` and `PROGRESS.md` keep the numbers; the script,
-its history, the stored assets, the `.blend` and the three documents are
-the project. After every accepted run the CLI commits whatever changed,
-with the `PROGRESS.md` row's words as the message and `committed <sha>.`
-in the envelope's `notes`, so `git log` is the progress table and `git
-diff` between two commits is the change that produced the numbers. A
-project that already lies inside a work tree is somebody's repository
-and is left alone — no `init`, no commit, one note saying so — and a
-machine without `git` on `PATH` gets the same note and no history. Opening
-a project re-stages its accepted attempt under a new id, so a read-only
-visit (`cadex script` with no `--set`) leaves the engine's `script.json`
-modified until the next accepted run commits it.
+**Project history depends on repository ownership** (ADR-194).
+
+- **Fresh root outside another work tree:** the CLI runs `git init` and
+  creates default `.gitignore` rules only if that file is absent.
+- **Existing project-root repository:** the CLI uses it and leaves its
+  ignore configuration unchanged; it does not install default rules.
+- **Project nested beneath another repository root, without its own `.git`:**
+  documents and progress rows still land, but there is no initialization or
+  commit. The parent index is untouched, and the envelope reports
+  `inside an existing git work tree: not initialised, not committed.`
+
+The default ignore rules exclude rebuildable `script_artifacts/`, frames,
+renders, locks, `.blend1` backups, `.cxpolicy` files outside `assets/`, and
+`*-trace.json` rollouts (ADR-199). Existing ignore files are preserved even
+when initializing a fresh root; check their rules before generating
+checkpoints and traces. The defaults retain stored assets, including policies
+under `assets/`, while `review.json` and `PROGRESS.md` keep the numbers.
+
+In a project-root repository, every accepted run attempts to commit **all
+working changes** (`git add -A`), including unrelated edits and the current
+working version of previously staged files. The message uses the
+`PROGRESS.md` row's words; `committed <sha>.` in the envelope's `notes`
+confirms success. A row alone does not prove a commit: missing Git or a
+failed commit does not fail the accepted run. Without `git` on `PATH`,
+there is no automatic history.
+
+Opening a project re-stages its accepted attempt under a new id, so a
+read-only visit (`cadex script` with no `--set`) leaves the engine's
+`script.json` modified until the next accepted run commits it.
 
 ### Exit codes
 

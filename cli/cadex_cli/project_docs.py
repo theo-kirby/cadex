@@ -37,16 +37,16 @@ neither a file tool nor a shell (the Mesh tools are its whole world), so
 with the GUI attached the three files are still the CLI's and a person's;
 the shape is the same in every mode because the files are (ADR-201).
 
-**The project owns a git repository** (ADR-194). The first visit runs
-``git init`` in the project root — unless the root already lies inside a
-work tree, which is somebody's repository and is left alone — and writes a
-``.gitignore`` that keeps the rebuildable and the bulky out: the staged
-artifacts, the frames, the renders, the lock, the ``.blend1`` backups. After
-every accepted run the CLI commits whatever changed, with the
-``PROGRESS.md`` row's words as the message, so a project's history is its
-run log and ``git diff`` between two runs is the change that produced the
-numbers. Without ``git`` on ``PATH`` the project simply has no history and
-the envelope says so once.
+**Project-root git repositories** (ADR-194). Outside another work tree,
+the CLI initializes a repository if needed and creates its default
+``.gitignore`` only during initialization, only if absent. Existing root
+repositories keep their ignore configuration. After every accepted run,
+the CLI attempts to commit all working changes (``git add -A``), including
+unrelated edits, with the ``PROGRESS.md`` row's words as the message.
+A project nested beneath another repository root, without its own ``.git``,
+gets documents and rows but no initialization or commit; the parent index
+is untouched. Without ``git`` on ``PATH`` there is no automatic history.
+The envelope reports a successful commit as ``committed <sha>.``.
 
 The engine knows nothing about any of this: these are plain files beside
 ``script.json``, like ``agent.json``, and the store's restore pass ignores
@@ -205,11 +205,13 @@ that ends with a line starting `{prefix}` lands here as the next entry.
 ## ADR-001 — Project scaffolded ({date})
 
 Created by the `cadex` CLI on first visit, with `{architecture}` and
-`{progress}` beside it, and a git repository the project owns: the CLI
-commits after every accepted run. `.gitignore` keeps out what a rebuild
-recreates (`script_artifacts/`), what is bulk (`frames/`, renders) and
-what is transient (the lock, `.blend1` backups); the script, its history,
-the stored assets and these documents are the project.
+`{progress}` beside it. Outside another work tree, the CLI initializes a
+repository if needed and creates default ignore rules only if `.gitignore`
+is absent at initialization. Existing repositories keep their ignore rules;
+check them before generating checkpoints and traces. In a project-root
+repository, accepted runs attempt to commit all working changes, including
+unrelated edits. A project nested beneath another repository root, without
+its own `.git`, gets no automatic commit and leaves the parent index untouched.
 """
 
 _NOTE_TEMPLATE = """\
@@ -227,8 +229,11 @@ One row per run the `cadex` CLI accepted, newest last. Written by the
 CLI from what actually happened; read by the agent on every visit. A
 number a previous row also carried shows its change against that row,
 as `total_reward 127.8 (Δ -1602.1 vs 2996fb73 at 1729.9)`: the delta,
-the digest of the run compared against, and that run's value. Each row
-is one commit in the project's own repository (`git log` is this table).
+the digest of the run compared against, and that run's value. In a
+project-root repository, the CLI attempts a commit after each accepted run;
+`committed <sha>.` in the command's notes confirms success. Rows still land
+without Git or when the project is nested beneath another repository root
+without its own `.git`; those rows have no automatic commit.
 
 For lifecycle comparisons, record iterations, environment count and seeds.
 `total_reward` sums rewards over the verified rollout's `step_count`;
