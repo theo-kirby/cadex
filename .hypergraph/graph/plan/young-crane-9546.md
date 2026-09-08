@@ -11,82 +11,84 @@ Status: open
 
 ## Current
 
-1. **One fresh prompt walk, third mechanism, reviewed by both new eyes
-   (missions 2/6).** Promoted from third: it was ranked behind the two
-   reporting units only because its review would have carried nothing the two
-   earlier prompt walks did not, and ADR-259 removed that reason
-   [rec: square-bay-3436]. One `cadex walk --prompt` on this machine into a
-   durable project **outside this repository**, on a mechanism whose named
-   joint and actuator differ from the swing arm (revolute, position servo) and
-   the carriage (prismatic, force motor) — not a re-roll of either prompt,
-   which is not evidence [rec: morning-summit-7848]. No code change specific
-   to the mechanism; the dispatch is now pinned against one by two offline
-   regressions, so a change that would break the claim fails a test rather
-   than passing silently [rec: falling-willow-7995]. Toy scale, ≤5 iterations
-   × 16 envs, `--timeout 600`, `$CADEX_MODEL=claude-opus-5`, explicit CPU,
-   ≤18 min and ≤3 GB, nothing generated committed to this repository. What
-   makes it a unit rather than re-evidence: it is the first walk whose review
-   carries the ADR-256 documentation eye reading a **real design turn's own
-   notes** back — the two documented example walks are *recipe* walks and run
-   no design turn at all [rec: western-gate-9567] — and the first carrying an
-   ADR-259 travel figure, on a mechanism where nobody knows in advance which
-   of the two channels holds the motion. Report both channels, the
-   documentation finding, and whether the design turn wrote `NOTE` lines
-   unprompted. This is also the charter's own leading short-rung instruction,
-   which says to run the entry point end to end before anything else whenever
-   the rung is empty. If the provider refuses on credit, record the refusal
-   and stop; do not probe — unit 2 is the fallback and the order degrades
-   safely [rec: western-grotto-7499].
+1. **The model-free `--set` iterate walk on `ot4-quill`, the third
+   mechanism's own project (missions 2/5/8).** Promoted from third, and it
+   leads for two reasons that point the same way. It **spends no tokens** —
+   `walk`'s `--prompt` defaults to an empty list and the design loop
+   iterates over it, so a walk with only `--set` runs no design turn — and
+   Claude's five-hour window went 29% → 84% this run, so the cheapest unit
+   on the rung is also the one least likely to be refused
+   [rec: chilly-crest-2100]. And it is the only thing in existence that can
+   exercise ADR-260 where it was built to work: the threading of
+   `previous_numbers()` through the walk branch and the `travel_mm` /
+   `travel_deg` labels are pinned by an offline round-trip and the toy
+   iterate lifecycle regression, and by nothing on real geometry
+   [rec: northern-comet-5917]. `ot4-quill`'s first walk could render no
+   delta at all — it was the project's first row [rec: chilly-crest-2100].
+   Re-walk it with `--set` on one parameter its own `params(...)` block
+   actually declares (`quill_dia`, `bore_len`, `stroke`, `head_len` and the
+   rest are real), no `--prompt`, same 5 × 16 × seed 0 and `--timeout 600`,
+   explicit CPU, into `runs/<name>` beside the baseline. Report the first
+   comparison row that carries **both** travel channels against a previous
+   walk on geometry no fixture has seen, and say whether the delta reads as
+   a finding or as noise at toy scale. It is a real iterate rather than a
+   re-roll: the parameter changes, the prompt does not
+   [rec: morning-summit-7848]. Nothing generated enters this repository.
 
-2. **Make the walk's `PROGRESS.md` row comparable at all, motion first
-   (missions 2/5).** Re-scoped by measurement, and the scope is larger and
-   plumbier than the previous rung said. The finding: `_record_progress`
-   (`cli/cadex_cli/__main__.py:1735`) branches on the command, and the
-   `command == "walk"` branch builds its numbers cell from clearance +
-   `_motion_cell` + `_documentation_cell` and **never passes
-   `previous=previous_numbers(...)`** — only the non-walk branch calls
-   `progress_numbers(..., previous=...)`. So **no walk row has ever carried a
-   delta against the previous walk of the same project**, for any figure.
-   Compounding it, `_motion_cell` spells `motion 0 mm (swing), 178.8°
-   (swing)`, which `_NUMBER_RE` (`project_docs.py:413`, built from
-   `COMPARED_NUMBERS = ("total_reward", "reward/step")`) cannot parse: the
-   regex wants `<label> <number>`. The reward deltas live on the **train**
-   leg's row and the travel figure on the **walk** row, written by different
-   branches [rec: western-grotto-7499]. So the unit is three parts — a
-   parseable spelling for each channel, the two labels in `COMPARED_NUMBERS`,
-   and threading `previous` into the walk branch — and the row must stay
-   inside `PROGRESS_NUMBERS_LIMIT`, which ADR-259 already had to raise from
-   160 to 320 when the motion cell pushed the documentation finding off the
-   end [rec: square-bay-3436]. Carry the millimetre **and** the degree channel
-   for the same reason unit 1 of the previous rung did: a revolute rig's whole
-   motion is in the second one [rec: solemn-journey-9731]. Extend the existing
-   iterate lifecycle regression rather than adding a matrix. The carriage pair
-   is the worked example and the reason: baseline 103.298 mm travel at
-   `total_reward` 3.296298, iterate 103.719 mm at 2.760187 — the reward fell
-   while the travel held, and the walk could not say so
-   [rec: sleepy-hollow-9498] [rec: mellow-quartz-8093]. No ranking claim
-   follows: travel is a fact about the rollout, never a score, and two
-   projects' travels do not compare any more than their rewards do — 4,739 mm
-   of a carriage free-falling on an ideal guide outranks 178.8° of a swing arm
-   working [rec: solemn-journey-9731]. `cli/` and `docs/` only; ADR, ROADMAP
-   bullet, verified dates, and the full `pixi run python -m pytest cli/tests`
-   on the shared `cpu_training` fixture with no outer backend override.
+2. **Bound the walk's legs in wall clock (mission 2, and mission 9's
+   premise).** The new direction this pass, and the last thing
+   `crisp-reef-5607`'s own evidence asks for: the third mechanism's record
+   named the unbounded design turn — 629.6 s there, 1,014.2 s on the swing
+   arm — as "the one place the entry point can outrun a caller's budget"
+   [rec: chilly-crest-2100]. Source-checked and worse than the record says:
+   `run_leg` (`cli/cadex_cli/walk.py:114`) calls `subprocess.run` with **no
+   `timeout=` at all**, so every leg is unbounded — design, sweep, train,
+   script, declare, rollout — and the walk's own `--timeout`
+   (`__main__.py:454`) is forwarded only into the `train` leg's argv
+   (`__main__.py:1377`), where it is the trainer's internal bound and says
+   so in its help text. The charter wants the loop to run with no human in
+   it and a team to run one machine per experiment; a provider that stalls
+   rather than refusing hangs such a machine forever and nothing notices.
+   `cli/` only, offline, testable with a stub child. Not a refusal semantic
+   and not a clearance question: a leg that runs out of time fails the walk
+   through the existing `failed(...)` path, the way a non-zero leg does.
+   Correct `--timeout`'s help and `docs/CLI.md` in the same commit, because
+   both currently read as though the walk were bounded. ADR, ROADMAP bullet,
+   verified dates, and the full `pixi run python -m pytest cli/tests`.
 
-3. **One model-free `--set` iterate walk on the third mechanism's own project
-   (missions 2/5/8).** Only after units 1 and 2. Unit 2 makes the walk row
-   comparable; nothing in this repository then exercises it on a mechanism
-   that is not one of the two examples. Re-walk the durable project unit 1
-   created with `--set` on one parameter it actually has, no `--prompt`, so it
-   **spends no tokens**, and record the first comparison row that carries both
-   travel channels against a previous walk on unseen geometry — plus whether
-   the delta reads as a finding or as noise at toy scale. This is the cheapest
-   possible proof that unit 2 works where it is meant to work, and it is a
-   real iterate rather than a re-roll: the parameter changes, the prompt does
-   not [rec: western-grotto-7499] [rec: morning-summit-7848]. If unit 1 was
-   refused at the provider, this unit falls back to one of the two example
-   projects and says so; it does not become a reason to retry the model call.
+3. **A prompt-driven iterate on a project that already has a history
+   (missions 2/7).** Only after units 1 and 2, and the first thing to drop
+   if the provider refuses on credit. Every iterate this run has produced is
+   a parameter assignment; what has never run on this machine is a **design
+   turn against a project with a past** — `ot4-quill` carries an
+   `ARCHITECTURE.md`, six ADRs, five `PROGRESS.md` rows and four domain
+   notes it wrote itself [rec: chilly-crest-2100], and mission 2's "project
+   as codebase … read on every visit" is exactly that turn. One
+   `cadex walk --prompt … --resume` naming something the project's own
+   review found, changing geometry rather than a number, at the same toy
+   scale and bounds. Report whether the turn read the project's own
+   documents back, whether it appended an ADR and a domain note without
+   being told to, and what the row's travel and reward deltas did across a
+   geometry change rather than a parameter change. If the provider refuses,
+   record the refusal and stop; do not probe [rec: western-grotto-7499].
+
+4. **Ranking rule and scope, unchanged.** The frontier metric cannot move
+   from this rung — all four seeded criteria are `working`, the three open
+   nodes are standing work or parked under `## Later criteria`, and
+   promotion is a human edit — so the rung is ranked by what it adds to the
+   product [rec: western-grotto-7499]. No charter checkbox or gap node is
+   retired, blocked or superseded here. Spare budget is no mandate and no
+   bookkeeping-only dispatch is valid [rec: sleepy-hollow-9498]. Budget as
+   the loop reports it: 25 iterations, 7.4 h elapsed, 40.6 h left; Claude
+   five-hour 84%, seven-day 67%; Codex seven-day 79% [rec: hollow-cliff-1217].
 
 ## Negative knowledge
+
+- [scope: the walk's time bounds, source-checked | confidence: high | evidence: hollow-cliff-1217] The walk is **not time-bounded anywhere**. `run_leg` (`cli/cadex_cli/walk.py:114`) passes no `timeout=` to `subprocess.run`, so design, sweep, train, script, declare and rollout are all unbounded in wall clock; `walk --timeout` (`__main__.py:454`) is forwarded only into the `train` leg's argv (`__main__.py:1377`) and is the trainer's own internal bound. Do not describe the entry point as bounded, do not cite a completed walk's `--timeout 600` as a wall-clock guarantee, and do not read the fix as a refusal semantic — a leg that runs out of time fails through the existing `failed(...)` path.
+
+- [scope: the fourth action-source pair, considered and declined | confidence: high | evidence: hollow-cliff-1217] [rec: chilly-crest-2100] The three walks on this machine spent `(position, angular)`, `(motor, linear)` and `(position, linear)`; the last unused pair is `(motor, angular)`, and a `velocity` actuator is refused outright by `_action_bound` at `action_range_underivable`. A fourth rig on that pair is worth less than it looks: the no-mechanism-specific-branch claim is a property of the tree pinned by two offline regressions [rec: falling-willow-7995], three mechanisms already read side by side at one scale, and a fourth project's first walk would carry no delta for the same reason the third's did not. Do not rank a fourth fresh mechanism above the iterate work.
+
+- [scope: `ot4-quill`'s reported intersection | confidence: high | evidence: chilly-crest-2100] The clearance eye's first offending pair on an agent-authored design — `housing`/`quill`, 960 mm³, 0.0 mm — is **deliberate**, and the project's own ADR-005 says so: the shaft is modelled inside a solid bore cylinder, the joint rather than contact constrains the quill, and the collision groups are disjoint. Every future walk of that project will report it again. Do not read it as a defect, do not tune the eye around it, and do not let it reopen the declined question of whether clearance should refuse.
 
 - [scope: the walk row and the comparison machinery, measured | confidence: high | evidence: western-grotto-7499] `_record_progress`'s `command == "walk"` branch does not pass `previous=previous_numbers(...)`; only the non-walk branch does. No walk row has ever shown a delta against a previous walk, for clearance, documentation or motion. And `_motion_cell`'s spelling (`motion 0 mm (swing), 178.8° (swing)`) is not in the `<label> <number>` shape `_NUMBER_RE` is built to find, so adding labels to `COMPARED_NUMBERS` alone would parse nothing. Do not plan the travel carry as a one-line constant change, and do not assume the reward deltas and the travel figure share a row — they are written by different branches for different commands.
 
@@ -196,3 +198,4 @@ Status: open
 - sleepy-hollow-9498 — retire the motion screen on measurement; re-rank onto the rollout travel report, the iterate carry and a deferred third-mechanism walk
 - solemn-journey-9731 — correct the travel unit's premises and require both a millimetre and a degree channel; keep the rung's three units and their order
 - western-grotto-7499 — promote the third-mechanism walk to first now that the travel eye landed; re-scope the travel carry as walk-row comparison plumbing and add a model-free --set iterate walk
+- hollow-cliff-1217 — the rung's first two units landed; promote the token-free --set iterate on the third mechanism's own project, add the wall-clock leg bound as the new direction, and rank a prompt-driven iterate last
