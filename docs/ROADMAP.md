@@ -2002,6 +2002,11 @@ What makes them experimental, and what would settle it:
   carry comparable measurements; arm contact and carriage 34 mm separation
   remain explicit. Evidence in `docs/probes/complete-review/linear-carriage/`;
   combined review evidence is ready for maintainer assessment.
+- [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
+  Accepted revision/digest, policy assets, trace and review geometry survive
+  separate script/asset/inventory/clearance/render/section processes. Expected
+  restore attempts and report refreshes are distinguished from lost artifacts;
+  evidence in `docs/probes/cold-revisit/`. No persistence correction needed.
 - [x] **The agent can name what it assembled, headlessly** (ADR-236,
   `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
   project: one row per component with the output it places, its catalog

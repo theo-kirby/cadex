@@ -1,0 +1,95 @@
+{
+  "baseline_commit": "6c44a1178fb4b5d01d2fb363bd276ea82f57720d",
+  "project_commit": "6e32fd09729439458f03fac1713d9c956f385f49",
+  "clean": true,
+  "committed_bytes_match": true,
+  "accepted_revision": "61cf81142adf36939673e39d02a78112657e6f85b668af9d8405c26407121062",
+  "accepted_digest": "663209866d7c8697992c7188fd138e9705c6418fa72ab22ac16bfc8207d4e477",
+  "policy_sha256": "3c12fa096e110f1ef91c9a3affa0555fee6b89f3811a471927e6a6bd66f2f8c2",
+  "restored_trace_sha256": "141ad4b25abc7124aa56b11c3a1ccd72d5a2d57f4aa15541d291bb8595a6699f",
+  "trace_matches_baseline": true,
+  "asset_hashes_unchanged": true,
+  "script_matches_public_read": true,
+  "svg_bytes_match_baseline": true,
+  "geometry_objects_equal": true,
+  "section_area_mm2": {
+    "base": 360.0,
+    "swing": 640.0
+  },
+  "original_sha256": {
+    "PROGRESS.md": "eb36b9a91bf2dfd888928b8e9b240fc95746d41c46caed4fbacd38c8538c3133",
+    "DECISIONS.md": "bb2f12e1a1ab57d0c7a05f013eb58c92350cb1a470e01a2c8b8378d641335efc",
+    "ARCHITECTURE.md": "5e4a3a54dbea56f8c7325dcebf20d4fc83cd0975a14f6b159fcab0ba38b1f863",
+    "docs/sensors.md": "1d772457ed3fca3500f68569c78ae2d158e80591cbcc7857119d592ff17addbc",
+    "docs/inventory.md": "c0b17b25149af6d3940a177fdb5904d63f2ef526742d759cb8d4bbf12e91613a",
+    "docs/clearance.md": "7b44c01205e1bb47c6ed5ac51e0ebe9189b379adedd4148c199fa739bd23371e",
+    "runs/baseline/review.json": "db764dd6b54d8bc440e25470b2d70528a1663ea97edcb59819d06ad94acbffc8",
+    "review/render/summary.json": "24df2e7127eb87b098764d043f537fc8ba24b5e64c87980d94b001284c484632",
+    "review/section/61cf81142adf36939673e39d02a78112657e6f85b668af9d8405c26407121062/XZ-3.125/summary.json": "4667b7910ebd4da9e8b3e09ba81101f9d5978c00fb6998609b8f4f3db8d5a174",
+    "review/render/front.svg": "7840373d010d7a1709a3b9bc8ab157f639a89be3311016e77f9bfb7c4bfdd6bc",
+    "review/render/iso.svg": "dccc676a8a0b6c336e88ecd357ab237ed6c47d3acec2a0bf1506f7072e832952",
+    "review/render/right.svg": "8188587f196178c01b70f958d4d5f41360b958d473eb22760f78606ca704200c",
+    "review/render/top.svg": "d3761b04046003f1c070c8e5ed09d754f5a99155066eb7d347c28bb945f1862f",
+    "review/section/61cf81142adf36939673e39d02a78112657e6f85b668af9d8405c26407121062/XZ-3.125/section.svg": "c164ffa742f7e565775f48abbb723c186e492dbcfb68c70c0eabeae3dd84816e"
+  },
+  "commands": [
+    {
+      "args": [
+        "script"
+      ],
+      "exit": 0,
+      "seconds": 0.8274208339862525,
+      "identity_unchanged": true,
+      "docs_unchanged": true
+    },
+    {
+      "args": [
+        "asset"
+      ],
+      "exit": 0,
+      "seconds": 0.8293064999743365,
+      "identity_unchanged": true,
+      "docs_unchanged": true
+    },
+    {
+      "args": [
+        "inventory"
+      ],
+      "exit": 0,
+      "seconds": 0.8764222079771571,
+      "identity_unchanged": true,
+      "docs_unchanged": false
+    },
+    {
+      "args": [
+        "clearance"
+      ],
+      "exit": 0,
+      "seconds": 0.1861379590118304,
+      "identity_unchanged": true,
+      "docs_unchanged": false
+    },
+    {
+      "args": [
+        "render"
+      ],
+      "exit": 0,
+      "seconds": 1.9491594579885714,
+      "identity_unchanged": true,
+      "docs_unchanged": false
+    },
+    {
+      "args": [
+        "section",
+        "--plane",
+        "XZ",
+        "--offset-mm",
+        "3.125"
+      ],
+      "exit": 0,
+      "seconds": 1.4015044590341859,
+      "identity_unchanged": true,
+      "docs_unchanged": false
+    }
+  ]
+}
