@@ -141,6 +141,10 @@ attempt. A refused turn still saves changed identity for resumption; unchanged
 identity leaves that file untouched. Opening may refresh accepted restore
 attempt metadata in `script.json`, even when the subsequent turn fails.
 A refused walk does not roll that bookkeeping back or create a failure commit.
+Use a fresh `--out` directory for each retry. A trainer that exits unsuccessfully
+may leave a partial output there; it is not stored or declared. Previous policies,
+run artifacts and comparison rows survive. An accepted sweep stays applied with
+`policy_on=0`; failure does not roll the project back.
 The walk's `{progress}` row and project commit subject name the output
 relative to this project, or by basename for an external output, so the
 recorded run label contains no absolute machine path.

@@ -11,7 +11,8 @@ machine. And the real thing: the repository's plate-and-arm toy through
 the whole walk twice — the first from a placeholder digest to a verified
 rollout, the second across a reward change with a warm start — with the
 real engine and the real trainer, one iteration by four environments,
-bounded far under the fifteen-minute rule.
+bounded far under the fifteen-minute rule. A third attempt injects a trainer
+failure after writing a partial policy and checks preservation of both runs.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ import pytest
 
 from cadex_cli.agent import CLI_OVERLAY
 from cadex_cli import walk as walk_module
-from cadex_cli.report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE
+from cadex_cli.report import EXIT_FAILURE, EXIT_OK, EXIT_REJECTED, EXIT_USAGE
 from cadex_cli.walk import (
     POLICY_SWITCH,
     REVIEW_FILENAME,
@@ -557,6 +558,59 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert {"assets/job2.cxpolicy", "runs/walk-2/review.json"} <= set(
         _git(root, "ls-files").splitlines()
     )
+
+    # A failed retry uses the current asset name but a fresh run directory.
+    # It must preserve both policies and the successful comparison history.
+    preserved = {
+        path: hashlib.sha256(path.read_bytes()).hexdigest()
+        for folder in (out1, out2, root / "assets")
+        for path in folder.rglob("*") if path.is_file()
+    }
+    source_before = (root / "script.py").read_bytes()
+    progress_before = (root / "PROGRESS.md").read_text()
+    head_before = _git(root, "rev-parse", "HEAD")
+    failing_python = tmp_path / "failing-python"
+    failing_python.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\nfrom pathlib import Path\n"
+        "Path(sys.argv[sys.argv.index('--out') + 1]).write_bytes(b'partial policy')\n"
+        "print('injected retraining failure')\nraise SystemExit(7)\n"
+    )
+    failing_python.chmod(0o755)
+    out3 = root / "runs" / "walk-failed"
+    code, failed = _run(
+        capsys, "--project", str(root), "walk", "--out", str(out3),
+        "--set", "lift_weight=3e-4", "--name", "job2.cxpolicy",
+        "--init-from", str(out2 / "train" / "job2.cxpolicy"),
+        "--init-from-parent-task", str(out2 / "train" / "job-task.json"),
+        "--init-from-task-change", "lift weight tripled",
+        "--trainer-python", str(failing_python),
+        "--iterations", "1", "--envs", "4", "--timeout", "30",
+    )
+    assert code == EXIT_FAILURE and failed["ok"] is False, failed
+    assert "leg train" in failed["error"] and "trainer exited 7" in failed["error"]
+    assert "injected retraining failure" in failed["error"]
+    assert [leg["leg"] for leg in failed["walk"]["legs"]] == ["sweep", "train"]
+    assert not failed["walk"].get("review")
+    assert not (out3 / REVIEW_FILENAME).exists()
+    assert not (out3 / SCRIPT_FILENAME).exists()
+    assert (out3 / "train/job2.cxpolicy").read_bytes() == b"partial policy"
+    assert all(hashlib.sha256(path.read_bytes()).hexdigest() == digest
+               for path, digest in preserved.items())
+    assert (root / "script.py").read_bytes() == source_before
+    progress_after = (root / "PROGRESS.md").read_text()
+    assert progress_after.startswith(progress_before)
+    new_rows = [line for line in progress_after[len(progress_before):].splitlines()
+                if line.startswith("| 2")]
+    assert len(new_rows) == 1 and new_rows[0].split(" | ")[1] == "params"
+    assert _git(root, "log", f"{head_before}..HEAD", "--format=%s") == (
+        "cadex params lift_weight=0.0003, policy_on=0")
+    # The accepted sweep survives; the failed walk is not a rollback.
+    code, current = _run(
+        capsys, "export", "--project", str(root), "--out", str(out3 / "revisit"),
+    )
+    assert code == EXIT_OK, current
+    assert current["params"] == {"policy_on": 0.0, "lift_weight": 3.0e-4}
 
 
 @pytest.mark.skipif(

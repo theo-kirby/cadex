@@ -2097,6 +2097,11 @@ What makes them experimental, and what would settle it:
   with match/different/unavailable evidence; no refusal, rebuild or binary
   provenance claim. Offline walk regressions and the CLI suite verify it.
 
+- [x] **Failed retraining preserves successful walk history** (2026-09-08).
+  Real-engine iterate regression injects a trainer exit after a partial policy
+  write: prior policies, run artifacts and comparison rows survive; the accepted
+  sweep stays applied and no declaration or successful review follows failure.
+
 - [x] **Correct the walk progress-row guide** (2026-09-08, ADR-238).
   Child reward/delta rows and the successful walk's clearance row are distinct;
   failed legs add no walk review row. Existing CLI behavior and tests retained.

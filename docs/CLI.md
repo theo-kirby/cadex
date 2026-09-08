@@ -343,6 +343,10 @@ than "the turn finished without the engine accepting a script" — which was
 true of both and told nt3 nothing. Child legs record reward/delta rows
 (ADR-194); a successful walk adds the clearance review row described above
 (ADR-238). A failed leg leaves earlier rows intact but adds no walk review row.
+Use a fresh `--out` directory for each retry. If retraining exits unsuccessfully,
+a partial policy may remain there, but it is not stored or declared: previous
+stored policies, run artifacts and comparison rows survive. An accepted sweep
+stays applied with `policy_on=0`; failure does not roll the project back.
 `--set policy_on=…` is a usage error: the walk owns the switch. `cli/tests/test_walk.py` pins the leg order and the flags
 against a fake `cadex`, and runs the repository's plate-and-arm toy through
 two real walks — a placeholder digest to a verified rollout, then a reward
