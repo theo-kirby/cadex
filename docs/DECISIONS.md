@@ -21205,3 +21205,28 @@ commit or cleanup of user changes. Controlled offline refusals through the walk
 exercise unchanged session, changed session and changed model against a real
 engine; successful resumed edits pin accepted geometry changes with both unchanged
 and changed model metadata. CLI suite evidence is recorded with this unit.
+
+## ADR-248 — The review's clearance checks itself against the render (2026-09-08)
+
+The walk's review holds the kernel's pair measurements and the render's placed
+tessellation in one session, from two independent paths. Cross-check them there
+instead of by hand: `clearance.bounds_agreement` compares each measured pair
+against the two components' world bounds from the render snapshot, two
+inequalities per pair — `distance_mm` is at least the boxes' axis separation,
+and `common_volume_mm3` fits inside the box overlap — with the boxes padded by
+1e-3 mm so one knob covers f32 tessellation resolution. The result lands in
+`review.json` under `clearance.bounds_check` and in the run notes.
+
+Why it is kept rather than written again: this exact check was implemented ad
+hoc twice, to qualify ADR-241 and then to re-qualify it on a fresh walk, and
+thrown away both times. It has demonstrated power over the defect it was
+written for — the pre-ADR-241 origin-frame rows fail both inequalities by three
+orders of magnitude — and a regression now pins that.
+
+A disagreement is the review contradicting itself, not a design finding, so it
+is reported loudly and does not throw away the run's work; an unmeasured or
+undrawn pair is skipped, and no comparison is never a pass. This is agreement
+between two surfaces, not validation of either, and it stays at the initial
+solved pose. Standalone `cadex clearance` is unchanged: it acquires no render
+snapshot, so its cost and contract are untouched. LGPL CLI zone plus
+`docs/CLI.md`; no protocol op, no engine change, no `shell/` diff.

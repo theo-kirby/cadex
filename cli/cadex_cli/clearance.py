@@ -69,3 +69,107 @@ def write_clearance(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path, value
+
+
+#: How far a tessellated world bound may disagree with a kernel distance before
+#: the disagreement is a defect rather than float32 resolution. The render's
+#: bounds come from `f32` tessellation vertices at up to ~1e3 mm, so ~1e-4 mm of
+#: slack is inherent; 1e-3 mm keeps a margin over it and is still four orders of
+#: magnitude tighter than the smallest finding the report has ever named.
+BOUNDS_TOLERANCE_MM = 1.0e-3
+
+
+def bounds_agreement(
+    pairs: list[dict[str, Any]], objects: dict[str, Any] | None, *,
+    tolerance_mm: float = BOUNDS_TOLERANCE_MM,
+) -> dict[str, Any]:
+    """Check each measured pair against the render's independent world bounds.
+
+    The clearance numbers come from the kernel, through ``App::Link`` placement
+    composition (ADR-241). The render's ``bounds_mm`` come from a different
+    path entirely — placed tessellation vertices, transformed in this process.
+    Two implications hold between them whatever the geometry is, and neither
+    holds if a component is measured in the wrong frame:
+
+    1. **Distance is at least the axis-aligned separation.** If the two boxes
+       are disjoint along some axis by ``g``, no point of one is within ``g``
+       of the other, so ``distance_mm >= g``.
+    2. **Common volume fits inside the box overlap.** The intersection of two
+       solids lies inside the intersection of their bounding boxes.
+
+    Two comparisons per pair, both stated as inequalities that a correct
+    report satisfies with room to spare, and that the pre-ADR-241 frame defect
+    violated by three orders of magnitude. This is agreement between two
+    surfaces, **not** validation of either: a check that passes says the two
+    paths tell the same story, not that the story is true. Boxes are padded by
+    ``tolerance_mm`` on every side, so one knob governs both comparisons.
+
+    A pair whose components the render did not draw, or whose measurement is
+    unknown, is skipped rather than failed — there is nothing to compare.
+    """
+
+    if not math.isfinite(tolerance_mm) or tolerance_mm < 0:
+        raise ValueError("Bounds tolerance must be finite and nonnegative.")
+    objects = objects or {}
+    if not objects:
+        return {"status": "unavailable", "reason": "no rendered object bounds",
+                "tolerance_mm": tolerance_mm, "comparisons": 0, "failures": []}
+    compared = skipped = 0
+    failures: list[dict[str, Any]] = []
+    worst_distance_mm = worst_volume_mm3 = 0.0
+    for row in pairs:
+        boxes = [objects.get(row.get(side, "")) or {} for side in ("first", "second")]
+        bounds = [box.get("bounds_mm") for box in boxes]
+        distance, volume = row.get("distance_mm"), row.get("common_volume_mm3")
+        if (
+            row.get("status") == "unknown"
+            or any(
+                not isinstance(box, list) or len(box) != 2
+                or any(not isinstance(c, (int, float)) or not math.isfinite(c)
+                       for corner in box for c in corner)
+                for box in bounds
+            )
+            or not all(isinstance(v, (int, float)) and math.isfinite(v)
+                       for v in (distance, volume))
+        ):
+            skipped += 1
+            continue
+        (lo_a, hi_a), (lo_b, hi_b) = bounds
+        overlap = [
+            min(hi_a[axis], hi_b[axis]) - max(lo_a[axis], lo_b[axis]) + 2 * tolerance_mm
+            for axis in range(3)
+        ]
+        # Disjoint along any one axis is enough to separate the boxes, and
+        # the widest such separation is the strongest lower bound on distance.
+        gap_mm = max(0.0, -min(overlap))
+        ceiling_mm3 = 1.0
+        for extent in overlap:
+            ceiling_mm3 *= max(0.0, extent)
+        compared += 2
+        for kind, excess in (
+            ("distance", gap_mm - float(distance)),
+            ("volume", float(volume) - ceiling_mm3),
+        ):
+            if excess <= 0:
+                continue
+            if kind == "distance":
+                worst_distance_mm = max(worst_distance_mm, excess)
+            else:
+                worst_volume_mm3 = max(worst_volume_mm3, excess)
+            failures.append({
+                "components": [row["first"], row["second"]], "check": kind,
+                "reported": float(distance if kind == "distance" else volume),
+                "bound": gap_mm if kind == "distance" else ceiling_mm3,
+                "excess": excess,
+            })
+    return {
+        "status": "fail" if failures else ("pass" if compared else "unavailable"),
+        "tolerance_mm": tolerance_mm,
+        "comparisons": compared,
+        "pairs_compared": compared // 2,
+        "pairs_skipped": skipped,
+        "failure_count": len(failures),
+        "failures": failures[:16],
+        "worst_distance_excess_mm": worst_distance_mm,
+        "worst_volume_excess_mm3": worst_volume_mm3,
+    }

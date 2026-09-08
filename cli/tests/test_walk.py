@@ -295,8 +295,11 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
     assert on_disk["training"]["reward_per_step"] == 0.5
     assert [leg["leg"] for leg in on_disk["legs"]] == ["train", "declare", "rollout"]
     assert "argv" not in on_disk["legs"][0]
+    # This toy walk publishes no assembly, so the review has nothing to
+    # cross-check and says so (ADR-248) beside the walk's own note.
     assert envelope["notes"] == [
-        "walk: job.cxpolicy ({:s}) verified; total_reward -12.5 over 3 legs.".format(sha[:12])
+        "clearance bounds check: unavailable, 0 comparison(s) over 0 pair(s).",
+        "walk: job.cxpolicy ({:s}) verified; total_reward -12.5 over 3 legs.".format(sha[:12]),
     ]
 
 
@@ -685,6 +688,8 @@ def test_walk_review_without_published_assembly(fake_cadex, toy_root, capsys):
     assert review["clearance"]["offending_pair_count"] is None
     assert review["clearance"]["unknown_pair_count"] is None
     assert "Measurements unavailable" in (toy_root / "docs/clearance.md").read_text()
+    # No published pair is nothing to cross-check, and nothing is not a pass.
+    assert review["clearance"]["bounds_check"]["status"] == "unavailable"
 
 
 def _assert_clearance(root, review, verdict):
@@ -706,6 +711,12 @@ def _assert_clearance(root, review, verdict):
         assert row["first_label"] in text and row["second_label"] in text
     assert "docs/clearance.md" in _git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
     assert "clearance offending " + str(summary["offending_pair_count"]) in (root / "PROGRESS.md").read_text()
+    # The review checks itself: the kernel's numbers against the render's
+    # independently placed world bounds, two comparisons per measured pair.
+    check = summary["bounds_check"]
+    assert check["status"] == "pass", check
+    assert (check["comparisons"], check["pairs_compared"]) == (2, 1)
+    assert check["failures"] == [] and check["pairs_skipped"] == 0
 
 
 @pytest.mark.parametrize("outcome", ["unknown", "failure"])

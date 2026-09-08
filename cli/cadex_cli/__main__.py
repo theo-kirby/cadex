@@ -52,7 +52,12 @@ from .export import ExportError, export_blueprints, export_outputs, parse_format
 from .inventory import InventoryError, write_inventory
 from .render import acquire_snapshot, write_render
 from .section import write_section
-from .clearance import MAXIMUM_COMMON_VOLUME_MM3, MINIMUM_CLEARANCE_MM, write_clearance
+from .clearance import (
+    MAXIMUM_COMMON_VOLUME_MM3,
+    MINIMUM_CLEARANCE_MM,
+    bounds_agreement,
+    write_clearance,
+)
 from .project_docs import (
     append_progress_row,
     commit_project,
@@ -1424,8 +1429,20 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         "offending_pairs": offending,
         "unknown_pair_count": len(unknown) if available else None,
         "unknown_pairs": unknown,
+        "bounds_check": bounds_agreement(pairs, rendering.get("objects")),
         "path": clearance_path.relative_to(Path(report.project_root)).as_posix(),
     }
+    # A disagreement here is the review lying about itself, not a design
+    # finding, so it is said loudly and does not throw away the run's work.
+    check = review["clearance"]["bounds_check"]
+    report.notes.append(
+        "clearance bounds check: {:s}, {:d} comparison(s) over {:d} pair(s){:s}.".format(
+            str(check["status"]), int(check["comparisons"]),
+            int(check.get("pairs_compared") or 0),
+            "" if check["status"] != "fail"
+            else ", {:d} FAILURE(S)".format(int(check["failure_count"])),
+        )
+    )
     report.walk["review"] = review
     review_path = write_review(
         out_dir, review=review, legs=legs, training=report.training,

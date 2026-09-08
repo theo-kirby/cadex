@@ -253,6 +253,15 @@ of doing any of them:
    errors, never clear. An offending pair is a finding, not a walk failure;
    inspection failures fail the command. A walk-specific `PROGRESS.md` row
    records comparable offending/unknown/checked counts at these thresholds.
+
+   The block also carries `bounds_check` (ADR-248): the same pairs re-read
+   against the render snapshot's independently placed world bounds, two
+   inequalities per measured pair — a distance is at least the boxes' axis
+   separation, and a common volume fits inside the box overlap. It reports
+   `pass`, `fail` or `unavailable` with the comparison and failure counts at a
+   1e-3 mm box padding, and a `fail` is said in the run notes without failing
+   the walk: a disagreement is the review contradicting itself, not a design
+   finding. It is agreement between two paths, **not** validation of either.
    Its output label, shared with the project commit subject, is relative to
    the project when `--out` lies inside it, otherwise just the output basename
    (ADR-246). Absolute machine paths do not enter that label; the project

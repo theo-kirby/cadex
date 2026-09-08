@@ -4,7 +4,7 @@ import json
 import pytest
 from cadex_cli.__main__ import main
 from cadex_cli.client import CadexdClient, open_project
-from cadex_cli.clearance import pair_status, write_clearance
+from cadex_cli.clearance import bounds_agreement, pair_status, write_clearance
 
 RIG = '''
 block = part.box(10, 10, 10)
@@ -86,3 +86,67 @@ def test_clearance_resolves_all_real_pager_previews(monkeypatch, tmp_path):
     assert len(value['pairs']) == 60
     assert all(row['first_label'] == 'x' * 1400 for row in value['pairs'])
     assert 'a59' in path.read_text() and 'bolt/m3x12-socket' in path.read_text()
+
+
+def _box(lo, hi):
+    return {'bounds_mm': [list(lo), list(hi)]}
+
+
+def _pair(distance, volume, status='clear'):
+    return {'first': 'a', 'second': 'b', 'distance_mm': distance,
+            'common_volume_mm3': volume, 'status': status}
+
+
+DISJOINT = {'a': _box((0, 0, 0), (10, 10, 10)), 'b': _box((50, 0, 0), (60, 10, 10))}
+OVERLAP = {'a': _box((0, 0, 0), (10, 10, 10)), 'b': _box((8, 0, 0), (18, 10, 10))}
+
+
+def test_bounds_agreement_passes_on_consistent_pairs():
+    """Two comparisons per pair, and a truthful report satisfies both."""
+    check = bounds_agreement([_pair(40.0, 0.0)], DISJOINT)
+    assert check['status'] == 'pass'
+    assert (check['comparisons'], check['pairs_compared']) == (2, 1)
+    assert check['failures'] == []
+    overlapping = bounds_agreement([_pair(0.0, 150.0, 'intersection')], OVERLAP)
+    assert overlapping['status'] == 'pass', overlapping   # ceiling is 2x10x10
+
+
+def test_bounds_agreement_catches_the_origin_frame_defect():
+    """The ADR-241 defect: bodies measured at the origin, so a disjoint pair
+    reports an intersection and no clearance. Both comparisons must fail."""
+    check = bounds_agreement([_pair(0.0, 1000.0, 'intersection')], DISJOINT)
+    assert check['status'] == 'fail'
+    assert check['failure_count'] == 2
+    assert {failure['check'] for failure in check['failures']} == {'distance', 'volume'}
+    assert check['worst_distance_excess_mm'] == pytest.approx(40.0, abs=1e-2)
+    assert check['worst_volume_excess_mm3'] == pytest.approx(1000.0, abs=1e-2)
+
+
+def test_bounds_agreement_catches_a_volume_larger_than_the_box_overlap():
+    check = bounds_agreement([_pair(0.0, 5000.0, 'intersection')], OVERLAP)
+    assert check['status'] == 'fail' and check['failure_count'] == 1
+    assert check['failures'][0]['check'] == 'volume'
+
+
+@pytest.mark.parametrize('pairs, objects, reason', [
+    ([_pair(40.0, 0.0)], {}, 'nothing rendered'),
+    ([_pair(None, None, 'unknown')], DISJOINT, 'no measurement'),
+    ([_pair(40.0, 0.0)], {'a': DISJOINT['a']}, 'one side undrawn'),
+])
+def test_bounds_agreement_skips_what_it_cannot_compare(pairs, objects, reason):
+    """Absence of a surface is never a pass and never a failure."""
+    check = bounds_agreement(pairs, objects)
+    assert check['status'] == 'unavailable', reason
+    assert check['comparisons'] == 0 and not check['failures']
+
+
+@pytest.mark.parametrize('tolerance', [float('nan'), float('inf'), -1.0])
+def test_bounds_agreement_refuses_an_unusable_tolerance(tolerance):
+    with pytest.raises(ValueError):
+        bounds_agreement([_pair(40.0, 0.0)], DISJOINT, tolerance_mm=tolerance)
+
+
+def test_bounds_agreement_tolerates_tessellation_resolution():
+    """f32 bounds at ~100 mm disagree by ~1e-5 mm; that is not a defect."""
+    check = bounds_agreement([_pair(40.0 - 3.05e-6, 0.0)], DISJOINT)
+    assert check['status'] == 'pass'
