@@ -929,7 +929,15 @@ def command_script(args: argparse.Namespace, report: RunReport) -> int:
                 return EXIT_USAGE
             source = path.read_text(encoding="utf-8")
 
-    with _engine_session(args, report) as (engine, client):
+    # Neither form needs the restore pass, and the moment it is needed most is
+    # the moment restore fails (ADR-272). Reading is a read of the stored
+    # source, not of the model; writing replaces that source outright and
+    # re-accepts, so replaying the old one first is at best wasted work. The
+    # walk's digest edit (ADR-199) lands exactly there: ``train --put``
+    # overwrites the asset the accepted script declares by sha256, so the
+    # stored script no longer re-runs, and the two legs whose whole job is to
+    # rewrite that literal used to fail with the project they were fixing.
+    with _engine_session(args, report, restore=False) as (engine, client):
         if source is None:
             sys.stdout.write(read_script_source(client))
             sys.stdout.flush()

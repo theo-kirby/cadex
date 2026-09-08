@@ -237,6 +237,41 @@ def test_a_missing_script_file_is_a_usage_error(tmp_path, capsys) -> None:
     assert "no such file" in _envelope(capsys)["error"]
 
 
+def test_neither_form_of_script_asks_for_the_restore_pass(
+    project, tmp_path, monkeypatch, capsys
+) -> None:
+    """Reading and rewriting a script must survive a store that will not replay.
+
+    The walk's digest edit lands on a project whose stored script has just
+    stopped re-running: ``train --put`` overwrote the asset the accepted
+    script declares by sha256 (ADR-272). Measured on ot4-swing2, where the
+    open's restore pass failed and took both legs with it, so the two
+    commands whose whole job is to rewrite that literal could not run.
+    Neither form needs the replay — the read reads the stored source, the
+    write replaces it — so neither may ask for it.
+    """
+
+    from cadex_cli import __main__ as main_module
+
+    asked: list[bool] = []
+    real = main_module.open_project
+
+    def recording(client, root, *, restore=True):
+        asked.append(bool(restore))
+        return real(client, root, restore=restore)
+
+    monkeypatch.setattr(main_module, "open_project", recording)
+
+    assert main(["script", "--project", str(project["root"])]) == EXIT_OK
+    source = tmp_path / "again.py"
+    source.write_text(PLATE, encoding="utf-8")
+    assert main(
+        ["script", "--set", str(source), "--project", str(project["root"]), "--json"]
+    ) == EXIT_OK, capsys.readouterr()
+
+    assert asked == [False, False]
+
+
 # -- flags ---------------------------------------------------------------
 
 

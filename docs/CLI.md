@@ -761,8 +761,12 @@ and when:
   through the same ops. The **re-accept box** (ADR-187) appears only
   when the stored script no longer reproduces the accepted digest —
   a hand-edited `script.py`, or a different engine build — and its one
-  button sends the store's own source back through `write_script`; a
-  walk never puts a project there. Until one of the three happens, the
+  button sends the store's own source back through `write_script`. A
+  completed walk never leaves a project there, but a walk *interrupted
+  between its train and declare legs* does: the trained policy has
+  already replaced the asset the accepted script names, so the stored
+  script will not re-run until the digest edit lands (ADR-272). Running
+  the walk again repairs it. Until one of the three happens, the
   viewport shows what the `.blend` baked at its last save.
 - **The in-app agent cannot run the walk, and cannot edit the project's
   docs.** The shell starts its CLI with every built-in tool off
@@ -972,6 +976,15 @@ there is no automatic history.
 Opening a project re-stages its accepted attempt under a new id, so a
 read-only visit (`cadex script` with no `--set`) leaves the engine's
 `script.json` modified until the next accepted run commits it.
+
+**Neither form of `script` asks for the restore pass** (ADR-272). The read
+reads the stored source, not the model; the write replaces that source and
+re-accepts it, so replaying the old one first is wasted work. It also is the
+one pass that fails exactly when these two commands are needed: after
+`train --put` overwrites the asset the accepted script declares by sha256,
+the stored script no longer re-runs, and the walk's digest edit — a `cadex
+script` read followed by a `cadex script --set` — is what repairs it. Every
+other command keeps the restore.
 
 ### Exit codes
 

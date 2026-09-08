@@ -22094,3 +22094,38 @@ other; a delta on `unknown` alone would read as a claim about the mechanism.
 The thresholds, the initial-solved-pose scope, `review.json`'s `clearance`
 block and the rule that an offending pair is a finding rather than a walk
 failure are unchanged. `cli/tests`: 262 passed.
+
+## ADR-272 — Neither form of `script` needs the restore pass (2026-09-08)
+
+The second walk of a project is not the first. `train --put` stores the trained
+policy under the task's own name unless `--name` says otherwise, so a project
+walked twice retrains **into the asset its accepted script already declares by
+sha256**. From that moment the stored script does not re-run — its
+`assembly.policy` names a digest the asset no longer has — and `open_project`'s
+restore pass fails. Every command that opens with the restore therefore fails
+too, including the two the walk runs next: `cadex script`, whose whole job is to
+read that literal, and `cadex script --set`, whose whole job is to rewrite it.
+
+Measured on `ot4-swing2`, whose policy is the default `swing_to_angle.cxpolicy`:
+the train leg trained and stored (exit 0, 38.85 s), the script leg exited 1 with
+*"The restore pass could not re-run the stored script"*, and the walk stopped
+with the project unopenable — one leg after the leg that broke it, and by a
+command that reads. `ot4-quill` never hit it because every earlier walk there
+passed a per-run `--name`, so each run's asset was a new file and the declared
+one stayed untouched. The trap is the ordinary case, not the exotic one.
+
+Neither form needs the replay. The read reads the **stored source**, not the
+model. The write **replaces** that source and re-accepts it, so replaying the
+old one first is at best wasted work — and at worst, as here, the only thing
+standing between a project and its own repair. `command_script` opens with
+`restore=False` in both forms; every other command keeps the restore.
+
+With that, the walk repairs the state it creates: read the literal, rewrite it,
+accept, roll out. `ot4-swing2` walked end to end afterwards (train 38.81 s,
+declare 1.28 s, rollout 2.52 s, exit 0) and `ot4-carriage` did the same
+(15.91 / 0.59 / 1.05 s). A project already stranded by the old behaviour
+recovers the same way a hand-locked one does, through `script --set`.
+
+No new flag, no op, no protocol change, no engine or `shell/` diff. The
+regression asserts the contract with a real engine, recording the `restore`
+argument each form asks for; it fails on the old source in both.
