@@ -7173,6 +7173,14 @@ ADR-078, ADR-082).
 
 ## ADR-084 — Training happens elsewhere, and a policy is a file we can check (2026-07-31)
 
+**Maintenance (2026-09-08):** VISION principle 5 now explains offboard
+training through the dependency/payload boundary and points to
+`training/SETUP.md` for supported toy-scale local CPU and GPU paths. Removed
+the GPU-only rationale and obsolete dispatch-history digression; agent-driven
+training, policy ingestion/verification and human judgement remain unchanged.
+This is a prose correction supported by the recorded CPU lifecycle walk
+(`docs/probes/cold-revisit/README.md`), with no runtime or packaging change.
+
 **Status:** accepted. **Branch:** `MJC` only — this ADR describes work that
 does not exist on `main`, and `docs/DECISIONS.md` is append-only on both
 branches, so conflicts here resolve in date order (ADR-078).

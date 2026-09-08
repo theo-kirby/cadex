@@ -255,19 +255,16 @@ returning it.
 5. **The AI is the only modeler; the human is the only judge.** Humans steer
    via chat and sliders, accept or reject; they never push geometry buttons.
 
-   **There is no train button, and there is nothing to press** (ADR-084).
-   "No user-accessible modeling tools" is clear about fillet buttons and says
-   nothing about a *train* button, which is not a modeling tool but would
-   still be something a human presses. The question had to be answered before
-   a UI could be built for it, and the answer is that training does not run
-   in the engine and cannot — it needs JAX on a GPU — so the trainer is a
-   program the agent copies to a machine that has one and runs with its own
-   shell. The weights come home through `put_asset`, the path an imported STL
-   already travels. No UI was built, no dispatch machinery, no protocol op:
-   the answer is *recorded* rather than designed around. The agent authors
-   the task, dispatches the run and declares the result; the human reads a
-   viewport and says yes or no. What a trained policy adds to that loop is a
-   thing to judge, not a control to operate.
+   **Training is agent-driven and stays offboard** (ADR-084). The trainer
+   lives in `training/`, with its own dependencies and environment; neither
+   it nor JAX/MJX ships in the engine payload. The agent runs it through its
+   shell, locally on CPU for toy tasks or on a GPU for larger training runs
+   (see `training/SETUP.md` for both paths). The weights enter through
+   `put_asset`, the path an imported STL already travels, and the engine
+   verifies the policy. The agent authors the task, dispatches the run and
+   declares the result; the human reads a viewport and says yes or no. What
+   a trained policy adds to that loop is a thing to judge, not a control to
+   operate.
 
 ## Open questions
 
