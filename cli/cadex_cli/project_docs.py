@@ -99,6 +99,12 @@ parameters it declares and why each exists:
 | Parameter | Unit | Why it exists |
 |---|---|---|
 
+Purchased hardware: publish each catalog body and place purchased instances
+as separate assembly components with `assembly.component`, separate from
+printed solids. Transformed catalog bodies may also be clearance cutters;
+a cutter does not imply another purchased part. Review the script alongside
+placed inventory; its totals cannot identify hardware fused into other solids.
+
 ## Outputs
 
 | Output | Kind | Who consumes it |

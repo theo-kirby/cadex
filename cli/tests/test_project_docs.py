@@ -57,6 +57,18 @@ def test_scaffold_creates_the_three_and_never_overwrites(tmp_path) -> None:
     architecture = (root / ARCHITECTURE_NAME).read_text()
     assert "# actuator — Architecture" in architecture
     assert "docs/gear-ratios.md" in architecture
+    # The convention reaches both a fresh project's docs and its design agent.
+    for guidance in (architecture, CLI_OVERLAY):
+        normalized = " ".join(guidance.split())
+        for fact in (
+            "publish each catalog body", "separate assembly components",
+            "`assembly.component`", "separate from printed solids",
+            "Transformed catalog bodies may also be clearance cutters",
+            "a cutter does not imply another purchased part",
+            "Review the script alongside placed inventory",
+            "cannot identify hardware fused into other solids",
+        ):
+            assert fact in normalized
     decisions = (root / DECISIONS_NAME).read_text()
     assert "## ADR-001 — Project scaffolded" in decisions
     assert PROGRESS_HEADER in (root / PROGRESS_NAME).read_text()

@@ -1928,6 +1928,10 @@ What makes them experimental, and what would settle it:
   numbers. The carriage reaches a verified 50-step rollout but does not learn
   to hold height in one iteration. `cli/tests/test_walk.py` pins the slide
   joint, policy digest and review with the real engine and trainer.
+- [x] **Teach purchased hardware placement in the walk** (ADR-243 follow-up).
+  Design instructions and project scaffold distinguish separate purchased
+  components from printed solids and catalog clearance cutters; contract tests
+  pin delivery of the guidance, not agent compliance.
 - [x] **Remove unsupported inventory purchase inference** (ADR-243).
   Keep catalog identity and placed-instance totals, including repeated links;
   remove generator-call tally and generated-minus-placed reports.

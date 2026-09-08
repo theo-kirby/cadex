@@ -190,6 +190,14 @@ of doing any of them:
    with `--resume`, continues the conversation; the rest continue it) —
    the design turns, and the only leg that spends tokens. None is fine:
    a project whose script already declares its task walks from there.
+   The design instructions and new-project `ARCHITECTURE.md` scaffold teach
+   purchased hardware placement: publish catalog bodies and place purchased
+   instances as separate `assembly.component` values, separate from printed
+   solids. Transformed catalog bodies may serve as clearance cutters without
+   implying another purchased part. Review the script alongside placed inventory;
+   totals cannot identify hardware fused into other solids (ADR-243). This is
+   authoring guidance, not evidence that an agent followed it. Existing project
+   documents remain owned by the project and are never overwritten by scaffolding.
 2. With `--set NAME=VALUE`: `cadex params --set policy_on=0 --set …
    --out DIR/sweep` — the iterate step, the switch blanked so the change
    is accepted and the bundle exported at its new digest.

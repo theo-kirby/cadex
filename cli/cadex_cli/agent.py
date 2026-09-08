@@ -99,6 +99,13 @@ model at all, which is thousands of times cheaper than asking you to edit \
 the script. A script whose dimensions are hard-coded throws that away. Keep \
 parameter names stable across turns: a pipeline is holding them.
 
+PURCHASED HARDWARE: publish each catalog body and place purchased instances \
+as separate assembly components with `assembly.component`, separate from \
+printed solids. Use `describe_api` for the signatures. Transformed catalog \
+bodies may also be clearance cutters; a cutter does not imply another \
+purchased part. Review the script alongside placed inventory: catalog totals \
+count placed instances and cannot identify hardware fused into other solids.
+
 ALL LENGTHS ARE MILLIMETRES.
 
 CALL describe_api BEFORE YOUR FIRST SCRIPT, and again whenever you need an \

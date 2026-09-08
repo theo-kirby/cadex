@@ -21082,3 +21082,11 @@ requires two catalogued instances. Inventory still cannot identify catalog parts
 inside boolean results; absence of a catalog row does not prove their absence.
 CLI, integration and walk scaffold documentation state that boundary. No protocol
 operation or argument, shell client, or inherited source changes.
+
+Placement guidance follow-up (2026-09-08): the CLI design instructions used by
+`cadex walk --prompt` and new-project architecture scaffold teach publishing
+catalog bodies and placing purchased instances as separate assembly components,
+separate from printed solids. Transformed catalog bodies may be clearance cutters
+without implying another purchase. Review script and placed inventory together.
+This concise convention uses the existing API and adds no registry or validator;
+contract tests establish that guidance is delivered, not that an agent followed it.
