@@ -11,10 +11,10 @@ Status: open
 
 ## Current
 
-1. **Preserve completed lifecycle and review evidence (missions 1, 2 and 6).** Both fresh mechanisms passed complete review; the cold arm revisit preserved accepted identity, policy assets, restored trace and review contents with 195 built-engine CLI tests passing without skips. No persistence repair or second-mechanism replay is warranted [rec: first-branch-9614] [rec: quiet-vine-3426] [rec: fair-cedar-7455].
-2. **Finish the selected training-boundary guidance correction before another direction (mission 2).** Recovery guidance and orientation snapshots are corrected. The remaining selected finding is VISION principle 5's GPU-only rationale; it follows the landed short unit and does not imply a multi-unit runtime gap. Acceptance without a finding exhausts this direction [rec: twilight-key-7506] [rec: lean-union-6426] [rec: lucky-canyon-6724] [rec: civic-snow-4700].
+1. **Preserve completed lifecycle and review evidence (missions 1, 2 and 6).** Both fresh mechanisms passed full review and the cold revisit preserved accepted identity, policy assets, restored trace and review contents. These remain working criteria, not replay targets; the VISION CPU-training and policy-asset contradictions are now corrected [rec: first-branch-9614] [rec: quiet-vine-3426] [rec: fair-cedar-7455] [rec: polished-moss-9358] [rec: neat-summit-3586].
+2. **Resolve only the selected bundled-engine qualification (missions 1, 2 and 6).** Short first measures the existing ordinary bundle; only proven stale packaging permits its conditional refresh. Historical import failure and dev-tree success cannot establish today's bundled behavior. No broader runtime gap is alleged; source defects or multiple-build prerequisites need evidence and a later bet. Clean qualification exhausts this direction [rec: zesty-aspen-6846] [rec: empty-rain-5162].
 
-Active criteria remain reconciled working; wider open catalog/reduction/RL nodes do not authorize Later criteria. Ordinary-bundle qualification and a broader documentation audit are considered alternatives, not queued work. GUI remains documented-only, remote scripted-only; toy policy verification, initial-pose clearance and tessellation sections retain their limits. Do not retick the charter or consume budget with repeated no-change evidence [rec: modest-summit-8554] [rec: fair-cedar-7455] [rec: civic-snow-4700].
+No new charter gaps, feature checkboxes or Later promotions are selected. A broader documentation audit and another persistence probe were considered and left unqueued. GUI stays documented-only and remote scripted-only; CLI success against a bundled engine does not prove shell startup or a portable release. Toy policy verification, initial-pose clearance and tessellation sections retain their limits [rec: modest-summit-8554] [rec: quiet-vine-3426] [rec: empty-rain-5162].
 
 ## Negative knowledge
 
@@ -143,3 +143,5 @@ Active criteria remain reconciled working; wider open catalog/reduction/RL nodes
 - first-wing-3387 — fold accepted recovery correction and reconciled handoff; select only narrow orientation snapshot maintenance
 
 - civic-snow-4700 — fold completed orientation work and dispatch only the selected offboard-training guidance correction
+
+- empty-rain-5162 — fold completed VISION corrections; select one bounded bundled-engine qualification direction, retaining all charter obligations
