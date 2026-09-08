@@ -94,9 +94,8 @@ GENERATED_DOC_STEMS = ("inventory", "clearance")
 #: be many notes.
 NOTE_DOC_LIMIT = 2_000
 
-#: How much of each document the agent is shown. The head for the two it
-#: reasons from, the tail for the log, because the latest rows are the ones
-#: that matter and the header is repeated in the prompt's own text.
+#: How much of each document the agent is shown: architecture head,
+#: decisions and progress tails, retaining the newest appended history.
 PROMPT_DOC_LIMIT = 8_000
 
 PROGRESS_HEADER = "| When (UTC) | Run | Revision | Digest | What | Numbers |"
@@ -107,6 +106,9 @@ _ARCHITECTURE_TEMPLATE = """\
 
 Read on every visit; keep it true. Maintained by the agent and the
 `cadex` CLI (ADR-193 in the Cadex repository).
+Prompt context keeps the first 8,000 characters of architecture and the last
+8,000 of decisions and progress, plus an omission marker when shortened.
+Domain notes keep their last 2,000 characters; full documents stay on disk.
 Progress rows, decisions and domain-note updates replace their files only after
 writing succeeds, so a failed update preserves the previous document. This is
 per-file protection, not a transaction across documents or a power-loss guarantee.
@@ -386,7 +388,7 @@ def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str
             text = path.read_text(encoding="utf-8")
         except OSError:
             continue
-        keep = "tail" if doc_name == PROGRESS_NAME else "head"
+        keep = "head" if doc_name == ARCHITECTURE_NAME else "tail"
         parts.append(f"--- {doc_name} ---\n{_bounded(text.strip(), limit, keep=keep)}")
     for relative, path in domain_note_paths(root).items():
         try:

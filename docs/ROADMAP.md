@@ -2185,6 +2185,9 @@ What makes them experimental, and what would settle it:
   alive so it stays addressable after the reap, and the final drain is
   bounded at 10 s. A second regression whose grandchild sets `SIGTERM` to
   `SIG_IGN` fails against the previous stop.
+- [x] **Retain recent decisions in prompt context** (2026-09-08, ADR-265).
+  Keep the bounded ADR tail; overflowing-log regressions cover fresh and resumed
+  turns, unchanged limits, architecture/domain selection and preserved source files.
 - [x] **Preserve project docs on failed updates** (2026-09-08, ADR-264).
   Progress, decisions and domain notes replace only fully written files; partial
   write and replacement-failure regressions preserve history and verify retry.

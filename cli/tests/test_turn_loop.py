@@ -329,7 +329,8 @@ def test_resume_passes_the_stored_session_id_and_default_does_not(tmp_path) -> N
 
 
 @pytest.mark.usefixtures("engine")
-def test_resumed_turn_reads_current_project_history_and_appends_notes(tmp_path):
+@pytest.mark.parametrize("resume", [False, True])
+def test_resumed_turn_reads_current_project_history_and_appends_notes(tmp_path, resume):
     """Resume must reload project knowledge, not rely on conversation memory."""
     first = RunReport()
     assert command_prompt(_args(tmp_path), first, turn_factory=turn_factory([[
@@ -344,7 +345,10 @@ def test_resumed_turn_reads_current_project_history_and_appends_notes(tmp_path):
     architecture.write_text(architecture.read_text() + "\nKeep the cable exit clear.\n")
     sensors = root / "docs/sensors.md"
     sensors.write_text(sensors.read_text() + "\nEncoder offset measured at 0.25 rad.\n")
-    decisions_before = (root / "DECISIONS.md").read_text()
+    decisions = root / "DECISIONS.md"
+    decisions.write_text(decisions.read_text() + "\n" + "old rationale " * 800
+                         + "\n## ADR-002 — retain the sensor footprint.\nNewest constraint: keep 3 mm cable clearance.\n")
+    decisions_before = decisions.read_text()
     sensors_before = sensors.read_text()
     progress = root / "PROGRESS.md"
     progress.write_text(progress.read_text() + "\nPrevious clearance: 2.5 mm.\n")
@@ -357,10 +361,12 @@ def test_resumed_turn_reads_current_project_history_and_appends_notes(tmp_path):
 
     def resume_with_history(**kwargs):
         # Check the input before MockTurn supplies any fallback session id.
-        assert kwargs["session_id"] == SESSION_ID
+        assert kwargs["session_id"] == (SESSION_ID if resume else "")
         assert kwargs["cwd"] == str(root)
         prompt = kwargs["system_prompt_text"]
         for expected in (
+            "Newest constraint: keep 3 mm cable clearance.",
+            "earlier characters omitted",
             "Keep the cable exit clear.",
             "retain the sensor footprint.",
             "encoder measures the hinge angle.",
@@ -373,7 +379,7 @@ def test_resumed_turn_reads_current_project_history_and_appends_notes(tmp_path):
 
     report = RunReport()
     assert command_prompt(
-        _args(tmp_path, resume=True, prompt="thicken the mount using its recorded constraints"),
+        _args(tmp_path, resume=resume, prompt="thicken the mount using its recorded constraints"),
         report, turn_factory=resume_with_history,
     ) == EXIT_OK, report.error
     assert report.digest != first.digest

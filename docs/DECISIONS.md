@@ -21867,3 +21867,18 @@ scratch file. First-visit scaffolding is unchanged.
 
 Failure-injection regressions cover partial writes and refused replacements for
 all three update paths, byte-preserved history, cleanup and successful retry.
+
+
+## ADR-265 — Keep recent project decisions in bounded prompts (2026-09-08)
+
+Replace DECISIONS.md head selection with the existing tail helper: ADRs append
+newest last, so the first 8,000 characters hid the latest constraints once the
+log grew. Architecture keeps its head; progress and domain notes keep their tails.
+Limits and omission markers are unchanged, and reading never edits source files.
+The tradeoff is explicit: older decisions outside the tail are absent from prompt
+context, not summarized. Lifecycle docs and the project scaffold state the limits.
+
+Four regression cases failed before the repair: exact bounded selection at 4,000
+and 8,000 characters, and real-engine fresh/resumed turns receiving a newest ADR
+beyond the limit. Scripted turns verify context delivery and appended history;
+they do not claim live provider understanding.

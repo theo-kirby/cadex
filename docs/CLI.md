@@ -782,8 +782,10 @@ first visit and never overwritten by it:
 | `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | a turn's closing `NOTE <subject>:` lines, or a person |
 
 The agent reads all three on every `cadex -p` turn — they are pasted into
-its system prompt, bounded (the head of the first two, the tail of the
-log), and the project's domain notes with them, so a note is worth
+its system prompt, bounded (8,000 characters each: architecture head,
+decisions and progress tails; ADR-265), and domain-note tails (2,000 each)
+with them. Shortened context carries an omission marker; full files remain
+unchanged on disk. This keeps recent decisions available, so a note is worth
 writing — and it has no file tool, so what it decides comes back by
 convention rather than by a new op: a line of its closing paragraph that
 starts `DECISION:` lands in `DECISIONS.md` as the next numbered entry, and
@@ -806,12 +808,12 @@ nor a shell (the Mesh tools are its whole world), so with the GUI
 attached the three files are still the CLI's and a person's; the files
 are what make the modes one shape.
 
-The resumed prompt path is also tested without a provider: two scripted agent
-turns use the real engine and bridge. The second receives the stored session id,
-existing decisions and domain notes, plus architecture, sensor and progress
-updates made between visits; its new decision and sensor note append to the
+Fresh and resumed prompt paths are tested without a provider: two scripted
+agent turns use the real engine and bridge. The second receives the stored
+session id when resumed, the newest decision beyond 8,000 characters and domain
+notes, plus architecture, sensor and progress updates made between visits; its new decision and sensor note append to the
 existing files. This checks context delivery and persistence, not whether a
-real model follows the recorded constraints. Runtime and scaffold are unchanged.
+real model follows the recorded constraints or sees the omitted older history.
 
 **The comparison is one recorded row** (ADR-194). A number an earlier
 row also carried is written with its change against that row — the

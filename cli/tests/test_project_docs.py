@@ -190,18 +190,28 @@ def test_a_train_row_names_the_mode_it_ran_in() -> None:
     assert remote == local + " (remote)"
 
 
-def test_read_is_bounded_and_keeps_the_tail_of_progress(tmp_path) -> None:
+@pytest.mark.parametrize("limit", [4_000, 8_000])
+def test_read_keeps_architecture_head_and_recent_history_without_editing(tmp_path, limit) -> None:
     scaffold_project_docs(tmp_path)
-    for index in range(400):
-        append_progress_row(tmp_path, run="params", what=f"row {index}")
-    (tmp_path / DECISIONS_NAME).write_text("# D\n" + "x" * 20_000)
+    sources = {name: f"old {name}\n" + "x" * 20_000 + f"\nnew {name}"
+               for name in PROJECT_DOC_NAMES}
+    sources["docs/sensors.md"] = "old sensor\n" + "y" * 3_000 + "\nnew sensor"
+    (tmp_path / "docs").mkdir(exist_ok=True)
+    for name, source in sources.items():
+        (tmp_path / name).write_text(source, encoding="utf-8")
 
-    text = read_project_docs(tmp_path, limit=4_000)
+    text = read_project_docs(tmp_path, limit=limit)
 
-    assert f"--- {ARCHITECTURE_NAME} ---" in text
-    assert "row 399" in text and "row 0 |" not in text  # tail for the log
-    assert "earlier characters omitted" in text
-    assert "more characters omitted" in text  # head for the ADR log
+    for name, source in sources.items():
+        head = name == ARCHITECTURE_NAME
+        bound = 2_000 if name.startswith("docs/") else limit
+        retained = source[:bound] if head else source[-bound:]
+        omitted = len(source) - bound
+        marker = (f"\n[… {omitted} more characters omitted …]" if head
+                  else f"[… {omitted} earlier characters omitted …]\n")
+        expected = retained + marker if head else marker + retained
+        assert f"--- {name} ---\n{expected}" in text
+        assert (tmp_path / name).read_bytes() == source.encode("utf-8")
 
 
 def test_read_says_nothing_for_a_project_with_no_docs(tmp_path) -> None:
