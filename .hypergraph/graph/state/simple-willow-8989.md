@@ -33,6 +33,8 @@ A later source-only audit reconfirmed the same seven suffixes in the engine, she
 
 **Headless output-loss consent and cold recovery hold in a disposable staged-engine fixture.** Six fresh CLI processes accepted `frame`/`cap`, stored an STL, refused a script dropping `cap`, cold-read the original script, explicitly accepted replacement, and cold-read the replacement (exits 0, 0, 3, 0, 0, 0). Refusal preserved accepted source, revision, digest and both output names; replacement accepted `frame` alone. Protected project docs and the stored asset stayed byte-identical; PROGRESS.md appended only accepted operations. Existing recovery tests passed 14 with no skips. Reconcile judgement: retain `working`; no consent/recovery correction is warranted, and this fixture does not qualify every asset or failure class [rec: silver-rain-7333].
 
+**A linked consumer survives its source project being absent.** A disposable consumer cold-restored, rebuilt and exported a linked 10×20×3 mm block after the source directory was renamed away. Accepted revision/digest and contract, linked asset bytes, complete solid facts and exported BREP bytes stayed identical; the accepted attempt changed. ARCHITECTURE.md and DECISIONS.md were byte-identical and PROGRESS.md preserved its prior content plus one export row. Reconcile judgement: retain `working`; the immutable snapshot promise holds for this fixture, without qualifying refresh or path repair [rec: calm-sky-2656].
+
 ## Negative knowledge
 
 - [scope: Save-As, and an unsaved scene's temporary root | confidence: high | evidence: twilight-isle-0370] Do not assume a file open hydrates the model in these two cases. Hydrate-on-open (ADR-186) queues only for a saved `.blend` whose `.cadex` directory exists; Save-As is deliberately not queued (it would repaint the viewport with the other model on the spot) and the unsaved temp root is guarded out. The former blanket rule from western-badger-3023 is retired for the ordinary open.
@@ -56,3 +58,4 @@ A later source-only audit reconfirmed the same seven suffixes in the engine, she
 - twilight-key-7506 — obsolete solver-change recovery guidance corrected against shipped ADR-187 behavior; documentation-only verification
 - silver-rain-7333 — staged six-process consent/refusal/cold-recovery qualification; accepted outputs and protected docs/assets preserved
 - empty-ledge-4581 — source-only audit reconfirms all seven stored/carried suffixes; no Save-As correction or new runtime claim
+- calm-sky-2656 — source-absent cold restore/export preserves linked geometry, accepted identity, assets and project docs
