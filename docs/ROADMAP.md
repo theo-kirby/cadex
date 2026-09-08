@@ -2244,6 +2244,11 @@ What makes them experimental, and what would settle it:
   All four review eyes inspected; 56-file engine report matches. Baseline
   bytes preserved. Single-seed toy evidence and command in `docs/CLI.md` §2.
 
+- [x] **Parameter-only quill iterate with objective comparison** (2026-09-08).
+  Stroke 40 → 60 mm, CPU 5 × 16 seed 0, finite leg bounds: exit 0;
+  reward +250.279186, travel +9.794917 mm / 0 degrees. Objective fields
+  match; geometry and action bounds differ. Evidence and limits: CLI §2.
+
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected

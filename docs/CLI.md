@@ -503,6 +503,42 @@ rather than a defect found. The walk still exits 0, as the table above says
 it should: the report was written, and reading it is the next design turn's
 job.
 
+**Quill parameter-only iterate (2026-09-08).** With `PROJECT` pointing at
+that same project, the bounded, unchanged entry point ran:
+
+```bash
+JAX_PLATFORMS=cpu ./cadex walk --project "$PROJECT" \
+  --out "$PROJECT/runs/stroke60-iterate29" --set stroke=60 \
+  --name quill_stroke60_29.cxpolicy --iterations 5 --envs 16 --seed 0 \
+  --timeout 600 --leg-timeout 120 --json
+```
+
+Exit 0 in 24.61 s, peak process-tree RSS 1.98 GB (0.2 s monitoring;
+2.9 GB / 850 s external cutoffs). All four legs and four review calls
+succeeded; the 56-file engine/source comparison matched. Actual parameters
+differ only in stroke, 40 → 60 mm. Exported task JSON differs only in model
+metadata and the action upper bound, 40 → 60 mm: reward expressions and
+weights, observation units, termination, randomisation, disturbance and
+4 s / 200-step horizon are identical. Both verified rollouts use seed 7.
+
+| Measurement | Baseline | Stroke 60 | Exact delta |
+|---|---:|---:|---:|
+| Rollout total reward | -74.791975 | 175.487211 | +250.279186 |
+| Quill travel mm | 20.283552 | 30.078469 | +9.794917 |
+| Quill travel degrees | 0 | 0 | 0 |
+
+The reward delta lands in the rollout's `params` row; both travel deltas
+land in the `walk` row of `PROGRESS.md`. Its displayed **+9.798 mm** uses
+the baseline row's rounded **20.28**, not the full-precision review value.
+Trainer reward/step fell from -0.579622 to -1.019691; it measures a different
+batch. The target remains 30 mm, now the midpoint of the action range, so
+near-zero normalized actions already command it. Geometry and action scaling
+changed together; this cold single-seed toy run cannot establish significance
+or better control. The housing/quill intersection remains 960 mm³ in the
+initial pose; the XZ section misses the quill. All 19 baseline run files
+retained their bytes. New generated artifacts remain local after a forward
+project commit removed outputs that the CLI had automatically staged.
+
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through
 `training/remote_train.sh train` (ADR-089, `training/SETUP.md` §d) instead
