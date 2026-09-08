@@ -1,6 +1,6 @@
 # Two mechanisms through the same lifecycle walk
 
-Verified against source: 2026-09-08. [Cadex-new]. ADR-203.
+Verified against source: 2026-09-08. [Cadex-new]. ADR-203, ADR-257.
 
 The hinged arm and vertical linear carriage are synthetic mechanisms with
 different joint and actuator types. Both passed the unchanged headless
@@ -25,9 +25,27 @@ name=linear-carriage  # or hinged-arm
 project=build/lifecycle/$name
 ./cadex script --project "$project" --set "examples/lifecycle/$name/script.py" --json
 JAX_PLATFORMS=cpu ./cadex walk --project "$project" \
-  --out "$project/runs/baseline" --trainer-python "$PWD/.venv/bin/python" \
+  --out "$project/runs/baseline" \
   --iterations 1 --envs 4 --seed 0 --timeout 600 --json
 ```
+
+No `--trainer-python` is needed: the CLI discovers `<repo>/.venv`, then
+`~/cadex-train-venv` (`training/SETUP.md` §"Which interpreter"). Pass the flag
+only to override that, and pass a path that exists on *this* machine — an
+earlier revision of this file hard-coded `$PWD/.venv/bin/python`, which is not
+where every machine keeps the trainer venv.
+
+The two projects reproduced here have **no domain notes**, and the walk's
+review says so: `script --set` installs the recipe and nothing beside it, and a
+recipe walk runs no design turn, so the reproduced project's `docs/` holds only
+the generated `inventory.md` and `clearance.md`. Both mechanisms declare an
+`<actuator>` and a `<sensor>` section, so the ADR-256 documentation eye reports
+`0 domain note(s) for 2 declared subject(s); no note for actuators, sensors`
+for each. That is the convention working, not a failure — the notes are a
+design turn's to write, and the CLI never invents one. The example directories
+beside this file carry the notes a maintained project would keep
+(`docs/actuators.md`, `docs/sensors.md`), which is where to read what the
+convention asks for.
 
 No digest edit, mechanism-specific option, model call or GUI is required.
 The committed recipes start with `policy_on=0`; the walk installs the policy
@@ -55,3 +73,25 @@ The examples' sensor notes demonstrate the domain-doc convention.
 `cli/tests/test_walk.py` exercises the carriage with the real engine and
 trainer and asserts an actual MJCF slide joint and a verified policy trace;
 the existing arm test still exercises retraining.
+
+## Reproduced on a second machine — 2026-09-08 (ADR-257)
+
+Both commands above were re-run unchanged on `sb1x` (Ubuntu 24.04, 32 cores,
+CPU training, `~/cadex-train-venv`), into fresh `build/lifecycle/` projects,
+under the same 0.2 s watchdog at 2.9 GB / 850 s. Nothing generated is
+committed. All three legs of each walk exited 0.
+
+| Mechanism | Rollout total_reward | Trainer reward/step | `walk_seconds` | Walk wall s | Peak tree RSS | Witness error |
+|---|---:|---:|---:|---:|---:|---:|
+| hinged-arm | -27.109384220904474 | -0.3801981508731842 | 14.40 | 14.61 | 1,539,432,448 | 2.069844824703626e-09 |
+| linear-carriage | -24159.195371510654 | -82.31990814208984 | 13.10 | 13.18 | 1,467,621,376 | 3.736925650865697e-09 |
+
+The trainer means are bit-identical to the 2026-09-06 rows in each
+`PROGRESS.md`; the rollout totals agree to 1e-11 (arm) and 1.5e-05 (carriage),
+and the stored policy digests differ, because the two machines' JAX builds sum
+the update in a different order while the first exploratory batch is fixed by
+the seed. The peak RSS is ~1.5× the earlier machine's and still well inside the
+budget. Reproducing a recipe walk needs no model call and no network. A third
+carriage walk, run exactly as the block above with no `--trainer-python`,
+resolved `~/cadex-train-venv` on its own and returned the same
+`total_reward` -24159.195371510654 in 13.19 s at 1,468,563,456 bytes.

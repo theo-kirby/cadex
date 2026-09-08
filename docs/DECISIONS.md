@@ -21503,3 +21503,53 @@ and the `PROGRESS.md` row in the two forms above, and that a missing note
 neither fails the walk nor gets written by the CLI. The scaffold test in
 `cli/tests/test_project_docs.py` pins those four sentences; the full CLI gate
 stayed at 227 passed, 0 skipped.
+
+## ADR-257 — The lifecycle examples are reproduced on a second machine, and carry the actuator note their own review asks for (2026-09-08)
+
+**Context.** `examples/lifecycle/README.md` documents the reproduction command
+for the two repository-owned mechanisms (ADR-203), and both `PROGRESS.md` files
+carry numbers measured on one machine on 2026-09-06. Nothing had re-run them
+since, and two things had changed underneath: the walk gained the ADR-256
+documentation eye, and the run moved to a machine (`sb1x`) whose trainer venv is
+`~/cadex-train-venv` rather than `<repo>/.venv`. The documented command
+hard-coded `--trainer-python "$PWD/.venv/bin/python"`, a path that does not
+exist there, so the file as written did not run on the machine reading it.
+
+**Decision, and what running it found.** All three legs of both walks exit 0 on
+`sb1x` with no code change and no mechanism-specific option. The command in the
+README loses its `--trainer-python`: the CLI's documented discovery order
+(`<repo>/.venv`, then `~/cadex-train-venv`, `training/SETUP.md`) resolves the
+trainer on its own, verified by a third carriage walk run exactly as the block
+is now written. The flag stays documented as an override.
+
+**The numbers reproduce, and the way they do not is recorded.** Trainer
+reward/step is bit-identical across machines — `-0.3801981508731842` (arm) and
+`-82.31990814208984` (carriage) — because the first exploratory batch is fixed
+by the seed. The rollout totals are not bit-identical: `-27.109384220904474`
+and `-24159.195371510654` against `-27.1093842209` and `-24159.1953563`, with
+different stored policy digests, because the two JAX builds sum the update in a
+different order. Task sha256 is unchanged on both, so the same objective was
+scored. Peak process-tree RSS rose to 1,539,432,448 and 1,467,621,376 bytes
+(~1.5× the earlier machine) at the same wall time, inside the 2.9 GB watchdog.
+Both `PROGRESS.md` files gain a two-column comparison rather than a rewritten
+row: the earlier machine's measurement is not withdrawn by a later one.
+
+**The documentation eye reported both examples undocumented, and it was right
+about the reproduction and wrong about nothing.** Each reproduced project got
+`0 domain note(s) for 2 declared subject(s); no note for actuators, sensors`,
+because `script --set` installs the recipe alone and a recipe walk runs no
+design turn to write notes (ADR-245, ADR-256 — reported, never written). The
+README now says so, so the finding is not read as a defect. But the *example
+directories* are projects a person reads, and they carried only
+`docs/sensors.md`: the convention their own review declares was half kept. Both
+now carry `docs/actuators.md`, written from what the exported MJCF actually
+declares — `j/motor` with `forcerange="-0.4 0.4"` (400 N·mm) on the arm and
+`-4 4` (4 N) on the carriage — and naming what is *assumed* rather than
+selected: no damping, friction, gearing or end stops, no manufacturer part, and
+the N·mm-versus-N effort difference that is why the two control-cost terms do
+not compare.
+
+**Consequences.** Documentation and example-project files only: no CLI, engine,
+protocol, payload or `shell/` change, so the walk's behaviour is untouched and
+the reproduction is evidence about the machine, not about new code. `cli/tests`
+was run to confirm the untouched CLI is still green.

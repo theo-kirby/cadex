@@ -55,3 +55,34 @@ than a nested repository or a commit per CLI row. See `../README.md`.
 Verified policy sha256: `c67bbe80598f2df1605b44f40105a9c5b29fc46625a179bcd8f37fed2bd48812`.
 Task sha256: `c4315071d146843471098bb1386a3d8c5740b9bae8cf0a36685aa6c4869b2920`.
 Witness error: `1.38411674122e-09`.
+
+## Reproduced on a second machine — 2026-09-08 (ADR-257)
+
+The documented command in `../README.md` was re-run unchanged on `sb1x`
+(Ubuntu 24.04, 32 cores, CPU training, trainer venv `~/cadex-train-venv`
+discovered without `--trainer-python`), into a fresh `build/lifecycle/hinged-arm`
+project. Same 1 PPO iteration × 4 environments, training seed 0, rollout seed
+3, 1 s at 50 Hz. All three legs exited 0; the 2.9 GB / 850 s watchdog did not
+fire.
+
+| Column | 2026-09-06 (first machine) | 2026-09-08 (`sb1x`) |
+|---|---:|---:|
+| Rollout `total_reward` | -27.1093842209 | -27.109384220904474 |
+| Trainer reward/step | -0.380198150873 | -0.3801981508731842 |
+| Walk wall seconds | 15.22 | 14.61 |
+| Peak process-tree RSS bytes | 986,218,496 | 1,539,432,448 |
+| Witness error | 1.38411674122e-09 | 2.069844824703626e-09 |
+
+The trainer mean is bit-identical across machines — the first exploratory batch
+is fixed by the seed. The rollout total is not: the stored policy digest is
+`186faa6e7aad` here against the earlier run's, because the two JAX builds sum the
+gradient update in a different order. Task sha256 `c4315071` is unchanged, so the
+same objective was scored. The reproduction used more memory (~1.5×) and no
+more time, and is pipeline evidence exactly as the original row was — not a
+claim about learned control.
+
+The walk's ADR-256 documentation eye reported `0 domain note(s) for 2 declared
+subject(s); no note for actuators, sensors` for the reproduced project. That is
+correct: `script --set` installs the recipe alone, and a recipe walk runs no
+design turn to write notes. This example directory keeps the notes such a turn
+would have written, in `docs/actuators.md` and `docs/sensors.md`.

@@ -2120,6 +2120,12 @@ What makes them experimental, and what would settle it:
   Reported, never written and never fatal: the notes are the design turn's,
   and the generated `ARCHITECTURE.md` scaffold says so where the project's
   next agent reads it.
+- [x] **The lifecycle examples reproduce on a second machine** (2026-09-08,
+  ADR-257). Both documented recipe walks re-run unchanged on `sb1x`, exit 0,
+  trainer means bit-identical and rollout totals agreeing to the JAX build's
+  summation order; the README's dead `--trainer-python` path is replaced by the
+  documented discovery order, and both examples gain the `docs/actuators.md`
+  their own ADR-256 review asked for.
 - [x] **Walk inventory history contract** (2026-09-08, ADR-254). Measured
   a component rename after a public walk: latest report advances, saved counts
   stay fixed and Git retains original rows; guide and scaffold distinguish them.
