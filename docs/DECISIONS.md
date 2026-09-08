@@ -20985,3 +20985,17 @@ rather than 100–110, and the real overlap at its true 200 mm³ instead of
 tests in the same file are unchanged and still pass. No build, payload, shell
 or protocol change; the installed bundle still carries the old numbers until
 it is rebuilt and staged.
+
+**Measured on the assembly that found it (2026-09-08).** The pan-tilt project
+was rebuilt through `cadex params` on the development-tree engine and
+re-reported with `cadex clearance`. Both false intersections are gone —
+base/servo_tilt now reads 57.9 mm clear, which is the exported STL's own lower
+bound for that servo, and the two servos read 25.9 mm apart instead of one
+containing the other — and the true sink of the pan servo into the base plate
+reads 111.264 mm³, exactly a tenth of the 1112.640 mm³ it claimed before.
+Three interferences that the wrong frame had *hidden* now appear: the pan
+servo in the yoke (18.857 mm³), the tilt servo in the yoke arm (75.430 mm³)
+and in the head plate (73.500 mm³). Those are the project's design business,
+not this fix's; what matters here is that the surface no longer hides a
+contact by measuring the part somewhere else. CLI gate: 195 passed, no skips.
+
