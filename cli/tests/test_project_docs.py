@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from cadex_cli.__main__ import _progress_what, command_prompt, main
-from cadex_cli.agent import CLI_OVERLAY, system_prompt
+from cadex_cli.agent import CLI_OVERLAY, MODEL_ENV, system_prompt
 from cadex_cli.export import ExportedOutput
 from cadex_cli.project_docs import (
     ARCHITECTURE_NAME,
@@ -143,6 +143,34 @@ def test_the_scaffold_states_the_gui_mode_and_the_walk_doc_agrees(tmp_path) -> N
     assert "before the next GUI edit" in flat
     assert "concurrent rebuilds are not guarded" in flat
 
+    # ADR-249 gave the machine one name for its turn model; the shell does
+    # not read it, so the GUI-attached mode's doc has to say which window
+    # resolves what. The code wins here too: `shell/.../agent.py`'s
+    # `DEFAULT_MODEL` is "" and nothing under `shell/` names `CADEX_MODEL`.
+    assert "The two windows resolve the turn model separately" in flat
+    assert "the shell reads no environment variable" in flat
+    assert "the divergence is in what is spent, not in the artifacts" in flat
+    assert "$CADEX_MODEL" in flat.split(
+        "**With the GUI attached", 1)[1].split("**The project is a codebase**", 1)[0]
+
+
+
+def test_the_gui_mode_doc_is_still_true_about_which_window_names_the_model() -> None:
+    """The claim above is a fact about the other front end, so pin the fact
+    rather than only the sentence: `mesh_agent` resolves its model from a
+    preference whose default is empty and names no environment variable.
+    If the shell ever learns `$CADEX_MODEL`, this fails and `docs/CLI.md`
+    §2's GUI paragraph is the thing to fix -- not this assertion."""
+
+    mesh_agent = (Path(__file__).resolve().parents[2]
+                  / "shell" / "scripts" / "startup" / "mesh_agent")
+    if not mesh_agent.is_dir():  # a checkout without the shell tree
+        pytest.skip("no shell/ tree in this checkout")
+
+    assert 'DEFAULT_MODEL = ""' in (mesh_agent / "agent.py").read_text()
+    named = [source.name for source in mesh_agent.rglob("*.py")
+             if MODEL_ENV in source.read_text()]
+    assert named == [], named
 
 
 def test_a_train_row_names_the_mode_it_ran_in() -> None:

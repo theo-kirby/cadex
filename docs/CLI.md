@@ -459,6 +459,19 @@ and when:
   their own conversation (`agent.json`, a sibling of the shell's
   transcript in the `.blend`, which carries the shell's own session id)
   and are the one leg that can be done in either window.
+- **The two windows resolve the turn model separately**, and this is the
+  one place *one shape* is a convention rather than a mechanism. The
+  terminal's `cadex -p` takes `--model`, then `$CADEX_MODEL`, then
+  `claude-fable-5` (ADR-249). The shell's turn takes its own Blender
+  preference, whose default is the **empty string** — meaning whichever
+  model the agent CLI itself defaults to — and **the shell reads no
+  environment variable**: nothing under `shell/` names `CADEX_MODEL`. So a
+  machine that names its model once names it for the terminal legs only,
+  and a box whose agent-CLI default is out of usage credit still refuses
+  the in-app turn while the walk beside it runs; set the preference to
+  match if both windows must spend the same model. Nothing a walk writes
+  changes either way — the divergence is in what is spent, not in the
+  artifacts — so the `PROGRESS.md` rows still compare line for line.
 - **Same steps, same docs, same artifacts.** The legs, their order and
   their refusals are the list above unchanged; `ARCHITECTURE.md`,
   `DECISIONS.md` and `PROGRESS.md` are scaffolded by the first CLI

@@ -19419,6 +19419,21 @@ Rebuild Model or reopen before the next GUI edit, and the pin test in
 ADR-200 one beside it); the CLI suite green — counts in the commit and
 the record node. No engine, protocol or `shell/` change.
 
+**Currency audit (2026-09-08).** ADR-200's remote handoff and this entry
+were written before ADR-249 (`$CADEX_MODEL`) and ADR-250 (the worker's
+`OPENBLAS_NUM_THREADS=4` pin and the SIGXCPU→`DOMAIN_CPU_LIMIT_EXCEEDED`
+mapping), so both were re-read against the current source rather than
+re-run. **Remote is current as written:** `--remote` moves only the
+trainer, the box runs no engine and no turn, `remote_train.sh` and
+`training/SETUP.md` name neither a model nor a thread count, and ADR-250 is
+engine-local — which makes the modes *more* alike, since the same pin now
+applies to the engine legs of all three regardless of the host's core
+count. **The GUI-attached document was stale in one place**, corrected
+under ADR-249: `$CADEX_MODEL` reaches the terminal's `cadex -p` and not the
+in-app agent, and this entry's "the one leg that can be done in either
+window" needed to say so. Nothing else in either mode's document moved, and
+neither mode was re-scripted or re-documented.
+
 
 ## ADR-202 — Catalog board variants and solder-pad terminals (2026-09-06)
 
@@ -21257,6 +21272,24 @@ shell's default is unchanged, so "what does Cadex run" still has one
 answer everywhere nobody has said otherwise. One resolver, two argparse
 defaults, `docs/CLI.md`, and `test_the_machine_can_name_the_turn_model_once`
 in the LGPL CLI zone. No engine change, no protocol op, no `shell/` diff.
+
+**Corrected on the three-modes currency audit (2026-09-08).** "The shell's
+default is unchanged, so *what does Cadex run* still has one answer
+everywhere" was already false when it was written, and the source comment
+on `DEFAULT_MODEL` said the same thing. The shell's `DEFAULT_MODEL` became
+`""` — meaning whichever model the agent CLI itself defaults to — in
+c99e6e60, and **nothing under `shell/` names `CADEX_MODEL`**, so the two
+front ends resolve the turn model two different ways and a machine that
+names its model once names it for the terminal legs only. The code wins:
+the comment now says this is the CLI's answer, `docs/CLI.md` §2's
+GUI-attached paragraph gains the bullet, and
+`test_the_gui_mode_doc_is_still_true_about_which_window_names_the_model`
+pins the *fact* (the empty default, the absent environment variable) rather
+than only the sentence, so a shell that later learns `$CADEX_MODEL` fails
+the doc instead of quietly outdating it. Nothing changes about what a walk
+writes — the divergence is in what is spent — which is why this is a
+documentation correction and not a *one shape* break. `docs/CLI.md`,
+`cli/cadex_cli/agent.py` comment and `cli/tests/`; no `shell/` diff.
 
 ## ADR-250 — A worker's BLAS pool is sized by us, not by the host (2026-09-08)
 

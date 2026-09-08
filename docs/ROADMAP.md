@@ -2022,6 +2022,14 @@ What makes them experimental, and what would settle it:
   the default model was out of usage credit while `claude-sonnet-5`,
   `claude-opus-5` and `claude-haiku-4-5` all answered on the same login.
   One resolver, two argparse defaults and a regression; LGPL CLI zone only.
+  **Corrected on the three-modes currency audit**: the entry's claim that
+  both front ends still answer "what does Cadex run" the same way was false
+  — the shell's `DEFAULT_MODEL` is `""` and nothing under `shell/` names
+  `CADEX_MODEL`, so `$CADEX_MODEL` governs the terminal legs only.
+  `docs/CLI.md` §2's GUI-attached paragraph now says so, and a test pins the
+  fact rather than the sentence. ADR-200's remote handoff was re-read in the
+  same pass and is current: the box runs no engine and no turn, so neither
+  ADR-249 nor ADR-250 reaches it.
 - [x] **`assembly.mjcf` never returns for a ten-component rig** — fixed
   (ADR-250, 2026-09-08, found on the Linux GPU box). The first prompt walk
   there designed a one-servo swing rig — MG90S from the catalog, printed
