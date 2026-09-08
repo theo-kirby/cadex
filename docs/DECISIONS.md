@@ -21553,3 +21553,12 @@ not compare.
 protocol, payload or `shell/` change, so the walk's behaviour is untouched and
 the reproduction is evidence about the machine, not about new code. `cli/tests`
 was run to confirm the untouched CLI is still green.
+
+**Correction, same day.** The first revision of the two `PROGRESS.md` sections
+said the trainer venv was "discovered without `--trainer-python`" for each
+measured walk. It was not: both measured walks passed the interpreter
+explicitly, and only the third carriage walk exercised the discovery order the
+README now documents. The three files say so plainly now. The measured numbers
+are unaffected — the same interpreter ran in either case — but a reproduction
+note that overstates which path was exercised is worse than no note, so the
+distinction is stated wherever the reproduction is described.

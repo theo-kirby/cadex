@@ -50,10 +50,14 @@ script --project P --set examples/lifecycle/<name>/script.py --json`, then
 watchdog sampled summed descendant RSS every 0.2 s and would have killed above
 2.9 GB or 850 s; the trainer separately had `--timeout 600`. Neither fired.
 
-Three walks: arm and carriage with `--trainer-python
-/home/theo/cadex-train-venv/bin/python`, then a third carriage walk written
-exactly as the corrected README block — no `--trainer-python` at all — to verify
-the CLI's documented discovery order resolves the venv on its own. Read each
+Three walks: arm and carriage each with `--trainer-python "$TRAINER_PYTHON"`,
+where `$TRAINER_PYTHON` is this machine's trainer venv interpreter (the
+home-directory `cadex-train-venv`, the last entry in the CLI's discovery order);
+then a third carriage walk written exactly as the corrected README block — no
+`--trainer-python` at all — to verify that the discovery order resolves the same
+interpreter on its own. So the two measured rows were produced with the
+interpreter configured explicitly, and the flagless documented form is evidenced
+by the third walk alone. Read each
 run's `review.json`, the exported `train/<name>-model.xml` `<actuator>` and
 `<sensor>` sections, and both example scripts, so the notes state what the model
 declares rather than what the prose assumed.

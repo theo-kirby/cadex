@@ -76,8 +76,9 @@ the existing arm test still exercises retraining.
 
 ## Reproduced on a second machine — 2026-09-08 (ADR-257)
 
-Both commands above were re-run unchanged on `sb1x` (Ubuntu 24.04, 32 cores,
-CPU training, `~/cadex-train-venv`), into fresh `build/lifecycle/` projects,
+Both commands above were re-run on `sb1x` (Ubuntu 24.04, 32 cores, CPU
+training), into fresh `build/lifecycle/` projects, with the trainer interpreter
+passed explicitly for the two measured walks below,
 under the same 0.2 s watchdog at 2.9 GB / 850 s. Nothing generated is
 committed. All three legs of each walk exited 0.
 
@@ -91,7 +92,8 @@ The trainer means are bit-identical to the 2026-09-06 rows in each
 and the stored policy digests differ, because the two machines' JAX builds sum
 the update in a different order while the first exploratory batch is fixed by
 the seed. The peak RSS is ~1.5× the earlier machine's and still well inside the
-budget. Reproducing a recipe walk needs no model call and no network. A third
-carriage walk, run exactly as the block above with no `--trainer-python`,
-resolved `~/cadex-train-venv` on its own and returned the same
+budget. Reproducing a recipe walk needs no model call and no network. The flagless
+command block above is evidenced by one walk, not three: a third
+carriage walk, run exactly as written with no `--trainer-python`,
+resolved the home-directory trainer venv on its own and returned the same
 `total_reward` -24159.195371510654 in 13.19 s at 1,468,563,456 bytes.

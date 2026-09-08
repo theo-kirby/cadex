@@ -58,10 +58,13 @@ Witness error: `5.41889473918e-09`.
 
 ## Reproduced on a second machine — 2026-09-08 (ADR-257)
 
-The documented command in `../README.md` was re-run unchanged on `sb1x`
-(Ubuntu 24.04, 32 cores, CPU training, trainer venv `~/cadex-train-venv`
-discovered without `--trainer-python`), into a fresh `build/lifecycle/linear-carriage`
-project. Same 1 PPO iteration × 4 environments, training seed 0, rollout seed
+The documented command in `../README.md` was re-run on `sb1x` (Ubuntu 24.04,
+32 cores, CPU training), into a fresh `build/lifecycle/linear-carriage` project.
+This measurement passed the trainer interpreter **explicitly**, as this
+machine's `cadex-train-venv`; it did not exercise the CLI's discovery order.
+The flagless form the README now documents was verified separately, by a third
+walk on the linear carriage only — see `../README.md`. The interpreter is the
+same binary either way, so the numbers below are unaffected. Same 1 PPO iteration × 4 environments, training seed 0, rollout seed
 3, 1 s at 50 Hz. All three legs exited 0; the 2.9 GB / 850 s watchdog did not
 fire.
 
