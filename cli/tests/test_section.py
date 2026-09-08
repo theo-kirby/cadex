@@ -55,7 +55,7 @@ def test_failed_acquisition_retains_old_artifact_without_success(tmp_path):
     assert list(old.parent.iterdir()) == [old]
 
 
-def test_real_cavity_pose_offsets_and_tracked_artifacts(engine, tmp_path, capsys):
+def test_real_cavity_pose_offsets_and_local_artifacts(engine, tmp_path, capsys):
     root = tmp_path / 'project'
     source = tmp_path / 'script.py'
     source.write_text('''outer = part.box(20, 20, 10)
@@ -90,7 +90,7 @@ result = {"shape": shape, "a": a, "asm": asm, "diag": diag}
     assert shape.attrib['d'].count('Z') == 2
     assert summary['revision'] in image.find('{*}title').text
     tracked = subprocess.check_output(['git', '-C', str(root), 'ls-files', 'review/section'], text=True)
-    assert len(tracked.splitlines()) == 2
+    assert tracked == ""  # Generated review files remain available locally.
     assert 'section → review/section/' in (root / 'PROGRESS.md').read_text()
     for offset, status in [('18', 'empty'), ('5', 'unsupported')]:
         run('section', '--plane', 'XY', '--offset-mm', offset)

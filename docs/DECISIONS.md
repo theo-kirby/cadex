@@ -21809,3 +21809,26 @@ A regression gives the descendant a delayed SIGTERM cleanup marker and an
 immediately exiting parent; it fails on the prior implementation. This closes
 the critic rejection of `tidy-cove-8382`, without changing the timeout or drain
 bounds.
+
+
+## ADR-262 — Review outputs stay local; policy exclusions follow Git precedence (2026-09-08)
+
+The quill iterate exposed two different retention problems. `commit_project`
+uses ordinary `git add -A`, not force-add: `.gitignore`'s default
+`!assets/*.cxpolicy` outranked the policy exclusion in `.git/info/exclude`.
+The run directory was successfully excluded, but named-angle SVG and section
+JSON under project-root `review/` had no ignore rule at all.
+
+Add `/review/` to fresh project defaults, removing generated review dumps from
+automatic history. Keep default policy-asset retention and normal Git semantics;
+placing policy defaults in `.git/info/exclude` would lose them on clone. The
+CLI doc and project scaffold now put explicit local-run exclusions after the
+policy negation in root `.gitignore`. Existing repositories are not migrated;
+tracked and explicitly staged files remain owned by the user, with an explicit
+forward-untracking procedure documented. No history or generated files deleted.
+
+A real Git regression reproduces the precedence conflict and verifies commit
+contents after the documented override: generated training/review outputs stay
+on disk and untracked, source/docs and default policy assets are committed,
+and old history and explicitly staged working content survive. It fails on the
+old scaffold because SVG and section JSON enter the commit tree.

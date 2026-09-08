@@ -2011,12 +2011,14 @@ What makes them experimental, and what would settle it:
 - [x] **Walk review commits named-angle previews** (ADR-239 follow-up).
   One review session snapshots accepted display before inventory/clearance,
   checks rollout revision, commits four SVGs and summary under that revision,
-  and reports render/acquisition and whole-walk timings.
+  and reports render/acquisition and whole-walk timings. ADR-262 later keeps
+  these generated previews local by default.
 - [x] **Walk review commits named-plane sections** (ADR-240 follow-up).
   Shared accepted snapshot, world XZ at Y = 3.125 mm, revision/digest checks,
   explicit empty/unsupported/error semantics and committed SVG/JSON. Both
   mechanisms and local/remote-flag CPU stand-in parity are tested; a separate
-  fresh complete-review rehearsal remains required.
+  fresh complete-review rehearsal remains required. ADR-262 later keeps
+  these generated sections local by default.
 - [x] **Fresh hinged-arm complete-review rehearsal** (2026-09-08).
   Public walk, bounded CPU training, four inspected views and interior section,
   accepted identity, tracked artifacts and explicit contact/unknown counts;
@@ -2183,6 +2185,10 @@ What makes them experimental, and what would settle it:
   alive so it stays addressable after the reap, and the final drain is
   bounded at 10 s. A second regression whose grandchild sets `SIGTERM` to
   `SIG_IGN` fails against the previous stop.
+- [x] **Keep generated review outputs local and explain policy exclusions**
+  (2026-09-08, ADR-262). Fresh scaffolds ignore `/review/`; explicit policy
+  exclusions go after the root policy negation. A real Git regression inspects
+  commit trees, retained files, tracked history and pre-staged content.
 - [x] **Preserve stopped descendants' cleanup grace** (2026-09-08, ADR-261
   correction). A monotonic deadline keeps the full grace when the direct child
   exits immediately; a delayed descendant cleanup regression fails on the old

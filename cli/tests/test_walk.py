@@ -1300,11 +1300,11 @@ def _assert_render(root, review):
     assert summary["digest"] and summary["limits"] and summary["approximation"]
     assert set(summary["views"]) == {"front", "top", "right", "iso"}
     tracked = set(_git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines())
-    assert summary["path"] in tracked
+    assert summary["path"] not in tracked
     stored = json.loads((root / summary["path"]).read_text())
     assert stored["revision"] == summary["revision"]
     for view in summary["views"].values():
-        assert view["path"] in tracked
+        assert view["path"] not in tracked
         assert view["covered_pixels"] > 0
         image_bytes(root / view["path"], summary["revision"])
     section = review["section"]
@@ -1312,7 +1312,7 @@ def _assert_render(root, review):
     assert section["digest"] == summary["digest"]
     assert section["plane"] == "XZ" and section["offset_mm"] == 3.125
     assert section["units"] == "mm" and section["approximation"] and section["limits"]
-    assert section["path"] in tracked and section["summary_path"] in tracked
+    assert section["path"] not in tracked and section["summary_path"] not in tracked
     stored_section = json.loads((root / section["summary_path"]).read_text())
     assert stored_section == {k: v for k, v in section.items() if k != "summary_path"}
     assert section["acquisition_seconds"] == summary["acquisition_seconds"]

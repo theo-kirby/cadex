@@ -236,7 +236,11 @@ Created by the `cadex` CLI on first visit, with `{architecture}` and
 `{progress}` beside it. Outside another work tree, the CLI initializes a
 repository if needed and creates default ignore rules only if `.gitignore`
 is absent at initialization. Existing repositories keep their ignore rules;
-check them before generating checkpoints and traces. In a project-root
+check them before generating checkpoints and traces. To keep a walk local,
+append `/runs/<name>/`, `/review/`, and `/assets/<name>.cxpolicy` to the root
+`.gitignore` AFTER `!assets/*.cxpolicy`; `.git/info/exclude` cannot override
+that negation. Ignores affect untracked files only; existing tracked or
+explicitly staged files still enter automatic commits. In a project-root
 repository, accepted runs attempt to commit all working changes, including
 unrelated edits. A project nested beneath another repository root, without
 its own `.git`, gets no automatic commit and leaves the parent index untouched.
@@ -734,6 +738,7 @@ _GITIGNORE_TEMPLATE = """\
 script_artifacts/
 # What is bulk — frames and renders are outputs of the model, not the model:
 frames/
+/review/
 *.mp4
 *.png
 # What a walk re-makes (ADR-199): the store keeps the policy a script names,

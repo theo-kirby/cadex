@@ -344,8 +344,8 @@ of doing any of them:
    before inspection requests. The `render` block carries availability,
    accepted revision and digest, front/top/right/iso views, approximation and
    limits, acquisition/render seconds, and project-relative image/summary paths
-   under `review/render/<accepted-revision>/`. The walk commits these SVG
-   previews (embedded lossless CPU images) with the review and project docs.
+   under `review/render/<accepted-revision>/`. These SVG previews (embedded lossless CPU images) stay local under the
+   default ignore rules; the walk commits the review and project docs.
    Rendering or revision mismatch failures fail the walk; retained files from
    an older run are never reported as current success. `walk_seconds` measures
    the whole entry point through review, excluding its final progress/commit.
@@ -758,11 +758,37 @@ a row a person adds by hand counts too.
   `inside an existing git work tree: not initialised, not committed.`
 
 The default ignore rules exclude rebuildable `script_artifacts/`, frames,
-renders, locks, `.blend1` backups, `.cxpolicy` files outside `assets/`, and
+renders (including the project-root `review/` directory), locks, `.blend1` backups, `.cxpolicy` files outside `assets/`, and
 `*-trace.json` rollouts (ADR-199). Existing ignore files are preserved even
 when initializing a fresh root; check their rules before generating
 checkpoints and traces. The defaults retain stored assets, including policies
 under `assets/`, while `review.json` and `PROGRESS.md` keep the numbers.
+
+**Keeping a rehearsal local (ADR-262).** Before running the walk, append these
+rules to the project-root `.gitignore`, **after** `!assets/*.cxpolicy`, using
+the actual output directory and policy name:
+
+```gitignore
+/runs/<name>/
+/review/
+/assets/<name>.cxpolicy
+```
+
+The stored policy remains on disk for verification and replay, while project
+source, `PROGRESS.md` and domain notes remain versioned. A clone needs those
+excluded weights supplied separately. `.git/info/exclude` can exclude the run
+directory, but its policy exclusion loses to the higher-priority root
+`!assets/*.cxpolicy` rule; the CLI does not force-add policies. `git check-ignore
+-v --no-index PATH` identifies the winning rule (a `!` rule means inclusion).
+Fresh scaffolds now exclude `/review/`; existing repositories are not migrated,
+so add it explicitly there. `review.json` inside a non-excluded run remains
+versioned by default, along with stored policy assets.
+
+Ignores do not untrack files already in history or undo explicit staging.
+Inspect `git ls-files` and `git diff --cached --name-only` before a run. If you
+choose to stop tracking an existing output, use `git rm --cached -- PATH` and
+commit that removal before the walk; the file stays locally and prior history
+is preserved. The CLI never silently untracks user files.
 
 In a project-root repository, every accepted run attempts to commit **all
 working changes** (`git add -A`), including unrelated edits and the current
@@ -800,7 +826,8 @@ nothing else, so `cadex script > model.py` works.
 
 `./cadex section --project ./robot --plane XY --offset-mm 8 --json`
 writes `review/section/<accepted-revision>/XY-8/section.svg` and
-`summary.json`, and commits both with a PROGRESS row. XY means z=offset,
+`summary.json`, and commits a PROGRESS row. These generated files stay local
+under default ignore rules. XY means z=offset,
 XZ means y=offset, YZ means x=offset, in world millimetres. The JSON carries
 accepted revision/digest, solved object placements, closed planar contours,
 units, approximation, limits and separate acquisition/section timings.
@@ -820,14 +847,16 @@ All three statuses are successful *reports* (exit 0); inspect `status` before
 using geometry. Rebuild, revision, malformed input, work-budget and write
 failures return nonzero and never reinterpret old artifacts as current success.
 The renderer's accepted-buffer/triangle/placement budgets apply. An absent
-model is an error, distinct from an empty cut of a model. The walk shares its preview snapshot for XZ at Y = 3.125 mm and commits
-these same artifacts and statuses in every mode (ADR-240 follow-up).
+model is an error, distinct from an empty cut of a model. The walk shares its
+preview snapshot for XZ at Y = 3.125 mm and produces these same local artifacts
+and reports their statuses in every mode (ADR-240 follow-up, ADR-262).
 
 ### Named-angle review
 
 `./cadex render --project ./robot --json` writes `review/render/front.svg`,
 `top.svg`, `right.svg`, `iso.svg` and `summary.json`. These generated files
-are overwritten on success and included in the ordinary project commit.
+are overwritten on success and stay local under default ignore rules; the
+ordinary project commit records the PROGRESS row.
 The JSON envelope and each SVG name the accepted revision; the summary also
 records digest, component/source names, colors, transformed bounds in mm,
 camera bases, projected bounds, coverage, limits and acquisition/render timing.

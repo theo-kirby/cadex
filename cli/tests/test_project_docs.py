@@ -674,3 +674,54 @@ def test_a_project_inside_another_work_tree_is_left_alone(tmp_path) -> None:
     assert not (root / ".git").exists()
     assert commit_project(root, "never") == ""
     assert _git(tmp_path, "status", "--porcelain")  # untouched: still unstaged
+
+
+def test_walk_retention_uses_git_precedence_and_preserves_history(tmp_path) -> None:
+    from cadex_cli.project_docs import commit_project, ensure_project_repo
+
+    root = tmp_path / "project"
+    scaffold_project_docs(root)
+    ensure_project_repo(root)
+    (root / "assets").mkdir()
+    (root / "assets/old.cxpolicy").write_text("original")
+    assert commit_project(root, "baseline")
+    baseline = _git(root, "rev-parse", "HEAD")
+
+    # Quill's root negation outranks its local policy exclusion.
+    with (root / ".git/info/exclude").open("a") as stream:
+        stream.write("\n/runs/iterate/\n/assets/new.cxpolicy\n")
+    policy = root / "assets/new.cxpolicy"
+    policy.write_text("new weights")
+    assert "!assets/*.cxpolicy" in _git(root, "check-ignore", "-v", str(policy))
+    # Explicit overrides belong AFTER that negation in the root ignore file.
+    with (root / ".gitignore").open("a") as stream:
+        stream.write("\n/assets/new.cxpolicy\n/assets/old.cxpolicy\n")
+    generated = ["runs/iterate/train/new.cxpolicy", "runs/iterate/review.json",
+                 "review/render/revision/front.svg", "review/section/revision/summary.json"]
+    for name in generated:
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("generated")
+    (root / "PROGRESS.md").write_text("measured results")
+    (root / "docs").mkdir()
+    (root / "docs/sensors.md").write_text("sensor rationale")
+    (root / "script.py").write_text("# authoritative source")
+    (root / "assets/default.cxpolicy").write_text("retained by default")
+    # Ignores neither untrack files nor undo explicit user staging.
+    (root / "assets/old.cxpolicy").write_text("updated")
+    staged = root / "runs/iterate/user-note.txt"
+    staged.write_text("staged")
+    _git(root, "add", "-f", str(staged))
+    staged.write_text("working version")
+    assert commit_project(root, "walk train")
+    assert commit_project(root, "walk review") == ""
+    tree = set(_git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines())
+    assert not (set(generated) | {"assets/new.cxpolicy"}) & tree
+    assert {"script.py", "PROGRESS.md", "docs/sensors.md", "assets/default.cxpolicy",
+            "assets/old.cxpolicy", "runs/iterate/user-note.txt"} <= tree
+    assert _git(root, "show", "HEAD:PROGRESS.md") == "measured results"
+    assert _git(root, "show", "HEAD:assets/old.cxpolicy") == "updated"
+    assert _git(root, "show", "HEAD:runs/iterate/user-note.txt") == "working version"
+    assert _git(root, "show", baseline + ":assets/old.cxpolicy") == "original"
+    assert all((root / name).is_file() for name in generated)
+    assert policy.read_text() == "new weights"
