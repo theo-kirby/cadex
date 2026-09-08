@@ -14100,6 +14100,13 @@ moves.
   inherited-tree reduction (`open` — Phase 8 and Phase 13b).
 - Verified: `hypergraph check` exits 0 with no violations and no warnings.
 
+**Orientation maintenance (2026-09-08).** Remove the obsolete live frontier
+and node-count snapshots from `.hypergraph/AGENTS.md`; direct arriving agents
+to generated `STATE.md` and its cited state nodes. The adoption snapshot above
+remains historical. This prose correction preserves the four protocol rules;
+verification is diff review and graph export/check, with no runtime gate rerun
+or new ROADMAP feature checkbox.
+
 ## ADR-138 — A part travels between projects as one file (2026-08-09)
 
 **Decision.** A part built in one project can be used in another. It travels

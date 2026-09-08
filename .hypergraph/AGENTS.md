@@ -1,5 +1,7 @@
 # Hypergraph onboarding — cadex
 
+Verified against source: 2026-09-08
+
 This repository keeps its memory in **two graphs**, committed as markdown node
 files under `.hypergraph/graph/`. They are storage, not a cache: they travel
 with the repo, work offline and merge through git.
@@ -42,9 +44,8 @@ agree.
 
 **1. Orient on arrival.** Run the `hypergraph-orient` skill, or read `STATE.md`.
 The **frontier** — every state node whose status is `open`, `broken` or
-`blocked` — is what matters now. Today that is three nodes: the Blender-inherited
-file lifecycle (`broken`), the RL training loop (`blocked` on the GPU box's stale
-checkout), and inherited-tree reduction (`open`). Read the negative knowledge
+`blocked` — is what matters now. Read the current frontier in `STATE.md`,
+then the cited state nodes and their negative knowledge
 before you plan; it exists so you do not spend a day re-discovering it.
 
 **2. Record every unit of work.** Features, fixes, experiments, dead ends,
@@ -107,7 +108,7 @@ sentinels, including this project's ADR-log clause and epoch note.
 - **Record nodes carry repo context.** `hypergraph new record --repo-auto` fills
   `## Repo` from git.
 - **Evidence lives on record nodes**, never on state nodes.
-- **State stays small.** Ten nodes today; the whole state graph should stay
+- **State stays small.** The whole state graph should stay
   readable in one sitting. Reconcile compacts — the record graph keeps the
   detail.
 - **Cite one slug per bracket.** `[rec: a] [rec: b]`, not `[rec: a, b]` — the
