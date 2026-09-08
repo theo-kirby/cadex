@@ -21772,3 +21772,30 @@ at `EXIT_FAILURE` naming the leg and the flag, the leg reports exit 124, and
 the test polls the grandchild's pid until it is gone, so a direct-child kill
 fails it. Plus the `train_leg_timeout` table, the envelope's two numbers on a
 walk that finished, and `--leg-timeout -1` in the usage-error table.
+
+**Amendment (2026-09-08) — the grace was a hole, not a grace.** As shipped,
+`_stop_leg` sent `SIGKILL` to the group *only* if the direct child was still
+running after `LEG_TERMINATION_GRACE_S`. The case that matters is the other
+one: the direct `cadex` child dies politely on `SIGTERM` while the grandchild
+— the agent CLI, the trainer, an ssh — ignores it. The group then never got
+the kill, the survivor stayed on the machine holding the inherited stdout,
+and the walk blocked forever in the drain that followed, at exactly the point
+the bound existed to save it. Property 2 above described what was intended
+and the code did not do it. Three corrections, all in `cli/cadex_cli/walk.py`:
+
+- The group id is read once by `leg_pgid`, while the child is certainly
+  alive. `os.getpgid(process.pid)` after `wait` has reaped the child raises,
+  so the group holding the survivor would have been unaddressable anyway.
+- `SIGKILL` goes to the group after the grace **unconditionally**, whether or
+  not the direct child has exited. The grace is for the leg that can close
+  its engine session; it is not a reason to spare what is left.
+- The final drain is bounded (`LEG_DRAIN_S` = 10 s). A pipe still held past
+  that — by something stopped, uninterruptibly blocked, or in a session of
+  its own that the kill could not reach — is abandoned and closed. The
+  stopped leg's envelope is synthesised, so nothing readable is lost.
+
+**Evidence.** `cli/tests/test_walk.py::test_a_stopped_leg_kills_the_grandchild_that_ignored_the_term`:
+a fake `cadex` whose grandchild sets `SIGTERM` to `SIG_IGN` and holds the
+captured pipe. The walk returns inside 40 s and the grandchild is gone;
+against the previous `_stop_leg` the same test fails, with the survivor still
+alive after the walk returned.

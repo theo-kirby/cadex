@@ -108,6 +108,14 @@ DEFAULT_LEG_TIMEOUT_S = 3600.0
 #: How long a stopped leg has to die on ``SIGTERM`` before it is killed.
 LEG_TERMINATION_GRACE_S = 5.0
 
+#: How long the walk will wait to drain a stopped leg's stdout. The pipe is
+#: inherited by everything the leg started, so a survivor the kill could not
+#: reach — a process stopped, uninterruptibly blocked, or in another session
+#: of its own — would otherwise hold the read open forever and hang the walk
+#: at exactly the point the timeout was meant to save it. The stopped leg's
+#: envelope is synthesised, so whatever text is lost here was never read.
+LEG_DRAIN_S = 10.0
+
 #: A trainer bounded by ``--timeout`` still has to write its policy and its
 #: receipt afterwards, so the walk's own bound never undercuts the trainer's.
 TRAIN_LEG_GRACE_S = 300.0
@@ -137,42 +145,73 @@ def train_leg_timeout(leg_timeout: float, trainer_timeout: float) -> float:
     return max(leg_timeout, trainer_timeout + TRAIN_LEG_GRACE_S)
 
 
-def _signal_leg(process: "subprocess.Popen[str]", number: int) -> None:
-    """Signal the leg's whole session, or the leg alone where there is none."""
+def leg_pgid(process: "subprocess.Popen[str]") -> int | None:
+    """The leg's process group, read while the leg is certainly alive.
 
-    try:
-        os.killpg(os.getpgid(process.pid), number)
-    except (AttributeError, OSError):
-        try:
-            process.send_signal(number)
-        except OSError:
-            pass
-
-
-def _stop_leg(process: "subprocess.Popen[str]") -> None:
-    """End a leg that ran out of time, and everything under it.
-
-    ``SIGTERM`` to the session first, so a leg that has a chance to close
-    its engine session takes it; ``SIGKILL`` to whatever is still there
-    after the grace. The group is the point: the child is a ``cadex``
-    command that has itself spawned the agent CLI or the trainer, and
-    killing only the child would leave the process that was actually
-    hanging alive and holding the project.
+    It has to be taken before the child can exit: once ``wait`` has reaped
+    it, ``os.getpgid(process.pid)`` raises and the group — which may still
+    hold the grandchild that was the thing actually hanging — becomes
+    unreachable. ``start_new_session`` makes this the child's own pid, so a
+    stale group id would need a full pid wraparound to alias anything.
     """
 
-    _signal_leg(process, signal.SIGTERM)
+    try:
+        return os.getpgid(process.pid)
+    except (AttributeError, OSError):
+        return None
+
+
+def _signal_leg(
+    process: "subprocess.Popen[str]", number: int, pgid: int | None = None
+) -> None:
+    """Signal the leg's whole group, or the leg alone where there is none."""
+
+    if pgid is None:
+        pgid = leg_pgid(process)
+    if pgid is not None:
+        try:
+            os.killpg(pgid, number)
+            return
+        except OSError:
+            pass
+    try:
+        process.send_signal(number)
+    except (OSError, ValueError):
+        pass
+
+
+def _stop_leg(process: "subprocess.Popen[str]", pgid: int | None = None) -> None:
+    """End a leg that ran out of time, and everything under it.
+
+    ``SIGTERM`` to the group first, so a leg that has a chance to close its
+    engine session takes it; ``SIGKILL`` to the group after the grace —
+    **unconditionally**, not only when the direct child is still running.
+    The group is the point: the child is a ``cadex`` command that has itself
+    spawned the agent CLI or the trainer, and the hang that matters is the
+    one where the direct child dies politely and the grandchild ignores
+    ``SIGTERM``, survives, and goes on holding the captured stdout. Waiting
+    on the direct child alone reports that leg as stopped while the machine
+    is still occupied and the walk is still blocked on the pipe.
+    """
+
+    if pgid is None:
+        pgid = leg_pgid(process)
+    _signal_leg(process, signal.SIGTERM, pgid)
     try:
         process.wait(timeout=LEG_TERMINATION_GRACE_S)
     except subprocess.TimeoutExpired:
-        _signal_leg(process, signal.SIGKILL)
-        try:
-            process.wait(timeout=LEG_TERMINATION_GRACE_S)
-        except subprocess.TimeoutExpired:
-            pass
+        pass
+    _signal_leg(process, signal.SIGKILL, pgid)
+    try:
+        process.wait(timeout=LEG_TERMINATION_GRACE_S)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 @contextmanager
-def _relaying_signals(process: "subprocess.Popen[str]") -> Any:
+def _relaying_signals(
+    process: "subprocess.Popen[str]", pgid: int | None = None
+) -> Any:
     """Ctrl-C still reaches a leg that is a session of its own.
 
     ``start_new_session`` is what lets the timeout stop the leg's whole
@@ -189,7 +228,7 @@ def _relaying_signals(process: "subprocess.Popen[str]") -> Any:
     previous: dict[int, Any] = {}
 
     def relay(number: int, frame: Any) -> None:
-        _signal_leg(process, number)
+        _signal_leg(process, number, pgid)
         signal.signal(number, previous.get(number, signal.SIG_DFL))
         os.kill(os.getpid(), number)
 
@@ -200,6 +239,28 @@ def _relaying_signals(process: "subprocess.Popen[str]") -> Any:
     finally:
         for number, handler in previous.items():
             signal.signal(number, handler)
+
+
+def _drain(process: "subprocess.Popen[str]") -> str:
+    """Read what is left of a stopped leg's stdout, without waiting forever.
+
+    Whatever arrived is returned; a pipe still held open past
+    :data:`LEG_DRAIN_S` is abandoned and closed, because the alternative is
+    the hang the bound exists to prevent.
+    """
+
+    try:
+        stdout, _ = process.communicate(timeout=LEG_DRAIN_S)
+    except subprocess.TimeoutExpired as expired:
+        stdout = expired.stdout or ""
+        if isinstance(stdout, bytes):  # pragma: no cover - text=True here
+            stdout = stdout.decode("utf-8", "replace")
+        if process.stdout is not None:
+            try:
+                process.stdout.close()
+            except OSError:  # pragma: no cover - closing a dead pipe
+                pass
+    return stdout or ""
 
 
 def run_leg(
@@ -234,14 +295,15 @@ def run_leg(
         )
     except OSError as exc:
         raise WalkError(f"{name}: could not run {command[0]}: {exc}") from exc
+    pgid = leg_pgid(process)
     stopped = False
-    with _relaying_signals(process):
+    with _relaying_signals(process, pgid):
         try:
             stdout, _ = process.communicate(timeout=timeout or None)
         except subprocess.TimeoutExpired:
             stopped = True
-            _stop_leg(process)
-            stdout, _ = process.communicate()
+            _stop_leg(process, pgid)
+            stdout = _drain(process)
     leg = Leg(name=name, argv=list(argv), code=process.returncode,
               seconds=time.monotonic() - started)
     if stopped:

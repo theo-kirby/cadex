@@ -15,6 +15,7 @@ import json
 import os
 import re
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import textwrap
@@ -582,6 +583,69 @@ def test_a_leg_that_runs_out_of_time_fails_the_walk_and_kills_its_subtree(
         time.sleep(0.1)
     else:  # pragma: no cover - only on a failure
         pytest.fail(f"the leg's grandchild {pid} outlived the walk")
+
+
+#: The harder shape, and the one the first bound got wrong: the direct child
+#: dies politely on ``SIGTERM`` while the grandchild ignores it and goes on
+#: holding the inherited stdout. A walk that waits on the direct child alone
+#: reports the leg as stopped, leaves the survivor on the machine, and then
+#: blocks forever draining a pipe nobody will ever close. The grandchild
+#: bounds its own life so this test fails slowly rather than hanging a suite.
+STUBBORN_CADEX = textwrap.dedent(
+    """
+    import os, subprocess, sys, time
+
+    subprocess.Popen([sys.executable, "-c",
+        "import os, signal, sys, time; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "open(sys.argv[1], 'w').write(str(os.getpid())); "
+        "time.sleep(120)", os.environ["HANG_MARKER"]])
+    time.sleep(600)
+    """
+)
+
+
+def test_a_stopped_leg_kills_the_grandchild_that_ignored_the_term(
+    toy_root, capsys, monkeypatch, tmp_path
+) -> None:
+    """``SIGKILL`` reaches the group even when the direct child already died.
+
+    The grace is for the leg that can close its engine session; it is not a
+    reason to spare what is left. The group id is read while the child is
+    certainly alive, so it is still addressable after the child has been
+    reaped, and the final drain is bounded so a pipe held by something the
+    kill could not reach cannot hang the walk either.
+    """
+
+    script = tmp_path / "stubborn_cadex.py"
+    script.write_text(STUBBORN_CADEX, encoding="utf-8")
+    marker = tmp_path / "stubborn.pid"
+    monkeypatch.setenv("HANG_MARKER", str(marker))
+    monkeypatch.setattr(walk_module, "cadex_command", lambda: [sys.executable, str(script)])
+
+    out = toy_root / "runs" / "stubborn"
+    started = time.monotonic()
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out),
+        "--leg-timeout", "2",
+    )
+    elapsed = time.monotonic() - started
+
+    assert code == EXIT_FAILURE, envelope
+    assert envelope["walk"]["legs"][-1]["exit"] == EXIT_LEG_TIMEOUT
+    # Promptly: the bound, the grace and the kill — not the grandchild's life.
+    assert elapsed < 40.0, f"the walk waited {elapsed:.1f}s on a stopped leg"
+
+    pid = int(marker.read_text())
+    for _ in range(100):
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            break
+        time.sleep(0.1)
+    else:  # pragma: no cover - only on a failure
+        os.kill(pid, signal.SIGKILL)
+        pytest.fail(f"the leg's stubborn grandchild {pid} outlived the walk")
 
 
 def test_the_walk_reports_the_bound_it_ran_under_and_the_trainer_s_margin(

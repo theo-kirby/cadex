@@ -408,9 +408,15 @@ true of both and told nt3 nothing. Child legs record reward/delta rows
 fails the walk there, through the same path a refusing leg does: the leg
 reports exit **124**, `error` names the leg and the flag, and the walk's
 exit is `1`. The stop is a **subtree kill** — the leg runs in a session of
-its own and is sent `SIGTERM` then `SIGKILL` as a group — because the thing
-that hangs is usually not the child `cadex` but the agent CLI or the trainer
-under it. `SIGINT` and `SIGTERM` to the walk are relayed to the running leg's
+its own and is sent `SIGTERM`, then `SIGKILL` to the group five seconds
+later **whether or not the direct child died on the term** — because the
+thing that hangs is usually not the child `cadex` but the agent CLI or the
+trainer under it, and a grandchild that ignores `SIGTERM` outlives its
+parent. The group id is read while the child is alive, so it stays
+addressable after the child is reaped, and the walk waits at most ten
+seconds to drain the stopped leg's stdout: a pipe still held open past that
+is abandoned rather than allowed to hang the walk the bound was there to
+save. `SIGINT` and `SIGTERM` to the walk are relayed to the running leg's
 session, so Ctrl-C still reaches it. The envelope carries
 `walk.leg_timeout_s` and `walk.train_leg_timeout_s`.
 

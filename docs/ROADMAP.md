@@ -2175,7 +2175,14 @@ What makes them experimental, and what would settle it:
   `max(--leg-timeout, --timeout + 300 s)`, so a long training run asked for
   by name is never shot by a default. The regression hangs *and* spawns a
   grandchild holding the captured pipe, then polls that pid until it is
-  gone: a direct-child kill fails it.
+  gone: a direct-child kill fails it. **Amended the same day** (ADR-261
+  amendment): the kill went to the group only when the *direct child* had
+  survived the grace, so a grandchild that ignores `SIGTERM` outlived its
+  parent and hung the walk in the drain. `SIGKILL` now goes to the group
+  unconditionally after the grace, the group id is read while the child is
+  alive so it stays addressable after the reap, and the final drain is
+  bounded at 10 s. A second regression whose grandchild sets `SIGTERM` to
+  `SIG_IGN` fails against the previous stop.
 - [x] **A walk's `PROGRESS.md` row carries a delta** (2026-09-08, ADR-260).
   Measuring ADR-259's motion cell against ADR-194's comparison found neither
   half worked for a walk: `_record_progress` passed `previous=` only on the
