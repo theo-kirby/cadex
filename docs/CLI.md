@@ -783,6 +783,13 @@ copied to another machine, or the local session history was pruned —
 degrades to a fresh conversation with a note in the report, not to a dead
 run.
 
+`agent.json.updated_at` records a change to the stored session ID or model,
+not every attempted turn. An unchanged nonempty session and model leave the
+file untouched; changed identity is saved even after a failed turn so it can
+be resumed. Opening a project may still refresh accepted restore attempt
+metadata in `script.json`; a refused walk does not roll that bookkeeping back
+or create a failure commit.
+
 Claude Code files a conversation under the directory the turn ran in, so
 turns run **in the project root**. A scratch directory per turn would make
 every `--resume` look like an expired session.

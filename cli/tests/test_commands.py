@@ -295,3 +295,69 @@ def test_the_human_summary_names_the_files_and_the_next_guard(
     assert "wrote  plate" in captured.out
     assert "params thickness=6, width=30" in captured.out
     assert "next   expected_revision" in captured.out
+
+
+@pytest.mark.parametrize("session_id,model", [
+    ("offline-session", "sonnet"),
+    ("new-session", "sonnet"),
+    ("offline-session", "opus"),
+])
+def test_refused_walk_preserves_session_unless_identity_changes(
+    project, tmp_path, capsys, session_id, model
+):
+    """Ordinary walk, real restore, offline Claude executable; no provider."""
+    import subprocess
+    from cadex_cli.session import write_agent_state
+
+    root = project["root"]
+    write_agent_state(root, session_id="offline-session", model="sonnet")
+    agent = root / "agent.json"
+    payload = json.loads(agent.read_text())
+    payload["updated_at"] = "2000-01-01T00:00:00Z"
+    agent.write_text(json.dumps(payload))
+    before_agent = agent.read_bytes()
+    before_stat = agent.stat()
+    # Keep existing user edits, including edits to a tracked document.
+    decisions = root / "DECISIONS.md"
+    decisions.write_text(decisions.read_text() + "\nUser's pending decision.\n")
+    (root / "user-note.txt").write_text("untracked user work\n")
+    preserved = {name: (root / name).read_bytes() for name in (
+        "script.py", "PROGRESS.md", "ARCHITECTURE.md", "DECISIONS.md", "user-note.txt"
+    )}
+    def head():
+        return subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"])
+    before_head = head()
+    before = json.loads((root / "script.json").read_text())
+    refusal = "Controlled offline usage-credit refusal"
+    fake = tmp_path / "refuse"
+    fake.write_text(
+        "#!/usr/bin/env python3\nimport json,sys\n"
+        + "print(" + repr(json.dumps({"type": "assistant", "message": {
+            "content": [{"type": "text", "text": refusal}]}})) + ")\n"
+        + "print(" + repr(json.dumps({"type": "result", "is_error": True,
+            "session_id": session_id, "result": refusal})) + ")\nsys.exit(1)\n"
+    )
+    fake.chmod(0o755)
+    code = main(["walk", "--resume", "--prompt", "offline refusal",
+                 "--project", str(root), "--out", str(root / "runs/refused"),
+                 "--claude", str(fake), "--model", model, "--json"])
+    report = _envelope(capsys)
+    assert code == EXIT_FAILURE
+    assert refusal in report["error"]
+    assert head() == before_head
+    for name, content in preserved.items():
+        assert (root / name).read_bytes() == content
+    after = json.loads((root / "script.json").read_text())
+    for key in ("accepted_revision", "accepted_digest", "param_values"):
+        assert after[key] == before[key]
+    assert after["accepted_attempt"]["attempt_id"] != before["accepted_attempt"]["attempt_id"]
+    assert (root / after["accepted_attempt"]["staging"] / "outputs").is_dir()
+    assert after["latest_candidate"]["attempt_id"] == after["accepted_attempt"]["attempt_id"]
+    stored = json.loads(agent.read_text())
+    assert (stored["session_id"], stored["model"]) == (session_id, model)
+    if (session_id, model) == ("offline-session", "sonnet"):
+        assert agent.read_bytes() == before_agent
+        assert agent.stat().st_ino == before_stat.st_ino
+        assert agent.stat().st_mtime_ns == before_stat.st_mtime_ns
+    else:
+        assert stored["updated_at"] != payload["updated_at"]

@@ -341,3 +341,33 @@ def test_the_turn_runs_in_the_project_directory(tmp_path) -> None:
     report = RunReport()
     command_prompt(_args(tmp_path), report, turn_factory=factory)
     assert factory.made[0].cwd == report.project_root
+
+
+@pytest.mark.usefixtures("engine")
+@pytest.mark.parametrize("model", ["mock", "changed-model"])
+def test_successful_resumed_edit_preserves_or_updates_session_identity(tmp_path, model):
+    args = _args(tmp_path)
+    first = RunReport()
+    assert command_prompt(args, first, turn_factory=turn_factory([[
+        ("tool", "write_script", {"source": BRACKET}), ("done", "ok")
+    ]])) == EXIT_OK
+    root = Path(first.project_root)
+    path = agent_state_path(root)
+    payload = json.loads(path.read_text())
+    payload["updated_at"] = "2000-01-01T00:00:00Z"
+    path.write_text(json.dumps(payload))
+    before = path.read_bytes()
+    report = RunReport()
+    assert command_prompt(_args(tmp_path, resume=True, model=model), report,
+                          turn_factory=turn_factory([[
+        ("tool", "write_script", {"source": TALLER}), ("done", "accepted edit")
+    ]])) == EXIT_OK
+    assert report.accepted_revision != first.accepted_revision
+    assert report.digest != first.digest
+    assert (root / "script.py").read_text() == TALLER
+    stored = read_agent_state(root)
+    assert (stored.session_id, stored.model) == (SESSION_ID, model)
+    if model == "mock":
+        assert path.read_bytes() == before
+    else:
+        assert stored.updated_at != payload["updated_at"]

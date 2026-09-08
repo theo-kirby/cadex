@@ -136,6 +136,11 @@ leg on the box `training/remote_train.sh` names.) Fill in which, and
 why; `{progress}` marks each remote row `(remote)`.
 
 The shared mode artifacts table in `docs/CLI.md` is the walk contract.
+`agent.json.updated_at` records changed session identity or model, not every
+attempt. A refused turn still saves changed identity for resumption; unchanged
+identity leaves that file untouched. Opening may refresh accepted restore
+attempt metadata in `script.json`, even when the subsequent turn fails.
+A refused walk does not roll that bookkeeping back or create a failure commit.
 The walk's `{progress}` row and project commit subject name the output
 relative to this project, or by basename for an external output, so the
 recorded run label contains no absolute machine path.

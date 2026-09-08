@@ -21169,3 +21169,16 @@ scaffold state the convention. Four regressions write real progress rows and Git
 commits for absolute internal/external, relative and home-relative outputs; all
 four fail on the old formatter. The existing real-walk assertion now expects
 the portable subject. CLI suite evidence is recorded with this unit.
+
+
+## ADR-247 — Unchanged CLI sessions do not rewrite project metadata (2026-09-08)
+
+Remove the redundant agent.json replacement when an existing nonempty session
+ID and model match the returned identity. Its updated_at records identity/model
+changes rather than attempted turns. Changed identity still persists on failure:
+a refused turn can create a resumable conversation. Restore's accepted attempt
+locators remain engine-owned and are not rolled back. No automatic failure
+commit or cleanup of user changes. Controlled offline refusals through the walk
+exercise unchanged session, changed session and changed model against a real
+engine; successful resumed edits pin accepted geometry changes with both unchanged
+and changed model metadata. CLI suite evidence is recorded with this unit.

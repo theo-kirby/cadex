@@ -2068,6 +2068,10 @@ What makes them experimental, and what would settle it:
   lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
   domain-doc convention. No engine change, no file tool for the agent.
   §7c row 10 closes.
+- [x] **Unchanged CLI sessions preserve their metadata** (ADR-247).
+  Refused and successful turns retain agent.json when session ID and model
+  match; changed identity persists even on failure. Restore attempt metadata
+  remains truthful; offline walk regressions preserve pre-existing user edits.
 - [x] **A domain note lands the way a decision does** (ADR-245). The
   `docs/<subject>.md` convention was documented and unreachable — the
   agent has no file tool and the instruction told it to ask its caller,
