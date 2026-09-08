@@ -68,6 +68,8 @@ from .project_docs import (
     documentation_status,
     ensure_project_repo,
     previous_numbers,
+    task_comparison,
+    comparison_cell,
     progress_numbers,
     read_project_docs,
     record_decisions,
@@ -302,7 +304,7 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument(
         "--envs", type=int, default=256, help="Parallel environments (256)."
     )
-    train_parser.add_argument("--seed", type=int, default=0, help="RNG seed (0).")
+    train_parser.add_argument("--seed", type=int, default=0, help="Training RNG seed, 0..4294967295 (default 0); rollout seed stays in the script.")
     train_parser.add_argument(
         "--label", default="", help="A label written into the policy header."
     )
@@ -426,7 +428,7 @@ def build_parser() -> argparse.ArgumentParser:
     walk_parser.add_argument(
         "--envs", type=int, default=256, help="Parallel environments (256)."
     )
-    walk_parser.add_argument("--seed", type=int, default=0, help="RNG seed (0).")
+    walk_parser.add_argument("--seed", type=int, default=0, help="Training RNG seed, 0..4294967295 (default 0); rollout seed stays in the script.")
     walk_parser.add_argument(
         "--label", default="", help="A label written into the policy header."
     )
@@ -1125,6 +1127,9 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     if not args.out:
         report.error = "train needs --out: the bundle and the policy land there."
         return EXIT_USAGE
+    if not 0 <= args.seed <= 4294967295:
+        report.error = "--seed must be between 0 and 4294967295."
+        return EXIT_USAGE
     if args.iterations < 1 or args.envs < 1:
         report.error = "--iterations and --envs must be at least 1."
         return EXIT_USAGE
@@ -1220,6 +1225,8 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     )
     report.training = run_trainer(command, timeout=args.timeout)
     verify_returned_policy(policy_path, report.training)
+    report.training["comparison"] = {**task_comparison(task.files["json"]),
+                                     "training_seed": args.seed}
     report.notes.append(
         "trained {:s}: {:s} ({:s} bytes, sha256 {:s}) in {:.1f} s on {:s}.".format(
             task.name,
@@ -1310,6 +1317,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     walk_started = time.monotonic()
     if not args.out:
         report.error = "walk needs --out: the bundle, the policy and the rollout land there."
+        return EXIT_USAGE
+    if not 0 <= args.seed <= 4294967295:
+        report.error = "--seed must be between 0 and 4294967295."
         return EXIT_USAGE
     if args.iterations < 1 or args.envs < 1:
         report.error = "--iterations and --envs must be at least 1."
@@ -1466,6 +1476,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     # Review: the trace's numbers, in the envelope and as a file beside the
     # rollout, plus the accepted assembly inventory in the project docs.
     review = review_from_outputs(leg.envelope.get("outputs") or [])
+    review["comparison"] = dict(report.training.get("comparison") or {})
+    if "rollout_seed" in review:
+        review["comparison"]["rollout_seed"] = review["rollout_seed"]
     review["weights"] = weights
     review["sha256"] = sha256
     # No trace at all is a motion answer too, and the same one write_review
@@ -1788,7 +1801,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             what=_progress_what(command, args, report),
             revision=report.accepted_revision,
             digest=report.digest,
-            numbers=(
+            numbers=((
                 ("clearance unavailable" if not report.walk["review"]["clearance"]["available"]
                  else "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
                       "pairs checked {pairs_checked} (initial solved pose; {minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)".format(
@@ -1799,7 +1812,11 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
                 training=report.training,
                 outputs=report.outputs,
                 previous=previous,
-            ),
+            )) + (comparison_cell(
+                report.project_root, command,
+                report.walk.get("review", {}).get("comparison", {})
+                if command == "walk" else report.training.get("comparison", {}),
+            ) if command in ("walk", "train") else ""),
         )
     except OSError as exc:
         report.notes.append(f"PROGRESS.md not written: {exc}")

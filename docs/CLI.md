@@ -746,6 +746,28 @@ that carried it, so a `train` row between two rollouts does not break the
 chain. The rows are read back from `PROGRESS.md` as written, which means
 a row a person adds by hand counts too.
 
+Training `--seed` is a bounded unsigned 32-bit integer (default 0); it does
+not change the rollout seed declared in the xscript. Train and walk rows record
+`training_seed`, `rollout_seed` (unavailable for training alone), an objective
+identity and the prior same-kind row's evidence. Missing historical evidence is
+marked `unavailable (legacy row)`; no seed or objective is inferred retroactively.
+A trace seed of `None` means an explicitly unseeded rollout, not missing evidence.
+
+`training.comparison` and the walk's `review.json` comparison block retain the
+objective metadata and full action rows. Objective `v1` is SHA-256 over compact,
+key-sorted JSON of the exported task's `schema`, `observations` (including units),
+`reward`, `termination`, `episode` and `functions`. List order and expression text
+are significant. Model identity, actions, seeds, reset variation, randomisation,
+disturbances and runtime versions are excluded; this identifies the declared
+objective, not experimental equivalence or mathematical equivalence of formulas.
+The separate `actions` hash in progress rows covers full action metadata; inspect
+`comparison.actions` for physical bounds and units. The quill's 40 mm and 60 mm
+action bounds have different scaling despite matching rewards and objectives.
+Deltas remain descriptive, never evidence of improved learning or equal control
+difficulty. Prior evidence refers to the previous train/walk row of that kind;
+metric deltas still refer to the last row carrying each metric, which may differ.
+Standalone rollout rows retain their existing numeric format.
+
 **Project history depends on repository ownership** (ADR-194).
 
 - **Fresh root outside another work tree:** the CLI runs `git init` and

@@ -56,6 +56,7 @@ them the way it ignores every file it did not write.
 from __future__ import annotations
 
 import datetime as _datetime
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -268,6 +269,28 @@ without Git or when the project is nested beneath another repository root
 without its own `.git`; those rows have no automatic commit.
 
 For lifecycle comparisons, record iterations, environment count and seeds.
+Training `--seed` is a bounded unsigned 32-bit integer (default 0); it does
+not change the rollout seed declared in the xscript. Train and walk rows record
+`training_seed`, `rollout_seed` (unavailable for training alone), an objective
+identity and the prior same-kind row's evidence. Missing historical evidence is
+marked `unavailable (legacy row)`; no seed or objective is inferred retroactively.
+A trace seed of `None` means an explicitly unseeded rollout, not missing evidence.
+
+`training.comparison` and the walk's `review.json` comparison block retain the
+objective metadata and full action rows. Objective `v1` is SHA-256 over compact,
+key-sorted JSON of the exported task's `schema`, `observations` (including units),
+`reward`, `termination`, `episode` and `functions`. List order and expression text
+are significant. Model identity, actions, seeds, reset variation, randomisation,
+disturbances and runtime versions are excluded; this identifies the declared
+objective, not experimental equivalence or mathematical equivalence of formulas.
+The separate `actions` hash in progress rows covers full action metadata; inspect
+`comparison.actions` for physical bounds and units. The quill's 40 mm and 60 mm
+action bounds have different scaling despite matching rewards and objectives.
+Deltas remain descriptive, never evidence of improved learning or equal control
+difficulty. Prior evidence refers to the previous train/walk row of that kind;
+metric deltas still refer to the last row carrying each metric, which may differ.
+Standalone rollout rows retain their existing numeric format.
+
 `total_reward` sums rewards over the verified rollout's `step_count`;
 divide by that count for rollout reward per step. The trainer's
 `reward/step` is its final training-batch mean, a different measurement.
@@ -375,7 +398,7 @@ def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str
 #: documentation check together -- so it gets more room than a cell that
 #: holds one phrase. It was 160 and truncated the walk's documentation
 #: half the day motion was added beside it (ADR-259).
-PROGRESS_NUMBERS_LIMIT = 320
+PROGRESS_NUMBERS_LIMIT = 1024
 
 
 def _cell(text: Any, limit: int = 160) -> str:
@@ -491,6 +514,46 @@ def compared_number(
     else:
         sign = "+" if delta > 0 else "-"
     return f"{label} {spelled} (Δ {sign}{delta_spelled} vs {digest} at {was_spelled})"
+
+
+def task_comparison(path: Path | str) -> dict[str, Any]:
+    """Objective v1 excludes model, actions and stochastic conditions (ADR-263)."""
+    try:
+        task = json.loads(Path(path).read_text(encoding="utf-8"))
+        fields = ("schema", "observations", "reward", "termination", "episode", "functions")
+        objective = {key: task[key] for key in fields}
+        encoded = json.dumps(objective, sort_keys=True, separators=(",", ":"),
+                             allow_nan=False).encode("utf-8")
+        return {"objective_id": "v1:" + hashlib.sha256(encoded).hexdigest(),
+                "objective": objective, "actions": task["actions"],
+                "actions_id": hashlib.sha256(json.dumps(
+                    task["actions"], sort_keys=True, separators=(",", ":"),
+                    allow_nan=False).encode("utf-8")).hexdigest()}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"objective_id": None, "reason": "exported task metadata unavailable"}
+
+
+def comparison_cell(root: Path | str, run: str, evidence: Mapping[str, Any]) -> str:
+    """State current evidence and the last same-kind row's evidence, even legacy."""
+    objective = evidence.get("objective_id") or "unavailable"
+    def seed(key):
+        return str(evidence[key]) if key in evidence else "unavailable"
+    current = (f"objective {objective}; training_seed {seed('training_seed')}; "
+               f"rollout_seed {seed('rollout_seed')}")
+    prior = "none"
+    try:
+        for line in (Path(root) / PROGRESS_NAME).read_text(encoding="utf-8").splitlines():
+            match = _ROW_RE.match(line.strip())
+            if match and match.group(2) == run:
+                found = re.search(r"objective (v1:[0-9a-f]{64}|unavailable); "
+                                  r"training_seed ([^;]+); rollout_seed ([^;]+)",
+                                  match.group(6))
+                prior = found.group(0) if found else "unavailable (legacy row)"
+    except OSError:
+        pass
+    return (f"; {current}; actions {evidence.get('actions_id') or 'unavailable'}; "
+            f"previous evidence: {prior}; deltas are descriptive; "
+            "matching objectives do not establish equivalent control difficulty")
 
 
 def progress_numbers(

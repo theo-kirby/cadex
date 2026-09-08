@@ -725,3 +725,38 @@ def test_walk_retention_uses_git_precedence_and_preserves_history(tmp_path) -> N
     assert _git(root, "show", baseline + ":assets/old.cxpolicy") == "original"
     assert all((root / name).is_file() for name in generated)
     assert policy.read_text() == "new weights"
+
+
+def test_objective_evidence_ignores_seeds_and_model_but_names_action_changes(tmp_path):
+    from cadex_cli.project_docs import task_comparison, comparison_cell, append_progress_row
+    import json
+    task = {"schema": "task-v1", "observations": [{"unit": "mm"}],
+            "reward": [{"expression": "height", "weight": 1}], "termination": [],
+            "episode": {"max_steps": 200}, "functions": ["abs"],
+            "actions": [{"low": 0, "high": 40, "unit": "mm"}],
+            "model": {"sha256": "old"}}
+    path = tmp_path / "task.json"
+    def evidence(seed):
+        path.write_text(json.dumps(task))
+        return {**task_comparison(path), "training_seed": seed, "rollout_seed": 7}
+    first = evidence(0)
+    task["model"]["sha256"] = "new"
+    second = evidence(5)
+    assert first["objective_id"] == second["objective_id"]
+    task["actions"][0]["high"] = 60
+    third = evidence(5)
+    assert third["objective_id"] == first["objective_id"]
+    assert third["actions_id"] != first["actions_id"]
+    task["reward"][0]["weight"] = 2
+    assert evidence(5)["objective_id"] != first["objective_id"]
+    append_progress_row(tmp_path, run="walk", what="legacy", numbers="travel_mm 1")
+    cell = comparison_cell(tmp_path, "walk", first)
+    assert "training_seed 0; rollout_seed 7" in cell
+    assert "unavailable (legacy row)" in cell
+    append_progress_row(tmp_path, run="walk", what="new", numbers=cell)
+    later = comparison_cell(tmp_path, "walk", second)
+    assert "training_seed 5; rollout_seed 7" in later
+    assert "previous evidence: objective " + first["objective_id"] in later
+    assert "training_seed 0; rollout_seed 7" in later
+    path.write_text('{}')
+    assert task_comparison(path)["objective_id"] is None

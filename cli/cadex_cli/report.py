@@ -55,7 +55,8 @@ class RunReport:
     assets: list[dict[str, Any]] = field(default_factory=list)
     #: The offboard trainer's receipt after a `train` run (ADR-191): the
     #: JSON object `training/cadex_train.py` prints on its last line, as
-    #: printed — `out`, `bytes`, `sha256`, `reward_per_step`, `wall_time_s`,
+    #: printed, plus CLI `comparison` metadata from the exported task and
+    #: training seed — `out`, `bytes`, `sha256`, `reward_per_step`, `wall_time_s`,
     #: `device`, the witness margin. Not re-derived here: a receipt taken
     #: from a stream is a receipt something else can write into (ADR-093),
     #: so this is the one the trainer meant as data.

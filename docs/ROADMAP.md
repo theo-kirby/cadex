@@ -2185,6 +2185,9 @@ What makes them experimental, and what would settle it:
   alive so it stays addressable after the reap, and the final drain is
   bounded at 10 s. A second regression whose grandchild sets `SIGTERM` to
   `SIG_IGN` fails against the previous stop.
+- [x] **Identify comparison seeds, objective and action scaling** (2026-09-08,
+  ADR-263). Train/walk rows carry current and prior evidence; review JSON keeps
+  exported objective fields and actions. Legacy rows remain explicitly unknown.
 - [x] **Keep generated review outputs local and explain policy exclusions**
   (2026-09-08, ADR-262). Fresh scaffolds ignore `/review/`; explicit policy
   exclusions go after the root policy negation. A real Git regression inspects

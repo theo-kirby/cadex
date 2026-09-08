@@ -103,7 +103,7 @@ def test_the_review_is_the_trace_s_policy_block_or_nothing(tmp_path) -> None:
     trace = tmp_path / "assembly-simulation-trace.json"
     trace.write_text(json.dumps({"policy": {
         "total_reward": -1.5, "reward_totals": [{"label": "lift", "total": -1.5}],
-        "policy_sha256": "ab" * 32, "steps": 50,
+        "policy_sha256": "ab" * 32, "steps": 50, "seed": 7,
     }}))
     (tmp_path / "plain.json").write_text("{}")
     outputs = [
@@ -112,6 +112,7 @@ def test_the_review_is_the_trace_s_policy_block_or_nothing(tmp_path) -> None:
         {"name": "run", "files": {"trace": str(trace)}},
     ]
     review = review_from_outputs(outputs)
+    assert review["rollout_seed"] == 7
     assert review["trace"] == str(trace)
     assert review["total_reward"] == -1.5 and review["steps"] == 50
     assert review_from_outputs(outputs[:2]) == {}
@@ -743,6 +744,8 @@ def test_a_script_without_the_convention_is_refused_after_training(
         (["--out", "o", "--set", f"{POLICY_SWITCH}=1"], "owns the switch"),
         (["--out", "o", "--name", "job.txt"], ".cxpolicy"),
         (["--out", "o", "--iterations", "0"], "at least 1"),
+        (["--out", "o", "--seed", "-1"], "--seed must be"),
+        (["--out", "o", "--seed", "4294967296"], "--seed must be"),
         (["--out", "o", "--leg-timeout", "-1"], "--leg-timeout must be"),
         (["--out", "o", "--init-from-task-change", "why"], "--init-from POLICY"),
     ],
@@ -948,6 +951,10 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     sha1 = envelope["training"]["sha256"]
     review1 = json.loads((out1 / REVIEW_FILENAME).read_text())
     assert review1["training"]["device"] == "cpu"
+    assert review1["comparison"]["training_seed"] == 0
+    assert review1["comparison"]["rollout_seed"] == 3
+    assert review1["comparison"]["objective_id"].startswith("v1:")
+    assert review1["comparison"]["actions"]
     assert review1["sha256"] == sha1 == envelope["walk"]["review"]["policy_sha256"]
     reward1 = float(review1["total_reward"])
     assert reward1 == reward1  # not NaN
@@ -1001,6 +1008,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert review2["weights"] == "job2.cxpolicy" and review2["sha256"] == sha2
     assert review2["params"] == envelope["params"] == {"policy_on": 1.0, "lift_weight": 2.0e-4}
     assert review2["training"]["task_sha256"] != review1["training"]["task_sha256"]
+    assert review2["comparison"]["objective_id"] != review1["comparison"]["objective_id"]
     reward2 = float(review2["total_reward"])
     assert reward2 == reward2
 

@@ -586,6 +586,8 @@ def review_from_outputs(outputs: Sequence[dict[str, Any]]) -> dict[str, Any]:
                     review[key] = policy[key]
             # The same file carries the poses, so the travel is read here
             # rather than opening the trace a second time.
+            if "seed" in policy:
+                review["rollout_seed"] = policy["seed"]
             review["motion"] = motion_from_trace(payload)
             return review
     return {}
@@ -621,6 +623,7 @@ def write_review(
     payload: dict[str, Any] = {
         "schema": "cadex-walk-review-v1",
         "documentation": documentation,
+        "comparison": dict(review.get("comparison") or {}),
         "inventory": dict(review.get("inventory") or {}),
         "render": dict(review.get("render") or {}),
         "section": dict(review.get("section") or {}),

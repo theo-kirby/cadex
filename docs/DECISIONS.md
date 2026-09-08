@@ -21832,3 +21832,23 @@ contents after the documented override: generated training/review outputs stay
 on disk and untracked, source/docs and default policy assets are committed,
 and old history and explicitly staged working content survive. It fails on the
 old scaffold because SVG and section JSON enter the commit tree.
+
+
+## ADR-263 — Comparisons identify seeds, objective and action scaling (2026-09-08)
+
+Train and walk comparisons now carry the training seed and exported-task objective
+identity; walk reviews read the separate rollout seed from the trace. Bound CLI
+training seeds to unsigned 32-bit integers. Hash schema, observations, reward,
+termination, episode and function metadata as objective v1, excluding model and
+stochastic conditions; retain the selected metadata and full actions in JSON.
+Hash actions separately so equal rewards cannot conceal changed control scaling.
+This is syntactic identity, not a ranking or experimental-equivalence claim.
+
+Remove the 320-character progress-cell cap in favor of 1024 to preserve the new
+current/prior evidence beside motion findings. Legacy evidence is explicitly
+unavailable, never reconstructed from current parameters. Prior evidence names
+the last same-kind row, while existing metric deltas keep their last-number
+contract. No retention changes: tracked/staged user outputs stay under Git's
+existing semantics, and no existing repository is silently untracked or migrated.
+CLI tests pin objective stability across seed/model changes, sensitivity to reward
+changes, separate action bounds, legacy handling and real CPU review propagation.
