@@ -21257,3 +21257,65 @@ shell's default is unchanged, so "what does Cadex run" still has one
 answer everywhere nobody has said otherwise. One resolver, two argparse
 defaults, `docs/CLI.md`, and `test_the_machine_can_name_the_turn_model_once`
 in the LGPL CLI zone. No engine change, no protocol op, no `shell/` diff.
+
+## ADR-250 — A worker's BLAS pool is sized by us, not by the host (2026-09-08)
+
+`assembly.mjcf` did not return for a ten-component rig on the Linux GPU
+box. It burned the sandboxed worker's 300 s CPU cap and died by SIGXCPU,
+reported as *The isolated domain worker exited without a result*, and the
+first prompt walk on that machine shipped its whole training layer gated
+off behind `policy_on=0` rather than fight it (ADR-249's walk). Bisecting
+the rig's dynamics declarations found nothing: **a two-component model with
+one revolute joint and no collision shapes at all stalls identically.**
+
+The stall is not in the export. It is `import numpy`, reached through
+`import mujoco` in `CadexDynamics.build_model`, and it is an *address
+space* fault rather than a compute one. OpenBLAS reserves a per-thread
+scratch buffer when its shared object is loaded and sizes its pool from the
+host's core count. Measured in `FreeCADCmd` on this 32-core machine:
+
+| `OPENBLAS_NUM_THREADS` | address space reserved by `import mujoco, numpy` |
+|---|---|
+| 1 | 216 MB |
+| 2 | 352 MB |
+| 4 | 624 MB |
+| 8 | 1,168 MB |
+| unset (32 threads) | **4,432 MB** |
+
+The worker's `RLIMIT_AS` is `DEFAULT_SCRIPTED_MEMORY_LIMIT_MB` = 6,144 MB,
+and FreeCAD, OCCT and the rig's own solids already hold most of the rest.
+The mapping is refused, OpenBLAS spins in its allocation retry loop, and
+the kernel eventually charges it the CPU cap. A stalled worker's
+`/proc/<pid>/status` reads `VmSize: 6291360 kB` — the ceiling exactly —
+against `VmRSS: 169816 kB`: four gigabytes reserved and never touched, for
+arithmetic the engine does not do. On a four-core laptop it fits, which is
+why nothing saw this until the loop moved to a build box.
+
+So `worker_environment` pins `OPENBLAS_NUM_THREADS=4` alongside
+`PYTHONHASHSEED=0`, and for the same reason: a worker that behaves
+differently on a laptop and on a 32-core box is the bug, not the fix. Four
+is 624 MB, leaves a sparse solve some parallelism, and is the same four
+everywhere. This is not a speed knob and must not be read as one — nothing
+in the engine is BLAS-bound; `analysis/` is offboard and unaffected.
+
+**And the kill is now legible.** `RLIMIT_CPU` is charged in CPU-seconds
+across every thread, while `run_process`'s watchdog counts the same number
+in wall-clock seconds, so a parallel worker reaches the kernel's limit
+first and dies leaving no `result.json` — which arrived as the generic
+"exited without a result", indistinguishable from a crash, and cost the
+design agent an hour of guessing. `_resource_signal_failure` maps SIGXCPU
+to `DOMAIN_CPU_LIMIT_EXCEEDED` and SIGXFSZ to
+`DOMAIN_OUTPUT_LIMIT_EXCEEDED`, naming the cap and the unit asymmetry. The
+caps themselves are unchanged: this run names what already happened rather
+than buying room, which is the reversible half of the two.
+
+Measured on the walk's own rig, dev-tree engine: the accepted `script.py`
+at `params --set policy_on=1` went **300.0 s / exit 3 → 2.0 s**, and the
+full dynamics layer — ten bodies with per-component collisions, the servo
+actuator, joint dynamics, four observations, reward, termination,
+randomisation and both ranged disturbances — accepts in **1.2 s**. What
+remains is `Policy output 'swing_policy' names no staged asset
+'swing.cxpolicy'`, which is the walk's ordinary ordering: `cadex train`
+produces that asset and the script re-declares it. Engine zone plus two
+regressions in `cadex_tests/test_scripted_process.py`; no protocol op, no
+payload change, no `shell/` diff.

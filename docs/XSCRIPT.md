@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-07
+Verified against source: 2026-09-08
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -1299,6 +1299,16 @@ Source is validated before any worker runs (AST policy in
 - Hard bounds from preferences (`ScriptedTimeoutSeconds`,
   `ScriptedMemoryLimitMB`); a parent-side watchdog kills over-budget
   workers and reports `MEMORY_LIMIT_EXCEEDED` with observed usage.
+  **The worker carries the same two numbers again as kernel limits, in
+  different units**: `_resource_limits` sets `RLIMIT_CPU` to the timeout in
+  *CPU*-seconds, charged across every thread, while the watchdog counts it
+  in wall-clock seconds — so a parallel pass loses to the kernel first, and
+  `RLIMIT_AS` to the memory limit, which is *address space* and counts what
+  a library reserves and never touches. A worker the kernel ends leaves no
+  `result.json`; those deaths surface as `DOMAIN_CPU_LIMIT_EXCEEDED` and
+  `DOMAIN_OUTPUT_LIMIT_EXCEEDED` rather than as a missing result, and the
+  worker's BLAS thread pool is pinned so `RLIMIT_AS` does not depend on the
+  host's core count (ADR-250).
 - The worker executes the script ONCE, evaluates outputs per domain, and
   produces **detached** results (BREP and mesh artifacts, records, collected
   `param_specs`, per-output validations, the content digest) on the

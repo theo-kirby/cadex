@@ -113,7 +113,11 @@ NDJSON client with no cadex imports.
   via `src/Mod/cadex/CadexScriptedProcess.py` (`run_process`: no console
   window, new session, stdin closed, hard timeout + memory watchdog;
   budgets from preferences `ScriptedTimeoutSeconds` /
-  `ScriptedMemoryLimitMB`). The project bundle
+  `ScriptedMemoryLimitMB`, carried into the worker again as `RLIMIT_CPU`
+  and `RLIMIT_AS` in different units — see `docs/XSCRIPT.md` and ADR-250).
+  Its environment is a closed allowlist (`worker_environment`) that pins
+  `PYTHONHASHSEED` and the BLAS thread pool, so a worker's address-space
+  footprint does not vary with the host's core count. The project bundle
   (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`) stages
   all five domain api/worker modules with entry `cadex_project_worker.py`
   — **and fifteen more modules by filename**, which is the pattern worth

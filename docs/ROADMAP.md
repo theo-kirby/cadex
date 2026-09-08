@@ -2022,23 +2022,25 @@ What makes them experimental, and what would settle it:
   the default model was out of usage credit while `claude-sonnet-5`,
   `claude-opus-5` and `claude-haiku-4-5` all answered on the same login.
   One resolver, two argparse defaults and a regression; LGPL CLI zone only.
-- [ ] **`assembly.mjcf` never returns for a ten-component rig** (found
-  2026-09-08 on the Linux GPU box; the lifecycle frontier's next unit).
-  The first prompt walk there designed a one-servo swing rig — MG90S from
-  the catalog, printed base/arm, M3 hardware, 10 components, 3 joints —
-  whose geometry and `assembly.solve` accept in 1 s, and whose dynamics
-  layer kills the sandboxed worker at the 300 s CPU cap (SIGXCPU,
-  returncode -24), reported as `The isolated domain worker exited without a
-  result`. The design agent spent 66 minutes on it and shipped the whole
-  training layer gated behind `policy_on=0`, so `cadex train` refused with
-  *the accepted revision exports no training task* and the walk exited 3.
-  **Its narrower claim does not hold**: reproduced in a fresh project, a
-  grounded one-body `assembly.mjcf` with a box collision builds in under
-  1 s, the reference carriage's two-body jointed model with a box, mesh or
-  hull collision in 0.55 s, and the swing rig's own script rebuilds
-  geometry-only in 1 s and then hits the cap at exactly 300 s at
-  `params --set policy_on=1`. So the fault is in that model, not in the
-  export; bisecting which declaration costs the time is the next unit.
+- [x] **`assembly.mjcf` never returns for a ten-component rig** — fixed
+  (ADR-250, 2026-09-08, found on the Linux GPU box). The first prompt walk
+  there designed a one-servo swing rig — MG90S from the catalog, printed
+  base/arm, M3 hardware, 10 components, 3 joints — whose geometry and
+  `assembly.solve` accept in 1 s, and whose dynamics layer killed the
+  sandboxed worker at the 300 s CPU cap (SIGXCPU, returncode -24), reported
+  as `The isolated domain worker exited without a result`. The bisect
+  cleared the rig: a **two**-component model with one revolute joint and no
+  collision shapes stalls identically. The stall is `import numpy` under
+  `import mujoco`, and it is address space, not compute — OpenBLAS sizes a
+  per-thread scratch pool from the host's core count and reserves 4,432 MB
+  on 32 cores against the worker's 6,144 MB `RLIMIT_AS`, then spins in its
+  allocation retry loop. `worker_environment` pins
+  `OPENBLAS_NUM_THREADS=4` (624 MB), and SIGXCPU/SIGXFSZ now surface as
+  `DOMAIN_CPU_LIMIT_EXCEEDED` / `DOMAIN_OUTPUT_LIMIT_EXCEEDED` naming the
+  cap and the CPU-second vs wall-clock asymmetry. The walk's own script at
+  `policy_on=1`: **300.0 s / exit 3 → 2.0 s**; the full dynamics layer with
+  collisions, actuator, joint dynamics, observations, reward, termination,
+  randomisation and both ranged disturbances accepts in **1.2 s**.
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected
