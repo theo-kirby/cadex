@@ -2101,6 +2101,10 @@ What makes them experimental, and what would settle it:
   Child reward/delta rows and the successful walk's clearance row are distinct;
   failed legs add no walk review row. Existing CLI behavior and tests retained.
 
+- [x] **Shorten the carriage iterate guide** (2026-09-08, ADR-251).
+  Retain the command, comparable rewards, baseline and limits; link the
+  immutable rehearsal evidence instead of repeating its detailed log.
+
 - [x] **Model-free iterate comparison on the durable carriage** (2026-09-08).
   Width 70 → 80 mm through unchanged `walk --set`, cold CPU 5 × 16 seed 0:
   exit 0 in 20.89 s; same reward and 200-step horizon, total 3.296298 →

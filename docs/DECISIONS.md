@@ -21377,3 +21377,7 @@ The 2026-09-08 model-free carriage iterate exercised the report end to end:
 JSON and stderr both matched 56 files with zero differences; all four legs
 and review passed. `docs/CLI.md` records the unchanged-objective reward
 comparison and preserves the binary-provenance limitation.
+
+Guide maintenance (2026-09-08): removed duplicated carriage rehearsal details
+from `docs/CLI.md`, linking this ADR and record `mellow-quartz-8093` instead;
+the runnable command, reward comparison, baseline and limitations remain.

@@ -367,34 +367,18 @@ JAX_PLATFORMS=cpu ./cadex walk --project "$PROJECT" \
   --timeout 600 --json
 ```
 
-Width increased from 70 to 80 mm; all task-bundle fields except `model`
-remained equal, including reward, episode, observations and randomisation.
-Both verified rollouts use seed 7 and 200 steps (4 s). Baseline reward
-**3.296298** became **2.760187** (delta **-0.536111**); reward per rollout
-step was 0.0164815 → 0.0138009. The CLI automatically wrote the rounded
-comparison `total_reward 2.8 (Δ -0.5 vs 5a021bed at 3.3)` into `PROGRESS.md`.
-The final training-batch mean separately fell 0.02347 → 0.0084295.
-This single cold training seed at toy scale measures the two resulting
-policies; it does not establish a general design ranking.
+Width increased from 70 to 80 mm; task bundles differed only in `model`,
+keeping the objective, episode, observations and randomisation fixed.
+Both verified rollouts used seed 7 and 200 steps (4 s): reward
+**3.296298 → 2.760187** (delta **-0.536111**), with the comparison written
+into `PROGRESS.md`. All 21 baseline files, including the policy, retained
+their bytes. All four legs and review passed; the four review eyes check
+only the initial pose, not swept motion or printable fit. One cold training
+seed at toy scale does not establish a general design ranking.
 
-All four legs exited 0: sweep 1.01 s, train 16.54 s, declare 0.87 s,
-rollout 1.00 s; whole command 20.89 s, peak RSS 1,760,116 KiB. The trainer
-resolved the documented venv fallback, reported CPU and 2.96 s training,
-and verified its witness at 3.06e-9 against 1e-4 tolerance. JSON and stderr
-both reported `match`: 56 Python files, zero changed/missing/extra;
-this remains no claim about binary or loaded-module provenance.
-
-All four eyes were inspected: front/top/right/iso render 60 triangles with
-the carriage's Y bounds expanded to ±40 mm; the XZ section at Y=3.125 mm
-has one base contour and two carriage contours; inventory names two
-uncatalogued components (carriage volume 231,950 mm³); base–carriage
-clearance is 0.5 mm with zero common volume, zero offending/unknown pairs,
-and a passing two-comparison bounds check. These are initial-pose checks,
-not swept-motion or printable-fit qualification. All 21 baseline files,
-including its policy, retained their bytes. The project's five automatic
-commits end at `dcef1a0`; its ignore rules keep new run, policy and render
-artifacts local. The repository carries these measurements, not their dumps.
-No prompt, GUI, remote dispatch, rebuild or walk-code change was needed.
+See [ADR-251](DECISIONS.md#adr-251--the-walk-reports-enginesource-differences-before-its-first-leg-2026-09-08)
+and the [immutable rehearsal record](../.hypergraph/graph/record/mellow-quartz-8093.md)
+for timings, policy witness, component volumes and project commit evidence.
 
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through
