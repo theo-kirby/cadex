@@ -11,13 +11,81 @@ Status: open
 
 ## Current
 
-1. **Selected finite direction: motion coverage in the review step (missions 2/6).** The review's clearance eye measures one pose and says so in its own output — "Initial solved pose only; this is not a swept-motion check" (`cli/cadex_cli/clearance.py:46`), `"scope": "initial solved pose"` in `review.json` — and swept-motion safety is the limit nearly every record of this run disclaims. The rollout trace already carries per-frame `component_placements` and the render already carries each component's accepted placement and world bounds, so a conservative bounding-box screen over the trace is computable in the LGPL CLI zone with no engine, protocol or `shell/` diff. Short computes and lands the screen, then wires it into the walk's review and rehearses it model-free. This maintains the headless-review criterion; it is not a new reporting platform and it claims no kernel-accurate sweep [rec: strong-falcon-1463].
-2. **Two rejected candidates, and why.** Extending `_clearance_at_frame` into the dynamics rollout is the kernel-accurate answer and the eventual one, but it is engine-zone work with the packaged gate behind it and it carries a refusal semantic this rung already declined — it goes to the long rung as the successor the screen would have to justify. A third mechanism or catalog-part walk is rejected as re-evidence: two mechanisms have completed on this machine and five on nt3, and it would spend a model turn and six to eighteen minutes to move nothing [rec: rare-cliff-9595] [rec: proud-beacon-8002] [rec: strong-falcon-1463].
-3. **Spent directions, off this rung.** CPU selection, recovery, the remote-training preflight and the inventory-boundary measurement are all delivered: the public CPU rehearsal at 14.6 s / 1.54 GB with every review inspected, `cadex train --dry-run` with local/remote artifact parity pinned offline, and the measured proof that saved reviews keep counts while the linked document advances. Only the inventory **retention** unit survives, as short's tail. No CUDA diagnosis, backend matrix, repeated recovery or adjacent inventory campaign follows [rec: floral-arrow-7365] [rec: keen-field-4379] [rec: placid-ember-6741] [rec: candid-otter-2615] [rec: soft-crane-2369].
-4. **Budget and the loop's own signal.** 17 iterations, 5.2 h elapsed, 42.8 h left; eleven iterations with the frontier unmoved and an overseer `looping` verdict at #16; Claude seven-day 62%, Codex seven-day 75%. Three model-free units fit comfortably, and the rung leads with the one that adds a capability rather than a fourth pass over the same report. Spare budget is no mandate for further work, and no bookkeeping-only actor dispatch is valid [rec: careful-union-7585] [rec: strong-falcon-1463].
-5. **Evidence and scope limits.** All four seeded criteria already carry working evidence; no charter checkbox or gap node is retired here, and no `## Later criteria` item may be targeted. GUI stays documented and unexercised, remote stays a local stand-in with an offline plan, runtime comparison stays Python bytes only. Toy pipeline success proves neither policy improvement nor swept-motion safety — and the screen this rung selects will not prove the latter either; it proves separation where it finds it [rec: mellow-quartz-8093] [rec: early-quill-3654] [rec: narrow-wing-0418] [rec: candid-otter-2615] [rec: strong-falcon-1463].
+1. **Selected finite direction: make the review step say whether the mechanism
+   moved (missions 2/6).** The walk's review has five eyes — four renders, a
+   section, an inventory, an initial-pose clearance count, a verified rollout
+   and a reward — and **not one of them distinguishes a rollout in which the
+   mechanism moved from one in which it sat still**. Measured: the swing rig's
+   baseline rollout travels 1.094 mm over 152 frames with no measurable
+   rotation, the carriage's travels 103.298 mm, and the two reviews read
+   identically in shape. The number is already in the file the walk opens —
+   per-frame `component_placements`, keys equal to the render summary's
+   `objects`, frame 0 the identity — so a travel report costs no engine,
+   protocol, payload or `shell/` change and lands in the LGPL CLI zone. Short
+   lands the report, carries it into the iterate comparison, and then spends one
+   model turn on the third mechanism whose review is the first to carry it. This
+   maintains the headless-review criterion; it claims no swept-motion safety and
+   no control quality [rec: sleepy-hollow-9498].
+
+2. **The direction this replaces, and why it retired unbuilt.** The
+   bounding-box motion-clearance screen was the previous pass's selection and is
+   now retired on measurement rather than deferred. Its data premise held; its
+   verdict did not. Twenty-two of the swing rig's forty-five pairs already
+   overlap in world AABB at the accepted pose — bolts in plates, nuts on bolts,
+   servo in retainer, everything against the base plate — so the screen would
+   read `not proven clear` at every frame for precisely the pairs a person asks
+   about, and `separated` only for pairs nobody worries about. Axis-aligned
+   boxes over jointed assemblies cannot do better, and no threshold fixes it.
+   Two iterations are returned to the run [rec: sleepy-hollow-9498]
+   [rec: strong-falcon-1463].
+
+3. **The successor that stays on the long rung.** Extending
+   `_clearance_at_frame` over the dynamics rollout is the kernel-accurate answer
+   and is unaffected by the screen's retirement — it was always the successor,
+   and it is now the only candidate rather than the expensive one. It stays
+   parked: engine-zone work with the packaged gate behind it, and it carries a
+   refusal semantic this rung has declined three times. The engine's existing
+   `clearance=` on `assembly.simulation` **raises** on a breach
+   (`cadex_assembly_worker.py:3248`) and is the kinematic OndselSolver trace,
+   not the MuJoCo rollout the walk reviews; do not auto-declare pairs into an
+   accepted script to reach it, because a breach would kill a walk after its
+   training is already spent [rec: strong-falcon-1463] [rec: morning-summit-7848].
+
+4. **Spent directions, off this rung.** CPU selection, recovery, the
+   remote-training preflight, the inventory-boundary measurement and the
+   inventory retention tail are all closed or declined. The domain-note **write**
+   half is exercised on this machine three times over and is not a gap; only the
+   ADR-256 read-back eye lacks a real prompt walk, which short's third unit
+   supplies. No CUDA diagnosis, backend matrix, repeated recovery, adjacent
+   inventory campaign or re-proof of the note-writing convention follows
+   [rec: floral-arrow-7365] [rec: keen-field-4379] [rec: placid-ember-6741]
+   [rec: candid-otter-2615] [rec: soft-crane-2369] [rec: sleepy-hollow-9498].
+
+5. **Budget, and the loop's own signal.** 19 iterations, 5.7 h elapsed, 42.3 h
+   left; thirteen iterations with the frontier unmoved, an overseer `looping`
+   verdict at #16 and a hard steer to a third-mechanism walk at #19; Claude
+   seven-day 63%, Codex seven-day 76%. Two model-free units and one model-gated
+   walk fit with room. The frontier metric itself cannot move from this rung —
+   all four seeded criteria are `working`, the three open nodes are standing work
+   or parked under `## Later criteria`, and promotion is a human edit — so the
+   rung is ranked by what it adds to the product, not by what it would tick.
+   Spare budget is no mandate, and no bookkeeping-only dispatch is valid
+   [rec: sleepy-hollow-9498] [rec: careful-union-7585].
+
+6. **Evidence and scope limits.** No charter checkbox or gap node is retired,
+   blocked or superseded here, and no `## Later criteria` item may be targeted.
+   GUI stays documented and unexercised, remote stays a local stand-in with an
+   offline plan, clearance stays initial-pose, sections stay tessellation cuts.
+   Toy pipeline success proves neither policy improvement nor swept-motion
+   safety, and travel proves neither — it proves only that something moved, and
+   how far [rec: mellow-quartz-8093] [rec: early-quill-3654]
+   [rec: narrow-wing-0418] [rec: candid-otter-2615] [rec: sleepy-hollow-9498].
 
 ## Negative knowledge
+
+- [scope: the review step's blind spot, measured | confidence: high | evidence: sleepy-hollow-9498] Every eye the review has looks at the **initial solved pose** or at a scalar the trainer reported; none reads the rollout's own motion. Two real projects on this machine make the gap concrete: the swing rig's baseline rollout moves three of ten components by 1.094 mm with no measurable rotation over 152 frames, the carriage's moves 103.298 mm over 202 frames, and both reviews have the same shape and the same fields. The carriage's iterate makes it sharper — travel 103.298 → 103.719 mm while `total_reward` fell 3.296298 → 2.760187, and the comparison row reported only the reward. This is a reporting gap in the CLI zone, not a defect in the engine, the trainer or the policy.
+
+- [scope: axis-aligned boxes over a jointed assembly | confidence: high | evidence: sleepy-hollow-9498] A world-AABB screen cannot serve as a cheap motion-clearance check, because the pairs that matter are the pairs whose boxes already overlap. Twenty-two of the swing rig's forty-five pairs overlap at the accepted pose, including all nine against the base plate, whose AABB is the whole 100x77x90 mm envelope. This bounds any future cheap-screen proposal, not just the one retired: a conservative bound that is always violated carries no information. If motion clearance is wanted, it has to be the kernel.
 
 - [scope: what a bounding-box screen adds to this rung | confidence: high | evidence: strong-falcon-1463] It adds frames the static eye never sees, and nothing else. It cannot replace the kernel distance query at the accepted pose, cannot certify a mechanism as safe in motion, and cannot be tightened into a proof by lowering a threshold. If it turns out vacuous on the toy mechanisms — every pair's boxes overlapping at every frame — the honest result is to record that and retire the direction, not to reshape it into a heuristic that always has something to say.
 
@@ -232,3 +300,4 @@ Status: open
 - dry-grove-2638 — fold completed recovery; select two finite CPU-contract units from observed backend failure
 - scarlet-ocean-2920 — fold completed CPU work and select bounded historical inventory maintenance
 - strong-falcon-1463 — select review motion coverage over two rejected candidates; record the spent CPU, recovery, preflight and inventory-measurement directions
+- sleepy-hollow-9498 — retire the bounding-box motion screen on measurement and select the rollout travel report in its place

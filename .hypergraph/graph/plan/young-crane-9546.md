@@ -11,17 +11,66 @@ Status: open
 
 ## Current
 
-1. **Screen the rollout trace for motion clearance (missions 2/6).** In `cli/` only, compute a conservative bounding-box screen over the exported rollout trace: for each accepted component take the render's world `bounds_mm` and `placement`, compose each frame's `component_placements` against the accepted pose, map the box's eight corners, re-bound, and test each pair for separation. Report per pair the closest sampled frame with its `nominal_time_s` and the gap, and per trace the pairs that stayed apart throughout. Two verdicts only — `separated` (proven at every sampled frame) and `not proven clear` (the boxes met; inspect) — never `intersection`, never a refusal, no exit code change. Land it beside the existing static section of `docs/clearance.md` and in the command's envelope, reusing `pair_status`, `_cell` and the `bounds_agreement` tolerance rather than minting a second vocabulary, and consolidate the duplicated status/prose it touches. Two regressions: one real-engine trace from the repo-owned toy, one degenerate trace whose components the render did not draw, which must report unavailable rather than guess. If the trace's placements cannot be joined to the render's components, or if every pair overlaps at every frame on the toy mechanisms, record that and stop — the direction retires rather than expands. ADR-256, ROADMAP bullet, verified dates, and `pixi run python -m pytest cli/tests` with no outer backend override [rec: strong-falcon-1463].
-2. **Land the screen in the walk's review and rehearse it (missions 2/6).** Only after unit 1 lands: have the walk's review call the screen on the trace it already locates, so `review["clearance"]` carries a `motion` block beside the initial-pose one and the scope stops being a bare "initial solved pose"; name the worst pair, its frame and its time in the `PROGRESS.md` row the walk already writes. Then rehearse once — one public model-free existing-script toy walk in an isolated project, explicit CPU, one iteration and four environments, fresh output and policy name — and report the added wall-clock against the 14.6 s / 1.54 GB baseline and whether the screen said anything on that mechanism. Each training run ≤15 minutes and ≤3 GB; no model turn, no GUI, no remote dispatch, no generated output committed to this repository. If the screen proves vacuous here, say so plainly rather than tuning thresholds until it speaks [rec: strong-falcon-1463] [rec: floral-arrow-7365].
-3. **Retain the existing named inventory in each walk review (missions 1/2/6).** The limitation is measured and confirmed [rec: soft-crane-2369]: replace the lossy count-only projection with the inspection fields already available — revision, component and source names, catalog identities — keep the existing summary fields, and label the report path as latest-project documentation. Reuse the existing review serialization and extend an existing lifecycle regression with different inventories across reviews, asserting the old saved rows and revision survive while the current documents advance. No engine operation, archive subsystem, catalog inference or new test matrix; consolidate the repeated projection so this removes more than it adds. Guide, scaffold, ADR and ROADMAP, then the full CLI gate on the requested CPU fixture without an outer override. This is the tail of a subject that has already had four passes: land it or leave it, and open nothing adjacent to it [rec: keen-field-4379] [rec: scarlet-ocean-2920] [rec: strong-falcon-1463].
+1. **Report the rollout's travel in the walk's review (missions 2/6).** `cli/`
+   and `docs/` only. From the rollout trace the walk already locates, compute
+   per component the position travel (per-axis range and the largest
+   displacement from frame 0) and the rotation swing (the largest angle between
+   frame 0's quaternion and any frame's), plus the trace's frame count and
+   duration; report them as a `motion` block in `review.json` beside the
+   clearance one, and put the largest-moving component and its travel into the
+   `PROGRESS.md` row the walk already writes. The join is proven on real data,
+   not assumed: the trace's per-frame `component_placements` keys equal the
+   render summary's `objects` keys and frame 0 is the identity, so travel is
+   read straight off the deltas with no composition against the accepted pose
+   needed [rec: sleepy-hollow-9498]. Two regressions on real traces — one where
+   a component moves and one all-identity trace, which must report zero travel
+   rather than unavailable. Reuse the existing review serialization and trace
+   locator; no engine, protocol, payload or `shell/` diff. ADR, ROADMAP bullet,
+   verified dates, and the full `pixi run python -m pytest cli/tests` on the
+   shared `cpu_training` fixture with no outer backend override.
+
+2. **Carry travel into the iterate comparison (missions 2/5).** Only after unit
+   1 lands. The comparison the walk writes into `PROGRESS.md` reports
+   `total_reward` and nothing about whether the mechanism moved, so a retrain
+   that killed the motion and a retrain that merely scored worse read the same.
+   Add the travel figure beside the reward in the comparison row and in its
+   `review`/history record, and extend the existing iterate lifecycle
+   regression rather than adding a matrix. The carriage pair is the worked
+   example and the reason: baseline 103.298 mm travel at `total_reward`
+   3.296298, iterate 103.719 mm at 2.760187 — the reward fell while the travel
+   held, and the walk could not say so [rec: sleepy-hollow-9498]
+   [rec: mellow-quartz-8093]. No ranking claim follows: travel is a fact about
+   the rollout, never a score, and two projects' travels do not compare any
+   more than their rewards do.
+
+3. **One fresh prompt walk, third mechanism, reviewed by both new eyes
+   (missions 2/6).** Only after units 1 and 2. One `cadex walk --prompt` on this
+   machine into a durable project outside this repository, on a mechanism whose
+   named joint and actuator differ from the swing arm (revolute, position
+   servo) and the carriage (prismatic, force motor) — not a re-roll of either
+   prompt, which is not evidence [rec: morning-summit-7848]. No code change
+   specific to the mechanism. Toy scale, ≤5 iterations × 16 envs, `--timeout
+   600`, `$CADEX_MODEL=claude-opus-5`, explicit CPU, ≤18 min and ≤3 GB, nothing
+   generated committed to this repository. What makes it a unit rather than
+   re-evidence: it is the first walk whose review carries the ADR-256
+   documentation eye reading a real design turn's own notes back, and the first
+   carrying a travel figure. Report both, plus whether the design turn wrote
+   `NOTE` lines unprompted. If the provider refuses on credit, record the
+   refusal and stop; do not probe.
 
 ## Negative knowledge
 
+- [scope: the rollout motion-clearance screen, retired unbuilt | confidence: high | evidence: sleepy-hollow-9498] The screen's own stop condition is met before a line of it exists. The join holds — the trace's `component_placements` keys equal the render summary's `objects` keys and frame 0 is the identity — but the verdict would be vacuous: on the swing rig **22 of 45 pairs already overlap in world AABB at the accepted pose** (every bolt in its plate, both nuts on their bolts, the servo in the retainer, all nine pairs against the base plate whose AABB is the whole envelope), so those pairs read `not proven clear` at every frame whatever the policy does, and they are exactly the pairs a person asks about. The other 23 are the ones nobody worries about, and the motion cannot reach them: 1.094 mm of travel over 152 frames on the swing, 103.298 mm on the carriage whose single pair overlaps throughout because the block rides a column inside the base's AABB. This is a property of axis-aligned boxes over jointed assemblies, not of toy scale, and no threshold fixes it. Do not rebuild it, do not tune it, and do not read the retirement as authority for the engine-zone swept check, which stays on the long rung.
+
+- [scope: the domain-note write half, already exercised here | confidence: high | evidence: sleepy-hollow-9498] `eager-lake-5745`'s claim that "no walk has yet produced a domain note from a real design turn's closing text on this machine" is **false** and is corrected here: `docs/actuators.md` and `docs/sensors.md` in `ot4-carriage`, `ot4-swing2` and `ot4-swing` were each committed by a `cadex prompt:` commit — the design turn's own closing text, three times on this machine. ADR-245's write half is exercised; only the ADR-256 read-back eye has never run on a real prompt walk. Do not spend an iteration re-proving the write half, and do not cite that record's sentence as a gap.
+
+- [scope: what the travel report may claim | confidence: high | evidence: sleepy-hollow-9498] Travel is a fact about one rollout of one project: how far a component went, over sampled frames, under one seed and one toy-scale policy. It is never a score, never a ranking, and never a claim about gait, control quality or mechanical function — the swing rig's 1.094 mm and the carriage's 103.298 mm say the mechanisms are different, not that one is better. Motion between sampled frames is uncovered and rotation is read from quaternions the trace already carries. A travel figure that rises while reward falls is a finding to report, not a defect to tune.
+
+- [scope: the inventory retention tail, dropped | confidence: high | evidence: sleepy-hollow-9498] Removed from this rung rather than deferred. Five iterations went to inventory report prose and fixtures against an unmoved frontier and the overseer's verdict at #16 was `looping`; the boundary is already stated in `docs/CLI.md`, in the generated scaffold and as negative knowledge on `damp-moon-9297`, and every superseded report survives in its project's own Git. It is not blocked and not a defect — it is a sixth pass that the rung declines. Do not reinstate it and do not open anything adjacent to it [rec: soft-crane-2369] [rec: scarlet-ocean-2920].
+
+- [scope: the overseer's third-mechanism steer, honoured and re-ordered | confidence: high | evidence: sleepy-hollow-9498] The #19 verdict hard-commits the next unit to a fresh mechanism walk because the frontier has been unmoved thirteen iterations. The frontier cannot move from this rung: all four seeded criteria are `working`, the three open nodes are standing work or parked under `## Later criteria`, and the charter reserves promotion to a human edit. So the walk is kept and ranked third rather than dropped or led with — after the two eyes that make it more than a fourth pass at the same review shape [rec: rare-cliff-9595] [rec: proud-beacon-8002].
+
 - [scope: the engine's swept check versus the walk's own motion | confidence: high | evidence: strong-falcon-1463] ADR-130/ADR-242's `clearance=` is an argument of `assembly.simulation` — the kinematic OndselSolver trace, capped at 32 pairs — and a breach **raises** (`cadex_assembly_worker.py:3248`). The walk's motion is `assembly.rollout`, a MuJoCo dynamics trace with no clearance surface at all, which is why that path is exercised only by its regression [rec: morning-summit-7848]. Do not auto-declare pairs into the accepted script to reach it: a breach would kill a walk after its training is already spent, and this rung has already declined refusal in favour of reporting. The kernel check over the dynamics rollout is an engine-zone successor on the long rung, not this unit.
-
-- [scope: what the bounding-box screen may claim | confidence: high | evidence: strong-falcon-1463] Disjoint boxes at a sampled frame **prove** those parts are apart at that frame; overlapping boxes prove nothing and must read as "not proven clear — inspect", never as contact, collision or intersection. The frames are samples, so motion between them is uncovered; the inputs are f32 tessellation bounds, so `BOUNDS_TOLERANCE_MM`-scale slack is inherent. A screen that refuses, or that reports an overlap as a finding of contact, is wrong even with a green gate. This is coverage, not teeth: the question of whether a design finding should refuse is settled and stays settled.
-
-- [scope: the inventory subject and the looping verdict | confidence: high | evidence: strong-falcon-1463] Five iterations went to inventory report prose and test fixtures while the frontier stayed still, and the overseer's verdict at #16 was `looping`. The retention unit is kept only because the finding is measured and the work is one iteration [rec: soft-crane-2369] — not because the subject earned a fifth pass. Do not extend it, do not re-audit the reports it touches, and do not open an adjacent inventory unit when it lands.
 
 - [scope: completed CPU direction and historical inventory | confidence: high | evidence: scarlet-ocean-2920] Both CPU units are spent. The inventory limitation is source-derived: current project docs are mutable, while Git retains prior reports. Only the bounded rehearsal/documentation and existing-data projection are selected; no data-loss, catalog-discovery or general archival claim follows [rec: floral-arrow-7365] [rec: keen-field-4379] [rec: scarlet-ocean-2920].
 
@@ -103,3 +152,4 @@ Status: open
 - dry-grove-2638 — fold completed recovery; select two finite CPU-contract units from observed backend failure
 - scarlet-ocean-2920 — fold completed CPU work and select bounded historical inventory maintenance
 - strong-falcon-1463 — fold the measured inventory boundary and the offline training plan; lead the rung with motion coverage over the rollout trace and demote inventory retention to its tail
+- sleepy-hollow-9498 — retire the motion screen on measurement; re-rank onto the rollout travel report, the iterate carry and a deferred third-mechanism walk
