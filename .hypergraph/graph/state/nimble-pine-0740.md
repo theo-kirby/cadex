@@ -16,5 +16,5 @@ Adopted the Hypergraph protocol on 2026-08-09 (mode B — no legacy graph existe
 
 ## Reconciliation
 
-- high_water_mark: tidy-banner-0293, shy-glade-0050, empty-light-4558, neat-tower-5715, careful-key-9041, weathered-falcon-4350, deep-branch-6721, sleepy-shade-1485, shady-lodge-6077, wild-prairie-9912, quiet-creek-7756, idle-arrow-2946, candid-creek-2410, pale-river-6583, ancient-crest-4588, proud-cliff-9629, ready-lantern-4987
-- reconciled_at: 2026-09-08T05:37:34+00:00
+- high_water_mark: tidy-banner-0293, shy-glade-0050, empty-light-4558, neat-tower-5715, careful-key-9041, weathered-falcon-4350, deep-branch-6721, sleepy-shade-1485, shady-lodge-6077, wild-prairie-9912, quiet-creek-7756, idle-arrow-2946, candid-creek-2410, pale-river-6583, ancient-crest-4588, proud-cliff-9629, lucid-cedar-9789
+- reconciled_at: 2026-09-08T05:41:37+00:00
