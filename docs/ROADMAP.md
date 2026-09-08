@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-07
+Verified against source: 2026-09-08
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -426,6 +426,9 @@ depends on. Independent of Phase 8.
       0.417 s drag. Not worth moving a computation across a process boundary
       and changing `inspect`'s cost model for. The item stays here with its
       number attached so it can be revived if output counts grow.
+- [x] **Worker snapshot integrity** (2026-09-08, ADR-244): detach staged
+      modules from mutable source inodes, publish the bytes used for the name,
+      validate reuse and publication-race winners, replace corrupt/legacy bundles.
 - [x] **Warm-standby worker** (ADR-055). cadexd owns one resident
       `--safe-mode` preview worker per open project, spawned lazily on the
       first `preview_params`, bound to one `(source, api_contracts, assets)`
@@ -1893,7 +1896,8 @@ What makes them experimental, and what would settle it:
   state, and offered in place of Rebuild Model in the parameters panel's
   alert row. The gate's `test_a_locked_out_project_is_reaccepted_from_the_chat`
   moves the accepted digest with the script untouched and drives the
-  operator from the locked-out state.
+  operator from the locked-out state. VISION's obsolete missing-recovery
+  claim was corrected against this shipped behavior on 2026-09-08 (ADR-187).
 - [x] **Qualify assembly camera visibility** (2026-09-07, ADR-228):
       actual hydration and EEVEE render reproduce unposed source leakage;
       `ASSEMBLY-VISIBILITY-AUDIT.md` defines ownership and regression gates.
@@ -1920,6 +1924,9 @@ What makes them experimental, and what would settle it:
   The domain-doc convention is exercised by the caller (`docs/sensors.md`),
   not generated. The second mechanism is qualified below; the GUI-attached
   mode is documented in ADR-201, below.
+- [x] **Portable walk output labels** (ADR-246). `PROGRESS.md` and the
+  project commit subject use a project-relative output path, or its basename
+  outside the project; absolute `--out` no longer records a machine path.
 - [x] **The same walk on a second mechanism** (ADR-203).
   `examples/lifecycle/linear-carriage` uses a slider and force motor through
   the unchanged entry point, at the arm's 1 iteration × 4 environments.
@@ -1927,6 +1934,22 @@ What makes them experimental, and what would settle it:
   numbers. The carriage reaches a verified 50-step rollout but does not learn
   to hold height in one iteration. `cli/tests/test_walk.py` pins the slide
   joint, policy digest and review with the real engine and trainer.
+- [x] **Teach purchased hardware placement in the walk** (ADR-243 follow-up).
+  Design instructions and project scaffold distinguish separate purchased
+  components from printed solids and catalog clearance cutters; contract tests
+  pin delivery of the guidance, not agent compliance.
+- [x] **Remove unsupported inventory purchase inference** (ADR-243).
+  Keep catalog identity and placed-instance totals, including repeated links;
+  remove generator-call tally and generated-minus-placed reports.
+- [x] **Inventory is part of the walk review** (ADR-236 follow-up).
+  After rollout, write `docs/inventory.md` and the `review.json` inventory
+  counts and project-relative path, committed together in every mode.
+  No published assembly yields an explicit unavailable report; the walk
+  retains its dynamics prerequisites. Real toy and carriage walks test it.
+- [x] **Clearance is part of the walk review** (ADR-238).
+  Commit `docs/clearance.md`, the review summary and comparable progress
+  counts together; preserve unavailable and unknown measurements. Initial
+  solved pose only. Arm/carriage walks and CPU mode parity pin the result.
 - [x] **The walk's remote-training handoff is scripted** (ADR-200,
   `docs/CLI.md` §2). `cadex train --remote` and `cadex walk --remote` run
   the train leg through `training/remote_train.sh train <bundle> <out> --
@@ -1937,6 +1960,12 @@ What makes them experimental, and what would settle it:
   usage line, the leg end to end against a stand-in dispatcher with the
   real engine. **Not executed**: no dispatch, and a warm start does not
   travel (`--remote` with `--init-from` is a usage error).
+- [x] **Three-mode artifact parity is tested through the whole walk**
+  (ADR-200 audit). Local and remote-flag walks use real CPU training and
+  engine verification with a local stand-in dispatcher; both land the same
+  project-relative paths, committed review and comparable progress rows.
+  The shared table in `docs/CLI.md` is pinned to the project scaffold.
+  Remote transport and GUI attachment remain unexercised by constraint.
 - [x] **The walk with the GUI attached is documented against the client
   code** (ADR-201, `docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 11). It is
   the same `cadex` commands from a terminal beside the open `.blend`:
@@ -1945,6 +1974,65 @@ What makes them experimental, and what would settle it:
   before the next GUI edit. The in-app agent has no shell or file tool;
   project docs stay the CLI's and a person's. **GUI not exercised.**
   *Three modes, one shape* is headless exercised, remote scripted, GUI documented.
+- [x] **Inventory resolves large inspection previews** (ADR-236 follow-up).
+  Page catalog totals and uncatalogued outputs as well as components; expand
+  previewed rows and their fields before rendering. Regression uses the real
+  inspection pager with 60 catalog entries and names over the 1 KiB budget.
+- [x] **Headless clearance and intersection name every pair** (ADR-237).
+  `cadex clearance` writes `docs/clearance.md`, with read-time distance and
+  common-volume thresholds. Every separated pair is measured too; missing
+  measurements remain unknown. Initial solved pose only. Recipe rebuild
+  medians remain within the 2 s / 20 percent budget; digests are unchanged.
+  Walk wiring is the next unit; rendering and section views remain open.
+- [x] **Named-angle headless rendering route probed** (ADR-239). Valid
+  background blueprint calls refuse after accepted hydration; independent CPU
+  tessellation projection produced and inspected front/top/right/iso SVGs.
+  The product render call follows below; section views and walk integration remain open.
+- [x] **Named-angle CPU render CLI** (ADR-239 follow-up). `cadex render`
+  writes revision-bearing front/top/right/iso SVGs and a summary in the
+  project. Bounded accepted buffers, solved placements and pixel depth;
+  real arm/curved assembly image tests. Walk wiring follows below; sections remain open.
+- [x] **Named-plane tessellation section CLI** (ADR-240). World XY/XZ/YZ
+  cuts write revision-bearing SVG/JSON with closed contours and cavity fills,
+  solved placements, offsets, explicit empty/unsupported statuses and limits.
+  Real-kernel cavity/rotation tests; walk integration remains a separate unit.
+- [x] **Walk review commits named-angle previews** (ADR-239 follow-up).
+  One review session snapshots accepted display before inventory/clearance,
+  checks rollout revision, commits four SVGs and summary under that revision,
+  and reports render/acquisition and whole-walk timings.
+- [x] **Walk review commits named-plane sections** (ADR-240 follow-up).
+  Shared accepted snapshot, world XZ at Y = 3.125 mm, revision/digest checks,
+  explicit empty/unsupported/error semantics and committed SVG/JSON. Both
+  mechanisms and local/remote-flag CPU stand-in parity are tested; a separate
+  fresh complete-review rehearsal remains required.
+- [x] **Fresh hinged-arm complete-review rehearsal** (2026-09-08).
+  Public walk, bounded CPU training, four inspected views and interior section,
+  accepted identity, tracked artifacts and explicit contact/unknown counts;
+  evidence in `docs/probes/complete-review/hinged-arm/`. Fresh carriage comparison
+  is recorded immediately below for combined criterion assessment.
+- [x] **Fresh carriage complete-review rehearsal and comparison** (2026-09-08).
+  Identical public entry point and bounded CPU settings; four inspected views,
+  interior section, accepted identity and committed-byte audit. Both projects
+  carry comparable measurements; arm contact and carriage 34 mm separation
+  remain explicit. Evidence in `docs/probes/complete-review/linear-carriage/`;
+  combined review evidence is ready for maintainer assessment.
+- [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
+  Accepted revision/digest, policy assets, trace and review geometry survive
+  separate script/asset/inventory/clearance/render/section processes. Expected
+  restore attempts and report refreshes are distinguished from lost artifacts;
+  evidence in `docs/probes/cold-revisit/`. No persistence correction needed.
+- [x] **The agent can name what it assembled, headlessly** (ADR-236,
+  `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
+  project: one row per component with the output it places, its catalog
+  family and part number where a `lib.*` generator built it, the solved
+  pose and its volume, plus a roll-up and the hand-modelled outputs that
+  have no catalogue row. Behind it, `inspect scope="inventory"` joins the
+  ADR-049 `source_output` stamp to a new `catalog` stamp on library-value
+  outputs — written beside the definition, so the content digest cannot
+  move. No protocol change and no `shell/` diff. Qualified against a real
+  engine building a plate with two catalogued M3 bolts. **The first of the
+  four headless review calls**; render-from-angles and section view, each
+  with walk integration, remain open.
 - [x] **Stale shell mutations preserve accepted work** (ADR-204).
   Remove automatic revision adoption/replay after `STALE_PROGRAM_REVISION`.
   Script and parameter edits remain refused until explicit refresh; headless
@@ -1980,13 +2068,29 @@ What makes them experimental, and what would settle it:
   lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
   domain-doc convention. No engine change, no file tool for the agent.
   §7c row 10 closes.
+- [x] **Unchanged CLI sessions preserve their metadata** (ADR-247).
+  Refused and successful turns retain agent.json when session ID and model
+  match; changed identity persists even on failure. Restore attempt metadata
+  remains truthful; offline walk regressions preserve pre-existing user edits.
+- [x] **A domain note lands the way a decision does** (ADR-245). The
+  `docs/<subject>.md` convention was documented and unreachable — the
+  agent has no file tool and the instruction told it to ask its caller,
+  and a headless walk has no caller. A closing `NOTE <subject>: <text>`
+  line now appends a dated bullet to `docs/<subject>.md`, the notes are
+  pasted back into the next turn beside the three documents, and the
+  design instruction asks for `docs/actuators.md` and `docs/sensors.md`
+  from any mechanism with actuators or sensors. `inventory.md` and
+  `clearance.md` are the CLI's generated reports and are refused as
+  subjects. CLI suite 197 passed, no skips.
 - [x] **Compare and record, in a repository the project owns** (ADR-194).
   A `PROGRESS.md` number an earlier row carried is written with its
   change against that row (delta, digest, value), so the comparison is
-  one recorded row; the project root is `git init`ed on the first visit
-  with a CLI-written `.gitignore`, and every accepted run is one commit
-  whose message is the row's words. Measured on the §7b toy's scratch
-  copy; pinned by `cli/tests/test_project_docs.py`. §7c row 9 closes.
+  one recorded row. Outside another work tree, a fresh root is initialized
+  with default ignore rules only if absent; existing root repositories keep
+  their rules. Accepted runs attempt to commit all working changes with the
+  row's words as the message. Nested projects without their own `.git` get
+  rows but no automatic commits, leaving the parent index untouched. Measured
+  on the §7b toy's scratch copy; pinned by `cli/tests/test_project_docs.py`. §7c row 9 closes.
 - [x] **The `INSPECTION_FAILED` frame is the one tool-failure envelope**
   (ADR-195). `complete_inspection`'s refusal is built by `tool_failure`,
   validated by a test and pinned by an `inspect.failure` golden, so an

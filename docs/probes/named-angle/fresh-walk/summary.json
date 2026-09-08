@@ -1,0 +1,225 @@
+{
+  "revision": "6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089",
+  "digest": "0c74e228cc723dea636a707cbbc5debcae53604d7ee68a4eb9268346fe1e0d68",
+  "objects": {
+    "base": {
+      "source": "plate",
+      "placement": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": [
+        91,
+        157,
+        205
+      ],
+      "bounds_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          60.0,
+          60.0,
+          6.0
+        ]
+      ]
+    },
+    "swing": {
+      "source": "arm",
+      "placement": [
+        1.0,
+        0.0,
+        0.0,
+        12.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": [
+        230,
+        151,
+        76
+      ],
+      "bounds_mm": [
+        [
+          12.0,
+          0.0,
+          6.0
+        ],
+        [
+          92.0,
+          8.0,
+          14.0
+        ]
+      ]
+    }
+  },
+  "triangles": 24,
+  "snapshot_bytes": 2602,
+  "approximation": "Opaque standard tessellation, initial solved pose; 512px pixel-center depth, flat lighting, no transparency, edges, dimensions or subpixel guarantees. Shell-only visibility is not carried by the protocol. Placed source copies are excluded; all other published triangle geometry is shown.",
+  "limits": {
+    "buffer_bytes": 33554432,
+    "triangles": 100000,
+    "vertices_per_source": 300000,
+    "placed_vertices": 600000,
+    "pixel_visits_per_view": 20000000,
+    "image_size": 512
+  },
+  "acquisition_seconds": 0.7026624589925632,
+  "views": {
+    "front": {
+      "projection_bounds_mm": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          92.0,
+          14.0
+        ]
+      ],
+      "pixel_visits": 101756,
+      "covered_pixels": 23678,
+      "basis": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          -1,
+          0
+        ]
+      ],
+      "path": "review/render/6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089/front.svg"
+    },
+    "top": {
+      "projection_bounds_mm": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          92.0,
+          60.0
+        ]
+      ],
+      "pixel_visits": 411044,
+      "covered_pixels": 91348,
+      "basis": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "path": "review/render/6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089/top.svg"
+    },
+    "right": {
+      "projection_bounds_mm": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          60.0,
+          14.0
+        ]
+      ],
+      "pixel_visits": 99540,
+      "covered_pixels": 23700,
+      "basis": [
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "path": "review/render/6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089/right.svg"
+    },
+    "iso": {
+      "projection_bounds_mm": [
+        [
+          0.0,
+          -32.65986323710904
+        ],
+        [
+          84.85281374238569,
+          29.39387691339814
+        ]
+      ],
+      "pixel_visits": 1004750,
+      "covered_pixels": 75694,
+      "basis": [
+        [
+          0.7071067811865475,
+          0.7071067811865475,
+          0
+        ],
+        [
+          -0.4082482904638631,
+          0.4082482904638631,
+          0.8164965809277261
+        ],
+        [
+          0.5773502691896258,
+          -0.5773502691896258,
+          0.5773502691896258
+        ]
+      ],
+      "path": "review/render/6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089/iso.svg"
+    }
+  },
+  "render_seconds": 0.5262258749571629
+}

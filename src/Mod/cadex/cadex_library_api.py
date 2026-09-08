@@ -32,6 +32,7 @@ the sandboxed worker and the stubbed test suite.
 
 from __future__ import annotations
 
+import json
 import math
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
@@ -44,8 +45,48 @@ __all__ = [
     "LibraryPart",
     "LibraryAPI",
     "create_library_api",
+    "library_catalog_identity",
     "library_listing",
 ]
+
+
+#: ``{canonical definition JSON: {"family", "part_number"}}`` for every body a
+#: generator handed back during THIS run (ADR-236).
+#:
+#: A ``LibraryPart`` knows its catalog identity and its ``.body`` is an
+#: ordinary part value, so the identity died the moment a script wrote
+#: ``result = {"m3": lib.bolt("M3", 12).body}`` — the report carried a solid
+#: and nothing said which catalogue row it came off. Recording it here rather
+#: than in the value's ``properties`` is deliberate and is the whole reason
+#: this is a side table: the properties feed ``_canonical_json(definition)``,
+#: which feeds the content digest, so a catalog key inside them would move
+#: every existing ``lib.*`` project's digest and lock it out — the class of
+#: change ADR-064 had to force a re-accept for. The definition is instead the
+#: *join key*, exactly as
+#: ``artifact_by_definition`` already joins a component source to its output.
+_CATALOG_IDENTITY: dict[str, dict[str, str]] = {}
+
+
+def _definition_key(body: Any) -> str:
+    payload = body.to_payload() if hasattr(body, "to_payload") else None
+    if payload is None:
+        return ""
+    try:
+        return json.dumps(
+            payload,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError):
+        return ""
+
+
+def library_catalog_identity() -> dict[str, dict[str, str]]:
+    """Catalog identity by canonical definition, for the run just executed."""
+
+    return {key: dict(value) for key, value in _CATALOG_IDENTITY.items()}
 
 
 class LibraryError(ValueError):
@@ -73,6 +114,12 @@ class LibraryPart:
         object.__setattr__(self, "part_number", part_number)
         object.__setattr__(self, "body", body)
         object.__setattr__(self, "spec", MappingProxyType(dict(spec)))
+        key = _definition_key(body)
+        if key:
+            _CATALOG_IDENTITY[key] = {
+                "family": str(family),
+                "part_number": str(part_number),
+            }
 
     def __setattr__(self, _name: str, _value: Any) -> None:
         raise TypeError("A library part is immutable; build another instead.")
@@ -1320,6 +1367,9 @@ def create_library_api(part_api: Any, assembly_api: Any = None) -> LibraryAPI:
         getattr(assembly_api, "actuator", None)
     ):
         raise RuntimeError("create_library_api got a non-assembly assembly_api.")
+    # One staging per run, so the side table is emptied here rather than
+    # carried across scripts by a module that outlives one of them.
+    _CATALOG_IDENTITY.clear()
     return LibraryAPI(part_api, assembly_api)
 
 

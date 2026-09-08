@@ -28,9 +28,11 @@ from cadex_cli.project_docs import (
     PROJECT_DOC_NAMES,
     append_progress_row,
     decision_lines,
+    note_lines,
     progress_numbers,
     read_project_docs,
     record_decisions,
+    record_notes,
     scaffold_project_docs,
 )
 from cadex_cli.report import EXIT_OK, RunReport
@@ -57,6 +59,18 @@ def test_scaffold_creates_the_three_and_never_overwrites(tmp_path) -> None:
     architecture = (root / ARCHITECTURE_NAME).read_text()
     assert "# actuator — Architecture" in architecture
     assert "docs/gear-ratios.md" in architecture
+    # The convention reaches both a fresh project's docs and its design agent.
+    for guidance in (architecture, CLI_OVERLAY):
+        normalized = " ".join(guidance.split())
+        for fact in (
+            "publish each catalog body", "separate assembly components",
+            "`assembly.component`", "separate from printed solids",
+            "Transformed catalog bodies may also be clearance cutters",
+            "a cutter does not imply another purchased part",
+            "Review the script alongside placed inventory",
+            "cannot identify hardware fused into other solids",
+        ):
+            assert fact in normalized
     decisions = (root / DECISIONS_NAME).read_text()
     assert "## ADR-001 — Project scaffolded" in decisions
     assert PROGRESS_HEADER in (root / PROGRESS_NAME).read_text()
@@ -92,6 +106,15 @@ def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path)
     walk_doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
     assert "`ARCHITECTURE.md` scaffold carries a `## Training` section" in walk_doc
     assert "Cold runs only" in walk_doc
+    assert "shared mode artifacts table in `docs/CLI.md`" in architecture
+    assert "**Shared mode artifacts**" in walk_doc
+    assert "review/section/<accepted-revision>/XZ-3.125/" in architecture
+    assert "Empty cuts" in architecture and "unsupported cuts" in architecture
+    for path in ("runs/<name>/train/", "runs/<name>/rollout/",
+                 "runs/<name>/review.json", "assets/<name>.cxpolicy", "PROGRESS.md",
+                 "review/section/<accepted-revision>/XZ-3.125/"):
+        assert path in walk_doc.split("**Shared mode artifacts**", 1)[1].split(
+            "A leg that fails", 1)[0]
 
 
 def test_the_scaffold_states_the_gui_mode_and_the_walk_doc_agrees(tmp_path) -> None:
@@ -212,6 +235,82 @@ def test_decision_lines_are_found_and_land_as_numbered_entries(tmp_path) -> None
     assert "## ADR-003 — keep the bore at 6 mm (" in decisions
     assert record_decisions(tmp_path, "nothing decided") == []
     assert record_decisions(tmp_path, "DECISION: one more") == ["ADR-004"]
+
+
+def test_note_lines_land_one_file_per_subject_and_come_back_next_visit(tmp_path) -> None:
+    """A design turn's longer notes reach `docs/` (ADR-245).
+
+    The convention was documented and unreachable: the agent has no file
+    tool, and a headless walk has no caller to ask. A closing `NOTE
+    <subject>:` line lands the same way a `DECISION:` line does.
+    """
+
+    text = (
+        "Built the leg.\n"
+        "- NOTE actuators: MG90S at 1.8 kg-cm stall; damping = stall / no-load.\n"
+        "note Gear Ratios: 4:1, in two stages.\n"
+        "NOTE clearance: the review's own report is not a note subject.\n"
+        "NOTE: no subject here.\n"
+        "NOTE sensors:\n"
+        "Nothing to note.\n"
+    )
+    assert note_lines(text) == [
+        ("actuators", "MG90S at 1.8 kg-cm stall; damping = stall / no-load."),
+        ("gear-ratios", "4:1, in two stages."),
+    ]
+
+    assert record_notes(tmp_path, text) == ["docs/actuators.md", "docs/gear-ratios.md"]
+    actuators = (tmp_path / "docs" / "actuators.md").read_text()
+    assert actuators.startswith("# actuators\n")
+    assert "- (" in actuators and "MG90S at 1.8 kg-cm stall" in actuators
+    assert not (tmp_path / "docs" / "clearance.md").exists()
+
+    # A second note on the same subject appends; the first survives.
+    assert record_notes(tmp_path, "NOTE actuators: the knee stalls at 40 deg.") == [
+        "docs/actuators.md"
+    ]
+    actuators = (tmp_path / "docs" / "actuators.md").read_text()
+    assert "MG90S at 1.8 kg-cm stall" in actuators
+    assert "the knee stalls at 40 deg." in actuators
+    assert record_notes(tmp_path, "nothing noted") == []
+
+    # ...and the next turn reads them back beside the three documents,
+    # while the CLI's own generated reports stay out of the prompt.
+    scaffold_project_docs(tmp_path)
+    (tmp_path / "docs" / "clearance.md").write_text("| pair | mm |\n", encoding="utf-8")
+    prompt_docs = read_project_docs(tmp_path)
+    assert "--- docs/actuators.md ---" in prompt_docs
+    assert "--- docs/gear-ratios.md ---" in prompt_docs
+    assert "--- docs/clearance.md ---" not in prompt_docs
+    assert "| pair | mm |" not in prompt_docs
+    assert "the knee stalls at 40 deg." in prompt_docs
+
+
+def test_the_scaffold_and_the_overlay_ask_for_the_notes_the_walk_exercises(tmp_path) -> None:
+    """The convention is asked for, not only described (ADR-245).
+
+    `docs/CLI.md`, the `ARCHITECTURE.md` scaffold and the design
+    instruction are one ticket: a mechanism with actuators or sensors
+    leaves those two notes behind, and the generated reports are not
+    note subjects.
+    """
+
+    assert "NOTE actuators:" in CLI_OVERLAY
+    assert "NOTE sensors:" in CLI_OVERLAY
+    assert "docs/inventory.md and docs/clearance.md are the CLI's own reports" in (
+        " ".join(CLI_OVERLAY.split())
+    )
+
+    scaffold_project_docs(tmp_path)
+    architecture = " ".join((tmp_path / ARCHITECTURE_NAME).read_text().split())
+    assert "NOTE <subject>: <text>" in architecture
+    assert "actuators.md" in architecture and "sensors.md" in architecture
+
+    walk_doc = " ".join(
+        (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text().split()
+    )
+    assert "a closing line `NOTE <subject>: <text>` becomes a dated bullet" in walk_doc
+    assert "a turn's closing `NOTE <subject>:` lines, or a person" in walk_doc
 
 
 def test_the_overlay_names_the_convention_and_the_prompt_carries_the_docs() -> None:
@@ -376,6 +475,40 @@ def _git(root: Path, *argv: str) -> str:
     return subprocess.run(
         ["git", "-C", str(root), *argv], capture_output=True, text=True, check=True
     ).stdout.strip()
+
+
+@pytest.mark.parametrize("location", ["inside", "outside", "relative", "home"])
+def test_walk_records_portable_output_in_row_and_commit(tmp_path, monkeypatch, location) -> None:
+    from cadex_cli.__main__ import _commit_run, _record_progress
+    from cadex_cli.project_docs import ensure_project_repo
+
+    root = tmp_path / "project"
+    scaffold_project_docs(root)
+    ensure_project_repo(root)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    out = {
+        "inside": str(root / "runs" / "repair-2"),
+        "outside": str(tmp_path / "external" / "repair-2"),
+        "relative": "project/runs/repair-2",
+        "home": "~/project/runs/repair-2",
+    }[location]
+    label = "repair-2" if location == "outside" else "runs/repair-2"
+    args = argparse.Namespace(iterations=1, envs=4, out=out)
+    report = RunReport(
+        project_root=str(root), accepted_revision="r2", digest="a" * 64,
+        walk={"review": {"clearance": {"available": False}}},
+    )
+    _record_progress("walk", args, report)
+    _commit_run("walk", args, report)
+
+    progress = _git(root, "show", "HEAD:PROGRESS.md")
+    subject = _git(root, "log", "-1", "--format=%s")
+    what = f"walk 1 it × 4 envs → {label}"
+    assert what in progress
+    assert subject == f"cadex {what}"
+    assert str(tmp_path) not in progress + subject
+    assert _git(root, "status", "--porcelain") == ""
 
 
 def test_the_project_owns_a_repository_and_a_run_is_a_commit(tmp_path) -> None:

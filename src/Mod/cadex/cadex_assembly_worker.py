@@ -2956,11 +2956,38 @@ def _boxes_clear(first: Any, second: Any, gap: float) -> bool:
     )
 
 
+def _clearance_prepare(
+    components: Mapping[str, Any], pairs: list[tuple[str, str]]
+) -> dict[str, Any]:
+    """One re-placeable copy per component a clearance pair names.
+
+    The swept check has the same wrong-frame defect ADR-241 fixed for the
+    static one — ``App::Link.Shape`` replaces the linked object's placement
+    instead of composing it, so a ``lib.*`` part, whose transform rides on
+    the shape, is measured back where it was authored. Composing a copy is
+    the fix; composing it *per frame* would be a copy per pair per frame over
+    thousands of frames, so the copy is made once here and only its placement
+    moves in the loop (``TopLoc_Location``, not geometry).
+
+    A component whose source has no readable shape of its own — a container,
+    whose link already composes the group's placements — has no entry, and
+    the frame reads it live.
+    """
+
+    prepared: dict[str, Any] = {}
+    for name in {name for pair in pairs for name in pair}:
+        local = _linked_source_shape(components[name])
+        if local is not None:
+            prepared[name] = (local.copy(), local.Placement.copy())
+    return prepared
+
+
 def _clearance_at_frame(
     components: Mapping[str, Any],
     pairs: list[tuple[str, str]],
     gap: float,
     budget: dict[str, int],
+    prepared: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """The pairs closer than ``gap`` in the pose the components are in now.
 
@@ -2968,12 +2995,29 @@ def _clearance_at_frame(
     live, because that is the only moment the trace exists as geometry rather
     than as numbers. A pose that fails is reported and the sweep goes on: the
     caller wants the *worst* approach over the whole travel, not the first.
+
+    ``prepared`` comes from ``_clearance_prepare``; each entry is re-placed
+    from the component's live placement so the pair is measured where the
+    assembly puts it (ADR-242).
     """
 
+    posed: dict[str, Any] = {}
+    for name, entry in (prepared or {}).items():
+        shape, local = entry
+        shape.Placement = components[name].Placement.multiply(local)
+        posed[name] = shape
     breaches: list[dict[str, Any]] = []
     for first_name, second_name in pairs:
-        first = components[first_name].Shape
-        second = components[second_name].Shape
+        first = (
+            posed[first_name]
+            if first_name in posed
+            else components[first_name].Shape
+        )
+        second = (
+            posed[second_name]
+            if second_name in posed
+            else components[second_name].Shape
+        )
         if _boxes_clear(first.BoundBox, second.BoundBox, gap):
             continue
         if budget["spent"] >= budget["cap"]:
@@ -3136,6 +3180,7 @@ def _execute_native_simulation(
         ]
         clearance_gap = float(properties.get("clearance_mm") or 0.0)
         clearance_budget = {"spent": 0, "cap": _CLEARANCE_QUERY_CAP, "capped": False}
+        clearance_shapes = _clearance_prepare(components, clearance_pairs)
         worst: dict[tuple[str, str], dict[str, Any]] = {}
         for frame_index in range(frame_count):
             update_result = assembly.updateForFrame(frame_index)
@@ -3172,7 +3217,11 @@ def _execute_native_simulation(
             )
             if clearance_pairs:
                 for breach in _clearance_at_frame(
-                    components, clearance_pairs, clearance_gap, clearance_budget
+                    components,
+                    clearance_pairs,
+                    clearance_gap,
+                    clearance_budget,
+                    clearance_shapes,
                 ):
                     key = (breach["components"][0], breach["components"][1])
                     if (
@@ -5311,6 +5360,83 @@ def _component_local_shape(component: Any, *, context: str) -> Any:
     return shape
 
 
+def _component_world_shape(component: Any) -> Any:
+    """The component's geometry in assembly coordinates, both frames applied.
+
+    ``App::Link.Shape`` *replaces* the linked object's placement with the
+    link's own rather than composing the two, so a body that carries its
+    transform on the shape reads back at the frame it was authored in. Every
+    ``lib.*`` part is exactly that body: ``lib._place`` moves a canonical
+    origin-and-+Z part with one ``part.transform``, and ``Shape.translate``/
+    ``rotate`` write a placement rather than moving the geometry. Reading the
+    link alone measured two catalog servos 60 mm apart as fully intersecting.
+
+    A source that is a container (an authenticated hierarchy) has no readable
+    ``Shape`` of its own, and the link already composes the group's
+    placements, so it is read as it stands.
+    """
+
+    local = _linked_source_shape(component)
+    if local is None:
+        return component.Shape
+    world = local.copy()
+    world.Placement = component.Placement.multiply(local.Placement)
+    return world
+
+
+def _linked_source_shape(component: Any) -> Any | None:
+    """The linked source's own shape, or ``None`` when there is none to read.
+
+    The half of the composition above that the swept check needs on its own:
+    it keeps a copy of this shape across frames rather than making one per
+    frame.
+    """
+
+    linked = getattr(component, "LinkedObject", None)
+    local = getattr(linked, "Shape", None) if linked is not None else None
+    if local is None or local.isNull():
+        return None
+    return local
+
+
+def _measure_clearance(
+    components: Mapping[str, Any], *, solved: bool = True
+) -> list[dict[str, Any]]:
+    """All pairs at the initial solved pose; failures remain unmeasured.
+
+    Distance includes disjoint boxes. Only common-volume work is pruned by
+    box separation. These derived facts live beside the hashed definition.
+    """
+    names = list(components)
+    rows = []
+    for index, first in enumerate(names):
+        for second in names[index + 1:]:
+            row = {"first": first, "second": second,
+                   "distance_mm": None, "common_volume_mm3": None}
+            try:
+                if not solved:
+                    raise ValueError("Assembly solver did not produce a solved pose")
+                a = _component_world_shape(components[first])
+                b = _component_world_shape(components[second])
+                if a.isNull() or b.isNull():
+                    raise ValueError("Component has no measurable shape")
+                distance = float(a.distToShape(b)[0])
+                if not math.isfinite(distance) or distance < 0:
+                    raise ValueError("Invalid minimum distance")
+                row["distance_mm"] = distance
+                # Surface-only geometry does not establish solid intersection.
+                if not a.Solids or not b.Solids:
+                    raise ValueError("Common volume requires solid components")
+                volume = float(a.common(b).Volume) if a.BoundBox.intersect(b.BoundBox) else 0.0
+                if not math.isfinite(volume) or volume < 0:
+                    raise ValueError("Invalid common volume")
+                row["common_volume_mm3"] = volume
+            except Exception as exc:
+                row["error"] = str(exc)
+            rows.append(row)
+    return rows
+
+
 def validate_and_solve_assembly(
     document: Any,
     raw_result: Mapping[str, Any],
@@ -5774,6 +5900,7 @@ def validate_and_solve_assembly(
             details={"stage": "native_solver", **diagnostics},
         )
 
+    clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
     if simulation_contract is not None:
@@ -6027,6 +6154,7 @@ def validate_and_solve_assembly(
         )
     if exploded_view_summaries:
         diagnostics["exploded_views"] = exploded_view_summaries
+    by_name[assembly_output]["clearance"] = clearance
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],

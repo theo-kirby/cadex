@@ -9,8 +9,6 @@ import json
 from pathlib import Path
 import struct
 
-import hashlib
-
 import pytest
 
 import cadex_tessellation as tess
@@ -293,15 +291,14 @@ def test_the_worker_bundle_is_built_once_and_content_addressed() -> None:
     assert first == second
     # Content-addressed, so an engine rebuild cannot be served a stale one.
     assert first.name.startswith("project-")
-    body = (module_root / "cadex_tessellation.py").read_bytes()
-    assert hashlib.sha256(body).hexdigest()[:8] not in first.name or True
-
-    # Hardlinked where the filesystem allows it: same inode, no second copy.
     source = module_root / "cadex_tessellation.py"
     staged = first / "cadex_tessellation.py"
-    assert staged.stat().st_size == source.stat().st_size
-    # And the mtime survives, which is what makes __pycache__ validate.
-    assert int(staged.stat().st_mtime) == int(source.stat().st_mtime)
+    assert staged.read_bytes() == source.read_bytes()
+    assert staged.stat().st_ino != source.stat().st_ino
+    before = staged.stat()
+    shared_worker_bundle(module_root, "project")
+    after = staged.stat()
+    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
 
 
 def test_a_bundle_gutted_by_a_temp_sweep_is_rebuilt_rather_than_used() -> None:
@@ -328,3 +325,90 @@ def test_a_bundle_gutted_by_a_temp_sweep_is_rebuilt_rather_than_used() -> None:
     assert rebuilt == bundle and rebuilt_entry == entry
     assert (rebuilt / entry).is_file()
     assert (rebuilt / "cadex_tessellation.py").is_file()
+
+
+@pytest.fixture
+def bundle_sources(tmp_path, monkeypatch):
+    import CadexScriptedRuntime as runtime
+
+    monkeypatch.setattr(runtime.tempfile, "gettempdir", lambda: str(tmp_path))
+    roots = [tmp_path / "mutable", tmp_path / "original"]
+    entry, files = runtime._bundle_members("project")
+    for root in roots:
+        root.mkdir()
+        for name in (entry, *files):
+            (root / name).write_bytes(b"# version A\n")
+    return runtime, roots, entry
+
+
+def test_bundle_snapshot_survives_in_place_source_mutation(bundle_sources):
+    runtime, (mutable, original), entry = bundle_sources
+    bundle, _ = runtime.shared_worker_bundle(mutable, "project")
+    (mutable / entry).write_bytes(b"# version B\n")
+    reused, _ = runtime.shared_worker_bundle(original, "project")
+    assert reused == bundle
+    assert (reused / entry).read_bytes() == b"# version A\n"
+    changed, _ = runtime.shared_worker_bundle(mutable, "project")
+    assert changed != bundle
+    assert (changed / entry).read_bytes() == b"# version B\n"
+
+
+@pytest.mark.parametrize("damage", ["bytes", "hardlink", "symlink"])
+def test_bundle_replaces_corruption_and_legacy_links(bundle_sources, damage):
+    import os
+
+    runtime, (source, _), entry = bundle_sources
+    bundle, _ = runtime.shared_worker_bundle(source, "project")
+    member = bundle / entry
+    member.unlink()
+    if damage == "hardlink":
+        os.link(source / entry, member)
+    elif damage == "symlink":
+        member.symlink_to(source / entry)
+    else:
+        member.write_bytes(b"# version B\n")
+    (bundle / "__pycache__").mkdir()
+    (bundle / "__pycache__" / "stale.pyc").write_bytes(b"stale")
+    repaired, _ = runtime.shared_worker_bundle(source, "project")
+    assert repaired == bundle
+    assert member.read_bytes() == b"# version A\n"
+    assert not member.is_symlink() and member.stat().st_nlink == 1
+    assert not (bundle / "__pycache__").exists()
+
+
+def test_bundle_publishes_the_bytes_it_hashed(bundle_sources, monkeypatch):
+    runtime, (source, original), entry = bundle_sources
+    read_bytes = Path.read_bytes
+    last_member = sorted({entry, *runtime._bundle_members("project")[1]})[-1]
+
+    def mutate_after_reading(path):
+        data = read_bytes(path)
+        if path == source / last_member:
+            (source / entry).write_bytes(b"# version B\n")
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", mutate_after_reading)
+    bundle, _ = runtime.shared_worker_bundle(source, "project")
+    assert (source / entry).read_bytes() == b"# version B\n"
+    assert (bundle / entry).read_bytes() == b"# version A\n"
+    assert runtime.shared_worker_bundle(original, "project")[0] == bundle
+
+
+@pytest.mark.parametrize("valid", [False, True])
+def test_bundle_publication_race_validates_winner(bundle_sources, monkeypatch, valid):
+    runtime, (source, _), entry = bundle_sources
+    replace = runtime.os.replace
+
+    def competitor(pending, bundle):
+        replace(pending, bundle)
+        if not valid:
+            (bundle / entry).write_bytes(b"# version B\n")
+        raise OSError("simulated lost publication race")
+
+    monkeypatch.setattr(runtime.os, "replace", competitor)
+    if valid:
+        bundle, _ = runtime.shared_worker_bundle(source, "project")
+        assert (bundle / entry).read_bytes() == b"# version A\n"
+    else:
+        with pytest.raises(OSError, match="publication race"):
+            runtime.shared_worker_bundle(source, "project")

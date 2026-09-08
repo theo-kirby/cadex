@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
+import subprocess
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -225,3 +228,156 @@ def test_a_sweep_that_stays_clear_and_one_that_does_not() -> None:
         assert 5.0 < measured < 7.0, measured
     finally:
         _stop(client)
+
+
+# -- the frame the sweep measures a component in (ADR-242) ------------------
+
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+_FREECADCMD_CANDIDATES = (
+    REPO_ROOT / ".pixi" / "envs" / "default" / "bin" / "FreeCADCmd",
+    REPO_ROOT / "build" / "release" / "bin" / "FreeCADCmd",
+)
+_FRAME_BINARY = next(
+    (candidate for candidate in _FREECADCMD_CANDIDATES if candidate.is_file()), None
+)
+
+
+#: An arm whose transform rides on the *shape* -- which is every ``lib.*``
+#: part, because ``lib._place`` moves a canonical body with one
+#: ``part.transform`` and ``Shape.translate`` writes a placement instead of
+#: moving geometry -- swinging past a post authored in world coordinates.
+#: The arm's geometry stands 20..50 mm out along its own +X, so a quarter
+#: turn drives it straight through a post at y 36..44. Before ADR-242 the
+#: sweep read ``App::Link.Shape``, which *replaces* the linked placement
+#: with the link's own, so the arm was measured back at 0..30 mm and the
+#: collision was reported as 33 mm of clear air.
+_SWEPT_FRAME_DRIVER = r"""
+import json
+import sys
+from pathlib import Path
+
+import FreeCAD as App
+import Part
+
+cadex_root = Path(sys.argv[-1])
+sys.path.insert(0, str(cadex_root))
+import cadex_assembly_worker as worker
+
+doc = App.newDocument("SweptFrame")
+
+
+def link(name, shape, source_name):
+    source = doc.addObject("Part::Feature", source_name)
+    source.Shape = shape
+    obj = doc.addObject("App::Link", name)
+    obj.LinkedObject = source
+    return obj
+
+
+arm_shape = Part.makeBox(30, 6, 6, App.Vector(0, -3, 0))
+arm_shape.translate(App.Vector(20, 0, 0))
+swing = link("swing", arm_shape, "ArmSource")
+tower = link("tower", Part.makeBox(8, 8, 26, App.Vector(-4, 36, 0)), "PostSource")
+doc.recompute()
+
+pairs = [("swing", "tower")]
+components = {"swing": swing, "tower": tower}
+
+
+def sweep(gap, angles):
+    prepared = worker._clearance_prepare(components, pairs)
+    budget = {"spent": 0, "cap": 10 ** 6, "capped": False}
+    rows = []
+    for index, angle in enumerate(angles):
+        swing.Placement = App.Placement(
+            App.Vector(), App.Rotation(App.Vector(0, 0, 1), angle)
+        )
+        for breach in worker._clearance_at_frame(
+            components, pairs, gap, budget, prepared
+        ):
+            rows.append({"frame_index": index, "angle_deg": angle, **breach})
+    return rows
+
+
+print("SWEPT-FRAME " + json.dumps(
+    {
+        "rest_distance_mm": sweep(100.0, [0.0])[0]["distance_mm"],
+        "breaches": sweep(2.0, [5.0 * step for step in range(37)]),
+    },
+    sort_keys=True,
+))
+"""
+
+
+def _drive_swept_frame(tmp_path) -> dict:
+    driver = tmp_path / "swept_frame_driver.py"
+    driver.write_text(_SWEPT_FRAME_DRIVER, encoding="utf-8")
+    cadex_root = Path(__file__).resolve().parent.parent
+    completed = subprocess.run(
+        [
+            str(_FRAME_BINARY),
+            "-c",
+            (
+                "import sys; sys.argv = ['driver', "
+                f"{str(cadex_root)!r}]; "
+                f"exec(open({str(driver)!r}).read())"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=900,
+        env={**os.environ, "PYTHONHASHSEED": "0"},
+        check=False,
+    )
+    marker = next(
+        (
+            line
+            for line in completed.stdout.splitlines()
+            if line.startswith("SWEPT-FRAME ")
+        ),
+        None,
+    )
+    assert marker, (
+        f"swept driver produced no report; exit={completed.returncode}\n"
+        f"stdout:\n{completed.stdout[-6000:]}\nstderr:\n{completed.stderr[-6000:]}"
+    )
+    return json.loads(marker.removeprefix("SWEPT-FRAME "))
+
+
+@pytest.mark.skipif(
+    _FRAME_BINARY is None,
+    reason="No FreeCADCmd binary available to place a component.",
+)
+def test_a_shape_placed_component_is_swept_where_the_assembly_puts_it(
+    tmp_path,
+) -> None:
+    """A collision the sweep used to report as 33 mm of clear air.
+
+    ADR-241 fixed the static measurement and left this one measured, saying
+    a swept breach distance for a ``lib.*``-placed body was not to be
+    believed. On the pre-fix source this driver reports an empty breach list
+    and a 33.0 mm rest distance: the arm passes through the post and the
+    promise the script made is kept by measuring the wrong part.
+    """
+
+    report = _drive_swept_frame(tmp_path)
+
+    # The static pose, measured where the assembly puts the arm: the arm's
+    # near corner (20, 3) to the post's (4, 36) is sqrt(16^2 + 33^2), not
+    # the 33.0 mm the un-composed frame gave.
+    assert report["rest_distance_mm"] == pytest.approx(36.6742, abs=5e-4), report
+
+    breaches = report["breaches"]
+    assert breaches, "the arm sweeps through the post and nothing was reported"
+    assert {tuple(row["components"]) for row in breaches} == {("swing", "tower")}
+    # Contact runs across the quarter turn and is a real intersection, not a
+    # near miss: the arm reaches y = 50 and the post's near face is at 36.
+    assert min(row["distance_mm"] for row in breaches) == 0.0, breaches
+    angles = sorted(row["angle_deg"] for row in breaches)
+    assert 70.0 <= angles[0] <= 90.0, breaches
+    assert 90.0 <= angles[-1] <= 110.0, breaches
+    # ...and the frame index is the one the caller would name in the refusal.
+    first = min(breaches, key=lambda row: row["frame_index"])
+    assert first["frame_index"] == int(first["angle_deg"] / 5.0), breaches
+

@@ -319,6 +319,39 @@ def _stamp_source_output(
         item["source_output"] = str(source)
 
 
+def _stamp_catalog_identity(outputs: list[dict[str, Any]]) -> None:
+    """Name the catalog row a library-built output came off (ADR-236).
+
+    ``lib.bolt("M3", 12).body`` is an ordinary part solid by the time it is
+    returned, so an assembly of catalogued hardware published a list of
+    anonymous solids: nothing downstream could say "this is an M3x12 socket
+    cap" without re-deriving it from the geometry. ``_stamp_source_output``
+    solves the same class of problem for components, and this is its join on
+    the other side.
+
+    Resolved by canonical definition, the key ``artifact_by_definition``
+    already exists to serve, and written **beside** the definition rather
+    than inside it: ``compute_project_digest`` hashes ``definition`` only, so
+    a stamp here cannot move an existing project's digest.
+
+    Left absent rather than null on an output no generator produced, so the
+    key is a positive signal.
+    """
+
+    from cadex_library_api import library_catalog_identity
+
+    identity = library_catalog_identity()
+    if not identity:
+        return
+    for item in outputs:
+        definition = item.get("definition")
+        if not isinstance(definition, Mapping):
+            continue
+        found = identity.get(_canonical_json(dict(definition)))
+        if found is not None:
+            item["catalog"] = dict(found)
+
+
 def _stamp_measurement_subjects(
     outputs: list[dict[str, Any]],
     artifact_by_definition: Mapping[str, dict[str, Any]],
@@ -815,7 +848,10 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
 
         # Digest first, display second: display artifacts are opt-in derived
         # data and must never feed the content digest (Phase 5.1). The wiring
-        # registry is derived data on exactly the same footing (ADR-065).
+        # registry is derived data on exactly the same footing (ADR-065), and
+        # so is the catalog stamp (ADR-236) — which is why it is applied here,
+        # after every domain has appended, and reads nothing the digest hashes.
+        _stamp_catalog_identity(outputs)
         digest = compute_project_digest(root, outputs)
         _attach_routes(outputs)
         display_request = validate_display_request(request.get("display"))

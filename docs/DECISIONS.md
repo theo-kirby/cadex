@@ -4334,6 +4334,10 @@ here so the next person does not re-diagnose it.
 
 ## ADR-061 — Cadex has a headless CLI (2026-07-31)
 
+**2026-09-08 correction:** Remove the payload-coherence guarantee from CLI §6
+and its resolver comment: schema agreement permits absent worker modules
+(`tiny-haven-0347`). Runtime unchanged.
+
 **Decision.** A new top-level `cli/` and a `./cadex` shim: a **third client
 of the cadexd protocol**, peer to the Blender shell, with no Blender, no
 display and no shell code. Four subcommands over one project —
@@ -7173,6 +7177,23 @@ ADR-078, ADR-082).
 
 ## ADR-084 — Training happens elsewhere, and a policy is a file we can check (2026-07-31)
 
+**Bounded maintenance bet (2026-09-08):** Remove principle 3's remaining
+GPU-duration premise: `training/SETUP.md` supports CPU toy training, and
+`docs/probes/cold-revisit/README.md` records a verified policy from that path.
+Policy weights are retained assets because training produces them outside the
+script rebuild, regardless of hardware or duration. Limit this correction to
+that premise; preserve asset identity, verification and deterministic rollout.
+Verify the prose against those sources and the trainer's backend metadata,
+with diff and graph checks; no runtime change or new walk is proposed.
+
+**Maintenance (2026-09-08):** VISION principle 5 now explains offboard
+training through the dependency/payload boundary and points to
+`training/SETUP.md` for supported toy-scale local CPU and GPU paths. Removed
+the GPU-only rationale and obsolete dispatch-history digression; agent-driven
+training, policy ingestion/verification and human judgement remain unchanged.
+This is a prose correction supported by the recorded CPU lifecycle walk
+(`docs/probes/cold-revisit/README.md`), with no runtime or packaging change.
+
 **Status:** accepted. **Branch:** `MJC` only — this ADR describes work that
 does not exist on `main`, and `docs/DECISIONS.md` is append-only on both
 branches, so conflicts here resolve in date order (ADR-078).
@@ -7817,6 +7838,12 @@ suite at **1105 passed, 12 skipped**, unmoved.
   out of `CLAUDE.md`. A task, not a dependency — ADR-084's `pixi.toml`
   prohibition is about `CARRIED_PYPI_PACKAGES` staying one entry long, and a
   task adds nothing to solve.
+
+**2026-09-08 guidance follow-up.** Removed the stale `(1757 tests)` from
+AGENTS.md's `test-engine` comment: the task targets the full pytest directory,
+and ADR-244 already records a larger suite. Retained the command and no-build
+guidance without another drifting count. Documentation-only verification:
+`git diff --check` and hypergraph export/check; no product build or suite run.
 
 ---
 
@@ -14100,6 +14127,20 @@ moves.
   inherited-tree reduction (`open` — Phase 8 and Phase 13b).
 - Verified: `hypergraph check` exits 0 with no violations and no warnings.
 
+**Orientation maintenance (2026-09-08).** Remove the obsolete live frontier
+and node-count snapshots from `.hypergraph/AGENTS.md`; direct arriving agents
+to generated `STATE.md` and its cited state nodes. The adoption snapshot above
+remains historical. This prose correction preserves the four protocol rules;
+verification is diff review and graph export/check, with no runtime gate rerun
+or new ROADMAP feature checkbox.
+
+**Version guidance maintenance (2026-09-08).** Remove onboarding's stale
+0.0.7 assertion; `.hypergraph/config.yml` supplies the project-copy version,
+while `hypergraph --version` reports the installed CLI. Both currently report
+0.0.13. Keep the separate CLI and committed-copy upgrade instructions.
+Verification is diff review and graph export/check; no runtime change or
+ROADMAP feature checkbox.
+
 ## ADR-138 — A part travels between projects as one file (2026-08-09)
 
 **Decision.** A part built in one project can be used in another. It travels
@@ -18346,6 +18387,11 @@ refuses a project that stores no script.
 - A digest-moving change no longer ships with a manual recovery. It still
   moves digests, and the box says so rather than hiding it.
 
+**Documentation correction (2026-09-08).** Removed VISION's obsolete claim
+that solver-change recovery is missing; its resolved question now describes
+this shipped action, verified against the backend, chat panel and existing
+lockout regression. Runtime unchanged; no runtime gate rerun for this prose fix.
+
 ## ADR-188 — Save-As carries a trained policy with its provenance (2026-09-06)
 
 **Status:** accepted. **Zone:** `shell/scripts/startup/mesh_agent/` and
@@ -18879,6 +18925,16 @@ is somebody's repository: no `init`, no commit, one note saying so. A
 machine without `git` on `PATH` gets the same note and no history. Neither
 fails a run: history is the record of a success, not a condition of it.
 
+**2026-09-08 documentation correction.** The three-case first-visit
+qualification (`fresh-flint-1505`) distinguishes an existing project-root
+repository (commit all working changes, preserve ignore rules) from a nested
+project without its own `.git` (no initialization or commit, parent index
+untouched). Defaults are written only during initialization when `.gitignore`
+is absent. CLI guidance, project scaffolds and the lifecycle example now state
+these ownership conditions and use `committed <sha>.` as confirmation, rather
+than promising a commit for every row. This corrects the prose above; Git
+behavior is unchanged.
+
 ### 3. Not taken
 
 A `--parent` flag naming the run to compare against: the last row that
@@ -19263,6 +19319,18 @@ project-relative artifacts in both, cold runs only when remote — and a
 `train --remote` row in `PROGRESS.md` ends in `(remote)`;
 `cli/tests/test_project_docs.py` pins the section against `docs/CLI.md`'s
 remote paragraph so the pair stays together.
+
+**Artifact-parity audit (2026-09-08).** Added the missing whole-walk
+comparison: local and `--remote --allow-cpu` walks on the same toy,
+with real CPU training, engine witness verification and rollout. Only the
+remote dispatcher is a local stand-in using the real script's argv contract;
+no remote dispatch occurs. The test compares output paths, policy storage,
+committed review and progress rows, including the `(remote)` marker.
+`docs/CLI.md` now gives one shared mode-artifact table, referenced by the
+project scaffold and pinned by its test. Together with the two clean prompt
+walks and ADR-201's GUI documentation (corrected by ADR-204), this meets
+*Three modes, one shape* under the charter's documented-only GUI and remote
+limits. It does not claim remote transport or concurrent GUI use was tested.
 
 ## ADR-201 — The GUI-attached walk is the same commands beside the open file, documented from the client code (2026-09-06)
 
@@ -20600,3 +20668,565 @@ edits and remains in the uncommitted proposal. No engine source is changed
 by this commit. No full build, full engine suite, stage, packaged gate or
 shell gate was run for this failed qualification; no published behavior
 is claimed.
+
+## ADR-236 — Assembly inventory: catalog identity, and the scope that joins it (2026-09-07)
+
+[Cadex-new] The first of the charter's headless review calls: **list the
+parts of an assembly with catalog ids**, one CLI call, output landing in the
+project directory. The agent's review step could measure a shape but could
+not say *what* it was.
+
+**Two halves, and neither works alone.**
+
+The **stamp**. `lib.bolt("M3", 12)` returns a `LibraryPart` that knows its
+family and part number, but `.body` is an ordinary part solid, so a script
+returning it published an anonymous solid and the identity died at the
+result contract. `cadex_library_api` now records `{canonical definition:
+{family, part_number}}` for every body a generator hands back during a run,
+and `cadex_project_worker._stamp_catalog_identity` writes it onto the
+matching output as a top-level `catalog` key.
+
+**Beside the definition, never inside it.** Putting the identity in the
+value's `properties` was the obvious move and is the wrong one:
+`compute_project_digest` hashes `definition`, so a catalog key there would
+move every existing `lib.*` project's digest and lock it out — the class of change ADR-064 had to force a re-accept for. The
+definition is instead the *join key*, exactly as `artifact_by_definition`
+already joins a component source to its output, and a test asserts the
+canonical definition is byte-identical before and after the stamp.
+
+The **join**. `inspect scope="inventory"` walks the pinned accepted
+attempt's `result.json`: one row per `component_link` output, carrying the
+`source_output` whose geometry it places (the ADR-049 stamp), that output's
+`catalog` where there is one, the solved placement, and a six-key
+`source_facts` block. Plus a `catalog_counts` roll-up and the
+`uncatalogued_sources` a hand-modelled output lands in. Nothing is computed
+and no artifact is read — same footing as `scope="output"` and
+`scope="wiring"`. `target` is optional because the assembly worker refuses a
+second assembly; given, it must name the one there is.
+
+**No protocol change.** `inspect` already takes `{"scope": str}` and already
+answers a generic `value`, so `OP_ARG_SPECS` and `OP_RESPONSE_SPECS` are
+untouched, the ADR-027 goldens are untouched, and `shell/` gets no diff.
+`docs/INTEGRATION.md`'s `inspect` row documents the new scope anyway, since
+that row is what a client reads. The shell's `inspect_model` tool does not
+offer it, on the precedent `wiring` set: a scope a canvas has no picture for
+is not worth eight files of merge conflict.
+
+**`cadex inventory`** is the CLI call. No AI, no tokens, no rebuild: it pages
+`/components` (the summary hands back a preview pointer the moment the list
+outgrows the per-key budget, which is the ordinary `inspect` contract) and
+renders `docs/inventory.md` in the project. A **generated** doc, the only one
+under a project's `docs/` that is, and it says so in its own first line — the
+review step is read by an agent on its *next* visit, and what an agent reads
+on a visit is the project's documents (ADR-193). One file, not two: the
+machine-readable form is one `inspect` call away.
+
+**Evidence.** `pixi run build-engine`; `pixi run test-engine` 2070 passed,
+52 skipped; `pixi run python -m pytest cli/tests` 145 passed; `pixi run
+stage-engine` then the packaged lifecycle gate against that payload, 15
+passed. `cadex_tests/test_inventory_scope.py` (8) pins the stamp, the
+digest-stillness, the join, the roll-up and both refusals against a
+fabricated store; `cli/tests/test_inventory.py` (3) pins the whole call
+against a **real engine** building a plate with two catalogued M3 bolts on
+it, and asserts the rendered doc names `bolt m3x12-socket`,
+`bolt m3x16-socket` and the hand-modelled `plate` as uncatalogued.
+
+**What this does not close.** The charter's headless-review criterion also
+asks for render-from-named-angles, a section view and a clearance and
+intersection check. Those are three more units; this is the one that had a
+join already waiting to be made.
+
+**2026-09-08 follow-up — complete inventory paging (critic fix).** Replace
+the component-only paging loop with one reader that follows preview pointers
+and page offsets for mappings, lists and strings. Catalog totals and
+uncatalogued sources can exceed the same 1 KiB budget as components, and a
+component row can itself be a preview. Rendering a catalog preview previously
+raised `ValueError` on `/catalog_counts`; large rows silently lost their names.
+The CLI regression uses `CadexInspection._bounded_page` with 60 distinct
+catalog ids and oversized component/output names, and checks complete rows,
+counts and names. Both cases fail on the old reader. No engine, protocol or
+payload change; the lifecycle walk and its scaffold are unchanged.
+
+Verification: inventory tests 5 passed (including real-engine checks); full
+CLI gate 147 passed, no skips or failures.
+
+
+**2026-09-08 follow-up — inventory in lifecycle review.** After rollout the
+walk reads the existing complete inventory with restore disabled, writes
+`docs/inventory.md`, and includes availability, component/catalogued counts
+and the project-relative document path in `review.json`. Both reports join
+the walk's project commit. No rebuild, protocol or shell change. A project
+without a published assembly gets an explicit unavailable report; actual
+inspection failures remain errors and training prerequisites are unchanged.
+The scaffold and shared mode-artifact table carry the same paths. Real toy,
+carriage and local/remote-flag CPU stand-in tests assert the report and its
+commit; a real part-only inventory test covers the empty report.
+
+Verification: full built-engine CLI suite **150 passed**, no skips or failures
+(162.93 s; monitored process-tree peak RSS 1.14 GB). The documented hinged-arm
+recipe walk at one iteration × four local CPU environments passed in 14.39 s,
+peak RSS 1.06 GB: two components, zero catalogued; total reward -27.109384,
+witness error 1.384e-09. Neither run reached the 2.9 GB external cutoff.
+
+## ADR-237 — Headless pair clearance is published at the solved pose (2026-09-08)
+
+**Decision.** `cadex clearance` reads `inspect scope="clearance"` and writes
+`docs/clearance.md`. Each assembly-worker rebuild measures every component
+pair before simulation moves the components: exact shape distance in mm and
+common solid volume in mm³. Bounding-box separation prunes only the common
+operation; separated pairs still receive distance queries. Labels and catalog
+ids join the accepted inventory. No new protocol op or argument schema, no
+shell change, and no training dependency. The complete inventory pager is
+reused, including nested previews; its error message now names either scope.
+
+The report classifies intersection above `--max-common-volume-mm3` (default
+1e-6), then distance below `--min-clearance-mm` (default 0.1), then clear.
+Thresholds are finite, nonnegative and applied at read time without a rebuild.
+Missing geometry, unsolved assemblies, failed queries and legacy attempts
+without the side table remain **unknown**; an empty project is unavailable.
+The CLI exits successfully when it writes the report, even if it names
+intersections. It is an initial-pose check, not a swept-motion qualification;
+the existing simulation clearance API is unchanged. Walk wiring is a separate
+unit, followed by rendering and section views.
+
+The side table rides beside the definition, so accepted content digests stay
+unchanged. Pair identity is unordered: output-publication order need not match
+assembly-component order. Real-engine coverage uses three placed boxes with
+100 mm³ overlap, a disjoint 1 mm gap and a clear 10 mm gap, plus reversed
+publication order. Reader coverage exercises 60 rows with large nested labels,
+legacy and absent assemblies, invalid thresholds and unknown measurements.
+
+**Cost gate.** On both lifecycle recipes, time six `write_script` rebuilds in
+one ready service (unique trailing comments force execution), discard the
+first, compare the remaining five's medians. Hinged arm: 0.458872 → 0.444663 s
+(-3.10%); linear carriage: 0.446007 → 0.449866 s (+0.87%, +0.003859 s).
+After the full engine build, final warm medians are 0.462742 s (+0.84%,
++0.003870 s) and 0.443270 s (-0.61%), respectively. The arm's first request
+after that build took 2.219 s versus 1.071 s before: first-request latency
+is not covered by the predeclared warm-median comparison. All six timings
+are retained in the local benchmark logs; this is not a cold-latency claim.
+A quiet repeat after the CLI suite did not reproduce that spike: first
+requests 0.649 / 0.660 s and warm medians 0.446437 / 0.451253 s
+(arm / carriage), with unchanged digests.
+Both stay below either stop condition (+2 seconds or +20%). Full recipe
+content digests match before/after. These are rebuild measurements, separate
+from the existing under-16-second toy whole-walk baseline. The cost remains
+quadratic in component count; this evidence qualifies these two recipes,
+not a large-assembly performance claim.
+
+Verification: full engine suite **2074 passed, 52 skipped** (320.44 s);
+final focused engine/CLI regressions **14 passed**, including the unsolved-pose
+case added after full-suite collection. One `pixi run build-engine` passed.
+Full CLI suite **159 passed**, no skips (165.32 s; monitored process-tree peak
+RSS 1.13 GB, no 2.9 GB / 850 s cutoff). `pixi run stage-engine` passed with
+its expected local-stage external-link warnings; the completed 2.4 GB payload
+passed **24 packaged lifecycle/clearance tests**, no skips (17.12 s).
+This is local staging evidence, not a relocatable release claim. Remove the
+obsolete inventory-only generated-document wording now that clearance also
+writes a generated report.
+
+## ADR-238 — The lifecycle walk reviews accepted pair clearance (2026-09-08)
+
+**Decision.** Reuse `write_clearance` in the walk's inventory inspection
+session, with the same default thresholds and no additional rebuild. Commit
+`docs/clearance.md` together with `review.json` and a walk-specific
+`PROGRESS.md` row. The review includes initial-solved-pose scope, accepted
+revision, thresholds, checked/offending/unknown counts, offending pairs with
+labels and catalog identities, unknown pairs with errors, and the
+project-relative report path. Unavailable counts are null, never zero;
+unknown distances and volumes remain null and are not classified as clear.
+An offending pair is a review finding; an inspection error still fails the
+walk. Remove the walk's progress-row suppression: its new row reports only
+clearance, leaving the legs' reward comparisons intact. The mode-artifact
+table, walk docs, recipe architecture docs and scaffold share this contract.
+
+**Limits.** These are initial-pose findings, not swept-motion checks or
+large-assembly qualification. The headless-review charter criterion remains
+open for named-angle rendering and section views, each with walk integration.
+
+Verification: full built-engine CLI suite **161 passed**, no skips (165.42 s;
+monitored process-tree peak RSS 1.14 GB). Fresh documented public recipe walks
+also passed: arm 14.52 s, reward -27.109384, witness error 1.384e-09,
+base/swing distance 0 mm and common volume 0 mm³ (one below-clearance finding);
+carriage 13.18 s, reward -24159.195356, witness error 5.419e-09 (one clear pair).
+Both had zero unknown pairs, two inventory components and clean project trees
+with the reports, review and progress tracked in HEAD. Combined recipe monitor:
+29.66 s, peak RSS 1.07 GB; no resource cutoff. Local/remote-flag parity uses a
+local CPU dispatcher stand-in only. No engine/protocol or shell code changed.
+
+## ADR-239 — Headless rendering will consume accepted tessellation (2026-09-08)
+
+**Decision, before implementation.** Use independently authored CPU rendering
+of the protocol's accepted tessellation for the headless review call. The
+existing GPL blueprint renderer refuses background mode even after successful
+accepted-revision hydration; an engine-only project should not acquire a
+Blender rendering dependency. No product renderer or section integration ships
+in this decision. The evidence-only projection removes that prospective
+subprocess/hydration requirement, not any existing product surface.
+
+[The measured probe](probes/named-angle/README.md) records four valid background
+refusals, a stale bundled-engine import failure isolated with the supported
+payload override, and front/top/right/iso SVGs from two correctly placed
+components. Background hydration/refusal took 1.62 s; CPU projection 0.20 s,
+51,609,600 bytes maximum RSS including interpreter startup. The prototype uses
+centroid ordering and shows triangle diagonals; production needs depth-correct
+visibility, bounded input validation and revision-safe snapshots. Sections can
+reuse world-space triangles and projection but need separate clipping/cap tests
+and approximate-section labelling. No GPL implementation crosses into the CLI.
+
+Verification is the executed probe, numeric placement assertions, parsed and
+visually inspected SVGs, and graph export/check. No product code changed and no
+zone suite/full build ran. Rendering, section views and their walk integration
+remain open; the stale local bundle remains a packaging observation to resolve
+before claiming an ordinary bundled run.
+
+
+**Product follow-up (2026-09-08).** `cadex render` now writes the four
+revision-bearing SVGs and a summary under `review/render/`. Replace the probe's
+centroid-order assumption with an independently authored per-pixel depth buffer;
+SVG wraps a lossless 512px PNG generated with the standard library. This avoids
+a graphics dependency and bounds image work, but does not claim analytic vector
+edges or subpixel visibility. Read and validate accepted buffers before another
+request can invalidate them, apply solved matrices once, suppress definition
+copies and expose component identities/bounds. Shell-only visibility is absent
+from the protocol and explicitly outside this review. Malformed/excessive inputs
+fail; limits include overdraw work, not just triangle count. No engine, protocol,
+payload or shell edit. Walk wiring and section views remain separate units.
+
+Verification: `cli/tests/test_render.py` covers crossing depth, complete occlusion,
+placement/rotation, buffer invalidation, malformed/empty/excessive input and
+real-engine arm, curved assembly and standalone part images, revision identity
+and project commits. Product images and measurements are retained in
+[the product render evidence](probes/named-angle/product-render/README.md).
+
+Final full CLI gate: 180 passed, zero skipped, 172.71 s; externally bounded
+at 900 s / 3 GiB for the suite, observed peak tree RSS 1,160,167,424 bytes
+with no cutoff. Graph export/check passed; no build was needed for CLI edits.
+
+**Walk integration (2026-09-08).** The lifecycle review reuses the CPU renderer
+in its inspection session, snapshots before later requests invalidate buffers,
+and refuses a revision differing from the rollout or clearance. Revision-named
+image directories preserve earlier walk references; four SVGs and summary are
+committed with project docs. This removes the manual render leg; acquisition,
+rasterization and total entry-point time are separate fields. Render failures
+remain command failures, and sections remain explicitly unavailable. No engine,
+protocol, payload, graphics runtime or training dependency changes.
+
+
+## ADR-240 — Named-plane sections cut accepted tessellation (2026-09-08)
+
+Use the existing bounded world-space display snapshot for `cadex section`.
+The headless contract has no exact section operation; adding one would cross
+engine/protocol/payload boundaries for a review that can explicitly qualify its
+approximation. Closed cut contours become even-odd filled SVG paths per object,
+preserving cavities without introducing a triangulation or graphics dependency.
+One small snapshot metadata field counts each object's triangles; no engine,
+shell or protocol changes. This is independently authored LGPL client code.
+
+Conservatively report unsupported for near-plane vertices, open/branched cuts,
+duplicate or grid-collapsed segments; an outside cut is empty, while acquisition,
+revision and invalid-input failures remain errors. The 1e-6 mm endpoint grid and
+standard tessellation limits are explicit, as is the lack of solid-validity or
+self-intersection certification. Revision/plane/offset directories preserve
+other reviews. This delivers only the CLI; walk integration and full two-model
+review evidence remain separate units before the headless-review criterion closes.
+
+Verification: analytic box cuts in all planes, cavity contours and offsets,
+open/degenerate contacts, refusal with retained old files; real-kernel rotated
+and translated bored block, revision/digest and committed artifacts. Full CLI
+gate and retained output inspection are reported in the unit's record.
+
+
+### ADR-240 follow-up — Sections in lifecycle review (2026-09-08)
+
+Replace the walk's unavailable-section placeholder with the existing qualified
+section writer over the preview's single accepted snapshot. Both writers retain
+revision guards; the walk also checks the rollout digest before writing. Use
+world XZ at Y = 3.125 mm for a reproducible interior cut through both reference
+mechanisms without mechanism-specific dispatch. Commit SVG and JSON alongside
+previews and project docs; preserve empty and unsupported reports, and fail on
+acquisition/revision/write errors without claiming retained files as success.
+Acquisition time is shared (do not sum it twice), section time measures contour
+generation, and whole-walk time ends before the final project commit.
+Built-engine walk tests cover meaningful contours, tracked outputs, both
+mechanisms and local/remote-flag parity with a local CPU dispatcher; no SSH or
+GUI. A separate fresh two-mechanism rehearsal remains the next evidence unit.
+
+**Fresh rehearsal evidence (2026-09-08).** The arm and carriage separately ran
+through the unchanged public walk with one CPU iteration/four environments/seed
+zero. Both projects committed comparable measurements; all views and meaningful
+XZ sections were inspected, identity and artifact bytes audited, and the full
+built-engine CLI gate passed (195 tests, zero skips). Retain the arm's initial
+contact and carriage's 34 mm separation, and qualify different effort units:
+this proves the review pipeline, not policy quality or swept safety. Compact
+evidence lives in `docs/probes/complete-review/`; no runtime change or new
+training dependency. Combined evidence goes to the maintainer for assessment.
+
+
+## ADR-241 — Clearance measures a component where the assembly puts it (2026-09-08)
+
+`_measure_clearance` read `component.Shape`. An `App::Link` *replaces* the
+linked object's placement with its own instead of composing the two, so any
+body whose transform rides on the shape was measured back in the frame it was
+authored in. Every `lib.*` part is exactly that body: `lib._place` moves a
+canonical origin-and-+Z part with one `part.transform`, and `Shape.translate`
+and `Shape.rotate` write a placement rather than moving geometry. Parts
+authored directly in world coordinates were unaffected, which is why the
+defect survived until a walk used catalog parts.
+
+The measured cost, from the pan-tilt walk that found it (`empty-banner-7438`):
+two MG90S standing 26 mm apart reported as one fully contained body
+(8240.943 mm³, exactly one servo), and a 0.4 mm sink into a base plate
+reported at the plate's whole 4 mm thickness — ten times its true volume.
+The render, the section, the MJCF inertials and the exported STL all placed
+the same parts correctly, so clearance alone was lying, and an offending pair
+is a verdict a reader believes.
+
+Compose the two frames in one helper, `_component_world_shape`: the linked
+object's shape with `component.Placement * shape.Placement`. That is the
+composition the MJCF export already uses (body frame from the component,
+geometry from the source shape), so the review surface now agrees with the
+physics. A container source (an authenticated hierarchy) has no readable
+`Shape` of its own and the link already composes the group's placements, so it
+is read as it stands. Published fields, the protocol, the CLI report and the
+content digest are unchanged; only the numbers are now true.
+
+`_clearance_at_frame`, the swept check inside the simulation trace, reads the
+same link shape and has the same defect. It is **not** fixed here: it runs per
+pair per frame over thousands of frames, so composing a copy in that loop is a
+cost that needs its own measurement. Until it lands, a swept breach distance
+for a `lib.*`-placed body is not to be believed either.
+
+Verification: a real-kernel regression (`test_clearance_scope.py::
+test_a_shape_placed_component_is_measured_where_it_is`) drives
+`_measure_clearance` under `FreeCADCmd` over four `App::Link` components —
+shape-placed, world-authored, both-frames-placed, and a genuine 2 mm overlap.
+On the pre-fix source it reports the shape-placed pair 0.0 mm apart sharing
+999.999… mm³; after, 40.0 mm and 0.0 mm³, the composed body at 150–160 mm
+rather than 100–110, and the real overlap at its true 200 mm³ instead of
+1000 mm³. Engine suite: 2076 passed, 52 skipped, no failures. The stub-driven
+tests in the same file are unchanged and still pass. No build, payload, shell
+or protocol change; the installed bundle still carries the old numbers until
+it is rebuilt and staged.
+
+**Measured on the assembly that found it (2026-09-08).** The pan-tilt project
+was rebuilt through `cadex params` on the development-tree engine and
+re-reported with `cadex clearance`. Both false intersections are gone —
+base/servo_tilt now reads 57.9 mm clear, which is the exported STL's own lower
+bound for that servo, and the two servos read 25.9 mm apart instead of one
+containing the other — and the true sink of the pan servo into the base plate
+reads 111.264 mm³, exactly a tenth of the 1112.640 mm³ it claimed before.
+Three interferences that the wrong frame had *hidden* now appear: the pan
+servo in the yoke (18.857 mm³), the tilt servo in the yoke arm (75.430 mm³)
+and in the head plate (73.500 mm³). Those are the project's design business,
+not this fix's; what matters here is that the surface no longer hides a
+contact by measuring the part somewhere else. CLI gate: 195 passed, no skips.
+
+
+---
+
+## ADR-242 — The swept clearance check measures a component where the assembly puts it (2026-09-08)
+
+ADR-241 fixed the static measurement and left its sibling standing, with the
+reason written down: `_clearance_at_frame`, the swept check inside the
+simulation trace, reads the same `App::Link.Shape` and so measures a body
+whose transform rides on the shape — every `lib.*` part — back in the frame it
+was authored in. It runs per pair per frame over thousands of frames, so
+composing a copy in that loop was a cost that needed its own measurement
+before the fix could be chosen.
+
+**What it cost, measured first.** A three-component sweep under `FreeCADCmd`,
+world-authored throughout so both versions see identical geometry and spend
+identical distance queries, with the placements moved every frame the way
+`updateForFrame` moves them:
+
+| case | frames | pre-fix ms/frame | post-fix ms/frame |
+|---|---|---|---|
+| box-rejected (286 queries) | 2000 | 0.429 / 0.422 | 0.374 / 0.378 |
+| distance-queried (900 queries) | 300 | 2.999 / 3.015 | 3.043 / 3.044 |
+
+Run-to-run noise is ~3% on the first row and ~1% on the second. The sweep gets
+**faster** where box rejection dominates — which is the case the check is
+designed around — because a `Link.Shape` read builds a shape and the fix reads
+one composed copy per component instead of one per pair. Where a real distance
+query dominates, the difference is ~1%, inside the noise of the query itself.
+So the cost the ADR-241 note was worried about is not there, and the cheap
+shape is the one that keeps it away: `_clearance_prepare` makes **one copy per
+component before the frame loop**, and the loop only writes its placement
+(`component.Placement * shape.Placement`, a `TopLoc_Location`, not geometry).
+A container source has no readable shape of its own and is read live, exactly
+as in ADR-241.
+
+`_component_world_shape` and the new `_clearance_prepare` now share
+`_linked_source_shape`, so there is one place that knows how to read a linked
+body's own shape rather than two.
+
+**The defect, in numbers.** A real-kernel regression
+in `test_swept_clearance.py`
+(`test_a_shape_placed_component_is_swept_where_the_assembly_puts_it`)
+swings an arm whose transform rides on the shape — its
+geometry stands 20–50 mm out along its own +X, which is what `part.transform`
+produces — past a post authored in world coordinates at y 36–44, in 5° steps
+through 180°. After the fix: the rest pose reads 36.674 mm (the arm's near
+corner to the post's, `sqrt(16² + 33²)`), and the arm intersects the post at
+0.0 mm across frames 16–20, the quarter turn. On the pre-fix source the same
+driver reports a rest distance of **33.0 mm** and an **empty breach list** —
+the arm sweeps straight through the post and the clearance promise the script
+made is reported as kept, because the check measured the arm back at 0–30 mm.
+That is the strongest form the defect takes: not a wrong number but a silent
+pass.
+
+No published field, protocol op, payload contract or content digest changes;
+`clearance_mm` and the refusal's `details` are as they were. Verification:
+engine suite 2077 passed, 52 skipped (2076 before, plus the new regression);
+the pre-existing live sweep test — an arm that really does swing into a post
+through `cadexd` — is unchanged and green. A first run of the suite failed 34
+tests because the new helper was called `_component_local_shape`, which
+already existed with a different signature in the same module; the rename to
+`_linked_source_shape` is why the name reads the way it does.
+
+
+---
+
+## ADR-243 — Inventory counts placed instances, not generator calls (2026-09-08)
+
+Remove the unqualified catalog tally introduced in 997293b8 in a new corrective
+commit. Its code cited this ADR before a decision existed. A generator call can
+produce an unused value or a clearance cutter, and one generated body can be
+placed repeatedly. Subtracting placed instances from calls therefore cannot name
+missing hardware, purchases, or parts fused into a solid.
+
+Delete the call registry, worker report field, generated-minus-placed inspection
+fields, CLI prose and walk counts, and tests dedicated to those claims. Retain
+ADR-236 catalog identity and inventory of actually placed components. Existing
+accepted reports may carry the old field; readers ignore it without reacceptance
+or digest changes. A real-kernel regression places one catalog body twice and
+requires two catalogued instances. Inventory still cannot identify catalog parts
+inside boolean results; absence of a catalog row does not prove their absence.
+CLI, integration and walk scaffold documentation state that boundary. No protocol
+operation or argument, shell client, or inherited source changes.
+
+Placement guidance follow-up (2026-09-08): the CLI design instructions used by
+`cadex walk --prompt` and new-project architecture scaffold teach publishing
+catalog bodies and placing purchased instances as separate assembly components,
+separate from printed solids. Transformed catalog bodies may be clearance cutters
+without implying another purchase. Review script and placed inventory together.
+This concise convention uses the existing API and adds no registry or validator;
+contract tests establish that guidance is delivered, not that an agent followed it.
+
+
+---
+
+## ADR-244 — Worker bundles are detached, verified snapshots (2026-09-08)
+
+Remove worker-module hardlink staging and presence-only reuse. An in-place
+source write could change an existing content-addressed bundle, and a second
+unchanged engine root would reuse those wrong bytes. Read members once, hash and
+write the same snapshot, and compare cached bytes before reuse. Reject symlinks
+and multiply linked legacy members even when their bytes match. Replace invalid
+bundles atomically as complete directories, retiring their bytecode; retain
+identical detached bundles and their warm bytecode. Validate a competing
+publisher's result before accepting a failed rename. Project asset staging's
+separate atomic-replacement contract still uses `_link_or_copy`.
+
+Tests pin the two-root A-to-B reproduction, corruption, legacy links, source
+mutation between read and write, and valid/invalid publication-race winners.
+This repairs the reproduced defect, not an identified historical writer. No
+claim of general concurrency safety: files can change after validation, repair
+can disrupt existing readers, and simultaneous engine installation can yield a
+snapshot spanning source versions. No registry, global cache purge, protocol
+change, accepted-project edit, or shell change.
+
+Verification: engine 2085 passed / 52 skipped; built-engine CLI 195 passed;
+fresh staged payload lifecycle 15 passed after build/install and staging.
+Six new regression cases fail against the previous implementation. A real
+payload worker accepts/rebuilds a box with identical digest; 20 warm bundle
+lookups measured 2.49 ms median locally. Stage-only output is not a relocatable
+release; the installed application was not refreshed.
+
+## ADR-245 — A domain note lands the way a decision does (2026-09-08)
+
+`docs/CLI.md` and the `ARCHITECTURE.md` scaffold have documented the project's
+domain-doc convention since ADR-193 — one file per subject under `docs/`,
+`gear-ratios.md`, `sensors.md`, `actuators.md`, `rejected.md` — but no design
+turn could reach it. The CLI's agent has no file tool, and the design
+instruction ended that paragraph with *ask the caller to write those, naming
+the file*; a headless walk has no caller to ask. The two-servo leg rehearsal is
+the measurement: the agent modelled two MG90S servos with torque-limited
+position actuators, a damping assumption and a joint-angle sensor per axis, and
+left no `docs/actuators.md` or `docs/sensors.md` behind, because it had no way
+to.
+
+A note now lands the same way a decision does, through the closing text rather
+than through a new tool or op: a line `NOTE <subject>: <text>` appends a dated
+bullet to `docs/<subject>.md`, created with a title when the subject is new, and
+the envelope's `notes` name the file. The subject is slugged, so it cannot
+escape `docs/`. `inventory.md` and `clearance.md` are refused as subjects: they
+are the CLI's generated reports, and a note must never append to a measurement.
+The notes are pasted back into the next turn's prompt beside the three project
+documents, bounded at 2,000 characters each, tail-first — a note the agent
+cannot read again is not worth writing. The design instruction now asks for
+`docs/actuators.md` and `docs/sensors.md` from any mechanism with actuators or
+sensors, which is how the walk exercises the convention rather than only
+documenting it.
+
+No protocol op, no engine change, no shell change; the parsing and writing are
+in `cli/cadex_cli/project_docs.py` and one call beside `record_decisions`, so
+the walk's design leg gets it through the same `cadex -p` child.
+
+Verification: CLI suite, reported with its skips in the commit. Not verified:
+no design turn was run under this instruction, so that a model actually emits
+`NOTE` lines is the next walk's evidence, not this commit's.
+
+
+## ADR-246 — Walk history records a portable output label (2026-09-08)
+
+Remove verbatim `--out` from the walk branch of the shared progress/commit
+subject formatter. Resolve the output relative to the project when it lies
+inside; otherwise retain its basename. Expand `~` and resolve relative inputs
+using the same working directory as the walk. This keeps `runs/repair-2` useful
+in version-controlled history without carrying the operator's home directory.
+External outputs with equal basenames can share a label; no historical rewrite
+or general path scrub is part of this fix. The CLI doc and project architecture
+scaffold state the convention. Four regressions write real progress rows and Git
+commits for absolute internal/external, relative and home-relative outputs; all
+four fail on the old formatter. The existing real-walk assertion now expects
+the portable subject. CLI suite evidence is recorded with this unit.
+
+
+## ADR-247 — Unchanged CLI sessions do not rewrite project metadata (2026-09-08)
+
+Remove the redundant agent.json replacement when an existing nonempty session
+ID and model match the returned identity. Its updated_at records identity/model
+changes rather than attempted turns. Changed identity still persists on failure:
+a refused turn can create a resumable conversation. Restore's accepted attempt
+locators remain engine-owned and are not rolled back. No automatic failure
+commit or cleanup of user changes. Controlled offline refusals through the walk
+exercise unchanged session, changed session and changed model against a real
+engine; successful resumed edits pin accepted geometry changes with both unchanged
+and changed model metadata. CLI suite evidence is recorded with this unit.
+
+## ADR-248 — The review's clearance checks itself against the render (2026-09-08)
+
+The walk's review holds the kernel's pair measurements and the render's placed
+tessellation in one session, from two independent paths. Cross-check them there
+instead of by hand: `clearance.bounds_agreement` compares each measured pair
+against the two components' world bounds from the render snapshot, two
+inequalities per pair — `distance_mm` is at least the boxes' axis separation,
+and `common_volume_mm3` fits inside the box overlap — with the boxes padded by
+1e-3 mm so one knob covers f32 tessellation resolution. The result lands in
+`review.json` under `clearance.bounds_check` and in the run notes.
+
+Why it is kept rather than written again: this exact check was implemented ad
+hoc twice, to qualify ADR-241 and then to re-qualify it on a fresh walk, and
+thrown away both times. It has demonstrated power over the defect it was
+written for — the pre-ADR-241 origin-frame rows fail both inequalities by three
+orders of magnitude — and a regression now pins that.
+
+A disagreement is the review contradicting itself, not a design finding, so it
+is reported loudly and does not throw away the run's work; an unmeasured or
+undrawn pair is skipped, and no comparison is never a pass. This is agreement
+between two surfaces, not validation of either, and it stays at the initial
+solved pose. Standalone `cadex clearance` is unchanged: it acquires no render
+snapshot, so its cost and contract are untouched. LGPL CLI zone plus
+`docs/CLI.md`; no protocol op, no engine change, no `shell/` diff.

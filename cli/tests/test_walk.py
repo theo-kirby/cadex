@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -25,6 +27,7 @@ import textwrap
 
 import pytest
 
+from cadex_cli.agent import CLI_OVERLAY
 from cadex_cli import walk as walk_module
 from cadex_cli.report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE
 from cadex_cli.walk import (
@@ -63,6 +66,36 @@ def test_declare_refuses_a_script_without_the_iterate_convention() -> None:
     no_sha = TOY.replace(f', sha256="{PLACEHOLDER}"', "")
     with pytest.raises(WalkError, match="sha256"):
         declare_policy(no_sha, "job.cxpolicy", "ab" * 32)
+
+
+def test_declare_refuses_the_constant_factored_script_and_takes_the_taught_one(
+) -> None:
+    """The refusal nt3's first walk from a prompt actually hit.
+
+    The design turn wrote ``WEIGHTS = "…"`` above the call and passed the
+    name by reference, which reads better and is refused: the edit is a
+    literal rewrite. The overlay in ``cadex_cli.agent`` now teaches the
+    inline form, so the example it teaches is rewritten here to prove the
+    two halves agree.
+    """
+
+    factored = 'POLICY_WEIGHTS = "job.cxpolicy"\n' + TOY.replace(
+        'weights="job.cxpolicy"', "weights=POLICY_WEIGHTS")
+    with pytest.raises(WalkError, match="no weights="):
+        declare_policy(factored, "job2.cxpolicy", "ab" * 32)
+    factored_sha = f'POLICY_SHA = "{PLACEHOLDER}"\n' + TOY.replace(
+        f'sha256="{PLACEHOLDER}"', "sha256=POLICY_SHA")
+    with pytest.raises(WalkError, match="no sha256="):
+        declare_policy(factored_sha, "job2.cxpolicy", "ab" * 32)
+
+    # The example the authoring contract teaches is one this rewrite takes.
+    call = re.search(r"assembly\.policy\(task,[^)]*\)", CLI_OVERLAY)
+    assert call is not None, "the overlay no longer shows the policy call"
+    taught = call.group(0)
+    taught = walk_module._replace_keyword(taught, "weights", "job2.cxpolicy")
+    taught = walk_module._replace_keyword(taught, "sha256", "ab" * 32)
+    assert taught == 'assembly.policy(task, weights="job2.cxpolicy", ' \
+        f'sha256="{"ab" * 32}")'
 
 
 def test_the_review_is_the_trace_s_policy_block_or_nothing(tmp_path) -> None:
@@ -157,7 +190,7 @@ FAKE_CADEX = textwrap.dedent(
 
 
 @pytest.fixture
-def fake_cadex(tmp_path, monkeypatch) -> Path:
+def fake_cadex(tmp_path, monkeypatch, request) -> Path:
     """The walk's legs answered by :data:`FAKE_CADEX`; returns the argv log."""
 
     script = tmp_path / "fake_cadex.py"
@@ -166,6 +199,44 @@ def fake_cadex(tmp_path, monkeypatch) -> Path:
     monkeypatch.setenv("FAKE_CADEX_LOG", str(log))
     monkeypatch.delenv("FAKE_CADEX_FAIL", raising=False)
     monkeypatch.setattr(walk_module, "cadex_command", lambda: [sys.executable, str(script)])
+    from contextlib import contextmanager
+    from cadex_cli import __main__ as main_module
+
+    class InventoryClient:
+        def request(self, op, args):
+            if op == "rebuild":
+                from test_render import buffer_reply
+                reply = buffer_reply(tmp_path)
+                reply.update(revision="r" * 64, accepted_revision="r" * 64, digest="d" * 64)
+                failure = os.environ.get("FAKE_RENDER_FAIL")
+                if failure in ("snapshot", "rollout"):
+                    reply["accepted_revision"] = "z" * 64
+                if failure == "rollout":
+                    reply["revision"] = "z" * 64
+                if failure == "digest":
+                    reply["digest"] = "z" * 64
+                return reply
+            assert op == "inspect"
+            if args["scope"] == "clearance":
+                outcome = os.environ.get("FAKE_CLEARANCE", "")
+                if outcome == "failure":
+                    return {"ok": False, "error": "clearance inspection failed"}
+                pairs = [{"first": "a", "second": "b", "distance_mm": None,
+                          "common_volume_mm3": None, "error": "measurement failed"}] if outcome == "unknown" else []
+                return {"ok": True, "value": {
+                    "revision": "r" * 64, "assembly": getattr(request, "param", "asm"),
+                    "available": bool(getattr(request, "param", "asm")), "pairs": pairs,
+                }}
+            assert args["scope"] == "inventory"
+            return {"ok": True, "value": {"assembly": getattr(request, "param", "asm"), "components": [],
+                                          "catalog_counts": {}}}
+
+    @contextmanager
+    def inventory_session(args, report, *, restore=True):
+        assert restore is False
+        yield None, InventoryClient()
+
+    monkeypatch.setattr(main_module, "_engine_session", inventory_session)
     return log
 
 
@@ -224,8 +295,11 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
     assert on_disk["training"]["reward_per_step"] == 0.5
     assert [leg["leg"] for leg in on_disk["legs"]] == ["train", "declare", "rollout"]
     assert "argv" not in on_disk["legs"][0]
+    # This toy walk publishes no assembly, so the review has nothing to
+    # cross-check and says so (ADR-248) beside the walk's own note.
     assert envelope["notes"] == [
-        "walk: job.cxpolicy ({:s}) verified; total_reward -12.5 over 3 legs.".format(sha[:12])
+        "clearance bounds check: unavailable, 0 comparison(s) over 0 pair(s).",
+        "walk: job.cxpolicy ({:s}) verified; total_reward -12.5 over 3 legs.".format(sha[:12]),
     ]
 
 
@@ -367,6 +441,8 @@ def test_the_same_walk_handles_a_linear_carriage(engine, tmp_path, capsys) -> No
     assert [j.get("type") for j in model.findall(".//worldbody//joint")] == ["slide"]
     review = json.loads((out / REVIEW_FILENAME).read_text())
     assert review["sha256"] == envelope["walk"]["review"]["policy_sha256"]
+    _assert_inventory(root, review)
+    _assert_clearance(root, review, "clear")
     assert math.isfinite(review["total_reward"])
     assert {row["label"] for row in review["reward_totals"]} == {"lift", "control_cost"}
     progress = (root / "PROGRESS.md").read_text()
@@ -422,6 +498,8 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     sha1 = envelope["training"]["sha256"]
     review1 = json.loads((out1 / REVIEW_FILENAME).read_text())
     assert review1["sha256"] == sha1 == envelope["walk"]["review"]["policy_sha256"]
+    _assert_inventory(root, review1)
+    _assert_clearance(root, review1, "below clearance")
     reward1 = float(review1["total_reward"])
     assert reward1 == reward1  # not NaN
     assert {row["label"] for row in review1["reward_totals"]} == {"lift", "control_cost"}
@@ -432,7 +510,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     # review; the policy in the store and the sensors doc tracked; the
     # training checkpoints, the policy copies and the trace not.
     subjects = _git(root, "log", "--format=%s").splitlines()
-    assert subjects[0] == f"cadex walk 1 it × 4 envs → {out1}"
+    assert subjects[0] == "cadex walk 1 it × 4 envs → runs/walk-1"
     assert subjects[1] == "cadex params policy_on=1"
     assert "cadex train 1 it × 4 envs → job.cxpolicy (stored)" in subjects
     tracked = set(_git(root, "ls-files").splitlines())
@@ -472,9 +550,283 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     # is the last one.
     rows = [line for line in (root / "PROGRESS.md").read_text().splitlines()
             if line.startswith("| 2")]
+    assert "clearance offending 1; unknown 0; pairs checked 1" in rows.pop()
     assert rows[-1].split(" | ")[1] == "params"
     assert f"total_reward {reward2:.1f} (Δ " in rows[-1] and f"at {reward1:.1f})" in rows[-1]
-    assert _git(root, "log", "-1", "--format=%s") == f"cadex walk 1 it × 4 envs → {out2}"
+    assert _git(root, "log", "-1", "--format=%s") == "cadex walk 1 it × 4 envs → runs/walk-2"
     assert {"assets/job2.cxpolicy", "runs/walk-2/review.json"} <= set(
         _git(root, "ls-files").splitlines()
     )
+
+
+@pytest.mark.skipif(
+    REAL_TRAINER_PYTHON is None,
+    reason="No training venv with jax and mujoco (training/SETUP.md).",
+)
+@pytest.mark.parametrize("mechanism", ["hinged-arm", "linear-carriage"])
+def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
+    engine, tmp_path, capsys, monkeypatch, mechanism
+) -> None:
+    """Real legs and witness verification; only the dispatcher is replaced.
+
+    Its argv is the remote_train.sh contract pinned in test_train.py. It
+    trains locally at toy scale and never invokes the remote script or ssh.
+    """
+    from test_train import TRAINER_SOURCE
+
+    monkeypatch.setenv("JAX_PLATFORMS", "cpu")
+    dispatcher = tmp_path / "dispatch.py"
+    dispatch_log = tmp_path / "dispatch.json"
+    dispatcher.write_text(
+        f"#!{sys.executable}\n"
+        "import json, subprocess, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "assert args[0] == 'train' and args[3:5] == ['--allow-cpu', '--'], args\n"
+        f"Path({str(dispatch_log)!r}).write_text(json.dumps(args))\n"
+        f"result = subprocess.run([{str(REAL_TRAINER_PYTHON)!r}, "
+        f"{str(TRAINER_SOURCE)!r}, args[1], '--out', args[2], *args[5:]])\n"
+        "if result.returncode: sys.exit(result.returncode)\n"
+        "print('==> ' + args[2])\n",
+        encoding="utf-8",
+    )
+    dispatcher.chmod(0o755)
+    # Each leg is a fresh CLI process, so inject the stand-in there too.
+    bootstrap = (
+        "from pathlib import Path; from cadex_cli import train; "
+        f"train.REMOTE_SCRIPT = Path({str(dispatcher)!r}); "
+        "from cadex_cli.__main__ import main; raise SystemExit(main())"
+    )
+    monkeypatch.setattr(walk_module, "cadex_command",
+                        lambda: [sys.executable, "-c", bootstrap])
+    source = tmp_path / "toy.py"
+    source.write_text((Path(__file__).resolve().parents[2] / f"examples/lifecycle/{mechanism}/script.py").read_text(), encoding="utf-8")
+    paths = []
+    reviews = []
+    for mode in ("local", "remote"):
+        root = tmp_path / mode
+        code, report = _run(capsys, "script", "--set", str(source), "--project", str(root))
+        assert code == EXIT_OK, report
+        out = root / "runs/baseline"
+        flags = ["--remote", "--allow-cpu"] if mode == "remote" else []
+        code, report = _run(
+            capsys, "walk", "--project", str(root), "--out", str(out),
+            "--iterations", "1", "--envs", "4", "--seed", "0", "--timeout", "600",
+            *flags,
+        )
+        assert code == EXIT_OK, report
+        review = json.loads((out / REVIEW_FILENAME).read_text())
+        assert [leg["leg"] for leg in review["legs"]] == ["train", "declare", "rollout"]
+        assert all(leg["exit"] == 0 for leg in review["legs"])
+        assert review["sha256"] == report["walk"]["review"]["policy_sha256"]
+        assert review["sha256"] == hashlib.sha256(
+            (root / "assets/job.cxpolicy").read_bytes()).hexdigest()
+        assert (out / "train/job.cxpolicy").read_bytes() == (root / "assets/job.cxpolicy").read_bytes()
+        assert (out / review["trace"]).is_file()
+        tracked = set(_git(root, "ls-files").splitlines())
+        _assert_inventory(root, review)
+        _assert_clearance(root, review, "below clearance" if mechanism == "hinged-arm" else "clear")
+        expected = {"docs/inventory.md", "assets/job.cxpolicy", "runs/baseline/review.json",
+                    "runs/baseline/train/job-task.json", "runs/baseline/script.py",
+                    "ARCHITECTURE.md", "DECISIONS.md", "PROGRESS.md"}
+        assert expected <= tracked
+        assert _git(root, "status", "--porcelain") == ""
+        progress = (root / "PROGRESS.md").read_text()
+        row = next(line for line in progress.splitlines()
+                   if "train 1 it × 4 envs" in line)
+        assert ("(remote)" in row) == (mode == "remote")
+        assert f'total_reward {review["total_reward"]:.1f}' in progress
+        paths.append({str(p.relative_to(out)) for p in out.rglob("*") if p.is_file()})
+        reviews.append(review)
+    assert paths[0] == paths[1]
+    assert reviews[0]["inventory"] == reviews[1]["inventory"]
+    # Policy asset hashes (and thus accepted revisions) vary across training runs.
+    assert all(review["clearance"]["revision"] for review in reviews)
+    assert {k: v for k, v in reviews[0]["clearance"].items() if k != "revision"} == {
+        k: v for k, v in reviews[1]["clearance"].items() if k != "revision"
+    }
+    from test_render import image_bytes
+    for angle in ("front", "top", "right", "iso"):
+        first, second = (review["render"] for review in reviews)
+        assert image_bytes(tmp_path / "local" / first["views"][angle]["path"], first["revision"]) == image_bytes(
+            tmp_path / "remote" / second["views"][angle]["path"], second["revision"])
+    assert reviews[0]["render"]["limits"] == reviews[1]["render"]["limits"]
+    for key in ("objects", "plane", "offset_mm", "status", "limits", "approximation"):
+        assert reviews[0]["section"][key] == reviews[1]["section"][key]
+    assert reviews[0]["trace"] == reviews[1]["trace"]
+    assert reviews[0]["training"].keys() == reviews[1]["training"].keys()
+    argv = json.loads(dispatch_log.read_text())
+    assert argv[:5] == ["train", str(tmp_path / "remote/runs/baseline/train/job-task.json"),
+                       str(tmp_path / "remote/runs/baseline/train/job.cxpolicy"),
+                       "--allow-cpu", "--"]
+    assert argv[5:] == ["--iterations", "1", "--envs", "4", "--seed", "0"]
+
+
+def _assert_inventory(root, review):
+    assert review["inventory"] == {
+        "available": True, "component_count": 2, "catalogued_count": 0,
+        "path": "docs/inventory.md",
+    }
+    text = (root / review["inventory"]["path"]).read_text()
+    assert "2 component(s)" in text
+    assert "docs/inventory.md" in _git(root, "ls-files").splitlines()
+
+
+@pytest.mark.parametrize("fake_cadex", [""], indirect=True)
+def test_walk_review_without_published_assembly(fake_cadex, toy_root, capsys):
+    out = toy_root / "runs/empty-inventory"
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    assert code == EXIT_OK, report
+    review = json.loads((out / REVIEW_FILENAME).read_text())
+    assert review["inventory"] == {
+        "available": False, "component_count": 0, "catalogued_count": 0,
+        "path": "docs/inventory.md",
+    }
+    assert "Inventory unavailable" in (toy_root / "docs/inventory.md").read_text()
+    assert review["clearance"]["available"] is False
+    assert review["clearance"]["pairs_checked"] is None
+    assert review["clearance"]["offending_pair_count"] is None
+    assert review["clearance"]["unknown_pair_count"] is None
+    assert "Measurements unavailable" in (toy_root / "docs/clearance.md").read_text()
+    # No published pair is nothing to cross-check, and nothing is not a pass.
+    assert review["clearance"]["bounds_check"]["status"] == "unavailable"
+
+
+def _assert_clearance(root, review, verdict):
+    _assert_render(root, review)
+    assert review["section"]["status"] == "ok"
+    summary = review["clearance"]
+    assert summary["available"] is True
+    assert summary["pairs_checked"] == 1
+    assert summary["unknown_pair_count"] == 0
+    assert summary["offending_pair_count"] == int(verdict != "clear")
+    assert summary["scope"] == "initial solved pose"
+    assert summary["minimum_clearance_mm"] == 0.1
+    assert summary["maximum_common_volume_mm3"] == 1e-6
+    assert summary["path"] == "docs/clearance.md"
+    text = (root / summary["path"]).read_text()
+    assert verdict in text
+    for row in summary["offending_pairs"]:
+        assert row["status"] == verdict
+        assert row["first_label"] in text and row["second_label"] in text
+    assert "docs/clearance.md" in _git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+    assert "clearance offending " + str(summary["offending_pair_count"]) in (root / "PROGRESS.md").read_text()
+    # The review checks itself: the kernel's numbers against the render's
+    # independently placed world bounds, two comparisons per measured pair.
+    check = summary["bounds_check"]
+    assert check["status"] == "pass", check
+    assert (check["comparisons"], check["pairs_compared"]) == (2, 1)
+    assert check["failures"] == [] and check["pairs_skipped"] == 0
+
+
+@pytest.mark.parametrize("outcome", ["unknown", "failure"])
+def test_walk_preserves_unknown_clearance_and_inspection_failures(
+    fake_cadex, toy_root, capsys, monkeypatch, outcome,
+):
+    monkeypatch.setenv("FAKE_CLEARANCE", outcome)
+    out = toy_root / "runs" / outcome
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    if outcome == "failure":
+        assert code != EXIT_OK
+        assert "clearance inspection failed" in report["error"]
+        assert not (out / REVIEW_FILENAME).exists()
+        return
+    assert code == EXIT_OK, report
+    summary = json.loads((out / REVIEW_FILENAME).read_text())["clearance"]
+    assert summary["available"] is True
+    assert summary["unknown_pair_count"] == summary["pairs_checked"] == 1
+    assert summary["offending_pair_count"] == 0
+    assert summary["unknown_pairs"][0]["distance_mm"] is None
+    assert summary["unknown_pairs"][0]["error"] == "measurement failed"
+    assert "unknown" in (toy_root / "docs/clearance.md").read_text()
+
+
+def _assert_render(root, review):
+    from test_render import image_bytes
+    summary = review["render"]
+    assert summary["available"] is True
+    assert summary["revision"] == review["clearance"]["revision"]
+    assert summary["digest"] and summary["limits"] and summary["approximation"]
+    assert set(summary["views"]) == {"front", "top", "right", "iso"}
+    tracked = set(_git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines())
+    assert summary["path"] in tracked
+    stored = json.loads((root / summary["path"]).read_text())
+    assert stored["revision"] == summary["revision"]
+    for view in summary["views"].values():
+        assert view["path"] in tracked
+        assert view["covered_pixels"] > 0
+        image_bytes(root / view["path"], summary["revision"])
+    section = review["section"]
+    assert section["revision"] == summary["revision"]
+    assert section["digest"] == summary["digest"]
+    assert section["plane"] == "XZ" and section["offset_mm"] == 3.125
+    assert section["units"] == "mm" and section["approximation"] and section["limits"]
+    assert section["path"] in tracked and section["summary_path"] in tracked
+    stored_section = json.loads((root / section["summary_path"]).read_text())
+    assert stored_section == {k: v for k, v in section.items() if k != "summary_path"}
+    assert section["acquisition_seconds"] == summary["acquisition_seconds"]
+    import xml.etree.ElementTree as ET
+    drawing = ET.parse(root / section["path"]).getroot()
+    assert section["revision"] in drawing.find("{*}title").text
+    if section["status"] == "ok":
+        from test_section import area
+        assert section["available"] is True
+        assert len(drawing.findall("{*}path")) == 2
+        assert all(area(loop) > 0 for obj in section["objects"].values() for loop in obj["contours_mm"])
+    else:
+        assert section["status"] in ("empty", "unsupported")
+        assert section["available"] == (section["status"] == "empty")
+    assert review["walk_seconds"] > summary["acquisition_seconds"] + summary["render_seconds"]
+
+
+@pytest.mark.parametrize("failure", ["snapshot", "rollout", "digest"])
+def test_walk_render_failure_cannot_reuse_old_success(fake_cadex, toy_root, capsys, monkeypatch, failure):
+    out = toy_root / "runs/render-failure"
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    assert code == EXIT_OK, report
+    old = (out / REVIEW_FILENAME).read_bytes()
+    monkeypatch.setenv("FAKE_RENDER_FAIL", failure)
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    assert code != EXIT_OK
+    assert ("accepted digest" if failure == "digest" else "accepted revision") in report["error"]
+    assert (out / REVIEW_FILENAME).read_bytes() == old
+    assert not report["walk"].get("review")
+
+
+@pytest.mark.parametrize("outcome", ["empty", "unsupported", "write", "revision"])
+def test_walk_section_status_and_failure_preserve_old_review(
+    fake_cadex, toy_root, capsys, monkeypatch, outcome,
+):
+    from cadex_cli import __main__ as main_module
+    from cadex_cli.section import write_section
+    from cadex_cli.inventory import InventoryError
+    out = toy_root / "runs/section-status"
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    assert code == EXIT_OK, report
+    old = (out / REVIEW_FILENAME).read_bytes()
+
+    def section(client, root, **kwargs):
+        # A second rebuild would replace the attempt backing the accepted buffers.
+        class NoAcquisition:
+            def request(self, *args):
+                pytest.fail("section reacquired the shared snapshot")
+        if outcome == "write":
+            raise InventoryError("section: cannot write artifacts: injected failure")
+        if outcome == "revision":
+            kwargs["expected_revision"] = "wrong"
+        elif outcome == "empty":
+            kwargs["offset"] = 1000
+        return write_section(NoAcquisition(), root, **kwargs)
+
+    monkeypatch.setattr(main_module, "write_section", section)
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    if outcome in ("write", "revision"):
+        assert code != EXIT_OK and "section:" in report["error"]
+        assert not report["walk"].get("review")
+        assert (out / REVIEW_FILENAME).read_bytes() == old
+    else:
+        assert code == EXIT_OK, report
+        review = json.loads((out / REVIEW_FILENAME).read_text())
+        assert review["section"]["status"] == outcome
+        assert review["section"]["available"] == (outcome == "empty")
+        assert not any(o["contours_mm"] for o in review["section"]["objects"].values())

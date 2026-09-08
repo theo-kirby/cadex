@@ -1,6 +1,6 @@
 # linear-carriage — Architecture
 
-Verified against source: 2026-09-06. [Cadex-new]
+Verified against source: 2026-09-08. [Cadex-new]
 
 `script.py` declares one vertical slider, a 20 mm aluminium cube and a grounded plate.
 OCCT geometry supplies exact inertias to the MJCF. This is an ideal joint
@@ -14,6 +14,9 @@ Outputs include geometry, assembly solve diagnostics, MJCF, the training
 task, then policy verification and the rollout. Training is local CPU
 from the offboard venv, 1 iteration and 4 environments. Paths are
 `runs/baseline/train`, `runs/baseline/rollout`, `runs/baseline/review.json`.
+The walk commits `docs/inventory.md` and `docs/clearance.md` alongside the
+review. Clearance counts in `PROGRESS.md` use the initial solved pose,
+0.1 mm minimum distance and 1e-6 mm³ maximum volume; unknown is not clear.
 The source and measured PROGRESS.md live in the parent repository;
 generated outputs and policies are excluded from version control.
 

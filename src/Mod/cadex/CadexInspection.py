@@ -264,6 +264,17 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
             "kind": "wiring",
             "project_root": str(service.project_scope_snapshot().get("root") or ""),
         }
+    if scope in {"inventory", "clearance"}:
+        # What the assembly is MADE OF: every component of the accepted
+        # revision joined back to the output it places, that output's catalog
+        # identity, and the pose the solver put it at (ADR-233). Store-backed
+        # like every other artifact scope, so the read happens in
+        # complete_inspection rather than on the document thread.
+        return {
+            **common,
+            "kind": scope,
+            "project_root": str(service.project_scope_snapshot().get("root") or ""),
+        }
     if scope == "history":
         # The undo trail (ADR-045): every accepted revision's source, newest
         # last. Store-backed, so the read happens off the document thread.
@@ -1046,6 +1057,163 @@ def _complete_output(captured: Mapping[str, Any]) -> Any:
     return detail
 
 
+#: What an inventory row reports about the shape a component places. Kept
+#: short on purpose: this scope answers "what is this made of", and the full
+#: measurement of any one part is one ``inspect scope="output"`` away.
+_INVENTORY_FACT_KEYS = (
+    "shape_type",
+    "solids",
+    "volume_mm3",
+    "area_mm2",
+    "bounds_mm",
+    "center_of_mass_mm",
+)
+
+
+def _inventory_position(matrix: Any) -> list[float] | None:
+    """The translation of a solved 4x4 row-major placement."""
+
+    if not isinstance(matrix, (list, tuple)) or len(matrix) < 12:
+        return None
+    try:
+        return [float(matrix[3]), float(matrix[7]), float(matrix[11])]
+    except (TypeError, ValueError):
+        return None
+
+
+def _complete_inventory(captured: Mapping[str, Any]) -> Any:
+    """The parts of the accepted assembly, with catalog ids (ADR-233).
+
+    Everything here already existed and none of it was joined up. A
+    ``component_link`` output carries the solved pose and names the output it
+    places (``source_output``, ADR-049); that output carries its facts, and —
+    since ADR-233 — the catalog row it came off when a ``lib.*`` generator
+    built it. An agent reviewing an assembly headlessly had to page
+    ``scope="output"`` once per output and do the join itself, which is
+    exactly the review step the walk cannot afford to guess at.
+
+    Nothing is computed: this reads the pinned accepted attempt's
+    ``result.json``, like ``scope="output"`` and ``scope="wiring"`` do.
+
+    A project script publishes at most one assembly (the assembly worker
+    refuses a second), so ``target`` is optional; given, it must name that
+    assembly.
+    """
+
+    root = str(captured.get("project_root") or "")
+    if not root:
+        return {
+            "ok": False,
+            "error": "The active document has no durable Cadex project root.",
+        }
+    from CadexPinResolution import accepted_attempt_dir, load_worker_report
+    from CadexScriptStore import CadexProjectScriptStore
+
+    state = CadexProjectScriptStore(root).read_state()
+    revision = str(state.get("accepted_revision") or "")
+    if not revision:
+        return {
+            "ok": False,
+            "error": "The project has no accepted revision to inventory.",
+        }
+    report = load_worker_report(accepted_attempt_dir(Path(root), state))
+    items = [
+        item for item in list(report.get("outputs") or []) if isinstance(item, Mapping)
+    ]
+    by_name = {str(item.get("name") or ""): item for item in items}
+    assemblies = [
+        str(item.get("name") or "")
+        for item in items
+        if str(item.get("type") or "") == "assembly"
+    ]
+    target = str(captured.get("target") or "")
+    if target and target not in assemblies:
+        raise ValueError(
+            f"The accepted revision has no assembly output named {target!r}; it "
+            f"publishes {sorted(assemblies)}."
+        )
+    assembly = target or (assemblies[0] if assemblies else "")
+    components: list[dict[str, Any]] = []
+    catalogued: dict[str, int] = {}
+    uncatalogued: list[str] = []
+    for item in items:
+        if str(item.get("type") or "") != "component_link":
+            continue
+        properties = dict((item.get("definition") or {}).get("properties") or {})
+        source_output = str(item.get("source_output") or "")
+        source = by_name.get(source_output) or {}
+        row: dict[str, Any] = {
+            "component": str(item.get("name") or ""),
+            "label": str(properties.get("label") or item.get("name") or ""),
+            "source_output": source_output,
+            "grounded": bool(properties.get("grounded", False)),
+        }
+        catalog = source.get("catalog")
+        if isinstance(catalog, Mapping):
+            row["catalog"] = {
+                "family": str(catalog.get("family") or ""),
+                "part_number": str(catalog.get("part_number") or ""),
+            }
+            key = f"{row['catalog']['family']}/{row['catalog']['part_number']}"
+            catalogued[key] = catalogued.get(key, 0) + 1
+        elif source_output:
+            uncatalogued.append(source_output)
+        matrix = item.get("solved_placement_matrix")
+        position = _inventory_position(matrix)
+        if position is not None:
+            row["placement"] = {"position_mm": position, "matrix": list(matrix)}
+        facts = source.get("facts")
+        if isinstance(facts, Mapping):
+            row["source_facts"] = {
+                key: facts[key] for key in _INVENTORY_FACT_KEYS if key in facts
+            }
+        components.append(row)
+    if captured.get("kind") == "clearance":
+        measurements = by_name.get(assembly, {}).get("clearance")
+        measured = {
+            tuple(sorted((row["first"], row["second"]))): row
+            for row in (measurements or [])
+        }
+        pairs = []
+        for index, first in enumerate(components):
+            for second in components[index + 1:]:
+                key = (first["component"], second["component"])
+                row = dict(measured.get(tuple(sorted(key))) or {
+                    "first": key[0], "second": key[1],
+                    "distance_mm": None, "common_volume_mm3": None,
+                    "error": "No published measurement; rebuild the project.",
+                })
+                row["first"], row["second"] = key
+                for side, component in (("first", first), ("second", second)):
+                    row[side + "_label"] = component["label"]
+                    row[side + "_catalog"] = component.get("catalog")
+                pairs.append(row)
+        return {
+            "revision": revision, "assembly": assembly,
+            "available": bool(assembly) and measurements is not None,
+            "pose": "initial solved pose (not swept motion)",
+            "pairs": pairs,
+        }
+    return {
+        "revision": revision,
+        "assembly": assembly,
+        "component_count": len(components),
+        "components": components,
+        "catalog_counts": dict(sorted(catalogued.items())),
+        "uncatalogued_sources": sorted(set(uncatalogued)),
+        "note": (
+            "One row per component of the accepted assembly. 'catalog' is "
+            "present only where the placed output was built by a lib.* "
+            "generator; an output modelled by hand has no catalogue row to "
+            "name, and its source output name is listed under "
+            "'uncatalogued_sources' instead. 'placement' is the pose the "
+            "assembly solver settled on, not the pose the script declared. "
+            "For the full measurement of any one part, ask "
+            "inspect scope=\"output\" with that source_output as the target."
+        ),
+    }
+
+
 def _json_pointer_parts(pointer: str) -> list[str]:
     if not pointer:
         return []
@@ -1255,6 +1423,8 @@ def complete_inspection(captured: Mapping[str, Any]) -> dict[str, Any]:
             raw = _complete_blueprint(captured)
         elif kind == "wiring":
             raw = _complete_wiring(captured)
+        elif kind in {"inventory", "clearance"}:
+            raw = _complete_inventory(captured)
         else:
             raise ValueError("Invalid captured core.inspect operation.")
         result = _bounded_page(raw, captured)

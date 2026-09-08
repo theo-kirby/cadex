@@ -3,12 +3,14 @@
 
 """``cadex`` — the command line.
 
-Seven subcommands over one project, of which exactly one spends tokens::
+Nine subcommands over one project, of which exactly two spend tokens::
 
     cadex -p "a mounting bracket for a NEMA17, 4 mm wall" --out ./out
     cadex params --set fin_angle=12 --out ./sweep/12
     cadex script --set bracket.py --out ./out
     cadex export --out ./out
+    cadex inventory
+    cadex clearance
     cadex link --from ../sensorA --output sensor
     cadex asset --put walk.cxpolicy --put walk-task.json
     cadex train --out ./run --iterations 200 --envs 64 --put
@@ -33,6 +35,7 @@ import os
 from pathlib import Path
 import signal
 import sys
+import time
 from typing import Any, Iterator, Sequence
 
 from .agent import (
@@ -46,6 +49,15 @@ from .bridge import Bridge, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
+from .inventory import InventoryError, write_inventory
+from .render import acquire_snapshot, write_render
+from .section import write_section
+from .clearance import (
+    MAXIMUM_COMMON_VOLUME_MM3,
+    MINIMUM_CLEARANCE_MM,
+    bounds_agreement,
+    write_clearance,
+)
 from .project_docs import (
     append_progress_row,
     commit_project,
@@ -54,6 +66,7 @@ from .project_docs import (
     progress_numbers,
     read_project_docs,
     record_decisions,
+    record_notes,
     scaffold_project_docs,
 )
 from .report import (
@@ -161,6 +174,36 @@ def build_parser() -> argparse.ArgumentParser:
         "(the shell renders them; this only reads the store).",
     )
     _common(export_parser, inherit=True)
+
+    inventory_parser = subparsers.add_parser(
+        "inventory",
+        help="List the parts of the accepted assembly with catalog ids. "
+        "No AI, no tokens.",
+    )
+    _common(inventory_parser, inherit=True)
+    inventory_parser.add_argument(
+        "--assembly",
+        default="",
+        metavar="OUTPUT",
+        help="The assembly output to inventory. A project publishes at most "
+        "one, so this is only ever a check that you are looking at it.",
+    )
+
+    render_parser = subparsers.add_parser(
+        "render", help="Write accepted front/top/right/iso views to review/render/.")
+    _common(render_parser, inherit=True)
+    section_parser = subparsers.add_parser("section", help="Cut accepted geometry through a named world plane.")
+    _common(section_parser, inherit=True)
+    section_parser.add_argument("--plane", choices=("XY", "XZ", "YZ"), required=True)
+    section_parser.add_argument("--offset-mm", type=float, default=0.0)
+
+    clearance_parser = subparsers.add_parser(
+        "clearance", help="Check accepted assembly pairs; write docs/clearance.md.",
+    )
+    _common(clearance_parser, inherit=True)
+    clearance_parser.add_argument("--assembly", default="", metavar="OUTPUT")
+    clearance_parser.add_argument("--min-clearance-mm", type=float, default=MINIMUM_CLEARANCE_MM)
+    clearance_parser.add_argument("--max-common-volume-mm3", type=float, default=MAXIMUM_COMMON_VOLUME_MM3)
 
     script_parser = subparsers.add_parser(
         "script", help="Print the project script, or replace it from a file."
@@ -471,7 +514,7 @@ def _common(parser: argparse.ArgumentParser, *, inherit: bool = False) -> None:
 
 @contextmanager
 def _engine_session(
-    args: argparse.Namespace, report: RunReport
+    args: argparse.Namespace, report: RunReport, *, restore: bool = True
 ) -> Iterator[tuple[Engine, CadexdClient]]:
     """Resolve, lock, spawn, open — and unwind all four in order."""
 
@@ -484,7 +527,7 @@ def _engine_session(
         client = CadexdClient(engine)
         try:
             client.start()
-            opened = open_project(client, project_root)
+            opened = open_project(client, project_root, restore=restore)
             report.params = params_from_script(opened.get("script"))
             # The project as a codebase (ADR-193): its three documents
             # exist from the first visit on. Plain files beside
@@ -548,6 +591,50 @@ def _refresh_script_state(client: CadexdClient, report: RunReport) -> None:
     """Re-read the parameters after a change, so the report is current."""
 
     report.params = params_from_script(read_script_state(client))
+
+
+#: How much of the agent's closing words and of an engine refusal reach the
+#: envelope. Long enough to name a cause, short enough that a walk's
+#: ``error`` line stays one readable paragraph.
+REASON_CHARS = 400
+
+
+def _clip(text: str, limit: int = REASON_CHARS) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _rejection_reason(text: str, calls: Sequence[ToolCall]) -> str:
+    """Why a turn ended with no accepted script, in one line.
+
+    The bare sentence — "the turn finished without the engine accepting a
+    script" — is true of two quite different runs, and only the parent can
+    tell them apart: a turn that *offered* a script and had it refused, and
+    a turn that never offered one at all. Both were seen inside ``cadex
+    walk`` in one afternoon, and the envelope said the same thing for each,
+    so the record could not name the cause. So carry the two facts the
+    parent already has: the last thing the engine refused, and the agent's
+    own closing words. Nothing here retries and nothing here guesses — this
+    is the reason, written down.
+    """
+
+    parts = ["the turn finished without the engine accepting a script."]
+    refused = next((call for call in reversed(calls) if not call.ok), None)
+    if refused is not None:
+        detail = _clip(refused.summary) or refused.failure_code or "failed"
+        code = f" [{refused.failure_code}]" if refused.failure_code else ""
+        parts.append(f"the engine last refused {refused.op}{code}: {detail}")
+    else:
+        offered = ", ".join(dict.fromkeys(call.op for call in calls))
+        parts.append(
+            "the engine refused nothing: the agent made "
+            + (f"{len(calls)} tool call(s) ({_clip(offered, 120)})" if calls
+               else "no tool call")
+            + " and never offered a script."
+        )
+    if text.strip():
+        parts.append(f"the agent's closing words: {_clip(text)}")
+    return " ".join(parts)
 
 
 # -- commands ------------------------------------------------------------
@@ -634,6 +721,12 @@ def command_prompt(
             report.notes.append(
                 "recorded " + ", ".join(landed) + " in DECISIONS.md."
             )
+        # ...and its longer notes land beside them, one file per subject
+        # (ADR-245): a closing line `NOTE <subject>:`. The same convention
+        # rather than a second mechanism, and read back on the next visit.
+        noted = record_notes(report.project_root, result.text)
+        if noted:
+            report.notes.append("wrote " + ", ".join(noted) + ".")
 
         accepted = bridge.state.last_accepted
         report.revision = bridge.state.revision or report.revision
@@ -645,9 +738,7 @@ def command_prompt(
             report.error = result.error or "the agent turn failed."
             return EXIT_FAILURE
         if accepted is None:
-            report.error = (
-                "the turn finished without the engine accepting a script."
-            )
+            report.error = _rejection_reason(result.text, bridge.state.calls)
             return EXIT_REJECTED
 
         _finish(args, report, engine, accepted.get("display"))
@@ -724,6 +815,62 @@ def command_export(args: argparse.Namespace, report: RunReport) -> int:
                 if copied else
                 "blueprints: the project has none stored."
             )
+        report.ok = True
+        return EXIT_OK
+
+
+def command_render(args: argparse.Namespace, report: RunReport) -> int:
+    with _engine_session(args, report) as (_engine, client):
+        path, value = write_render(client, report.project_root)
+        report.revision = report.accepted_revision = value["revision"]
+        report.digest = value["digest"] or ""
+        report.notes.append(f"render: {value['triangles']} triangles, four views; {path}.")
+        report.ok = True
+        return EXIT_OK
+
+
+def command_section(args: argparse.Namespace, report: RunReport) -> int:
+    with _engine_session(args, report) as (_engine, client):
+        path, value = write_section(client, report.project_root, plane=args.plane, offset=args.offset_mm)
+        report.revision = report.accepted_revision = value["revision"]
+        report.digest = value["digest"] or ""
+        report.notes.append(f"section: {value['status']}; {path}.")
+        report.ok = True
+        return EXIT_OK
+
+
+def command_clearance(args: argparse.Namespace, report: RunReport) -> int:
+    with _engine_session(args, report, restore=False) as (_engine, client):
+        path, value = write_clearance(
+            client, report.project_root, target=args.assembly,
+            minimum=args.min_clearance_mm, maximum_volume=args.max_common_volume_mm3,
+        )
+        report.notes.append(f"clearance: {len(value['pairs'])} pair(s), written to {path}.")
+        report.ok = True
+        return EXIT_OK
+
+
+def command_inventory(args: argparse.Namespace, report: RunReport) -> int:
+    """What the accepted assembly is made of, as a file in the project.
+
+    The first headless review call (ADR-233): no rebuild, no tokens, no
+    geometry recomputed — it reads the pinned accepted attempt through
+    ``inspect scope="inventory"`` and lands ``docs/inventory.md`` in the
+    project, where the next visit's agent will read it.
+    """
+
+    with _engine_session(args, report) as (_engine, client):
+        _progress(" · inspect scope=inventory")
+        path, value = write_inventory(
+            client, report.project_root, target=str(args.assembly or "")
+        )
+        report.notes.append(
+            "inventory: {:d} component(s), {:d} catalogued, written to {:s}.".format(
+                int(value.get("component_count") or 0),
+                sum(int(count) for count in dict(value.get("catalog_counts") or {}).values()),
+                str(path),
+            )
+        )
         report.ok = True
         return EXIT_OK
 
@@ -1091,13 +1238,14 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     a person's — as a rewrite of the script's one ``assembly.policy``
     call followed by ``cadex script --set``, ``cadex params --set
     policy_on=1`` for the verified rollout, and the review read off the
-    exported trace. Every leg is a child ``cadex`` command, so each lands
-    its own ``PROGRESS.md`` row and commit; this command lands none of its
-    own, because the legs are the record. ``--remote`` (ADR-200) goes to
+    exported trace and accepted inventory. Each child ``cadex`` leg lands
+    its own ``PROGRESS.md`` row and commit; the walk commits the review
+    and render/section/inventory/clearance reports together. ``--remote`` (ADR-200) goes to
     the train leg and nowhere else: the trainer runs on the box, the
     artifacts and every later leg are unchanged.
     """
 
+    walk_started = time.monotonic()
     if not args.out:
         report.error = "walk needs --out: the bundle, the policy and the rollout land there."
         return EXIT_USAGE
@@ -1232,10 +1380,69 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     report.revision = str(leg.envelope.get("revision") or "")
 
     # Review: the trace's numbers, in the envelope and as a file beside the
-    # rollout — the one artifact of the walk's own, and what its commit is.
+    # rollout, plus the accepted assembly inventory in the project docs.
     review = review_from_outputs(leg.envelope.get("outputs") or [])
     review["weights"] = weights
     review["sha256"] = sha256
+    with _engine_session(args, RunReport(), restore=False) as (_engine, client):
+        accepted_snapshot = acquire_snapshot(client)
+        if accepted_snapshot[1]["digest"] != report.digest:
+            raise InventoryError("review: accepted digest differs from rollout")
+        render_path, rendering = write_render(
+            client, report.project_root, expected_revision=report.accepted_revision,
+            accepted_snapshot=accepted_snapshot,
+        )
+        section_path, section = write_section(
+            client, report.project_root, plane="XZ", offset=3.125,
+            expected_revision=report.accepted_revision, accepted_snapshot=accepted_snapshot,
+        )
+        path, inventory = write_inventory(client, report.project_root)
+        clearance_path, clearance = write_clearance(client, report.project_root)
+    if clearance["revision"] != rendering["revision"]:
+        raise InventoryError("review: clearance revision differs from rendered rollout")
+    review["render"] = {
+        "available": True, **rendering,
+        "path": render_path.relative_to(Path(report.project_root)).as_posix(),
+    }
+    review["section"] = {
+        **section, "summary_path": section_path.relative_to(Path(report.project_root)).as_posix(),
+    }
+    review["walk_seconds"] = time.monotonic() - walk_started
+    review["inventory"] = {
+        "available": bool(inventory.get("assembly")),
+        "component_count": inventory["component_count"],
+        "catalogued_count": sum(inventory.get("catalog_counts", {}).values()),
+        "path": path.relative_to(Path(report.project_root)).as_posix(),
+    }
+    pairs = clearance["pairs"]
+    available = bool(clearance.get("available"))
+    offending = [row for row in pairs if row["status"] in ("intersection", "below clearance")]
+    unknown = [row for row in pairs if row["status"] == "unknown"]
+    review["clearance"] = {
+        "available": available,
+        "scope": "initial solved pose",
+        "revision": clearance["revision"],
+        "minimum_clearance_mm": MINIMUM_CLEARANCE_MM,
+        "maximum_common_volume_mm3": MAXIMUM_COMMON_VOLUME_MM3,
+        "pairs_checked": len(pairs) if available else None,
+        "offending_pair_count": len(offending) if available else None,
+        "offending_pairs": offending,
+        "unknown_pair_count": len(unknown) if available else None,
+        "unknown_pairs": unknown,
+        "bounds_check": bounds_agreement(pairs, rendering.get("objects")),
+        "path": clearance_path.relative_to(Path(report.project_root)).as_posix(),
+    }
+    # A disagreement here is the review lying about itself, not a design
+    # finding, so it is said loudly and does not throw away the run's work.
+    check = review["clearance"]["bounds_check"]
+    report.notes.append(
+        "clearance bounds check: {:s}, {:d} comparison(s) over {:d} pair(s){:s}.".format(
+            str(check["status"]), int(check["comparisons"]),
+            int(check.get("pairs_compared") or 0),
+            "" if check["status"] != "fail"
+            else ", {:d} FAILURE(S)".format(int(check["failure_count"])),
+        )
+    )
     report.walk["review"] = review
     review_path = write_review(
         out_dir, review=review, legs=legs, training=report.training,
@@ -1275,6 +1482,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_params(args, report)
         elif command == "export":
             code = command_export(args, report)
+        elif command == "section":
+            code = command_section(args, report)
+        elif command == "render":
+            code = command_render(args, report)
+        elif command == "clearance":
+            code = command_clearance(args, report)
+        elif command == "inventory":
+            code = command_inventory(args, report)
         elif command == "script":
             code = command_script(args, report)
         elif command == "link":
@@ -1287,7 +1502,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_walk(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
-    except (ValueError, ExportError, TrainError, WalkError) as exc:
+    except (ValueError, ExportError, InventoryError, TrainError, WalkError) as exc:
         report.error = str(exc)
         code = EXIT_USAGE if isinstance(exc, ValueError) else EXIT_FAILURE
     except (EngineError, ClaudeUnavailable, ProjectBusy, CadexdError) as exc:
@@ -1339,6 +1554,14 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         return f"script --set {Path(args.source_file).name}"
     if command == "export":
         return f"export → {args.out}"
+    if command == "section":
+        return f"section → review/section/ ({args.plane}, {args.offset_mm:g} mm)"
+    if command == "render":
+        return "render → review/render/ (front, top, right, iso)"
+    if command == "clearance":
+        return "clearance → docs/clearance.md"
+    if command == "inventory":
+        return "inventory → docs/inventory.md"
     if command == "link":
         return "link {:s} from {:s}".format(
             str(getattr(args, "output", "") or "?"), str(args.source_project)
@@ -1348,8 +1571,13 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
             Path(str(item)).name for item in args.put_files
         )
     if command == "walk":
+        out = Path(args.out).expanduser()
+        try:
+            label = str(out.resolve().relative_to(Path(report.project_root).resolve()))
+        except (ValueError, OSError):
+            label = out.name
         return "walk {:d} it × {:d} envs → {:s}".format(
-            int(args.iterations), int(args.envs), str(args.out)
+            int(args.iterations), int(args.envs), label
         )
     if command == "train":
         # The mode is part of what happened: a row trained on the box says
@@ -1375,8 +1603,6 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command == "walk":
-        return  # its legs landed their rows; a row on top would repeat their numbers
     try:
         append_progress_row(
             report.project_root,
@@ -1384,7 +1610,12 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             what=_progress_what(command, args, report),
             revision=report.accepted_revision,
             digest=report.digest,
-            numbers=progress_numbers(
+            numbers=(
+                "clearance unavailable" if not report.walk["review"]["clearance"]["available"]
+                else "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
+                     "pairs checked {pairs_checked} (initial solved pose; {minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)".format(
+                         **report.walk["review"]["clearance"])
+            ) if command == "walk" else progress_numbers(
                 training=report.training,
                 outputs=report.outputs,
                 previous=previous_numbers(report.project_root),
@@ -1406,7 +1637,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
     if command == "asset" and not getattr(args, "put_files", None):
         return
     # A walk's legs each committed; what is left is its review.json, when
-    # --out lies under the project. Outside it, nothing changed, no commit.
+    # --out lies under the project, plus generated project review artifacts.
     try:
         sha = commit_project(
             report.project_root, f"cadex {_progress_what(command, args, report)}"

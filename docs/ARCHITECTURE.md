@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-09-07
+Verified against source: 2026-09-08
 
 **Native Blender geometry (ADR-185).** The mesh domain now includes
 `mesh.blender`: an xscript-owned recipe with named mesh inputs and JSON
@@ -100,6 +100,15 @@ NDJSON client with no cadex imports.
   face/edge ID maps per output (`cadex_tessellation.py`, digest-neutral);
   `CadexPinResolution.py` resolves pins headlessly against the accepted
   staged BREP.
+- **Worker module snapshots** (ADR-244): shared bundles are named from module
+  bytes read once and copied from that snapshot, never hardlinked to mutable
+  engine sources. Reuse compares every member's bytes and rejects symlinks and
+  legacy hardlinks. Corrupt or incomplete bundles are replaced as complete
+  directories, dropping their bytecode; matching bundles keep their files and
+  warm bytecode. A lost publication race validates the winner before returning.
+  This is not a lock against concurrent cache mutation or a transaction across
+  an engine installation; readers of a bundle being repaired may fail and retry.
+  Project assets retain their separate atomic-replacement/hardlink contract.
 - **Worker**: `FreeCADCmd --safe-mode -c <bootstrap>` subprocess launched
   via `src/Mod/cadex/CadexScriptedProcess.py` (`run_process`: no console
   window, new session, stdin closed, hard timeout + memory watchdog;

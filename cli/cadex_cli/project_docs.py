@@ -20,7 +20,10 @@ are read on every visit and updated as the work goes:
   a reader lines up by eye (ADR-194, row 9).
 
 Longer notes go under ``docs/``, one file per subject, named by the subject
-(``docs/gear-ratios.md``, ``docs/sensors.md``, ``docs/rejected.md``).
+(``docs/gear-ratios.md``, ``docs/sensors.md``, ``docs/rejected.md``). They
+land the same way a decision does — a closing line ``NOTE <subject>: …``
+(ADR-245) — and are pasted back on the next visit, so the convention the
+walk documents is one a design turn can actually reach.
 
 **The CLI scaffolds and appends; the agent reads and decides.** The CLI's
 agent runs with no built-in tools — its whole world is the engine (see
@@ -34,16 +37,16 @@ neither a file tool nor a shell (the Mesh tools are its whole world), so
 with the GUI attached the three files are still the CLI's and a person's;
 the shape is the same in every mode because the files are (ADR-201).
 
-**The project owns a git repository** (ADR-194). The first visit runs
-``git init`` in the project root — unless the root already lies inside a
-work tree, which is somebody's repository and is left alone — and writes a
-``.gitignore`` that keeps the rebuildable and the bulky out: the staged
-artifacts, the frames, the renders, the lock, the ``.blend1`` backups. After
-every accepted run the CLI commits whatever changed, with the
-``PROGRESS.md`` row's words as the message, so a project's history is its
-run log and ``git diff`` between two runs is the change that produced the
-numbers. Without ``git`` on ``PATH`` the project simply has no history and
-the envelope says so once.
+**Project-root git repositories** (ADR-194). Outside another work tree,
+the CLI initializes a repository if needed and creates its default
+``.gitignore`` only during initialization, only if absent. Existing root
+repositories keep their ignore configuration. After every accepted run,
+the CLI attempts to commit all working changes (``git add -A``), including
+unrelated edits, with the ``PROGRESS.md`` row's words as the message.
+A project nested beneath another repository root, without its own ``.git``,
+gets documents and rows but no initialization or commit; the parent index
+is untouched. Without ``git`` on ``PATH`` there is no automatic history.
+The envelope reports a successful commit as ``committed <sha>.``.
 
 The engine knows nothing about any of this: these are plain files beside
 ``script.json``, like ``agent.json``, and the store's restore pass ignores
@@ -73,6 +76,21 @@ DOMAIN_DOCS_DIRNAME = "docs"
 #: A closing line of a turn that starts with this is a decision.
 DECISION_PREFIX = "DECISION:"
 
+#: A closing line of a turn that starts with this is a domain note:
+#: ``NOTE <subject>: <text>`` lands in ``docs/<subject>.md``. The same
+#: convention as ``DECISION:``, for the notes too long for an ADR line.
+NOTE_PREFIX = "NOTE"
+
+#: Subjects under ``docs/`` the CLI writes itself. A note never appends to
+#: a generated report, so ``inventory.md`` and ``clearance.md`` stay what
+#: the last run measured.
+GENERATED_DOC_STEMS = ("inventory", "clearance")
+
+#: How much of each domain note the agent is shown back. Smaller than a
+#: project document's share: there is one of each of those and there can
+#: be many notes.
+NOTE_DOC_LIMIT = 2_000
+
 #: How much of each document the agent is shown. The head for the two it
 #: reasons from, the tail for the log, because the latest rows are the ones
 #: that matter and the header is repeated in the prompt's own text.
@@ -99,6 +117,12 @@ parameters it declares and why each exists:
 | Parameter | Unit | Why it exists |
 |---|---|---|
 
+Purchased hardware: publish each catalog body and place purchased instances
+as separate assembly components with `assembly.component`, separate from
+printed solids. Transformed catalog bodies may also be clearance cutters;
+a cutter does not imply another purchased part. Review the script alongside
+placed inventory; its totals cannot identify hardware fused into other solids.
+
 ## Outputs
 
 | Output | Kind | Who consumes it |
@@ -111,11 +135,41 @@ parameters it declares and why each exists:
 leg on the box `training/remote_train.sh` names.) Fill in which, and
 why; `{progress}` marks each remote row `(remote)`.
 
+The shared mode artifacts table in `docs/CLI.md` is the walk contract.
+`agent.json.updated_at` records changed session identity or model, not every
+attempt. A refused turn still saves changed identity for resumption; unchanged
+identity leaves that file untouched. Opening may refresh accepted restore
+attempt metadata in `script.json`, even when the subsequent turn fails.
+A refused walk does not roll that bookkeeping back or create a failure commit.
+The walk's `{progress}` row and project commit subject name the output
+relative to this project, or by basename for an external output, so the
+recorded run label contains no absolute machine path.
 The artifacts are the same project-relative paths in both modes: the
 bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
-and as a `{progress}` row, so rows from either mode compare line for
-line. **Remote runs are cold runs only:** the dispatcher carries the
+and the generated `{docs}/inventory.md` component report (also summarized
+in the review's `inventory` block). Catalog totals count placed instances;
+they cannot identify hardware fused into other solids or infer purchases.
+The review also writes `{docs}/clearance.md` and the
+review's `clearance` block. Named front/top/right/iso previews and their
+summary live in `review/render/<accepted-revision>/`; the `render` block
+carries project-relative paths, revision/digest, approximation, limits and
+acquisition/render timings. The walk refuses rendering failures or a revision
+that differs from the rollout; old files are never a successful fallback.
+`walk_seconds` measures the entry point through review (before final commit).
+The `section` block carries the shared snapshot cut at world XZ, Y = 3.125 mm,
+under `review/section/<accepted-revision>/XZ-3.125/` (SVG and JSON). It
+retains status, availability, revision/digest, plane, units, approximation,
+limits and acquisition/section timings. This interior plane cuts both reference
+mechanisms without dispatch by mechanism. Empty cuts are available with no
+contours; unsupported cuts are unavailable with per-object reasons. Section
+errors and rollout digest mismatches fail the walk; retained old artifacts
+never imply current success. Clearance covers only the initial solved pose,
+at 0.1 mm minimum distance and 1e-6 mm³ maximum common volume. Its own
+`{progress}` row carries offending, unknown and checked pair counts;
+unavailable measurements stay unavailable. Training and rollout rows
+retain their numbers, so rows
+from either mode compare line for line. **Remote runs are cold runs only:** the dispatcher carries the
 bundle and the model out and nothing else, so a warm start
 (`--init-from`) trains locally. With the GUI attached the same commands
 run from a terminal beside the open file, one at a time while no rebuild
@@ -131,6 +185,14 @@ acceptance and concurrent rebuilds still require sequential use.
 Longer notes go under `{docs}/`, one file per subject, named by the
 subject — `{docs}/gear-ratios.md`, `{docs}/sensors.md`,
 `{docs}/actuators.md`, `{docs}/rejected.md` — and are linked from here.
+
+A design turn writes one by ending a closing line with
+`{note_prefix} <subject>: <text>`, which the CLI appends as a dated bullet
+in `{docs}/<subject>.md`, the way a `{prefix}` line lands an ADR. Every
+note is pasted back into the next turn's prompt, so a mechanism with
+actuators or sensors should leave `{docs}/actuators.md` and
+`{docs}/sensors.md` behind. `{docs}/inventory.md` and
+`{docs}/clearance.md` are the CLI's generated reports, not note subjects.
 """
 
 _DECISIONS_TEMPLATE = """\
@@ -143,11 +205,21 @@ that ends with a line starting `{prefix}` lands here as the next entry.
 ## ADR-001 — Project scaffolded ({date})
 
 Created by the `cadex` CLI on first visit, with `{architecture}` and
-`{progress}` beside it, and a git repository the project owns: the CLI
-commits after every accepted run. `.gitignore` keeps out what a rebuild
-recreates (`script_artifacts/`), what is bulk (`frames/`, renders) and
-what is transient (the lock, `.blend1` backups); the script, its history,
-the stored assets and these documents are the project.
+`{progress}` beside it. Outside another work tree, the CLI initializes a
+repository if needed and creates default ignore rules only if `.gitignore`
+is absent at initialization. Existing repositories keep their ignore rules;
+check them before generating checkpoints and traces. In a project-root
+repository, accepted runs attempt to commit all working changes, including
+unrelated edits. A project nested beneath another repository root, without
+its own `.git`, gets no automatic commit and leaves the parent index untouched.
+"""
+
+_NOTE_TEMPLATE = """\
+# {title}
+
+One bullet per note, newest last. Written by the `cadex` CLI from a turn's
+closing `NOTE {title}:` lines, and read back to the agent on its next
+visit. Edit it freely; it is the project's, not the CLI's.
 """
 
 _PROGRESS_TEMPLATE = """\
@@ -157,8 +229,11 @@ One row per run the `cadex` CLI accepted, newest last. Written by the
 CLI from what actually happened; read by the agent on every visit. A
 number a previous row also carried shows its change against that row,
 as `total_reward 127.8 (Δ -1602.1 vs 2996fb73 at 1729.9)`: the delta,
-the digest of the run compared against, and that run's value. Each row
-is one commit in the project's own repository (`git log` is this table).
+the digest of the run compared against, and that run's value. In a
+project-root repository, the CLI attempts a commit after each accepted run;
+`committed <sha>.` in the command's notes confirms success. Rows still land
+without Git or when the project is nested beneath another repository root
+without its own `.git`; those rows have no automatic commit.
 
 For lifecycle comparisons, record iterations, environment count and seeds.
 `total_reward` sums rewards over the verified rollout's `step_count`;
@@ -205,6 +280,7 @@ def scaffold_project_docs(root: Path | str) -> list[str]:
         "name": name,
         "docs": DOMAIN_DOCS_DIRNAME,
         "prefix": DECISION_PREFIX,
+        "note_prefix": NOTE_PREFIX,
         "date": _today(),
         "architecture": ARCHITECTURE_NAME,
         "progress": PROGRESS_NAME,
@@ -235,11 +311,13 @@ def _bounded(text: str, limit: int, *, keep: str) -> str:
 
 
 def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str:
-    """The three documents as one prompt section, each bounded.
+    """The three documents and the domain notes as one prompt section.
 
-    Empty when none exist — a project that predates the scaffold and was
-    never visited by a run that creates it says nothing rather than
-    inventing headings.
+    Each is bounded. Empty when none exist — a project that predates the
+    scaffold and was never visited by a run that creates it says nothing
+    rather than inventing headings. The notes are pasted with the
+    documents because the agent has no file tool: a note it writes on one
+    visit is only worth writing if it reads it on the next.
     """
 
     parts: list[str] = []
@@ -250,6 +328,13 @@ def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str
             continue
         keep = "tail" if doc_name == PROGRESS_NAME else "head"
         parts.append(f"--- {doc_name} ---\n{_bounded(text.strip(), limit, keep=keep)}")
+    for relative, path in domain_note_paths(root).items():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        bounded = _bounded(text.strip(), NOTE_DOC_LIMIT, keep="tail")
+        parts.append(f"--- {relative} ---\n{bounded}")
     return "\n\n".join(parts)
 
 
@@ -435,6 +520,87 @@ def decision_lines(text: str) -> list[str]:
             if body:
                 found.append(body)
     return found
+
+
+def _note_stem(subject: str) -> str:
+    """``docs/<stem>.md`` for a note's subject, or ``""`` if it names none."""
+
+    slug = re.sub(r"[^a-z0-9]+", "-", str(subject or "").lower()).strip("-")
+    return slug[:48].strip("-")
+
+
+def note_lines(text: str) -> list[tuple[str, str]]:
+    """The ``NOTE <subject>:`` lines of a turn's closing text.
+
+    Each is a ``(stem, body)`` pair, the stem slugged for
+    ``docs/<stem>.md``. A line naming no subject, carrying no body, or
+    aimed at a report the CLI generates itself is not a note.
+    """
+
+    found: list[tuple[str, str]] = []
+    for line in str(text or "").splitlines():
+        stripped = line.strip().lstrip("-*• ").strip()
+        if stripped[: len(NOTE_PREFIX)].upper() != NOTE_PREFIX:
+            continue
+        rest = stripped[len(NOTE_PREFIX):]
+        if rest[:1] not in (" ", "\t") or ":" not in rest:
+            continue
+        subject, body = rest.split(":", 1)
+        stem, body = _note_stem(subject), body.strip()
+        if stem and body and stem not in GENERATED_DOC_STEMS:
+            found.append((stem, body))
+    return found
+
+
+def record_notes(root: Path | str, text: str) -> list[str]:
+    """Land a turn's ``NOTE <subject>:`` lines under ``docs/``.
+
+    One file per subject, each note appended as a dated bullet, the file
+    created with a title when the subject is new. Returns the
+    project-relative paths written, so a report can say so. Nothing to
+    land, nothing touched.
+    """
+
+    notes = note_lines(text)
+    if not notes:
+        return []
+    directory = Path(root) / DOMAIN_DOCS_DIRNAME
+    directory.mkdir(parents=True, exist_ok=True)
+    date = _today()
+    written: list[str] = []
+    for stem, body in notes:
+        path = directory / f"{stem}.md"
+        if path.exists():
+            existing = path.read_text(encoding="utf-8")
+        else:
+            existing = _NOTE_TEMPLATE.format(title=stem.replace("-", " "))
+        if not existing.endswith("\n"):
+            existing += "\n"
+        path.write_text(f"{existing}\n- ({date}) {body}\n", encoding="utf-8")
+        relative = f"{DOMAIN_DOCS_DIRNAME}/{path.name}"
+        if relative not in written:
+            written.append(relative)
+    return written
+
+
+def domain_note_paths(root: Path | str) -> dict[str, Path]:
+    """The project's agent-authored domain notes, by project-relative path.
+
+    The generated reports are excluded: they are the last run's
+    measurements and the run that made them already reported their
+    numbers.
+    """
+
+    directory = Path(root) / DOMAIN_DOCS_DIRNAME
+    try:
+        entries = sorted(directory.glob("*.md"))
+    except OSError:
+        return {}
+    return {
+        f"{DOMAIN_DOCS_DIRNAME}/{path.name}": path
+        for path in entries
+        if path.stem not in GENERATED_DOC_STEMS
+    }
 
 
 def _next_adr_number(text: str) -> int:

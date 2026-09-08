@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-06. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-08. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -52,6 +52,10 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex script` | Print the project script. | no |
 | `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
+| `cadex section --plane XY --offset-mm 8` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). | no |
+| `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews plus `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
+| `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. | no |
+| `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, and the pose the solver settled on. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. | no |
@@ -64,6 +68,9 @@ Flags, valid on either side of the subcommand:
 | `--project DIR` | Project root; **created if absent**. Default `./.cadex`, or `$CADEX_PROJECT`. |
 | `--out DIR` | Write exported files here. Omit and nothing is written. |
 | `--format step,stl` | Any of `step`, `stl`, `brep`. Default `step,stl`. |
+| `--min-clearance-mm N` | `clearance`: flag distances strictly below N (default 0.1 mm). |
+| `--max-common-volume-mm3 N` | `clearance`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
+| `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output to inventory. A project publishes at most one, so this is only ever a check that you are looking at it. |
 | `--blueprints` | `export` only: also copy the project's stored blueprint sheets into `--out`, store filenames kept (ADR-150) — which since ADR-157 means `0007-gearbox-overview-v1.png` for a **named** sheet rather than a revision prefix. Read-only — the shell renders them; this only reaches the store through `inspect scope=blueprint`. |
 | `--engine ROOT` | A staged engine payload. Default: `$CADEX_ENGINE_ROOT`, then the dev tree. |
 | `--json` | Emit the machine-readable envelope on stdout. |
@@ -183,6 +190,14 @@ of doing any of them:
    with `--resume`, continues the conversation; the rest continue it) —
    the design turns, and the only leg that spends tokens. None is fine:
    a project whose script already declares its task walks from there.
+   The design instructions and new-project `ARCHITECTURE.md` scaffold teach
+   purchased hardware placement: publish catalog bodies and place purchased
+   instances as separate `assembly.component` values, separate from printed
+   solids. Transformed catalog bodies may serve as clearance cutters without
+   implying another purchased part. Review the script alongside placed inventory;
+   totals cannot identify hardware fused into other solids (ADR-243). This is
+   authoring guidance, not evidence that an agent followed it. Existing project
+   documents remain owned by the project and are never overwritten by scaffolding.
 2. With `--set NAME=VALUE`: `cadex params --set policy_on=0 --set …
    --out DIR/sweep` — the iterate step, the switch blanked so the change
    is accepted and the bundle exported at its new digest.
@@ -196,10 +211,19 @@ of doing any of them:
    literals of its one `assembly.policy(task, weights="…", sha256="…")`
    call to the stored policy's name and sha256 — nothing else in the
    script changes — writes it to `DIR/script.py` and lands it with
-   `cadex script --set`. A script without the iterate convention (no
-   `policy_on=num(...)`, or not exactly one `assembly.policy` call) is
-   refused at exit 3 with the convention named; the walk does not guess
-   where a policy belongs in a script it did not write.
+   `cadex script --set`. A script without the iterate convention is
+   refused at exit 3 with the convention named, on any of **three**
+   counts — no `policy_on=num(...)` parameter, not exactly one
+   `assembly.policy` call, or that call not carrying `weights=` **and**
+   `sha256=` as inline string literals. The third is the one an
+   agent-authored script fails by accident: factoring the two strings out
+   into module constants (`weights=POLICY_WEIGHTS`) reads better and is
+   refused, because the edit is a literal rewrite and the walk does not
+   guess where a policy belongs in a script it did not write. Measured on
+   nt3 against a script the design turn wrote unprompted; the authoring
+   contract in `cli/cadex_cli/agent.py` now teaches both the switch and
+   the two inline literals, and `test_walk.py` rewrites the example it
+   teaches to keep the two halves agreeing.
 5. `cadex params --set policy_on=1 --out DIR/rollout` — the verify and
    the rollout, the trace exported.
 6. The review: the trace's `policy` block — `total_reward`, the per-term
@@ -209,11 +233,90 @@ of doing any of them:
    rollout ran at, and the legs with their exit codes and timings, paths
    relative to `DIR`). Run the walk **under the project** — `--out
    <project>/runs/<name>` — and the review is in the project: the walk's
-   own commit is that file, after the legs' commits.
+   own commit includes that file, `docs/inventory.md` and `docs/clearance.md`, after the legs' commits.
+   Inventory reads the accepted assembly without a rebuild or tokens. The
+   `inventory` block carries `available`, `component_count`, `catalogued_count`
+   and `path` (relative to the **project**, always `docs/inventory.md`).
+   Catalog totals count placed instances, including repeated links to one body.
+   They do not infer purchases or identify catalog bodies consumed by booleans
+   or used only as cutters (ADR-243).
+   No published assembly yields an explicit unavailable report with zero
+   components; inspection failures still fail the command. This does not
+   relax the walk's existing task, policy and training prerequisites.
+
+   Clearance reuses the accepted pair reader without another rebuild (ADR-238).
+   Its `clearance` block records availability, revision, initial-solved-pose
+   scope, thresholds (0.1 mm minimum distance, 1e-6 mm³ maximum volume),
+   pairs checked, offending pairs with labels/catalog ids, unknown pairs and
+   their errors, counts, and project-relative `docs/clearance.md` path.
+   Unavailable counts are null; unknown measurements remain null with their
+   errors, never clear. An offending pair is a finding, not a walk failure;
+   inspection failures fail the command. A walk-specific `PROGRESS.md` row
+   records comparable offending/unknown/checked counts at these thresholds.
+
+   The block also carries `bounds_check` (ADR-248): the same pairs re-read
+   against the render snapshot's independently placed world bounds, two
+   inequalities per measured pair — a distance is at least the boxes' axis
+   separation, and a common volume fits inside the box overlap. It reports
+   `pass`, `fail` or `unavailable` with the comparison and failure counts at a
+   1e-3 mm box padding, and a `fail` is said in the run notes without failing
+   the walk: a disagreement is the review contradicting itself, not a design
+   finding. It is agreement between two paths, **not** validation of either.
+   Its output label, shared with the project commit subject, is relative to
+   the project when `--out` lies inside it, otherwise just the output basename
+   (ADR-246). Absolute machine paths do not enter that label; the project
+   architecture scaffold documents this convention.
+   This is neither swept-motion coverage nor large-assembly qualification.
+
+   The same review session rebuilds standard display once and snapshots it
+   before inspection requests. The `render` block carries availability,
+   accepted revision and digest, front/top/right/iso views, approximation and
+   limits, acquisition/render seconds, and project-relative image/summary paths
+   under `review/render/<accepted-revision>/`. The walk commits these SVG
+   previews (embedded lossless CPU images) with the review and project docs.
+   Rendering or revision mismatch failures fail the walk; retained files from
+   an older run are never reported as current success. `walk_seconds` measures
+   the whole entry point through review, excluding its final progress/commit.
+   The `section` block uses the same accepted snapshot for world XZ at Y =
+   3.125 mm, an interior cut through both reference mechanisms. It carries
+   status, availability, revision/digest, plane/offset/units, approximation,
+   limits, acquisition/section timings and project-relative `path` (SVG) and
+   `summary_path` (JSON). Empty cuts remain available with no contours;
+   unsupported cuts remain unavailable with reasons. Section errors and
+   rollout revision/digest mismatches fail the walk, preserving old files
+   without reporting them as current success. These are initial-pose
+   tessellation cuts; they do not prove motion clearance. Acquisition timing
+   is shared with rendering (count it once); section timing covers contour
+   generation, excluding SVG serialization and writes.
+
+**Shared mode artifacts** (paths relative to the project, with
+`DIR = runs/<name>`). This table applies to headless local training,
+GUI-attached terminal use, and `--remote`; only the training location changes.
+The scaffold's `## Training` section carries this same path convention.
+
+| Leg | Artifact in every mode |
+|---|---|
+| Design / assembly | `script.py`, `ARCHITECTURE.md`, `DECISIONS.md`, `docs/<subject>.md` |
+| MJCF / task / training | `runs/<name>/train/` (model, task bundle, returned policy) |
+| Store / declare | `assets/<name>.cxpolicy`, `runs/<name>/script.py` |
+| Verify / rollout | `runs/<name>/rollout/` (including the simulation trace) |
+| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory and clearance summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg` and `summary.json`, `review/section/<accepted-revision>/XZ-3.125/{section.svg,summary.json}`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
+
+`cli/tests/test_walk.py` checks local/remote artifact parity through policy
+verification and rollout using a local CPU stand-in for the dispatcher.
+It runs no remote command. GUI attachment remains documented, not exercised;
+its sequential-use and refresh requirements are below.
 
 A leg that fails stops the walk there, with the leg's name and its error
 in `error` and the legs that ran under `walk.legs`; the exit code is the
-leg's for a usage error or a refusal, `1` otherwise. The walk lands no
+leg's for a usage error or a refusal, `1` otherwise. A **design** leg that
+ends at exit 3 says which of the two exit-3 turns it was: either the last
+thing the engine refused (the op, its failure code and its message) or
+`the engine refused nothing` with the tool calls the agent did make, and
+in both cases the agent's own closing words, clipped. The walk copies that
+string verbatim, so a run with nobody watching records the cause rather
+than "the turn finished without the engine accepting a script" — which was
+true of both and told nt3 nothing. The walk lands no
 `PROGRESS.md` row of its own — its legs' rows are the record, and the
 last one carries the rollout's `total_reward` with its delta against the
 previous walk (ADR-194). `--set policy_on=…` is a usage error: the walk
@@ -368,14 +471,23 @@ first visit and never overwritten by it:
 | `ARCHITECTURE.md` | What the project is, what the script declares and why, how it trains, where the domain docs are. | the agent (through its caller) or a person |
 | `DECISIONS.md` | The project's own ADR log — what was chosen, over what, why. Newest last. | a turn's closing `DECISION:` lines, or a person |
 | `PROGRESS.md` | One row per accepted run: time, command, revision, digest, what, numbers. | **the CLI**, after every accepted run |
-| `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | the agent's caller, or a person |
+| `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | a turn's closing `NOTE <subject>:` lines, or a person |
 
 The agent reads all three on every `cadex -p` turn — they are pasted into
 its system prompt, bounded (the head of the first two, the tail of the
-log) — and it has no file tool, so what it decides comes back by
+log), and the project's domain notes with them, so a note is worth
+writing — and it has no file tool, so what it decides comes back by
 convention rather than by a new op: a line of its closing paragraph that
 starts `DECISION:` lands in `DECISIONS.md` as the next numbered entry, and
-the envelope's `notes` say so. `PROGRESS.md` is the CLI's, so it records
+the envelope's `notes` say so. **A longer note lands the same way**
+(ADR-245): a closing line `NOTE <subject>: <text>` becomes a dated bullet
+in `docs/<subject>.md`, created with a title when the subject is new, and
+the envelope names the file. The design instruction asks for
+`docs/actuators.md` and `docs/sensors.md` from any mechanism that has
+actuators or sensors, which is how the walk exercises the convention
+rather than only documenting it. `docs/inventory.md` and
+`docs/clearance.md` are the CLI's own generated reports and are not note
+subjects — a note never appends to a measurement. `PROGRESS.md` is the CLI's, so it records
 what happened rather than what a model said would: `params`, `script
 --set`, `export`, `link`, `asset --put`, `train` and a turn each land one
 row, with the exported trace's `total_reward` and the trainer's
@@ -399,25 +511,35 @@ that carried it, so a `train` row between two rollouts does not break the
 chain. The rows are read back from `PROGRESS.md` as written, which means
 a row a person adds by hand counts too.
 
-**The project owns a git repository** (ADR-194). The first visit runs
-`git init` in the project root and writes a `.gitignore` that keeps out
-what a rebuild recreates (`script_artifacts/`), what is bulk (`frames/`,
-renders), what is transient (the lock, `.blend1` backups) and, since
-ADR-199, what a walk re-makes — `.cxpolicy` files outside `assets/`
-(the trainer's checkpoints and the copies in a run's `train/`) and the
-`*-trace.json` rollouts, because the store keeps the policy a script
-names and `review.json` and `PROGRESS.md` keep the numbers; the script,
-its history, the stored assets, the `.blend` and the three documents are
-the project. After every accepted run the CLI commits whatever changed,
-with the `PROGRESS.md` row's words as the message and `committed <sha>.`
-in the envelope's `notes`, so `git log` is the progress table and `git
-diff` between two commits is the change that produced the numbers. A
-project that already lies inside a work tree is somebody's repository
-and is left alone — no `init`, no commit, one note saying so — and a
-machine without `git` on `PATH` gets the same note and no history. Opening
-a project re-stages its accepted attempt under a new id, so a read-only
-visit (`cadex script` with no `--set`) leaves the engine's `script.json`
-modified until the next accepted run commits it.
+**Project history depends on repository ownership** (ADR-194).
+
+- **Fresh root outside another work tree:** the CLI runs `git init` and
+  creates default `.gitignore` rules only if that file is absent.
+- **Existing project-root repository:** the CLI uses it and leaves its
+  ignore configuration unchanged; it does not install default rules.
+- **Project nested beneath another repository root, without its own `.git`:**
+  documents and progress rows still land, but there is no initialization or
+  commit. The parent index is untouched, and the envelope reports
+  `inside an existing git work tree: not initialised, not committed.`
+
+The default ignore rules exclude rebuildable `script_artifacts/`, frames,
+renders, locks, `.blend1` backups, `.cxpolicy` files outside `assets/`, and
+`*-trace.json` rollouts (ADR-199). Existing ignore files are preserved even
+when initializing a fresh root; check their rules before generating
+checkpoints and traces. The defaults retain stored assets, including policies
+under `assets/`, while `review.json` and `PROGRESS.md` keep the numbers.
+
+In a project-root repository, every accepted run attempts to commit **all
+working changes** (`git add -A`), including unrelated edits and the current
+working version of previously staged files. The message uses the
+`PROGRESS.md` row's words; `committed <sha>.` in the envelope's `notes`
+confirms success. A row alone does not prove a commit: missing Git or a
+failed commit does not fail the accepted run. Without `git` on `PATH`,
+there is no automatic history.
+
+Opening a project re-stages its accepted attempt under a new id, so a
+read-only visit (`cadex script` with no `--set`) leaves the engine's
+`script.json` modified until the next accepted run commits it.
 
 ### Exit codes
 
@@ -437,6 +559,69 @@ failed engine is an infrastructure problem to retry or abort on.
 Progress goes to **stderr**; the report goes to **stdout**. `--json` is
 always safe to pipe. `cadex script` with no `--set` prints the script and
 nothing else, so `cadex script > model.py` works.
+
+
+### Named-plane section review
+
+`./cadex section --project ./robot --plane XY --offset-mm 8 --json`
+writes `review/section/<accepted-revision>/XY-8/section.svg` and
+`summary.json`, and commits both with a PROGRESS row. XY means z=offset,
+XZ means y=offset, YZ means x=offset, in world millimetres. The JSON carries
+accepted revision/digest, solved object placements, closed planar contours,
+units, approximation, limits and separate acquisition/section timings.
+
+This is a cut of the accepted standard tessellation, not an exact BREP section
+or a projected silhouette. SVG fills each object's contours using even-odd
+parity so interior cavities remain holes; objects are not boolean-unioned.
+Endpoints snap to a 1e-6 mm grid. `status: ok` means closed cut contours;
+`empty` means no triangles meet the plane; `unsupported` (`available: false`)
+means a vertex/edge/face contact within tolerance or an open, branched,
+duplicate or collapsed cut. Per-object reasons remain in JSON. Move the plane
+slightly for a degenerate contact. This does not certify solid validity or
+absence of self-intersections. Unsupported reports can show other objects'
+valid cuts and are visibly labeled unsupported, never complete geometry.
+
+All three statuses are successful *reports* (exit 0); inspect `status` before
+using geometry. Rebuild, revision, malformed input, work-budget and write
+failures return nonzero and never reinterpret old artifacts as current success.
+The renderer's accepted-buffer/triangle/placement budgets apply. An absent
+model is an error, distinct from an empty cut of a model. The walk shares its preview snapshot for XZ at Y = 3.125 mm and commits
+these same artifacts and statuses in every mode (ADR-240 follow-up).
+
+### Named-angle review
+
+`./cadex render --project ./robot --json` writes `review/render/front.svg`,
+`top.svg`, `right.svg`, `iso.svg` and `summary.json`. These generated files
+are overwritten on success and included in the ordinary project commit.
+The JSON envelope and each SVG name the accepted revision; the summary also
+records digest, component/source names, colors, transformed bounds in mm,
+camera bases, projected bounds, coverage, limits and acquisition/render timing.
+A failed command must not be treated as a fresh report: old successful files
+can remain, and their revision identifies what they describe.
+
+Front looks along +Y with Z up; top along -Z with Y up; right along -X with
+Z up; iso views from (1,-1,1) with Z upright. Each orthographic view fits its
+own extent. Solved component matrices are applied once; unposed source
+outputs used by components are excluded. Other published triangle outputs
+are included. The protocol carries no shell-only visibility toggles, materials
+or transparency. These are initial-pose geometry previews, not the GUI scene.
+
+SVGs contain lossless 512×512 CPU images with pixel-center depth testing and
+flat directional lighting. Crossing triangles occlude per pixel; equal-depth
+ties follow sorted output/triangle order. Standard tessellation approximates
+curves. Thin/subpixel features can disappear; no dimensions, analytic edges,
+transparency, smooth shading or engineering-drawing accuracy is promised.
+Limits are 4,096 display entries, 32 MiB total binary/sidecar input, 4 MiB per
+sidecar, 300,000 vertices per source, 600,000 placed vertices, 100,000 placed triangles and 20 million
+bounding-box pixel visits **per view**, including overdraw. Excessive, missing
+or malformed buffers, missing solved poses and empty geometry fail explicitly.
+Dense assemblies can exceed the pixel budget even below the triangle cap.
+
+The CLI snapshots buffers while holding its project lock, before any further
+engine request can invalidate attempt paths. The shell does not share this
+lock: follow the documented GUI-attached coordination rules. Read failures
+are refusals, never a fallback to guessed poses. `cadex walk` reuses this renderer in its review session, checks the rollout
+revision and commits views under a revision directory. The same snapshot supplies the named-plane section described above.
 
 ## 3. The `--json` envelope
 
@@ -515,6 +700,12 @@ cli/cadex_cli/
   mcp.py               the MCP stdio server `claude` spawns
   agent.py             one `claude -p` turn; the system prompt
   export.py            STEP/STL/BREP out of the display block; the rest copied
+  render.py            accepted tessellation -> depth-tested named-angle SVG previews
+  clearance.py         inspect scope=clearance -> docs/clearance.md; read-time thresholds
+  inventory.py         inspect scope=inventory -> the project's docs/inventory.md
+  train.py             the offboard trainer as a subprocess, local or remote
+  walk.py              the lifecycle walk's leg plan (ADR-199)
+  project_docs.py      the project's own docs, PROGRESS.md rows and repo
   report.py            the envelope and the prose
 cli/tests/             the suite (§7)
 ```
@@ -611,6 +802,13 @@ copied to another machine, or the local session history was pruned —
 degrades to a fresh conversation with a note in the report, not to a dead
 run.
 
+`agent.json.updated_at` records a change to the stored session ID or model,
+not every attempted turn. An unchanged nonempty session and model leave the
+file untouched; changed identity is saved even after a failed turn so it can
+be resumed. Opening a project may still refresh accepted restore attempt
+metadata in `script.json`; a refused walk does not roll that bookkeeping back
+or create a failure commit.
+
 Claude Code files a conversation under the directory the turn ran in, so
 turns run **in the project root**. A scratch directory per turn would make
 every `--resume` look like an expired session.
@@ -634,11 +832,10 @@ through its `cadex-engine.json` manifest, which is the payload's discovery
 contract (ADR-020) — the same resolution the shell and
 `test_cadexd_lifecycle.py` use.
 
-The manifest's declared `protocol` is checked against the module directory's
-own `CadexdProtocol.PROTOCOL_SCHEMA`, so a payload assembled out of two trees
-fails before a frame is sent. The resolved engine names itself in the
-envelope, because two runs against two engines have to be tellable apart in
-a log.
+Resolution rejects unequal, nonempty manifest `protocol` and module
+`CadexdProtocol.PROTOCOL_SCHEMA` strings. Agreement proves neither worker
+completeness nor shared source provenance. The envelope identifies the resolved
+engine.
 
 Every reply is shape-checked against **that engine's own**
 `OP_RESPONSE_SPECS`, and a violation is an error rather than a warning. A
@@ -686,8 +883,10 @@ about a payload (ADR-023).
 
 - **Linux and macOS.** The lockfile is POSIX `flock` and the bridge is a unix
   socket. Windows is not supported.
-- **No pictures.** `inspect scope=image`, `resolve_pin` and offscreen
-  rendering are all absent, deliberately (§4). One caveat since ADR-150:
+- **No picture tool in the model bridge.** `inspect scope=image` and
+  `resolve_pin` remain absent (§4). The caller can use `cadex render` or the
+  walk's CPU previews (§2); the model bridge does not expose those commands.
+  Since ADR-150:
   blueprint *sheets* the shell already rendered and stored are readable —
   `inspect scope=blueprint` lists them and `export --blueprints` copies
   them out — because a stored deliverable is not a render. Making one

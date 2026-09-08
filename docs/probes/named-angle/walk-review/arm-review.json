@@ -1,0 +1,315 @@
+{
+  "clearance": {
+    "available": true,
+    "maximum_common_volume_mm3": 1e-06,
+    "minimum_clearance_mm": 0.1,
+    "offending_pair_count": 1,
+    "offending_pairs": [
+      {
+        "common_volume_mm3": 0.0,
+        "distance_mm": 0.0,
+        "first": "base",
+        "first_catalog": null,
+        "first_label": "base",
+        "second": "swing",
+        "second_catalog": null,
+        "second_label": "swing",
+        "status": "below clearance"
+      }
+    ],
+    "pairs_checked": 1,
+    "path": "docs/clearance.md",
+    "revision": "50bfee7d26a9c1b0d38cc1b15344eda197ea9fdcc20880e385d218df08a935ba",
+    "scope": "initial solved pose",
+    "unknown_pair_count": 0,
+    "unknown_pairs": []
+  },
+  "inventory": {
+    "available": true,
+    "catalogued_count": 0,
+    "component_count": 2,
+    "path": "docs/inventory.md"
+  },
+  "legs": [
+    {
+      "accepted_revision": "cd069b778937cb5a8f902b6cdbd66352309a95c97d1932d16d498d9acf7a0ab6",
+      "digest": "8b676fdca572d644aba62da1171f0765ba907924b60af21db30d7205a8a5a32e",
+      "exit": 0,
+      "leg": "train",
+      "seconds": 10.57
+    },
+    {
+      "accepted_revision": "c1284112ae925abdca610dcd448cbc0b36c2da9197a88c220c70513783a5b954",
+      "digest": "8b676fdca572d644aba62da1171f0765ba907924b60af21db30d7205a8a5a32e",
+      "exit": 0,
+      "leg": "declare",
+      "seconds": 1.24
+    },
+    {
+      "accepted_revision": "50bfee7d26a9c1b0d38cc1b15344eda197ea9fdcc20880e385d218df08a935ba",
+      "digest": "e1d48a5d1d111440093018cc404630ecea7c54e722401a639f4cea50703e989e",
+      "exit": 0,
+      "leg": "rollout",
+      "seconds": 1.43
+    }
+  ],
+  "params": {
+    "lift_weight": 0.0001,
+    "policy_on": 1.0
+  },
+  "render": {
+    "acquisition_seconds": 0.6532305419677868,
+    "approximation": "Opaque standard tessellation, initial solved pose; 512px pixel-center depth, flat lighting, no transparency, edges, dimensions or subpixel guarantees. Shell-only visibility is not carried by the protocol. Placed source copies are excluded; all other published triangle geometry is shown.",
+    "available": true,
+    "digest": "e1d48a5d1d111440093018cc404630ecea7c54e722401a639f4cea50703e989e",
+    "limits": {
+      "buffer_bytes": 33554432,
+      "image_size": 512,
+      "pixel_visits_per_view": 20000000,
+      "placed_vertices": 600000,
+      "triangles": 100000,
+      "vertices_per_source": 300000
+    },
+    "objects": {
+      "base": {
+        "bounds_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            60.0,
+            6.0
+          ]
+        ],
+        "color": [
+          91,
+          157,
+          205
+        ],
+        "placement": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "source": "plate"
+      },
+      "swing": {
+        "bounds_mm": [
+          [
+            12.0,
+            0.0,
+            6.0
+          ],
+          [
+            92.0,
+            8.0,
+            14.0
+          ]
+        ],
+        "color": [
+          230,
+          151,
+          76
+        ],
+        "placement": [
+          1.0,
+          0.0,
+          0.0,
+          12.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          6.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "source": "arm"
+      }
+    },
+    "path": "review/render/50bfee7d26a9c1b0d38cc1b15344eda197ea9fdcc20880e385d218df08a935ba/summary.json",
+    "render_seconds": 0.5204936250229366,
+    "revision": "50bfee7d26a9c1b0d38cc1b15344eda197ea9fdcc20880e385d218df08a935ba",
+    "snapshot_bytes": 2602,
+    "triangles": 24,
+    "views": {
+      "front": {
+        "basis": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            -1,
+            0
+          ]
+        ],
+        "covered_pixels": 23678,
+        "path": "review/render/50bfee7d26a9c1b0d38cc1b15344eda197ea9fdcc20880e385d218df08a935ba/front.svg",
+        "pixel_visits": 101756,
+        "projection_bounds_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            92.0,
+            14.0
+          ]
+        ]
+      },
+      "iso": {
+        "basis": [
+          [
+            0.7071067811865475,
+            0.7071067811865475,
+            0
+          ],
+          [
+            -0.4082482904638631,
+            0.4082482904638631,
+            0.8164965809277261
+          ],
+          [
+            0.5773502691896258,
+            -0.5773502691896258,
+            0.5773502691896258
+          ]
+        ],
+        "covered_pixels": 75694,
+        "path": "review/render/50bfee7d26a9c1b0d38cc1b15344eda197ea9fdcc20880e385d218df08a935ba/iso.svg",
+        "pixel_visits": 1004750,
+        "projection_bounds_mm": [
+          [
+            0.0,
+            -32.65986323710904
+          ],
+          [
+            84.85281374238569,
+            29.39387691339814
+          ]
+        ]
+      },
+      "right": {
+        "basis": [
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ],
+          [
+            1,
+            0,
+            0
+          ]
+        ],
+        "covered_pixels": 23700,
+        "path": "review/render/50bfee7d26a9c1b0d38cc1b15344eda197ea9fdcc20880e385d218df08a935ba/right.svg",
+        "pixel_visits": 99540,
+        "projection_bounds_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            14.0
+          ]
+        ]
+      },
+      "top": {
+        "basis": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "covered_pixels": 91348,
+        "path": "review/render/50bfee7d26a9c1b0d38cc1b15344eda197ea9fdcc20880e385d218df08a935ba/top.svg",
+        "pixel_visits": 411044,
+        "projection_bounds_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            92.0,
+            60.0
+          ]
+        ]
+      }
+    }
+  },
+  "reward_totals": [
+    {
+      "label": "lift",
+      "total": -27.10907313052507
+    },
+    {
+      "label": "control_cost",
+      "total": -0.000311090402448284
+    }
+  ],
+  "schema": "cadex-walk-review-v1",
+  "section": {
+    "available": false,
+    "reason": "Named-plane section views are not implemented."
+  },
+  "sha256": "21e6e7e746f8c194a1a27f4b90cc3c9cc9a82f0ea0d40d3eb950d2f064a94b1f",
+  "total_reward": -27.109384220927513,
+  "trace": "rollout/assembly-simulation-trace.json",
+  "training": {
+    "device": "cpu",
+    "parameters": 4609,
+    "reward_per_step": -0.3801981508731842,
+    "task_sha256": "c4315071d146843471098bb1386a3d8c5740b9bae8cf0a36685aa6c4869b2920",
+    "wall_time_s": 1.1987133329967037,
+    "witness_error": 1.3841167412209642e-09
+  },
+  "walk_seconds": 15.267451208026614,
+  "weights": "job.cxpolicy"
+}

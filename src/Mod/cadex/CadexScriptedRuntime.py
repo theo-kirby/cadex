@@ -293,8 +293,8 @@ def shared_worker_bundle(module_root: Path, domain: str) -> tuple[Path, str]:
     """The content-addressed bundle directory for one domain. Built once.
 
     Returns ``(bundle_dir, entry_module_name)``. Keyed by the bytes of every
-    member, so an engine rebuild produces a new directory and a stale one is
-    never used; identical content reuses the directory, and with it the
+    member, read once and staged from those same bytes. Reuse validates
+    detached members against that snapshot; identical content retains the
     ``__pycache__`` next to it.
 
     Built atomically -- populated under ``.tmp-<uuid>`` and ``os.replace``d
@@ -305,6 +305,7 @@ def shared_worker_bundle(module_root: Path, domain: str) -> tuple[Path, str]:
     entry_module, filenames = _bundle_members(domain)
     members = (entry_module, *filenames)
 
+    snapshot = {}
     digest = hashlib.sha256()
     for name in sorted(set(members)):
         source = module_root / name
@@ -313,6 +314,7 @@ def shared_worker_bundle(module_root: Path, domain: str) -> tuple[Path, str]:
                 f"Required XScript worker dependency {name!r} is missing."
             )
         data = source.read_bytes()
+        snapshot[name] = data
         digest.update(name.encode("utf-8"))
         digest.update(str(len(data)).encode("ascii"))
         digest.update(data)
@@ -322,19 +324,17 @@ def shared_worker_bundle(module_root: Path, domain: str) -> tuple[Path, str]:
     bundle = root / f"{clean_domain}-{digest.hexdigest()[:24]}"
 
     def populated() -> bool:
-        """Every member present, not merely a directory of the right name.
+        """Validate identity and reject mutable legacy hardlinks/symlinks."""
 
-        The distinction is not theoretical: macOS purges *files* out of
-        ``/var/folders`` by age and leaves the directories behind — and a
-        `__pycache__` written later keeps the directory looking fresh while
-        the modules beside it are gone. A presence check on the directory
-        alone then hands a worker an empty bundle, which fails at import
-        with nothing on screen to connect it to a temp sweep three days ago.
-        """
-
-        return bundle.is_dir() and all(
-            (bundle / name).is_file() for name in set(members)
-        )
+        try:
+            return bundle.is_dir() and all(
+                not (bundle / name).is_symlink()
+                and (bundle / name).stat().st_nlink == 1
+                and (bundle / name).read_bytes() == data
+                for name, data in snapshot.items()
+            )
+        except OSError:
+            return False
 
     if populated():
         return bundle, entry_module
@@ -343,13 +343,12 @@ def shared_worker_bundle(module_root: Path, domain: str) -> tuple[Path, str]:
     pending = root / f".tmp-{uuid.uuid4().hex}"
     pending.mkdir(parents=True, exist_ok=False)
     try:
-        for name in set(members):
-            _link_or_copy(module_root / name, pending / name)
+        for name, data in snapshot.items():
+            (pending / name).write_bytes(data)
         if bundle.is_dir():
-            # A gutted bundle from a temp sweep. `os.replace` refuses a
-            # non-empty directory, so the husk goes first — under a name of
-            # its own, so a worker reading the old directory keeps a valid
-            # path and nothing is ever half-replaced in place.
+            # Retire a corrupt, linked or incomplete bundle as a whole.
+            # Existing readers are not guaranteed to survive this repair;
+            # no member is replaced in place under stale bytecode.
             husk = root / f".dead-{uuid.uuid4().hex}"
             try:
                 os.replace(bundle, husk)

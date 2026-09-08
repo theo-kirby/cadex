@@ -1,0 +1,12 @@
+ · walk  train
+ · rebuild
+ · train  job  1 it × 4 envs  (<repo>/.venv/bin/python)
+iteration    0  reward/step -0.380198  loss +3.76856  episode 80.0  sigma 0.2996
+checkpoint job.best.cxpolicy  (1a8df33f3eb8)
+witness agrees to 1.384e-09 (72,248x inside the engine's tolerance)
+ · put_asset  job.cxpolicy
+ · walk  declare
+ · write_script
+ · walk  rollout
+ · set_params  policy_on
+Monitor: exit=0 seconds=16.61 peak_RSS_bytes=1059241984

@@ -1,0 +1,39 @@
+{
+  "exit": 0,
+  "seconds": 179.3348102500313,
+  "training_runs": [
+    {
+      "peak_rss_kib": 991632,
+      "seconds": 8.834444583044387
+    },
+    {
+      "peak_rss_kib": 986224,
+      "seconds": 8.305548708012793
+    },
+    {
+      "peak_rss_kib": 983952,
+      "seconds": 8.329087709018495
+    },
+    {
+      "peak_rss_kib": 914768,
+      "seconds": 7.182519250025507
+    },
+    {
+      "peak_rss_kib": 984624,
+      "seconds": 8.292394750053063
+    },
+    {
+      "peak_rss_kib": 986128,
+      "seconds": 8.365233832970262
+    },
+    {
+      "peak_rss_kib": 990032,
+      "seconds": 8.319017165980767
+    },
+    {
+      "peak_rss_kib": 981536,
+      "seconds": 8.152627791976556
+    }
+  ],
+  "breached": []
+}

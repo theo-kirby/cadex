@@ -1,0 +1,225 @@
+{
+  "revision": "7476d8a7262d29740d33980484032f599bcbe63ab3a4f55534ffcc79cde754e0",
+  "digest": "6b463389316cd91613aa63116b7a3c5d73923d399878ead8a75f757375acb5de",
+  "objects": {
+    "a": {
+      "source": "block",
+      "placement": [
+        2.220446049250313e-16,
+        -1.0,
+        0.0,
+        12.0,
+        1.0,
+        2.220446049250313e-16,
+        0.0,
+        30.0,
+        0.0,
+        0.0,
+        1.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": [
+        91,
+        157,
+        205
+      ],
+      "bounds_mm": [
+        [
+          -8.0,
+          30.0,
+          6.0
+        ],
+        [
+          12.000000000000002,
+          40.0,
+          9.0
+        ]
+      ]
+    },
+    "b": {
+      "source": "rod",
+      "placement": [
+        1.0,
+        0.0,
+        0.0,
+        25.0,
+        0.0,
+        1.0,
+        0.0,
+        30.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": [
+        230,
+        151,
+        76
+      ],
+      "bounds_mm": [
+        [
+          21.0,
+          26.001243352890015,
+          0.0
+        ],
+        [
+          29.0,
+          33.998756647109985,
+          30.0
+        ]
+      ]
+    }
+  },
+  "triangles": 512,
+  "snapshot_bytes": 14078,
+  "approximation": "Opaque standard tessellation, initial solved pose; 512px pixel-center depth, flat lighting, no transparency, edges, dimensions or subpixel guarantees. Shell-only visibility is not carried by the protocol. Placed source copies are excluded; all other published triangle geometry is shown.",
+  "limits": {
+    "buffer_bytes": 33554432,
+    "triangles": 100000,
+    "vertices_per_source": 300000,
+    "placed_vertices": 600000,
+    "pixel_visits_per_view": 20000000,
+    "image_size": 512
+  },
+  "acquisition_seconds": 0.32933204201981425,
+  "views": {
+    "front": {
+      "projection_bounds_mm": [
+        [
+          -8.0,
+          0.0
+        ],
+        [
+          29.0,
+          30.0
+        ]
+      ],
+      "pixel_visits": 361360,
+      "covered_pixels": 44020,
+      "basis": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          -1,
+          0
+        ]
+      ],
+      "path": "review/render/front.svg"
+    },
+    "top": {
+      "projection_bounds_mm": [
+        [
+          -8.0,
+          26.001243352890015
+        ],
+        [
+          29.0,
+          40.0
+        ]
+      ],
+      "pixel_visits": 199450,
+      "covered_pixels": 36654,
+      "basis": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "path": "review/render/top.svg"
+    },
+    "right": {
+      "projection_bounds_mm": [
+        [
+          26.001243352890015,
+          0.0
+        ],
+        [
+          40.0,
+          30.0
+        ]
+      ],
+      "pixel_visits": 465004,
+      "covered_pixels": 57720,
+      "basis": [
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "path": "review/render/right.svg"
+    },
+    "iso": {
+      "projection_bounds_mm": [
+        [
+          15.556349186104047,
+          -0.26798019839524656
+        ],
+        [
+          42.8905621902358,
+          28.845360530865662
+        ]
+      ],
+      "pixel_visits": 781126,
+      "covered_pixels": 91286,
+      "basis": [
+        [
+          0.7071067811865475,
+          0.7071067811865475,
+          0
+        ],
+        [
+          -0.4082482904638631,
+          0.4082482904638631,
+          0.8164965809277261
+        ],
+        [
+          0.5773502691896258,
+          -0.5773502691896258,
+          0.5773502691896258
+        ]
+      ],
+      "path": "review/render/iso.svg"
+    }
+  },
+  "render_seconds": 0.61034783301875
+}

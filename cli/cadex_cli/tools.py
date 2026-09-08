@@ -185,11 +185,16 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "importable files; `history` is the accepted-revision trail; `wiring` "
         "is the harness as a graph — every resolved terminal and the "
         "connection table over them, and the thing to read before sending "
-        "`set_params` a `nets` or `boards` list; `api` is the tool surface."
+        "`set_params` a `nets` or `boards` list; `inventory` is what the "
+        "assembly is MADE OF — one row per component with the output it "
+        "places, that output's catalog family and part number when a lib.* "
+        "generator built it, and the pose the solver settled on; `api` is "
+        "the tool surface."
     ),
     ("inspect", "target"): (
         "The exact name the scope keys on — an output name for `output`, an "
-        "internal object name for `object`, a revision for `history`."
+        "internal object name for `object`, a revision for `history`, an "
+        "assembly output name for `inventory`."
     ),
     ("inspect", "path"): (
         'A JSON-pointer-ish path into the scope\'s value, e.g. "/facts" or '
@@ -222,6 +227,7 @@ INSPECT_SCOPES = (
     "assets",
     "history",
     "wiring",
+    "inventory",
     "blueprint",
     "api",
 )

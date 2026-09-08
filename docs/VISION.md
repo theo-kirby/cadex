@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-09-05
+Verified against source: 2026-09-08
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -236,9 +236,8 @@ returning it.
    can't be rebuilt from the script is a bug.
 
    **One exception, stated rather than smuggled: a trained policy is an
-   asset, not a derivation** (`docs/MUJOCO.md` §3.1, ADR-084). Weights come
-   out of hours of stochastic GPU compute on a machine we do not ship to.
-   They cannot be rebuilt from a script and never will be, so they live in
+   asset, not a derivation** (`docs/MUJOCO.md` §3.1, ADR-084). Training produces
+   weights outside the script rebuild, so they live in
    `assets/` beside an imported STL, referenced by name and sha256, while the
    script declares reproducibly *how* the policy was trained and the engine
    verifies the file against that declaration before it publishes anything.
@@ -255,19 +254,16 @@ returning it.
 5. **The AI is the only modeler; the human is the only judge.** Humans steer
    via chat and sliders, accept or reject; they never push geometry buttons.
 
-   **There is no train button, and there is nothing to press** (ADR-084).
-   "No user-accessible modeling tools" is clear about fillet buttons and says
-   nothing about a *train* button, which is not a modeling tool but would
-   still be something a human presses. The question had to be answered before
-   a UI could be built for it, and the answer is that training does not run
-   in the engine and cannot — it needs JAX on a GPU — so the trainer is a
-   program the agent copies to a machine that has one and runs with its own
-   shell. The weights come home through `put_asset`, the path an imported STL
-   already travels. No UI was built, no dispatch machinery, no protocol op:
-   the answer is *recorded* rather than designed around. The agent authors
-   the task, dispatches the run and declares the result; the human reads a
-   viewport and says yes or no. What a trained policy adds to that loop is a
-   thing to judge, not a control to operate.
+   **Training is agent-driven and stays offboard** (ADR-084). The trainer
+   lives in `training/`, with its own dependencies and environment; neither
+   it nor JAX/MJX ships in the engine payload. The agent runs it through its
+   shell, locally on CPU for toy tasks or on a GPU for larger training runs
+   (see `training/SETUP.md` for both paths). The weights enter through
+   `put_asset`, the path an imported STL already travels, and the engine
+   verifies the policy. The agent authors the task, dispatches the run and
+   declares the result; the human reads a viewport and says yes or no. What
+   a trained policy adds to that loop is a thing to judge, not a control to
+   operate.
 
 ## Open questions
 
@@ -311,11 +307,11 @@ returning it.
   covers both solvers and the shell never has to choose between two bakes.
 - ~~Whether there is a **train** button~~ — answered 2026-07-31 (ADR-084):
   **no, and there is nothing to press.** Recorded in principle 5 above.
-- **How a project migrates when the solver moves.** A retained artifact's
-  digest is part of the project's identity (ADR-068), so a MuJoCo or OCCT
-  upgrade makes an existing project refuse to open — and nothing tells the
-  user that `open_project restore=false` and a re-accept is the way through.
-  The rule is right; the migration path is missing.
+- ~~How a project migrates when the solver moves~~ — answered 2026-09-06
+  (ADR-187): restore refuses a changed accepted digest. The chat panel's
+  **Re-accept Stored Script** action explicitly accepts what the engine-stored
+  script builds now, via `open_project restore=false` then `write_script`.
+  This also accepts any external edits to that stored script.
 - ~~Whether interactive mesh editing ever arrives, and if so as engine ops
   rather than shell tools~~ — answered 2026-08-05 (ADR-127): **as engine ops,
   on a declared table, with the shell supplying only the gesture.** A shape

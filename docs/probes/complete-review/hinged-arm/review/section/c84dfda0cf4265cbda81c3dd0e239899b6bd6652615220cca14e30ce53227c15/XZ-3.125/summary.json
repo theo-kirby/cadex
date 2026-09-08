@@ -1,0 +1,182 @@
+{
+  "revision": "c84dfda0cf4265cbda81c3dd0e239899b6bd6652615220cca14e30ce53227c15",
+  "digest": "7ad3cf798a422446ec44075ff5e2899eb429e826002564dcbf760d69b244fa47",
+  "objects": {
+    "base": {
+      "triangles": 12,
+      "source": "plate",
+      "placement": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": [
+        91,
+        157,
+        205
+      ],
+      "bounds_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          60.0,
+          60.0,
+          6.0
+        ]
+      ],
+      "status": "ok",
+      "contours_mm": [
+        [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.3125
+          ],
+          [
+            0.0,
+            6.0
+          ],
+          [
+            3.125,
+            6.0
+          ],
+          [
+            60.0,
+            6.0
+          ],
+          [
+            60.0,
+            0.3125
+          ],
+          [
+            60.0,
+            0.0
+          ],
+          [
+            3.125,
+            0.0
+          ]
+        ]
+      ]
+    },
+    "swing": {
+      "triangles": 12,
+      "source": "arm",
+      "placement": [
+        1.0,
+        0.0,
+        0.0,
+        12.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": [
+        230,
+        151,
+        76
+      ],
+      "bounds_mm": [
+        [
+          12.0,
+          0.0,
+          6.0
+        ],
+        [
+          92.0,
+          8.0,
+          14.0
+        ]
+      ],
+      "status": "ok",
+      "contours_mm": [
+        [
+          [
+            12.0,
+            6.0
+          ],
+          [
+            12.0,
+            10.875
+          ],
+          [
+            12.0,
+            14.0
+          ],
+          [
+            60.75,
+            14.0
+          ],
+          [
+            92.0,
+            14.0
+          ],
+          [
+            92.0,
+            10.875
+          ],
+          [
+            92.0,
+            6.0
+          ],
+          [
+            60.75,
+            6.0
+          ]
+        ]
+      ]
+    }
+  },
+  "triangles": 24,
+  "snapshot_bytes": 2602,
+  "approximation": "Standard tessellation cut in the initial solved world pose, mm; not exact BREP. Closed contours filled even-odd per object preserve cavities. No union across objects. Plane contacts within 1e-6 mm and open/branched cuts are unsupported; no solid-validity or self-intersection certification. Shell visibility is unavailable.",
+  "limits": {
+    "buffer_bytes": 33554432,
+    "triangles": 100000,
+    "vertices_per_source": 300000,
+    "placed_vertices": 600000,
+    "pixel_visits_per_view": 20000000,
+    "image_size": 512,
+    "endpoint_grid_mm": 1e-06
+  },
+  "acquisition_seconds": 0.7093497079913504,
+  "plane": "XZ",
+  "offset_mm": 3.125,
+  "units": "mm",
+  "axes": [
+    "x",
+    "z"
+  ],
+  "status": "ok",
+  "available": true,
+  "section_seconds": 7.558299694210291e-05,
+  "path": "review/section/c84dfda0cf4265cbda81c3dd0e239899b6bd6652615220cca14e30ce53227c15/XZ-3.125/section.svg"
+}

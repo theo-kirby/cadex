@@ -87,7 +87,13 @@ def read_agent_state(project_root: Path | str) -> AgentState:
 def write_agent_state(
     project_root: Path | str, *, session_id: str, model: str
 ) -> AgentState:
-    """Persist the conversation id and the model that produced it."""
+    """Persist changed conversation identity; retain its timestamp on a no-op."""
+
+    stored = read_agent_state(project_root)
+    if stored.session_id and (stored.session_id, stored.model) == (
+        str(session_id or ""), str(model or "")
+    ):
+        return stored
 
     state = AgentState(
         session_id=str(session_id or ""),

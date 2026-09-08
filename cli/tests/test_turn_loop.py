@@ -111,6 +111,22 @@ def test_the_prompt_pushes_for_a_parametric_script() -> None:
     assert "cadex params --set" in CLI_OVERLAY
 
 
+def test_the_prompt_teaches_the_two_policy_strings_as_inline_literals() -> None:
+    """The one exception to the parametric rule, taught before it is hit.
+
+    nt3's first walk from a prompt stopped at exit 3 because the design
+    turn factored ``weights`` and ``sha256`` into module constants, which
+    ``cadex walk``'s literal rewrite refuses (docs/CLI.md §2, leg 4). The
+    overlay taught the ``policy_on`` switch and said nothing about the
+    literals; it now says both.
+    """
+
+    assert 'weights="walk.cxpolicy"' in CLI_OVERLAY
+    assert "INLINE STRING LITERALS" in CLI_OVERLAY
+    # ...and names the mistake, so the model can recognise its own habit.
+    assert "weights=WEIGHTS" in CLI_OVERLAY
+
+
 # -- the turn ------------------------------------------------------------
 
 
@@ -215,6 +231,48 @@ def test_a_turn_that_never_accepts_a_script_exits_rejected(tmp_path) -> None:
     assert code == EXIT_REJECTED
     assert report.ok is False
     assert "without the engine accepting" in report.error
+    # The reason, not just the outcome: what the engine last refused, and
+    # what the agent said on its way out. A `cadex walk` design leg copies
+    # this string into its own envelope, so it is the only place a run with
+    # no human watching can learn why the script never landed.
+    assert "the engine last refused write_script" in report.error
+    assert "the agent's closing words: I could not." in report.error
+
+
+@pytest.mark.usefixtures("engine")
+def test_a_turn_that_offers_no_script_says_the_engine_refused_nothing(
+    tmp_path,
+) -> None:
+    """The other way to reach exit 3, and it used to read the same.
+
+    Seen inside `cadex walk --prompt`: the design turn read the authoring
+    contract, said nothing more, and the envelope claimed the engine had
+    not accepted a script — with no hint that the engine had never been
+    offered one.
+    """
+
+    factory = turn_factory([[("tool", "describe_api", {}),
+                             ("done", "I need more information.")]])
+    report = RunReport()
+
+    code = command_prompt(_args(tmp_path), report, turn_factory=factory)
+
+    assert code == EXIT_REJECTED
+    assert "the engine refused nothing" in report.error
+    assert "describe_api" in report.error
+    assert "never offered a script" in report.error
+    assert "the agent's closing words: I need more information." in report.error
+
+
+def test_a_rejection_reason_survives_a_silent_turn_with_no_calls() -> None:
+    """No calls and no closing words is still a distinguishable reason."""
+
+    from cadex_cli.__main__ import _rejection_reason
+
+    reason = _rejection_reason("", [])
+
+    assert "no tool call" in reason
+    assert "closing words" not in reason
 
 
 @pytest.mark.usefixtures("engine")
@@ -283,3 +341,33 @@ def test_the_turn_runs_in_the_project_directory(tmp_path) -> None:
     report = RunReport()
     command_prompt(_args(tmp_path), report, turn_factory=factory)
     assert factory.made[0].cwd == report.project_root
+
+
+@pytest.mark.usefixtures("engine")
+@pytest.mark.parametrize("model", ["mock", "changed-model"])
+def test_successful_resumed_edit_preserves_or_updates_session_identity(tmp_path, model):
+    args = _args(tmp_path)
+    first = RunReport()
+    assert command_prompt(args, first, turn_factory=turn_factory([[
+        ("tool", "write_script", {"source": BRACKET}), ("done", "ok")
+    ]])) == EXIT_OK
+    root = Path(first.project_root)
+    path = agent_state_path(root)
+    payload = json.loads(path.read_text())
+    payload["updated_at"] = "2000-01-01T00:00:00Z"
+    path.write_text(json.dumps(payload))
+    before = path.read_bytes()
+    report = RunReport()
+    assert command_prompt(_args(tmp_path, resume=True, model=model), report,
+                          turn_factory=turn_factory([[
+        ("tool", "write_script", {"source": TALLER}), ("done", "accepted edit")
+    ]])) == EXIT_OK
+    assert report.accepted_revision != first.accepted_revision
+    assert report.digest != first.digest
+    assert (root / "script.py").read_text() == TALLER
+    stored = read_agent_state(root)
+    assert (stored.session_id, stored.model) == (SESSION_ID, model)
+    if model == "mock":
+        assert path.read_bytes() == before
+    else:
+        assert stored.updated_at != payload["updated_at"]

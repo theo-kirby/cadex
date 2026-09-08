@@ -1,0 +1,52 @@
+[
+  {
+    "case": "arm",
+    "walk_seconds": 15.267451208026614,
+    "acquisition_seconds": 0.6532305419677868,
+    "render_seconds": 0.5204936250229366,
+    "total_reward": -27.109384220927513,
+    "revision": "50bfee7d26a9c1b0d38cc1b15344eda197ea9fdcc20880e385d218df08a935ba",
+    "offending_pairs": 1,
+    "unknown_pairs": 0
+  },
+  {
+    "case": "arm-iterate",
+    "walk_seconds": 16.65489558299305,
+    "acquisition_seconds": 0.6494078329997137,
+    "render_seconds": 0.5191014999873005,
+    "total_reward": -55.34800454524565,
+    "revision": "319770ecd1dcabee12edba3c0e5f4405334c98b984659884249ee609cc0eea7f",
+    "offending_pairs": 1,
+    "unknown_pairs": 0
+  },
+  {
+    "case": "carriage",
+    "walk_seconds": 14.390672875044402,
+    "acquisition_seconds": 0.6915354579687119,
+    "render_seconds": 0.6354429579805583,
+    "total_reward": -24159.19535630446,
+    "revision": "121a1f10523debad33cc3d5d9e802776ea076c1ec0852415f04a799b4225b47d",
+    "offending_pairs": 0,
+    "unknown_pairs": 0
+  },
+  {
+    "case": "local",
+    "walk_seconds": 15.256678417033982,
+    "acquisition_seconds": 0.666538416990079,
+    "render_seconds": 0.5221077089663595,
+    "total_reward": -27.109384220927513,
+    "revision": "458adf546e59715483a2dd306581c309717ec40d4791e732dc68a6e4aa5689e7",
+    "offending_pairs": 1,
+    "unknown_pairs": 0
+  },
+  {
+    "case": "remote-standin",
+    "walk_seconds": 15.567766416992527,
+    "acquisition_seconds": 0.6553707499988377,
+    "render_seconds": 0.5235932909999974,
+    "total_reward": -27.109384220927513,
+    "revision": "afb8c20a0c63a171228f07d6b8087c77822209529f8ead1115998f20481c1e1c",
+    "offending_pairs": 1,
+    "unknown_pairs": 0
+  }
+]

@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-09-07. **This is the single agent contract.**
+Verified against source: 2026-09-08. **This is the single agent contract.**
 `CLAUDE.md` exists only to import it (`@AGENTS.md`) and holds nothing of its
 own, so there is one file to read and one file to edit — which is what ADR-005
 asked for, reached from the other direction (ADR-137).
@@ -211,7 +211,7 @@ pixi run python analysis/skeleton.py carve.json --run ./run --out ./fit
                               # Add --project P to install it and size it,
                               # which rebuilds for real and needs an engine.
 
-pixi run test-engine          # THE engine suite (1757 tests), no build needed
+pixi run test-engine          # THE engine suite, no build needed
 pixi run configure            # CMake configure (debug, GUI OFF)
 pixi run build                # build debug        | pixi run build-release (GUI OFF)
 pixi run test                 # inherited FreeCAD ctest, NOT the above

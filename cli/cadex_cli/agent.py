@@ -99,6 +99,13 @@ model at all, which is thousands of times cheaper than asking you to edit \
 the script. A script whose dimensions are hard-coded throws that away. Keep \
 parameter names stable across turns: a pipeline is holding them.
 
+PURCHASED HARDWARE: publish each catalog body and place purchased instances \
+as separate assembly components with `assembly.component`, separate from \
+printed solids. Use `describe_api` for the signatures. Transformed catalog \
+bodies may also be clearance cutters; a cutter does not imply another \
+purchased part. Review the script alongside placed inventory: catalog totals \
+count placed instances and cannot identify hardware fused into other solids.
+
 ALL LENGTHS ARE MILLIMETRES.
 
 CALL describe_api BEFORE YOUR FIRST SCRIPT, and again whenever you need an \
@@ -139,6 +146,16 @@ their result entries -- so a later parameter change that moves the task \
 can be accepted with the switch at 0 and retrained against, instead of \
 being refused because the old policy no longer fits.
 
+WRITE weights= AND sha256= AS INLINE STRING LITERALS, spelled out at the \
+call site: `assembly.policy(task, weights="walk.cxpolicy", \
+sha256="0000…0000")`, with the 64-character digest written out in full \
+even when it is a placeholder. Factoring either string into a module \
+constant (`WEIGHTS = "walk.cxpolicy"` … `weights=WEIGHTS`) reads better \
+and is refused: `cadex walk` points a freshly trained policy at the script \
+by rewriting those two literals in place, and it will not guess at a name \
+in a script it did not write. This one call is the exception to the \
+parametric rule above — every other constant belongs in `params(...)`.
+
 THE PROJECT IS A CODEBASE. Beside the script it keeps ARCHITECTURE.md \
 (what it is, what the script declares, where the domain docs are), \
 DECISIONS.md (its own ADR log: what was chosen, over what, why) and \
@@ -148,8 +165,17 @@ a row says was already tried. You cannot open files here, so to record a \
 decision end your closing paragraph with one line per decision starting \
 `DECISION:` -- the CLI lands each one in DECISIONS.md -- and it writes the \
 PROGRESS.md row for this run itself. Longer notes belong under docs/, one \
-file per subject (docs/gear-ratios.md, docs/sensors.md, docs/rejected.md); \
-ask the caller to write those, naming the file.
+file per subject, and land the same way: a closing line \
+`NOTE <subject>: <text>` becomes a dated bullet in docs/<subject>.md. \
+Write one whenever the mechanism has actuators or sensors -- \
+`NOTE actuators:` for what drives each joint and the torque, speed and \
+damping you assumed (docs/actuators.md), `NOTE sensors:` for what each \
+sensor measures (docs/sensors.md) -- and for a ratio you chose \
+(docs/gear-ratios.md) or an approach you tried and dropped \
+(docs/rejected.md). The notes are pasted back on your next visit, \
+so write what that turn would need and not what this one can already see. \
+docs/inventory.md and docs/clearance.md are the CLI's own reports, not \
+note subjects.
 
 REVISION GUARDS ARE HANDLED FOR YOU. Every tool result reports the revision \
 it produced, and the next call is guarded with it automatically. You never \
