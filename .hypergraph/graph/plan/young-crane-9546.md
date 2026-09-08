@@ -11,50 +11,11 @@ Status: open
 
 ## Current
 
-1. **Run the unspent parameter-only iterate on `ot4-quill` (mission 2).**
-   Same entry point, `--set stroke=60`, no `--prompt`, explicit CPU,
-   5 iterations × 16 environments, seed 0, `--timeout 600`, finite
-   `--leg-timeout`, into a new `runs/<name>` beside the baseline. Verify the
-   actual parameters and exported reward expressions, weights, units and
-   horizon against the baseline before interpreting reward deltas. Increasing
-   stroke from 40 to 60 preserves the clamped target of 30 but changes geometry
-   and action bounds. Report both travel deltas in the walk row and reward
-   delta in the rollout row; they currently belong to different rows. Update
-   the existing lifecycle doc with the concise rehearsal result and verified
-   date, alongside the work record; generated artifacts stay in the project.
-   One sample cannot establish significance or control quality. This remains
-   first because it spends no provider tokens and exercises the landed
-   comparison and bounded entry point on real geometry
-   [rec: amber-glade-2813] [rec: northern-comet-5917]
-   [rec: chilly-crest-2100] [rec: tidy-cove-8382].
+1. **Repair automatic project artifact retention (missions 1/2).** Reproduce the quill failure in a disposable project repository, tracing staging across walk legs and distinguishing ignored untracked files, already tracked files and pre-staged files. Ordinary `commit_project` uses `git add -A`; do not assume force-add is the cause. Ship the smallest correction that honors explicit project exclusions while keeping generated outputs on disk, versioning project source/docs and preserving documented default policy-asset retention. Pin the observed failure with a real Git regression that fails before the fix; inspect the resulting commit tree, not just status. Preserve existing history and unrelated user data; do not silently untrack user files. Update CLI docs, scaffold, ADR and ROADMAP, run full `pixi run python -m pytest cli/tests`, and declare impact on `chilly-union-8972`. No further real walk until the retention case passes [rec: young-timber-2761] [rec: square-light-7067].
 
-2. **Make the comparison identify what varied (mission 2).** The one new
-   direction is a bounded CLI change: record seed and stable objective identity
-   using the exported task. The generated preamble asks for seeds but the
-   rows omit them; a script digest cannot distinguish geometry from reward
-   changes. Prefer existing task metadata over a new store or protocol, and
-   document the identity's fields and limits. Pin unchanged objective identity
-   across seed changes and changed identity across reward changes; identify
-   legacy rows lacking that evidence. If the objective cannot be identified
-   from existing exports within this unit, ship the seed half and record the
-   missing input. Update CLI docs, project-doc scaffold, ADR and ROADMAP;
-   run full `pixi run python -m pytest cli/tests`. Matching objectives are
-   necessary, not sufficient, for comparing control quality. No variant study,
-   ranking or report renderer follows [rec: amber-glade-2813].
+2. **Make the comparison identify what varied (mission 2).** Retain the bounded CLI seed and stable objective-identity change using exported task metadata. Distinguish training and rollout seeds. Document identity fields and limits; pin unchanged objective identity across seed changes and changed identity across reward changes, and identify legacy rows without evidence. Explain action scaling separately: the quill's reward expressions match while its action bound changes 40 to 60 mm. Matching objective identity cannot establish equivalent control difficulty. Prefer existing metadata over a new store or protocol; if insufficient, ship the seed half and record the missing input. Update CLI docs, project-doc scaffold, ADR and ROADMAP; run the full CLI suite. No ranking, variant study or renderer follows [rec: amber-glade-2813] [rec: young-timber-2761] [rec: square-light-7067].
 
-3. **A bounded prompt-driven iterate against the project's own history
-   (mission 2), after the first two units.** Choose one geometry change from
-   its review and run `walk --prompt ... --resume` at the same toy scale,
-   explicit CPU and finite leg bounds. Report actual evidence of reading the
-   architecture, decisions and domain docs, and what the turn updates; do not
-   infer reads from success. Preserve objective-comparison caveats across a
-   redesign. Land a useful lifecycle-doc update with the measured outcome and
-   limitations, not a record-only iteration. Claude five-hour usage is 97%,
-   so this remains last: a refusal ends the attempt, with no retries, quota
-   probes, waiting-for-reset dispatch or bookkeeping substitute. Loop signals:
-   27 iterations, 8.1 h elapsed, 39.9 h left; Claude seven-day 68%, Codex
-   seven-day 79%. Budget ranks work; it does not authorize parked criteria
-   [rec: amber-glade-2813] [rec: western-grotto-7499].
+3. **Conditional project-history prompt iterate (mission 2).** After the first two units land or their remaining limitations are explicitly recorded, and only after retention is repaired, choose one geometry change from review and run the existing `walk --prompt ... --resume` at CPU 5 iterations × 16 environments, seed 0, trainer timeout 600 and finite leg bounds. Require actual evidence of architecture/decisions/domain-doc reads and updates, preserve comparison caveats, and land a concise measured lifecycle-doc update with generated files retained locally under project exclusions. Claude five-hour usage is 100%, so dispatch is currently blocked by capacity; only later loop signals showing capacity reopen it. No quota probes, waiting-for-reset unit or retries; a provider refusal ends the attempt. Budget is 29 iterations, 8.5 h elapsed / 39.5 h left, Claude seven-day 68%, Codex seven-day 82%; it authorizes no parked criterion [rec: amber-glade-2813] [rec: young-timber-2761] [rec: square-light-7067].
 
 ## Negative knowledge
 
@@ -178,3 +139,5 @@ Status: open
 - western-grotto-7499 — promote the third-mechanism walk to first now that the travel eye landed; re-scope the travel carry as walk-row comparison plumbing and add a model-free --set iterate walk
 - hollow-cliff-1217 — the rung's first two units landed; promote the token-free --set iterate on the third mechanism's own project, add the wall-clock leg bound as the new direction, and rank a prompt-driven iterate last
 - amber-glade-2813 — fold completed timeout work; rank iterate, comparison identity and project-history turn with source-checked qualifications.
+
+- square-light-7067 — fold quill iterate and retention defect, prioritize repair and preserve parked scope.

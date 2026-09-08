@@ -11,42 +11,13 @@ Status: open
 
 ## Current
 
-1. **Finish the existing iterate work before promoting another unit
-   (mission 2).** Parameter-only comparison on the third mechanism, comparison
-   identity, then the project-history design turn remain, in that order.
-   They exercise landed travel comparison, remove ambiguity in reading it,
-   and test revisiting agent-maintained documents. A fourth mechanism ranks
-   below this work [rec: amber-glade-2813] [rec: falling-willow-7995].
+1. **Persistence before interpretation, then a history-aware revisit (missions 1/2).** The quill parameter iterate is spent. The newly observed retention defect leads short, followed by existing comparison identity and the capacity-conditional design turn. Do not promote seed measurements or a fourth mechanism while these units remain executable. No charter-derived gap is deleted or marked done by this ranking [rec: young-timber-2761] [rec: square-light-7067].
 
-2. **Conditional follow-through on comparison identity: seed spread
-   (mission 2).** Only after short lands or is blocked, and only if the first
-   iterate leaves a concrete question about its delta, consider the same fixed
-   geometry at three further seeds within the same bounded toy budget. Record
-   descriptive reward and travel spread in existing lifecycle documentation,
-   not a significance claim or variant study. Seed-identifying rows must land
-   first. A product defect revealed by the first run outranks this measurement
-   [rec: amber-glade-2813].
+2. **Conditional seed spread remains below short (mission 2).** Only after short lands or is blocked, retention is repaired and rows identify seeds, consider three further seeds at fixed geometry if an explicit unanswered delta question warrants them. The stroke change moved the 30 mm target to action midpoint, so near-zero normalized actions can explain favorable travel without learned improvement; repeated seeds alone cannot remove that confound. Record descriptive reward/travel spread in existing lifecycle documentation within the same toy bounds, without significance, ranking or study claims. This pass does not promote that measurement [rec: amber-glade-2813] [rec: young-timber-2761] [rec: square-light-7067].
 
-3. **Completed directions leave dispatch.** ADR-259/260 landed travel
-   measurement and comparison; the third mechanism reports both channels.
-   ADR-261 and its critic follow-up bound child legs and post-stop draining,
-   with a mutation-verified stubborn-grandchild regression and 239 passing
-   CLI tests. Neither timeout record ran the outstanding quill iterate.
-   These units are complete; no charter checkbox or state status is changed
-   by this planning judgement [rec: square-bay-3436]
-   [rec: northern-comet-5917] [rec: chilly-crest-2100]
-   [rec: honest-river-1137] [rec: tidy-cove-8382].
+3. **Completed directions leave dispatch.** Travel reporting and comparison landed, as did full descendant cleanup grace with a before-fix failing regression and 240 passing CLI tests. Quill stroke 40→60 passed in 24.61 s at about 1.98 GB peak RSS; exact reward delta +250.279186, travel +9.794917 mm and 0 degrees. Displayed travel +9.798 uses the rounded prior row. Baseline bytes survived; the generated-output commits remain in history after forward untracking. These are pipeline measurements, not control-quality evidence, and neither the iterate nor timeout repair is queued again [rec: northern-comet-5917] [rec: lucky-creek-4303] [rec: young-timber-2761].
 
-4. **Keep the charter boundary.** Four seeded criteria are working in the
-   projection. Remote handoff is scripted and documented, GUI attachment is
-   documented, and unexercised modes reflect this run's constraints. Do not
-   promote another mode rehearsal, inherited-removal campaign, catalog work,
-   fleet setup, report rendering or gait training. The bounding-box clearance
-   screen remains retired; kernel clearance over dynamics stays on long.
-   Preserve reporting semantics for the quill's deliberate overlap. No
-   charter-derived gap is deleted or marked done here
-   [rec: western-grotto-7499] [rec: sleepy-hollow-9498]
-   [rec: strong-falcon-1463] [rec: chilly-crest-2100].
+4. **Keep the charter boundary.** Four seeded criteria are working in the projection; the CLI retention defect is broken. Remote handoff remains scripted/documented and GUI attachment documented within this run's execution constraints. Do not promote another mode rehearsal, inherited-removal campaign, catalog, fleet, report rendering or gait training. The bounding-box clearance screen is retired; kernel rollout clearance stays unselected on long. Preserve the quill's deliberate-overlap reporting semantics and do not infer swept fit from initial-pose reviews [rec: western-grotto-7499] [rec: sleepy-hollow-9498] [rec: chilly-crest-2100] [rec: young-timber-2761] [rec: square-light-7067].
 
 ## Negative knowledge
 
@@ -284,3 +255,5 @@ Status: open
 - western-grotto-7499 — record the selected direction as half-landed (ADR-259 measured, the comparison plumbing outstanding) and order short to run the walk before reporting on it; decline promoting "Three modes, one shape"
 - hollow-cliff-1217 — the motion direction closes on both halves and on a third mechanism; select the unbounded-leg bound in its place and order the remaining gaps around iterate rather than breadth
 - amber-glade-2813 — fold completed timeout work; rank iterate, comparison identity and project-history turn with source-checked qualifications.
+
+- square-light-7067 — fold quill iterate and retention defect, prioritize repair and preserve parked scope.
