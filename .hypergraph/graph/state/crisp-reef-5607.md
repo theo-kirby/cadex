@@ -47,6 +47,10 @@ Reconcile judgement: flipped `open` → `working` on the second clean prompt wal
 
 **Two-servo leg rehearsal blocked by provider quota (2026-09-08).** Design exited 1 after 2.34 s with "You've hit your session limit · resets 8:30am (Europe/Madrid)"; whole command 2.8271 s, peak process-tree RSS 386,695,168 bytes, no cutoff. No script or revision was accepted; training, rollout and review were not reached, and project scaffolds are not an accepted design. Reconcile judgement: retain `working` on prior successful walks; this attempt adds no mechanism or review qualification. The selected bounded leg walk remains unperformed beyond the quota refusal; a retry depends on provider availability [rec: silent-mist-5233].
 
+**Worker prerequisite qualified; fresh two-servo rehearsal still pending.** The repaired worker snapshot boundary passed full engine (2085 passed, 52 skipped), built-engine CLI (195 passed, no skips) and fresh packaged lifecycle (15 passed) gates after successful build/install and staging. All staged worker members matched payload bytes with link count 1; real acceptance/rebuild preserved the digest. This qualifies the local payload prerequisite, not a fresh design/training/review run or the still-stale installed application [rec: lawful-dune-3795].
+
+At the recorded 06:12 Europe/Madrid dispatch on 2026-09-08, rehearsal remained deferred until the reported 08:30 reset (06:30 UTC) or affirmative provider availability evidence. No provider probe or walk was invoked, no lifecycle leg was reached and no new project or review artifacts were produced. Source and staged runtime hashes still matched the qualification record. Reconcile judgement: retain `working` on prior successful walks; the fresh two-servo run and comparable progress numbers remain missing, and this deferral establishes neither a new provider failure nor availability [rec: calm-beacon-7800].
+
 ## Negative knowledge
 
 - [scope: what the walk commits from a training leg | confidence: medium | evidence: shy-cabin-0798] Before ADR-199 the `train` leg's commit carried `job.cxpolicy`, `job.best.cxpolicy` and the store copy — three copies of one policy. The store's asset is the project (ADR-194); checkpoints and traces are not, and the `.gitignore` says so. Reversible per project, because the file is editable.
@@ -77,3 +81,5 @@ Reconcile judgement: flipped `open` → `working` on the second clean prompt wal
 - empty-banner-7438 — third clean prompt walk on the installed bundle: pan-tilt head, first serial two-revolute topology, four legs exit 0 in 371.70 s at 1.419 GB, no leg needed a person or a guess
 - morning-summit-7848 — fourth clean prompt walk, on the refreshed installed bundle carrying both clearance fixes: four legs exit 0 in 406.33 s at 1.750 GB, witness 2.882e-09, no person and no guess; the design fused its servos, so the catalog path was not exercised by this walk
 - silent-mist-5233 — two-servo design refused by provider quota; no acceptance, training or review; prior working evidence preserved
+- lawful-dune-3795 — worker prerequisite qualified on fresh local payload; two-servo rehearsal still pending eligibility
+- calm-beacon-7800 — pre-reset dispatch deferred without probing or invoking the walk; matching runtime hash retained, no new lifecycle evidence
