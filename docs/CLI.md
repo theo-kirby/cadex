@@ -340,11 +340,10 @@ thing the engine refused (the op, its failure code and its message) or
 in both cases the agent's own closing words, clipped. The walk copies that
 string verbatim, so a run with nobody watching records the cause rather
 than "the turn finished without the engine accepting a script" — which was
-true of both and told nt3 nothing. The walk lands no
-`PROGRESS.md` row of its own — its legs' rows are the record, and the
-last one carries the rollout's `total_reward` with its delta against the
-previous walk (ADR-194). `--set policy_on=…` is a usage error: the walk
-owns the switch. `cli/tests/test_walk.py` pins the leg order and the flags
+true of both and told nt3 nothing. Child legs record reward/delta rows
+(ADR-194); a successful walk adds the clearance review row described above
+(ADR-238). A failed leg leaves earlier rows intact but adds no walk review row.
+`--set policy_on=…` is a usage error: the walk owns the switch. `cli/tests/test_walk.py` pins the leg order and the flags
 against a fake `cadex`, and runs the repository's plate-and-arm toy through
 two real walks — a placeholder digest to a verified rollout, then a reward
 change with a warm start — with the real engine and trainer at 1 it × 4

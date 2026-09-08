@@ -20855,6 +20855,11 @@ walk. Remove the walk's progress-row suppression: its new row reports only
 clearance, leaving the legs' reward comparisons intact. The mode-artifact
 table, walk docs, recipe architecture docs and scaffold share this contract.
 
+**Guide correction (2026-09-08).** Removed the obsolete claim in `docs/CLI.md`
+that the walk writes no progress row: child legs retain reward/delta rows;
+only a successful walk adds the clearance review row. Runtime and scaffold
+already implement this contract; failed legs add no walk review row.
+
 **Limits.** These are initial-pose findings, not swept-motion checks or
 large-assembly qualification. The headless-review charter criterion remains
 open for named-angle rendering and section views, each with walk integration.

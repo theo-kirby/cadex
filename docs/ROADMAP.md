@@ -2097,6 +2097,10 @@ What makes them experimental, and what would settle it:
   with match/different/unavailable evidence; no refusal, rebuild or binary
   provenance claim. Offline walk regressions and the CLI suite verify it.
 
+- [x] **Correct the walk progress-row guide** (2026-09-08, ADR-238).
+  Child reward/delta rows and the successful walk's clearance row are distinct;
+  failed legs add no walk review row. Existing CLI behavior and tests retained.
+
 - [x] **Model-free iterate comparison on the durable carriage** (2026-09-08).
   Width 70 → 80 mm through unchanged `walk --set`, cold CPU 5 × 16 seed 0:
   exit 0 in 20.89 s; same reward and 200-step horizon, total 3.296298 →
