@@ -7839,6 +7839,12 @@ suite at **1105 passed, 12 skipped**, unmoved.
   prohibition is about `CARRIED_PYPI_PACKAGES` staying one entry long, and a
   task adds nothing to solve.
 
+**2026-09-08 guidance follow-up.** Removed the stale `(1757 tests)` from
+AGENTS.md's `test-engine` comment: the task targets the full pytest directory,
+and ADR-244 already records a larger suite. Retained the command and no-build
+guidance without another drifting count. Documentation-only verification:
+`git diff --check` and hypergraph export/check; no product build or suite run.
+
 ---
 
 ## ADR-087 — A model says what it is already touching (2026-07-31)
