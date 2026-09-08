@@ -236,9 +236,8 @@ returning it.
    can't be rebuilt from the script is a bug.
 
    **One exception, stated rather than smuggled: a trained policy is an
-   asset, not a derivation** (`docs/MUJOCO.md` §3.1, ADR-084). Weights come
-   out of hours of stochastic GPU compute on a machine we do not ship to.
-   They cannot be rebuilt from a script and never will be, so they live in
+   asset, not a derivation** (`docs/MUJOCO.md` §3.1, ADR-084). Training produces
+   weights outside the script rebuild, so they live in
    `assets/` beside an imported STL, referenced by name and sha256, while the
    script declares reproducibly *how* the policy was trained and the engine
    verifies the file against that declaration before it publishes anything.

@@ -7173,6 +7173,15 @@ ADR-078, ADR-082).
 
 ## ADR-084 — Training happens elsewhere, and a policy is a file we can check (2026-07-31)
 
+**Bounded maintenance bet (2026-09-08):** Remove principle 3's remaining
+GPU-duration premise: `training/SETUP.md` supports CPU toy training, and
+`docs/probes/cold-revisit/README.md` records a verified policy from that path.
+Policy weights are retained assets because training produces them outside the
+script rebuild, regardless of hardware or duration. Limit this correction to
+that premise; preserve asset identity, verification and deterministic rollout.
+Verify the prose against those sources and the trainer's backend metadata,
+with diff and graph checks; no runtime change or new walk is proposed.
+
 **Maintenance (2026-09-08):** VISION principle 5 now explains offboard
 training through the dependency/payload boundary and points to
 `training/SETUP.md` for supported toy-scale local CPU and GPU paths. Removed
