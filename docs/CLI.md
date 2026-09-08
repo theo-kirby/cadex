@@ -349,8 +349,17 @@ of doing any of them:
    Rendering or revision mismatch failures fail the walk; retained files from
    an older run are never reported as current success. `walk_seconds` measures
    the whole entry point through review, excluding its final progress/commit.
-   The `section` block uses the same accepted snapshot for world XZ at Y =
-   3.125 mm, an interior cut through both reference mechanisms. It carries
+   The `section` block uses the same accepted snapshot for a world XZ cut
+   whose offset is **derived from that snapshot's own bounds** (ADR-267),
+   not fixed: the candidates are each object's bounding-box centre on the
+   cut axis plus the whole geometry's, ordered by how many objects' bounds
+   the plane crosses and then by nearness to the overall centre, and the
+   first candidate whose cut is supported is the one written. `offset_mm`
+   is the chosen plane, `offset_source` is `derived`, and
+   `offset_candidates_mm` is the ordered list it came from. A constant
+   offset cuts whatever happens to lie on it and reports `ok` while a part
+   is missing from the drawing; `cadex section --plane/--offset-mm` is
+   unchanged and reports `offset_source: explicit`. It carries
    status, availability, revision/digest, plane/offset/units, approximation,
    limits, acquisition/section timings and project-relative `path` (SVG) and
    `summary_path` (JSON). Empty cuts remain available with no contours;
@@ -383,7 +392,7 @@ The scaffold's `## Training` section carries this same path convention.
 | MJCF / task / training | `runs/<name>/train/` (model, task bundle, returned policy) |
 | Store / declare | `assets/<name>.cxpolicy`, `runs/<name>/script.py` |
 | Verify / rollout | `runs/<name>/rollout/` (including the simulation trace) |
-| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory, clearance and motion summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg` and `summary.json`, `review/section/<accepted-revision>/XZ-3.125/{section.svg,summary.json}`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
+| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory, clearance and motion summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg` and `summary.json`, `review/section/<accepted-revision>/XZ-<derived-offset>/{section.svg,summary.json}`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
 
 `cli/tests/test_walk.py` checks local/remote artifact parity through policy
 verification and rollout using a local CPU stand-in for the dispatcher.
@@ -602,7 +611,8 @@ errors 2.700e-08/2.926e-08/3.163e-08. These training batch rewards differ
 from the verified 200-step, 4 s rollout totals in the table.
 
 All named render files and section/inventory/clearance outputs exist locally.
-The XZ section at 3.125 mm still misses the quill, inventory has two
+The XZ section at 3.125 mm still misses the quill -- the measurement that
+ADR-267 later answered by deriving the offset -- inventory has two
 uncatalogued components, and initial-pose clearance still reports the
 960 mm³ housing/quill intersection with no unknown pairs. Each run verified
 all preceding run files unchanged (75/102/129 files respectively); prior
@@ -941,7 +951,9 @@ writes `review/section/<accepted-revision>/XY-8/section.svg` and
 under default ignore rules. XY means z=offset,
 XZ means y=offset, YZ means x=offset, in world millimetres. The JSON carries
 accepted revision/digest, solved object placements, closed planar contours,
-units, approximation, limits and separate acquisition/section timings.
+units, approximation, limits, `offset_source: explicit` and separate
+acquisition/section timings. The walk's own cut derives its offset instead
+(ADR-267, above); this command does not.
 
 This is a cut of the accepted standard tessellation, not an exact BREP section
 or a projected silhouette. SVG fills each object's contours using even-odd
@@ -959,7 +971,7 @@ using geometry. Rebuild, revision, malformed input, work-budget and write
 failures return nonzero and never reinterpret old artifacts as current success.
 The renderer's accepted-buffer/triangle/placement budgets apply. An absent
 model is an error, distinct from an empty cut of a model. The walk shares its
-preview snapshot for XZ at Y = 3.125 mm and produces these same local artifacts
+preview snapshot for XZ at a derived Y (above) and produces these same local artifacts
 and reports their statuses in every mode (ADR-240 follow-up, ADR-262).
 
 ### Named-angle review

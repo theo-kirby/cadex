@@ -2014,7 +2014,8 @@ What makes them experimental, and what would settle it:
   and reports render/acquisition and whole-walk timings. ADR-262 later keeps
   these generated previews local by default.
 - [x] **Walk review commits named-plane sections** (ADR-240 follow-up).
-  Shared accepted snapshot, world XZ at Y = 3.125 mm, revision/digest checks,
+  Shared accepted snapshot, world XZ at a derived offset (ADR-267; the fixed
+  3.125 mm this landed with missed whole parts), revision/digest checks,
   explicit empty/unsupported/error semantics and committed SVG/JSON. Both
   mechanisms and local/remote-flag CPU stand-in parity are tested; a separate
   fresh complete-review rehearsal remains required. ADR-262 later keeps
@@ -2185,6 +2186,11 @@ What makes them experimental, and what would settle it:
   alive so it stays addressable after the reap, and the final drain is
   bounded at 10 s. A second regression whose grandchild sets `SIGTERM` to
   `SIG_IGN` fails against the previous stop.
+- [x] **The walk's section cuts where the geometry is** (2026-09-08, ADR-267).
+  The review's offset is derived from the accepted snapshot's own bounds --
+  most objects' bounds crossed, first supported cut wins -- instead of a
+  literal 3.125 mm that reported `ok` while missing the ot4-quill's moving
+  part in all six recorded runs. `cadex section --offset-mm` is unchanged.
 - [x] **Correct lifecycle history promises** (2026-09-08, ADR-266).
   Remove unconditional repository/commit claims from the lifecycle audit;
   point to ownership rules and clarify the scaffold commit-success signal.

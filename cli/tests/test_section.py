@@ -7,7 +7,8 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from cadex_cli.section import contours, write_section
+from cadex_cli.section import (contours, derived_section, offset_candidates,
+                               section_snapshot, write_section)
 from cadex_cli.__main__ import main
 from cadex_cli.inventory import InventoryError
 
@@ -108,3 +109,63 @@ def test_sloping_faces_change_cut_area_with_offset():
         cut = contours(triangles, 'XY', offset)
         assert cut['status'] == 'ok'
         assert area(cut['contours_mm'][0]) == pytest.approx(expected)
+
+
+def slab(x, y, z, color=(1, 2, 3)):
+    """Triangles of one axis-aligned box, given (lo, hi) per axis."""
+    vertices = [(a, b, c) for a in x for b in y for c in z]
+    faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1),
+             (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    return [(color, tuple(vertices[i] for i in tri))
+            for a, b, c, d in faces for tri in ((a, b, c), (a, c, d))]
+
+
+def accepted(objects):
+    """A render snapshot pair over named triangle lists, as the walk sees it."""
+    triangles, summary = [], {}
+    for name, tris in objects:
+        points = [p for _, tri in tris for p in tri]
+        summary[name] = {'triangles': len(tris), 'color': (1, 2, 3),
+                         'bounds_mm': [[fn(p[j] for p in points) for j in range(3)]
+                                       for fn in (min, max)]}
+        triangles.extend(tris)
+    return triangles, {'revision': 'r'*64, 'digest': 'd', 'objects': summary, 'limits': {}}
+
+
+def test_derived_offset_cuts_the_part_a_constant_misses():
+    # The ot4-quill shape: a housing straddling Y=0 and a quill entirely at -Y.
+    # The literal 3.125 mm the walk used to cut at reports `ok` overall while
+    # the moving part it exists to look at is missing from the drawing.
+    triangles, source = accepted([
+        ('housing', slab((-46, 46), (-42, 42), (0, 164))),
+        ('quill', slab((-7, 23), (-32, -10), (16, 152))),
+    ])
+    fixed = section_snapshot(triangles, source, 'XZ', 3.125)
+    assert fixed['status'] == 'ok' and fixed['objects']['quill']['status'] == 'empty'
+
+    derived = derived_section(triangles, source, 'XZ')
+    assert derived['offset_source'] == 'derived'
+    assert derived['offset_mm'] == -21.0  # the two parts' only common band
+    assert derived['status'] == 'ok'
+    assert all(obj['status'] == 'ok' for obj in derived['objects'].values())
+    assert offset_candidates(source, 'XZ')[0] == derived['offset_mm']
+
+
+def test_derived_offset_skips_a_candidate_the_cut_cannot_support():
+    # A stack of two boxes meeting at Y=0 puts vertices on its own centre
+    # plane, which `contours` refuses; the next candidate is taken instead.
+    stack = slab((0, 10), (-10, 0), (0, 10)) + slab((0, 10), (0, 10), (0, 10))
+    triangles, source = accepted([('stack', stack), ('solid', slab((0, 10), (-6, 10), (0, 10)))])
+    assert offset_candidates(source, 'XZ') == [0.0, 2.0]
+    assert section_snapshot(triangles, source, 'XZ', 0.0)['status'] == 'unsupported'
+    derived = derived_section(triangles, source, 'XZ')
+    assert derived['offset_mm'] == 2.0 and derived['status'] == 'ok'
+    assert derived['offset_candidates_mm'] == [0.0, 2.0]
+
+
+def test_derived_offset_reports_the_unsupported_cut_when_no_candidate_works():
+    stack = slab((0, 10), (-10, 0), (0, 10)) + slab((0, 10), (0, 10), (0, 10))
+    triangles, source = accepted([('stack', stack)])
+    derived = derived_section(triangles, source, 'XZ')
+    assert derived['offset_mm'] == 0.0 and derived['status'] == 'unsupported'
+    assert derived['available'] is False and derived['offset_source'] == 'derived'

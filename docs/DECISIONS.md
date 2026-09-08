@@ -21891,3 +21891,39 @@ ownership contract. `ensure_project_repo` preserves existing ignore files and
 refuses nested initialization; `commit_project` can return no commit after an
 accepted run. Keep the measured historical commits, clarify the scaffold's
 success signal, and verify with the full CLI suite. No Git behavior changes.
+
+## ADR-267 — The walk's section cuts where the geometry is (2026-09-08)
+
+The walk's review cut at a literal world XZ plane at Y = 3.125 mm, chosen once
+as an interior cut through the swing-arm and the carriage. On the ot4-quill
+mechanism it cut the housing and missed the quill entirely in all six recorded
+runs: the moving part reported `empty`, the summary reported `ok`, and one of
+the four charter eyes therefore reported nothing about the part the run existed
+to look at, without saying so.
+
+Derive the offset instead. `section.offset_candidates` reads the accepted
+snapshot's own per-object bounds on the cut axis and offers each object's
+bounding-box centre plus the whole geometry's, ordered by how many objects'
+bounds the plane crosses, then by nearness to the overall centre, then by
+value; `derived_section` takes the first candidate whose cut is supported, at
+most eight, and falls back to the best candidate's own refusal when none is.
+`review.json` carries the chosen `offset_mm`, `offset_source` and the ordered
+`offset_candidates_mm`, so a reader can see which plane was chosen and what it
+was chosen over. The artifact directory becomes
+`review/section/<accepted-revision>/XZ-<derived-offset>/`.
+
+Bounds are not the solid: a candidate can cross an object's bounds and still
+cut a cavity, so coverage orders the candidates rather than promising a
+contour, and the per-object statuses stay the answer. On the three recorded
+mechanisms the derivation cuts more parts than the constant did and never
+fewer — quill 1 → 2 of 2, swing-arm rig 5 → 6 of 10, carriage 2 → 2 of 2 (the
+plane moves from 3.125 mm to 0 mm). `cadex section --plane/--offset-mm` is
+unchanged and now records `offset_source: explicit`; the committed
+`docs/probes/` baselines naming `XZ-3.125` are historical measurements and
+stay as written. No new flag, op, protocol change, engine or shell diff.
+
+Three regressions: the quill shape cut at the old constant (`ok` overall, the
+moving part `empty`) against the derived plane cutting both; a candidate that
+contacts its own tessellation being skipped for the next; and a geometry where
+no candidate is supported reporting the refusal rather than a false success.
+`cli/tests` run in full.

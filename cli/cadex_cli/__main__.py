@@ -1493,8 +1493,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             client, report.project_root, expected_revision=report.accepted_revision,
             accepted_snapshot=accepted_snapshot,
         )
+        # The offset is derived from the accepted bounds rather than fixed:
+        # a constant misses whatever is not on it, and reports `ok` while
+        # doing so (ADR-267). `cadex section` keeps the explicit surface.
         section_path, section = write_section(
-            client, report.project_root, plane="XZ", offset=3.125,
+            client, report.project_root, plane="XZ",
             expected_revision=report.accepted_revision, accepted_snapshot=accepted_snapshot,
         )
         path, inventory = write_inventory(client, report.project_root)

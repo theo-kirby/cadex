@@ -1318,7 +1318,11 @@ def _assert_render(root, review):
     section = review["section"]
     assert section["revision"] == summary["revision"]
     assert section["digest"] == summary["digest"]
-    assert section["plane"] == "XZ" and section["offset_mm"] == 3.125
+    # The review cuts where the geometry is, not at a constant (ADR-267).
+    from cadex_cli.section import offset_candidates
+    assert section["plane"] == "XZ" and section["offset_source"] == "derived"
+    assert section["offset_mm"] == offset_candidates(summary, "XZ")[0]
+    assert section["offset_candidates_mm"][0] == section["offset_mm"]
     assert section["units"] == "mm" and section["approximation"] and section["limits"]
     assert section["path"] not in tracked and section["summary_path"] not in tracked
     stored_section = json.loads((root / section["summary_path"]).read_text())

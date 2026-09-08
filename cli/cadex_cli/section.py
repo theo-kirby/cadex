@@ -12,6 +12,7 @@ from .render import acquire_snapshot
 
 PLANES = {'XY': (0, 1, 2), 'XZ': (0, 2, 1), 'YZ': (1, 2, 0)}
 TOLERANCE = 1e-6  # mm; endpoint grid, also conservative plane-contact refusal
+MAX_DERIVED_CANDIDATES = 8  # bounds one derivation to a handful of contour passes
 APPROXIMATION = ('Standard tessellation cut in the initial solved world pose, mm; not exact BREP. '
                  'Closed contours filled even-odd per object preserve cavities. No union across objects. '
                  'Plane contacts within 1e-6 mm and open/branched cuts are unsupported; '
@@ -82,6 +83,50 @@ def section_snapshot(triangles, summary, plane, offset):
             'section_seconds': time.perf_counter() - start}
 
 
+def offset_candidates(summary, plane):
+    """Offsets worth cutting at, best first, read off the accepted bounds.
+
+    A constant offset cuts whatever happens to be there: on a mechanism whose
+    moving part sits entirely off the chosen plane, the cut is real, the
+    overall status is `ok`, and the part the run exists to look at is missing
+    from it. Each object's bounding-box centre is a plane that certainly
+    passes through *that* object, so the candidates are those centres plus the
+    whole geometry's, ordered by how many objects' bounds the plane crosses,
+    then by nearness to the overall centre. Bounds are not the solid: a
+    candidate can still cut a cavity and come back empty, which is why the
+    caller checks the cut rather than trusting the ordering.
+    """
+    normal = PLANES[plane][2]
+    spans = [(obj['bounds_mm'][0][normal], obj['bounds_mm'][1][normal])
+             for obj in summary['objects'].values() if obj.get('bounds_mm')]
+    if not spans:
+        raise InventoryError('section: no accepted bounds to derive an offset from')
+    centre = (min(lo for lo, _ in spans) + max(hi for _, hi in spans)) / 2
+
+    def coverage(offset):
+        return sum(1 for lo, hi in spans if lo < offset < hi)
+
+    # Rounded to a micron so the artifact directory a run writes is readable
+    # and two runs of the same geometry agree on it.
+    candidates = {round(centre, 3)} | {round((lo + hi) / 2, 3) for lo, hi in spans}
+    ordered = sorted(candidates, key=lambda offset: (-coverage(offset), abs(offset - centre), offset))
+    return ordered[:MAX_DERIVED_CANDIDATES]
+
+
+def derived_section(triangles, summary, plane):
+    """The first candidate offset whose cut is supported, best coverage first."""
+    candidates = offset_candidates(summary, plane)
+    first = None
+    for offset in candidates:
+        cut = {**section_snapshot(triangles, summary, plane, offset),
+               'offset_source': 'derived', 'offset_candidates_mm': candidates}
+        if cut['status'] == 'ok':
+            return cut
+        if first is None:
+            first = cut
+    return first
+
+
 def svg(summary):
     points = [p for obj in summary['objects'].values() for loop in obj['contours_mm'] for p in loop]
     lo, hi = ([fn(p[a] for p in points) for a in (0, 1)] for fn in (min, max)) if points else ([0, 0], [1, 1])
@@ -104,11 +149,16 @@ def svg(summary):
             + ''.join(paths) + f'<text x="16" y="536" font-size="12">{label}</text></svg>\n')
 
 
-def write_section(client, root, *, plane, offset, expected_revision=None, accepted_snapshot=None):
+def write_section(client, root, *, plane, offset=None, expected_revision=None, accepted_snapshot=None):
+    """Cut at `offset`, or -- with `offset=None` -- where the geometry is."""
     triangles, source = accepted_snapshot if accepted_snapshot is not None else acquire_snapshot(client)
     if expected_revision is not None and source['revision'] != expected_revision:
         raise InventoryError('section: accepted revision differs from expected revision')
-    summary = section_snapshot(triangles, source, plane, offset)
+    if offset is None:
+        summary = derived_section(triangles, source, plane)
+        offset = summary['offset_mm']
+    else:
+        summary = {**section_snapshot(triangles, source, plane, offset), 'offset_source': 'explicit'}
     relative = f'review/section/{source["revision"]}/{plane}-{offset:.17g}'
     summary['path'] = relative + '/section.svg'
     content = svg(summary)

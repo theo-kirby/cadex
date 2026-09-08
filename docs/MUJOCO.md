@@ -3023,9 +3023,9 @@ SVG previews plus a summary under `review/render/<accepted-revision>/`.
 limits and acquisition/render timings alongside inventory, clearance and reward.
 A revision mismatch or rendering error fails the walk. The shared mode artifact
 table in `docs/CLI.md` applies unchanged to local, GUI-attached and remote-flag
-walks. Sections share that accepted snapshot at world XZ, Y = 3.125 mm,
-an interior cut for both mechanisms, and commit SVG/JSON under
-`review/section/<accepted-revision>/XZ-3.125/`. Review retains plane, units,
+walks. Sections share that accepted snapshot at world XZ, at an offset derived
+from the snapshot's own bounds rather than a constant (ADR-267), and commit
+SVG/JSON under `review/section/<accepted-revision>/XZ-<derived-offset>/`. Review retains plane, units,
 revision/digest, approximation, limits and section timing; empty cuts are
 available without contours, unsupported cuts unavailable with reasons, and
 errors fail the walk without reporting retained files as current success.
