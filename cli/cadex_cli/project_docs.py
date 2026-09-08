@@ -205,6 +205,20 @@ note is pasted back into the next turn's prompt, so a mechanism with
 actuators or sensors should leave `{docs}/actuators.md` and
 `{docs}/sensors.md` behind. `{docs}/inventory.md` and
 `{docs}/clearance.md` are the CLI's generated reports, not note subjects.
+
+The walk reads this convention back rather than only offering it
+(ADR-256). After the rollout it parses the MJCF it trained on and takes
+each declared section as a note subject: an `<actuator>` section with
+children asks this project for `{docs}/actuators.md`, a `<sensor>`
+section for `{docs}/sensors.md`. The `documentation` block in
+`review.json` and the `{progress}` row report the notes kept here, the
+subjects the model declares, and the ones with no note — `docs notes N,
+none missing` or `docs notes N, no <subjects>`. A missing note is a
+finding for the next design turn, never a walk failure, and the CLI never
+writes the note itself: what drives a joint and what a sensor measures
+are this project's to say, and an invented note would be pasted back as
+if it were knowledge. A run that exported no model declares nothing and
+reports nothing.
 """
 
 _DECISIONS_TEMPLATE = """\

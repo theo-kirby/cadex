@@ -371,6 +371,21 @@ def test_the_scaffold_and_the_overlay_ask_for_the_notes_the_walk_exercises(tmp_p
     assert "NOTE <subject>: <text>" in architecture
     assert "actuators.md" in architecture and "sensors.md" in architecture
 
+    # ...and it says the walk reads the convention back (ADR-256): which
+    # declaration asks for which note, where the finding lands, and that a
+    # missing note neither fails the run nor gets written by the CLI.
+    assert (
+        "an `<actuator>` section with children asks this project for "
+        "`docs/actuators.md`, a `<sensor>` section for `docs/sensors.md`"
+    ) in architecture
+    assert "The `documentation` block in `review.json` and the `PROGRESS.md` row" in (
+        architecture
+    )
+    assert "`docs notes N, none missing` or `docs notes N, no <subjects>`" in architecture
+    assert (
+        "never a walk failure, and the CLI never writes the note itself" in architecture
+    )
+
     walk_doc = " ".join(
         (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text().split()
     )

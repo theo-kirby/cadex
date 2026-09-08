@@ -21494,3 +21494,12 @@ say `actuators` is missing. `cli/tests/test_project_docs.py` pins
 `documentation_status` and the `docs/CLI.md` §2 sentence that documents it.
 LGPL CLI zone and docs only: no engine, no protocol op, no payload, no `shell/`
 diff.
+
+**Amendment (2026-09-08).** The generated `ARCHITECTURE.md` scaffold describes
+the review too, not only the authoring half. A project's own document is what
+its next agent reads on every visit, so it now says which declared section asks
+for which note, that the finding lands in `review.json`'s `documentation` block
+and the `PROGRESS.md` row in the two forms above, and that a missing note
+neither fails the walk nor gets written by the CLI. The scaffold test in
+`cli/tests/test_project_docs.py` pins those four sentences; the full CLI gate
+stayed at 227 passed, 0 skipped.
