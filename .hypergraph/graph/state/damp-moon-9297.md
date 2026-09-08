@@ -69,6 +69,8 @@ Joining a fresh evaluation's identity map to the unchanged historical pan-tilt d
 
 Reconcile judgement: retain `working`. This is the criterion's first evidence on a third mechanism and the documentation eye's first live read, and it is what the eye was built for. Unchanged and still not claimed: swept or animated clearance (initial-pose views and tessellation cuts only), exact OCCT volume validation, GUI and actual remote qualification, and a named inventory snapshot inside the saved review [rec: chilly-crest-2100].
 
+**The fixed-stroke quill reference verifies all four review outputs locally.** Four named views and all four review paths exist; the XZ section at Y = 3.125 mm cuts the housing but misses the quill, inventory lists two uncatalogued components, and clearance names the known housing/quill intersection of **960 mm³**, with no unknown pairs. New review outputs remain local and absent from the committed tree; historical tracked reviews and all 48 prior run files are preserved. CLI gate: **245 passed**. Retain `working` within the existing initial-pose/tessellation scope: file/output checks do not establish swept clearance, quill interior coverage or learned control [rec: floral-grotto-1463].
+
 ## Negative knowledge
 
 - [scope: early-gate-3510 scratch definition traversal and unchanged historical pan-tilt report | confidence: high | evidence: early-gate-3510] Fresh evaluation identity enables syntactic matches for measured fuse/transform/cut inputs, but cold pan-tilt stamps supply no identity. Equal definitions lose occurrence provenance; unknown operations are not traversed, so zero matches there proves no absence. Paths establish neither purchases nor surviving material.
@@ -140,3 +142,5 @@ Reconcile judgement: retain `working`. This is the criterion's first evidence on
 - soft-crane-2369 — ADR-254: the saved review's inventory block is counts-only while the linked docs/inventory.md is overwritten; measured by rename after a public toy walk, guide and scaffold clarified, runtime unchanged
 - square-bay-3436 — ADR-259: a motion block in review.json, and the same two figures in the PROGRESS row, report per-component travel in millimetres and degrees from the first solved frame, ranking neither; four regressions on the documented examples' real frames; CLI gate 231 passed, 0 skipped
 - chilly-crest-2100 — all four eyes on a third mechanism (render 1,404 triangles / 0.49 s, section XZ ok, inventory 2 components 0 catalogued, clearance 1 offending pair); the ADR-256 documentation eye's first read of a real design turn's unprompted notes (docs notes 2, none missing) and the ADR-259 motion block's first two-channel report on a joint offering both (20.28 mm / 0°); the offending pair is deliberate per the project's own ADR-005
+
+- floral-grotto-1463 — all four fixed-stroke reference review outputs verified locally, with known intersection and quill-missing section explicit; prior artifacts preserved

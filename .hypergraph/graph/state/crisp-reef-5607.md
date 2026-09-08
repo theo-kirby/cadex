@@ -85,6 +85,10 @@ Reconcile judgement: retain `working`. This adds a review channel and its regres
 
 Reconcile judgement: retain `working`; the cleanup correction strengthens the existing bounded-walk claim without claiming a new end-to-end rehearsal or control-quality evidence [rec: lucky-creek-4303].
 
+**Resumed-turn history is regression-qualified.** Two scripted model turns through the real engine and bridge preserve session/project identity, deliver current architecture, decisions, domain notes and between-visit sensor/progress edits, then accept changed geometry and append notes without losing prior text. Removing project-doc delivery makes the regression fail. This proves context delivery and persistence, not model understanding or live Claude resume; the provider-guided geometry/train/review iterate remains unmeasured. No runtime change; CLI gate: **245 passed, no skips** [rec: humble-sky-8445].
+
+**Fixed-stroke quill reference now carries current comparison identities.** One provider-free CPU walk at stroke 60, training seed 0, rollout seed 7 and 5 iterations × 16 environments completed all three legs and review: exit 0, **24.84 s wall, 1.99 GB peak tree RSS**, witness error 2.0915e-08. Canonical objective/action hashes, unchanged parameters, byte-identical MJCF and full task equality were verified against the earlier stroke-60 run; 56 installed/source Python files match. Prior artifacts remain intact and new generated outputs stay local. CLI gate: **245 passed**. Retain `working`: this establishes the current reference, with seed continuation outstanding; it proves neither learned control nor live provider understanding [rec: floral-grotto-1463].
+
 ## Negative knowledge
 
 - [scope: what the walk commits from a training leg | confidence: medium | evidence: shy-cabin-0798] Before ADR-199 the `train` leg's commit carried `job.cxpolicy`, `job.best.cxpolicy` and the store copy — three copies of one policy. The store's asset is the project (ADR-194); checkpoints and traces are not, and the `.gitignore` says so. Reversible per project, because the file is editable.
@@ -157,3 +161,6 @@ Reconcile judgement: retain `working`; the cleanup correction strengthens the ex
 - honest-river-1137 — ADR-261: `--leg-timeout` bounds all six walk legs in wall clock (default 3600 s, 0 for none), a timed-out leg fails the walk at exit 1 with the leg at 124, and the train leg gets `max(--leg-timeout, --timeout + 300 s)`; cli/tests 238 passed
 - tidy-cove-8382 — the critic's must-fix on that bound: unconditional group SIGKILL, pgid captured while the child lives, 10 s bounded drain, and a mutation-verified regression that fails against the shipped stop; cli/tests 239 passed, 0 skips
 - lucky-creek-4303 — monotonic deadline preserves descendants' full termination grace; failing-before cleanup regression and 240 CLI passes
+
+- humble-sky-8445 — real-engine resumed context and note persistence regression, negative control and 245-test CLI gate; live provider iterate remains unmeasured
+- floral-grotto-1463 — bounded fixed-stroke seed-0 CPU walk with verified comparison identities, artifact retention and 245-test CLI gate
