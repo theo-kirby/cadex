@@ -426,6 +426,9 @@ depends on. Independent of Phase 8.
       0.417 s drag. Not worth moving a computation across a process boundary
       and changing `inspect`'s cost model for. The item stays here with its
       number attached so it can be revived if output counts grow.
+- [x] **Worker snapshot integrity** (2026-09-08, ADR-244): detach staged
+      modules from mutable source inodes, publish the bytes used for the name,
+      validate reuse and publication-race winners, replace corrupt/legacy bundles.
 - [x] **Warm-standby worker** (ADR-055). cadexd owns one resident
       `--safe-mode` preview worker per open project, spawned lazily on the
       first `preview_params`, bound to one `(source, api_contracts, assets)`

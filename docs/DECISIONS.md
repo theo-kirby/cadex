@@ -21090,3 +21090,33 @@ separate from printed solids. Transformed catalog bodies may be clearance cutter
 without implying another purchase. Review script and placed inventory together.
 This concise convention uses the existing API and adds no registry or validator;
 contract tests establish that guidance is delivered, not that an agent followed it.
+
+
+---
+
+## ADR-244 — Worker bundles are detached, verified snapshots (2026-09-08)
+
+Remove worker-module hardlink staging and presence-only reuse. An in-place
+source write could change an existing content-addressed bundle, and a second
+unchanged engine root would reuse those wrong bytes. Read members once, hash and
+write the same snapshot, and compare cached bytes before reuse. Reject symlinks
+and multiply linked legacy members even when their bytes match. Replace invalid
+bundles atomically as complete directories, retiring their bytecode; retain
+identical detached bundles and their warm bytecode. Validate a competing
+publisher's result before accepting a failed rename. Project asset staging's
+separate atomic-replacement contract still uses `_link_or_copy`.
+
+Tests pin the two-root A-to-B reproduction, corruption, legacy links, source
+mutation between read and write, and valid/invalid publication-race winners.
+This repairs the reproduced defect, not an identified historical writer. No
+claim of general concurrency safety: files can change after validation, repair
+can disrupt existing readers, and simultaneous engine installation can yield a
+snapshot spanning source versions. No registry, global cache purge, protocol
+change, accepted-project edit, or shell change.
+
+Verification: engine 2085 passed / 52 skipped; built-engine CLI 195 passed;
+fresh staged payload lifecycle 15 passed after build/install and staging.
+Six new regression cases fail against the previous implementation. A real
+payload worker accepts/rebuilds a box with identical digest; 20 warm bundle
+lookups measured 2.49 ms median locally. Stage-only output is not a relocatable
+release; the installed application was not refreshed.
