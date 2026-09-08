@@ -6,7 +6,7 @@ The unchanged public entry point completed design/assembly acceptance,
 MJCF/task export, toy CPU training, policy witness verification, rollout and
 all four review outputs on a fresh project. No model call, GUI or remote host.
 This is the first of the two separately planned mechanism rehearsals; the
-fresh carriage comparison remains required for the headless-review criterion.
+fresh carriage comparison was then required; its follow-up is recorded below.
 
 Reproduce from the repo root with a built engine and the training venv from
 `training/SETUP.md`. Choose a fresh project outside the checkout (so automatic
@@ -70,3 +70,10 @@ CPU stand-in parity evidence in `copper-timber-8947`.
 
 Gate result: **195 passed, zero skipped, 217.22 s**; monitor exited 0 in
 217.87 s with sampled peak process-tree RSS 1,172,209,664 bytes.
+
+Follow-up (iteration 19): the fresh carriage rehearsal is retained beside this
+one in `../linear-carriage/`. Both source projects committed the same exact
+comparison table, now in PROGRESS.md. Updated DECISIONS.md and PROGRESS.md
+hashes and source commit are in comparison-audit.json; the original audit.json
+continues to identify the prior iteration's commit and bytes. Arm geometry,
+training and review measurements were not rerun or changed.

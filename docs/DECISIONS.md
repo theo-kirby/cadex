@@ -20895,3 +20895,13 @@ generation, and whole-walk time ends before the final project commit.
 Built-engine walk tests cover meaningful contours, tracked outputs, both
 mechanisms and local/remote-flag parity with a local CPU dispatcher; no SSH or
 GUI. A separate fresh two-mechanism rehearsal remains the next evidence unit.
+
+**Fresh rehearsal evidence (2026-09-08).** The arm and carriage separately ran
+through the unchanged public walk with one CPU iteration/four environments/seed
+zero. Both projects committed comparable measurements; all views and meaningful
+XZ sections were inspected, identity and artifact bytes audited, and the full
+built-engine CLI gate passed (195 tests, zero skips). Retain the arm's initial
+contact and carriage's 34 mm separation, and qualify different effort units:
+this proves the review pipeline, not policy quality or swept safety. Compact
+evidence lives in `docs/probes/complete-review/`; no runtime change or new
+training dependency. Combined evidence goes to the maintainer for assessment.

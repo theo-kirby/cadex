@@ -1,4 +1,4 @@
-# cadex-nt3-i18-arm — Decisions
+# cadex-nt3-i19-carriage — Decisions
 
 One entry per decision that shaped the model or its training: what was
 chosen, what it was chosen over, and why. Newest last. A `cadex -p` turn
@@ -13,15 +13,7 @@ recreates (`script_artifacts/`), what is bulk (`frames/`, renders) and
 what is transient (the lock, `.blend1` backups); the script, its history,
 the stored assets and these documents are the project.
 
-## ADR-002 — Rehearsal evidence convention (2026-09-08)
-
-Keep exact reward, witness, CPU bounds and review timings in PROGRESS.md so
-the next mechanism can compare like measurements. The public script entry
-point imports the xscript only, so the reviewing agent carries the example's
-sensor notes into docs/sensors.md after the run. Review remains initial-pose
-tessellation and exact pair measurements, not a motion or hardware claim.
-
-## ADR-003 — Comparable review evidence (2026-09-08)
+## ADR-002 — Comparable review evidence (2026-09-08)
 
 Keep the exact two-mechanism measurements in PROGRESS.md, with separate timing
 boundaries and effort units. Script import carries code only; the reviewing

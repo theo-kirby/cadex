@@ -1995,7 +1995,13 @@ What makes them experimental, and what would settle it:
   Public walk, bounded CPU training, four inspected views and interior section,
   accepted identity, tracked artifacts and explicit contact/unknown counts;
   evidence in `docs/probes/complete-review/hinged-arm/`. Fresh carriage comparison
-  remains required before the headless-review criterion can close.
+  is recorded immediately below for combined criterion assessment.
+- [x] **Fresh carriage complete-review rehearsal and comparison** (2026-09-08).
+  Identical public entry point and bounded CPU settings; four inspected views,
+  interior section, accepted identity and committed-byte audit. Both projects
+  carry comparable measurements; arm contact and carriage 34 mm separation
+  remain explicit. Evidence in `docs/probes/complete-review/linear-carriage/`;
+  combined review evidence is ready for maintainer assessment.
 - [x] **The agent can name what it assembled, headlessly** (ADR-236,
   `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
   project: one row per component with the output it places, its catalog

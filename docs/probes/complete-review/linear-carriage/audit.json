@@ -1,0 +1,54 @@
+{
+  "project_commit": "7bf96b4969efde0b8bce836e9f364311acc37d78",
+  "clean": true,
+  "tracked_bytes_match_HEAD": true,
+  "original_sha256": {
+    "runs/baseline/review.json": "b20fde0d062f929e43a40f5d5f0f030ae9707535d18d734e9acea8248952ecc3",
+    "review/render/4c0c01dcac5d42d2fb00c025b6dca64292c6de776383217d6aeab54e66a12375/summary.json": "1592a637f9fe0da146c16215bd7967921a625a6e4bc5aecd029ac489fcb50e0c",
+    "review/section/4c0c01dcac5d42d2fb00c025b6dca64292c6de776383217d6aeab54e66a12375/XZ-3.125/section.svg": "f50060ced0a48979d2f0a390c53233ab936a2d82584b59e865f08482779b0310",
+    "review/section/4c0c01dcac5d42d2fb00c025b6dca64292c6de776383217d6aeab54e66a12375/XZ-3.125/summary.json": "68579b5325a8ff7a16513411a927c017686d8e1d1b1c513048f3f77729a265a2",
+    "docs/inventory.md": "3d04d11b41002b1602ec48e886fca6a6c22ca6d645a94eebc48f327f385b337f",
+    "docs/clearance.md": "28cd737c92c2fe8d16b8a0e5a39c78b74239ffb6e71beef3e356ea999f73d3c1",
+    "ARCHITECTURE.md": "d9b0268a80c3786c81d825499a019a606520e242b4de00633b8b2cdae5d4a7d4",
+    "DECISIONS.md": "114660e1fccbd85d5a8fae79514703a7f1a2da67154c96f56e5e4fa4553fbf70",
+    "PROGRESS.md": "4c2f6a40e81fc86ba2e5c92dff968552bdfb650ff805932f7eb458f05a048872",
+    "docs/sensors.md": "c0f8be38645f911cba34f7d1812d9f731dc5dc1906058c23678f79d1342d5c44",
+    "script.py": "bbbf89f88de3feb07f23ddfdba0254961d30775c019f421e39ec3bdf878c78c6",
+    "review/render/4c0c01dcac5d42d2fb00c025b6dca64292c6de776383217d6aeab54e66a12375/front.svg": "e32dcedb86f637de030857897fd478f08595aecbeb7f0fec4dc71533ba915c37",
+    "review/render/4c0c01dcac5d42d2fb00c025b6dca64292c6de776383217d6aeab54e66a12375/iso.svg": "1eae8a74eae7ab2896dd905e9aca4dc066347603f494195ea920f7837699e130",
+    "review/render/4c0c01dcac5d42d2fb00c025b6dca64292c6de776383217d6aeab54e66a12375/right.svg": "6a8e60331853646ce3817efd755271788c5a61834ecdfefc2fcdc618bbd93fc0",
+    "review/render/4c0c01dcac5d42d2fb00c025b6dca64292c6de776383217d6aeab54e66a12375/top.svg": "6f716c338a83a8e39c298c30efdbe4ce6452e97f5422a05a204c2e88abd581a9"
+  },
+  "section_area_mm2": {
+    "base": 360.0,
+    "slide": 400.0
+  },
+  "trace_policy": {
+    "label": "lift",
+    "model_path": "outputs/model-model.xml",
+    "model_sha256": "e6cfa40496d12b769eee27e16ede4f623236a5d21f7b9f0cf652ffd6f4316ddc",
+    "policy_output": "policy",
+    "policy_sha256": "5a56be19e00e0a857b44f396479b9b5d3933a5ce9b0b2623a9fcc59f57c8a430",
+    "randomisation": [],
+    "reward_totals": [
+      {
+        "label": "lift",
+        "total": -24159.195354023715
+      },
+      {
+        "label": "control_cost",
+        "total": -2.280743878508681e-06
+      }
+    ],
+    "seed": 3,
+    "step_count": 50,
+    "task_output": "job",
+    "task_sha256": "d71677f3623df34e1c6c1fb125f8e970cbcfa1cd962ed8477d821e9feb9c9193",
+    "terminated_step": null,
+    "termination": "",
+    "total_reward": -24159.19535630446,
+    "truncated": true,
+    "weights": "job.cxpolicy"
+  },
+  "identity_matches": true
+}
