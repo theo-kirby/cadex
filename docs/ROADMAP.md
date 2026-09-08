@@ -1985,7 +1985,12 @@ What makes them experimental, and what would settle it:
 - [x] **Walk review commits named-angle previews** (ADR-239 follow-up).
   One review session snapshots accepted display before inventory/clearance,
   checks rollout revision, commits four SVGs and summary under that revision,
-  and reports render/acquisition and whole-walk timings. Sections stay unavailable.
+  and reports render/acquisition and whole-walk timings.
+- [x] **Walk review commits named-plane sections** (ADR-240 follow-up).
+  Shared accepted snapshot, world XZ at Y = 3.125 mm, revision/digest checks,
+  explicit empty/unsupported/error semantics and committed SVG/JSON. Both
+  mechanisms and local/remote-flag CPU stand-in parity are tested; a separate
+  fresh complete-review rehearsal remains required.
 - [x] **The agent can name what it assembled, headlessly** (ADR-236,
   `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
   project: one row per component with the output it places, its catalog

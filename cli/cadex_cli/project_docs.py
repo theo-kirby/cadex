@@ -123,7 +123,14 @@ carries project-relative paths, revision/digest, approximation, limits and
 acquisition/render timings. The walk refuses rendering failures or a revision
 that differs from the rollout; old files are never a successful fallback.
 `walk_seconds` measures the entry point through review (before final commit).
-The `section` block remains explicitly unavailable. Clearance covers only the initial solved pose,
+The `section` block carries the shared snapshot cut at world XZ, Y = 3.125 mm,
+under `review/section/<accepted-revision>/XZ-3.125/` (SVG and JSON). It
+retains status, availability, revision/digest, plane, units, approximation,
+limits and acquisition/section timings. This interior plane cuts both reference
+mechanisms without dispatch by mechanism. Empty cuts are available with no
+contours; unsupported cuts are unavailable with per-object reasons. Section
+errors and rollout digest mismatches fail the walk; retained old artifacts
+never imply current success. Clearance covers only the initial solved pose,
 at 0.1 mm minimum distance and 1e-6 mm³ maximum common volume. Its own
 `{progress}` row carries offending, unknown and checked pair counts;
 unavailable measurements stay unavailable. Training and rollout rows

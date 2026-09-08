@@ -50,7 +50,7 @@ from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, write_inventory
-from .render import write_render
+from .render import acquire_snapshot, write_render
 from .section import write_section
 from .clearance import MAXIMUM_COMMON_VOLUME_MM3, MINIMUM_CLEARANCE_MM, write_clearance
 from .project_docs import (
@@ -1228,7 +1228,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     policy_on=1`` for the verified rollout, and the review read off the
     exported trace and accepted inventory. Each child ``cadex`` leg lands
     its own ``PROGRESS.md`` row and commit; the walk commits the review
-    and render/inventory/clearance reports together. ``--remote`` (ADR-200) goes to
+    and render/section/inventory/clearance reports together. ``--remote`` (ADR-200) goes to
     the train leg and nowhere else: the trainer runs on the box, the
     artifacts and every later leg are unchanged.
     """
@@ -1373,8 +1373,16 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     review["weights"] = weights
     review["sha256"] = sha256
     with _engine_session(args, RunReport(), restore=False) as (_engine, client):
+        accepted_snapshot = acquire_snapshot(client)
+        if accepted_snapshot[1]["digest"] != report.digest:
+            raise InventoryError("review: accepted digest differs from rollout")
         render_path, rendering = write_render(
             client, report.project_root, expected_revision=report.accepted_revision,
+            accepted_snapshot=accepted_snapshot,
+        )
+        section_path, section = write_section(
+            client, report.project_root, plane="XZ", offset=3.125,
+            expected_revision=report.accepted_revision, accepted_snapshot=accepted_snapshot,
         )
         path, inventory = write_inventory(client, report.project_root)
         clearance_path, clearance = write_clearance(client, report.project_root)
@@ -1384,7 +1392,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         "available": True, **rendering,
         "path": render_path.relative_to(Path(report.project_root)).as_posix(),
     }
-    review["section"] = {"available": False, "reason": "Named-plane section views are not implemented."}
+    review["section"] = {
+        **section, "summary_path": section_path.relative_to(Path(report.project_root)).as_posix(),
+    }
     review["walk_seconds"] = time.monotonic() - walk_started
     review["inventory"] = {
         "available": bool(inventory.get("assembly")),

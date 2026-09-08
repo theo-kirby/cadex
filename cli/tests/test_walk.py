@@ -209,10 +209,12 @@ def fake_cadex(tmp_path, monkeypatch, request) -> Path:
                 reply = buffer_reply(tmp_path)
                 reply.update(revision="r" * 64, accepted_revision="r" * 64, digest="d" * 64)
                 failure = os.environ.get("FAKE_RENDER_FAIL")
-                if failure:
+                if failure in ("snapshot", "rollout"):
                     reply["accepted_revision"] = "z" * 64
                 if failure == "rollout":
                     reply["revision"] = "z" * 64
+                if failure == "digest":
+                    reply["digest"] = "z" * 64
                 return reply
             assert op == "inspect"
             if args["scope"] == "clearance":
@@ -558,8 +560,9 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     REAL_TRAINER_PYTHON is None,
     reason="No training venv with jax and mujoco (training/SETUP.md).",
 )
+@pytest.mark.parametrize("mechanism", ["hinged-arm", "linear-carriage"])
 def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
-    engine, tmp_path, capsys, monkeypatch
+    engine, tmp_path, capsys, monkeypatch, mechanism
 ) -> None:
     """Real legs and witness verification; only the dispatcher is replaced.
 
@@ -594,7 +597,7 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
     monkeypatch.setattr(walk_module, "cadex_command",
                         lambda: [sys.executable, "-c", bootstrap])
     source = tmp_path / "toy.py"
-    source.write_text(TOY, encoding="utf-8")
+    source.write_text((Path(__file__).resolve().parents[2] / f"examples/lifecycle/{mechanism}/script.py").read_text(), encoding="utf-8")
     paths = []
     reviews = []
     for mode in ("local", "remote"):
@@ -619,7 +622,7 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
         assert (out / review["trace"]).is_file()
         tracked = set(_git(root, "ls-files").splitlines())
         _assert_inventory(root, review)
-        _assert_clearance(root, review, "below clearance")
+        _assert_clearance(root, review, "below clearance" if mechanism == "hinged-arm" else "clear")
         expected = {"docs/inventory.md", "assets/job.cxpolicy", "runs/baseline/review.json",
                     "runs/baseline/train/job-task.json", "runs/baseline/script.py",
                     "ARCHITECTURE.md", "DECISIONS.md", "PROGRESS.md"}
@@ -645,6 +648,8 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
         assert image_bytes(tmp_path / "local" / first["views"][angle]["path"], first["revision"]) == image_bytes(
             tmp_path / "remote" / second["views"][angle]["path"], second["revision"])
     assert reviews[0]["render"]["limits"] == reviews[1]["render"]["limits"]
+    for key in ("objects", "plane", "offset_mm", "status", "limits", "approximation"):
+        assert reviews[0]["section"][key] == reviews[1]["section"][key]
     assert reviews[0]["trace"] == reviews[1]["trace"]
     assert reviews[0]["training"].keys() == reviews[1]["training"].keys()
     argv = json.loads(dispatch_log.read_text())
@@ -684,6 +689,7 @@ def test_walk_review_without_published_assembly(fake_cadex, toy_root, capsys):
 
 def _assert_clearance(root, review, verdict):
     _assert_render(root, review)
+    assert review["section"]["status"] == "ok"
     summary = review["clearance"]
     assert summary["available"] is True
     assert summary["pairs_checked"] == 1
@@ -739,11 +745,30 @@ def _assert_render(root, review):
         assert view["path"] in tracked
         assert view["covered_pixels"] > 0
         image_bytes(root / view["path"], summary["revision"])
-    assert review["section"]["available"] is False
+    section = review["section"]
+    assert section["revision"] == summary["revision"]
+    assert section["digest"] == summary["digest"]
+    assert section["plane"] == "XZ" and section["offset_mm"] == 3.125
+    assert section["units"] == "mm" and section["approximation"] and section["limits"]
+    assert section["path"] in tracked and section["summary_path"] in tracked
+    stored_section = json.loads((root / section["summary_path"]).read_text())
+    assert stored_section == {k: v for k, v in section.items() if k != "summary_path"}
+    assert section["acquisition_seconds"] == summary["acquisition_seconds"]
+    import xml.etree.ElementTree as ET
+    drawing = ET.parse(root / section["path"]).getroot()
+    assert section["revision"] in drawing.find("{*}title").text
+    if section["status"] == "ok":
+        from test_section import area
+        assert section["available"] is True
+        assert len(drawing.findall("{*}path")) == 2
+        assert all(area(loop) > 0 for obj in section["objects"].values() for loop in obj["contours_mm"])
+    else:
+        assert section["status"] in ("empty", "unsupported")
+        assert section["available"] == (section["status"] == "empty")
     assert review["walk_seconds"] > summary["acquisition_seconds"] + summary["render_seconds"]
 
 
-@pytest.mark.parametrize("failure", ["snapshot", "rollout"])
+@pytest.mark.parametrize("failure", ["snapshot", "rollout", "digest"])
 def test_walk_render_failure_cannot_reuse_old_success(fake_cadex, toy_root, capsys, monkeypatch, failure):
     out = toy_root / "runs/render-failure"
     code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
@@ -752,6 +777,45 @@ def test_walk_render_failure_cannot_reuse_old_success(fake_cadex, toy_root, caps
     monkeypatch.setenv("FAKE_RENDER_FAIL", failure)
     code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
     assert code != EXIT_OK
-    assert "accepted revision" in report["error"]
+    assert ("accepted digest" if failure == "digest" else "accepted revision") in report["error"]
     assert (out / REVIEW_FILENAME).read_bytes() == old
     assert not report["walk"].get("review")
+
+
+@pytest.mark.parametrize("outcome", ["empty", "unsupported", "write", "revision"])
+def test_walk_section_status_and_failure_preserve_old_review(
+    fake_cadex, toy_root, capsys, monkeypatch, outcome,
+):
+    from cadex_cli import __main__ as main_module
+    from cadex_cli.section import write_section
+    from cadex_cli.inventory import InventoryError
+    out = toy_root / "runs/section-status"
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    assert code == EXIT_OK, report
+    old = (out / REVIEW_FILENAME).read_bytes()
+
+    def section(client, root, **kwargs):
+        # A second rebuild would replace the attempt backing the accepted buffers.
+        class NoAcquisition:
+            def request(self, *args):
+                pytest.fail("section reacquired the shared snapshot")
+        if outcome == "write":
+            raise InventoryError("section: cannot write artifacts: injected failure")
+        if outcome == "revision":
+            kwargs["expected_revision"] = "wrong"
+        elif outcome == "empty":
+            kwargs["offset"] = 1000
+        return write_section(NoAcquisition(), root, **kwargs)
+
+    monkeypatch.setattr(main_module, "write_section", section)
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    if outcome in ("write", "revision"):
+        assert code != EXIT_OK and "section:" in report["error"]
+        assert not report["walk"].get("review")
+        assert (out / REVIEW_FILENAME).read_bytes() == old
+    else:
+        assert code == EXIT_OK, report
+        review = json.loads((out / REVIEW_FILENAME).read_text())
+        assert review["section"]["status"] == outcome
+        assert review["section"]["available"] == (outcome == "empty")
+        assert not any(o["contours_mm"] for o in review["section"]["objects"].values())

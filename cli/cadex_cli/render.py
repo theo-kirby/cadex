@@ -192,14 +192,20 @@ def png(pixels):
             chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
 
 
-def write_render(client, root, *, expected_revision=None):
+def acquire_snapshot(client):
     start = time.perf_counter()
     reply = client.request('rebuild', {'display': {'quality': 'standard', 'edges': False}})
     triangles, summary = snapshot(reply)
+    summary['acquisition_seconds'] = time.perf_counter() - start
+    return triangles, summary
+
+
+def write_render(client, root, *, expected_revision=None, accepted_snapshot=None):
+    triangles, source = accepted_snapshot if accepted_snapshot is not None else acquire_snapshot(client)
+    summary = dict(source)
     if expected_revision is not None:
         _require(summary['revision'] == expected_revision, 'accepted revision differs from rollout')
     relative_dir = 'review/render' + (f'/{expected_revision}' if expected_revision else '')
-    summary['acquisition_seconds'] = time.perf_counter() - start
     start = time.perf_counter()
     files, summary['views'] = {}, {}
     for name, basis in BASES.items():

@@ -253,8 +253,17 @@ of doing any of them:
    Rendering or revision mismatch failures fail the walk; retained files from
    an older run are never reported as current success. `walk_seconds` measures
    the whole entry point through review, excluding its final progress/commit.
-   Sections remain explicitly unavailable in `section`; previews do not prove
-   section topology or motion clearance.
+   The `section` block uses the same accepted snapshot for world XZ at Y =
+   3.125 mm, an interior cut through both reference mechanisms. It carries
+   status, availability, revision/digest, plane/offset/units, approximation,
+   limits, acquisition/section timings and project-relative `path` (SVG) and
+   `summary_path` (JSON). Empty cuts remain available with no contours;
+   unsupported cuts remain unavailable with reasons. Section errors and
+   rollout revision/digest mismatches fail the walk, preserving old files
+   without reporting them as current success. These are initial-pose
+   tessellation cuts; they do not prove motion clearance. Acquisition timing
+   is shared with rendering (count it once); section timing covers contour
+   generation, excluding SVG serialization and writes.
 
 **Shared mode artifacts** (paths relative to the project, with
 `DIR = runs/<name>`). This table applies to headless local training,
@@ -267,7 +276,7 @@ The scaffold's `## Training` section carries this same path convention.
 | MJCF / task / training | `runs/<name>/train/` (model, task bundle, returned policy) |
 | Store / declare | `assets/<name>.cxpolicy`, `runs/<name>/script.py` |
 | Verify / rollout | `runs/<name>/rollout/` (including the simulation trace) |
-| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory and clearance summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg` and `summary.json`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
+| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory and clearance summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg` and `summary.json`, `review/section/<accepted-revision>/XZ-3.125/{section.svg,summary.json}`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
 
 `cli/tests/test_walk.py` checks local/remote artifact parity through policy
 verification and rollout using a local CPU stand-in for the dispatcher.
@@ -533,8 +542,8 @@ All three statuses are successful *reports* (exit 0); inspect `status` before
 using geometry. Rebuild, revision, malformed input, work-budget and write
 failures return nonzero and never reinterpret old artifacts as current success.
 The renderer's accepted-buffer/triangle/placement budgets apply. An absent
-model is an error, distinct from an empty cut of a model. The walk's section
-block remains unavailable until the separate integration unit lands.
+model is an error, distinct from an empty cut of a model. The walk shares its preview snapshot for XZ at Y = 3.125 mm and commits
+these same artifacts and statuses in every mode (ADR-240 follow-up).
 
 ### Named-angle review
 
@@ -569,7 +578,7 @@ The CLI snapshots buffers while holding its project lock, before any further
 engine request can invalidate attempt paths. The shell does not share this
 lock: follow the documented GUI-attached coordination rules. Read failures
 are refusals, never a fallback to guessed poses. `cadex walk` reuses this renderer in its review session, checks the rollout
-revision and commits views under a revision directory. Named-plane sections are available above; their walk integration remains open.
+revision and commits views under a revision directory. The same snapshot supplies the named-plane section described above.
 
 ## 3. The `--json` envelope
 

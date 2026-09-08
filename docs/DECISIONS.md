@@ -20879,3 +20879,19 @@ Verification: analytic box cuts in all planes, cavity contours and offsets,
 open/degenerate contacts, refusal with retained old files; real-kernel rotated
 and translated bored block, revision/digest and committed artifacts. Full CLI
 gate and retained output inspection are reported in the unit's record.
+
+
+### ADR-240 follow-up — Sections in lifecycle review (2026-09-08)
+
+Replace the walk's unavailable-section placeholder with the existing qualified
+section writer over the preview's single accepted snapshot. Both writers retain
+revision guards; the walk also checks the rollout digest before writing. Use
+world XZ at Y = 3.125 mm for a reproducible interior cut through both reference
+mechanisms without mechanism-specific dispatch. Commit SVG and JSON alongside
+previews and project docs; preserve empty and unsupported reports, and fail on
+acquisition/revision/write errors without claiming retained files as success.
+Acquisition time is shared (do not sum it twice), section time measures contour
+generation, and whole-walk time ends before the final project commit.
+Built-engine walk tests cover meaningful contours, tracked outputs, both
+mechanisms and local/remote-flag parity with a local CPU dispatcher; no SSH or
+GUI. A separate fresh two-mechanism rehearsal remains the next evidence unit.

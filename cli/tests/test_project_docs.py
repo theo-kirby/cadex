@@ -94,8 +94,11 @@ def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path)
     assert "Cold runs only" in walk_doc
     assert "shared mode artifacts table in `docs/CLI.md`" in architecture
     assert "**Shared mode artifacts**" in walk_doc
+    assert "review/section/<accepted-revision>/XZ-3.125/" in architecture
+    assert "Empty cuts" in architecture and "unsupported cuts" in architecture
     for path in ("runs/<name>/train/", "runs/<name>/rollout/",
-                 "runs/<name>/review.json", "assets/<name>.cxpolicy", "PROGRESS.md"):
+                 "runs/<name>/review.json", "assets/<name>.cxpolicy", "PROGRESS.md",
+                 "review/section/<accepted-revision>/XZ-3.125/"):
         assert path in walk_doc.split("**Shared mode artifacts**", 1)[1].split(
             "A leg that fails", 1)[0]
 

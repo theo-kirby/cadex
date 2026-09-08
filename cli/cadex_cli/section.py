@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 
 from .inventory import InventoryError
-from .render import snapshot
+from .render import acquire_snapshot
 
 PLANES = {'XY': (0, 1, 2), 'XZ': (0, 2, 1), 'YZ': (1, 2, 0)}
 TOLERANCE = 1e-6  # mm; endpoint grid, also conservative plane-contact refusal
@@ -104,12 +104,10 @@ def svg(summary):
             + ''.join(paths) + f'<text x="16" y="536" font-size="12">{label}</text></svg>\n')
 
 
-def write_section(client, root, *, plane, offset, expected_revision=None):
-    start = time.perf_counter()
-    triangles, source = snapshot(client.request('rebuild', {'display': {'quality': 'standard', 'edges': False}}))
+def write_section(client, root, *, plane, offset, expected_revision=None, accepted_snapshot=None):
+    triangles, source = accepted_snapshot if accepted_snapshot is not None else acquire_snapshot(client)
     if expected_revision is not None and source['revision'] != expected_revision:
         raise InventoryError('section: accepted revision differs from expected revision')
-    source['acquisition_seconds'] = time.perf_counter() - start
     summary = section_snapshot(triangles, source, plane, offset)
     relative = f'review/section/{source["revision"]}/{plane}-{offset:.17g}'
     summary['path'] = relative + '/section.svg'
