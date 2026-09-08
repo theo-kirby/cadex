@@ -361,3 +361,33 @@ def test_refused_walk_preserves_session_unless_identity_changes(
         assert agent.stat().st_mtime_ns == before_stat.st_mtime_ns
     else:
         assert stored["updated_at"] != payload["updated_at"]
+
+
+def test_the_machine_can_name_the_turn_model_once(monkeypatch) -> None:
+    """``$CADEX_MODEL`` is the machine's answer; ``--model`` still wins.
+
+    A box whose default model is unavailable -- out of usage credit, not
+    enabled on the account -- otherwise cannot run ``cadex walk`` without a
+    person putting ``--model`` on every command, and a lifecycle walk is not
+    allowed to need a person.
+    """
+
+    from cadex_cli.agent import DEFAULT_MODEL, MODEL_ENV, default_model
+    from cadex_cli.__main__ import build_parser
+
+    monkeypatch.delenv(MODEL_ENV, raising=False)
+    assert default_model() == DEFAULT_MODEL
+    assert build_parser().parse_args(["walk"]).model == DEFAULT_MODEL
+
+    monkeypatch.setenv(MODEL_ENV, "  a-model-with-credit  ")
+    assert default_model() == "a-model-with-credit"
+    for argv, expected in (
+        (["walk"], "a-model-with-credit"),
+        (["walk", "--model", "explicit"], "explicit"),
+        (["-p", "hello"], "a-model-with-credit"),
+        (["--model", "explicit", "-p", "hello"], "explicit"),
+    ):
+        assert build_parser().parse_args(argv).model == expected, argv
+
+    monkeypatch.setenv(MODEL_ENV, "   ")
+    assert default_model() == DEFAULT_MODEL

@@ -2016,6 +2016,29 @@ What makes them experimental, and what would settle it:
   carry comparable measurements; arm contact and carriage 34 mm separation
   remain explicit. Evidence in `docs/probes/complete-review/linear-carriage/`;
   combined review evidence is ready for maintainer assessment.
+- [x] **A machine names its turn model once** (ADR-249, `docs/CLI.md` §2).
+  `--model` defaults to `$CADEX_MODEL`, then `claude-fable-5`. Found by the
+  first prompt walk on the Linux GPU box, whose design leg refused in 2.4 s:
+  the default model was out of usage credit while `claude-sonnet-5`,
+  `claude-opus-5` and `claude-haiku-4-5` all answered on the same login.
+  One resolver, two argparse defaults and a regression; LGPL CLI zone only.
+- [ ] **`assembly.mjcf` never returns for a ten-component rig** (found
+  2026-09-08 on the Linux GPU box; the lifecycle frontier's next unit).
+  The first prompt walk there designed a one-servo swing rig — MG90S from
+  the catalog, printed base/arm, M3 hardware, 10 components, 3 joints —
+  whose geometry and `assembly.solve` accept in 1 s, and whose dynamics
+  layer kills the sandboxed worker at the 300 s CPU cap (SIGXCPU,
+  returncode -24), reported as `The isolated domain worker exited without a
+  result`. The design agent spent 66 minutes on it and shipped the whole
+  training layer gated behind `policy_on=0`, so `cadex train` refused with
+  *the accepted revision exports no training task* and the walk exited 3.
+  **Its narrower claim does not hold**: reproduced in a fresh project, a
+  grounded one-body `assembly.mjcf` with a box collision builds in under
+  1 s, the reference carriage's two-body jointed model with a box, mesh or
+  hull collision in 0.55 s, and the swing rig's own script rebuilds
+  geometry-only in 1 s and then hits the cap at exactly 300 s at
+  `params --set policy_on=1`. So the fault is in that model, not in the
+  export; bisecting which declaration costs the time is the next unit.
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected

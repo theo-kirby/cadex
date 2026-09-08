@@ -36,8 +36,22 @@ from .tools import CLI_TOOL_OPS
 
 #: The shell's default, and it stays the shell's default: one model
 #: answers "what does Cadex run" wherever you ask. Override with
-#: ``--model``.
+#: ``--model``, or with ``$CADEX_MODEL`` for a whole machine.
 DEFAULT_MODEL = "claude-fable-5"
+
+#: Name the model once for a machine, the way ``$CADEX_PROJECT`` and
+#: ``$CADEX_ENGINE_ROOT`` name the other two things a headless run needs.
+#: A box whose default model is unavailable -- out of usage credit, not
+#: enabled on the account -- otherwise has no way to run ``cadex walk``
+#: without a person putting ``--model`` on every command, which is the one
+#: thing a lifecycle walk is not allowed to need.
+MODEL_ENV = "CADEX_MODEL"
+
+
+def default_model() -> str:
+    """The model a turn uses when ``--model`` is not given."""
+
+    return os.environ.get(MODEL_ENV, "").strip() or DEFAULT_MODEL
 
 MCP_SERVER_NAME = "cadex"
 

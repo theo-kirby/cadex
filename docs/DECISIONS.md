@@ -21230,3 +21230,30 @@ between two surfaces, not validation of either, and it stays at the initial
 solved pose. Standalone `cadex clearance` is unchanged: it acquires no render
 snapshot, so its cost and contract are untouched. LGPL CLI zone plus
 `docs/CLI.md`; no protocol op, no engine change, no `shell/` diff.
+
+## ADR-249 — A machine names its turn model once (2026-09-08)
+
+`cadex walk --prompt` is the lifecycle entry point, and its design leg is
+the only one that spends tokens. The model it spends them on was a single
+constant, `DEFAULT_MODEL = "claude-fable-5"`, overridable only by putting
+`--model` on the command line.
+
+That is one model too few for a headless box. On this run's machine the
+default model refuses every turn — *"You're out of usage credits. Switch to
+another model"* — while `claude-sonnet-5`, `claude-opus-5` and
+`claude-haiku-4-5` all answer on the same login. The walk reports the
+refusal faithfully and exits 1 at the design leg, which is correct and
+useless: nothing on the machine can say which model to use instead, so
+every walk, and every child `cadex -p` inside it, needs a person to type a
+flag. A previous run parked three iterations waiting for the constant's
+credit to come back rather than naming a model that had some.
+
+`$CADEX_MODEL` is the answer already used for the other two things a
+headless run needs to know — `$CADEX_PROJECT` for the project root,
+`$CADEX_ENGINE_ROOT` for the engine payload, and `$CADEX_TRAIN_PYTHON` for
+the trainer. `cadex_cli.agent.default_model()` reads it, strips it, and
+falls back to `DEFAULT_MODEL`; `--model` still wins over both, and the
+shell's default is unchanged, so "what does Cadex run" still has one
+answer everywhere nobody has said otherwise. One resolver, two argparse
+defaults, `docs/CLI.md`, and `test_the_machine_can_name_the_turn_model_once`
+in the LGPL CLI zone. No engine change, no protocol op, no `shell/` diff.

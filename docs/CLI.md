@@ -77,7 +77,13 @@ Flags, valid on either side of the subcommand:
 | `--wait` | Block for the project lock instead of failing. |
 
 Prompt-only flags: `--resume` (continue this project's conversation),
-`--model` (default `claude-fable-5`), `--claude` (path to the CLI).
+`--model` (default `$CADEX_MODEL`, then `claude-fable-5`), `--claude`
+(path to the CLI). **A machine names its model once**, the way it names its
+project root and its engine payload: a box whose default model is
+unavailable — out of usage credit, not enabled on the account — otherwise
+cannot run `cadex walk` without a person putting `--model` on every
+command, and the walk is the one thing that is not allowed to need a person
+(ADR-249).
 `script --set` also takes `--replace`, which is you saying you mean to drop
 an output the accepted revision declares — without it such a script is
 refused, because `write_script` replaces *the whole* script and losing an

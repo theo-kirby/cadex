@@ -42,6 +42,7 @@ from .agent import (
     ClaudeTurn,
     ClaudeUnavailable,
     DEFAULT_MODEL,
+    default_model,
     find_claude,
     system_prompt,
 )
@@ -143,7 +144,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Continue this project's stored conversation instead of "
         "starting a fresh one.",
     )
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model for the turn.")
+    parser.add_argument(
+        "--model",
+        default=default_model(),
+        help=f"Model for the turn. Default: $CADEX_MODEL, then {DEFAULT_MODEL}.",
+    )
     parser.add_argument(
         "--claude", default="", help="Path to the claude CLI, if it is not on PATH."
     )
@@ -380,7 +385,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Continue the project's stored conversation for the first --prompt.",
     )
-    walk_parser.add_argument("--model", default=DEFAULT_MODEL, help="Model for the turns.")
+    walk_parser.add_argument(
+        "--model",
+        default=default_model(),
+        help=f"Model for the turns. Default: $CADEX_MODEL, then {DEFAULT_MODEL}.",
+    )
     walk_parser.add_argument(
         "--claude", default="", help="Path to the claude CLI, if it is not on PATH."
     )
