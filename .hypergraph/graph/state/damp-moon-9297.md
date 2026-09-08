@@ -52,6 +52,8 @@ Joining a fresh evaluation's identity map to the unchanged historical pan-tilt d
 
 **Review documentation agrees with its existing output.** The guide's obsolete denial of the walk clearance review row is removed; runtime and the accurate project scaffold are unchanged [rec: still-harvest-7242]. The condensed carriage rehearsal retains initial-pose and single-seed limitations and links immutable four-eye evidence instead of repeating it. Reconcile judgement: retain `working` within the existing review limits; documentation maintenance supplies no new review execution [rec: floral-canyon-9424].
 
+**Successful recovery exercises all four review outputs.** The real-engine CPU regression continues after injected trainer exit 7 through a successful public walk retry, then checks inventory, clearance, render and section using the existing review helpers. The toy retains its one known clearance offender; the final CLI gate passes **223 tests, zero skips**. Reconcile judgement: retain `working` within the existing initial-pose/tessellation limits; this adds recovery-path review coverage, not motion, GUI or actual remote qualification. [rec: placid-ember-6741]
+
 ## Negative knowledge
 
 - [scope: early-gate-3510 scratch definition traversal and unchanged historical pan-tilt report | confidence: high | evidence: early-gate-3510] Fresh evaluation identity enables syntactic matches for measured fuse/transform/cut inputs, but cold pan-tilt stamps supply no identity. Equal definitions lose occurrence provenance; unknown operations are not traversed, so zero matches there proves no absence. Paths establish neither purchases nor surviving material.
@@ -113,3 +115,4 @@ Joining a fresh evaluation's identity map to the unchanged historical pan-tilt d
 - mellow-quartz-8093 — The wider-carriage iterate has consistent initial-pose review evidence
 - still-harvest-7242 — guide corrected to distinguish child progress rows from successful walk clearance review; CLI 223 passed, no skips
 - floral-canyon-9424 — carriage iterate guide shortened while preserving command, comparison and review limits; CLI 223 passed, no skips
+- placid-ember-6741 — successful CPU recovery pinned in the real-engine regression, including preserved history and all four review outputs; CLI 223 passed, zero skips
