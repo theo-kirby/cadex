@@ -2054,6 +2054,26 @@ What makes them experimental, and what would settle it:
   intersection. ADR-281's MJX geom-pair refusal never fired — the design turn
   authored box and capsule collision shapes in an empty contact group — which is
   one run of evidence that the guidance steers an unaided turn, not a guarantee.
+- [x] **A second mechanism, a passive joint, and a task that terminates**
+  (2026-09-09, `docs/CLI.md` §2). `ot4-cart`: an inverted-pendulum cart —
+  grounded frame and rail, cart on a **prismatic** joint driven by a bounded
+  **force motor**, pole on a **passive revolute** joint nothing drives — from
+  one prompt into a third empty project through the *same* `cadex walk`, same
+  flags, **no code change of any kind**. **Exit 0 in 1222.22 s**, peak
+  process-tree RSS 1,997,844,480 bytes, no watchdog. Design 1196.04 s (revision
+  `0aa617e2…`, digest `b3b699e6…`); train 20.27 s on CPU at reward/step 0.6936,
+  witness error 6.34e-09 against 1e-04; declare 0.65 s; rollout total reward
+  28.756 at seed 7. All four eyes ran: 4 render views (5,002 triangles), an XZ
+  section at a derived −15.0 mm cutting **2 of 3** objects, a 3-component
+  inventory, and a clearance check with **0 offending pairs of 3** and a
+  passing bounds check. Two findings the walk reported on itself: the verified
+  rollout ended on the task's own `pole_fell` termination at step 30 of 200, so
+  its reward is a sum over 31 steps and says nothing about learned balance; and
+  the most-coverage section rule chose a plane that misses the pole, naming it
+  in `section.missed_objects` as `moved: true` — on a slender moving rod near
+  the centre plane, maximum coverage is not maximum interest. Both projects'
+  `PROGRESS.md` carry the same columns; the two `total_reward` figures are
+  different objectives in different units and rank nothing.
 - [x] **A machine names its turn model once** (ADR-249, `docs/CLI.md` §2).
   `--model` defaults to `$CADEX_MODEL`, the recorded project model, then
   `claude-fable-5` (ADR-276). Found by the

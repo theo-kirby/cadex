@@ -782,6 +782,61 @@ the walk refuses a model over it. Local evidence is in
 `runs/fresh55/{walk.json,walk.stderr,monitor.json}`, excluded from Git along
 with the policy, the trace and the review output.
 
+**A second mechanism through the same entry point, `ot4-cart` (2026-09-09).**
+A different prompt — an inverted-pendulum cart: grounded frame and rail, a cart
+on a **prismatic** joint driven by a bounded **force motor**, and a slender pole
+on a **passive revolute** joint nothing drives — into a third empty project,
+with the same flags, the same bounds and **no code change of any kind**. It
+**completed every leg**, and it is the first ot4 walk whose mechanism carries an
+unactuated degree of freedom and whose task declares a termination the rollout
+actually reaches.
+
+| Leg | `ot4-mix55` (crank-slider) | `ot4-cart` (cart-pole) |
+|---|---|---|
+| Design (`claude-opus-5`) | Exit 0, 1649.63 s; revision `70fd2a53…` | Exit 0, 1196.04 s; revision `0aa617e2…`, digest `b3b699e6…` |
+| Train (CPU, 5 it × 16 envs, seed 0) | Exit 0, 26.71 s; reward/step −0.4055 | Exit 0, 20.27 s; reward/step 0.6936, best 0.7013 at iteration 0, 4,609 parameters, 3.95 s trainer wall time |
+| Policy verify | Witness error 1.14e-08 | Witness error 6.34e-09 against 1e-04 over 32 samples |
+| Declare | Exit 0, 0.81 s | Exit 0, 0.65 s |
+| Rollout (`policy_on=1`) | Exit 0, 1.53 s; total reward −19.85, seed 1 | Exit 0, 1.21 s; total reward 28.756, seed 7, **31 of 200 steps** |
+| Render | 4 views, 4,756 triangles | 4 views, 5,002 triangles, 3.19 s |
+| Section | XZ at 0.0 mm, 4 of 4 objects cut | XZ at **−15.0 mm** (derived), **2 of 3** objects cut, status `ok` |
+| Inventory | 4 components, 0 catalogued | 3 components, 0 catalogued |
+| Clearance | 6 pairs, 1 intersection (648.0 mm³) | 3 pairs, 0 unknown, **0 offending**; bounds check `pass` |
+| Documentation | 5 notes, none missing | 3 notes (`actuators`, `rejected`, `sensors`), none missing |
+| Whole invocation | Exit 0, 1680.78 s | **Exit 0, 1222.22 s** (`walk_seconds` 1222.11) |
+| Peak process-tree RSS | 2,312,118,272 bytes | 1,997,844,480 bytes |
+
+Both at `--iterations 5 --envs 16 --seed 0 --timeout 600 --leg-timeout 1800`
+under `JAX_PLATFORMS=cpu`, both sampled every 0.2 s under the same 2.9 GiB
+guard, neither stopped by it. The two `total_reward` columns are **different
+objectives in different units over different episode lengths** and do not rank
+the mechanisms; the columns and their definitions are what is comparable, and
+both projects' `PROGRESS.md` carry the same rows for prompt, train, script,
+params and walk, committed by the walk's own child commands (five commits in
+`ot4-cart`, ending `fac73fc`).
+
+Two findings the run produced that are worth reading as findings rather than
+failures:
+
+- **The rollout ended on the task's own termination, not on the horizon.**
+  `termination: pole_fell` fired at step 30, so the verified rollout is 31
+  steps of a 200-step, 4 s episode and `total_reward 28.756` is a sum over
+  those 31. Training's mean episode was 16.8 steps. Five PPO iterations is a
+  smoke test of the loop; nothing here claims the policy balances a pendulum.
+- **The derived section offset cut 2 of 3 objects, and named the one it
+  missed.** Of the candidates `[0.0, −2.0, 2.0, −8.5, 8.5, −15.0, 15.0]` the
+  most-coverage rule (ADR-273, ADR-275) chose −15.0 mm; the pole came back
+  `empty` and the review's `section.missed_objects` reports it as
+  `moved: true` — the object carrying all 35.75° of the mechanism's rotation.
+  On a rig whose moving part is a slender rod near the centre plane, maximum
+  object coverage and maximum *interest* are not the same plane. The eye
+  reported that itself rather than leaving a reader to infer it from a
+  drawing they cannot see.
+
+Local evidence is in `runs/cart1/{walk.json,walk.stderr,monitor.json}` and
+`runs/cart1/review.json` in that project, excluded from this repository along
+with the policy, the trace and the review output.
+
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through
 `training/remote_train.sh train` (ADR-089, `training/SETUP.md` §d) instead
