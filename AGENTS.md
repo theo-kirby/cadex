@@ -424,3 +424,7 @@ not happen, and a dead end recorded is worth as much as a success:
 The record graph's epoch marker is `winter-rain-7897` (2026-08-09); the 14 nodes
 before it are prehistory, distilled from the repo and an author interview.
 <!-- hypergraph:end -->
+
+## Unattended runs
+
+This repo is driven by Ouroboros, an unattended agent loop. Before you start, stop, or read one, read [`.ouroboros/AGENTS.md`](.ouroboros/AGENTS.md); past runs are in [`.ouroboros/RUNS.md`](.ouroboros/RUNS.md).
