@@ -5129,16 +5129,29 @@ def _native_diagnostics(assembly: Any) -> dict[str, Any]:
     return {"available": True, **_json_safe(value)}
 
 
+_DIAGNOSTIC_CONFLICT_LABELS: tuple[tuple[str, str], ...] = (
+    ("has_conflicts", "conflicting constraints"),
+    ("has_redundancies", "redundant constraints"),
+    ("has_partial_redundancies", "partially redundant constraints"),
+    ("has_malformed_constraints", "malformed constraints"),
+)
+
+
+def _diagnostics_conflict_labels(diagnostics: Mapping[str, Any]) -> list[str]:
+    """Name the native diagnostics that make a graph unusable.
+
+    The solver's status code and its diagnostics are two separate verdicts:
+    Ondsel routinely returns ``solved`` (code 0) on a graph it also reports
+    as redundant or malformed. Naming the flag is what tells the author
+    which of the two rejected them.
+    """
+
+    return [label for name, label in _DIAGNOSTIC_CONFLICT_LABELS
+            if bool(diagnostics.get(name))]
+
+
 def _diagnostics_conflict(diagnostics: Mapping[str, Any]) -> bool:
-    return any(
-        bool(diagnostics.get(name))
-        for name in (
-            "has_conflicts",
-            "has_redundancies",
-            "has_partial_redundancies",
-            "has_malformed_constraints",
-        )
-    )
+    return bool(_diagnostics_conflict_labels(diagnostics))
 
 
 def _frame_z_axis(frame: Mapping[str, Any]) -> tuple[float, float, float]:
@@ -5890,14 +5903,26 @@ def validate_and_solve_assembly(
         "joint_dependency_issues": joint_dependency_issues,
         "require_solved": require_solved,
     }
-    if require_solved and (
-        solver_code != 0 or _diagnostics_conflict(native_diagnostics)
-    ):
+    conflict_labels = _diagnostics_conflict_labels(native_diagnostics)
+    if require_solved and (solver_code != 0 or conflict_labels):
+        if solver_code == 0:
+            # The code says solved and the diagnostics say otherwise; saying
+            # "rejected the graph with solved (code 0)" reads as a
+            # contradiction and names nothing the author can act on.
+            reason = (
+                f"reported {', '.join(conflict_labels)} on a graph it "
+                f"returned {solver_verdict} (code 0) for"
+            )
+        else:
+            reason = f"rejected the graph with {solver_verdict} (code {solver_code})"
+            if conflict_labels:
+                reason += f", reporting {', '.join(conflict_labels)}"
         raise AssemblyCandidateError(
-            f"The isolated native Assembly solver rejected the graph with "
-            f"{solver_verdict} (code {solver_code}). Inspect details for conflicting, "
-            "redundant, malformed, or ungrounded constraints.",
-            details={"stage": "native_solver", **diagnostics},
+            f"The isolated native Assembly solver {reason}. Inspect details for "
+            "conflicting, redundant, malformed, or ungrounded constraints.",
+            details={"stage": "native_solver",
+                     "diagnostic_conflicts": conflict_labels,
+                     **diagnostics},
         )
 
     clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
