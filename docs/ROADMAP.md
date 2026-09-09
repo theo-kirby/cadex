@@ -2374,6 +2374,10 @@ What makes them experimental, and what would settle it:
   lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
   domain-doc convention. No engine change, no file tool for the agent.
   §7c row 10 closes.
+- [x] **A project's own architecture survives its guide** (ADR-279). Prompt
+  context bounds `ARCHITECTURE.md` from both ends, so a scaffold that outgrows
+  the budget no longer evicts what the project wrote below it; regression built
+  on the real scaffold.
 - [x] **Detached train reports pending honestly** (ADR-278). Project-local run
   receipt, preserved prior policy, no verify/store or completion claims; tested
   with the real dispatcher over local transport stand-ins. Detached walk

@@ -917,9 +917,12 @@ first visit and never overwritten by it:
 | `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | a turn's closing `NOTE <subject>:` lines, or a person |
 
 The agent reads all three on every `cadex -p` turn — they are pasted into
-its system prompt, bounded (8,000 characters each: architecture head,
-decisions and progress tails; ADR-265), and domain-note tails (2,000 each)
-with them. Shortened context carries an omission marker; full files remain
+its system prompt, bounded (8,000 characters each: **both ends of the
+architecture**, half the budget each, decisions and progress tails; ADR-265,
+ADR-279), and domain-note tails (2,000 each) with them. The architecture keeps
+both ends because the scaffold's guide is its head and the project's own
+paragraphs are underneath: head-only bounding made a guide that outgrew the
+budget evict every line the project had written about itself. Shortened context carries an omission marker; full files remain
 unchanged on disk. This keeps recent decisions available, so a note is worth
 writing — and it has no file tool, so what it decides comes back by
 convention rather than by a new op: a line of its closing paragraph that

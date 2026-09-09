@@ -302,15 +302,48 @@ def test_read_keeps_architecture_head_and_recent_history_without_editing(tmp_pat
     text = read_project_docs(tmp_path, limit=limit)
 
     for name, source in sources.items():
-        head = name == ARCHITECTURE_NAME
+        ends = name == ARCHITECTURE_NAME
         bound = 2_000 if name.startswith("docs/") else limit
-        retained = source[:bound] if head else source[-bound:]
         omitted = len(source) - bound
-        marker = (f"\n[… {omitted} more characters omitted …]" if head
-                  else f"[… {omitted} earlier characters omitted …]\n")
-        expected = retained + marker if head else marker + retained
+        if ends:
+            head = bound // 2
+            expected = (source[:head]
+                        + f"\n[… {omitted} characters omitted …]\n"
+                        + source[-(bound - head):])
+        else:
+            expected = (f"[… {omitted} earlier characters omitted …]\n"
+                        + source[-bound:])
         assert f"--- {name} ---\n{expected}" in text
         assert (tmp_path / name).read_bytes() == source.encode("utf-8")
+
+
+def test_a_scaffold_that_outgrows_the_budget_still_shows_the_project_s_own_lines(
+    tmp_path,
+) -> None:
+    """The guide at the top must never evict what the project wrote below it.
+
+    The architecture scaffold is boilerplate that grows every time the walk
+    contract does; the project's own paragraphs are appended under it. Head-
+    bounding meant that the moment the scaffold passed the budget — which it
+    did at ADR-277, at 8,191 characters — every project's own architecture
+    silently stopped reaching the agent's prompt (ADR-279). The check is made
+    against the real scaffold rather than a synthetic string so that a future
+    guide line cannot break it back without failing here.
+    """
+
+    scaffold_project_docs(tmp_path)
+    architecture = tmp_path / ARCHITECTURE_NAME
+    scaffold = architecture.read_text(encoding="utf-8")
+    own = "\n## Own\n\nThe hinge pin is 3 mm; the cable exit stays clear.\n"
+    architecture.write_text(scaffold + own, encoding="utf-8")
+    # Force the eviction the old bounding suffered even on a short scaffold.
+    limit = len(scaffold) - 500
+
+    text = read_project_docs(tmp_path, limit=limit)
+
+    assert "The hinge pin is 3 mm; the cable exit stays clear." in text
+    assert scaffold.strip().splitlines()[0] in text  # ...and the guide's head
+    assert "characters omitted" in text
 
 
 def test_read_says_nothing_for_a_project_with_no_docs(tmp_path) -> None:

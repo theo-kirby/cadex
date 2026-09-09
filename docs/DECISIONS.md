@@ -22347,3 +22347,25 @@ fresh destination; launch success does not certify trainer completion or device.
 Local SSH/rsync stand-ins drive the real dispatcher and engine to test launch,
 pending persistence, old-policy preservation, warm-start repointing and launch
 failure. The CLI suite and bash syntax check are the gates.
+
+
+## ADR-279 — The architecture a project writes survives its own guide (2026-09-08)
+
+`ARCHITECTURE.md` is scaffolded with a guide to the walk contract and the
+project's own paragraphs go underneath it. Prompt context bounded that file by
+keeping its head, so once the guide passed the 8,000-character budget nothing
+the project wrote about itself reached the agent's prompt. The guide was 7,717
+characters at ADR-276 and 8,191 at ADR-277; from ADR-277 on, every project's
+own architecture was silently evicted on every visit, and the growth that did
+it was a doc edit that no test could see.
+
+Bound that file from **both ends** instead — half the budget to each, with the
+omission marker in the middle. The head keeps the guide's opening, the tail
+keeps what the project wrote most recently, and further guide growth costs the
+project half a character rather than all of them. Decisions, progress and
+domain notes keep their tails as before; nothing on disk changes, and the
+budget is unchanged.
+
+The regression test builds the real scaffold rather than a synthetic string, so
+a future guide line cannot restore the eviction without failing it. It fails on
+the previous bounding. The CLI suite is the gate.

@@ -94,8 +94,11 @@ GENERATED_DOC_STEMS = ("inventory", "clearance")
 #: be many notes.
 NOTE_DOC_LIMIT = 2_000
 
-#: How much of each document the agent is shown: architecture head,
-#: decisions and progress tails, retaining the newest appended history.
+#: How much of each document the agent is shown: both ends of the
+#: architecture, tails of decisions and progress, retaining the newest
+#: appended history. The architecture keeps both ends because its head is
+#: the scaffold's own guide: a guide that outgrows this budget would
+#: otherwise leave no room for what the project wrote below it (ADR-279).
 PROMPT_DOC_LIMIT = 8_000
 
 PROGRESS_HEADER = "| When (UTC) | Run | Revision | Digest | What | Numbers |"
@@ -106,8 +109,9 @@ _ARCHITECTURE_TEMPLATE = """\
 
 Read on every visit; keep it true. Maintained by the agent and the
 `cadex` CLI (ADR-193 in the Cadex repository).
-Prompt context keeps the first 8,000 characters of architecture and the last
-8,000 of decisions and progress, plus an omission marker when shortened.
+Prompt context keeps 8,000 characters of this file — both ends, half each,
+so what is written below this guide is read even as the guide grows — and the
+last 8,000 of decisions and progress, plus an omission marker when shortened.
 Domain notes keep their last 2,000 characters; full documents stay on disk.
 Progress rows, decisions and domain-note updates replace their files only after
 writing succeeds, so a failed update preserves the previous document. This is
@@ -378,10 +382,26 @@ def scaffold_project_docs(root: Path | str) -> list[str]:
 
 
 def _bounded(text: str, limit: int, *, keep: str) -> str:
+    """Shorten *text* to *limit* characters, keeping the ``keep`` end.
+
+    ``keep="ends"`` keeps both, halving the budget between them. That is
+    what a document with boilerplate at the top and the project's own
+    writing underneath needs: keeping only the head made a scaffold that
+    grew past the limit evict every line the project wrote about itself,
+    silently and without changing a test that used a short document
+    (ADR-279).
+    """
+
     if len(text) <= limit:
         return text
     if keep == "tail":
         return f"[… {len(text) - limit} earlier characters omitted …]\n" + text[-limit:]
+    if keep == "ends":
+        head = limit // 2
+        tail = limit - head
+        return (text[:head]
+                + f"\n[… {len(text) - limit} characters omitted …]\n"
+                + text[-tail:])
     return text[:limit] + f"\n[… {len(text) - limit} more characters omitted …]"
 
 
@@ -401,7 +421,7 @@ def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str
             text = path.read_text(encoding="utf-8")
         except OSError:
             continue
-        keep = "head" if doc_name == ARCHITECTURE_NAME else "tail"
+        keep = "ends" if doc_name == ARCHITECTURE_NAME else "tail"
         parts.append(f"--- {doc_name} ---\n{_bounded(text.strip(), limit, keep=keep)}")
     for relative, path in domain_note_paths(root).items():
         try:
