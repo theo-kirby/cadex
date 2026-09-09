@@ -433,3 +433,82 @@ def test_successful_resumed_edit_preserves_or_updates_session_identity(tmp_path,
         assert path.read_bytes() == before
     else:
         assert stored.updated_at != payload["updated_at"]
+
+
+# -- the one follow-up ---------------------------------------------------
+
+
+@pytest.mark.usefixtures("engine")
+def test_a_turn_that_calls_nothing_is_asked_once_more(tmp_path) -> None:
+    """The failure that cost three live walks in one evening.
+
+    A design turn that ends without a single tool call has done nothing:
+    it reasoned, it wrote a paragraph to stderr, and the project is
+    byte-for-byte what it was. The engine, the bridge and the model's
+    reading of the project are all still standing at that moment, so the
+    run asks once more in the same conversation rather than exiting 3 on a
+    turn that never started.
+    """
+
+    factory = turn_factory(
+        [
+            [("text", "Let me think about which finding to take.")],
+            [("tool", "write_script", {"source": BRACKET}),
+             ("done", "Taken. DECISION: built the plate.")],
+        ]
+    )
+    report = RunReport()
+
+    code = command_prompt(_args(tmp_path), report, turn_factory=factory)
+
+    assert code == EXIT_OK, report.error
+    turn = factory.made[0]
+    assert len(turn.prompts) == 2
+    assert "one follow-up" in turn.prompts[1]
+    # Both turns' prose survives, so a closing DECISION: line from either
+    # reaches the project's ADR log.
+    assert "Let me think" in report.notes[0] or any(
+        "Let me think" in note for note in report.notes
+    )
+    assert any("asked once more" in note for note in report.notes)
+
+
+@pytest.mark.usefixtures("engine")
+def test_the_follow_up_is_not_offered_to_a_turn_the_engine_refused(
+    tmp_path,
+) -> None:
+    """Narrow by construction: a refused turn was told why and stopped.
+
+    Asking that one again is how a loop starts, so the follow-up fires only
+    when the model reached the engine not once.
+    """
+
+    factory = turn_factory([[("tool", "write_script", {"source": BROKEN}),
+                             ("done", "I could not.")]])
+    report = RunReport()
+
+    code = command_prompt(_args(tmp_path), report, turn_factory=factory)
+
+    assert code == EXIT_REJECTED
+    assert factory.made[0].turns == 1
+    assert not any("asked once more" in note for note in report.notes)
+
+
+@pytest.mark.usefixtures("engine")
+def test_a_follow_up_that_still_offers_nothing_exits_rejected(tmp_path) -> None:
+    """One follow-up, not a retry loop: the second silence is the answer."""
+
+    factory = turn_factory(
+        [
+            [("text", "Thinking.")],
+            [("done", "NO CHANGE: the recorded findings do not justify one.")],
+        ]
+    )
+    report = RunReport()
+
+    code = command_prompt(_args(tmp_path), report, turn_factory=factory)
+
+    assert code == EXIT_REJECTED
+    assert factory.made[0].turns == 2
+    assert "no tool call" in report.error
+    assert "NO CHANGE" in report.error

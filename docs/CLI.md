@@ -429,7 +429,17 @@ thing the engine refused (the op, its failure code and its message) or
 in both cases the agent's own closing words, clipped. The walk copies that
 string verbatim, so a run with nobody watching records the cause rather
 than "the turn finished without the engine accepting a script" — which was
-true of both and told nt3 nothing. Child legs record reward/delta rows
+true of both and told nt3 nothing. **A turn that reaches the engine not
+once is asked once more** before either of those is written (ADR-274): the
+engine, the bridge and the model's reading of the project are all still
+standing, so `cadex -p` — and so the walk's design leg — continues the same
+conversation with one fixed follow-up and takes a script if one comes. It
+fires only when the turn ended well and made *no* tool call; a turn the
+engine refused is not asked again. The follow-up is best effort and can
+only improve the outcome: if it fails, the run reports the rejection it
+already had. Both turns' prose reaches the project's documents, so a
+closing `DECISION:` or `NOTE` line from either lands, and `notes` says the
+follow-up was asked. Child legs record reward/delta rows
 (ADR-194); a successful walk adds the clearance review row described above
 (ADR-238). A failed leg leaves earlier rows intact but adds no walk review row.
 

@@ -22193,3 +22193,49 @@ old source: one where three two-lobed rings and a post share a centre plane
 that has the best coverage available and cuts the post alone, and one on the
 `ot4-swing2` shape asserting that the arm's own planes are candidates at all
 — and that the best drawing still omits it. 265 CLI tests pass.
+
+## ADR-274 — A turn that reaches the engine not once is asked once more (2026-09-08)
+
+Three live `cadex walk` runs on `ot4-quill` in one evening ended at exit 3
+with the same shape: the design turn ran, read the project, wrote a
+paragraph of reasoning to stderr, and **made no tool call at all**. The
+clearest was 84.3 s with `stop_reason: end_turn` and 6,228 output tokens of
+which 5,893 were thinking — the model reasoned its way to a decision
+("Finding 2 I believe is wrong… **Finding 1 I believe and am taking.**")
+and then ended the turn before acting on it. Nothing was refused; nothing
+was offered; the project was byte-for-byte what it had been, and the whole
+invocation — engine start, bridge, the model's own reading of the project —
+was spent for prose.
+
+ADR-247 and the exit-3 reason string (`docs/CLI.md` §2) made that cause
+*legible*, which was the right first move and is why this one could be
+diagnosed from an envelope. But legibility is not recovery: the walk still
+threw the turn away, and a loop with nobody watching gets one design turn
+per invocation.
+
+So `cadex -p` — and so the walk's design leg, which is a child of it — asks
+**once**, in the same conversation, with one fixed follow-up
+(`NUDGE_PROMPT`) that says the project is unchanged, invites the change, and
+offers `NO CHANGE:` as the honest alternative. The engine, the bridge and
+the conversation are all still open at that moment, so the follow-up costs a
+turn and no setup.
+
+Narrow, by construction, and reversible:
+
+- It fires only when the turn ended **well**, made **no** tool call, had
+  **nothing** accepted, and left a resumable session id. A turn that offered
+  a script and was refused was told why by the engine and stopped anyway;
+  asking that one again is how a retry loop starts, and it is not asked.
+- **One** follow-up, never two. A second silence is the answer, and the run
+  exits 3 with both turns' closing words in the reason.
+- Best effort: if the follow-up itself fails, the run reports the rejection
+  it already had rather than a harder failure, because the first turn did
+  end well. The follow-up can improve an outcome and cannot worsen one.
+- Both turns' prose is folded together, so a closing `DECISION:` or
+  `NOTE <subject>:` line from either lands in the project's documents
+  (ADR-193, ADR-245), and `notes` records that the follow-up was asked.
+
+`cli/cadex_cli/__main__.py` only; three regressions in
+`cli/tests/test_turn_loop.py`, two of which fail on the old source, and the
+third pins the narrowness — a refused turn is asked nothing. 268 CLI tests
+pass.

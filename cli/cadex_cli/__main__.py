@@ -44,11 +44,12 @@ from .agent import (
     ClaudeTurn,
     ClaudeUnavailable,
     DEFAULT_MODEL,
+    TurnResult,
     default_model,
     find_claude,
     system_prompt,
 )
-from .bridge import Bridge, ToolCall
+from .bridge import Bridge, BridgeState, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
@@ -644,6 +645,65 @@ def _clip(text: str, limit: int = REASON_CHARS) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+#: What a turn that never reached the engine is asked, once, before the run
+#: is given up as rejected.
+#:
+#: A design turn that ends without a *single* tool call has done nothing at
+#: all: the project is byte-for-byte what it was, and the whole invocation —
+#: engine start, bridge, the model's own reading of the project — is spent
+#: for a paragraph on stderr. That is not a hypothetical. It happened three
+#: times on one project in one evening, most clearly at 84 s with
+#: ``stop_reason: end_turn`` after 5,893 thinking tokens and 335 of prose:
+#: the model reasoned its way to a decision and ended the turn before acting
+#: on it. So ask once, in the same conversation, and take a script if one
+#: comes.
+#:
+#: Deliberately narrow. It fires only when the model called *nothing*: a turn
+#: that offered a script and had it refused was told why by the engine and
+#: stopped anyway, and asking that turn again is how a loop starts.
+NUDGE_PROMPT = (
+    "That turn ended without a single tool call, so the project is exactly "
+    "as it was and nothing you decided has been recorded. This is your one "
+    "follow-up. If you know what to change, make it now with the modelling "
+    "tools and let the engine accept it. If you have concluded that no "
+    "change is warranted, answer in one line beginning 'NO CHANGE:' and "
+    "stop."
+)
+
+
+def _spent_nothing(result: TurnResult, state: BridgeState) -> bool:
+    """Did the turn end well, reach the engine not once, and change nothing?"""
+
+    return (
+        result.ok
+        and not state.calls
+        and state.last_accepted is None
+        and bool(result.session_id)
+    )
+
+
+def _merge_turns(first: TurnResult, second: TurnResult) -> TurnResult:
+    """Fold the follow-up into the turn it continues.
+
+    The follow-up is best effort and can only improve the outcome: if it
+    fails, the run reports the rejection it already had rather than a harder
+    failure, because the first turn genuinely did end well. Its prose is
+    appended so a closing ``DECISION:`` or ``NOTE`` line from either turn
+    lands in the project's documents.
+    """
+
+    merged = TurnResult(
+        ok=first.ok,
+        session_id=second.session_id or first.session_id,
+        text="\n".join(part for part in (first.text, second.text) if part.strip()),
+        exit_code=second.exit_code,
+        error=first.error,
+        resume_failed=first.resume_failed or second.resume_failed,
+        frames=first.frames + second.frames,
+    )
+    return merged
+
+
 def _rejection_reason(text: str, calls: Sequence[ToolCall]) -> str:
     """Why a turn ended with no accepted script, in one line.
 
@@ -734,6 +794,16 @@ def command_prompt(
             )
             try:
                 result = turn.run(args.prompt)
+                if _spent_nothing(result, bridge.state):
+                    _progress(
+                        " · the turn reached the engine not once; asking "
+                        "once more"
+                    )
+                    result = _merge_turns(result, turn.run(NUDGE_PROMPT))
+                    report.notes.append(
+                        "the first turn made no tool call; asked once more "
+                        "in the same conversation."
+                    )
             finally:
                 turn.cleanup()
             sys.stderr.write("\n")
