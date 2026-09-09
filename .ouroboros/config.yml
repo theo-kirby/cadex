@@ -1,10 +1,15 @@
-run: ot4
+run: ot5
 goal: .ouroboros/goal.md
 memory: auto            # -> hypergraph (config + CLI present)
 backend: headless       # tmux: one streaming window per harness call in the run session
-mode: actor-critic      # a Codex critic grades every changed iteration; a reject becomes
-                        # the next iteration's must-fix, not a revert
-overseer: agent
+# Two roles. The critic is one read-only call after every actor turn: it grades the
+# diff against the quality bar, answers as the sleeping user, refuses false "done",
+# and writes the next prompt. The maintainer and planner are off: a due reconcile is
+# the actor's next iteration (housekeeping), and the critic's reply names the next
+# unit. ot4 paid for five calls an iteration and closed no criterion.
+critic: agent           # rules: the deterministic fallback only, no model call
+maintainer: false       # true: a separate maintainer call instead of actor housekeeping
+planner: false          # true: a planner writes bets after each reconcile
 idle_interval: 30m
 roles:
   actor:
@@ -15,36 +20,29 @@ roles:
     fallback:
       - { harness: codex, model: gpt-6-astra }   # while Claude is out of usage; back to Claude when it resets
   critic:
-    harness: codex
+    harness: codex        # a Codex critic on Claude work is a real second opinion
     model: gpt-6-astra
-    timeout: 15m
+    timeout: 10m
     fallback:
       - { harness: claude, model: claude-opus-5 }
-  overseer:
-    harness: claude
-    model: claude-opus-5
-    timeout: 5m
-    fallback:
-      - { harness: codex, model: gpt-6-astra }
-  maintainer:
+  maintainer:             # only called with maintainer: true
     harness: claude
     model: claude-opus-5
     timeout: 30m
     fallback:
       - { harness: codex, model: gpt-6-astra }
-  planner:
+  planner:                # only called with planner: true
     harness: claude
     model: claude-opus-5
     timeout: 20m
     fallback:
       - { harness: codex, model: gpt-6-astra }
 git:
-  branch: null            # -> ouroboros/ot4
+  branch: null            # -> ouroboros/ot5
   tag_on_accept: true
   revert_on_reject: false # fix forward: the charter forbids reverting this run's own
-                          # commits, and the critic's must_fix reaches the next actor
-                          # turn either way (engine.py:185). nt2's reverts all failed
-                          # and every reject was completed by a later iteration.
+                          # commits. A rejected commit stays, gets no ok tag, and the
+                          # critic's fix is the top of the next actor prompt.
   allow_dirty: false
 stop:
   after: 48h              # the only thing that ends this run
@@ -60,8 +58,8 @@ stop:
 handoff:
   recent: 3
 hypergraph:
-  reconcile_every: 5
-  pressure: 3
+  reconcile_every: 5      # housekeeping is due after this many worked iterations...
+  pressure: 3             # ...or at this many unreconciled record nodes
   budget_units: 1
 limits:
   cooldown: 30m           # block a limited harness this long when it does not say when it resets; doubles
@@ -71,20 +69,16 @@ limits:
     claude: 0.99          # this is the quarry account and the run may have all of it.
                           # Kept just under 1.0 so the loop steps aside a moment before
                           # the hard limit and falls back to Codex, instead of spending
-                          # an actor turn discovering the wall. The 7-day window resets
-                          # 2026-09-09 anyway.
+                          # an actor turn discovering the wall.
 loop:                     # motion without progress (ouroboros DESIGN.md section 6b)
   product_after: 8        # iterations changing only records, plans and STATE.md
   frontier_after: 30      # iterations with no node moving and no criterion ticked
-  repeat_bet_after: 3     # planner bets restating a recent bet
+  repeat_bet_after: 3     # only measured with the planner on
   escalate_every: 5
   rotate: true            # rung 3: hand the actor's turn to Codex for a while
-                          # Nothing here stops the run. Replayed on nt3, `no_product`
-                          # first fires at iteration #50 -- one into the 113-iteration
-                          # stall -- against zero firings in the productive stretches.
-plan:
-  enabled: true           # the plan view (short / medium / long) and the planner after each maintainer pass
+                          # Nothing here stops the run.
+plan:                     # only with planner: true
   every: 5
   view: plan
   md: PLAN.md
-  max_new_directions: 1   # per planner pass; the charter bounds what counts as a direction
+  max_new_directions: 1
