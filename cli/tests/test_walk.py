@@ -146,6 +146,45 @@ _SLIDE_EXTREME = {"base": _SLIDE_START["base"],
                             "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}
 
 
+@pytest.mark.parametrize("available", [True, False])
+def test_section_misses_join_instances_and_both_motion_channels(tmp_path, available):
+    motion = motion_from_trace({"frames": [
+        _frame(1, "solver_output", 0.0, {**_ARM_START, "slide": _SLIDE_START["slide"]}),
+        _frame(2, "solver_output", 0.5, {**_ARM_EXTREME, "slide": _SLIDE_EXTREME["slide"]}),
+    ]})
+    motion["available"] = available
+    section = {"objects": {
+        "base": {"status": "empty"}, "swing": {"status": "empty"},
+        "slide": {"status": "unsupported"}, "cut": {"status": "ok"},
+        # Labels and shared sources cannot identify which placed instance moved.
+        "copy_a": {"status": "empty", "source": "swing", "label": "swing"},
+        "copy_b": {"status": "empty", "source": "swing"},
+    }}
+    path = walk_module.write_review(tmp_path, review={"section": section, "motion": motion},
+                                   legs=[], training={}, params={})
+    misses = json.loads(path.read_text())["section"]["missed_objects"]
+    assert set(misses) == {"base", "swing", "slide", "copy_a", "copy_b"}
+    assert "missed_objects" not in section  # preserve the standalone section summary
+    assert misses["copy_a"]["moved"] is None and misses["copy_b"]["moved"] is None
+    assert misses["slide"]["section_status"] == "unsupported"
+    if available:
+        assert misses["base"]["moved"] is False
+        assert misses["swing"]["moved"] is True
+        assert misses["swing"]["max_displacement_mm"] == 0
+        assert misses["swing"]["max_rotation_deg"] == pytest.approx(178.8334, abs=1e-4)
+        assert misses["slide"]["moved"] is True
+    else:
+        assert all(row["moved"] is None and row["reason"] for row in misses.values())
+
+
+@pytest.mark.parametrize("travel", [{}, {"max_displacement_mm": 0},
+    {"max_displacement_mm": 0, "max_rotation_deg": float("nan")}])
+def test_section_misses_incomplete_travel_is_unknown(travel):
+    misses = walk_module.section_misses({"objects": {"arm": {"status": "empty"}}},
+                                      {"available": True, "components": {"arm": travel}})
+    assert misses["arm"]["moved"] is None
+
+
 def test_travel_is_two_channels_because_the_hinged_arm_only_rotates() -> None:
     """The arm goes nowhere and turns 178.8°; a mm-only report is wrong."""
 
@@ -1339,7 +1378,7 @@ def _assert_render(root, review):
     assert section["units"] == "mm" and section["approximation"] and section["limits"]
     assert section["path"] not in tracked and section["summary_path"] not in tracked
     stored_section = json.loads((root / section["summary_path"]).read_text())
-    assert stored_section == {k: v for k, v in section.items() if k != "summary_path"}
+    assert stored_section == {k: v for k, v in section.items() if k not in {"summary_path", "missed_objects"}}
     assert section["acquisition_seconds"] == summary["acquisition_seconds"]
     import xml.etree.ElementTree as ET
     drawing = ET.parse(root / section["path"]).getroot()

@@ -593,6 +593,31 @@ def review_from_outputs(outputs: Sequence[dict[str, Any]]) -> dict[str, Any]:
     return {}
 
 
+def section_misses(section: dict[str, Any], motion: dict[str, Any]) -> dict[str, Any]:
+    """Join published object identities only; shared source shapes are not instances."""
+    components = motion.get("components") or {}
+    misses = {}
+    for name, obj in sorted((section.get("objects") or {}).items()):
+        if obj.get("status") == "ok":
+            continue
+        row = {"section_status": obj.get("status"), "moved": None}
+        travel = components.get(name) if motion.get("available") else None
+        if not isinstance(travel, dict):
+            row["reason"] = ("no rollout motion available" if not motion.get("available")
+                             else "no exact component identity in rollout motion")
+        else:
+            values = [travel.get(key) for key in
+                      ("max_displacement_mm", "max_rotation_deg")]
+            if all(type(v) in (int, float) and math.isfinite(v) and v >= 0
+                   for v in values):
+                row.update(component=name, max_displacement_mm=values[0],
+                           max_rotation_deg=values[1], moved=any(v > 0 for v in values))
+            else:
+                row["reason"] = "incomplete or invalid component travel"
+        misses[name] = row
+    return misses
+
+
 def write_review(
     out_dir: Path,
     *,
@@ -648,6 +673,7 @@ def write_review(
             for leg in legs
         ],
     }
+    payload["section"]["missed_objects"] = section_misses(payload["section"], payload["motion"])
     path = out_dir / REVIEW_FILENAME
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8")

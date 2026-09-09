@@ -188,7 +188,14 @@ retains status, availability, revision/digest, plane, units, approximation,
 limits, acquisition/section timings, `offset_source` and the ordered
 `offset_candidates_mm`, and `objects_cut` of `objects`. Every candidate is
 cut and the plane that cuts the most objects wins, so no mechanism needs its
-own constant -- and `objects_cut` says how much of it the drawing reached. Empty cuts are available with no
+own constant -- and `objects_cut` says how much of it the drawing reached.
+The walk adds `section.missed_objects`: uncut object identities, section statuses
+and `moved` (true, false or null for unknown). Exact rollout component matches
+carry translation in mm and rotation in degrees; either nonzero channel counts
+as movement. Shared sources and labels cannot identify an instance. Missing
+traces, unmatched identities and incomplete travel stay unknown with a reason.
+This join appears only in the walk review, not the standalone section summary.
+Empty cuts are available with no
 contours; unsupported cuts are unavailable with per-object reasons. Section
 errors and rollout digest mismatches fail the walk; retained old artifacts
 never imply current success. Clearance covers only the initial solved pose,

@@ -2201,6 +2201,11 @@ What makes them experimental, and what would settle it:
   re-points the flags, so `--remote` is no longer a cold-run-only mode and an
   iterate has the same shape locally and on the box. Tested against the real
   script with stand-in `ssh`/`rsync`; still no dispatch.
+- [x] **The walk names section misses and their rollout movement**
+  (2026-09-08, ADR-277). Exact published identities join uncut objects to
+  translation and rotation; unavailable or ambiguous matches remain unknown.
+  Fixture regressions cover pure rotation, translation, stationary components,
+  shared source instances and missing motion.
 - [x] **The section eye derives its own plane when called by hand**
   (2026-09-08, ADR-275). `cadex section --plane XZ` with no `--offset-mm`
   now takes the derived path the walk has used since ADR-267; the flag's

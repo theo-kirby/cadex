@@ -22307,3 +22307,22 @@ on failure, because the conversation may be resumable; successful turns still
 persist model changes. No provider retry or model fallback is introduced.
 Offline real-engine regressions exercise resolution, failed walk overrides,
 new failed sessions and successful resumed edits. The CLI suite is the gate.
+
+
+## ADR-277 — Name section misses and their rollout movement (2026-09-08)
+
+Replace the walk documentation's count-only reading rule with
+`section.missed_objects` in `review.json`. Join section object keys directly
+to rollout component keys, which both name published instances. Each uncut
+object retains its section status and reports `moved` as true, false or null.
+Both translation and rotation count; a stationary measurement differs from
+missing evidence. Never match labels or source geometry: multiple placed
+instances may share either. Missing traces, unmatched identities and incomplete
+travel remain unknown with reasons. The standalone section summary remains
+geometric; this join uses motion already read by the walk, without another
+measurement. It does not claim swept coverage or clearance.
+
+Fixtures exercise pure rotation, translation, stationary components, shared
+sources, unavailable traces and invalid travel through the persisted review.
+The CLI suite is the gate; the stored ot4-swing2 trace supplies the live-data
+check. The lifecycle guide and project scaffold carry the same contract.
