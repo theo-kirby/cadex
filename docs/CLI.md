@@ -740,6 +740,48 @@ This leaves the fresh mixed-joint walk **evidenced through design and
 stopped at train**, with the stop moved forward into the design turn that
 can act on it.
 
+**The same fresh walk, end to end, `ot4-mix55` (2026-09-09).** The identical
+prompt into a second empty project, same flags, against a freshly built and
+installed engine (source comparison `match` across 56 files), **completed every
+leg**.
+
+| Leg | Result |
+|---|---|
+| Design (`claude-opus-5`) | Exit 0, 1649.63 s; accepted revision `70fd2a53…`, digest `ee279ea9…` |
+| Train (CPU, 5 it × 16 envs, seed 0) | Exit 0, 26.71 s; reward/step −0.4055 at best iteration 4, 4,609 parameters, 5.20 s trainer wall time |
+| Policy verify | Witness error 1.14e-08 against a 1e-04 tolerance over 32 samples |
+| Declare | Exit 0, 0.81 s |
+| Rollout (`policy_on=1`) | Exit 0, 1.53 s; total reward −19.85 over seed 1 |
+| Render | Four views (front, iso, right, top), 4,756 triangles, 0.90 s |
+| Section | Plane XZ at 0.0 mm, 4 of 4 objects cut, status `ok` |
+| Inventory | 4 components, 0 catalogued |
+| Clearance | 6 pairs checked, 0 unknown, **1 intersection**: frame ∩ slider, 648.0 mm³ |
+| Whole invocation | **Exit 0, 1680.78 s** |
+| Peak process-tree RSS | 2,312,118,272 bytes, sampled every 0.2 s |
+
+No watchdog intervention (2.9 GiB guard; trainer bounded by 600 s). The design
+turn again refused the four-revolute-plus-prismatic loop as over-constrained by
+three rows, and again spent those constraints on real hardware freedoms — a ball
+rod end at the crank pin and a keyed cylindrical bushing at the rail — rather
+than disconnecting anything. Six project `ADR-` entries and five domain notes
+(`actuators`, `architecture`, `linkage-geometry`, `rejected`, `sensors`) landed,
+with `PROGRESS.md` rows for the prompt, train, script, params and walk runs.
+
+**The MJX geom-pair constraint held without the refusal having to fire.** Every
+collision shape the design turn authored is a box or a capsule, in contact group
+1 against an empty group 0, with the comment that the loop is carried by its
+joints and the shapes exist only to be visible in a viewer. ADR-281's check
+therefore never raised, and `train` ran. That is one run, not a guarantee that
+the guidance always steers an unaided turn.
+
+**Clearance reports; it does not gate.** The frame and slider intersect by
+648.0 mm³ at the initial solved pose — the carriage groove clears the rail bar,
+but the two solids still share volume elsewhere — and the walk exited 0 anyway.
+The eyes name the offending pair for the next design turn to act on; nothing in
+the walk refuses a model over it. Local evidence is in
+`runs/fresh55/{walk.json,walk.stderr,monitor.json}`, excluded from Git along
+with the policy, the trace and the review output.
+
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through
 `training/remote_train.sh train` (ADR-089, `training/SETUP.md` §d) instead

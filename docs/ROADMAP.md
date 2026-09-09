@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-08
+Verified against source: 2026-09-09
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -2039,6 +2039,21 @@ What makes them experimental, and what would settle it:
   carry comparable measurements; arm contact and carriage 34 mm separation
   remain explicit. Evidence in `docs/probes/complete-review/linear-carriage/`;
   combined review evidence is ready for maintainer assessment.
+- [x] **The fresh mixed-joint walk completes every leg** (2026-09-09,
+  `docs/CLI.md` §2). `ot4-mix55`: the same crank-slider prompt into a second
+  empty project, no `--resume` and no supplied script, `--iterations 5 --envs 16
+  --seed 0 --timeout 600 --leg-timeout 1800`, against a freshly installed engine
+  reporting `match` across 56 files. **Exit 0 in 1680.78 s**, peak process-tree
+  RSS 2,312,118,272 bytes, no watchdog intervention. Design 1649.63 s (revision
+  `70fd2a53…`, digest `ee279ea9…`, four bodies, one closed loop, ball rod end
+  and keyed cylindrical bushing in place of the over-constrained all-revolute
+  loop); train 26.71 s on CPU at reward/step −0.4055, witness error 1.14e-08
+  against 1e-04; declare 0.81 s; rollout total reward −19.85. All four eyes ran:
+  four render views, an XZ section cutting 4 of 4 objects, a 4-component
+  inventory, and a clearance check reporting one 648.0 mm³ frame/slider
+  intersection. ADR-281's MJX geom-pair refusal never fired — the design turn
+  authored box and capsule collision shapes in an empty contact group — which is
+  one run of evidence that the guidance steers an unaided turn, not a guarantee.
 - [x] **A machine names its turn model once** (ADR-249, `docs/CLI.md` §2).
   `--model` defaults to `$CADEX_MODEL`, the recorded project model, then
   `claude-fable-5` (ADR-276). Found by the
