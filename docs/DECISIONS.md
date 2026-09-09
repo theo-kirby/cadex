@@ -22408,3 +22408,52 @@ The regression drives a real subprocess that prints the benign lines on stdout
 and the traceback on stderr, and asserts both that the error names the cause
 and that stderr still passed through live. It fails on the previous source.
 The CLI suite is the gate.
+
+
+## ADR-281 — A training task is refused when MJX cannot build its model (2026-09-09)
+
+ADR-280 made the crank-slider walk's training failure legible; this is the
+half that stops it happening. The cause was
+`NotImplementedError: (mjGEOM_CYLINDER, mjGEOM_BOX) collisions not
+implemented` out of `mjx.put_model`, and the model that raised it was not
+wrong: the frame's rail was declared `assembly.collision("cylinder", ...)`,
+the coupler's body a box, the two are two joints apart so neither the
+exclusion the joints write nor MuJoCo's parent-child filter separates them,
+and stock MuJoCo simulates that contact perfectly well. Every check the
+engine already ran passed — the model compiled, the MJCF exported, the pose
+held to 0.0015 mm, the rollout ran. The design turn that chose the cylinder
+learned nothing, twenty minutes and one process boundary away.
+
+MJX builds one contact function per geom **type pair** and has none for four
+of them: box/cylinder, cylinder/mesh, box/ellipsoid, ellipsoid/mesh. This is
+a limit of the JAX backend, not of the model.
+
+`assembly.task` is the one export that is only ever consumed by MJX — the
+trainer is offboard and is its only reader (ADR-084) — so that is where the
+refusal goes. `CadexDynamics.task_records` now enumerates the compiled
+model's candidate collision pairs and refuses any that MJX cannot build,
+naming both geoms, both bodies and both kinds, and stating the corrections:
+swap the shape for a box, capsule or sphere (a capsule is the usual stand-in
+for a shaft or a rail); or separate the two with collision groups, on *both*
+sides, because MuJoCo's mask test is an `or` over both directions and one
+side declaring `collides_with=[]` is not enough; or join the components, if
+they are in fact joined. Nothing else is refused: `assembly.mjcf`,
+`assembly.rollout` and the simulation trace are untouched, and a cylinder
+remains a legal collision shape on a model nobody trains.
+
+The candidate-pair filter — explicit `<pair>` rows, exclusion signatures,
+the same-weld and parent-child filters, the contype/conaffinity masks — is
+written out in `CadexDynamics.candidate_collision_pairs` rather than
+imported, because the only library that has it is MJX and the engine may not
+import MJX (ADR-084, `test_engine_purity_guardrails`). It is checked against
+`mjx.geom_pairs` on the walk's own exported model: 3 pairs, identical sets.
+The unsupported-pair table is checked against `mjx.has_collision_fn` by an
+MJX-gated test that runs from the training venv and skips under `pixi run
+test-engine`; a future MJX that implements one of the four fails that test,
+and the failure message says the row should be dropped.
+
+Verified against the model the walk left on disk: the refusal names
+`comp_frame/collision1` (cylinder, on `comp_frame`) against
+`comp_coupler/collision0` (box, on `comp_coupler`) — which is exactly the
+pair `mjx.put_model` refused. `test_dynamics_mjx_geom_pairs.py` is the
+regression and fails on the previous source. The engine suite is the gate.

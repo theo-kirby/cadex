@@ -2338,6 +2338,17 @@ What makes them experimental, and what would settle it:
   inheriting it, so the `--json` error carries the crash rather than two
   benign stdout warnings. Regression fails on the previous source; 24 CLI
   train tests pass.
+- [x] **A training task is refused when MJX cannot build its model**
+  (ADR-281, 2026-09-09, `docs/MUJOCO.md` §5 hazard 20). `assembly.task`
+  enumerates the exported model's candidate collision pairs and refuses the
+  four MJX has no contact function for — box/cylinder, cylinder/mesh,
+  box/ellipsoid, ellipsoid/mesh — naming both geoms, both bodies and both
+  kinds. The filter is written out rather than imported, because the engine
+  may not import MJX; it reproduces `mjx.geom_pairs` exactly on the walk's
+  own exported model, where it names the cylinder rail against the coupler
+  box that `mjx.put_model` refused. `assembly.mjcf` and `assembly.rollout`
+  are untouched. Regression fails on the previous source; engine suite 2099
+  passed / 54 skipped, CLI suite 289 passed.
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected

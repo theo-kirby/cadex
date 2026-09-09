@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-08. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-09. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -721,17 +721,24 @@ asked for. Four `DECISION:` lines and three notes (`linkage-geometry`,
 **MJX does not implement every MuJoCo geom pair, and that bounds what a
 design turn may author.** The cylinder used for the guide rail against the
 box bodies is one such pair, so the exported model is valid MuJoCo and
-untrainable under MJX. A design turn that wants a trainable mechanism should
-prefer capsule or box collision geometry, or mark the rail contact-free.
-The refusal is the trainer's, not the engine's: the geometry, the assembly
-solve, the MJCF export and the task are all accepted. **The envelope now
-names it** (ADR-280): before that fix, `walk.json` quoted two benign
-`Failed to import warp` lines off stdout and the `NotImplementedError`
-reached only the inherited terminal, so a `--json` caller could not tell
-why the leg died. Local evidence is in `runs/fresh52/{walk.json,
-walk.stderr,monitor.json}`, excluded from Git. This leaves the fresh
-mixed-joint walk **evidenced through design and stopped at train**: the
-first leg that a person would otherwise have to guess at is now reported.
+untrainable under MJX. The four pairs MJX has no contact function for are
+box/cylinder, cylinder/mesh, box/ellipsoid and ellipsoid/mesh; a design
+turn that wants a trainable mechanism prefers box, capsule or sphere
+collision geometry. **The engine now refuses the task rather than letting
+the trainer discover it** (ADR-281): `assembly.task` enumerates the
+exported model's candidate collision pairs and names the offending geoms,
+bodies and kinds at the moment the task is declared, which is where the
+author still has the collision shape in front of them. `assembly.mjcf`,
+`assembly.rollout` and the simulation trace are untouched — a cylinder is
+still a legal collision shape on a model nobody trains. **And when a
+trainer does fail, the envelope names it** (ADR-280): before that fix,
+`walk.json` quoted two benign `Failed to import warp` lines off stdout and
+the `NotImplementedError` reached only the inherited terminal, so a
+`--json` caller could not tell why the leg died. Local evidence is in
+`runs/fresh52/{walk.json,walk.stderr,monitor.json}`, excluded from Git.
+This leaves the fresh mixed-joint walk **evidenced through design and
+stopped at train**, with the stop moved forward into the design turn that
+can act on it.
 
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through

@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-09-08
+Verified against source: 2026-09-09
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -2299,6 +2299,24 @@ Ranked by how quietly they fail.
     `--entropy` times an entropy linear in `log_std`, so nothing bounds it
     upwards; a σ that has walked off `--initial-std` is a run whose rollouts
     and whose installable mean policy are no longer the same policy.
+20. **MJX has no contact function for four geom type pairs, so a model
+    every engine check accepts can still be untrainable** (ADR-281).
+    Measured on the `ot4-mix52` walk: an agent-authored slider-crank gave
+    the frame a `cylinder` collision rail and the coupler a `box`, the two
+    are two joints apart so nothing excludes them, and `mjx.put_model`
+    raised `NotImplementedError: (mjGEOM_CYLINDER, mjGEOM_BOX) collisions
+    not implemented` 2.27 s into the training leg — after the assembly
+    solved, the MJCF exported, the pose held to 0.0015 mm and the rollout
+    ran. Stock MuJoCo simulates that contact; the limit is the JAX
+    backend's. The four are **box/cylinder, cylinder/mesh, box/ellipsoid,
+    ellipsoid/mesh**. `assembly.task` now refuses them by name
+    (`mjx_unsupported_collision_pair`), because a task is only ever read by
+    the trainer and the author is still there when it is declared; nothing
+    else is refused, and a cylinder stays legal on a model nobody trains.
+    Prefer box, capsule or sphere collision geometry for anything that can
+    touch. **Note the escape that is not one:** `collides_with=[]` on one
+    shape does not separate a pair — MuJoCo's mask test is an `or` over
+    both directions, so the other side must omit the group too.
 
 ## 6. Open questions
 
