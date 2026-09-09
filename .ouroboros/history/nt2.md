@@ -98,4 +98,13 @@ actor: claude:claude-opus-5
 
 ## What this taught
 
-(unwritten)
+**Six reverts were logged and none of them happened.** A stale `.git/sequencer`
+made `gitguard.revert_to` a silent no-op, so every patch the critic rejected
+stayed on the branch and the run reported a clean rejection each time. This is
+why `ouroboros report` and every digest since verify a revert against git rather
+than counting log lines, and why the branch was not merge-ready when the run
+stopped.
+
+The run itself was productive -- 66 of 67 iterations changed something, and the
+2.79M-line reduction landed -- which is exactly the shape that hides a defect
+like that.

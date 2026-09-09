@@ -103,4 +103,17 @@ actor: claude:claude-opus-5
 
 ## What this taught
 
-(unwritten)
+The run that produced the loop detector. 201 iterations, 22,437 lines, 128 new
+record nodes, and **one** node changed status. From iteration ~49 onward the
+planner wrote the same bet in new words every time -- "retain the conditional
+rehearsal after N unchanged iterations" -- because a previous plan had gated the
+work on a *wall-clock* condition the actor had no way to satisfy. 138 `stuck`
+verdicts and 67 changed iterations out of 201.
+
+Three things came from it: `ouroboros.loops` (motion is not progress: no product
+change, no frontier movement, a planner restating itself), a charter ban on
+gating a unit on the wall clock, and a 20-iteration overseer history instead of
+3, because the overseer could not see a stall it was only shown three frames of.
+
+Replayed against this run's own log, the detector first fires at iteration 50 --
+one iteration into the stall -- and never fires in either productive stretch.

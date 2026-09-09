@@ -77,4 +77,11 @@ actor: claude:claude-opus-5
 
 ## What this taught
 
-(unwritten)
+The first run, and the one that showed the loop works at all: 173 commits, and a
+2.8M-line inherited-tree reduction started here. But only 6 of 89 iterations
+changed anything, with 42 `stuck` verdicts and 23 reverts, because a single
+harness with no fallback spends most of a night waiting on its own usage window.
+Codex was added as the fallback for every role because of this run.
+
+The charter opened with 0 of 11 criteria checked, which is the honest way to
+write one, and none of them closed.
