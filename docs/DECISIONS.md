@@ -22457,3 +22457,69 @@ Verified against the model the walk left on disk: the refusal names
 `comp_coupler/collision0` (box, on `comp_coupler`) — which is exactly the
 pair `mjx.put_model` refused. `test_dynamics_mjx_geom_pairs.py` is the
 regression and fails on the previous source. The engine suite is the gate.
+
+## ADR-282 — The lifecycle walk detaches in two halves (2026-09-09)
+
+ADR-278 made a detached *training leg* honest: `cadex train --remote
+--detach` returns a pending run locator, verifies and stores no policy, and
+says so in `PROGRESS.md`. It stopped at the leg. `--detach` was refused on
+`walk`, and `docs/CLI.md` said in its own words that "automatic detached
+collection and walk continuation remain unimplemented" — which meant the one
+mode of the lifecycle walk that survives a closed laptop was the one mode
+that could not be run end to end. A 76-minute training run behind a blocking
+ssh is the case the dispatcher's detach exists for, and the walk could not
+use it.
+
+The walk now detaches, in two halves that are the same walk.
+
+**`cadex walk --remote --detach`** runs the design turns and the iterate
+change unchanged, spawns the train leg with `--detach` instead of `--put`,
+and stops at the pending receipt. It writes `--out/walk-pending.json`
+(`cadex-walk-pending-v1`): the dispatcher's locator, the bundle the launch
+was made against and its sha256, the seed the launch used, the legs that
+ran, and the two commands that finish the run. It writes no `review.json`,
+stores no asset, rewrites no script and rolls nothing out; the row it lands
+is the `pending; no policy verified` row ADR-278 defined, with no comparison
+cell. **Pending is a launch acknowledgement and the file says so in a
+`claims` line**, because the failure this design is most exposed to is a
+reader treating a locator as a result.
+
+**`cadex walk --complete --project P --out DIR`** runs the second half from
+that marker. Collection reads only files the dispatcher brought back with
+`watch`/`pull`: `training-progress.json` for the run's state, `train.log`
+for the trainer's own receipt on its last JSON line — the same object a
+blocking dispatch reads off the dispatcher's stdout — and the policy itself.
+Then one new leg, `collect`, puts the policy into the store through `cadex
+asset --put`, which is the write the blocking `train --put` does inside its
+own leg; after it the `declare`, `rollout` and review legs are the ones that
+already existed, unmodified. The walk's leg list carries the launch's legs
+forward from the marker, so a completed detached walk reads as one run.
+
+Four refusals, each with its own remedy and therefore its own message: a run
+that is not `done` (a `running` one says watch it; a `failed` one quotes its
+error and names `train.log`); a policy that does not hash to the receipt's
+`sha256`; a receipt whose `task_sha256` is not this walk's bundle; and a
+bundle that no longer hashes to what the launch recorded. Together they are
+what makes a stale policy left in the destination, another run's checkpoint,
+or a script that moved under the run impossible to declare by accident —
+which was the specific hazard of splitting a walk in time. `--complete`
+refuses `--prompt`, `--set`, `--remote`, `--allow-cpu` and `--detach` rather
+than ignoring them: it designs nothing and trains nothing.
+
+Two things are deliberately *not* here. **Nothing polls and nothing
+dispatches**: completion is a second command a person or a scheduler runs,
+not a background watcher this CLI grew, and the walk still reaches a box
+only through `remote_train.sh`. And the seed travels in the marker rather
+than being re-derived, because the trainer's receipt does not carry it and
+`--complete`'s own `--seed` is a default nobody typed — a comparison row
+naming the wrong seed is worse than none.
+
+`cli/tests/test_walk.py` runs both halves against the stand-in dispatcher
+and a local run destination that stands in for the box's mirror: the pending
+half leaves the script, the store and the review untouched; the completing
+half lands the same review, the same stored policy and the same comparison
+block a blocking walk lands, at the launch's seed; and each of the six
+refusals is pinned by the words it is supposed to say. No ssh, no box, no
+`.remote.env`. `docs/CLI.md` §2 carries the contract, and its GUI-attached
+leg table — held equal to the walk's `run_leg` names in order by
+`cli/tests/test_project_docs.py` — gains the `collect` row.

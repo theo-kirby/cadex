@@ -525,13 +525,13 @@ def run_trainer(
             f"the trainer exited {process.returncode}; its stderr is above."
             + ("".join("\n  " + line for line in tail) if tail else "")
         )
-    receipt = _last_json_line(stdout)
+    receipt = last_json_line(stdout)
     if receipt is None:
         raise TrainError("the trainer exited 0 but printed no receipt.")
     return receipt
 
 
-def _last_json_line(stdout: str) -> dict[str, Any] | None:
+def last_json_line(stdout: str) -> dict[str, Any] | None:
     for line in reversed(stdout.splitlines()):
         line = line.strip()
         if not line.startswith("{"):

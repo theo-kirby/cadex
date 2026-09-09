@@ -903,8 +903,37 @@ local walk's line for line. What the flag changes and what it refuses:
   Inspect the returned progress and policy before `cadex asset --put` and
   `cadex script --set`. Pending proves launch acknowledgement, not continued
   execution, device choice, training success or a verified policy.
-  `--detach` needs `--remote`, rejects `--dry-run`, and is unavailable on
-  `walk`; automatic detached collection and walk continuation remain unimplemented.
+  `--detach` needs `--remote` and rejects `--dry-run`.
+- **The walk detaches in two halves** (ADR-282). `cadex walk --remote
+  --detach` runs the design turns and the iterate change as usual, launches
+  the train leg detached, and **stops at pending**: it writes
+  `--out/walk-pending.json` (`cadex-walk-pending-v1` — the dispatcher's
+  locator, the exported bundle and its sha256, the seed the launch used, the
+  legs that ran, and the two commands that finish the run) and verifies,
+  stores, declares and rolls out nothing. Its `PROGRESS.md` row reads
+  `pending; no policy verified` and carries no comparison, exactly as the
+  detached `train` row does. Bring the run home with the dispatcher —
+  `training/remote_train.sh watch RUN_ID DEST` or `pull RUN_ID DEST`, where
+  `DEST` is the receipt's `destination` — and then `cadex walk --complete
+  --project P --out DIR` runs the second half: `collect` (the returned
+  policy through `cadex asset --put`, the store write the blocking leg does
+  inside itself), then the same `declare`, `rollout` and review legs, with
+  the same artifacts. `--complete` runs no design turn and no trainer, and
+  refuses `--prompt`, `--set`, `--remote`, `--allow-cpu` and `--detach`
+  rather than ignoring them.
+- **Completion refuses what it cannot honestly declare.** It reads only
+  files the dispatcher brought back: `training-progress.json` must say
+  `done` (a `running` run says watch it, a `failed` one quotes its error and
+  names `train.log`); `train.log`'s last JSON line is the trainer's own
+  receipt, and the returned policy must hash to the `sha256` in it; the
+  receipt's `task_sha256` must be the bundle this walk exported, and that
+  bundle must still hash to what the launch recorded. So a stale policy left
+  in the destination, another run's checkpoint, or a script that moved under
+  the run are each a named refusal at `EXIT_REJECTED` rather than a declared
+  digest. Warm-start provenance is untouched: nothing retrains, and the
+  provenance lives in the policy header the box wrote (ADR-268).
+  `cli/tests/test_walk.py` runs both halves against a stand-in dispatcher and
+  a local run destination — no ssh, no box, no `.remote.env`.
 - **`--timeout` is local.** It ends the local dispatcher/SSH process, not
   remote training. `--leg-timeout` has the same limit. Use the detached run
   ID with `remote_train.sh stop` to stop training on the box.
@@ -1039,6 +1068,7 @@ difference column is empty for every leg but one.
 | `design` | `cadex -p PROMPT --project P` (skipped without `--prompt`) | an accepted `script.py` revision, `agent.json`, the turn's `DECISION:` and `NOTE <subject>:` lines, a `PROGRESS.md` row | Artifacts identical. This is the one leg either window can run, and the windows are **not** interchangeable for it: the in-app turn is the shell's transcript in the `.blend` (`history.py`), spends its own model (bullet above), and writes none of the three project documents — `PROGRESS.md` and `DECISIONS.md` are named nowhere under `mesh_agent`. |
 | `sweep` | `cadex params --set K=V --out DIR` (only with `--set`) | a new accepted revision, `DIR/` outputs, a `PROGRESS.md` row | No difference. The open scene keeps the values it last read until Rebuild Model or reopen. |
 | `train` | `cadex train --out DIR/train`; `--remote` swaps the venv interpreter for `remote_train.sh` and nothing else | `DIR/train/` (bundle, model, returned policy), `assets/<name>.cxpolicy`, a `PROGRESS.md` row marked `(remote)` when the box trained | No difference. The shell runs no trainer — no `mesh_agent` source imports mujoco, and `test_the_shell_never_learns_about_mujoco` pins that for `shell/` as a whole — and it takes no part in this leg in any of the three modes. |
+| `collect` | `cadex asset --put POLICY --json` (only with `--complete`, the detached mode's second half) | `assets/<name>.cxpolicy` and a `PROGRESS.md` row — the store write the blocking `train --put` does inside its own leg | No difference. The shell reads no run destination and takes no part in the collection; the policy arrives in the store the same way a mesh does. |
 | `script` | `cadex script` | Nothing: the source is read and printed, no revision, no row. | No difference. |
 | `declare` | `cadex script --set script.py --json` | the digest edit — the same source accepted at a new revision behind the trained policy | **The one leg whose aftermath a window must be refreshed for.** A GUI edit issued against the pre-walk revision is refused `STALE_PROGRAM_REVISION`, without replay or revision adoption; Rebuild Model or reopen, then edit. |
 | `rollout` | `cadex params --set policy_on=1 --out DIR/rollout` | `DIR/rollout/` — the verified policy's simulation trace and outputs — and a `PROGRESS.md` row | No difference. |

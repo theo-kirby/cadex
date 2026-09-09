@@ -2440,10 +2440,18 @@ What makes them experimental, and what would settle it:
   context bounds `ARCHITECTURE.md` from both ends, so a scaffold that outgrows
   the budget no longer evicts what the project wrote below it; regression built
   on the real scaffold.
+- [x] **The walk detaches in two halves** (ADR-282). `walk --remote --detach`
+  stops at pending with `walk-pending.json` under `--out` — the locator, the
+  bundle it was launched against, the seed, and the two commands that finish
+  the run — declaring and storing nothing; `walk --complete` collects the
+  policy the dispatcher brought home and runs the same `declare`, `rollout`
+  and review legs, refusing a run that is not `done`, a policy that does not
+  hash to the trainer's receipt, and a bundle that moved under the run.
+  Tested against a stand-in dispatcher and a local run destination; no ssh
+  and no box.
 - [x] **Detached train reports pending honestly** (ADR-278). Project-local run
   receipt, preserved prior policy, no verify/store or completion claims; tested
-  with the real dispatcher over local transport stand-ins. Detached walk
-  collection and continuation remain unimplemented.
+  with the real dispatcher over local transport stand-ins.
 - [x] **Project model continuity survives a refused override** (ADR-276).
   Prompt and walk turns resolve flag, environment, recorded model, default;
   failed turns with the same session ID preserve the previous record.

@@ -115,11 +115,15 @@ from .walk import (
     SWEEP_DIRNAME,
     TRAIN_DIRNAME,
     WalkError,
+    collect_detached,
     declare_policy,
     declared_note_subjects,
+    read_pending,
     review_from_outputs,
     run_leg,
+    task_bundle,
     train_leg_timeout,
+    write_pending,
     write_review,
 )
 
@@ -490,6 +494,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--trainer-python", dest="trainer_python", default="", metavar="PATH",
         help="The training venv's interpreter, if not where training/SETUP.md "
         "puts it.",
+    )
+    walk_parser.add_argument(
+        "--detach",
+        action="store_true",
+        default=False,
+        help="With --remote: launch training on the box and stop at pending. "
+        "The walk writes walk-pending.json under --out with the run locator "
+        "and the two commands that finish the run; no policy is verified, "
+        "stored, declared or rolled out.",
+    )
+    walk_parser.add_argument(
+        "--complete",
+        action="store_true",
+        default=False,
+        help="Finish a detached walk: read walk-pending.json under --out, "
+        "take the policy the dispatcher brought home, and run the remaining "
+        "legs (store, declare, verify and roll out, review). Runs no design "
+        "turn and no trainer.",
     )
     _remote_flags(walk_parser)
     return parser
@@ -1478,6 +1500,21 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             "--init-from-parent-task BUNDLE beside it."
         )
         return EXIT_USAGE
+    if args.complete:
+        # Completion runs no trainer, so every flag that only reaches the
+        # train leg would be read as an instruction and obeyed by nothing.
+        # Refusing them is cheaper than a run that silently ignored them.
+        for flag, on in (
+            ("--detach", args.detach), ("--remote", args.remote),
+            ("--allow-cpu", args.allow_cpu), ("--prompt", bool(args.prompts)),
+            ("--set", bool(args.assignments)),
+        ):
+            if on:
+                report.error = (
+                    f"--complete finishes a launched run; {flag} would design "
+                    "or train again. Run them as their own walk."
+                )
+                return EXIT_USAGE
     remote_error = _remote_usage_error(args)
     if remote_error:
         report.error = remote_error
@@ -1512,6 +1549,10 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     report.walk["engine_source_comparison"] = comparison
     _progress(" · walk engine/source comparison: " + json.dumps(comparison, sort_keys=True))
 
+    report.walk["mode"] = (
+        "complete" if args.complete else "detach" if args.detach else "blocking"
+    )
+
     def failed(leg: Any, what: str) -> int:
         legs.append(leg.to_json())
         report.error = "{:s} (leg {:s}, exit {:d}): {:s}".format(
@@ -1519,68 +1560,142 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         )
         return leg.code if leg.code in (EXIT_USAGE, EXIT_REJECTED) else EXIT_FAILURE
 
-    # Design: the model turns, in order.
-    for index, prompt in enumerate(args.prompts):
-        argv = [*common, "-p", prompt, "--json"]
-        if args.model:
-            argv += ["--model", args.model]
-        if index > 0 or args.resume:
-            argv.append("--resume")
-        if args.claude:
-            argv += ["--claude", args.claude]
-        _progress(f" · walk  design turn {index + 1}/{len(args.prompts)}")
-        leg = run_leg("design", argv, timeout=leg_timeout)
-        if leg.code != EXIT_OK:
-            return failed(leg, "the design turn was not accepted")
-        legs.append(leg.to_json())
+    if not args.complete:
+        # Design: the model turns, in order.
+        for index, prompt in enumerate(args.prompts):
+            argv = [*common, "-p", prompt, "--json"]
+            if args.model:
+                argv += ["--model", args.model]
+            if index > 0 or args.resume:
+                argv.append("--resume")
+            if args.claude:
+                argv += ["--claude", args.claude]
+            _progress(f" · walk  design turn {index + 1}/{len(args.prompts)}")
+            leg = run_leg("design", argv, timeout=leg_timeout)
+            if leg.code != EXIT_OK:
+                return failed(leg, "the design turn was not accepted")
+            legs.append(leg.to_json())
 
-    # Iterate: blank the switch and apply the change; the bundle is exported
-    # at its new digest (ADR-192).
-    if assignments:
-        argv = [*common, "params", "--set", f"{POLICY_SWITCH}=0"]
-        for name, value in sorted(assignments.items()):
-            argv += ["--set", f"{name}={value}"]
-        argv += ["--out", str(out_dir / SWEEP_DIRNAME), "--json"]
-        _progress(" · walk  sweep")
-        leg = run_leg("sweep", argv, timeout=leg_timeout)
-        if leg.code != EXIT_OK:
-            return failed(leg, "the change was refused")
-        legs.append(leg.to_json())
+        # Iterate: blank the switch and apply the change; the bundle is exported
+        # at its new digest (ADR-192).
+        if assignments:
+            argv = [*common, "params", "--set", f"{POLICY_SWITCH}=0"]
+            for name, value in sorted(assignments.items()):
+                argv += ["--set", f"{name}={value}"]
+            argv += ["--out", str(out_dir / SWEEP_DIRNAME), "--json"]
+            _progress(" · walk  sweep")
+            leg = run_leg("sweep", argv, timeout=leg_timeout)
+            if leg.code != EXIT_OK:
+                return failed(leg, "the change was refused")
+            legs.append(leg.to_json())
 
-    # Train, and bring the policy home.
-    argv = [
-        *common, "train", "--out", str(out_dir / TRAIN_DIRNAME), "--put",
-        "--iterations", str(int(args.iterations)), "--envs", str(int(args.envs)),
-        "--seed", str(int(args.seed)), "--timeout", str(float(args.timeout)),
-        "--json",
-    ]
-    for flag, value in (
-        ("--label", args.label), ("--name", args.policy_name),
-        ("--task", args.task_name), ("--trainer-python", args.trainer_python),
-        ("--init-from", args.init_from),
-        ("--init-from-parent-task", args.init_from_parent_task),
-        ("--init-from-task-change", args.init_from_task_change),
-    ):
-        if value:
-            argv += [flag, str(value)]
-    for flag, on in (("--remote", args.remote), ("--allow-cpu", args.allow_cpu)):
-        if on:
-            argv.append(flag)
-    _progress(" · walk  train" + (" (remote)" if args.remote else ""))
-    leg = run_leg("train", argv, timeout=train_timeout)
-    if leg.code != EXIT_OK:
-        return failed(leg, "training did not produce a policy")
-    legs.append(leg.to_json())
-    training = leg.envelope.get("training") or {}
-    stored = [row for row in leg.envelope.get("assets") or []
-              if row.get("sha256") == training.get("sha256")]
-    if not training.get("sha256") or not stored:
-        report.error = "train reported no stored policy sha256; nothing to declare."
-        return EXIT_FAILURE
-    report.training = dict(training)
-    report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
-    weights = str(stored[0].get("name") or Path(str(training.get("out"))).name)
-    sha256 = str(training["sha256"])
+        # Train, and bring the policy home.
+        argv = [
+            *common, "train", "--out", str(out_dir / TRAIN_DIRNAME),
+            "--detach" if args.detach else "--put",
+            "--iterations", str(int(args.iterations)), "--envs", str(int(args.envs)),
+            "--seed", str(int(args.seed)), "--timeout", str(float(args.timeout)),
+            "--json",
+        ]
+        for flag, value in (
+            ("--label", args.label), ("--name", args.policy_name),
+            ("--task", args.task_name), ("--trainer-python", args.trainer_python),
+            ("--init-from", args.init_from),
+            ("--init-from-parent-task", args.init_from_parent_task),
+            ("--init-from-task-change", args.init_from_task_change),
+        ):
+            if value:
+                argv += [flag, str(value)]
+        for flag, on in (("--remote", args.remote), ("--allow-cpu", args.allow_cpu)):
+            if on:
+                argv.append(flag)
+        _progress(" · walk  train" + (" (remote)" if args.remote else ""))
+        leg = run_leg("train", argv, timeout=train_timeout)
+        if leg.code != EXIT_OK:
+            return failed(leg, "training did not produce a policy")
+        legs.append(leg.to_json())
+        training = leg.envelope.get("training") or {}
+        if args.detach:
+            # Pending is not success, and the difference is what this
+            # branch exists to keep (ADR-282): the walk stops here with the
+            # locator on disk, having verified, stored, declared and rolled
+            # out nothing. `--complete` picks it up when the box is done.
+            if training.get("state") != "pending" or not training.get("run_id"):
+                report.error = (
+                    "the detached train leg returned no pending run locator."
+                )
+                return EXIT_FAILURE
+            report.training = dict(training)
+            bundle, task_sha256 = task_bundle(out_dir / TRAIN_DIRNAME)
+            pending_path = write_pending(
+                out_dir, training=training, legs=legs, project=args.project,
+                bundle=bundle, task_sha256=task_sha256, seed=int(args.seed),
+            )
+            report.walk["pending"] = dict(training)
+            report.walk["pending_file"] = str(pending_path)
+            report.notes.append(
+                "walk pending: remote run {:s} launched; locator {:s}. "
+                "Bring it home with `training/remote_train.sh watch {:s} {:s}`, "
+                "then finish with `cadex walk --complete --project {:s} "
+                "--out {:s}`. Nothing was verified, stored or declared.".format(
+                    str(training["run_id"]), str(pending_path),
+                    str(training["run_id"]),
+                    str(training.get("destination") or out_dir / TRAIN_DIRNAME),
+                    str(Path(args.project).expanduser()), str(out_dir),
+                )
+            )
+            report.ok = True
+            return EXIT_OK
+        stored = [row for row in leg.envelope.get("assets") or []
+                  if row.get("sha256") == training.get("sha256")]
+        if not training.get("sha256") or not stored:
+            report.error = "train reported no stored policy sha256; nothing to declare."
+            return EXIT_FAILURE
+        report.training = dict(training)
+        report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
+        weights = str(stored[0].get("name") or Path(str(training.get("out"))).name)
+        sha256 = str(training["sha256"])
+    else:
+        # Completion: the policy the dispatcher brought home, stored through
+        # the same `cadex asset --put` leg the blocking train leg's --put
+        # runs, so every later leg reads exactly what it reads there.
+        try:
+            pending = read_pending(out_dir)
+            policy_path, training = collect_detached(
+                pending, out_dir / TRAIN_DIRNAME
+            )
+        except WalkError as exc:
+            report.error = str(exc)
+            return EXIT_REJECTED
+        # The comparison block the blocking train leg puts in its receipt,
+        # off the same bundle, so a completed detached walk lands the same
+        # PROGRESS.md comparison an in-line one does (ADR-263).
+        bundle, _digest = task_bundle(out_dir / TRAIN_DIRNAME)
+        if bundle is not None:
+            training["comparison"] = {
+                **task_comparison(bundle),
+                "training_seed": int(pending.get("training_seed") or 0),
+            }
+        legs.extend(pending.get("legs") or [])
+        report.walk["pending"] = dict(pending.get("training") or {})
+        report.training = dict(training)
+        _progress(" · walk  collect  " + policy_path.name)
+        leg = run_leg("collect", [*common, "asset", "--put", str(policy_path),
+                                  "--json"], timeout=leg_timeout)
+        if leg.code != EXIT_OK:
+            return failed(leg, "the returned policy could not be stored")
+        legs.append(leg.to_json())
+        report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
+        stored = [row for row in report.assets
+                  if row.get("sha256") == training.get("sha256")]
+        if not stored:
+            report.error = (
+                "the collected policy was stored under a different digest "
+                "than the trainer reported; nothing to declare."
+            )
+            return EXIT_FAILURE
+        weights = str(stored[0].get("name") or policy_path.name)
+        sha256 = str(training["sha256"])
 
     # Declare: the digest edit, then the script write.
     _progress(" · walk  declare")
@@ -1855,8 +1970,11 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
             label = str(out.resolve().relative_to(Path(report.project_root).resolve()))
         except (ValueError, OSError):
             label = out.name
-        return "walk {:d} it × {:d} envs → {:s}".format(
-            int(args.iterations), int(args.envs), label
+        if getattr(args, "complete", False):
+            return f"walk complete {label} (detached run collected)"
+        return "walk {:d} it × {:d} envs → {:s}{:s}".format(
+            int(args.iterations), int(args.envs), label,
+            " (detached; pending)" if getattr(args, "detach", False) else "",
         )
     if command == "train":
         if report.training.get("state") == "pending":

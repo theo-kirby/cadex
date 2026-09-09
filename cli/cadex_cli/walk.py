@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+import hashlib
 import json
 import math
 import os
@@ -56,6 +57,33 @@ TRAIN_DIRNAME = "train"
 ROLLOUT_DIRNAME = "rollout"
 SCRIPT_FILENAME = "script.py"
 REVIEW_FILENAME = "review.json"
+
+#: The walk's own pending marker, written under ``--out`` by a detached
+#: walk and read back by ``--complete`` (ADR-282). The train leg already
+#: writes the dispatcher's locator to ``train/training-receipt.json``; this
+#: is the *walk's* half of it — which legs have run, which bundle they ran
+#: on, and the two commands that finish the run — so a person or a script
+#: that finds only this file knows what to do next without reading the
+#: envelope that has long since scrolled away.
+PENDING_FILENAME = "walk-pending.json"
+PENDING_SCHEMA = "cadex-walk-pending-v1"
+
+#: What the train leg leaves in ``--out/train`` for a detached launch.
+RECEIPT_FILENAME = "training-receipt.json"
+
+#: What ``remote_train.sh watch``/``pull`` mirror into the run destination:
+#: the progress file the trainer rewrites every iteration, and the box-side
+#: stdout that carries the trainer's own receipt on its last JSON line.
+#: Neither is written by this CLI; both are read and never parsed for
+#: anything the file does not state (ADR-093).
+PROGRESS_FILENAME = "training-progress.json"
+TRAIN_LOG_FILENAME = "train.log"
+
+#: The exported training bundle under ``--out/train``, beside the MJCF
+#: :data:`MODEL_GLOB` names. The completion hashes it and compares against
+#: the trainer's ``task_sha256``, which is what makes a policy from some
+#: other run impossible to walk in by accident.
+TASK_GLOB = "*-task.json"
 
 _CLI_DIR = Path(__file__).resolve().parents[1]
 
@@ -333,6 +361,194 @@ def run_leg(
             + stdout.strip()[-400:]
         )
     return leg
+
+
+
+def task_bundle(train_dir: Path | str) -> tuple[Path | None, str]:
+    """The exported training bundle under ``train_dir`` and its sha256.
+
+    ``(None, "")`` when there is none: the caller says what that means,
+    because a walk that never reached the export and one whose bundle was
+    deleted between the launch and the collection are different failures.
+    """
+
+    try:
+        bundles = sorted(Path(train_dir).glob(TASK_GLOB))
+    except OSError:
+        return None, ""
+    for path in bundles:
+        try:
+            return path, hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            continue
+    return None, ""
+
+
+def write_pending(
+    out_dir: Path,
+    *,
+    training: dict[str, Any],
+    legs: Sequence[dict[str, Any]],
+    project: Path | str,
+    bundle: Path | None,
+    task_sha256: str,
+    seed: int,
+) -> Path:
+    """Land the detached walk's marker under ``--out`` (ADR-282).
+
+    A pending walk has produced a *launch acknowledgement* and nothing
+    else, so this file claims nothing a completed walk claims: no reward,
+    no digest, no verified policy. What it carries is the dispatcher's
+    locator, the bundle the launch was made against and its digest, the
+    legs that did run, and the two commands that finish the run — the
+    dispatcher's ``pull`` and this command's ``--complete``. It is written
+    instead of ``review.json``, never beside it.
+    """
+
+    destination = str(training.get("destination") or (out_dir / TRAIN_DIRNAME))
+    run_id = str(training.get("run_id") or "")
+    payload = {
+        "schema": PENDING_SCHEMA,
+        "state": "pending",
+        "training": dict(training),
+        "bundle": str(bundle) if bundle is not None else None,
+        "task_sha256": task_sha256,
+        # The completion reports the comparison the blocking leg reports,
+        # and that block names the seed the run was launched with -- which
+        # is knowable here and nowhere later: the trainer's receipt does
+        # not carry it, and --complete's own --seed is a default nobody
+        # typed.
+        "training_seed": int(seed),
+        "legs": [
+            {key: value for key, value in leg.items() if key != "argv"}
+            for leg in legs
+        ],
+        "completion": [
+            f"training/remote_train.sh watch {run_id} {destination}",
+            "cadex walk --complete --project {:s} --out {:s}".format(
+                str(project), str(out_dir)
+            ),
+        ],
+        "claims": (
+            "launch acknowledged only: no policy has been trained, returned, "
+            "verified, stored, declared or rolled out."
+        ),
+    }
+    path = out_dir / PENDING_FILENAME
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8")
+    return path
+
+
+def read_pending(out_dir: Path) -> dict[str, Any]:
+    """The pending marker :func:`write_pending` left, or a refusal saying so."""
+
+    path = Path(out_dir) / PENDING_FILENAME
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError:
+        raise WalkError(
+            f"--complete: no {path}. It is written by `cadex walk --remote "
+            "--detach --out <this directory>`; point --out at the detached "
+            "walk's output directory."
+        ) from None
+    except ValueError as exc:
+        raise WalkError(f"--complete: {path} is not readable JSON: {exc}") from None
+    if not isinstance(payload, dict) or payload.get("schema") != PENDING_SCHEMA:
+        raise WalkError(
+            f"--complete: {path} is not a {PENDING_SCHEMA} marker."
+        )
+    return payload
+
+
+def collect_detached(
+    pending: dict[str, Any], train_dir: Path | str
+) -> tuple[Path, dict[str, Any]]:
+    """The policy a detached run produced, and the trainer's own receipt.
+
+    Everything read here was mirrored home by ``remote_train.sh
+    watch``/``pull`` and written by the trainer: ``training-progress.json``
+    says whether the run finished, and ``train.log`` carries the receipt on
+    its last JSON line — the same object a blocking dispatch reads off the
+    dispatcher's stdout, so every later leg sees exactly what it sees in
+    the blocking mode. Nothing here reaches a box: collection is reading
+    files the dispatcher already brought back.
+
+    Three things have to hold before the walk goes on, and each is its own
+    refusal because each has a different remedy: the run must report
+    ``done``; the returned policy must hash to what the trainer says it
+    wrote; and the receipt's ``task_sha256`` must be the bundle this walk
+    exported and still has on disk. The last is what makes a stale or
+    foreign policy — an older file left in the destination, a different
+    run's checkpoint — impossible to declare by accident.
+    """
+
+    from .train import TrainError, last_json_line, verify_returned_policy
+
+    training = pending.get("training") or {}
+    run_id = str(training.get("run_id") or "?")
+    destination = Path(str(training.get("destination") or ""))
+    progress_path = destination / PROGRESS_FILENAME
+    try:
+        progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise WalkError(
+            f"--complete: no readable {progress_path}. Bring the run home "
+            f"first: training/remote_train.sh pull {run_id} {destination}"
+        ) from None
+    state = str(progress.get("state") or "")
+    if state == "failed":
+        raise WalkError(
+            f"--complete: the detached run {run_id} reports state 'failed': "
+            + (str(progress.get("error") or "no error was recorded")
+               + f". The box's log is {destination / TRAIN_LOG_FILENAME}.")
+        )
+    if state != "done":
+        raise WalkError(
+            f"--complete: the detached run {run_id} reports state {state!r}, "
+            f"not 'done'. Watch it to the end first: "
+            f"training/remote_train.sh watch {run_id} {destination}"
+        )
+
+    log_path = destination / TRAIN_LOG_FILENAME
+    try:
+        receipt = last_json_line(log_path.read_text(encoding="utf-8"))
+    except OSError:
+        receipt = None
+    if not receipt or not receipt.get("sha256"):
+        raise WalkError(
+            f"--complete: {log_path} carries no trainer receipt (a JSON line "
+            "with a sha256). The run says it finished, so pull it again: "
+            f"training/remote_train.sh pull {run_id} {destination}"
+        )
+
+    expected = str(pending.get("task_sha256") or "")
+    _bundle, actual = task_bundle(train_dir)
+    if not expected or actual != expected:
+        raise WalkError(
+            "--complete: the training bundle under {:s} hashes {:s}, and the "
+            "detached launch was made against {:s}. The script moved under "
+            "the run; train again rather than declaring this policy.".format(
+                str(train_dir), (actual or "nothing")[:12], expected[:12] or "?"
+            )
+        )
+    claimed = str(receipt.get("task_sha256") or "")
+    if claimed != expected:
+        raise WalkError(
+            "--complete: the returned policy was trained on task {:s}, not "
+            "this walk's {:s}. It belongs to another run.".format(
+                claimed[:12] or "?", expected[:12]
+            )
+        )
+
+    policy_path = destination / str(
+        Path(str(progress.get("out") or training.get("policy_name") or "")).name
+    )
+    try:
+        verify_returned_policy(policy_path, receipt)
+    except TrainError as exc:
+        raise WalkError(f"--complete: {exc}") from None
+    return policy_path, receipt
 
 
 _SWITCH_RE = re.compile(rf"\b{POLICY_SWITCH}\s*=\s*num\s*\(")

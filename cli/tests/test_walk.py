@@ -32,6 +32,7 @@ from cadex_cli.walk import (
     POLICY_SWITCH,
     REVIEW_FILENAME,
     SCRIPT_FILENAME,
+    PENDING_FILENAME,
     WalkError,
     declare_policy,
     declared_note_subjects,
@@ -291,11 +292,34 @@ FAKE_CADEX = textwrap.dedent(
         out = after("--out"); out.mkdir(parents=True, exist_ok=True)
         blob = b"policy for " + script.read_bytes()
         name = (after("--name") or Path("job.cxpolicy")).name
-        (out / name).write_bytes(blob)
+        bundle = out / "job-task.json"
+        bundle.write_text(json.dumps({
+            "schema": "s", "observations": [], "reward": [], "termination": [],
+            "episode": {}, "functions": [], "actions": []}))
+        task_sha = hashlib.sha256(bundle.read_bytes()).hexdigest()
+        if "--detach" in argv:
+            # The dispatcher's pending locator, and the run destination the
+            # box mirrors into; no policy is written here at all.
+            box = Path(os.environ["FAKE_BOX_DIR"])
+            receipt = {"state": "pending", "run_id": "run-77",
+                       "target": "box.invalid", "remote_dir": "/w/run-77",
+                       "pid": 4242, "policy_name": name,
+                       "destination": str(box), "receipt_path": str(out / "training-receipt.json")}
+            (out / "training-receipt.json").write_text(json.dumps(receipt))
+            envelope(training=receipt)
+        else:
+            (out / name).write_bytes(blob)
+            sha = hashlib.sha256(blob).hexdigest()
+            envelope(training={"sha256": sha, "out": str(out / name), "reward_per_step": 0.5,
+                               "wall_time_s": 0.1, "device": "fake", "task_sha256": task_sha},
+                     assets=[{"name": name, "sha256": sha, "bytes": len(blob)}])
+    elif "asset" in argv:
+        source = after("--put")
+        blob = source.read_bytes()
         sha = hashlib.sha256(blob).hexdigest()
-        envelope(training={"sha256": sha, "out": str(out / name), "reward_per_step": 0.5,
-                           "wall_time_s": 0.1, "device": "fake", "task_sha256": "t" * 64},
-                 assets=[{"name": name, "sha256": sha, "bytes": len(blob)}])
+        store = project / "assets"; store.mkdir(parents=True, exist_ok=True)
+        (store / source.name).write_bytes(blob)
+        envelope(assets=[{"name": source.name, "sha256": sha, "bytes": len(blob)}])
     elif "script" in argv:
         source = after("--set")
         if source is None:
@@ -1478,3 +1502,190 @@ def test_walk_reports_engine_source_evidence_without_refusing(
     assert json.dumps(evidence, sort_keys=True) in captured.err
     if status == "different":
         assert evidence["changed"] == ["CadexScriptedProcess.py"]
+
+
+# -- the detached walk and its completion (ADR-282) ---------------------------
+
+
+def _box(tmp_path, monkeypatch) -> Path:
+    """Where the dispatcher would mirror a detached run's files."""
+
+    box = tmp_path / "box-run-77"
+    box.mkdir()
+    monkeypatch.setenv("FAKE_BOX_DIR", str(box))
+    return box
+
+
+def _bring_home(box: Path, out: Path, *, state: str = "done",
+                policy: bytes | None = None, task_sha256: str | None = None) -> bytes:
+    """What `remote_train.sh pull` leaves in the run destination.
+
+    The progress file the trainer rewrote, the box-side stdout with the
+    trainer's receipt on its last JSON line, and the policy itself. Nothing
+    here is written by the CLI, which is the point: the completion reads
+    files another machine produced.
+    """
+
+    blob = policy if policy is not None else b"policy from the box"
+    (box / "job.cxpolicy").write_bytes(blob)
+    bundle = out / "train" / "job-task.json"
+    digest = task_sha256 if task_sha256 is not None else hashlib.sha256(
+        bundle.read_bytes()).hexdigest()
+    (box / "training-progress.json").write_text(json.dumps({
+        "schema": "cadex-training-progress-v1", "state": state,
+        "out": "job.cxpolicy", "reward_per_step": 0.75, "error": "",
+    }))
+    (box / "train.log").write_text(
+        "WARNING: some warp noise\n"
+        + json.dumps({"out": "/w/run-77/job.cxpolicy", "bytes": len(blob),
+                      "sha256": hashlib.sha256(blob).hexdigest(),
+                      "task_sha256": digest, "reward_per_step": 0.75,
+                      "wall_time_s": 61.0, "device": "cuda", "parameters": 12})
+        + "\n==> trailer the dispatcher printed\n"
+    )
+    return blob
+
+
+def test_a_detached_walk_stops_at_pending_and_declares_nothing(
+    fake_cadex, toy_root, tmp_path, monkeypatch, capsys
+) -> None:
+    """Launch is not completion: the locator lands, and nothing else does."""
+
+    _box(tmp_path, monkeypatch)
+    out = toy_root / "runs" / "detached"
+    before = (toy_root / "script.py").read_bytes()
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out),
+        "--remote", "--detach", "--iterations", "2", "--envs", "3", "--seed", "5",
+    )
+    assert code == EXIT_OK, envelope
+    assert envelope["walk"]["mode"] == "detach"
+    assert [leg["leg"] for leg in envelope["walk"]["legs"]] == ["train"]
+    assert envelope["training"]["state"] == "pending"
+    assert envelope["training"]["run_id"] == "run-77"
+
+    # The train leg was launched detached and was not asked to store.
+    train_argv = [row for row in _legs(fake_cadex) if "train" in row][0]
+    assert "--detach" in train_argv and "--put" not in train_argv
+
+    pending = json.loads((out / PENDING_FILENAME).read_text())
+    assert pending["schema"] == "cadex-walk-pending-v1"
+    assert pending["training"]["run_id"] == "run-77"
+    assert pending["training_seed"] == 5
+    assert pending["task_sha256"] == hashlib.sha256(
+        (out / "train" / "job-task.json").read_bytes()).hexdigest()
+    assert any("remote_train.sh watch run-77" in line for line in pending["completion"])
+    assert any("walk --complete" in line for line in pending["completion"])
+
+    # Nothing a completed walk claims: no review, no policy, no declaration.
+    assert not (out / REVIEW_FILENAME).exists()
+    assert (toy_root / "script.py").read_bytes() == before
+    assert not list(toy_root.glob("assets/*.cxpolicy"))
+    row = (toy_root / "PROGRESS.md").read_text()
+    assert "pending; no policy verified" in row
+
+
+def test_complete_takes_the_pulled_policy_through_the_remaining_legs(
+    fake_cadex, toy_root, tmp_path, monkeypatch, capsys
+) -> None:
+    """The second half runs the legs the blocking walk runs, and no others."""
+
+    box = _box(tmp_path, monkeypatch)
+    out = toy_root / "runs" / "detached"
+    code, _ = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out),
+        "--remote", "--detach", "--iterations", "2", "--envs", "3", "--seed", "5",
+    )
+    assert code == EXIT_OK
+    blob = _bring_home(box, out)
+
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out), "--complete",
+    )
+    assert code == EXIT_OK, envelope
+    assert envelope["walk"]["mode"] == "complete"
+    # The launch's leg is carried forward from the marker, then the rest.
+    assert [leg["leg"] for leg in envelope["walk"]["legs"]] == [
+        "train", "collect", "declare", "rollout",
+    ]
+    # No design turn and no trainer ran in this half.
+    second = _legs(fake_cadex)[len([leg for leg in envelope["walk"]["legs"]]) - 4:]
+    assert not any("train" in row and "--out" in row for row in second[1:])
+
+    digest = hashlib.sha256(blob).hexdigest()
+    assert envelope["training"]["sha256"] == digest
+    # The trainer's `out` was a path on the box; the local file is what the
+    # later legs read.
+    assert envelope["training"]["out"] == str(box / "job.cxpolicy")
+    assert envelope["training"]["trainer_out"] == "/w/run-77/job.cxpolicy"
+    assert (toy_root / "assets" / "job.cxpolicy").read_bytes() == blob
+    assert digest in (toy_root / "script.py").read_text()
+
+    review = json.loads((out / REVIEW_FILENAME).read_text())
+    assert review["sha256"] == digest and review["weights"] == "job.cxpolicy"
+    assert review["total_reward"] == -12.5
+    # The comparison a blocking walk lands, with the seed the launch used
+    # rather than --complete's untyped default.
+    assert review["comparison"]["training_seed"] == 5
+
+
+@pytest.mark.parametrize("break_it,expected", [
+    ("running", "reports state 'running'"),
+    ("failed", "reports state 'failed'"),
+    ("no-progress", "Bring the run home first"),
+    ("foreign-task", "belongs to another run"),
+    ("moved-bundle", "The script moved under the run"),
+    ("wrong-bytes", "The transfer is wrong"),
+])
+def test_complete_refuses_what_it_cannot_honestly_declare(
+    fake_cadex, toy_root, tmp_path, monkeypatch, capsys, break_it, expected
+) -> None:
+    """Each refusal has its own remedy, so each is its own message."""
+
+    box = _box(tmp_path, monkeypatch)
+    out = toy_root / "runs" / "detached"
+    code, _ = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out),
+        "--remote", "--detach", "--iterations", "2", "--envs", "3",
+    )
+    assert code == EXIT_OK
+    before = (toy_root / "script.py").read_bytes()
+
+    if break_it in ("running", "failed"):
+        _bring_home(box, out, state=break_it)
+    elif break_it == "no-progress":
+        pass
+    elif break_it == "foreign-task":
+        _bring_home(box, out, task_sha256="f" * 64)
+    elif break_it == "moved-bundle":
+        _bring_home(box, out)
+        (out / "train" / "job-task.json").write_text('{"moved": true}')
+    else:
+        _bring_home(box, out)
+        (box / "job.cxpolicy").write_bytes(b"a different policy entirely")
+
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out), "--complete",
+    )
+    assert code == EXIT_REJECTED, envelope
+    assert expected in envelope["error"], envelope["error"]
+    assert (toy_root / "script.py").read_bytes() == before
+    assert not list(toy_root.glob("assets/*.cxpolicy"))
+
+
+@pytest.mark.parametrize("flags,named", [
+    (["--detach"], "--detach needs --remote."),
+    (["--complete", "--remote"], "--remote"),
+    (["--complete", "--prompt", "hello"], "--prompt"),
+    (["--complete", "--set", "k=1"], "--set"),
+])
+def test_the_two_detached_modes_refuse_before_any_leg_runs(
+    fake_cadex, toy_root, capsys, flags, named
+) -> None:
+    out = toy_root / "runs" / "usage"
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out), *flags,
+    )
+    assert code == EXIT_USAGE, envelope
+    assert named in envelope["error"]
+    assert not fake_cadex.exists(), "a leg ran before the usage error"
