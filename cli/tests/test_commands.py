@@ -336,14 +336,17 @@ def test_the_human_summary_names_the_files_and_the_next_guard(
     ("offline-session", "sonnet"),
     ("new-session", "sonnet"),
     ("offline-session", "opus"),
+    ("new-session", "opus"),
+    ("offline-session", None),
 ])
 def test_refused_walk_preserves_session_unless_identity_changes(
-    project, tmp_path, capsys, session_id, model
+    project, tmp_path, capsys, monkeypatch, session_id, model
 ):
     """Ordinary walk, real restore, offline Claude executable; no provider."""
     import subprocess
     from cadex_cli.session import write_agent_state
 
+    monkeypatch.delenv("CADEX_MODEL", raising=False)
     root = project["root"]
     write_agent_state(root, session_id="offline-session", model="sonnet")
     agent = root / "agent.json"
@@ -367,6 +370,7 @@ def test_refused_walk_preserves_session_unless_identity_changes(
     fake = tmp_path / "refuse"
     fake.write_text(
         "#!/usr/bin/env python3\nimport json,sys\n"
+        + f"assert sys.argv[sys.argv.index('--model') + 1] == {model or 'sonnet'!r}\n"
         + "print(" + repr(json.dumps({"type": "assistant", "message": {
             "content": [{"type": "text", "text": refusal}]}})) + ")\n"
         + "print(" + repr(json.dumps({"type": "result", "is_error": True,
@@ -375,7 +379,8 @@ def test_refused_walk_preserves_session_unless_identity_changes(
     fake.chmod(0o755)
     code = main(["walk", "--resume", "--prompt", "offline refusal",
                  "--project", str(root), "--out", str(root / "runs/refused"),
-                 "--claude", str(fake), "--model", model, "--json"])
+                 "--claude", str(fake), "--json",
+                 *(["--model", model] if model else [])])
     report = _envelope(capsys)
     assert code == EXIT_FAILURE
     assert refusal in report["error"]
@@ -389,8 +394,9 @@ def test_refused_walk_preserves_session_unless_identity_changes(
     assert (root / after["accepted_attempt"]["staging"] / "outputs").is_dir()
     assert after["latest_candidate"]["attempt_id"] == after["accepted_attempt"]["attempt_id"]
     stored = json.loads(agent.read_text())
-    assert (stored["session_id"], stored["model"]) == (session_id, model)
-    if (session_id, model) == ("offline-session", "sonnet"):
+    expected_model = "sonnet" if session_id == "offline-session" else model
+    assert (stored["session_id"], stored["model"]) == (session_id, expected_model)
+    if session_id == "offline-session":
         assert agent.read_bytes() == before_agent
         assert agent.stat().st_ino == before_stat.st_ino
         assert agent.stat().st_mtime_ns == before_stat.st_mtime_ns
@@ -412,14 +418,14 @@ def test_the_machine_can_name_the_turn_model_once(monkeypatch) -> None:
 
     monkeypatch.delenv(MODEL_ENV, raising=False)
     assert default_model() == DEFAULT_MODEL
-    assert build_parser().parse_args(["walk"]).model == DEFAULT_MODEL
+    assert build_parser().parse_args(["walk"]).model is None
 
     monkeypatch.setenv(MODEL_ENV, "  a-model-with-credit  ")
     assert default_model() == "a-model-with-credit"
     for argv, expected in (
-        (["walk"], "a-model-with-credit"),
+        (["walk"], None),
         (["walk", "--model", "explicit"], "explicit"),
-        (["-p", "hello"], "a-model-with-credit"),
+        (["-p", "hello"], None),
         (["--model", "explicit", "-p", "hello"], "explicit"),
     ):
         assert build_parser().parse_args(argv).model == expected, argv

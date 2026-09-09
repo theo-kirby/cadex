@@ -53,10 +53,10 @@ DEFAULT_MODEL = "claude-fable-5"
 MODEL_ENV = "CADEX_MODEL"
 
 
-def default_model() -> str:
-    """The model a turn uses when ``--model`` is not given."""
+def default_model(project_model: str = "") -> str:
+    """Resolve machine, project, then built-in model when no flag was given."""
 
-    return os.environ.get(MODEL_ENV, "").strip() or DEFAULT_MODEL
+    return os.environ.get(MODEL_ENV, "").strip() or project_model or DEFAULT_MODEL
 
 MCP_SERVER_NAME = "cadex"
 

@@ -78,13 +78,12 @@ Flags, valid on either side of the subcommand:
 | `--wait` | Block for the project lock instead of failing. |
 
 Prompt-only flags: `--resume` (continue this project's conversation),
-`--model` (default `$CADEX_MODEL`, then `claude-fable-5`), `--claude`
-(path to the CLI). **A machine names its model once**, the way it names its
-project root and its engine payload: a box whose default model is
-unavailable — out of usage credit, not enabled on the account — otherwise
-cannot run `cadex walk` without a person putting `--model` on every
-command, and the walk is the one thing that is not allowed to need a person
-(ADR-249).
+`--model`, `--claude` (path to the CLI). Model resolution for prompts and
+walk design turns is: explicit `--model`, nonblank `$CADEX_MODEL`, the
+project's `agent.json.model`, then `claude-fable-5` (ADR-249, ADR-276).
+The recorded model applies with or without `--resume`; that flag controls
+conversation continuity. A machine can override project choices once through
+its environment, and an explicit flag wins over both.
 `script --set` also takes `--replace`, which is you saying you mean to drop
 an output the accepted revision declares — without it such a script is
 refused, because `write_script` replaces *the whole* script and losing an
@@ -1308,7 +1307,9 @@ run.
 
 `agent.json.updated_at` records a change to the stored session ID or model,
 not every attempted turn. An unchanged nonempty session and model leave the
-file untouched; changed identity is saved even after a failed turn so it can
+file untouched. A failed turn with the same session ID also preserves the
+recorded model, even if another model was requested (ADR-276); a changed
+session ID is saved with its requested model even on failure so it can
 be resumed. Opening a project may still refresh accepted restore attempt
 metadata in `script.json`; a refused walk does not roll that bookkeeping back
 or create a failure commit.

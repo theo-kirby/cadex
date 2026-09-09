@@ -21218,7 +21218,9 @@ the portable subject. CLI suite evidence is recorded with this unit.
 
 Remove the redundant agent.json replacement when an existing nonempty session
 ID and model match the returned identity. Its updated_at records identity/model
-changes rather than attempted turns. Changed identity still persists on failure:
+changes rather than attempted turns. ADR-276 narrows failed persistence to
+changed session IDs, preserving the previous model when the locator is unchanged.
+Changed session identity still persists on failure:
 a refused turn can create a resumable conversation. Restore's accepted attempt
 locators remain engine-owned and are not rolled back. No automatic failure
 commit or cleanup of user changes. Controlled offline refusals through the walk
@@ -22288,3 +22290,20 @@ and carries `offset_source: derived`. It fails on the old source, where the
 omitted flag is the constant. It also caught the one other caller of
 `args.offset_mm`, the commit-summary formatter, which raised `TypeError` on
 `None`.
+
+
+## ADR-276 — Project model continuity survives a refused override (2026-09-08)
+
+Remove parse-time model defaults: prompt turns resolve explicit `--model`,
+nonblank `$CADEX_MODEL`, `agent.json.model`, then the built-in default, whether
+or not the conversation is resumed. Walks forward an explicit flag only; each
+design turn resolves from its own project record. The report still names the
+model actually attempted.
+
+Narrow ADR-247: a failed provider turn with the same session locator cannot
+replace a previously recorded model with the refused override. Leave the whole
+file untouched. A new session locator still persists with its attempted model
+on failure, because the conversation may be resumable; successful turns still
+persist model changes. No provider retry or model fallback is introduced.
+Offline real-engine regressions exercise resolution, failed walk overrides,
+new failed sessions and successful resumed edits. The CLI suite is the gate.

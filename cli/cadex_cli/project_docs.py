@@ -149,8 +149,10 @@ grace even if its direct child exits early, then an unconditional SIGKILL.
 For toy CPU runs, use `JAX_PLATFORMS=cpu`; `training/SETUP.md` §b gives
 the invocation and resource bounds, including for a CUDA-capable venv.
 `agent.json.updated_at` records changed session identity or model, not every
-attempt. A refused turn still saves changed identity for resumption; unchanged
-identity leaves that file untouched. Opening may refresh accepted restore
+attempt. A refused turn saves a changed session ID for resumption; the same
+session ID leaves that file untouched, including its previous model. Turns
+choose explicit `--model`, nonblank `$CADEX_MODEL`, the recorded project model,
+then the CLI default; `--resume` controls only conversation continuity. Opening may refresh accepted restore
 attempt metadata in `script.json`, even when the subsequent turn fails.
 A refused walk does not roll that bookkeeping back or create a failure commit.
 After failed retraining, the accepted sweep stays applied with `policy_on=0`;

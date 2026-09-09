@@ -2040,7 +2040,8 @@ What makes them experimental, and what would settle it:
   remain explicit. Evidence in `docs/probes/complete-review/linear-carriage/`;
   combined review evidence is ready for maintainer assessment.
 - [x] **A machine names its turn model once** (ADR-249, `docs/CLI.md` §2).
-  `--model` defaults to `$CADEX_MODEL`, then `claude-fable-5`. Found by the
+  `--model` defaults to `$CADEX_MODEL`, the recorded project model, then
+  `claude-fable-5` (ADR-276). Found by the
   first prompt walk on the Linux GPU box, whose design leg refused in 2.4 s:
   the default model was out of usage credit while `claude-sonnet-5`,
   `claude-opus-5` and `claude-haiku-4-5` all answered on the same login.
@@ -2368,9 +2369,12 @@ What makes them experimental, and what would settle it:
   lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
   domain-doc convention. No engine change, no file tool for the agent.
   §7c row 10 closes.
+- [x] **Project model continuity survives a refused override** (ADR-276).
+  Prompt and walk turns resolve flag, environment, recorded model, default;
+  failed turns with the same session ID preserve the previous record.
 - [x] **Unchanged CLI sessions preserve their metadata** (ADR-247).
   Refused and successful turns retain agent.json when session ID and model
-  match; changed identity persists even on failure. Restore attempt metadata
+  match; changed session IDs persist even on failure. Restore attempt metadata
   remains truthful; offline walk regressions preserve pre-existing user edits.
 - [x] **A domain note lands the way a decision does** (ADR-245). The
   `docs/<subject>.md` convention was documented and unreachable — the

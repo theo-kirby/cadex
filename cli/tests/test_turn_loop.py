@@ -512,3 +512,31 @@ def test_a_follow_up_that_still_offers_nothing_exits_rejected(tmp_path) -> None:
     assert factory.made[0].turns == 2
     assert "no tool call" in report.error
     assert "NO CHANGE" in report.error
+
+
+@pytest.mark.usefixtures("engine")
+@pytest.mark.parametrize("resume", [False, True])
+@pytest.mark.parametrize("explicit,environment,recorded,expected", [
+    ("explicit", "machine", "project", "explicit"),
+    (None, " machine ", "project", "machine"),
+    (None, "", "project", "project"),
+    (None, "   ", "project", "project"),
+    (None, "", "", None),
+])
+def test_turn_resolves_model_after_reading_project(
+    tmp_path, monkeypatch, resume, explicit, environment, recorded, expected
+):
+    from cadex_cli.agent import DEFAULT_MODEL
+    from cadex_cli.session import write_agent_state
+
+    monkeypatch.setenv("CADEX_MODEL", environment)
+    write_agent_state(tmp_path / "project", session_id=SESSION_ID, model=recorded)
+    factory = turn_factory([[
+        ("tool", "write_script", {"source": BRACKET}), ("done", "ok")
+    ]])
+    report = RunReport()
+    assert command_prompt(_args(tmp_path, model=explicit, resume=resume), report,
+                          turn_factory=factory) == EXIT_OK
+    assert factory.made[0].model == (expected or DEFAULT_MODEL)
+    assert report.model == factory.made[0].model
+    assert read_agent_state(report.project_root).model == report.model

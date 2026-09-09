@@ -157,8 +157,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default=default_model(),
-        help=f"Model for the turn. Default: $CADEX_MODEL, then {DEFAULT_MODEL}.",
+        default=None,
+        help="Model for the turn. Default: $CADEX_MODEL, then the project "
+        f"model, then {DEFAULT_MODEL}.",
     )
     parser.add_argument(
         "--claude", default="", help="Path to the claude CLI, if it is not on PATH."
@@ -417,8 +418,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     walk_parser.add_argument(
         "--model",
-        default=default_model(),
-        help=f"Model for the turns. Default: $CADEX_MODEL, then {DEFAULT_MODEL}.",
+        default=None,
+        help="Model for the turns. Default: $CADEX_MODEL, then the project "
+        f"model, then {DEFAULT_MODEL}.",
     )
     walk_parser.add_argument(
         "--claude", default="", help="Path to the claude CLI, if it is not on PATH."
@@ -766,7 +768,8 @@ def command_prompt(
     claude_path = find_claude(args.claude) if turn_factory is ClaudeTurn else ""
     stored = read_agent_state(Path(args.project).expanduser())
     session_id = stored.session_id if args.resume else ""
-    report.model = args.model
+    model = args.model or default_model(stored.model)
+    report.model = model
 
     with _engine_session(args, report) as (engine, client):
         api = client.request("describe_api")
@@ -791,7 +794,7 @@ def command_prompt(
         with Bridge(client, on_call=on_call, initial_revision=revision) as bridge:
             turn = turn_factory(
                 claude_path=claude_path,
-                model=args.model,
+                model=model,
                 system_prompt_text=system_prompt(
                     api, project_docs=read_project_docs(report.project_root)
                 ),
@@ -818,11 +821,13 @@ def command_prompt(
             sys.stderr.write("\n")
             sys.stderr.flush()
 
-        if result.session_id:
+        # A refused override cannot replace the model of an unchanged session.
+        # New locators still persist on failure so the conversation can resume.
+        if result.session_id and (result.ok or result.session_id != stored.session_id):
             write_agent_state(
                 report.project_root,
                 session_id=result.session_id,
-                model=args.model,
+                model=model,
             )
         report.session_id = result.session_id
         if result.resume_failed:
@@ -1483,7 +1488,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
 
     # Design: the model turns, in order.
     for index, prompt in enumerate(args.prompts):
-        argv = [*common, "-p", prompt, "--json", "--model", args.model]
+        argv = [*common, "-p", prompt, "--json"]
+        if args.model:
+            argv += ["--model", args.model]
         if index > 0 or args.resume:
             argv.append("--resume")
         if args.claude:
