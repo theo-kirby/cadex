@@ -3040,6 +3040,145 @@ def _clearance_at_frame(
     return breaches
 
 
+def _declared_clearance(
+    properties: Mapping[str, Any], component_outputs: Mapping[int, str]
+) -> tuple[list[tuple[str, str]], float]:
+    """The clearance promise a simulation value carries, as component names."""
+
+    pairs = [
+        (component_outputs[id(pair[0])], component_outputs[id(pair[1])])
+        for pair in list(properties.get("clearance") or [])
+    ]
+    return pairs, float(properties.get("clearance_mm") or 0.0)
+
+
+def _placement_from_compact(pose: Mapping[str, Any], *, context: str) -> Any:
+    """The inverse of ``_compact_placement``: one trace pose, as a placement.
+
+    A trace frame is the only durable record of where a mechanism actually
+    went, and both MuJoCo paths write it in the schema ``_compact_placement``
+    defines -- absolute world position in millimetres and an xyzw quaternion,
+    the same numbers ``cadex_animate`` sets on the component in the viewport.
+    Reading it back is what lets a check run over a pose the solver has
+    already forgotten.
+    """
+
+    import FreeCAD as App
+
+    position = pose.get("position_mm")
+    rotation = pose.get("rotation_xyzw")
+    if (
+        not isinstance(position, (list, tuple))
+        or len(position) != 3
+        or not isinstance(rotation, (list, tuple))
+        or len(rotation) != 4
+    ):
+        raise AssemblyCandidateError(
+            f"{context} is not a trace pose: expected position_mm[3] and "
+            "rotation_xyzw[4].",
+            details={"stage": "trace_clearance"},
+        )
+    numbers = [float(item) for item in (*position, *rotation)]
+    if not all(math.isfinite(item) for item in numbers):
+        raise AssemblyCandidateError(
+            f"{context} contains a non-finite value.",
+            details={"stage": "trace_clearance"},
+        )
+    if math.sqrt(sum(item * item for item in numbers[3:])) <= 1.0e-12:
+        raise AssemblyCandidateError(
+            f"{context} has a zero-length rotation quaternion.",
+            details={"stage": "trace_clearance"},
+        )
+    return App.Placement(App.Vector(*numbers[:3]), App.Rotation(*numbers[3:]))
+
+
+def _clearance_over_trace(
+    components: Mapping[str, Any],
+    pairs: list[tuple[str, str]],
+    gap: float,
+    frames: Sequence[Mapping[str, Any]],
+    *,
+    query_cap: int = _CLEARANCE_QUERY_CAP,
+) -> dict[str, Any]:
+    """The same swept check, over poses a solver reached rather than drove.
+
+    ``_clearance_at_frame`` runs inside the kinematics solver's frame loop,
+    "the only moment the trace exists as geometry rather than as numbers".
+    A MuJoCo trace *is* numbers -- the run is over and the model that
+    produced it was boxes and capsules (ADR-281), so its own contact report
+    says nothing about the parts. This poses the real components from the
+    trace and measures the exact BREP there, which is the only place the
+    question "does the gait hit anything" can be answered honestly.
+
+    The composition is the whole risk. Setting ``component.Placement`` from
+    the frame is exactly what the kinematics path leaves the solver having
+    done -- the native loop records ``_compact_placement(component.Placement)``
+    into the frame it then measures -- so the same prepared shapes and the
+    same per-frame check apply unchanged, and a ``lib.*`` part whose
+    transform rides on its shape stays composed rather than replaced
+    (ADR-241, ADR-242).
+
+    **It reports; it never refuses.** ``api.simulation`` refuses a swept
+    breach because a prescribed travel that collides is a design error the
+    script asked about. A dynamics run or a policy rollout is a measurement:
+    refusing it would delete the trace that shows the problem and make a
+    trained gait unpublishable, so the breach leaves as a finding the next
+    design turn reads.
+    """
+
+    if not pairs:
+        return {}
+    prepared = _clearance_prepare(components, pairs)
+    budget = {"spent": 0, "cap": query_cap, "capped": False}
+    named = {name for pair in pairs for name in pair}
+    saved = {name: components[name].Placement.copy() for name in named}
+    worst: dict[tuple[str, str], dict[str, Any]] = {}
+    checked = 0
+    try:
+        for frame in frames:
+            placements = frame.get("component_placements") or {}
+            if not all(name in placements for name in named):
+                # A pose the trace does not carry is not a pose to measure
+                # in: leaving the component where the previous frame put it
+                # would report a number about a frame that never happened.
+                continue
+            for name in named:
+                components[name].Placement = _placement_from_compact(
+                    placements[name], context=f"component {name!r} pose"
+                )
+            checked += 1
+            for breach in _clearance_at_frame(
+                components, pairs, gap, budget, prepared
+            ):
+                key = (breach["components"][0], breach["components"][1])
+                if key not in worst or breach["distance_mm"] < worst[key]["distance_mm"]:
+                    worst[key] = {
+                        **breach,
+                        "frame_index": int(frame.get("frame_index") or 0),
+                        "nominal_time_s": frame.get("nominal_time_s"),
+                    }
+    finally:
+        for name, placement in saved.items():
+            components[name].Placement = placement
+
+    summary: dict[str, Any] = {
+        "minimum_mm": gap,
+        "pairs": [list(pair) for pair in pairs],
+        "frames_checked": checked,
+        "frames_available": len(frames),
+        "distance_queries": budget["spent"],
+        "query_cap_reached": bool(budget["capped"]),
+        "pose": "every trace frame (swept over the solved motion)",
+        "held": not worst,
+    }
+    if worst:
+        summary["breaches"] = sorted(
+            worst.values(), key=lambda row: row["distance_mm"]
+        )
+        summary["closest_approach"] = summary["breaches"][0]
+    return summary
+
+
 def _execute_native_simulation(
     *,
     document: Any,
@@ -3171,14 +3310,9 @@ def _execute_native_simulation(
         start_time = float(properties["start_time_s"])
         end_time = float(properties["end_time_s"])
         time_step = float(properties["time_step_s"])
-        clearance_pairs = [
-            (
-                component_outputs[id(pair[0])],
-                component_outputs[id(pair[1])],
-            )
-            for pair in list(properties.get("clearance") or [])
-        ]
-        clearance_gap = float(properties.get("clearance_mm") or 0.0)
+        clearance_pairs, clearance_gap = _declared_clearance(
+            properties, component_outputs
+        )
         clearance_budget = {"spent": 0, "cap": _CLEARANCE_QUERY_CAP, "capped": False}
         clearance_shapes = _clearance_prepare(components, clearance_pairs)
         worst: dict[tuple[str, str], dict[str, Any]] = {}
@@ -3617,6 +3751,12 @@ def _execute_dynamics_simulation(
             "worst_closure_residual_mm": float(run["worst_closure_residual_mm"]),
         }
     )
+    clearance_pairs, clearance_gap = _declared_clearance(
+        properties, component_outputs
+    )
+    clearance = _clearance_over_trace(
+        components, clearance_pairs, clearance_gap, frames
+    )
     return _retain_simulation_trace(
         assembly_output=assembly_output,
         simulation_output=simulation_output,
@@ -3638,11 +3778,13 @@ def _execute_dynamics_simulation(
             # reads the same trace for both solvers.
             "motion_outputs": [],
             "dynamics": evidence,
+            **({"clearance": clearance} if clearance else {}),
         },
         summary_extra={
             "motion_outputs": [],
             "native_code": 0,
             "dynamics": evidence,
+            **({"clearance": clearance} if clearance else {}),
         },
         artifact_root=artifact_root,
         outputs_by_name=outputs_by_name,
@@ -4385,6 +4527,7 @@ def _execute_policy_rollout(
     policy_outputs: Mapping[int, str],
     containers: Mapping[str, Mapping[str, Any]],
     components: Mapping[str, Any],
+    component_outputs: Mapping[int, str],
     artifact_root: Path,
     outputs_by_name: Mapping[str, dict[str, Any]],
 ) -> dict[str, Any]:
@@ -4504,6 +4647,12 @@ def _execute_policy_rollout(
         "seed": episode["seed"],
         "randomisation": list(episode["randomisation"]),
     }
+    clearance_pairs, clearance_gap = _declared_clearance(
+        properties, component_outputs
+    )
+    clearance = _clearance_over_trace(
+        components, clearance_pairs, clearance_gap, frames
+    )
     return _retain_simulation_trace(
         assembly_output=assembly_output,
         simulation_output=simulation_output,
@@ -4529,12 +4678,14 @@ def _execute_policy_rollout(
             # no policy and therefore no commands, and the shell draws the
             # panel only when the key is present.
             "actuator_channels": list(run["actuator_channels"]),
+            **({"clearance": clearance} if clearance else {}),
         },
         summary_extra={
             "motion_outputs": [],
             "native_code": 0,
             "dynamics": evidence,
             "policy": policy_evidence,
+            **({"clearance": clearance} if clearance else {}),
         },
         artifact_root=artifact_root,
         outputs_by_name=outputs_by_name,
@@ -6119,6 +6270,7 @@ def validate_and_solve_assembly(
             policy_outputs={id(value): name for name, value in policy_contract},
             containers=policy_containers,
             components=components,
+            component_outputs=component_outputs,
             artifact_root=artifact_root,
             outputs_by_name=by_name,
         )

@@ -3049,6 +3049,19 @@ available without contours, unsupported cuts unavailable with reasons, and
 errors fail the walk without reporting retained files as current success.
 These previews show the initial solved pose, not rollout frames or swept clearance.
 
+**Clearance over the poses the run reached, 2026-09-09 (ADR-283).** The gap
+that paragraph names is closed on the geometry side: `assembly.dynamics` and
+`assembly.rollout` take `clearance=[(a, b)]` and `clearance_mm` on the same
+terms `assembly.simulation` has since ADR-130, and measure the named pairs as
+exact BREP at **every frame of the trace**, re-posed from each frame's own
+`position_mm`/`rotation_xyzw`. What it is not: a MuJoCo contact report. The
+geoms the run collides are boxes and capsules (ADR-281), so the solver cannot
+be asked about the parts and the parts have to be measured where the solver
+left them. Unlike a kinematics sweep this **reports** — the finding lands on
+the simulation output under `clearance`, with `closest_approach` naming the
+pair, the millimetres and the frame — because refusing a dynamics result
+would delete the trace that shows the problem.
+
 ## 8. Live mode: watching it, rather than reading about it
 
 **ADR-109.** Everything above produces a *recording*: six seconds, one drawn

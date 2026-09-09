@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-08
+Verified against source: 2026-09-09
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -361,7 +361,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   whose weights arrived intact but whose network the engine reads
   differently is a refusal rather than a bad gait. A script may declare more
   than one; nothing bakes a policy.
-  `assembly.rollout(policy, frames_per_second=..., seed=...)` **plays** one,
+  `assembly.rollout(policy, frames_per_second=..., seed=..., clearance=..., clearance_mm=...)` **plays** one,
   and this is the one that reaches the viewport. It produces the same
   `simulation` output `assembly.simulation` and `assembly.dynamics` produce,
   so a script has exactly one of the three, a rollout cannot sit beside
@@ -876,6 +876,27 @@ The sweep's resolution is `time_step_s`, because the trace **is** the sweep.
 Poses whose bounding boxes are already further apart than the gap cost
 nothing; the distance queries that do run are capped, and a check that
 spends its cap refuses rather than reporting a pass.
+
+`assembly.dynamics` and `assembly.rollout` take the same two arguments and
+**report instead of refusing** `[ADR-283]`:
+
+```python
+play = assembly.rollout(gait, clearance=[(shin, frame)], clearance_mm=1.0)
+```
+
+The pairs are measured as exact BREP at every frame of the trace, re-posed
+from the frame's own `position_mm`/`rotation_xyzw` — which is where a
+MuJoCo run leaves the only durable record of where the mechanism went. It
+is the only honest answer to "does the gait hit anything": a policy is
+trained against collision geoms that are boxes and capsules, so what it
+learned to avoid is not the part.
+
+The finding lands on the simulation output under `clearance`, carrying
+`closest_approach` with the pair, the millimetres, the frame index and its
+time. A prescribed travel that collides is a design error the script asked
+about, so `assembly.simulation` refuses it; a dynamics result is a
+measurement, and refusing it would delete the trace that shows the problem
+and make a trained gait unpublishable.
 
 ### Terminals: ports that name geometry `[ADR-062]`
 

@@ -22523,3 +22523,52 @@ refusals is pinned by the words it is supposed to say. No ssh, no box, no
 `.remote.env`. `docs/CLI.md` §2 carries the contract, and its GUI-attached
 leg table — held equal to the walk's `run_leg` names in order by
 `cli/tests/test_project_docs.py` — gains the `collect` row.
+
+## ADR-283 — Clearance over the poses a dynamics run reached (2026-09-09)
+
+ADR-130 gave `assembly.simulation` a swept clearance check: named component
+pairs, measured as exact BREP at every frame of the trace, refused if they
+come closer than `clearance_mm`. It applied to exactly one solver. A MuJoCo
+run — `assembly.dynamics`, or `assembly.rollout` playing a trained policy —
+produced a trace nobody looked at as geometry, so the only clearance number
+a project carried for a mechanism that moves under physics was the static
+one at the initial solved pose. `CadexInspection.py` says so in its own
+words: `core.inspect scope="clearance"` returns `"pose": "initial solved
+pose (not swept motion)"`.
+
+The walk that closed the lifecycle criterion is the measurement. It reported
+one intersection at the initial solved pose, then rolled 151 solved frames
+with 74.62° of crank rotation and 20.32 mm of coupler travel, with clearance
+measured at none of them. A green clearance block said nothing about the
+gait, and the run's own collision model cannot be asked instead: the geoms a
+policy is trained against are boxes and capsules (ADR-281), so what it
+learned to avoid is not the part.
+
+`assembly.dynamics` and `assembly.rollout` now take the same `clearance` and
+`clearance_mm` arguments `assembly.simulation` has taken since ADR-130.
+`_clearance_over_trace` re-poses each named component from the frame's own
+`position_mm`/`rotation_xyzw` — the inverse of the `_compact_placement` both
+solvers already write — and calls the existing `_clearance_at_frame`. The
+prepared shapes and the composition are unchanged, which is the point:
+composing a foreign pose onto a linked component rather than replacing it is
+the defect class ADR-241 and ADR-242 each had to fix once, and reusing the
+fixed path is cheaper than repeating it. A live-kernel driver measures the
+ADR-242 mechanism twice — once posed by hand the way the kinematics frame
+loop poses it, once from the frames `_compact_placement` wrote from those
+same poses — and requires the two to agree exactly. Placements are restored
+in a `finally`: a check does not move the assembly it measured.
+
+**It reports; it does not refuse.** `assembly.simulation` refuses a breach
+because a prescribed travel that collides is a design error the script asked
+about. A dynamics result is a measurement, and refusing it would delete the
+trace that shows the problem and make a trained gait unpublishable. The
+finding lands on the simulation output under `clearance` — `closest_approach`
+with the pair, the millimetres, the frame index and its time — and reaches
+the next design turn the way ADR-271's clearance row does.
+
+Three arguments were removed by the same commit rather than added: the
+promise's validation, duplicated nowhere and now shared by all three
+solvers as `_clearance_promise`, and the pair-name lookup the native path
+open-coded, now `_declared_clearance`. No op changed, so `OP_ARG_SPECS`,
+`docs/INTEGRATION.md` and the shell client are untouched; a `clearance` key
+on a simulation summary is one the native path has published since ADR-130.
