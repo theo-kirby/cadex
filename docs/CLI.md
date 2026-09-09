@@ -52,7 +52,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex script` | Print the project script. | no |
 | `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
-| `cadex section --plane XY --offset-mm 8` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). | no |
+| `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). **`--offset-mm` is optional**: omitted, the offset is derived from the accepted bounds the way the walk derives it — every candidate is cut and the one covering the most objects wins (ADR-273, ADR-275). The note reports the offset, whether it was `explicit` or `derived`, and how many of the model's objects the cut reached. | no |
 | `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews plus `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
 | `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. | no |
 | `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, and the pose the solver settled on. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
@@ -68,6 +68,7 @@ Flags, valid on either side of the subcommand:
 | `--project DIR` | Project root; **created if absent**. Default `./.cadex`, or `$CADEX_PROJECT`. |
 | `--out DIR` | Write exported files here. Omit and nothing is written. |
 | `--format step,stl` | Any of `step`, `stl`, `brep`. Default `step,stl`. |
+| `--offset-mm N` | `section`: where along the plane normal to cut. **Omit it** to derive the offset from the accepted bounds (ADR-275); the old default was the constant 0.0, which on a mechanism standing off that plane draws an empty page and calls it `empty`. |
 | `--min-clearance-mm N` | `clearance`: flag distances strictly below N (default 0.1 mm). |
 | `--max-common-volume-mm3 N` | `clearance`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
 | `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output to inventory. A project publishes at most one, so this is only ever a check that you are looking at it. |
@@ -379,8 +380,9 @@ of doing any of them:
    tessellation puts a seam exactly there: the best-coverage candidate is
    systematically the one the plane-contact refusal rejects. The siblings
    are what turn that seam into a few millimetres of offset rather than a
-   missing part. `cadex section --plane/--offset-mm` is
-   unchanged and reports `offset_source: explicit`. It carries
+   missing part. `cadex section --plane XZ` derives the same
+   way when `--offset-mm` is omitted (ADR-275); given one, it cuts there and reports
+   `offset_source: explicit`. It carries
    status, availability, revision/digest, plane/offset/units, approximation,
    limits, acquisition/section timings and project-relative `path` (SVG) and
    `summary_path` (JSON). Empty cuts remain available with no contours;

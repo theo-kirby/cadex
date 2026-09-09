@@ -101,6 +101,27 @@ result = {"shape": shape, "a": a, "asm": asm, "diag": diag}
     assert main(['section', '--project', str(root), '--plane', 'XY', '--offset-mm', 'nan', '--json']) != 0
     assert not json.loads(capsys.readouterr().out)['ok']
 
+    # The constant this flag used to default to misses this part completely --
+    # the solid stands at z 5..15, so the old `cadex section --plane XY` drew
+    # an empty page and said `empty` about it. Omitting the flag now derives
+    # the offset the way the walk has since ADR-267, and the note says which
+    # offset was cut, that it was derived, and how much of the model it
+    # reached (ADR-275).
+    explicit = run('section', '--plane', 'XY', '--offset-mm', '0')
+    assert json.loads(next(root.glob('review/section/*/XY-0/summary.json')).read_text()) \
+        ['status'] == 'empty'
+    assert any('XY 0 mm (explicit); empty; 0/1 objects cut' in note
+               for note in explicit['notes'])
+
+    report = run('section', '--plane', 'XY')
+    derived = json.loads(sorted(root.glob('review/section/*/XY-*/summary.json'),
+                                key=lambda p: p.stat().st_mtime)[-1].read_text())
+    assert derived['offset_source'] == 'derived'
+    assert derived['status'] == 'ok' and derived['objects_cut'] == 1
+    assert 5 < derived['offset_mm'] < 15
+    assert any(f"XY {derived['offset_mm']:g} mm (derived); ok; 1/1 objects cut" in note
+               for note in report['notes'])
+
 
 def test_sloping_faces_change_cut_area_with_offset():
     vertices = [(0, 0, 0), (10, 0, 0), (0, 10, 0), (0, 0, 10)]

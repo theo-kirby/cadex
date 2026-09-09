@@ -211,7 +211,16 @@ def build_parser() -> argparse.ArgumentParser:
     section_parser = subparsers.add_parser("section", help="Cut accepted geometry through a named world plane.")
     _common(section_parser, inherit=True)
     section_parser.add_argument("--plane", choices=("XY", "XZ", "YZ"), required=True)
-    section_parser.add_argument("--offset-mm", type=float, default=0.0)
+    section_parser.add_argument(
+        "--offset-mm",
+        type=float,
+        default=None,
+        metavar="N",
+        help="Where along the plane normal to cut. Omitted, the offset is "
+        "derived from the accepted bounds the way the walk derives it "
+        "(ADR-273): every candidate is cut and the one covering the most "
+        "objects wins.",
+    )
 
     clearance_parser = subparsers.add_parser(
         "clearance", help="Check accepted assembly pairs; write docs/clearance.md.",
@@ -940,11 +949,29 @@ def command_render(args: argparse.Namespace, report: RunReport) -> int:
 
 
 def command_section(args: argparse.Namespace, report: RunReport) -> int:
+    """Cut the accepted geometry, at a given offset or at a derived one.
+
+    ``--offset-mm`` is optional, and omitting it is the ordinary way to call
+    this: the walk has derived its offset since ADR-267, but the flag used to
+    default to the constant 0.0, so a person or agent calling the eye by hand
+    got exactly the fixed plane that derivation exists to replace -- on
+    ``ot4-swing2`` a plane that cuts none of the ten parts. The note says
+    which offset was cut and whether it was asked for or derived, because a
+    section is a claim about what was *not* on the page as much as what was.
+    """
+
     with _engine_session(args, report) as (_engine, client):
         path, value = write_section(client, report.project_root, plane=args.plane, offset=args.offset_mm)
         report.revision = report.accepted_revision = value["revision"]
         report.digest = value["digest"] or ""
-        report.notes.append(f"section: {value['status']}; {path}.")
+        report.notes.append(
+            "section: {:s} {:g} mm ({:s}); {:s}; {:d}/{:d} objects cut; {:s}.".format(
+                str(value["plane"]), float(value["offset_mm"]),
+                str(value.get("offset_source") or "explicit"),
+                str(value["status"]), int(value["objects_cut"]),
+                len(value.get("objects") or {}), str(path),
+            )
+        )
         report.ok = True
         return EXIT_OK
 
@@ -1766,7 +1793,8 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
     if command == "export":
         return f"export → {args.out}"
     if command == "section":
-        return f"section → review/section/ ({args.plane}, {args.offset_mm:g} mm)"
+        where = "derived offset" if args.offset_mm is None else f"{args.offset_mm:g} mm"
+        return f"section → review/section/ ({args.plane}, {where})"
     if command == "render":
         return "render → review/render/ (front, top, right, iso)"
     if command == "clearance":

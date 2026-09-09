@@ -2200,6 +2200,13 @@ What makes them experimental, and what would settle it:
   re-points the flags, so `--remote` is no longer a cold-run-only mode and an
   iterate has the same shape locally and on the box. Tested against the real
   script with stand-in `ssh`/`rsync`; still no dispatch.
+- [x] **The section eye derives its own plane when called by hand**
+  (2026-09-08, ADR-275). `cadex section --plane XZ` with no `--offset-mm`
+  now takes the derived path the walk has used since ADR-267; the flag's
+  old `default=0.0` made that path unreachable from the command line, so a
+  hand caller got exactly the constant derivation replaces. The note reports
+  the offset, `explicit` or `derived`, and the objects-cut count. Explicit
+  offsets, the derivation itself and the walk are unchanged.
 - [x] **The walk's section cuts where the geometry is** (2026-09-08, ADR-267).
   The review's offset is derived from the accepted snapshot's own bounds --
   most objects' bounds crossed, first supported cut wins -- instead of a

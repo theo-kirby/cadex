@@ -22239,3 +22239,52 @@ Narrow, by construction, and reversible:
 `cli/tests/test_turn_loop.py`, two of which fail on the old source, and the
 third pins the narrowness — a refused turn is asked nothing. 268 CLI tests
 pass.
+
+## ADR-275 — The section eye derives its own plane when called by hand (2026-09-08)
+
+ADR-267 taught the walk to derive a section offset rather than cut at a fixed
+plane, and ADR-270 and ADR-273 made that derivation good: every candidate is
+cut, the one that reaches the most objects wins, and the SVG label says how
+many it missed. All of that reached exactly one caller. `cadex section`
+declared `--offset-mm` with `default=0.0`, so `write_section`'s derived path
+(`offset=None`) was unreachable from the command line, and a person or agent
+calling the eye by hand got precisely the constant the derivation exists to
+replace.
+
+Measured on `ot4-swing2` at accepted revision `93ed1c909276`, both calls made
+through this change: `--plane XZ --offset-mm 0`, the old default, reports
+**`unsupported` at 2 of 10 objects cut** — a plane-contact refusal, so not a
+drawing at all. The same call with the flag omitted derives **−9.2 mm and
+reports `ok` at 6 of 10**, which is the coverage the walk has been getting on
+this rig and a hand caller was not. (Six of ten is itself the honest ceiling
+here: ADR-273 established that no single XZ plane through this mechanism
+reaches the swing arm and its mount cluster together.) On the cavity rig in
+`test_section.py` the failure is starker still — the part stands at z 5–15 mm,
+so `cadex section --plane XY` drew an empty page and reported `empty` about
+it.
+
+`--offset-mm` now defaults to `None` and the derived path is what an omitted
+flag selects. Passing a value is unchanged and still reports `offset_source:
+explicit` — including `--offset-mm 0`, which is now distinguishable from not
+asking. The report note gained the three facts a hand caller needs and could
+not previously get without opening `summary.json`: the offset cut, whether it
+was asked for or derived, and the objects-cut count over the object total. The
+project commit summary says `derived offset` in place of a formatted number.
+
+Deriving by default is the reversible direction: the explicit form still
+exists and is one flag away, whereas the old default silently produced a
+drawing that was wrong in the one way the reader cannot see.
+
+Not claimed: no change to the derivation itself, to `write_section`, to the
+walk (which already passed `None`), to `OP_ARG_SPECS`, the payload or
+`shell/`. Swept sectioning, multi-plane sectioning and exact OCCT sections
+remain unbuilt.
+
+`cli/cadex_cli/__main__.py` and `docs/CLI.md` only. The regression extends the
+real-engine `test_real_cavity_pose_offsets_and_local_artifacts`: the explicit
+0.0 cut still reports `empty` at `0/1 objects cut`, and the same call with the
+flag omitted derives an offset strictly inside 5–15 mm, reads `ok` at `1/1`,
+and carries `offset_source: derived`. It fails on the old source, where the
+omitted flag is the constant. It also caught the one other caller of
+`args.offset_mm`, the commit-summary formatter, which raised `TypeError` on
+`None`.
