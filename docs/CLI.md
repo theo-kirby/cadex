@@ -655,6 +655,37 @@ new run/policy/review paths are absent from the index and committed trees.
 This is additional evidence for the existing headless walk and review
 criteria, with no runtime, entry-point or project-scaffold behavior change.
 
+**Fresh crank-slider attempt (2026-09-08, iteration 48).** A new
+`ot4-crank48` project (only output exclusions existed before invocation)
+was prompted for a grounded frame, position-servo revolute crank, coupler
+and prismatic slider, with masses, task, policy switch and domain notes.
+`ot4-crank` already existed, so this attempt used a distinct root and no
+`--resume`. The command was `CADEX_MODEL=claude-opus-5 JAX_PLATFORMS=cpu
+./cadex walk --project "$PROJECT" --prompt "$PROMPT" --out
+"$PROJECT/runs/fresh48" --name fresh48.cxpolicy --iterations 5 --envs 16
+--seed 0 --timeout 600 --leg-timeout 1800 --json`.
+
+| Leg or measurement | Result |
+|---|---|
+| Design (`claude-opus-5`) | Exit 1, 1.94 s; provider reported “You've hit your session limit” |
+| Train / declare / rollout | Not reached |
+| Render / section / inventory / clearance | Not reached; review block empty |
+| Total reward / witness error | Unavailable; no training or rollout |
+| Whole invocation | Exit 1, 2.003486 s |
+| Peak process-tree RSS | 382,861,312 bytes, sampled every 0.2 s |
+
+No watchdog intervention occurred (2.9 GiB memory guard; trainer bounded
+by 600 s). The source comparison reported one differing file out of 56,
+`cadex_assembly_worker.py`, from pre-existing uncommitted edits; this
+attempt neither changed nor built the engine. The refusal preceded geometry,
+so it provides no evidence about crank-slider solver support. The project
+has scaffold documents but no accepted revision or progress row. Its local
+`runs/fresh48/` retains the envelope, stderr and monitor receipt, excluded
+from Git along with policy and review output. This leaves the fresh
+mixed-joint walk unevidenced; the model refusal is the observed stopping
+point, with no retry scheduled against a clock. Runtime and scaffold
+behavior are unchanged.
+
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through
 `training/remote_train.sh train` (ADR-089, `training/SETUP.md` §d) instead

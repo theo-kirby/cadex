@@ -2311,6 +2311,11 @@ What makes them experimental, and what would settle it:
   / 0 degrees; CLI §2 and project PROGRESS retain individual measurements,
   explicit references and the action-midpoint caveat. This direction is spent.
 
+- [x] **Attempt a fresh mixed-joint crank-slider walk** (2026-09-08,
+  iteration 48; `docs/CLI.md` §2). `claude-opus-5` refused design at its
+  session limit: exit 1, 1.94 s design, 2.003486 s total, 382,861,312 bytes
+  peak tree RSS. No later leg or eye ran; fresh crank-slider success remains
+  unevidenced. This checkbox records the experiment, not lifecycle completion.
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected
