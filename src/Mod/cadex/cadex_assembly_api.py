@@ -388,6 +388,39 @@ def _clearance_pairs(
     return pairs
 
 
+def _clearance_promise(
+    operation: str, clearance: Any, clearance_mm: Any, model: DomainValue
+) -> tuple[list[list[DomainValue]], float]:
+    """One clearance promise: the pairs and the gap, or neither (ADR-130).
+
+    Shared by ``api.simulation``, ``api.dynamics`` and ``api.rollout``,
+    which ask the same question of three different solvers. The two halves
+    are refused apart because neither means anything alone: a gap with no
+    pairs has no safe default -- two parts joined at a joint are supposed to
+    touch -- and pairs with no gap check for "more than zero apart", which
+    passes on parts that are already touching.
+    """
+
+    pairs = _clearance_pairs(operation, clearance, model)
+    gap = _number(operation, "clearance_mm", clearance_mm, minimum=0.0)
+    if pairs and gap <= 0.0:
+        raise _error(
+            operation,
+            "clearance_mm",
+            "must be positive when clearance pairs are named; a check for "
+            "'more than zero apart' passes on parts that are touching",
+            clearance_mm,
+        )
+    if gap > 0.0 and not pairs:
+        raise _error(
+            operation,
+            "clearance",
+            "name the component pairs the gap applies to; two parts joined "
+            "at a joint are supposed to touch, so there is no safe default",
+        )
+    return pairs, gap
+
+
 def _selection(operation: str, value: Any) -> dict[str, str]:
     if isinstance(value, str):
         clean = value.strip()
@@ -1507,23 +1540,7 @@ class AssemblyDomainAPI:
                 "would exceed 10000 native frames or 100000 component-pose samples; "
                 "increase time_step_s or shorten the time range",
             )
-        pairs = _clearance_pairs(operation, clearance, model)
-        gap = _number(operation, "clearance_mm", clearance_mm, minimum=0.0)
-        if pairs and gap <= 0.0:
-            raise _error(
-                operation,
-                "clearance_mm",
-                "must be positive when clearance pairs are named; a check for "
-                "'more than zero apart' passes on parts that are touching",
-                clearance_mm,
-            )
-        if gap > 0.0 and not pairs:
-            raise _error(
-                operation,
-                "clearance",
-                "name the component pairs the gap applies to; two parts joined "
-                "at a joint are supposed to touch, so there is no safe default",
-            )
+        pairs, gap = _clearance_promise(operation, clearance, clearance_mm, model)
         return self._value(
             operation,
             "simulation",
@@ -2492,6 +2509,8 @@ class AssemblyDomainAPI:
         frames_per_second: int = 60,
         gravity_m_s2: Sequence[float] | None = None,
         solver_step_s: float | None = None,
+        clearance: Sequence[Sequence[DomainValue]] | None = None,
+        clearance_mm: float = 0.0,
         label: str = "",
     ) -> DomainValue:
         """Simulate the assembly under gravity and retain its trace.
@@ -2510,6 +2529,21 @@ class AssemblyDomainAPI:
         shapes, so a mechanism with none is held together by its joints
         alone and passes through everything -- which is exactly what a
         kinematics-shaped model already assumed.
+
+        ``clearance`` and ``clearance_mm`` are the same promise
+        ``api.simulation`` takes, measured over the poses the solver
+        *reached* rather than the ones a formula drove: the named pairs are
+        checked as exact BREP at every frame of the trace. It is the only
+        honest answer to "does the motion hit anything", because the model
+        that produced the motion collides as boxes and capsules (ADR-281)
+        and knows nothing about the parts.
+
+        Unlike ``api.simulation`` a breach here is **reported, not
+        refused**. A prescribed travel that collides is a design error the
+        script asked about; a dynamics result is a measurement, and
+        refusing it would delete the trace that shows the problem. The
+        finding lands on the simulation output under ``clearance``, with
+        the closest approach and the frame it happened at.
 
         ``actuators`` takes ``api.actuator`` values, at most one per joint
         coordinate, and is what turns a mechanism that falls into one that
@@ -2603,6 +2637,7 @@ class AssemblyDomainAPI:
                 "would exceed 10000 frames or 100000 component-pose samples; "
                 "lower frames_per_second or shorten the time range",
             )
+        pairs, gap = _clearance_promise(operation, clearance, clearance_mm, model)
         return self._value(
             operation,
             "simulation",
@@ -2610,6 +2645,8 @@ class AssemblyDomainAPI:
             bodies=shared["bodies"],
             actuators=shared["actuators"],
             joint_dynamics=shared["joint_dynamics"],
+            clearance=pairs,
+            clearance_mm=gap,
             start_time_s=start,
             end_time_s=end,
             frames_per_second=frames_per_second,
@@ -3685,6 +3722,8 @@ class AssemblyDomainAPI:
         *,
         frames_per_second: int | None = None,
         seed: int | None = None,
+        clearance: Sequence[Sequence[DomainValue]] | None = None,
+        clearance_mm: float = 0.0,
         label: str = "",
     ) -> DomainValue:
         """Play one trained policy against its own task, as a simulation.
@@ -3720,6 +3759,15 @@ class AssemblyDomainAPI:
         ``seed`` draws the task's ``api.randomise`` entries for this one
         episode, by the algorithm the bundle states. Without it nothing is
         randomised and the rollout is the nominal mechanism.
+
+        ``clearance`` and ``clearance_mm`` measure the named component pairs
+        as exact BREP **at every pose the gait actually reached**, and
+        report rather than refuse -- the same terms ``api.dynamics`` takes,
+        for the same reason. Without it the only clearance number a project
+        carries is the one at the initial solved pose, which says nothing
+        about a mechanism that has since walked: a policy is trained against
+        collision geoms that are boxes and capsules (ADR-281), so what it
+        learned to avoid is not the part.
         """
 
         operation = "rollout"
@@ -3803,10 +3851,24 @@ class AssemblyDomainAPI:
                 "would exceed 10000 frames or 100000 component-pose samples; "
                 "lower frames_per_second or shorten the task's episode_seconds",
             )
+        pairs, gap = (
+            _clearance_promise(operation, clearance, clearance_mm, assembly)
+            if isinstance(assembly, DomainValue)
+            else ([], _number(operation, "clearance_mm", clearance_mm, minimum=0.0))
+        )
+        if gap > 0.0 and not pairs:
+            raise _error(
+                operation,
+                "clearance",
+                "name the component pairs the gap applies to; two parts joined "
+                "at a joint are supposed to touch, so there is no safe default",
+            )
         return self._value(
             operation,
             "simulation",
             value,
+            clearance=pairs,
+            clearance_mm=gap,
             frames_per_second=rate,
             seed=seed,
             estimated_frame_limit=estimated_frames,

@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from cadex_cli.__main__ import _progress_what, command_prompt, main
-from cadex_cli.agent import CLI_OVERLAY, system_prompt
+from cadex_cli.agent import CLI_OVERLAY, MODEL_ENV, system_prompt
 from cadex_cli.export import ExportedOutput
 from cadex_cli.project_docs import (
     ARCHITECTURE_NAME,
@@ -28,6 +29,7 @@ from cadex_cli.project_docs import (
     PROJECT_DOC_NAMES,
     append_progress_row,
     decision_lines,
+    documentation_status,
     note_lines,
     progress_numbers,
     read_project_docs,
@@ -84,9 +86,11 @@ def test_scaffold_creates_the_three_and_never_overwrites(tmp_path) -> None:
 def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path) -> None:
     """ADR-200's three facts reach the project's own docs: which mode trains
     (the venv here, or ``--remote`` on the box), that the artifacts land at
-    the same project-relative paths either way, and that a remote run is a
-    cold run. The walk's doc and the scaffold are one ticket: `docs/CLI.md`
-    must say the scaffold carries the section, so neither moves alone."""
+    the same project-relative paths either way, and — since ADR-268 — that a
+    warm start travels with the bundle rather than pinning an iterate to
+    this machine. The walk's doc and the scaffold are one ticket:
+    `docs/CLI.md` must say the scaffold carries the section, so neither
+    moves alone."""
 
     scaffold_project_docs(tmp_path)
     architecture = (tmp_path / ARCHITECTURE_NAME).read_text()
@@ -97,7 +101,7 @@ def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path)
         "same project-relative paths in both modes",
         "runs/<name>/train/",
         "runs/<name>/review.json",
-        "cold runs only",
+        "A warm start travels",
         "`--init-from`",
         "(remote)",
     ):
@@ -105,14 +109,14 @@ def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path)
 
     walk_doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
     assert "`ARCHITECTURE.md` scaffold carries a `## Training` section" in walk_doc
-    assert "Cold runs only" in walk_doc
+    assert "A warm start travels" in walk_doc
     assert "shared mode artifacts table in `docs/CLI.md`" in architecture
     assert "**Shared mode artifacts**" in walk_doc
-    assert "review/section/<accepted-revision>/XZ-3.125/" in architecture
+    assert "review/section/<accepted-revision>/XZ-<derived-offset>/" in architecture
     assert "Empty cuts" in architecture and "unsupported cuts" in architecture
     for path in ("runs/<name>/train/", "runs/<name>/rollout/",
                  "runs/<name>/review.json", "assets/<name>.cxpolicy", "PROGRESS.md",
-                 "review/section/<accepted-revision>/XZ-3.125/"):
+                 "review/section/<accepted-revision>/XZ-<derived-offset>/"):
         assert path in walk_doc.split("**Shared mode artifacts**", 1)[1].split(
             "A leg that fails", 1)[0]
 
@@ -143,6 +147,130 @@ def test_the_scaffold_states_the_gui_mode_and_the_walk_doc_agrees(tmp_path) -> N
     assert "before the next GUI edit" in flat
     assert "concurrent rebuilds are not guarded" in flat
 
+    # ADR-249 gave the machine one name for its turn model; the shell does
+    # not read it, so the GUI-attached mode's doc has to say which window
+    # resolves what. The code wins here too: `shell/.../agent.py`'s
+    # `DEFAULT_MODEL` is "" and nothing under `shell/` names `CADEX_MODEL`.
+    assert "The two windows resolve the turn model separately" in flat
+    assert "the shell reads no environment variable" in flat
+    assert "the divergence is in what is spent, not in the artifacts" in flat
+    assert "$CADEX_MODEL" in flat.split(
+        "**With the GUI attached", 1)[1].split("**The project is a codebase**", 1)[0]
+
+
+
+def test_the_gui_mode_doc_is_still_true_about_which_window_names_the_model() -> None:
+    """The claim above is a fact about the other front end, so pin the fact
+    rather than only the sentence: `mesh_agent` resolves its model from a
+    preference whose default is empty and names no environment variable.
+    If the shell ever learns `$CADEX_MODEL`, this fails and `docs/CLI.md`
+    §2's GUI paragraph is the thing to fix -- not this assertion."""
+
+    mesh_agent = (Path(__file__).resolve().parents[2]
+                  / "shell" / "scripts" / "startup" / "mesh_agent")
+    if not mesh_agent.is_dir():  # a checkout without the shell tree
+        pytest.skip("no shell/ tree in this checkout")
+
+    assert 'DEFAULT_MODEL = ""' in (mesh_agent / "agent.py").read_text()
+    named = [source.name for source in mesh_agent.rglob("*.py")
+             if MODEL_ENV in source.read_text()]
+    assert named == [], named
+
+
+# -- the GUI-attached mode, leg by leg -----------------------------------
+#
+# The doc's table is the criterion "three modes, one shape" made checkable:
+# it names every leg of the walk and what a GUI-attached run does
+# differently. These two tests hold it to the code on both sides -- the
+# CLI's `run_leg` calls, and the `mesh_agent` facts the difference column
+# rests on -- so a new leg, or a shell that learns to watch the project,
+# fails the doc rather than quietly outdating it.
+
+GUI_TABLE_HEADER = "| Leg | The child command |"
+
+
+def _gui_leg_table_rows() -> list[list[str]]:
+    """The GUI-attached leg table in `docs/CLI.md` §2, as cell lists."""
+
+    doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
+    assert GUI_TABLE_HEADER in doc, "the GUI-attached leg table is gone"
+    body = doc.split(GUI_TABLE_HEADER, 1)[1].split("\n\n", 1)[0]
+    cells = [[cell.strip() for cell in line.strip().strip("|").split("|")]
+             for line in body.splitlines() if line.startswith("|")]
+    return [row for row in cells if set("".join(row)) != {"-"}]
+
+
+def test_the_gui_leg_table_names_the_walks_legs_in_order() -> None:
+    """Every leg the walk spawns has a row, in the order it runs, and the
+    in-process review is last. Read off `run_leg("...")` in `__main__.py`
+    rather than a list kept beside it: adding a leg without saying what an
+    open window does about it fails here."""
+
+    source = (Path(__file__).resolve().parents[1]
+              / "cadex_cli" / "__main__.py").read_text()
+    spawned = re.findall(r'run_leg\(\s*"([a-z]+)"', source)
+    assert spawned, "no run_leg calls found -- has the walk moved?"
+
+    rows = _gui_leg_table_rows()
+    documented = [row[0] for row in rows]
+    assert documented[:-1] == [f"`{name}`" for name in spawned], documented
+    assert documented[-1].startswith("review"), documented[-1]
+    assert "_engine_session" in documented[-1]
+    assert all(len(row) == 4 for row in rows), rows
+
+    # The one leg with a real difference is the digest edit, and it is the
+    # only row that asks for a refresh.
+    difference = {row[0]: row[3] for row in rows}
+    assert "STALE_PROGRAM_REVISION" in difference["`declare`"]
+    assert "Rebuild Model or reopen" in difference["`declare`"]
+    refreshing = [name for name, cell in difference.items()
+                  if "Rebuild Model" in cell and "keeps the values" not in cell]
+    assert refreshing == ["`declare`"], refreshing
+
+
+def test_the_gui_leg_tables_difference_column_rests_on_shell_facts() -> None:
+    """Pin the four `mesh_agent` facts the table's difference column
+    claims, not only its sentences: the shell takes no lock, watches no
+    file, writes none of the project's documents, and runs no trainer. If
+    any of them stops being true, `docs/CLI.md` §2's leg table is the thing
+    to fix -- not this assertion."""
+
+    mesh_agent = (Path(__file__).resolve().parents[2]
+                  / "shell" / "scripts" / "startup" / "mesh_agent")
+    if not mesh_agent.is_dir():  # a checkout without the shell tree
+        pytest.skip("no shell/ tree in this checkout")
+    sources = {source.name: source.read_text()
+               for source in mesh_agent.rglob("*.py")}
+
+    # 1. The lock is the CLI's alone: the shell never takes it.
+    holding = [name for name, text in sources.items()
+               if "flock" in text or ".cadex-cli.lock" in text]
+    assert holding == [], holding
+
+    # 2. It watches nothing in the project. These four are the whole set:
+    #    three about the open file and one that tags editors for redraw. A
+    #    fifth handler has to be read against the table's claim before this
+    #    line is widened -- a watcher on the project directory would make a
+    #    GUI-attached run a different shape.
+    handlers = set(re.findall(r"bpy\.app\.handlers\.(\w+)\.append",
+                              sources["__init__.py"]))
+    assert handlers == {"save_pre", "save_post", "load_post",
+                        "frame_change_post"}, handlers
+
+    # 3. The three project documents are the CLI's and a person's.
+    writing = [name for name, text in sources.items()
+               if "PROGRESS.md" in text or "DECISIONS.md" in text]
+    assert writing == [], writing
+
+    # 4. No trainer on this side, in any mode.
+    importing = [name for name, text in sources.items()
+                 if re.search(r"^\s*(?:import|from)\s+mujoco", text, re.M)]
+    assert importing == [], importing
+
+    # ...and the project root the terminal's --project names is derived
+    # from the open file every time, which is why one store has one meaning
+    # for both windows.
+    assert "never cached" in sources["cadex_backend.py"]
 
 
 def test_a_train_row_names_the_mode_it_ran_in() -> None:
@@ -161,18 +289,61 @@ def test_a_train_row_names_the_mode_it_ran_in() -> None:
     assert remote == local + " (remote)"
 
 
-def test_read_is_bounded_and_keeps_the_tail_of_progress(tmp_path) -> None:
+@pytest.mark.parametrize("limit", [4_000, 8_000])
+def test_read_keeps_architecture_head_and_recent_history_without_editing(tmp_path, limit) -> None:
     scaffold_project_docs(tmp_path)
-    for index in range(400):
-        append_progress_row(tmp_path, run="params", what=f"row {index}")
-    (tmp_path / DECISIONS_NAME).write_text("# D\n" + "x" * 20_000)
+    sources = {name: f"old {name}\n" + "x" * 20_000 + f"\nnew {name}"
+               for name in PROJECT_DOC_NAMES}
+    sources["docs/sensors.md"] = "old sensor\n" + "y" * 3_000 + "\nnew sensor"
+    (tmp_path / "docs").mkdir(exist_ok=True)
+    for name, source in sources.items():
+        (tmp_path / name).write_text(source, encoding="utf-8")
 
-    text = read_project_docs(tmp_path, limit=4_000)
+    text = read_project_docs(tmp_path, limit=limit)
 
-    assert f"--- {ARCHITECTURE_NAME} ---" in text
-    assert "row 399" in text and "row 0 |" not in text  # tail for the log
-    assert "earlier characters omitted" in text
-    assert "more characters omitted" in text  # head for the ADR log
+    for name, source in sources.items():
+        ends = name == ARCHITECTURE_NAME
+        bound = 2_000 if name.startswith("docs/") else limit
+        omitted = len(source) - bound
+        if ends:
+            head = bound // 2
+            expected = (source[:head]
+                        + f"\n[… {omitted} characters omitted …]\n"
+                        + source[-(bound - head):])
+        else:
+            expected = (f"[… {omitted} earlier characters omitted …]\n"
+                        + source[-bound:])
+        assert f"--- {name} ---\n{expected}" in text
+        assert (tmp_path / name).read_bytes() == source.encode("utf-8")
+
+
+def test_a_scaffold_that_outgrows_the_budget_still_shows_the_project_s_own_lines(
+    tmp_path,
+) -> None:
+    """The guide at the top must never evict what the project wrote below it.
+
+    The architecture scaffold is boilerplate that grows every time the walk
+    contract does; the project's own paragraphs are appended under it. Head-
+    bounding meant that the moment the scaffold passed the budget — which it
+    did at ADR-277, at 8,191 characters — every project's own architecture
+    silently stopped reaching the agent's prompt (ADR-279). The check is made
+    against the real scaffold rather than a synthetic string so that a future
+    guide line cannot break it back without failing here.
+    """
+
+    scaffold_project_docs(tmp_path)
+    architecture = tmp_path / ARCHITECTURE_NAME
+    scaffold = architecture.read_text(encoding="utf-8")
+    own = "\n## Own\n\nThe hinge pin is 3 mm; the cable exit stays clear.\n"
+    architecture.write_text(scaffold + own, encoding="utf-8")
+    # Force the eviction the old bounding suffered even on a short scaffold.
+    limit = len(scaffold) - 500
+
+    text = read_project_docs(tmp_path, limit=limit)
+
+    assert "The hinge pin is 3 mm; the cable exit stays clear." in text
+    assert scaffold.strip().splitlines()[0] in text  # ...and the guide's head
+    assert "characters omitted" in text
 
 
 def test_read_says_nothing_for_a_project_with_no_docs(tmp_path) -> None:
@@ -286,6 +457,42 @@ def test_note_lines_land_one_file_per_subject_and_come_back_next_visit(tmp_path)
     assert "the knee stalls at 40 deg." in prompt_docs
 
 
+def test_documentation_status_names_the_subjects_a_project_has_no_note_for(
+    tmp_path,
+) -> None:
+    """The convention is checked, not only offered (ADR-256).
+
+    A walk hands in what the model declares; the status says which of
+    those subjects the project documents and which it does not. The
+    generated reports never count as a note, and a project with nothing
+    declared has nothing missing.
+    """
+
+    assert documentation_status(tmp_path) == {
+        "notes": [], "expected": [], "missing": []
+    }
+    assert documentation_status(tmp_path, ["actuators", "sensors"])["missing"] == [
+        "actuators", "sensors"
+    ]
+
+    record_notes(tmp_path, "NOTE sensors: the hinge angle, in degrees.")
+    (tmp_path / "docs" / "clearance.md").write_text("| pair | mm |\n", encoding="utf-8")
+    status = documentation_status(tmp_path, ["actuators", "sensors", "sensors", ""])
+    assert status["notes"] == ["docs/sensors.md"]
+    assert status["expected"] == ["actuators", "sensors"]
+    assert status["missing"] == ["actuators"]
+    assert documentation_status(tmp_path, ["sensors"])["missing"] == []
+
+    # ...and the guide says which declaration asks for which note.
+    walk_doc = " ".join(
+        (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text().split()
+    )
+    assert (
+        "an `<actuator>` section with children asks the project for "
+        "`docs/actuators.md`" in walk_doc
+    )
+
+
 def test_the_scaffold_and_the_overlay_ask_for_the_notes_the_walk_exercises(tmp_path) -> None:
     """The convention is asked for, not only described (ADR-245).
 
@@ -305,6 +512,21 @@ def test_the_scaffold_and_the_overlay_ask_for_the_notes_the_walk_exercises(tmp_p
     architecture = " ".join((tmp_path / ARCHITECTURE_NAME).read_text().split())
     assert "NOTE <subject>: <text>" in architecture
     assert "actuators.md" in architecture and "sensors.md" in architecture
+
+    # ...and it says the walk reads the convention back (ADR-256): which
+    # declaration asks for which note, where the finding lands, and that a
+    # missing note neither fails the run nor gets written by the CLI.
+    assert (
+        "an `<actuator>` section with children asks this project for "
+        "`docs/actuators.md`, a `<sensor>` section for `docs/sensors.md`"
+    ) in architecture
+    assert "The `documentation` block in `review.json` and the `PROGRESS.md` row" in (
+        architecture
+    )
+    assert "`docs notes N, none missing` or `docs notes N, no <subjects>`" in architecture
+    assert (
+        "never a walk failure, and the CLI never writes the note itself" in architecture
+    )
 
     walk_doc = " ".join(
         (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text().split()
@@ -469,6 +691,82 @@ def test_a_number_a_previous_row_carried_is_written_with_its_change(tmp_path) ->
     assert previous_numbers(root)["reward/step"] == (1.52, "369a0dd5")
 
 
+def test_a_walk_row_s_travel_reads_back_off_the_row_on_both_channels(tmp_path) -> None:
+    """The unit is in the label, so the figure survives the round trip.
+
+    `motion 103.3 mm` cannot be read back — `_NUMBER_RE` wants
+    `<label> <number>` — so before ADR-260 a walk's travel could be
+    written and never compared. Four significant figures, not one
+    decimal: a rig that moved 0.0004 mm did not stand still.
+    """
+
+    from cadex_cli.project_docs import compared_number, previous_numbers
+
+    root = tmp_path / "project"
+    first = "; motion {:s} on carriage, {:s} on carriage over 61 solved frame(s)".format(
+        compared_number("travel_mm", 103.298, {}),
+        compared_number("travel_deg", 0.0, {}),
+    )
+    assert first.startswith("; motion travel_mm 103.3 on carriage, travel_deg 0 on")
+    append_progress_row(root, run="walk", what="walk 5 it × 16 envs → runs/walk-1",
+                        digest="4b0a1c2d" + "0" * 56, numbers="clearance unavailable" + first)
+    assert previous_numbers(root) == {
+        "travel_mm": (103.3, "4b0a1c2d"), "travel_deg": (0.0, "4b0a1c2d")}
+
+    # The iterate walk: the travel held while (elsewhere on the row's own
+    # train leg) the reward fell. The row says the first half; it makes no
+    # claim about which of the two mattered.
+    previous = previous_numbers(root)
+    second = compared_number("travel_mm", 103.719, previous)
+    assert second == "travel_mm 103.7 (Δ +0.419 vs 4b0a1c2d at 103.3)"
+    assert compared_number("travel_deg", 0.0, previous) == (
+        "travel_deg 0 (Δ ±0 vs 4b0a1c2d at 0)")
+    append_progress_row(root, run="walk", what="walk 5 it × 16 envs → runs/walk-2",
+                        digest="9e10f3a4" + "0" * 56, numbers="clearance unavailable; motion "
+                        + second + " on carriage over 61 solved frame(s)")
+    # The delta text is not mistaken for the next row's own value.
+    assert previous_numbers(root)["travel_mm"] == (103.7, "9e10f3a4")
+
+
+def test_a_walk_row_s_clearance_finding_count_carries_its_delta(tmp_path) -> None:
+    """The number an iterate turns, said as a change (ADR-271).
+
+    A walk that answers a clearance finding writes `clearance offending
+    0`, which alone is indistinguishable from a rig that never had one.
+    The label was always in front of the count, so every row already
+    written reads back and the very first row of the new spelling carries
+    a real delta.
+    """
+
+    from cadex_cli.project_docs import compared_number, previous_numbers
+
+    root = tmp_path / "project"
+    # A row in the old spelling: no delta text, and never re-written.
+    append_progress_row(
+        root, run="walk", what="walk 5 it × 16 envs → runs/before",
+        digest="f08ff7ef" + "0" * 56,
+        numbers="clearance offending 1; unknown 0; pairs checked 1 "
+                "(initial solved pose; 0.1 mm / 1e-06 mm³)",
+    )
+    assert previous_numbers(root)["clearance offending"] == (1.0, "f08ff7ef")
+
+    previous = previous_numbers(root)
+    answered = compared_number("clearance offending", 0.0, previous)
+    assert answered == "clearance offending 0 (Δ -1 vs f08ff7ef at 1)"
+    append_progress_row(
+        root, run="walk", what="walk 5 it × 16 envs → runs/after",
+        digest="ef8662ad" + "0" * 56,
+        numbers=answered + "; unknown 0; pairs checked 1 "
+                "(initial solved pose; 0.1 mm / 1e-06 mm³)",
+    )
+    # The delta text is not mistaken for the next row's own value, and a
+    # walk that finds nothing twice running says so rather than going
+    # quiet.
+    assert previous_numbers(root)["clearance offending"] == (0.0, "ef8662ad")
+    assert compared_number("clearance offending", 0.0, previous_numbers(root)) == (
+        "clearance offending 0 (Δ ±0 vs ef8662ad at 0)")
+
+
 def _git(root: Path, *argv: str) -> str:
     import subprocess
 
@@ -557,3 +855,131 @@ def test_a_project_inside_another_work_tree_is_left_alone(tmp_path) -> None:
     assert not (root / ".git").exists()
     assert commit_project(root, "never") == ""
     assert _git(tmp_path, "status", "--porcelain")  # untouched: still unstaged
+
+
+def test_walk_retention_uses_git_precedence_and_preserves_history(tmp_path) -> None:
+    from cadex_cli.project_docs import commit_project, ensure_project_repo
+
+    root = tmp_path / "project"
+    scaffold_project_docs(root)
+    ensure_project_repo(root)
+    (root / "assets").mkdir()
+    (root / "assets/old.cxpolicy").write_text("original")
+    assert commit_project(root, "baseline")
+    baseline = _git(root, "rev-parse", "HEAD")
+
+    # Quill's root negation outranks its local policy exclusion.
+    with (root / ".git/info/exclude").open("a") as stream:
+        stream.write("\n/runs/iterate/\n/assets/new.cxpolicy\n")
+    policy = root / "assets/new.cxpolicy"
+    policy.write_text("new weights")
+    assert "!assets/*.cxpolicy" in _git(root, "check-ignore", "-v", str(policy))
+    # Explicit overrides belong AFTER that negation in the root ignore file.
+    with (root / ".gitignore").open("a") as stream:
+        stream.write("\n/assets/new.cxpolicy\n/assets/old.cxpolicy\n")
+    generated = ["runs/iterate/train/new.cxpolicy", "runs/iterate/review.json",
+                 "review/render/revision/front.svg", "review/section/revision/summary.json"]
+    for name in generated:
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("generated")
+    (root / "PROGRESS.md").write_text("measured results")
+    (root / "docs").mkdir()
+    (root / "docs/sensors.md").write_text("sensor rationale")
+    (root / "script.py").write_text("# authoritative source")
+    (root / "assets/default.cxpolicy").write_text("retained by default")
+    # Ignores neither untrack files nor undo explicit user staging.
+    (root / "assets/old.cxpolicy").write_text("updated")
+    staged = root / "runs/iterate/user-note.txt"
+    staged.write_text("staged")
+    _git(root, "add", "-f", str(staged))
+    staged.write_text("working version")
+    assert commit_project(root, "walk train")
+    assert commit_project(root, "walk review") == ""
+    tree = set(_git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines())
+    assert not (set(generated) | {"assets/new.cxpolicy"}) & tree
+    assert {"script.py", "PROGRESS.md", "docs/sensors.md", "assets/default.cxpolicy",
+            "assets/old.cxpolicy", "runs/iterate/user-note.txt"} <= tree
+    assert _git(root, "show", "HEAD:PROGRESS.md") == "measured results"
+    assert _git(root, "show", "HEAD:assets/old.cxpolicy") == "updated"
+    assert _git(root, "show", "HEAD:runs/iterate/user-note.txt") == "working version"
+    assert _git(root, "show", baseline + ":assets/old.cxpolicy") == "original"
+    assert all((root / name).is_file() for name in generated)
+    assert policy.read_text() == "new weights"
+
+
+def test_objective_evidence_ignores_seeds_and_model_but_names_action_changes(tmp_path):
+    from cadex_cli.project_docs import task_comparison, comparison_cell, append_progress_row
+    import json
+    task = {"schema": "task-v1", "observations": [{"unit": "mm"}],
+            "reward": [{"expression": "height", "weight": 1}], "termination": [],
+            "episode": {"max_steps": 200}, "functions": ["abs"],
+            "actions": [{"low": 0, "high": 40, "unit": "mm"}],
+            "model": {"sha256": "old"}}
+    path = tmp_path / "task.json"
+    def evidence(seed):
+        path.write_text(json.dumps(task))
+        return {**task_comparison(path), "training_seed": seed, "rollout_seed": 7}
+    first = evidence(0)
+    task["model"]["sha256"] = "new"
+    second = evidence(5)
+    assert first["objective_id"] == second["objective_id"]
+    task["actions"][0]["high"] = 60
+    third = evidence(5)
+    assert third["objective_id"] == first["objective_id"]
+    assert third["actions_id"] != first["actions_id"]
+    task["reward"][0]["weight"] = 2
+    assert evidence(5)["objective_id"] != first["objective_id"]
+    append_progress_row(tmp_path, run="walk", what="legacy", numbers="travel_mm 1")
+    cell = comparison_cell(tmp_path, "walk", first)
+    assert "training_seed 0; rollout_seed 7" in cell
+    assert "unavailable (legacy row)" in cell
+    append_progress_row(tmp_path, run="walk", what="new", numbers=cell)
+    later = comparison_cell(tmp_path, "walk", second)
+    assert "training_seed 5; rollout_seed 7" in later
+    assert "previous evidence: objective " + first["objective_id"] in later
+    assert "training_seed 0; rollout_seed 7" in later
+    path.write_text('{}')
+    assert task_comparison(path)["objective_id"] is None
+
+
+@pytest.mark.parametrize("kind", ["progress", "decision", "note"])
+@pytest.mark.parametrize("failure", ["write", "replace"])
+def test_failed_document_write_preserves_history_and_retry(
+    tmp_path, monkeypatch, kind, failure
+):
+    scaffold_project_docs(tmp_path)
+    record_notes(tmp_path, "NOTE sensors: original sensor rationale")
+    path, update = {
+        "progress": (tmp_path / PROGRESS_NAME,
+                     lambda: append_progress_row(tmp_path, run="walk", what="new result")),
+        "decision": (tmp_path / DECISIONS_NAME,
+                     lambda: record_decisions(tmp_path, "DECISION: new result")),
+        "note": (tmp_path / "docs/sensors.md",
+                 lambda: record_notes(tmp_path, "NOTE sensors: new result")),
+    }[kind]
+    path.chmod(0o640)
+    original = path.read_bytes()
+    files = set(tmp_path.rglob("*"))
+    write_text = Path.write_text
+
+    def interrupted_write(target, text, *args, **kwargs):
+        write_text(target, text[:12], *args, **kwargs)
+        raise OSError("injected disk write failure")
+
+    with monkeypatch.context() as patch:
+        if failure == "write":
+            patch.setattr(Path, "write_text", interrupted_write)
+        else:
+            def refused_replace(*args):
+                raise OSError("injected disk write failure")
+            patch.setattr("cadex_cli.project_docs.os.replace", refused_replace)
+        with pytest.raises(OSError, match="injected disk write failure"):
+            update()
+    assert path.read_bytes() == original
+    assert set(tmp_path.rglob("*")) == files
+    update()
+    assert path.read_bytes().startswith(original)
+    assert path.read_text().count("new result") == (2 if kind == "decision" else 1)
+    assert path.stat().st_mode & 0o777 == 0o640
+    assert set(tmp_path.rglob("*")) == files

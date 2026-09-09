@@ -3,23 +3,15 @@
 
 """``cadex train``: the dispatcher for the offboard trainer (ADR-191).
 
-The lifecycle audit (``docs/MUJOCO.md`` §7c, row 4) found the training
-leg reachable only by a person who knew the trainer's flags — and caught
-the agent guessing them twice. These pin three things: the flags this
-dispatcher emits are the trainer's own (read back out of its source);
-the receipt reaches the envelope as the trainer printed it; and the whole
-leg — rebuild, bundle out, train, policy home — runs as one command.
-
-Most run against a *fake* trainer, a few lines of Python standing in for
-``training/cadex_train.py``, because the leg's shape does not depend on
-jax. The last one runs the real trainer in the training venv and skips,
-saying so, when there is none.
+Pin trainer flags, receipts and the rebuild → bundle → train → policy leg.
+Fake trainers cover dispatch contracts; real CPU tests skip without a venv.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -33,9 +25,11 @@ from cadex_cli.__main__ import main
 from cadex_cli.export import ExportedOutput
 from cadex_cli.report import EXIT_FAILURE, EXIT_OK, EXIT_REJECTED, EXIT_USAGE
 from cadex_cli.train import (
+    REMOTE_TRANSPORT_STEPS,
     TrainError,
     find_task,
     remote_trainer_command,
+    resolve_bundle_model,
     resolve_trainer_python,
     run_trainer,
     trainer_command,
@@ -255,12 +249,24 @@ def test_the_remote_command_is_the_dispatcher_with_the_same_flags_after_the_dash
     assert "train <bundle.json> <out.cxpolicy> [--allow-cpu] [--detach] [-- trainer args]" in source
     assert 'seen_dashdash' in source and '--allow-cpu) allow_cpu=1' in source
 
-    # A warm start is refused here: the script carries two files out and
-    # the --init-from policy is not one of them.
-    with pytest.raises(TrainError, match="trains cold"):
-        remote_trainer_command(
-            "b/t-task.json", "b/t.cxpolicy", script="r", init_from="p.cxpolicy", **kwargs
-        )
+    # A warm start is not refused and not rewritten here (ADR-268): the
+    # flags leave this machine as the local trainer's own, and the
+    # dispatcher is what lifts the two local paths out and re-points them.
+    warm = remote_trainer_command(
+        "b/t-task.json", "b/t.cxpolicy", script="r", init_from="p.cxpolicy",
+        init_from_parent_task="b0/t-task.json",
+        init_from_task_change="a harder band", **kwargs
+    )
+    local_warm = trainer_command(
+        "python", "b/t-task.json", "b/t.cxpolicy", script="train.py",
+        init_from="p.cxpolicy", init_from_parent_task="b0/t-task.json",
+        init_from_task_change="a harder band", **kwargs
+    )
+    assert warm[warm.index("--") + 1:] == local_warm[5:]
+    assert warm[warm.index("--init-from") + 1] == "p.cxpolicy"
+    # ...and the lifting is in the script, by the names it parses on.
+    assert "--init-from|--init-from-parent-task)" in source
+    assert 'remote_dir}/warm/' in source
 
 
 def test_a_returned_policy_is_verified_against_the_receipt(
@@ -401,6 +407,39 @@ def test_a_trainer_that_fails_or_hangs_is_a_failure_with_the_reason(
         run_trainer([sys.executable, str(hang)], timeout=0.5)
 
 
+def test_a_crash_on_stderr_reaches_the_machine_readable_error(
+    tmp_path, capfd
+) -> None:
+    """The failure names its cause, not whatever stdout happened to say.
+
+    Measured on the ot4-mix52 walk: MJX refused the exported crank-slider
+    with ``NotImplementedError: (mjGEOM_CYLINDER, mjGEOM_BOX) collisions
+    not implemented`` on stderr, while the two benign ``Failed to import
+    warp`` lines on stdout were all that reached ``walk.json``. An agent
+    reading ``--json`` could not tell why the leg died.
+    """
+
+    crash = tmp_path / "crash.py"
+    crash.write_text(
+        "import sys\n"
+        "print('Failed to import warp: No module named \\'warp\\'')\n"
+        "print('Failed to import mujoco_warp: No module named \\'warp\\'')\n"
+        "sys.stderr.write('Traceback (most recent call last):\\n')\n"
+        "sys.stderr.write('NotImplementedError: "
+        "(mjGEOM_CYLINDER, mjGEOM_BOX) collisions not implemented.\\n')\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(TrainError) as caught:
+        run_trainer([sys.executable, str(crash)])
+    message = str(caught.value)
+    assert "collisions not implemented" in message
+    assert "Failed to import warp" in message  # the stdout tail still travels
+
+    # ...and stderr still passed through live, where a person reads it.
+    assert "collisions not implemented" in capfd.readouterr().err
+
+
 # -- the command, end to end ---------------------------------------------
 
 
@@ -435,13 +474,15 @@ def test_usage_errors_come_before_any_engine_or_trainer(tmp_path, capsys) -> Non
         )
         assert code == EXIT_USAGE, (apart, envelope)
         assert "--init-from-parent-task" in envelope["error"], envelope
-    # --remote's company (ADR-200): the box has its own venv, --allow-cpu
-    # is the dispatcher's flag, and a warm start is not carried out.
+    # --remote's company (ADR-200): the box has its own venv and
+    # --allow-cpu is the dispatcher's flag. A warm start is not in this
+    # list any more -- since ADR-268 the dispatcher carries its files out.
     for wrong, word in (
         (["--remote", "--trainer-python", sys.executable], "CADEX_TRAIN_VENV"),
         (["--allow-cpu"], "--remote"),
-        (["--remote", "--init-from", "p.cxpolicy", "--init-from-parent-task", "t.json",
-          "--init-from-task-change", "why"], "trains cold"),
+        (["--detach"], "--remote"),
+        (["--detach", "--remote", "--dry-run"], "--dry-run"),
+        (["--detach", "--remote"], "inside the project"),
     ):
         code, envelope = _run(
             capsys, "train", "--project", str(project), "--out",
@@ -529,6 +570,77 @@ def test_the_remote_leg_lands_the_same_artifacts_as_the_local_one(
     assert any("trained job" in note for note in envelope["notes"]), envelope
 
 
+def test_the_dry_run_plans_the_leg_in_both_modes_and_runs_neither(
+    task_project, fake_trainer, fake_remote, tmp_path, capsys
+) -> None:
+    """``--dry-run`` (ADR-255) against the real engine: the export really
+    happens, the trainer does not, and the local and remote plans name the
+    same files. This is the offline half of the claim ADR-200 makes — that
+    the box's leg lands what this machine's would — checked without a box.
+    """
+
+    out = tmp_path / "run-plan"
+    common = (
+        "train", "--project", str(task_project), "--out", str(out),
+        "--iterations", "2", "--envs", "4", "--label", "toy", "--put",
+        "--dry-run",
+    )
+    code, local = _run(capsys, *common, "--trainer-python", sys.executable)
+    assert code == EXIT_OK, local
+    code, remote = _run(capsys, *common, "--remote", "--allow-cpu")
+    assert code == EXIT_OK, remote
+
+    # The bundle and the model are on disk; the policy and the asset are not,
+    # and neither trainer ran: the fake dispatcher never wrote its argv log.
+    assert (out / "job-task.json").is_file() and (out / "model-model.xml").is_file()
+    assert not (out / "job.cxpolicy").exists()
+    assert not (task_project / "assets" / "job.cxpolicy").exists()
+    assert not fake_remote.exists()
+    assert "training" not in local and "training" not in remote
+
+    plans = (local["training_plan"], remote["training_plan"])
+    for plan in plans:
+        assert plan["executed"] is False
+        assert plan["artifacts"] == {
+            "bundle": str(out / "job-task.json"),
+            "model": str(out / "model-model.xml"),
+            "policy": str(out / "job.cxpolicy"),
+            "stored_asset": "job.cxpolicy",
+        }
+    # Same steps, plus the transport the box needs and nothing else.
+    steps = [[str(step["step"]) for step in plan["steps"]] for plan in plans]
+    assert steps[0] == ["export", "train", "verify", "store"]
+    assert [name for name in steps[1] if name not in REMOTE_TRANSPORT_STEPS] == steps[0]
+    assert set(steps[1]) - set(steps[0]) == set(REMOTE_TRANSPORT_STEPS)
+    # ...and the trainer's own flags are the same wherever it runs.
+    local_command, remote_command = (plan["command"] for plan in plans)
+    assert local["training_plan"]["mode"] == "local"
+    assert remote["training_plan"]["mode"] == "remote"
+    assert remote_command[:4] == [
+        remote["training_plan"]["runner"], "train",
+        str(out / "job-task.json"), str(out / "job.cxpolicy"),
+    ]
+    assert local_command[local_command.index("--out") + 2:] == (
+        remote_command[remote_command.index("--") + 1:]
+    )
+
+
+def test_a_bundle_whose_model_is_missing_is_a_planning_failure(tmp_path) -> None:
+    """The model resolution the plan shares with ``remote_train.sh``: the
+    recorded relative path, then the basename beside the bundle, then a
+    refusal — a dispatch that would have failed after the copy started."""
+
+    bundle = tmp_path / "run" / "job-task.json"
+    bundle.parent.mkdir()
+    bundle.write_text(json.dumps({"model": {"path": "model/model-model.xml"}}))
+    with pytest.raises(TrainError) as refused:
+        resolve_bundle_model(bundle)
+    assert "beside neither" in str(refused.value)
+    beside = bundle.parent / "model-model.xml"
+    beside.write_text("<mujoco/>")
+    assert resolve_bundle_model(bundle) == beside
+
+
 def test_the_curriculum_pair_reaches_the_trainer_as_given(
     task_project, fake_trainer, tmp_path, capsys
 ) -> None:
@@ -608,11 +720,9 @@ REAL_TRAINER_PYTHON = _real_trainer_python()
     reason="No training venv with jax and mujoco (training/SETUP.md).",
 )
 def test_the_real_trainer_trains_the_toy_and_the_engine_digests_agree(
-    task_project, tmp_path, capsys
+    task_project, tmp_path, capsys, cpu_training
 ) -> None:
-    """One iteration, four environments: a policy the engine's own
-    ``put_asset`` digests to the same sha256 the trainer printed. Bounded
-    by ``--timeout`` well under the night's fifteen-minute rule."""
+    """Bounded CPU training: stored policy and trainer digests agree."""
 
     out = tmp_path / "real"
     code, envelope = _run(
@@ -621,7 +731,7 @@ def test_the_real_trainer_trains_the_toy_and_the_engine_digests_agree(
     )
     assert code == EXIT_OK, envelope
     receipt = envelope["training"]
-    assert receipt["device"] and receipt["task_sha256"], receipt
+    assert receipt["device"] == "cpu" and receipt["task_sha256"], receipt
     assert receipt["bytes"] == (out / "job.cxpolicy").stat().st_size
     (stored,) = envelope["assets"]
     assert stored["sha256"] == receipt["sha256"] == hashlib.sha256(
@@ -676,15 +786,12 @@ def _task_digest(bundle: Path) -> str:
     reason="No training venv with jax and mujoco (training/SETUP.md).",
 )
 def test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares(
-    engine, tmp_path, capsys
+    engine, tmp_path, capsys, cpu_training
 ) -> None:
-    """The lifecycle audit's row 8, closed (ADR-192, ``docs/MUJOCO.md``
-    §7c): a sweep that moves the task is refused while a policy is
-    declared — correctly — so the policy sits behind a switch the sweep
-    blanks. Blank it, sweep, retrain warm across the change, re-declare,
-    switch it back on: four commands and one digest edit, no human step,
-    and the trace at the end is the comparison. Two real trainer runs at
-    1 it × 4 envs, each bounded far under the fifteen-minute rule."""
+    """Blank policy, sweep, warm retrain and re-declare (ADR-192).
+
+    Two bounded 1 × 4 CPU runs verify the changed task and rollout.
+    """
 
     root = tmp_path / "project"
     placeholder = "0" * 64
@@ -703,6 +810,7 @@ def test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares(
         "--iterations", "1", "--envs", "4", "--put", "--timeout", "600",
     )
     assert code == EXIT_OK, envelope
+    assert envelope["training"]["device"] == "cpu"
     sha1 = envelope["training"]["sha256"]
     digest1 = _task_digest(run1 / "job-task.json")
     assert envelope["training"]["task_sha256"] == digest1
@@ -756,6 +864,7 @@ def test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares(
         "--init-from-task-change", "lift weight doubled",
     )
     assert code == EXIT_OK, envelope
+    assert envelope["training"]["device"] == "cpu"
     sha2 = envelope["training"]["sha256"]
     assert sha2 != sha1
     assert envelope["training"]["task_sha256"] == digest2
@@ -783,3 +892,243 @@ def test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares(
     # Both numbers exist and are the comparison; which is larger is the
     # toy's business after one iteration each, not this test's.
     assert reward1 == reward1 and reward2 == reward2  # not NaN
+
+
+# -- the dispatcher itself, offline (ADR-268) -------------------------------
+
+#: A stand-in `ssh` that runs the box's side here. It answers the three
+#: things `remote_train.sh train` asks a box before it trains -- `$HOME`,
+#: `mkdir -p`, and the trainer's sha256 -- by running them locally, and
+#: intercepts the trainer itself: it logs the argv it was handed, writes a
+#: policy at the `--out` path, and prints the receipt the real trainer
+#: prints. Nothing here is a network.
+FAKE_SSH = """#!@PYTHON@
+import hashlib, json, os, pathlib, shlex, subprocess, sys
+
+args = sys.argv[1:]
+while args and args[0].startswith("-"):
+    flag = args.pop(0)
+    if flag in ("-o", "-p", "-i"):    # each takes a value; the target does not
+        args.pop(0)
+args = args[1:]                       # drop the target
+command = " ".join(args)
+if "setsid sh -c" in command:
+    if os.environ.get("FAKE_DETACH_FAIL"):
+        print("FAIL: detached launch refused")
+        raise SystemExit(7)
+    words = shlex.split(command)
+    inner = shlex.split(words[words.index("-c") + 1])
+    pid_path = pathlib.Path(inner[inner.index(">") + 1].rstrip(";"))
+    pid_path.write_text("12345")
+    pathlib.Path(os.environ["FAKE_SSH_LOG"]).write_text(json.dumps(inner))
+    raise SystemExit(0)
+if "cadex_train.py" in command and "--out" in command:   # not the sha256sum
+    # The remote shell is what splits this line, so split it the same way.
+    words = shlex.split(command)
+    pathlib.Path(os.environ["FAKE_SSH_LOG"]).write_text(
+        json.dumps(words), encoding="utf-8")
+    out = words[words.index("--out") + 1]
+    pathlib.Path(out).write_bytes(b"policy-bytes")
+    print(json.dumps({
+        "device": "gpu", "out": out,
+        "sha256": hashlib.sha256(b"policy-bytes").hexdigest(),
+    }))
+    raise SystemExit(0)
+raise SystemExit(subprocess.call(["sh", "-c", command]))
+"""
+
+#: A stand-in `rsync` that copies. `host:/path` becomes `/path`, because the
+#: box in these tests is this filesystem.
+FAKE_RSYNC = """#!@PYTHON@
+import pathlib, shutil, sys
+
+paths = []
+args = sys.argv[1:]
+while args:
+    item = args.pop(0)
+    if item in ("-e",):
+        args.pop(0); continue
+    if item.startswith("-"):
+        continue
+    head, sep, tail = item.partition(":")
+    paths.append(tail if sep and "/" not in head else item)
+sources, destination = paths[:-1], pathlib.Path(paths[-1])
+if str(destination).endswith("/") or destination.is_dir():
+    destination.mkdir(parents=True, exist_ok=True)
+    for source in sources:
+        shutil.copy2(source, destination / pathlib.Path(source).name)
+else:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(sources[0], destination)
+"""
+
+
+@pytest.fixture
+def box(tmp_path, monkeypatch) -> Path:
+    """`remote_train.sh` pointed at this filesystem: fake ssh and rsync on
+    PATH, the repo's own checkout as the box's, and no `.remote.env` read."""
+
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    for name, source in (("ssh", FAKE_SSH), ("rsync", FAKE_RSYNC)):
+        path = binaries / name
+        path.write_text(source.replace("@PYTHON@", sys.executable), encoding="utf-8")
+        path.chmod(0o755)
+    log = tmp_path / "trainer-argv.json"
+    monkeypatch.setenv("FAKE_SSH_LOG", str(log))
+    monkeypatch.setenv("PATH", f"{binaries}:{os.environ['PATH']}")
+    monkeypatch.setenv("CADEX_TRAIN_ENV", str(tmp_path / "absent.env"))
+    monkeypatch.setenv("CADEX_TRAIN_SSH_HOST", "box.invalid")
+    monkeypatch.setenv("CADEX_TRAIN_SSH_USER", "")
+    monkeypatch.setenv("CADEX_TRAIN_SSH_KEY", "")
+    monkeypatch.setenv("CADEX_TRAIN_REPO", str(REPO_ROOT))
+    monkeypatch.setenv("CADEX_TRAIN_VENV", str(tmp_path / "venv"))
+    monkeypatch.setenv("CADEX_TRAIN_WORK", str(tmp_path / "work"))
+    return log
+
+
+def _warm_start_job(tmp_path) -> tuple[Path, Path, Path, Path]:
+    run = tmp_path / "run"
+    run.mkdir()
+    bundle = run / "job-task.json"
+    bundle.write_text(json.dumps({"model": {"path": "x/model-model.xml"}}))
+    (run / "model-model.xml").write_text("<mujoco/>")
+    parent = tmp_path / "run0" / "parent-task.json"
+    parent.parent.mkdir()
+    parent.write_text(json.dumps({"model": {"path": "x/model-model.xml"}}))
+    policy = tmp_path / "run0" / "parent.cxpolicy"
+    policy.write_bytes(b"parent-weights")
+    return bundle, run / "job.cxpolicy", policy, parent
+
+
+def _dispatch(*argv: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", str(REMOTE_SOURCE), "train", *argv],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+
+
+def test_the_dispatcher_carries_the_warm_start_out_and_re_points_it(
+    box, tmp_path
+) -> None:
+    """ADR-268. The curriculum pair names files on this machine, so the
+    dispatcher copies both into the run directory's `warm/` and rewrites
+    the two flags to the copies. Everything else after `--` is untouched,
+    the parent bundle arrives byte-identical (the trainer ties its digest
+    to the policy header), and the policy still comes home verified."""
+
+    bundle, out, policy, parent = _warm_start_job(tmp_path)
+    result = _dispatch(
+        str(bundle), str(out), "--",
+        "--iterations", "2", "--init-from", str(policy),
+        "--init-from-parent-task", str(parent),
+        "--init-from-task-change", "a harder band",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    flags = json.loads(box.read_text(encoding="utf-8"))
+    carried_policy = Path(flags[flags.index("--init-from") + 1])
+    carried_parent = Path(flags[flags.index("--init-from-parent-task") + 1])
+    # Re-pointed at the box's copies, in `warm/` rather than beside the
+    # bundle -- a parent task named like the child cannot overwrite it.
+    assert carried_policy.parent.name == "warm"
+    assert carried_parent.parent == carried_policy.parent
+    assert carried_policy.parent.parent.name.startswith("job-task-")
+    assert carried_policy.read_bytes() == policy.read_bytes()
+    assert carried_parent.read_bytes() == parent.read_bytes()
+    # The local paths did not travel, and the sentence-valued flag did.
+    assert str(policy) not in flags and str(parent) not in flags
+    assert flags[flags.index("--init-from-task-change") + 1] == "a harder band"
+    assert flags[flags.index("--iterations") + 1] == "2"
+    # The bundle and its model are still beside each other, flat.
+    run_directory = carried_policy.parent.parent
+    assert (run_directory / bundle.name).is_file()
+    assert (run_directory / "model-model.xml").is_file()
+    # ...and the leg ends the way a cold one does: the policy is here.
+    assert out.read_bytes() == b"policy-bytes"
+    assert "==> warm" in result.stdout and "==> parent" in result.stdout
+
+
+def test_the_dispatcher_refuses_a_warm_start_it_cannot_carry(box, tmp_path) -> None:
+    """Loudly, and before anything is copied: a file that is not there, the
+    joined `--flag=path` form whose path would not be rewritten, and two
+    warm files that would collide in one flat `warm/`."""
+
+    bundle, out, policy, parent = _warm_start_job(tmp_path)
+    missing = _dispatch(str(bundle), str(out), "--",
+                        "--init-from", str(tmp_path / "nope.cxpolicy"))
+    assert missing.returncode == 1 and "does not exist" in missing.stdout
+
+    joined = _dispatch(str(bundle), str(out), "--", f"--init-from={policy}")
+    assert joined.returncode == 2 and "with a space, not =PATH" in joined.stdout
+
+    twin = tmp_path / "twin" / parent.name
+    twin.parent.mkdir()
+    twin.write_bytes(parent.read_bytes())
+    collision = _dispatch(str(bundle), str(out), "--",
+                          "--init-from", str(parent),
+                          "--init-from-parent-task", str(twin))
+    assert collision.returncode == 1 and "share the basename" in collision.stdout
+    assert not box.exists(), "the trainer ran despite a refusal"
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_detached_train_returns_pending_without_consuming_an_old_policy(
+    task_project, box, tmp_path, capsys, monkeypatch, fail
+) -> None:
+    """Real engine and dispatcher, local transports; launch is not completion."""
+    from cadex_cli import __main__ as cli_main
+
+    out = task_project / "runs" / "detached"
+    out.mkdir(parents=True)
+    old = out / "job.cxpolicy"
+    old.write_bytes(b"previous local policy")
+    script_before = (task_project / "script.py").read_bytes()
+    _, _, warm, parent = _warm_start_job(tmp_path)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("a pending launch must not verify a returned policy")
+
+    monkeypatch.setattr(cli_main, "verify_returned_policy", forbidden)
+    monkeypatch.setattr(cli_main, "progress_numbers", forbidden)
+    monkeypatch.setattr(cli_main, "comparison_cell", forbidden)
+    if fail:
+        monkeypatch.setenv("FAKE_DETACH_FAIL", "1")
+    code, envelope = _run(
+        capsys, "train", "--project", str(task_project), "--out", str(out),
+        "--remote", "--detach", "--put", "--iterations", "2", "--envs", "4",
+        "--init-from", str(warm), "--init-from-parent-task", str(parent),
+        "--init-from-task-change", "a harder band",
+    )
+    assert old.read_bytes() == b"previous local policy"
+    assert (task_project / "script.py").read_bytes() == script_before
+    assert not list((task_project / "assets").glob("*.cxpolicy"))
+    locator = out / "training-receipt.json"
+    if fail:
+        assert code == EXIT_FAILURE, envelope
+        assert "detached launch refused" in envelope["error"]
+        assert not locator.exists()
+        assert not box.exists()
+        return
+
+    assert code == EXIT_OK, envelope
+    receipt = envelope["training"]
+    assert receipt == json.loads(locator.read_text())
+    assert receipt["state"] == "pending" and receipt["pid"] == 12345
+    assert receipt["target"] == "box.invalid"
+    assert receipt["policy_name"] == old.name
+    assert Path(receipt["remote_dir"]).name == receipt["run_id"]
+    assert receipt["destination"] == str(out)
+    assert "sha256" not in receipt and "reward_per_step" not in receipt
+    assert "assets" not in envelope
+    words = json.loads(box.read_text())
+    remote = Path(receipt["remote_dir"])
+    assert (remote / "train.pid").read_text() == "12345"
+    assert (remote / "job-task.json").is_file()
+    assert (remote / "model-model.xml").is_file()
+    assert Path(words[words.index("--init-from") + 1]).read_bytes() == warm.read_bytes()
+    assert Path(words[words.index("--init-from-parent-task") + 1]).read_bytes() == parent.read_bytes()
+    assert words[words.index("--out") + 1] == str(remote / old.name)
+    row = (task_project / "PROGRESS.md").read_text().splitlines()[-1]
+    assert "train pending" in row and "no policy stored" in row
+    assert "reward" not in row and "sha256" not in row

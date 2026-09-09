@@ -89,15 +89,21 @@ def test_rollout_is_an_operation_that_produces_the_existing_simulation_type() ->
     assert _DOMAIN_OPERATION_OUTPUT_TYPES["assembly"]["dynamics"] == "simulation"
 
 
-def test_the_surface_takes_a_policy_and_three_optional_keywords() -> None:
+def test_the_surface_takes_a_policy_and_five_optional_keywords() -> None:
     signature = inspect.signature(AssemblyDomainAPI.rollout)
+    # ``clearance``/``clearance_mm`` joined the three of M8 (ADR-283): the
+    # promise ``api.simulation`` has taken since ADR-130, asked of the poses
+    # a gait reached rather than the ones a formula drove.
     assert list(signature.parameters) == [
-        "self", "policy", "frames_per_second", "seed", "label"
+        "self", "policy", "frames_per_second", "seed",
+        "clearance", "clearance_mm", "label",
     ]
-    for name in ("frames_per_second", "seed", "label"):
+    for name in ("frames_per_second", "seed", "clearance", "clearance_mm", "label"):
         assert signature.parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
     assert signature.parameters["frames_per_second"].default is None
     assert signature.parameters["seed"].default is None
+    assert signature.parameters["clearance"].default is None
+    assert signature.parameters["clearance_mm"].default == 0.0
 
 
 # ---------------------------------------------------------------------------

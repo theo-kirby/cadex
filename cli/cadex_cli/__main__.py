@@ -30,24 +30,28 @@ pipe.
 from __future__ import annotations
 
 import argparse
+import json
 from contextlib import contextmanager
+import math
 import os
 from pathlib import Path
 import signal
 import sys
 import time
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from .agent import (
     ClaudeTurn,
     ClaudeUnavailable,
     DEFAULT_MODEL,
+    TurnResult,
+    default_model,
     find_claude,
     system_prompt,
 )
-from .bridge import Bridge, ToolCall
+from .bridge import Bridge, BridgeState, ToolCall
 from .client import CadexdClient, CadexdError, open_project
-from .engine import Engine, EngineError, resolve_engine
+from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, write_inventory
 from .render import acquire_snapshot, write_render
@@ -61,8 +65,12 @@ from .clearance import (
 from .project_docs import (
     append_progress_row,
     commit_project,
+    compared_number,
+    documentation_status,
     ensure_project_repo,
     previous_numbers,
+    task_comparison,
+    comparison_cell,
     progress_numbers,
     read_project_docs,
     record_decisions,
@@ -93,21 +101,29 @@ from .train import (
     TrainError,
     find_task,
     remote_trainer_command,
+    training_plan,
     resolve_trainer_python,
     verify_returned_policy,
     run_trainer,
     trainer_command,
 )
 from .walk import (
+    DEFAULT_LEG_TIMEOUT_S,
     POLICY_SWITCH,
     ROLLOUT_DIRNAME,
     SCRIPT_FILENAME,
     SWEEP_DIRNAME,
     TRAIN_DIRNAME,
     WalkError,
+    collect_detached,
     declare_policy,
+    declared_note_subjects,
+    read_pending,
     review_from_outputs,
     run_leg,
+    task_bundle,
+    train_leg_timeout,
+    write_pending,
     write_review,
 )
 
@@ -143,7 +159,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Continue this project's stored conversation instead of "
         "starting a fresh one.",
     )
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model for the turn.")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Model for the turn. Default: $CADEX_MODEL, then the project "
+        f"model, then {DEFAULT_MODEL}.",
+    )
     parser.add_argument(
         "--claude", default="", help="Path to the claude CLI, if it is not on PATH."
     )
@@ -195,7 +216,16 @@ def build_parser() -> argparse.ArgumentParser:
     section_parser = subparsers.add_parser("section", help="Cut accepted geometry through a named world plane.")
     _common(section_parser, inherit=True)
     section_parser.add_argument("--plane", choices=("XY", "XZ", "YZ"), required=True)
-    section_parser.add_argument("--offset-mm", type=float, default=0.0)
+    section_parser.add_argument(
+        "--offset-mm",
+        type=float,
+        default=None,
+        metavar="N",
+        help="Where along the plane normal to cut. Omitted, the offset is "
+        "derived from the accepted bounds the way the walk derives it "
+        "(ADR-273): every candidate is cut and the one covering the most "
+        "objects wins.",
+    )
 
     clearance_parser = subparsers.add_parser(
         "clearance", help="Check accepted assembly pairs; write docs/clearance.md.",
@@ -289,7 +319,7 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument(
         "--envs", type=int, default=256, help="Parallel environments (256)."
     )
-    train_parser.add_argument("--seed", type=int, default=0, help="RNG seed (0).")
+    train_parser.add_argument("--seed", type=int, default=0, help="Training RNG seed, 0..4294967295 (default 0); rollout seed stays in the script.")
     train_parser.add_argument(
         "--label", default="", help="A label written into the policy header."
     )
@@ -355,6 +385,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="The training venv's interpreter. Default: $CADEX_TRAIN_PYTHON, "
         "then <repo>/.venv, then ~/cadex-train-venv.",
     )
+    train_parser.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        default=False,
+        help="Rebuild and export the bundle, then report the plan instead "
+        "of training: the files the leg would touch and the steps it would "
+        "take, here or on the box. Runs no trainer, reaches no box, stores "
+        "nothing. The preflight for `walk --remote`.",
+    )
+    train_parser.add_argument(
+        "--detach", action="store_true",
+        help="With --remote: launch and return a pending run receipt in --out. "
+        "Does not verify or store a policy; --out must be inside the project.",
+    )
     _remote_flags(train_parser)
     walk_parser = subparsers.add_parser(
         "walk",
@@ -380,7 +425,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Continue the project's stored conversation for the first --prompt.",
     )
-    walk_parser.add_argument("--model", default=DEFAULT_MODEL, help="Model for the turns.")
+    walk_parser.add_argument(
+        "--model",
+        default=None,
+        help="Model for the turns. Default: $CADEX_MODEL, then the project "
+        f"model, then {DEFAULT_MODEL}.",
+    )
     walk_parser.add_argument(
         "--claude", default="", help="Path to the claude CLI, if it is not on PATH."
     )
@@ -399,7 +449,7 @@ def build_parser() -> argparse.ArgumentParser:
     walk_parser.add_argument(
         "--envs", type=int, default=256, help="Parallel environments (256)."
     )
-    walk_parser.add_argument("--seed", type=int, default=0, help="RNG seed (0).")
+    walk_parser.add_argument("--seed", type=int, default=0, help="Training RNG seed, 0..4294967295 (default 0); rollout seed stays in the script.")
     walk_parser.add_argument(
         "--label", default="", help="A label written into the policy header."
     )
@@ -428,12 +478,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
     walk_parser.add_argument(
         "--timeout", type=float, default=0.0,
-        help="Stop the trainer after this many seconds (0: no limit).",
+        help="Stop the TRAINER after this many seconds (0: no limit). It "
+        "bounds the trainer inside the train leg and nothing else; "
+        "--leg-timeout bounds the legs themselves.",
+    )
+    walk_parser.add_argument(
+        "--leg-timeout", dest="leg_timeout", type=float,
+        default=DEFAULT_LEG_TIMEOUT_S, metavar="SECONDS",
+        help="Stop any one leg after this many seconds and fail the walk "
+        "there, killing the leg and everything under it (0: no limit). "
+        "The train leg is never bounded below --timeout plus a margin. "
+        "Default: %(default)g.",
     )
     walk_parser.add_argument(
         "--trainer-python", dest="trainer_python", default="", metavar="PATH",
         help="The training venv's interpreter, if not where training/SETUP.md "
         "puts it.",
+    )
+    walk_parser.add_argument(
+        "--detach",
+        action="store_true",
+        default=False,
+        help="With --remote: launch training on the box and stop at pending. "
+        "The walk writes walk-pending.json under --out with the run locator "
+        "and the two commands that finish the run; no policy is verified, "
+        "stored, declared or rolled out.",
+    )
+    walk_parser.add_argument(
+        "--complete",
+        action="store_true",
+        default=False,
+        help="Finish a detached walk: read walk-pending.json under --out, "
+        "take the policy the dispatcher brought home, and run the remaining "
+        "legs (store, declare, verify and roll out, review). Runs no design "
+        "turn and no trainer.",
     )
     _remote_flags(walk_parser)
     return parser
@@ -451,7 +529,8 @@ def _remote_flags(parser: argparse.ArgumentParser) -> None:
         help="Train on the remote box through training/remote_train.sh "
         "(configured by training/.remote.env; run its `check` first). The "
         "bundle goes out from --out and the policy comes back to it; every "
-        "later step is unchanged. Cold runs only: no --init-from.",
+        "later step is unchanged. A warm start travels too (ADR-268): its "
+        "two files go out beside the bundle.",
     )
     parser.add_argument(
         "--allow-cpu",
@@ -604,6 +683,65 @@ def _clip(text: str, limit: int = REASON_CHARS) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+#: What a turn that never reached the engine is asked, once, before the run
+#: is given up as rejected.
+#:
+#: A design turn that ends without a *single* tool call has done nothing at
+#: all: the project is byte-for-byte what it was, and the whole invocation —
+#: engine start, bridge, the model's own reading of the project — is spent
+#: for a paragraph on stderr. That is not a hypothetical. It happened three
+#: times on one project in one evening, most clearly at 84 s with
+#: ``stop_reason: end_turn`` after 5,893 thinking tokens and 335 of prose:
+#: the model reasoned its way to a decision and ended the turn before acting
+#: on it. So ask once, in the same conversation, and take a script if one
+#: comes.
+#:
+#: Deliberately narrow. It fires only when the model called *nothing*: a turn
+#: that offered a script and had it refused was told why by the engine and
+#: stopped anyway, and asking that turn again is how a loop starts.
+NUDGE_PROMPT = (
+    "That turn ended without a single tool call, so the project is exactly "
+    "as it was and nothing you decided has been recorded. This is your one "
+    "follow-up. If you know what to change, make it now with the modelling "
+    "tools and let the engine accept it. If you have concluded that no "
+    "change is warranted, answer in one line beginning 'NO CHANGE:' and "
+    "stop."
+)
+
+
+def _spent_nothing(result: TurnResult, state: BridgeState) -> bool:
+    """Did the turn end well, reach the engine not once, and change nothing?"""
+
+    return (
+        result.ok
+        and not state.calls
+        and state.last_accepted is None
+        and bool(result.session_id)
+    )
+
+
+def _merge_turns(first: TurnResult, second: TurnResult) -> TurnResult:
+    """Fold the follow-up into the turn it continues.
+
+    The follow-up is best effort and can only improve the outcome: if it
+    fails, the run reports the rejection it already had rather than a harder
+    failure, because the first turn genuinely did end well. Its prose is
+    appended so a closing ``DECISION:`` or ``NOTE`` line from either turn
+    lands in the project's documents.
+    """
+
+    merged = TurnResult(
+        ok=first.ok,
+        session_id=second.session_id or first.session_id,
+        text="\n".join(part for part in (first.text, second.text) if part.strip()),
+        exit_code=second.exit_code,
+        error=first.error,
+        resume_failed=first.resume_failed or second.resume_failed,
+        frames=first.frames + second.frames,
+    )
+    return merged
+
+
 def _rejection_reason(text: str, calls: Sequence[ToolCall]) -> str:
     """Why a turn ended with no accepted script, in one line.
 
@@ -657,7 +795,8 @@ def command_prompt(
     claude_path = find_claude(args.claude) if turn_factory is ClaudeTurn else ""
     stored = read_agent_state(Path(args.project).expanduser())
     session_id = stored.session_id if args.resume else ""
-    report.model = args.model
+    model = args.model or default_model(stored.model)
+    report.model = model
 
     with _engine_session(args, report) as (engine, client):
         api = client.request("describe_api")
@@ -682,7 +821,7 @@ def command_prompt(
         with Bridge(client, on_call=on_call, initial_revision=revision) as bridge:
             turn = turn_factory(
                 claude_path=claude_path,
-                model=args.model,
+                model=model,
                 system_prompt_text=system_prompt(
                     api, project_docs=read_project_docs(report.project_root)
                 ),
@@ -694,16 +833,28 @@ def command_prompt(
             )
             try:
                 result = turn.run(args.prompt)
+                if _spent_nothing(result, bridge.state):
+                    _progress(
+                        " · the turn reached the engine not once; asking "
+                        "once more"
+                    )
+                    result = _merge_turns(result, turn.run(NUDGE_PROMPT))
+                    report.notes.append(
+                        "the first turn made no tool call; asked once more "
+                        "in the same conversation."
+                    )
             finally:
                 turn.cleanup()
             sys.stderr.write("\n")
             sys.stderr.flush()
 
-        if result.session_id:
+        # A refused override cannot replace the model of an unchanged session.
+        # New locators still persist on failure so the conversation can resume.
+        if result.session_id and (result.ok or result.session_id != stored.session_id):
             write_agent_state(
                 report.project_root,
                 session_id=result.session_id,
-                model=args.model,
+                model=model,
             )
         report.session_id = result.session_id
         if result.resume_failed:
@@ -830,11 +981,29 @@ def command_render(args: argparse.Namespace, report: RunReport) -> int:
 
 
 def command_section(args: argparse.Namespace, report: RunReport) -> int:
+    """Cut the accepted geometry, at a given offset or at a derived one.
+
+    ``--offset-mm`` is optional, and omitting it is the ordinary way to call
+    this: the walk has derived its offset since ADR-267, but the flag used to
+    default to the constant 0.0, so a person or agent calling the eye by hand
+    got exactly the fixed plane that derivation exists to replace -- on
+    ``ot4-swing2`` a plane that cuts none of the ten parts. The note says
+    which offset was cut and whether it was asked for or derived, because a
+    section is a claim about what was *not* on the page as much as what was.
+    """
+
     with _engine_session(args, report) as (_engine, client):
         path, value = write_section(client, report.project_root, plane=args.plane, offset=args.offset_mm)
         report.revision = report.accepted_revision = value["revision"]
         report.digest = value["digest"] or ""
-        report.notes.append(f"section: {value['status']}; {path}.")
+        report.notes.append(
+            "section: {:s} {:g} mm ({:s}); {:s}; {:d}/{:d} objects cut; {:s}.".format(
+                str(value["plane"]), float(value["offset_mm"]),
+                str(value.get("offset_source") or "explicit"),
+                str(value["status"]), int(value["objects_cut"]),
+                len(value.get("objects") or {}), str(path),
+            )
+        )
         report.ok = True
         return EXIT_OK
 
@@ -889,7 +1058,15 @@ def command_script(args: argparse.Namespace, report: RunReport) -> int:
                 return EXIT_USAGE
             source = path.read_text(encoding="utf-8")
 
-    with _engine_session(args, report) as (engine, client):
+    # Neither form needs the restore pass, and the moment it is needed most is
+    # the moment restore fails (ADR-272). Reading is a read of the stored
+    # source, not of the model; writing replaces that source outright and
+    # re-accepts, so replaying the old one first is at best wasted work. The
+    # walk's digest edit (ADR-199) lands exactly there: ``train --put``
+    # overwrites the asset the accepted script declares by sha256, so the
+    # stored script no longer re-runs, and the two legs whose whole job is to
+    # rewrite that literal used to fail with the project they were fixing.
+    with _engine_session(args, report, restore=False) as (engine, client):
         if source is None:
             sys.stdout.write(read_script_source(client))
             sys.stdout.flush()
@@ -1088,6 +1265,9 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     if not args.out:
         report.error = "train needs --out: the bundle and the policy land there."
         return EXIT_USAGE
+    if not 0 <= args.seed <= 4294967295:
+        report.error = "--seed must be between 0 and 4294967295."
+        return EXIT_USAGE
     if args.iterations < 1 or args.envs < 1:
         report.error = "--iterations and --envs must be at least 1."
         return EXIT_USAGE
@@ -1110,6 +1290,15 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     if remote_error:
         report.error = remote_error
         return EXIT_USAGE
+    if args.detach:
+        if args.dry_run:
+            report.error = "--detach cannot be combined with --dry-run."
+            return EXIT_USAGE
+        if not Path(args.out).expanduser().resolve().is_relative_to(
+            Path(args.project).expanduser().resolve()
+        ):
+            report.error = "--detach needs --out inside the project for its run receipt."
+            return EXIT_USAGE
     python = None if args.remote else resolve_trainer_python(args.trainer_python or None)
 
     with _engine_session(args, report) as (engine, client):
@@ -1141,23 +1330,67 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         init_from_task_change=args.init_from_task_change,
     )
     if args.remote:
-        # The same leg on the box (ADR-200): the bundle and the model go
-        # out from --out, the policy comes back to policy_path, and the
-        # receipt is the same last JSON line. Nothing after this branch
-        # knows where the trainer ran.
+        # Blocking dispatch returns a policy; detached dispatch returns
+        # the same remote run identity used by watch/pull (ADR-278).
         command = remote_trainer_command(
-            task.files["json"], policy_path, allow_cpu=args.allow_cpu, **flags
+            task.files["json"], policy_path, allow_cpu=args.allow_cpu,
+            detach=args.detach, **flags
         )
         where = f"remote, {Path(command[0]).name}"
     else:
         command = trainer_command(python, task.files["json"], policy_path, **flags)
         where = str(python)
+    if args.dry_run:
+        # The export above was real -- the bundle and the model are on
+        # disk, and the plan names them by the path a dispatch would read.
+        # Everything after this point is what the plan describes instead of
+        # doing (ADR-255).
+        report.training_plan = training_plan(
+            command,
+            bundle=task.files["json"],
+            out=policy_path,
+            remote=bool(args.remote),
+            allow_cpu=bool(args.allow_cpu),
+            store_as=policy_path.name if args.put else "",
+        )
+        _progress(f" · plan   {task.name}  ({where}, not run)")
+        report.notes.append(
+            "dry run: the {:s} leg would {:s}. Nothing was trained{:s}.".format(
+                str(report.training_plan["mode"]),
+                " -> ".join(
+                    str(step["step"]) for step in report.training_plan["steps"]
+                ),
+                " or stored" if args.put else "",
+            )
+        )
+        report.ok = True
+        return EXIT_OK
     _progress(
         f" · train  {task.name}  {args.iterations} it × {args.envs} envs"
         f"  ({where})"
     )
     report.training = run_trainer(command, timeout=args.timeout)
+    if args.detach:
+        if report.training.get("state") != "pending" or not all(
+            report.training.get(key) for key in ("run_id", "target", "remote_dir", "pid")
+        ):
+            raise TrainError("detached launch returned no pending run locator.")
+        receipt_path = out_dir / "training-receipt.json"
+        report.training["destination"] = str(out_dir)
+        report.training["receipt_path"] = str(receipt_path)
+        receipt_path.write_text(
+            json.dumps(report.training, indent=2) + "\n", encoding="utf-8"
+        )
+        report.notes.append(
+            f"pending remote run {report.training['run_id']}; locator: {receipt_path}. "
+            "No policy verified or stored. Use remote_train.sh watch/pull with this "
+            "run ID and a fresh destination; --put has not run."
+        )
+        report.ok = True
+        return EXIT_OK
     verify_returned_policy(policy_path, report.training)
+    report.training["comparison"] = {**task_comparison(task.files["json"]),
+                                     "training_seed": args.seed}
     report.notes.append(
         "trained {:s}: {:s} ({:s} bytes, sha256 {:s}) in {:.1f} s on {:s}.".format(
             task.name,
@@ -1199,9 +1432,13 @@ def _remote_usage_error(args: argparse.Namespace) -> str:
     leg rather than after a design turn spent tokens. ``--trainer-python``
     names a venv on this machine and the box has its own
     (``CADEX_TRAIN_VENV``); ``--allow-cpu`` is the dispatcher's flag and
-    means nothing locally; a warm start's files are not carried out.
+    means nothing locally. A warm start is no longer refused here: since
+    ADR-268 the dispatcher carries its two files out and re-points the
+    flags, so an iterate has the same shape in both modes.
     """
 
+    if getattr(args, "detach", False) and not args.remote:
+        return "--detach needs --remote."
     if not args.remote:
         if args.allow_cpu:
             return "--allow-cpu is remote_train.sh's flag; it needs --remote."
@@ -1210,12 +1447,6 @@ def _remote_usage_error(args: argparse.Namespace) -> str:
         return (
             "--trainer-python names a venv on this machine; with --remote the "
             "box's CADEX_TRAIN_VENV trains (training/remote.env.example)."
-        )
-    if args.init_from or args.init_from_parent_task or args.init_from_task_change:
-        return (
-            "--remote trains cold: remote_train.sh carries the bundle and the "
-            "model and nothing else, so --init-from's policy would not be on "
-            "the box. Drop the warm start, or train locally."
         )
     return ""
 
@@ -1249,11 +1480,17 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     if not args.out:
         report.error = "walk needs --out: the bundle, the policy and the rollout land there."
         return EXIT_USAGE
+    if not 0 <= args.seed <= 4294967295:
+        report.error = "--seed must be between 0 and 4294967295."
+        return EXIT_USAGE
     if args.iterations < 1 or args.envs < 1:
         report.error = "--iterations and --envs must be at least 1."
         return EXIT_USAGE
     if args.policy_name and not str(args.policy_name).endswith(".cxpolicy"):
         report.error = "--name must end in .cxpolicy."
+        return EXIT_USAGE
+    if not math.isfinite(args.leg_timeout) or args.leg_timeout < 0:
+        report.error = "--leg-timeout must be a nonnegative number of seconds (0: no limit)."
         return EXIT_USAGE
     if (args.init_from_task_change or args.init_from_parent_task) and not (
         args.init_from and args.init_from_parent_task and args.init_from_task_change
@@ -1263,6 +1500,21 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             "--init-from-parent-task BUNDLE beside it."
         )
         return EXIT_USAGE
+    if args.complete:
+        # Completion runs no trainer, so every flag that only reaches the
+        # train leg would be read as an instruction and obeyed by nothing.
+        # Refusing them is cheaper than a run that silently ignored them.
+        for flag, on in (
+            ("--detach", args.detach), ("--remote", args.remote),
+            ("--allow-cpu", args.allow_cpu), ("--prompt", bool(args.prompts)),
+            ("--set", bool(args.assignments)),
+        ):
+            if on:
+                report.error = (
+                    f"--complete finishes a launched run; {flag} would design "
+                    "or train again. Run them as their own walk."
+                )
+                return EXIT_USAGE
     remote_error = _remote_usage_error(args)
     if remote_error:
         report.error = remote_error
@@ -1277,7 +1529,29 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     report.out_dir = str(out_dir)
     common = _walk_common(args)
     legs: list[dict[str, Any]] = []
-    report.walk = {"legs": legs, "review": {}}
+    # The walk's own wall-clock bound, in the envelope beside the legs it
+    # bounds: a run that was stopped and a run that finished are told apart
+    # by the leg's exit code, and by this number saying what it was measured
+    # against. The train leg carries its own, never under ``--timeout``.
+    leg_timeout = float(args.leg_timeout)
+    train_timeout = train_leg_timeout(leg_timeout, float(args.timeout))
+    report.walk = {
+        "legs": legs, "review": {},
+        "leg_timeout_s": leg_timeout, "train_leg_timeout_s": train_timeout,
+    }
+
+    try:
+        engine = resolve_engine(args.engine or None)
+        report.engine = engine.describe()
+        comparison = source_comparison(engine)
+    except EngineError as exc:
+        comparison = {"status": "unavailable", "reason": str(exc)}
+    report.walk["engine_source_comparison"] = comparison
+    _progress(" · walk engine/source comparison: " + json.dumps(comparison, sort_keys=True))
+
+    report.walk["mode"] = (
+        "complete" if args.complete else "detach" if args.detach else "blocking"
+    )
 
     def failed(leg: Any, what: str) -> int:
         legs.append(leg.to_json())
@@ -1286,70 +1560,146 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         )
         return leg.code if leg.code in (EXIT_USAGE, EXIT_REJECTED) else EXIT_FAILURE
 
-    # Design: the model turns, in order.
-    for index, prompt in enumerate(args.prompts):
-        argv = [*common, "-p", prompt, "--json", "--model", args.model]
-        if index > 0 or args.resume:
-            argv.append("--resume")
-        if args.claude:
-            argv += ["--claude", args.claude]
-        _progress(f" · walk  design turn {index + 1}/{len(args.prompts)}")
-        leg = run_leg("design", argv)
-        if leg.code != EXIT_OK:
-            return failed(leg, "the design turn was not accepted")
-        legs.append(leg.to_json())
+    if not args.complete:
+        # Design: the model turns, in order.
+        for index, prompt in enumerate(args.prompts):
+            argv = [*common, "-p", prompt, "--json"]
+            if args.model:
+                argv += ["--model", args.model]
+            if index > 0 or args.resume:
+                argv.append("--resume")
+            if args.claude:
+                argv += ["--claude", args.claude]
+            _progress(f" · walk  design turn {index + 1}/{len(args.prompts)}")
+            leg = run_leg("design", argv, timeout=leg_timeout)
+            if leg.code != EXIT_OK:
+                return failed(leg, "the design turn was not accepted")
+            legs.append(leg.to_json())
 
-    # Iterate: blank the switch and apply the change; the bundle is exported
-    # at its new digest (ADR-192).
-    if assignments:
-        argv = [*common, "params", "--set", f"{POLICY_SWITCH}=0"]
-        for name, value in sorted(assignments.items()):
-            argv += ["--set", f"{name}={value}"]
-        argv += ["--out", str(out_dir / SWEEP_DIRNAME), "--json"]
-        _progress(" · walk  sweep")
-        leg = run_leg("sweep", argv)
-        if leg.code != EXIT_OK:
-            return failed(leg, "the change was refused")
-        legs.append(leg.to_json())
+        # Iterate: blank the switch and apply the change; the bundle is exported
+        # at its new digest (ADR-192).
+        if assignments:
+            argv = [*common, "params", "--set", f"{POLICY_SWITCH}=0"]
+            for name, value in sorted(assignments.items()):
+                argv += ["--set", f"{name}={value}"]
+            argv += ["--out", str(out_dir / SWEEP_DIRNAME), "--json"]
+            _progress(" · walk  sweep")
+            leg = run_leg("sweep", argv, timeout=leg_timeout)
+            if leg.code != EXIT_OK:
+                return failed(leg, "the change was refused")
+            legs.append(leg.to_json())
 
-    # Train, and bring the policy home.
-    argv = [
-        *common, "train", "--out", str(out_dir / TRAIN_DIRNAME), "--put",
-        "--iterations", str(int(args.iterations)), "--envs", str(int(args.envs)),
-        "--seed", str(int(args.seed)), "--timeout", str(float(args.timeout)),
-        "--json",
-    ]
-    for flag, value in (
-        ("--label", args.label), ("--name", args.policy_name),
-        ("--task", args.task_name), ("--trainer-python", args.trainer_python),
-        ("--init-from", args.init_from),
-        ("--init-from-parent-task", args.init_from_parent_task),
-        ("--init-from-task-change", args.init_from_task_change),
-    ):
-        if value:
-            argv += [flag, str(value)]
-    for flag, on in (("--remote", args.remote), ("--allow-cpu", args.allow_cpu)):
-        if on:
-            argv.append(flag)
-    _progress(" · walk  train" + (" (remote)" if args.remote else ""))
-    leg = run_leg("train", argv)
-    if leg.code != EXIT_OK:
-        return failed(leg, "training did not produce a policy")
-    legs.append(leg.to_json())
-    training = leg.envelope.get("training") or {}
-    stored = [row for row in leg.envelope.get("assets") or []
-              if row.get("sha256") == training.get("sha256")]
-    if not training.get("sha256") or not stored:
-        report.error = "train reported no stored policy sha256; nothing to declare."
-        return EXIT_FAILURE
-    report.training = dict(training)
-    report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
-    weights = str(stored[0].get("name") or Path(str(training.get("out"))).name)
-    sha256 = str(training["sha256"])
+        # Train, and bring the policy home.
+        argv = [
+            *common, "train", "--out", str(out_dir / TRAIN_DIRNAME),
+            "--detach" if args.detach else "--put",
+            "--iterations", str(int(args.iterations)), "--envs", str(int(args.envs)),
+            "--seed", str(int(args.seed)), "--timeout", str(float(args.timeout)),
+            "--json",
+        ]
+        for flag, value in (
+            ("--label", args.label), ("--name", args.policy_name),
+            ("--task", args.task_name), ("--trainer-python", args.trainer_python),
+            ("--init-from", args.init_from),
+            ("--init-from-parent-task", args.init_from_parent_task),
+            ("--init-from-task-change", args.init_from_task_change),
+        ):
+            if value:
+                argv += [flag, str(value)]
+        for flag, on in (("--remote", args.remote), ("--allow-cpu", args.allow_cpu)):
+            if on:
+                argv.append(flag)
+        _progress(" · walk  train" + (" (remote)" if args.remote else ""))
+        leg = run_leg("train", argv, timeout=train_timeout)
+        if leg.code != EXIT_OK:
+            return failed(leg, "training did not produce a policy")
+        legs.append(leg.to_json())
+        training = leg.envelope.get("training") or {}
+        if args.detach:
+            # Pending is not success, and the difference is what this
+            # branch exists to keep (ADR-282): the walk stops here with the
+            # locator on disk, having verified, stored, declared and rolled
+            # out nothing. `--complete` picks it up when the box is done.
+            if training.get("state") != "pending" or not training.get("run_id"):
+                report.error = (
+                    "the detached train leg returned no pending run locator."
+                )
+                return EXIT_FAILURE
+            report.training = dict(training)
+            bundle, task_sha256 = task_bundle(out_dir / TRAIN_DIRNAME)
+            pending_path = write_pending(
+                out_dir, training=training, legs=legs, project=args.project,
+                bundle=bundle, task_sha256=task_sha256, seed=int(args.seed),
+            )
+            report.walk["pending"] = dict(training)
+            report.walk["pending_file"] = str(pending_path)
+            report.notes.append(
+                "walk pending: remote run {:s} launched; locator {:s}. "
+                "Bring it home with `training/remote_train.sh watch {:s} {:s}`, "
+                "then finish with `cadex walk --complete --project {:s} "
+                "--out {:s}`. Nothing was verified, stored or declared.".format(
+                    str(training["run_id"]), str(pending_path),
+                    str(training["run_id"]),
+                    str(training.get("destination") or out_dir / TRAIN_DIRNAME),
+                    str(Path(args.project).expanduser()), str(out_dir),
+                )
+            )
+            report.ok = True
+            return EXIT_OK
+        stored = [row for row in leg.envelope.get("assets") or []
+                  if row.get("sha256") == training.get("sha256")]
+        if not training.get("sha256") or not stored:
+            report.error = "train reported no stored policy sha256; nothing to declare."
+            return EXIT_FAILURE
+        report.training = dict(training)
+        report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
+        weights = str(stored[0].get("name") or Path(str(training.get("out"))).name)
+        sha256 = str(training["sha256"])
+    else:
+        # Completion: the policy the dispatcher brought home, stored through
+        # the same `cadex asset --put` leg the blocking train leg's --put
+        # runs, so every later leg reads exactly what it reads there.
+        try:
+            pending = read_pending(out_dir)
+            policy_path, training = collect_detached(
+                pending, out_dir / TRAIN_DIRNAME
+            )
+        except WalkError as exc:
+            report.error = str(exc)
+            return EXIT_REJECTED
+        # The comparison block the blocking train leg puts in its receipt,
+        # off the same bundle, so a completed detached walk lands the same
+        # PROGRESS.md comparison an in-line one does (ADR-263).
+        bundle, _digest = task_bundle(out_dir / TRAIN_DIRNAME)
+        if bundle is not None:
+            training["comparison"] = {
+                **task_comparison(bundle),
+                "training_seed": int(pending.get("training_seed") or 0),
+            }
+        legs.extend(pending.get("legs") or [])
+        report.walk["pending"] = dict(pending.get("training") or {})
+        report.training = dict(training)
+        _progress(" · walk  collect  " + policy_path.name)
+        leg = run_leg("collect", [*common, "asset", "--put", str(policy_path),
+                                  "--json"], timeout=leg_timeout)
+        if leg.code != EXIT_OK:
+            return failed(leg, "the returned policy could not be stored")
+        legs.append(leg.to_json())
+        report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
+        stored = [row for row in report.assets
+                  if row.get("sha256") == training.get("sha256")]
+        if not stored:
+            report.error = (
+                "the collected policy was stored under a different digest "
+                "than the trainer reported; nothing to declare."
+            )
+            return EXIT_FAILURE
+        weights = str(stored[0].get("name") or policy_path.name)
+        sha256 = str(training["sha256"])
 
     # Declare: the digest edit, then the script write.
     _progress(" · walk  declare")
-    leg = run_leg("script", [*common, "script"], capture=False)
+    leg = run_leg("script", [*common, "script"], capture=False, timeout=leg_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "the script could not be read")
     try:
@@ -1360,7 +1710,8 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_REJECTED
     script_path = out_dir / SCRIPT_FILENAME
     script_path.write_text(source, encoding="utf-8")
-    leg = run_leg("declare", [*common, "script", "--set", str(script_path), "--json"])
+    leg = run_leg("declare", [*common, "script", "--set", str(script_path), "--json"],
+                  timeout=leg_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "the re-declared script was refused")
     legs.append(leg.to_json())
@@ -1370,7 +1721,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     leg = run_leg("rollout", [
         *common, "params", "--set", f"{POLICY_SWITCH}=1",
         "--out", str(out_dir / ROLLOUT_DIRNAME), "--json",
-    ])
+    ], timeout=leg_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "the policy did not verify")
     legs.append(leg.to_json())
@@ -1382,8 +1733,15 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     # Review: the trace's numbers, in the envelope and as a file beside the
     # rollout, plus the accepted assembly inventory in the project docs.
     review = review_from_outputs(leg.envelope.get("outputs") or [])
+    review["comparison"] = dict(report.training.get("comparison") or {})
+    if "rollout_seed" in review:
+        review["comparison"]["rollout_seed"] = review["rollout_seed"]
     review["weights"] = weights
     review["sha256"] = sha256
+    # No trace at all is a motion answer too, and the same one write_review
+    # would fall back to; setting it here keeps the note and the file equal.
+    review.setdefault("motion", {"available": False,
+                                 "reason": "no trace was exported."})
     with _engine_session(args, RunReport(), restore=False) as (_engine, client):
         accepted_snapshot = acquire_snapshot(client)
         if accepted_snapshot[1]["digest"] != report.digest:
@@ -1392,8 +1750,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             client, report.project_root, expected_revision=report.accepted_revision,
             accepted_snapshot=accepted_snapshot,
         )
+        # The offset is derived from the accepted bounds rather than fixed:
+        # a constant misses whatever is not on it, and reports `ok` while
+        # doing so (ADR-267). `cadex section` keeps the explicit surface.
         section_path, section = write_section(
-            client, report.project_root, plane="XZ", offset=3.125,
+            client, report.project_root, plane="XZ",
             expected_revision=report.accepted_revision, accepted_snapshot=accepted_snapshot,
         )
         path, inventory = write_inventory(client, report.project_root)
@@ -1407,6 +1768,15 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     review["section"] = {
         **section, "summary_path": section_path.relative_to(Path(report.project_root)).as_posix(),
     }
+    # What the mechanism declares, against what the project documents:
+    # a driven joint asks for docs/actuators.md and an observed one for
+    # docs/sensors.md (ADR-245's convention, ADR-256's check). The notes
+    # are the design turn's to write, so a gap is reported, never filled.
+    subjects, model_path = declared_note_subjects(out_dir / TRAIN_DIRNAME)
+    documentation = documentation_status(report.project_root, subjects)
+    if model_path is not None:
+        documentation["model"] = str(model_path)
+    review["documentation"] = documentation
     review["walk_seconds"] = time.monotonic() - walk_started
     review["inventory"] = {
         "available": bool(inventory.get("assembly")),
@@ -1443,6 +1813,29 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             else ", {:d} FAILURE(S)".format(int(check["failure_count"])),
         )
     )
+    # Whether the mechanism moved at all, on both channels, so a reader of
+    # the run does not have to open review.json to find out that a revolute
+    # rig travelled 0 mm because all of its motion was rotation. One
+    # spelling for the note and the row (ADR-260): the note carries the
+    # same delta the row does, off the same read of PROGRESS.md, so a
+    # reader of the run never has to reconcile two wordings of one figure.
+    report.notes.append(
+        "motion: "
+        + _motion_cell(
+            review["motion"], previous_numbers(report.project_root)
+        ).removeprefix("; motion ")
+        + "."
+    )
+    # A model that declares nothing asks the project for nothing, and the
+    # run says nothing rather than reporting an empty check.
+    if documentation["expected"]:
+        report.notes.append(
+            "documentation: {:d} domain note(s) for {:d} declared subject(s); {:s}.".format(
+                len(documentation["notes"]), len(documentation["expected"]),
+                "none missing" if not documentation["missing"]
+                else "no note for " + ", ".join(documentation["missing"]),
+            )
+        )
     report.walk["review"] = review
     review_path = write_review(
         out_dir, review=review, legs=legs, training=report.training,
@@ -1555,7 +1948,8 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
     if command == "export":
         return f"export → {args.out}"
     if command == "section":
-        return f"section → review/section/ ({args.plane}, {args.offset_mm:g} mm)"
+        where = "derived offset" if args.offset_mm is None else f"{args.offset_mm:g} mm"
+        return f"section → review/section/ ({args.plane}, {where})"
     if command == "render":
         return "render → review/render/ (front, top, right, iso)"
     if command == "clearance":
@@ -1576,10 +1970,15 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
             label = str(out.resolve().relative_to(Path(report.project_root).resolve()))
         except (ValueError, OSError):
             label = out.name
-        return "walk {:d} it × {:d} envs → {:s}".format(
-            int(args.iterations), int(args.envs), label
+        if getattr(args, "complete", False):
+            return f"walk complete {label} (detached run collected)"
+        return "walk {:d} it × {:d} envs → {:s}{:s}".format(
+            int(args.iterations), int(args.envs), label,
+            " (detached; pending)" if getattr(args, "detach", False) else "",
         )
     if command == "train":
+        if report.training.get("state") == "pending":
+            return f"train pending {report.training['run_id']} (remote; no policy stored)"
         # The mode is part of what happened: a row trained on the box says
         # so, and the project's ARCHITECTURE.md scaffold names the marker.
         return "train {:d} it × {:d} envs → {:s}{:s}{:s}".format(
@@ -1590,6 +1989,93 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
             " (remote)" if getattr(args, "remote", False) else "",
         )
     return command
+
+
+def _documentation_cell(documentation: dict[str, Any]) -> str:
+    """The walk row's documentation half: notes kept, subjects missing.
+
+    Empty when the run read no model declaration at all, so a row only
+    claims a documentation finding where there was something to check.
+    """
+
+    if not documentation.get("expected"):
+        return ""
+    missing = list(documentation.get("missing") or [])
+    return "; docs notes {:d}, {:s}".format(
+        len(documentation.get("notes") or []),
+        "none missing" if not missing else "no " + ", ".join(missing),
+    )
+
+
+def _clearance_cell(
+    clearance: Mapping[str, Any], previous: Mapping[str, tuple[float, str]]
+) -> str:
+    """The walk row's clearance half: how many pairs the check found, and
+    how that compares with the last walk of this project (ADR-271).
+
+    The offending count is the number a geometry iterate exists to turn.
+    `ot4-quill` reported the same 960 mm³ housing/quill intersection on
+    every walk row for a day; the design turn that answered it wrote a
+    row saying `clearance offending 0`, which on its own is
+    indistinguishable from a rig that never had a finding. The count
+    carries its delta now, spelled by the same machinery as the travel
+    figures, and reads back off the older rows unchanged because the
+    label was always in front of the number.
+
+    `unknown` and `pairs checked` stay plain: they say what the check
+    could reach, not what it found, and a delta on either without the
+    other would read as a claim about the mechanism.
+    """
+
+    if not clearance.get("available"):
+        return "clearance unavailable"
+    return "{:s}; unknown {:d}; pairs checked {:d} (initial solved pose; {:g} mm / {:g} mm³)".format(
+        compared_number(
+            "clearance offending", float(clearance["offending_pair_count"]), previous
+        ),
+        int(clearance["unknown_pair_count"]),
+        int(clearance["pairs_checked"]),
+        float(clearance["minimum_clearance_mm"]),
+        float(clearance["maximum_common_volume_mm3"]),
+    )
+
+
+def _motion_cell(
+    motion: dict[str, Any], previous: Mapping[str, tuple[float, str]]
+) -> str:
+    """The walk row's motion half: did the mechanism move, and how — and
+    how that compares with the last walk of this project (ADR-260).
+
+    Both channels every time. A row that carried millimetres alone would
+    report the repository's own hinged-arm example — a working revolute
+    rig — as having gone nowhere, because it travels 0.0000 mm and rotates
+    178.8334°. Neither figure is a score and they are not ranked against
+    each other, so the row names the largest mover on each channel and
+    says over how many frames.
+
+    Spelled `travel_mm N`/`travel_deg N` rather than `N mm`/`N°`, because
+    that is what :data:`COMPARED_NUMBERS` can read back off a row: the
+    unit moved into the label so a later walk can carry a delta. The
+    review JSON keeps `millimetres` and `degrees` under their own keys and
+    is unaffected; the run note is this same cell, so there is one
+    spelling to learn. Neither delta is a verdict: the carriage iterate
+    held its travel at 103 mm while its reward fell, and the row can now
+    say both without saying which mattered.
+    """
+
+    if not motion.get("available"):
+        return "; motion unavailable"
+    translation = motion.get("largest_translation") or {}
+    rotation = motion.get("largest_rotation") or {}
+    return "; motion {:s} on {:s}, {:s} on {:s} over {:d} solved frame(s)".format(
+        compared_number(
+            "travel_mm", float(translation.get("millimetres") or 0.0), previous
+        ),
+        str(translation.get("component") or "?"),
+        compared_number("travel_deg", float(rotation.get("degrees") or 0.0), previous),
+        str(rotation.get("component") or "?"),
+        int(motion.get("frames_counted") or 0),
+    )
 
 
 def _record_progress(command: str, args: argparse.Namespace, report: RunReport) -> None:
@@ -1603,6 +2089,10 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
+    # Read once, before the row is appended: both branches compare against
+    # the last row that carried each number, and the walk branch is why
+    # travel figures are comparable at all (ADR-260).
+    previous = previous_numbers(report.project_root)
     try:
         append_progress_row(
             report.project_root,
@@ -1610,16 +2100,21 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             what=_progress_what(command, args, report),
             revision=report.accepted_revision,
             digest=report.digest,
-            numbers=(
-                "clearance unavailable" if not report.walk["review"]["clearance"]["available"]
-                else "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
-                     "pairs checked {pairs_checked} (initial solved pose; {minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)".format(
-                         **report.walk["review"]["clearance"])
+            numbers=("pending; no policy verified"
+                     if report.training.get("state") == "pending" else (
+                _clearance_cell(report.walk["review"]["clearance"], previous)
+                + _motion_cell(report.walk["review"].get("motion") or {}, previous)
+                + _documentation_cell(report.walk["review"].get("documentation") or {})
             ) if command == "walk" else progress_numbers(
                 training=report.training,
                 outputs=report.outputs,
-                previous=previous_numbers(report.project_root),
-            ),
+                previous=previous,
+            )) + (comparison_cell(
+                report.project_root, command,
+                report.walk.get("review", {}).get("comparison", {})
+                if command == "walk" else report.training.get("comparison", {}),
+            ) if command in ("walk", "train")
+                 and report.training.get("state") != "pending" else ""),
         )
     except OSError as exc:
         report.notes.append(f"PROGRESS.md not written: {exc}")

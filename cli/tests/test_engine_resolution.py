@@ -151,3 +151,39 @@ def test_the_engine_describes_itself_for_the_report() -> None:
     described = engine.describe()
     assert described["source"] == "dev-tree"
     assert described["module_dir"] == str(SOURCE_MODULE_DIR)
+
+
+def test_source_comparison_bounds_lists_and_reports_external_difference(tmp_path, monkeypatch):
+    from cadex_cli import engine as module
+
+    source, external = tmp_path / "source", tmp_path / "external"
+    source.mkdir()
+    external.mkdir()
+    for index in range(12):
+        (source / f"module{index}.py").write_text("new")
+        (external / f"module{index}.py").write_text("old")
+    (source / "missing.py").write_text("source only")
+    (external / "extra.py").write_text("external only")
+    monkeypatch.setattr(module, "DEV_MODULE_DIR", source)
+    engine = Engine(tmp_path / "bin" / "FreeCADCmd", external, "explicit")
+    evidence = module.source_comparison(engine)
+    assert evidence["status"] == "different"
+    assert evidence["changed_count"] == 12 and len(evidence["changed"]) == 10
+    assert evidence["missing"] == ["missing.py"]
+    assert evidence["extra"] == ["extra.py"]
+    assert "not binary or loaded-module provenance" in evidence["scope"]
+    monkeypatch.setattr(module, "DEV_MODULE_DIR", tmp_path / "absent")
+    assert module.source_comparison(engine)["status"] == "unavailable"
+
+
+def test_source_comparison_read_failure_is_unavailable(tmp_path, monkeypatch):
+    from cadex_cli import engine as module
+
+    (tmp_path / "file.py").write_text("source")
+    monkeypatch.setattr(module, "DEV_MODULE_DIR", tmp_path)
+    def unreadable(self):
+        raise PermissionError("unreadable")
+    monkeypatch.setattr(Path, "read_bytes", unreadable)
+    evidence = module.source_comparison(Engine(tmp_path / "binary", tmp_path, "explicit"))
+    assert evidence["status"] == "unavailable"
+    assert "unreadable" in evidence["reason"]

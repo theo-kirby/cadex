@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-09-06. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-09-08. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
@@ -90,17 +90,10 @@ it. If it reads as `envs × unroll` exactly, no episode is ending at all.
 
 ## (b) CPU only
 
-Supported, deliberately, and it is what the live training gate exercises
-(`test_dynamics_policy_live`, which runs wherever jax does — the pixi CI
-environment deliberately lacks it, so a venv run is what actually proves
-it). But understand what you are buying: that gate converges a *tiny* task
-(one hinge, swing-up) in seconds per attempt on an M4 Mac Mini. The
-published reference for a real gait is a Unitree G1 walking policy
-converging in ~90 minutes at 4096 parallel environments on an RTX 4090. On
-CPU that is days. This path is for toy tasks and for proving a task *runs*
-— that the reward expression compiles, the observation channels are the
-ones you meant, the episode does not immediately terminate — before
-renting something. It is not for producing a gait.
+Use CPU for toy tasks and lifecycle verification; it does not establish a
+learned gait. Set `JAX_PLATFORMS=cpu` explicitly even when the discovered
+venv also supports CUDA. Installing the base requirements does not remove
+an existing CUDA plugin. Confirm the trainer receipt reports `device: cpu`.
 
 **Python ≥ 3.12**, and that is a floor, not a preference: the pinned
 `numpy==2.5.1` has no wheels below cp312. The pixi environment's 3.11
@@ -110,34 +103,39 @@ for cp312/cp313/cp314:
 
 ```bash
 /opt/homebrew/bin/python3.13 -m venv .venv           # repo root; gitignored
-.venv/bin/pip install -r training/requirements.txt   # the CPU jax, as pinned
+.venv/bin/pip install -r training/requirements.txt   # pinned trainer dependencies
 .venv/bin/pip install pytest                         # to run the venv-gated suites
 ```
 
 `pytest` is a convenience for running the trainer's own gates from this
 venv, not a fifth pin — nothing about a training run needs it.
 
-From here `cadex train --project P --out ./run --iterations 300 --envs 32
---put` (`docs/CLI.md` §2, ADR-191) does the export, this trainer invocation
-and the store write as one command; it finds this venv at `<repo>/.venv` or
-`~/cadex-train-venv`, or wherever `--trainer-python` / `$CADEX_TRAIN_PYTHON`
-points, and never builds one. The direct invocation below is what it runs.
+The CLI discovers `<repo>/.venv`, then `~/cadex-train-venv`, or uses
+`--trainer-python` / `$CADEX_TRAIN_PYTHON`; it never creates a venv.
+For an existing toy project with a task, run from the repository root:
 
 ```bash
-.venv/bin/python training/cadex_train.py <outputs>/walk-task.json \
-    --out walk.cxpolicy --envs 32 --iterations 300 \
-    --checkpoint-every 50 \
-    --progress <project>/training-progress.json
+JAX_PLATFORMS=cpu ./cadex walk --project "$PROJECT" \
+    --out "$PROJECT/runs/cpu-baseline" --name cpu-baseline.cxpolicy \
+    --iterations 1 --envs 4 --seed 0 --timeout 600 --json
 ```
 
-Drop `--envs` hard. The default of 256 is sized for a GPU, and on CPU it
-mostly buys memory traffic — the model is shared but every environment is
-one more row of batched simulation state stepped on the same cores, so
-16–64 is the right band for a toy on a 16 GB machine. `--checkpoint-every
-50` (up to 100 on longer runs) costs about one
-iteration each and every checkpoint is a complete, playable `.cxpolicy` —
-on CPU, where a run you would rather not repeat is measured in minutes,
-that is cheap insurance.
+Use fresh output and policy names. This runs export, training, storage,
+policy verification, rollout and all four reviews (`docs/CLI.md` §2).
+`examples/lifecycle/README.md` supplies the model-free project setup.
+`--timeout` bounds the trainer only; under a strict resource budget also
+monitor process-tree memory and elapsed time, as that example documents.
+The direct trainer invocation uses the same backend selection:
+
+```bash
+JAX_PLATFORMS=cpu .venv/bin/python training/cadex_train.py <outputs>/walk-task.json \
+    --out walk.cxpolicy --envs 32 --iterations 300 \
+    --checkpoint-every 50 --progress <project>/training-progress.json
+```
+
+Keep toy environment counts small: the default 256 is sized for a GPU.
+Checkpoints are complete, playable policies; `--checkpoint-every 50`
+costs about one extra iteration per checkpoint.
 
 **`--progress` is how a local run lights up the shell.** The Training
 panel polls `<project>/training-progress.json`; on paths (c) and (d) it is
@@ -256,13 +254,70 @@ and, with `--put`, stores it — so the policy lands at the path the local
 trainer would have written and every later step (`cadex script --set`,
 the verified rollout, `review.json`) is unchanged. `cadex walk --remote`
 is the whole walk with that one leg on the box. `--allow-cpu` passes
-through; `--detach` does not (a walk waits for its leg — a run too long
-to hold an ssh open for is dispatched by hand, above, and continued with
-`cadex asset --put`). The CLI carries no warm start to the box
-(`--init-from` with `--remote` is a usage error), because this script
-copies two files and the parent policy is not one of them. Run `check`
-first: the CLI reads none of `.remote.env` and repairs nothing.
+through. `cadex train --remote --detach` returns a pending launch receipt in
+`--out/training-receipt.json`; `--out` must lie inside the project. No policy
+is verified or stored, even with `--put`. Use its run ID with `watch`/`pull`
+into a fresh destination, then verify and store the returned policy explicitly.
+The same locator is printed as the last JSON line by the dispatcher itself.
+`walk` remains blocking; detached collection and continuation are not automated.
+A warm start goes too (below). Run `check` first: the CLI reads none of
+`.remote.env` and repairs nothing. See ADR-278 and `docs/CLI.md` for pending
+semantics and the timeout limit (ending SSH does not stop remote training).
 `docs/CLI.md` §2 is the contract.
+
+### A warm start, on the box (ADR-268)
+
+The curriculum pair (ADR-161) names two files on **this** machine, and the
+box has seen neither:
+
+```bash
+training/remote_train.sh train ./runs/r2/walk-task.json ./runs/r2/walk.cxpolicy \
+    -- --iterations 400 --envs 4096 \
+       --init-from ./runs/r1/walk.cxpolicy \
+       --init-from-parent-task ./runs/r1/walk-task.json \
+       --init-from-task-change "a wider shove band"
+```
+
+The script lifts those two paths out of the flags after `--`, copies both
+files into a `warm/` subdirectory of the run directory — a subdirectory, so
+a parent bundle named like the child cannot overwrite it — and re-emits the
+two flags pointing at the copies. Everything else after `--` is passed
+through untouched, so what the box's trainer is handed is the same argument
+list you would have run here. The parent bundle arrives byte-identical
+because the trainer ties its digest to the policy's header and refuses
+otherwise.
+
+It refuses before it copies anything when a warm file is missing, when the
+joined `--init-from=PATH` form is used (that path would reach the box
+unrewritten, naming a file that is not there), or when the two warm files
+share a basename and would collide in one flat `warm/`. Same rule as the
+rest of this script: fail loudly rather than repair.
+
+The same applies through the CLI — `cadex train --remote --init-from …` and
+an iterate walk are no longer usage errors — which is what makes an iterate
+the same shape locally and on the box.
+
+**Plan it before you dispatch it** (ADR-255). `check` tells you the box is
+ready; `--dry-run` tells you what would be sent to it, without sending
+anything:
+
+```bash
+./cadex train --project ./b --out ./b/runs/r1/train --remote --put --dry-run     --iterations 400 --envs 4096 --json
+```
+
+That rebuilds and exports for real, then reports `training_plan` instead of
+training: the four files the leg touches — the bundle, the model beside it,
+the policy, the stored asset — and the ordered `steps` that touch them,
+with `executed: false`. Run it with and without `--remote` and the
+`artifacts` are the same object both times; the remote `steps` are the
+local ones (`export → train → verify → store`) with `copy-out` and
+`copy-back` around the trainer. That is the whole difference between
+training here and training on the box, and it is checkable on a machine
+that never opens an ssh. It runs no trainer, stores nothing and reads none
+of `.remote.env` — it is a plan, not a pre-flight, and it is no substitute
+for `check`. Use it in front of `cadex walk --remote`, whose train leg
+would otherwise fail only after the design and assembly legs have already
+run.
 
 `training/remote_train.sh shell` opens an interactive session with the same
 configuration — use it once to accept the host key, since `check` and

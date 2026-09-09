@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-09-08
+Verified against source: 2026-09-09
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -2299,6 +2299,24 @@ Ranked by how quietly they fail.
     `--entropy` times an entropy linear in `log_std`, so nothing bounds it
     upwards; a σ that has walked off `--initial-std` is a run whose rollouts
     and whose installable mean policy are no longer the same policy.
+20. **MJX has no contact function for four geom type pairs, so a model
+    every engine check accepts can still be untrainable** (ADR-281).
+    Measured on the `ot4-mix52` walk: an agent-authored slider-crank gave
+    the frame a `cylinder` collision rail and the coupler a `box`, the two
+    are two joints apart so nothing excludes them, and `mjx.put_model`
+    raised `NotImplementedError: (mjGEOM_CYLINDER, mjGEOM_BOX) collisions
+    not implemented` 2.27 s into the training leg — after the assembly
+    solved, the MJCF exported, the pose held to 0.0015 mm and the rollout
+    ran. Stock MuJoCo simulates that contact; the limit is the JAX
+    backend's. The four are **box/cylinder, cylinder/mesh, box/ellipsoid,
+    ellipsoid/mesh**. `assembly.task` now refuses them by name
+    (`mjx_unsupported_collision_pair`), because a task is only ever read by
+    the trainer and the author is still there when it is declared; nothing
+    else is refused, and a cylinder stays legal on a model nobody trains.
+    Prefer box, capsule or sphere collision geometry for anything that can
+    touch. **Note the escape that is not one:** `collides_with=[]` on one
+    shape does not separate a pair — MuJoCo's mask test is an `or` over
+    both directions, so the other side must omit the group too.
 
 ## 6. Open questions
 
@@ -2851,10 +2869,10 @@ row below was actually run, and the numbers are this run's.
 | 6 | Verify + rollout | `cadex script --set` with the new `weights=` name and `sha256=` | Works: **1719.2** total reward, full 300-step horizon, against §7b's 1729.9 from a 400-iteration run | a person edits two lines; the agent could, through `edit_script` |
 | 7 | Review | the agent: `inspect scope=output`; a pipeline: the `policy` block of `assembly-simulation-trace.json`, which `cadex export` now copies into `--out` (row 3) | Works for the agent — asked to report the rollout, it read total reward 1719.23 and the five per-term totals through `inspect` unaided. A pipeline reads the same numbers from the exported trace: `total_reward` 1729.95 and the five `reward_totals` on the scratch copy, no staging path read | the agent, or a pipeline |
 | 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating that morning was six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six were the person's. **Closed the same day** (ADR-192) with a script convention and no new `params` flag: the policy is declared behind a numeric switch (`policy_on`), so `cadex params --set policy_on=0 --set shove_n=0.20 --out sweep` is accepted (`set_params` never refuses a dropped output) and exports the bundle at `369a0dd5…`; `cadex train --put --init-from … --init-from-parent-task … --init-from-task-change "…"` retrains warm across the change (the ADR-161 pair, now carried by the dispatcher) — 2 it × 8 envs in **17.8 s** wall, iteration 0 already at +1.52 reward/step where a cold network sits near −0.95; the digest edit and `cadex script --set`; `cadex params --set policy_on=1 --out run2` verifies and rolls out. Trace: **127.8** total reward at 0.20 N after one warm toy step, against 1729.9 at 0.12 N for the 400-iteration policy — the comparison exists; row 9 is where it gets recorded. `cli/tests/test_train.py` runs the whole chain on the toy with the real trainer | the agent for the script, a pipeline for the four commands |
-| 9 | Compare and record | On 2026-09-06 (morning): nothing — no comparison, no `PROGRESS.md`, and the project directory was not a git repository. **Closed the same day** (ADR-194, on row 10's `PROGRESS.md`): a run's `total_reward` or `reward/step` is written **with its change against the last row that carried it** — delta, that run's digest, that run's value — so the comparison is one recorded row a reader does not assemble by eye; and the project root is its own git repository from the first visit, with a `.gitignore` the CLI writes and **one commit per accepted run** whose message is the row's words. Measured on the scratch copy: `cadex train --put` (2 it × 8 envs, 4.6 s of training, 20.9 s wall) initialised the repository and landed its row and commit; `cadex script --set` re-declaring the new policy landed `total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8)` — a fresh 2-iteration policy against the ADR-192 warm one, on the same task — and a commit of exactly `PROGRESS.md`, `script.py`, `script.json` and the history entry (`git show --stat`). Two runs, two rows, two commits. `cli/tests/test_project_docs.py` pins the delta, the repository and the nested-work-tree refusal | the CLI |
-| 10 | Project as a codebase | On 2026-09-06 (morning): nothing — no `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`, nothing scaffolds them, nothing reads them on a visit. **Closed the same day** (ADR-193): the CLI scaffolds the three on the first visit (idempotent, never overwrites), pastes them into every turn's system prompt (bounded: head of the first two, tail of the log), lands a `PROGRESS.md` row after every accepted run with the revision, digest, what was done and the numbers the run produced (the trace's `total_reward`, the trainer's `reward_per_step`, wall time, sha256), and turns a turn's closing `DECISION:` lines into numbered `DECISIONS.md` entries. Domain docs are a documented convention (`docs/<subject>.md`). `cli/tests/test_project_docs.py` drives it against the engine and a scripted turn. `docs/CLI.md` §2 | the CLI for the scaffold and the log; the agent for the decisions, by convention rather than by tool |
+| 9 | Compare and record | On 2026-09-06 (morning): nothing — no comparison, no `PROGRESS.md`, and the project directory was not a git repository. **Closed the same day** (ADR-194, on row 10's `PROGRESS.md`): a run's `total_reward` or `reward/step` is written **with its change against the last row that carried it** — delta, that run's digest, that run's value — so the comparison is one recorded row a reader does not assemble by eye; and accepted runs attempt a commit in project-root repositories (ownership and ignore rules: `docs/CLI.md`, **Project history depends on repository ownership**). Measured on the scratch copy: `cadex train --put` (2 it × 8 envs, 4.6 s of training, 20.9 s wall) initialised the repository and landed its row and commit; `cadex script --set` re-declaring the new policy landed `total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8)` — a fresh 2-iteration policy against the ADR-192 warm one, on the same task — and a commit of exactly `PROGRESS.md`, `script.py`, `script.json` and the history entry (`git show --stat`). Two runs, two rows, two commits. `cli/tests/test_project_docs.py` pins the delta, the repository and the nested-work-tree refusal | the CLI |
+| 10 | Project as a codebase | On 2026-09-06 (morning): nothing — no `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`, nothing scaffolds them, nothing reads them on a visit. **Closed the same day** (ADR-193): the CLI scaffolds the three on the first visit (idempotent, never overwrites), pastes them into every turn's system prompt (bounded: architecture head, decisions and progress tails; ADR-265), lands a `PROGRESS.md` row after every accepted run with the revision, digest, what was done and the numbers the run produced (the trace's `total_reward`, the trainer's `reward_per_step`, wall time, sha256), and turns a turn's closing `DECISION:` lines into numbered `DECISIONS.md` entries. Domain docs are a documented convention (`docs/<subject>.md`). `cli/tests/test_project_docs.py` drives it against the engine and a scripted turn. `docs/CLI.md` §2 | the CLI for the scaffold and the log; the agent for the decisions, by convention rather than by tool |
 | 11 | The same walk with the GUI attached | the same `cadex` commands from a terminal beside the open `.blend` — **not** the in-app agent, which has only the Mesh tools (`--tools ""`, no shell, no file tool) | **Documented 2026-09-06** (ADR-201, `docs/CLI.md` §2) from the client code, no GUI launched: the CLI's `flock` is per command and released before the `PROGRESS.md` row and the commit; the shell takes no lock, so ownership is sequential by convention; stale shell mutations return `STALE_PROGRAM_REVISION` without adopting the new guard or replaying arguments (ADR-204); Rebuild Model or reopen (`load_post` → `queue_open`), review the refreshed source/values, then retry, never through the re-accept box. Same legs, same docs, same project-relative artifacts. Concurrent rebuilds and simultaneous acceptance are not serialized; sequential use remains required. The headless shell gate covers stale refusal and refresh recovery; no GUI was launched | a person or a pipeline at the terminal; the in-app agent for design turns |
-| 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | **Scripted 2026-09-06** (ADR-200): `cadex train --remote` / `cadex walk --remote` run the train leg through `remote_train.sh train <bundle> <out> -- <the same flags>`, verify the returned policy against the receipt, and change nothing else — same `DIR/train` artifacts, same store, same `review.json`. Offline evidence only: `cli/tests/test_train.py` pins the command against the script's usage line and runs the leg end to end against a stand-in dispatcher (real engine, real store, three refusals). **Not executed**: no dispatch, the box's checkout untouched; B7 stays blocked. Cold runs only — the warm start does not travel | none for a cold run; a person for `check` and the box's config |
+| 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | **Scripted 2026-09-06** (ADR-200): `cadex train --remote` / `cadex walk --remote` run the train leg through `remote_train.sh train <bundle> <out> -- <the same flags>`, verify the returned policy against the receipt, and change nothing else — same `DIR/train` artifacts, same store, same `review.json`. Offline evidence only: `cli/tests/test_train.py` pins the command against the script's usage line and runs the leg end to end against a stand-in dispatcher (real engine, real store, three refusals). **Not executed**: no dispatch, the box's checkout untouched; B7 stays blocked. **A warm start travels since 2026-09-08** (ADR-268): the dispatcher lifts `--init-from` and `--init-from-parent-task` out of the trailing flags, copies both files into the run directory's `warm/` and re-points the flags, so an iterate has the same shape in both modes; tested against the real script with stand-in `ssh`/`rsync` | none; a person for `check` and the box's config |
 
 **One agent turn on top, to see the refusals today.** The same scratch
 project was given one `./cadex -p` turn asking it to retrain at toy scale,
@@ -2955,12 +2973,10 @@ left a third, so it is every export, not one).
    (ADR-194, the same file, no protocol op, no engine change): the
    comparison is one recorded row — a `PROGRESS.md` number an earlier
    row carried is written with its delta against that row — and the
-   project root is its own git repository, initialised on the first
-   visit with a `.gitignore` the CLI writes, committed after every
-   accepted run. Not taken: initialising inside somebody else's work
-   tree (left alone, with a note), and committing the staged artifacts
-   or the frames (rebuildable and bulk; `.gitignore`d). All twelve rows
-   are now the agent's, the CLI's, or doc-only; item 5 is the frontier.
+   CLI attempts a project-root commit. See `docs/CLI.md`, **Project history
+   depends on repository ownership**, for initialization, ignore rules and
+   nested projects. Only `committed <sha>.` confirms success; a progress row
+   alone does not. The measurements above are historical (ADR-266).
 
 ### Reproducibility boundary of the audit (2026-09-06)
 
@@ -3025,13 +3041,26 @@ SVG previews plus a summary under `review/render/<accepted-revision>/`.
 limits and acquisition/render timings alongside inventory, clearance and reward.
 A revision mismatch or rendering error fails the walk. The shared mode artifact
 table in `docs/CLI.md` applies unchanged to local, GUI-attached and remote-flag
-walks. Sections share that accepted snapshot at world XZ, Y = 3.125 mm,
-an interior cut for both mechanisms, and commit SVG/JSON under
-`review/section/<accepted-revision>/XZ-3.125/`. Review retains plane, units,
+walks. Sections share that accepted snapshot at world XZ, at an offset derived
+from the snapshot's own bounds rather than a constant (ADR-267), and commit
+SVG/JSON under `review/section/<accepted-revision>/XZ-<derived-offset>/`. Review retains plane, units,
 revision/digest, approximation, limits and section timing; empty cuts are
 available without contours, unsupported cuts unavailable with reasons, and
 errors fail the walk without reporting retained files as current success.
 These previews show the initial solved pose, not rollout frames or swept clearance.
+
+**Clearance over the poses the run reached, 2026-09-09 (ADR-283).** The gap
+that paragraph names is closed on the geometry side: `assembly.dynamics` and
+`assembly.rollout` take `clearance=[(a, b)]` and `clearance_mm` on the same
+terms `assembly.simulation` has since ADR-130, and measure the named pairs as
+exact BREP at **every frame of the trace**, re-posed from each frame's own
+`position_mm`/`rotation_xyzw`. What it is not: a MuJoCo contact report. The
+geoms the run collides are boxes and capsules (ADR-281), so the solver cannot
+be asked about the parts and the parts have to be measured where the solver
+left them. Unlike a kinematics sweep this **reports** — the finding lands on
+the simulation output under `clearance`, with `closest_approach` naming the
+pair, the millimetres and the frame — because refusing a dynamics result
+would delete the trace that shows the problem.
 
 ## 8. Live mode: watching it, rather than reading about it
 

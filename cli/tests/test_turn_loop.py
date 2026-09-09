@@ -329,6 +329,68 @@ def test_resume_passes_the_stored_session_id_and_default_does_not(tmp_path) -> N
 
 
 @pytest.mark.usefixtures("engine")
+@pytest.mark.parametrize("resume", [False, True])
+def test_resumed_turn_reads_current_project_history_and_appends_notes(tmp_path, resume):
+    """Resume must reload project knowledge, not rely on conversation memory."""
+    first = RunReport()
+    assert command_prompt(_args(tmp_path), first, turn_factory=turn_factory([[
+        ("tool", "write_script", {"source": BRACKET}),
+        ("done", "Built the mount.\nDECISION: retain the sensor footprint.\n"
+         "NOTE sensors: encoder measures the hinge angle.\n"
+         "NOTE gear-ratios: rejected 4:1 because it fouled the mount."),
+    ]])) == EXIT_OK
+    root = Path(first.project_root)
+    # Knowledge can change between visits, independently of Claude's session.
+    architecture = root / "ARCHITECTURE.md"
+    architecture.write_text(architecture.read_text() + "\nKeep the cable exit clear.\n")
+    sensors = root / "docs/sensors.md"
+    sensors.write_text(sensors.read_text() + "\nEncoder offset measured at 0.25 rad.\n")
+    decisions = root / "DECISIONS.md"
+    decisions.write_text(decisions.read_text() + "\n" + "old rationale " * 800
+                         + "\n## ADR-002 — retain the sensor footprint.\nNewest constraint: keep 3 mm cable clearance.\n")
+    decisions_before = decisions.read_text()
+    sensors_before = sensors.read_text()
+    progress = root / "PROGRESS.md"
+    progress.write_text(progress.read_text() + "\nPrevious clearance: 2.5 mm.\n")
+    progress_before = progress.read_text()
+    resumed = turn_factory([[
+        ("tool", "write_script", {"source": TALLER}),
+        ("done", "Thickened the mount.\nDECISION: keep width while increasing thickness.\n"
+         "NOTE sensors: preserve the measured offset after thickening."),
+    ]])
+
+    def resume_with_history(**kwargs):
+        # Check the input before MockTurn supplies any fallback session id.
+        assert kwargs["session_id"] == (SESSION_ID if resume else "")
+        assert kwargs["cwd"] == str(root)
+        prompt = kwargs["system_prompt_text"]
+        for expected in (
+            "Newest constraint: keep 3 mm cable clearance.",
+            "earlier characters omitted",
+            "Keep the cable exit clear.",
+            "retain the sensor footprint.",
+            "encoder measures the hinge angle.",
+            "Encoder offset measured at 0.25 rad.",
+            "rejected 4:1 because it fouled the mount.",
+            "Previous clearance: 2.5 mm.",
+        ):
+            assert expected in prompt
+        return resumed(**kwargs)
+
+    report = RunReport()
+    assert command_prompt(
+        _args(tmp_path, resume=resume, prompt="thicken the mount using its recorded constraints"),
+        report, turn_factory=resume_with_history,
+    ) == EXIT_OK, report.error
+    assert report.digest != first.digest
+    assert (root / "DECISIONS.md").read_text().startswith(decisions_before)
+    assert "keep width while increasing thickness." in (root / "DECISIONS.md").read_text()
+    assert sensors.read_text().startswith(sensors_before)
+    assert "preserve the measured offset after thickening." in sensors.read_text()
+    assert (root / "PROGRESS.md").read_text().startswith(progress_before)
+
+
+@pytest.mark.usefixtures("engine")
 def test_the_turn_runs_in_the_project_directory(tmp_path) -> None:
     """Claude Code files a conversation under the directory it ran in.
 
@@ -371,3 +433,110 @@ def test_successful_resumed_edit_preserves_or_updates_session_identity(tmp_path,
         assert path.read_bytes() == before
     else:
         assert stored.updated_at != payload["updated_at"]
+
+
+# -- the one follow-up ---------------------------------------------------
+
+
+@pytest.mark.usefixtures("engine")
+def test_a_turn_that_calls_nothing_is_asked_once_more(tmp_path) -> None:
+    """The failure that cost three live walks in one evening.
+
+    A design turn that ends without a single tool call has done nothing:
+    it reasoned, it wrote a paragraph to stderr, and the project is
+    byte-for-byte what it was. The engine, the bridge and the model's
+    reading of the project are all still standing at that moment, so the
+    run asks once more in the same conversation rather than exiting 3 on a
+    turn that never started.
+    """
+
+    factory = turn_factory(
+        [
+            [("text", "Let me think about which finding to take.")],
+            [("tool", "write_script", {"source": BRACKET}),
+             ("done", "Taken. DECISION: built the plate.")],
+        ]
+    )
+    report = RunReport()
+
+    code = command_prompt(_args(tmp_path), report, turn_factory=factory)
+
+    assert code == EXIT_OK, report.error
+    turn = factory.made[0]
+    assert len(turn.prompts) == 2
+    assert "one follow-up" in turn.prompts[1]
+    # Both turns' prose survives, so a closing DECISION: line from either
+    # reaches the project's ADR log.
+    assert "Let me think" in report.notes[0] or any(
+        "Let me think" in note for note in report.notes
+    )
+    assert any("asked once more" in note for note in report.notes)
+
+
+@pytest.mark.usefixtures("engine")
+def test_the_follow_up_is_not_offered_to_a_turn_the_engine_refused(
+    tmp_path,
+) -> None:
+    """Narrow by construction: a refused turn was told why and stopped.
+
+    Asking that one again is how a loop starts, so the follow-up fires only
+    when the model reached the engine not once.
+    """
+
+    factory = turn_factory([[("tool", "write_script", {"source": BROKEN}),
+                             ("done", "I could not.")]])
+    report = RunReport()
+
+    code = command_prompt(_args(tmp_path), report, turn_factory=factory)
+
+    assert code == EXIT_REJECTED
+    assert factory.made[0].turns == 1
+    assert not any("asked once more" in note for note in report.notes)
+
+
+@pytest.mark.usefixtures("engine")
+def test_a_follow_up_that_still_offers_nothing_exits_rejected(tmp_path) -> None:
+    """One follow-up, not a retry loop: the second silence is the answer."""
+
+    factory = turn_factory(
+        [
+            [("text", "Thinking.")],
+            [("done", "NO CHANGE: the recorded findings do not justify one.")],
+        ]
+    )
+    report = RunReport()
+
+    code = command_prompt(_args(tmp_path), report, turn_factory=factory)
+
+    assert code == EXIT_REJECTED
+    assert factory.made[0].turns == 2
+    assert "no tool call" in report.error
+    assert "NO CHANGE" in report.error
+
+
+@pytest.mark.usefixtures("engine")
+@pytest.mark.parametrize("resume", [False, True])
+@pytest.mark.parametrize("explicit,environment,recorded,expected", [
+    ("explicit", "machine", "project", "explicit"),
+    (None, " machine ", "project", "machine"),
+    (None, "", "project", "project"),
+    (None, "   ", "project", "project"),
+    (None, "", "", None),
+])
+def test_turn_resolves_model_after_reading_project(
+    tmp_path, monkeypatch, resume, explicit, environment, recorded, expected
+):
+    from cadex_cli.agent import DEFAULT_MODEL
+    from cadex_cli.session import write_agent_state
+
+    monkeypatch.setenv("CADEX_MODEL", environment)
+    write_agent_state(tmp_path / "project", session_id=SESSION_ID, model=recorded)
+    factory = turn_factory([[
+        ("tool", "write_script", {"source": BRACKET}), ("done", "ok")
+    ]])
+    report = RunReport()
+    assert command_prompt(_args(tmp_path, model=explicit, resume=resume), report,
+                          turn_factory=factory) == EXIT_OK
+    assert factory.made[0].model == (expected or DEFAULT_MODEL)
+    assert report.model == factory.made[0].model
+    assert read_agent_state(report.project_root).model == report.model

@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-08
+Verified against source: 2026-09-09
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -1966,6 +1966,18 @@ What makes them experimental, and what would settle it:
   project-relative paths, committed review and comparable progress rows.
   The shared table in `docs/CLI.md` is pinned to the project scaffold.
   Remote transport and GUI attachment remain unexercised by constraint.
+- [x] **The remote training leg can be planned instead of dispatched**
+  (ADR-255, `docs/CLI.md` §2, `training/SETUP.md` §d). `cadex train
+  --dry-run` rebuilds and exports for real, then reports `training_plan`
+  — the four files the leg would touch and the ordered steps that touch
+  them, `executed: false` — instead of training. The local and remote
+  plans carry the same `artifacts`; the remote `steps` are the local ones
+  with `copy-out`/`copy-back` around the trainer, which is the whole
+  difference between the modes and is now checkable from the command line
+  offline. It is the preflight for `cadex walk --remote`, whose train leg
+  otherwise fails after the design and assembly legs have run. **Still not
+  a substitute for `remote_train.sh check`**: a plan proves the shape of
+  the leg, never that the box is reachable, and nothing here does ssh.
 - [x] **The walk with the GUI attached is documented against the client
   code** (ADR-201, `docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 11). It is
   the same `cadex` commands from a terminal beside the open `.blend`:
@@ -1974,6 +1986,14 @@ What makes them experimental, and what would settle it:
   before the next GUI edit. The in-app agent has no shell or file tool;
   project docs stay the CLI's and a person's. **GUI not exercised.**
   *Three modes, one shape* is headless exercised, remote scripted, GUI documented.
+- [x] **...and leg by leg, with the difference column pinned** (ADR-269,
+  `docs/CLI.md` §2). Every leg the walk spawns, plus the review it runs
+  itself, with its command, its artifacts and what an open window changes:
+  nothing the walk writes, one refresh after `declare`, one model
+  resolution. Two tests hold the table's leg column equal to
+  `__main__.py`'s `run_leg` names and pin the four `mesh_agent` facts
+  beneath it. Reading the source corrected the handler count from two to
+  four. **GUI still not exercised.**
 - [x] **Inventory resolves large inspection previews** (ADR-236 follow-up).
   Page catalog totals and uncatalogued outputs as well as components; expand
   previewed rows and their fields before rendering. Regression uses the real
@@ -1999,12 +2019,15 @@ What makes them experimental, and what would settle it:
 - [x] **Walk review commits named-angle previews** (ADR-239 follow-up).
   One review session snapshots accepted display before inventory/clearance,
   checks rollout revision, commits four SVGs and summary under that revision,
-  and reports render/acquisition and whole-walk timings.
+  and reports render/acquisition and whole-walk timings. ADR-262 later keeps
+  these generated previews local by default.
 - [x] **Walk review commits named-plane sections** (ADR-240 follow-up).
-  Shared accepted snapshot, world XZ at Y = 3.125 mm, revision/digest checks,
+  Shared accepted snapshot, world XZ at a derived offset (ADR-267; the fixed
+  3.125 mm this landed with missed whole parts), revision/digest checks,
   explicit empty/unsupported/error semantics and committed SVG/JSON. Both
   mechanisms and local/remote-flag CPU stand-in parity are tested; a separate
-  fresh complete-review rehearsal remains required.
+  fresh complete-review rehearsal remains required. ADR-262 later keeps
+  these generated sections local by default.
 - [x] **Fresh hinged-arm complete-review rehearsal** (2026-09-08).
   Public walk, bounded CPU training, four inspected views and interior section,
   accepted identity, tracked artifacts and explicit contact/unknown counts;
@@ -2016,6 +2039,351 @@ What makes them experimental, and what would settle it:
   carry comparable measurements; arm contact and carriage 34 mm separation
   remain explicit. Evidence in `docs/probes/complete-review/linear-carriage/`;
   combined review evidence is ready for maintainer assessment.
+- [x] **The fresh mixed-joint walk completes every leg** (2026-09-09,
+  `docs/CLI.md` §2). `ot4-mix55`: the same crank-slider prompt into a second
+  empty project, no `--resume` and no supplied script, `--iterations 5 --envs 16
+  --seed 0 --timeout 600 --leg-timeout 1800`, against a freshly installed engine
+  reporting `match` across 56 files. **Exit 0 in 1680.78 s**, peak process-tree
+  RSS 2,312,118,272 bytes, no watchdog intervention. Design 1649.63 s (revision
+  `70fd2a53…`, digest `ee279ea9…`, four bodies, one closed loop, ball rod end
+  and keyed cylindrical bushing in place of the over-constrained all-revolute
+  loop); train 26.71 s on CPU at reward/step −0.4055, witness error 1.14e-08
+  against 1e-04; declare 0.81 s; rollout total reward −19.85. All four eyes ran:
+  four render views, an XZ section cutting 4 of 4 objects, a 4-component
+  inventory, and a clearance check reporting one 648.0 mm³ frame/slider
+  intersection. ADR-281's MJX geom-pair refusal never fired — the design turn
+  authored box and capsule collision shapes in an empty contact group — which is
+  one run of evidence that the guidance steers an unaided turn, not a guarantee.
+- [x] **A second mechanism, a passive joint, and a task that terminates**
+  (2026-09-09, `docs/CLI.md` §2). `ot4-cart`: an inverted-pendulum cart —
+  grounded frame and rail, cart on a **prismatic** joint driven by a bounded
+  **force motor**, pole on a **passive revolute** joint nothing drives — from
+  one prompt into a third empty project through the *same* `cadex walk`, same
+  flags, **no code change of any kind**. **Exit 0 in 1222.22 s**, peak
+  process-tree RSS 1,997,844,480 bytes, no watchdog. Design 1196.04 s (revision
+  `0aa617e2…`, digest `b3b699e6…`); train 20.27 s on CPU at reward/step 0.6936,
+  witness error 6.34e-09 against 1e-04; declare 0.65 s; rollout total reward
+  28.756 at seed 7. All four eyes ran: 4 render views (5,002 triangles), an XZ
+  section at a derived −15.0 mm cutting **2 of 3** objects, a 3-component
+  inventory, and a clearance check with **0 offending pairs of 3** and a
+  passing bounds check. Two findings the walk reported on itself: the verified
+  rollout ended on the task's own `pole_fell` termination at step 30 of 200, so
+  its reward is a sum over 31 steps and says nothing about learned balance; and
+  the most-coverage section rule chose a plane that misses the pole, naming it
+  in `section.missed_objects` as `moved: true` — on a slender moving rod near
+  the centre plane, maximum coverage is not maximum interest. Both projects'
+  `PROGRESS.md` carry the same columns; the two `total_reward` figures are
+  different objectives in different units and rank nothing.
+- [x] **A machine names its turn model once** (ADR-249, `docs/CLI.md` §2).
+  `--model` defaults to `$CADEX_MODEL`, the recorded project model, then
+  `claude-fable-5` (ADR-276). Found by the
+  first prompt walk on the Linux GPU box, whose design leg refused in 2.4 s:
+  the default model was out of usage credit while `claude-sonnet-5`,
+  `claude-opus-5` and `claude-haiku-4-5` all answered on the same login.
+  One resolver, two argparse defaults and a regression; LGPL CLI zone only.
+  **Corrected on the three-modes currency audit**: the entry's claim that
+  both front ends still answer "what does Cadex run" the same way was false
+  — the shell's `DEFAULT_MODEL` is `""` and nothing under `shell/` names
+  `CADEX_MODEL`, so `$CADEX_MODEL` governs the terminal legs only.
+  `docs/CLI.md` §2's GUI-attached paragraph now says so, and a test pins the
+  fact rather than the sentence. ADR-200's remote handoff was re-read in the
+  same pass and is current: the box runs no engine and no turn, so neither
+  ADR-249 nor ADR-250 reaches it.
+- [x] **`assembly.mjcf` never returns for a ten-component rig** — fixed
+  (ADR-250, 2026-09-08, found on the Linux GPU box). The first prompt walk
+  there designed a one-servo swing rig — MG90S from the catalog, printed
+  base/arm, M3 hardware, 10 components, 3 joints — whose geometry and
+  `assembly.solve` accept in 1 s, and whose dynamics layer killed the
+  sandboxed worker at the 300 s CPU cap (SIGXCPU, returncode -24), reported
+  as `The isolated domain worker exited without a result`. The bisect
+  cleared the rig: a **two**-component model with one revolute joint and no
+  collision shapes stalls identically. The stall is `import numpy` under
+  `import mujoco`, and it is address space, not compute — OpenBLAS sizes a
+  per-thread scratch pool from the host's core count and reserves 4,432 MB
+  on 32 cores against the worker's 6,144 MB `RLIMIT_AS`, then spins in its
+  allocation retry loop. `worker_environment` pins
+  `OPENBLAS_NUM_THREADS=4` (624 MB), and SIGXCPU/SIGXFSZ now surface as
+  `DOMAIN_CPU_LIMIT_EXCEEDED` / `DOMAIN_OUTPUT_LIMIT_EXCEEDED` naming the
+  cap and the CPU-second vs wall-clock asymmetry. The walk's own script at
+  `policy_on=1`: **300.0 s / exit 3 → 2.0 s**; the full dynamics layer with
+  collisions, actuator, joint dynamics, observations, reward, termination,
+  randomisation and both ranged disturbances accepts in **1.2 s**.
+- [x] **The prompt walk runs end to end on the Linux GPU box** (2026-09-08,
+  the evidence ADR-249 and ADR-250 were cleared for). `cadex walk --prompt`
+  took a one-servo swing-arm rig from a prompt to a verified policy with no
+  human step past documented flags: **exit 0, 17:43 wall clock, 2,640 MB peak
+  RSS**, into a durable project outside this repository. Legs, all exit 0 —
+  design 1,014.2 s (one turn, `--model` from `$CADEX_MODEL`), train 38.3 s,
+  declare 2.2 s, rollout 2.4 s; `walk_seconds` 1,063.1 through review.
+  Training was local CPU inside the run bound: 5 iterations x 16 envs, 8.7 s,
+  4,673 parameters, reward/step **-0.1254**, witness error 7.2e-09 against a
+  1e-4 tolerance. The rollout the engine verified scored **total_reward
+  -0.1765** over 4 legs. The review step used all four headless eyes: render
+  (front/top/right/iso, 13,432 triangles, 3.4 s), section (XZ at 3.125 mm),
+  inventory (10 components, 7 catalogued), and the clearance bounds check
+  (**pass**, 90 comparisons over 45 pairs, 13 pairs inside the 0.1 mm
+  advisory band). The project landed as a codebase: five commits, five
+  `PROGRESS.md` rows, and `docs/{actuators,clearance,inventory,sensors}.md`.
+  The only host-specific input was `CADEX_MODEL=claude-opus-5`, because the
+  `claude-fable-5` default is out of usage credit on this login; the
+  trainer, engine and venv resolved themselves.
+- [x] **The walk holds on a second mechanism, on the same machine**
+  (2026-09-08). The same `cadex walk --prompt` entry point, **no code change
+  of any kind** (`git status` clean at `526d43fb`), took a *vertical linear
+  carriage* rig — **prismatic** joint, **force motor**, against the swing
+  arm's revolute joint and position servo — from a prompt to a verified
+  policy: **exit 0, 5:59.8 wall clock, 1,721 MB peak RSS**, into a second
+  durable project outside this repository. Legs, all exit 0 — design 340.7 s
+  (one turn), train 15.8 s, declare 0.9 s, rollout 1.0 s; `walk_seconds`
+  359.7 through review. Training local CPU at the same 5 iterations x 16 envs
+  and seed 0: 2.8 s, 4,673 parameters, reward/step **0.02347** (best
+  iteration 0.16748), witness error 2.8e-09 against a 1e-4 tolerance. The
+  verified rollout scored **total_reward 3.2963** over 4 legs (`height`
+  +3.3085, `effort` -0.0122). All four review eyes again: render
+  (front/top/right/iso, 60 triangles, 0.32 s), section (XZ at 3.125 mm),
+  inventory (2 components, 0 catalogued — this rig is printed, not
+  purchased), clearance bounds check **pass** (2 comparisons over 1 pair, 0
+  offending). Five commits, five `PROGRESS.md` rows and five project ADRs,
+  all written by the walk's child commands. **The two projects' rows are
+  comparable line for line** — same columns, same metric definitions, same
+  toy scale — and, per the standing caveat `PROGRESS.md` itself carries,
+  their reward expressions are different objectives in different units, so
+  the totals never rank the two designs against each other.
+  `--trainer-python` was dropped from this invocation: the documented
+  fallback resolved `~/cadex-train-venv` on its own.
+- [x] **The walk holds on a third mechanism, whose joint carries two
+  coordinates** (2026-09-08). The same `cadex walk --prompt` entry point,
+  again with **no code change of any kind**, took a *quill lift* rig — one
+  **cylindrical** joint (a slide and a hinge on one axis) driven by a
+  **position servo on the linear coordinate** — from a prompt to a verified
+  policy: **exit 0, 10:53 wall clock, 1,946 MB peak RSS**, into a third
+  durable project outside this repository. Legs, all exit 0 — design 629.6 s
+  (one turn), train 19.6 s, declare 0.9 s, rollout 1.0 s; `walk_seconds`
+  652.9. Local CPU training at the same 5 iterations x 16 envs and seed 0:
+  3.7 s, 4,801 parameters, reward/step **-0.5796**, witness error 2.9e-08
+  against a 1e-4 tolerance; the verified rollout scored **total_reward
+  -74.79** over 4 terms. The joint is the point: `(position, linear)` is the
+  fourth and last pair in the engine's action-source table and the only one
+  no earlier walk had driven, and a **velocity** actuator cannot be the
+  variable instead — the engine refuses it at `action_range_underivable`
+  because a joint states position limits and no speed. Two review findings
+  the two earlier walks could not produce: the motion block reported
+  **`travel_mm 20.28`, `travel_deg 0`** on the same component, so a
+  two-coordinate joint moved in one channel only (gravity exerts no torque
+  about a vertical axis — a fact about the rollout, not a missing
+  measurement), and the clearance eye reported its **first offending pair on
+  an agent-authored design**: `housing`/`quill`, verdict `intersection`, 960
+  mm3 of common volume. The project's own ADR-005 says why and says it was
+  deliberate — the shaft is modelled inside a solid bore cylinder, the joint
+  rather than contact constrains the quill, and the two collision groups are
+  disjoint — so the eye is reporting a known modelling choice back, not
+  catching an unnoticed defect. Exit 0 remains correct: the report was
+  written, not "all pairs are clear". The ADR-260 delta did not
+  render and could not: a project's first walk has no previous row carrying
+  either label. Five commits, five `PROGRESS.md` rows, and
+  `docs/{actuators,sensors,inventory,clearance}.md`, all written by the
+  walk's child commands.
+- [x] **Walk reports engine/source differences** (2026-09-08, ADR-251).
+  Before its first leg, JSON and stderr carry a bounded Python-file comparison
+  with match/different/unavailable evidence; no refusal, rebuild or binary
+  provenance claim. Offline walk regressions and the CLI suite verify it.
+
+- [x] **Explicit CPU toy-walk setup** (2026-09-08, ADR-253). Rehearsed the
+  public walk with a CUDA-capable venv and explicit CPU selection; setup,
+  CLI guide and project scaffold share the measured invocation contract.
+- [x] **The walk checks its domain-note convention** (2026-09-08, ADR-256).
+  The review reads the MJCF it trained on and names the note subjects the
+  mechanism declares — `<actuator>` → `docs/actuators.md`, `<sensor>` →
+  `docs/sensors.md` — against the notes the project keeps. `review.json`
+  gains `documentation` and the walk's `PROGRESS.md` row the same finding.
+  Reported, never written and never fatal: the notes are the design turn's,
+  and the generated `ARCHITECTURE.md` scaffold says so where the project's
+  next agent reads it.
+- [x] **The walk's mechanism-blindness is pinned by a test** (2026-09-08,
+  ADR-260). Two offline regressions in `cli/tests/test_walk.py`: the two
+  example recipes — revolute/torque against slider/force — walk through
+  `command_walk` with identical flags and must dispatch byte-identical child
+  argv once the project path is substituted out, and the digest edit rewrites
+  the same two literals on both. `examples/lifecycle/README.md` names the
+  entry point, the two regressions and both projects' comparable numbers side
+  by side. Verified by mutation: a `--label` added for scripts containing
+  `slider` fails the first test.
+- [x] **Every walk leg is bounded in wall clock** (2026-09-08, ADR-261).
+  `run_leg` called `subprocess.run` with no `timeout=`, so every leg —
+  design, sweep, train, script, declare, rollout — was unbounded, while
+  `walk --timeout` bounded only the trainer's internals inside the train
+  leg and its help text implied otherwise. `--leg-timeout SECONDS` (default
+  3600, `0` for no limit) stops any one leg and fails the walk through the
+  existing `failed(...)` path at exit 1, the leg reporting 124. The stop is
+  a **subtree kill** — the leg is its own session, `SIGTERM` then `SIGKILL`
+  to the group — because the process that hangs is the agent CLI or the
+  trainer under the child, not the child; `SIGINT`/`SIGTERM` to the walk are
+  relayed to the leg so Ctrl-C still reaches it. The train leg gets
+  `max(--leg-timeout, --timeout + 300 s)`, so a long training run asked for
+  by name is never shot by a default. The regression hangs *and* spawns a
+  grandchild holding the captured pipe, then polls that pid until it is
+  gone: a direct-child kill fails it. **Amended the same day** (ADR-261
+  amendment): the kill went to the group only when the *direct child* had
+  survived the grace, so a grandchild that ignores `SIGTERM` outlived its
+  parent and hung the walk in the drain. `SIGKILL` now goes to the group
+  unconditionally after the grace, the group id is read while the child is
+  alive so it stays addressable after the reap, and the final drain is
+  bounded at 10 s. A second regression whose grandchild sets `SIGTERM` to
+  `SIG_IGN` fails against the previous stop.
+- [x] **A warm start travels to the box** (2026-09-08, ADR-268).
+  `remote_train.sh` lifts `--init-from` and `--init-from-parent-task` out of
+  the trailing flags, copies both files into the run directory's `warm/` and
+  re-points the flags, so `--remote` is no longer a cold-run-only mode and an
+  iterate has the same shape locally and on the box. Tested against the real
+  script with stand-in `ssh`/`rsync`; still no dispatch.
+- [x] **The walk names section misses and their rollout movement**
+  (2026-09-08, ADR-277). Exact published identities join uncut objects to
+  translation and rotation; unavailable or ambiguous matches remain unknown.
+  Fixture regressions cover pure rotation, translation, stationary components,
+  shared source instances and missing motion.
+- [x] **The section eye derives its own plane when called by hand**
+  (2026-09-08, ADR-275). `cadex section --plane XZ` with no `--offset-mm`
+  now takes the derived path the walk has used since ADR-267; the flag's
+  old `default=0.0` made that path unreachable from the command line, so a
+  hand caller got exactly the constant derivation replaces. The note reports
+  the offset, `explicit` or `derived`, and the objects-cut count. Explicit
+  offsets, the derivation itself and the walk are unchanged.
+- [x] **The walk's section cuts where the geometry is** (2026-09-08, ADR-267).
+  The review's offset is derived from the accepted snapshot's own bounds --
+  most objects' bounds crossed, first supported cut wins -- instead of a
+  literal 3.125 mm that reported `ok` while missing the ot4-quill's moving
+  part in all six recorded runs. `cadex section --offset-mm` is unchanged.
+- [x] **Correct lifecycle history promises** (2026-09-08, ADR-266).
+  Remove unconditional repository/commit claims from the lifecycle audit;
+  point to ownership rules and clarify the scaffold commit-success signal.
+- [x] **Retain recent decisions in prompt context** (2026-09-08, ADR-265).
+  Keep the bounded ADR tail; overflowing-log regressions cover fresh and resumed
+  turns, unchanged limits, architecture/domain selection and preserved source files.
+- [x] **Preserve project docs on failed updates** (2026-09-08, ADR-264).
+  Progress, decisions and domain notes replace only fully written files; partial
+  write and replacement-failure regressions preserve history and verify retry.
+- [x] **Pin project history on resumed agent turns** (2026-09-08). Real-engine
+  regression delivers prior decisions/domain notes and between-visit edits to
+  the resumed prompt, and preserves old notes when new decisions/notes land.
+  Provider behavior and a history-guided trained iterate remain unmeasured.
+- [x] **Identify comparison seeds, objective and action scaling** (2026-09-08,
+  ADR-263). Train/walk rows carry current and prior evidence; review JSON keeps
+  exported objective fields and actions. Legacy rows remain explicitly unknown.
+- [x] **Keep generated review outputs local and explain policy exclusions**
+  (2026-09-08, ADR-262). Fresh scaffolds ignore `/review/`; explicit policy
+  exclusions go after the root policy negation. A real Git regression inspects
+  commit trees, retained files, tracked history and pre-staged content.
+- [x] **Preserve stopped descendants' cleanup grace** (2026-09-08, ADR-261
+  correction). A monotonic deadline keeps the full grace when the direct child
+  exits immediately; a delayed descendant cleanup regression fails on the old
+  code. The final group kill remains unconditional.
+- [x] **A walk's `PROGRESS.md` row carries a delta** (2026-09-08, ADR-260).
+  Measuring ADR-259's motion cell against ADR-194's comparison found neither
+  half worked for a walk: `_record_progress` passed `previous=` only on the
+  non-walk branch, so **no walk row had ever carried a delta for any figure**,
+  and `motion N mm (component)` was unreadable by `_NUMBER_RE`, which wants
+  `<label> <number>`. The cell is now `motion travel_mm N on <component>,
+  travel_deg N on <component>`, `COMPARED_NUMBERS` gains both travel labels,
+  and the walk branch reads `previous_numbers()` like every other. The
+  carriage pair is the worked example: travel held at 103 mm while
+  `total_reward` fell 3.296 → 2.760, and the row can now say both — without
+  ranking them, since a delta is not a verdict. One spelling for row and
+  note; `review.json` untouched. The real-engine lifecycle regression asserts
+  the first walk carries no delta, the second carries one on each channel,
+  and the row still fits 320 characters with its documentation finding.
+- [x] **The walk reports whether the mechanism moved** (2026-09-08, ADR-259).
+  `review.json` gains a `motion` block beside `clearance`, and the walk's
+  `PROGRESS.md` row and notes gain a motion cell: per component the per-axis
+  position range, the largest displacement from the first solved frame, and
+  the largest rotation swing from its orientation. Two channels always, and
+  neither ranked against the other — the repository's own hinged arm travels
+  0.0000 mm and rotates 178.8334°, so a millimetre-only row would call a
+  working revolute rig motionless. Only solved frames count (frame 0 is the
+  solver's input pose), an all-identical trace reports zero rather than
+  unavailable, and the progress row's numbers cell grows to 320 characters so
+  motion does not truncate the documentation half off the row.
+- [x] **The lifecycle examples reproduce on a second machine** (2026-09-08,
+  ADR-257). Both documented recipe walks re-run unchanged on `sb1x`, exit 0,
+  trainer means bit-identical and rollout totals agreeing to the JAX build's
+  summation order; the README's dead `--trainer-python` path is replaced by the
+  documented discovery order, and both examples gain the `docs/actuators.md`
+  their own ADR-256 review asked for.
+- [x] **Walk inventory history contract** (2026-09-08, ADR-254). Measured
+  a component rename after a public walk: latest report advances, saved counts
+  stay fixed and Git retains original rows; guide and scaffold distinguish them.
+- [x] **Shared toy CPU test selection** (2026-09-08, ADR-253). Real train,
+  iterate and walk tests request one CPU fixture and assert receipt devices.
+- [x] **Failed retraining preserves history and retries successfully**
+  (2026-09-08, ADR-252). Real-engine regression injects partial output/exit 7,
+  then resumes the retained sweep with the prior successful policy/task. It
+  pins prior hashes/history, verified new policy, all four reviews and the
+  last successful comparison references; CLI §2 gives the tested command.
+
+- [x] **Correct the walk progress-row guide** (2026-09-08, ADR-238).
+  Child reward/delta rows and the successful walk's clearance row are distinct;
+  failed legs add no walk review row. Existing CLI behavior and tests retained.
+
+- [x] **Shorten the carriage iterate guide** (2026-09-08, ADR-251).
+  Retain the command, comparable rewards, baseline and limits; link the
+  immutable rehearsal evidence instead of repeating its detailed log.
+
+- [x] **Model-free iterate comparison on the durable carriage** (2026-09-08).
+  Width 70 → 80 mm through unchanged `walk --set`, cold CPU 5 × 16 seed 0:
+  exit 0 in 20.89 s; same reward and 200-step horizon, total 3.296298 →
+  2.760187, comparison automatically committed to project `PROGRESS.md`.
+  All four review eyes inspected; 56-file engine report matches. Baseline
+  bytes preserved. Single-seed toy evidence and command in `docs/CLI.md` §2.
+
+- [x] **Parameter-only quill iterate with objective comparison** (2026-09-08).
+  Stroke 40 → 60 mm, CPU 5 × 16 seed 0, finite leg bounds: exit 0;
+  reward +250.279186, travel +9.794917 mm / 0 degrees. Objective fields
+  match; geometry and action bounds differ. Evidence and limits: CLI §2.
+
+- [x] **Fixed-geometry quill reference with current comparison identities**
+  (2026-09-08). CPU 5 × 16, training seed 0 / rollout seed 7; unchanged
+  stroke 60, MJCF and task. Exit 0, 24.84 s, peak 1.99 GB; all review
+  outputs local and new generated artifacts excluded. CLI §2 carries
+  exact reward/travel and identity hashes; continuation is recorded below.
+
+- [x] **Fixed-geometry quill seed spread, seeds 1–3 against seed 0**
+  (2026-09-08). All legs pass at CPU 5 × 16 and rollout seed 7;
+  inputs/identities match, each walk <26 s and <2 GB peak tree RSS.
+  Four-seed reward range 170.952827–175.935972, travel 30.078469–31.421760 mm
+  / 0 degrees; CLI §2 and project PROGRESS retain individual measurements,
+  explicit references and the action-midpoint caveat. This direction is spent.
+
+- [x] **Attempt a fresh mixed-joint crank-slider walk** (2026-09-08,
+  iteration 48; `docs/CLI.md` §2). `claude-opus-5` refused design at its
+  session limit: exit 1, 1.94 s design, 2.003486 s total, 382,861,312 bytes
+  peak tree RSS. No later leg or eye ran; fresh crank-slider success remains
+  unevidenced. This checkbox records the experiment, not lifecycle completion.
+- [x] **A fresh mixed-joint crank-slider walk reaches geometry** (2026-09-08,
+  iteration 52; ADR-280, `docs/CLI.md` §2). Design exit 0 in 1135.85 s against
+  `claude-opus-5`: a four-body closed-loop slider-crank, mobility 1, worst
+  closure residual 0.0015 mm, with `DECISION:` lines and `linkage-geometry`,
+  `actuators` and `sensors` notes landed in the project. The train leg then
+  failed in 2.27 s — `mjx.put_model` does not implement cylinder-box
+  collisions, so the guide rail is untrainable under MJX though the MJCF is
+  valid. 1138.30 s total, 729,931,776 bytes peak tree RSS, no watchdog
+  intervention. Declare, rollout and all four eyes were not reached. This
+  checkbox records the experiment and the geometry result, not lifecycle
+  completion.
+- [x] **A failed training leg names its cause in the envelope** (ADR-280,
+  2026-09-08). `run_trainer` tees the trainer's stderr instead of only
+  inheriting it, so the `--json` error carries the crash rather than two
+  benign stdout warnings. Regression fails on the previous source; 24 CLI
+  train tests pass.
+- [x] **A training task is refused when MJX cannot build its model**
+  (ADR-281, 2026-09-09, `docs/MUJOCO.md` §5 hazard 20). `assembly.task`
+  enumerates the exported model's candidate collision pairs and refuses the
+  four MJX has no contact function for — box/cylinder, cylinder/mesh,
+  box/ellipsoid, ellipsoid/mesh — naming both geoms, both bodies and both
+  kinds. The filter is written out rather than imported, because the engine
+  may not import MJX; it reproduces `mjx.geom_pairs` exactly on the walk's
+  own exported model, where it names the cylinder rail against the coupler
+  box that `mjx.put_model` refused. `assembly.mjcf` and `assembly.rollout`
+  are untouched. Regression fails on the previous source; engine suite 2099
+  passed / 54 skipped, CLI suite 289 passed.
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected
@@ -2068,9 +2436,28 @@ What makes them experimental, and what would settle it:
   lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
   domain-doc convention. No engine change, no file tool for the agent.
   §7c row 10 closes.
+- [x] **A project's own architecture survives its guide** (ADR-279). Prompt
+  context bounds `ARCHITECTURE.md` from both ends, so a scaffold that outgrows
+  the budget no longer evicts what the project wrote below it; regression built
+  on the real scaffold.
+- [x] **The walk detaches in two halves** (ADR-282). `walk --remote --detach`
+  stops at pending with `walk-pending.json` under `--out` — the locator, the
+  bundle it was launched against, the seed, and the two commands that finish
+  the run — declaring and storing nothing; `walk --complete` collects the
+  policy the dispatcher brought home and runs the same `declare`, `rollout`
+  and review legs, refusing a run that is not `done`, a policy that does not
+  hash to the trainer's receipt, and a bundle that moved under the run.
+  Tested against a stand-in dispatcher and a local run destination; no ssh
+  and no box.
+- [x] **Detached train reports pending honestly** (ADR-278). Project-local run
+  receipt, preserved prior policy, no verify/store or completion claims; tested
+  with the real dispatcher over local transport stand-ins.
+- [x] **Project model continuity survives a refused override** (ADR-276).
+  Prompt and walk turns resolve flag, environment, recorded model, default;
+  failed turns with the same session ID preserve the previous record.
 - [x] **Unchanged CLI sessions preserve their metadata** (ADR-247).
   Refused and successful turns retain agent.json when session ID and model
-  match; changed identity persists even on failure. Restore attempt metadata
+  match; changed session IDs persist even on failure. Restore attempt metadata
   remains truthful; offline walk regressions preserve pre-existing user edits.
 - [x] **A domain note lands the way a decision does** (ADR-245). The
   `docs/<subject>.md` convention was documented and unreachable — the

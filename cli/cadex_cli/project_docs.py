@@ -10,8 +10,8 @@ are read on every visit and updated as the work goes:
 
 - ``ARCHITECTURE.md`` — what the project is, what its script declares,
   how it trains (locally from the venv or ``--remote`` on the box, the
-  same project-relative artifacts either way, cold runs only when remote —
-  ADR-200), and where the domain docs are.
+  same project-relative artifacts either way, a warm start carried out to
+  the box since ADR-268), and where the domain docs are.
 - ``DECISIONS.md`` — the project's own ADR log: what was chosen, over what,
   and why. Newest last.
 - ``PROGRESS.md`` — one row per run the CLI accepted, with the numbers.
@@ -56,11 +56,14 @@ them the way it ignores every file it did not write.
 from __future__ import annotations
 
 import datetime as _datetime
+import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import tempfile
 from typing import Any, Iterable, Mapping
 
 from .export import ExportedOutput
@@ -91,9 +94,11 @@ GENERATED_DOC_STEMS = ("inventory", "clearance")
 #: be many notes.
 NOTE_DOC_LIMIT = 2_000
 
-#: How much of each document the agent is shown. The head for the two it
-#: reasons from, the tail for the log, because the latest rows are the ones
-#: that matter and the header is repeated in the prompt's own text.
+#: How much of each document the agent is shown: both ends of the
+#: architecture, tails of decisions and progress, retaining the newest
+#: appended history. The architecture keeps both ends because its head is
+#: the scaffold's own guide: a guide that outgrows this budget would
+#: otherwise leave no room for what the project wrote below it (ADR-279).
 PROMPT_DOC_LIMIT = 8_000
 
 PROGRESS_HEADER = "| When (UTC) | Run | Revision | Digest | What | Numbers |"
@@ -104,6 +109,13 @@ _ARCHITECTURE_TEMPLATE = """\
 
 Read on every visit; keep it true. Maintained by the agent and the
 `cadex` CLI (ADR-193 in the Cadex repository).
+Prompt context keeps 8,000 characters of this file — both ends, half each,
+so what is written below this guide is read even as the guide grows — and the
+last 8,000 of decisions and progress, plus an omission marker when shortened.
+Domain notes keep their last 2,000 characters; full documents stay on disk.
+Progress rows, decisions and domain-note updates replace their files only after
+writing succeeds, so a failed update preserves the previous document. This is
+per-file protection, not a transaction across documents or a power-loss guarantee.
 
 ## What this project is
 
@@ -136,20 +148,39 @@ leg on the box `training/remote_train.sh` names.) Fill in which, and
 why; `{progress}` marks each remote row `(remote)`.
 
 The shared mode artifacts table in `docs/CLI.md` is the walk contract.
+`cadex train --remote --detach` returns pending in `training` and project-local
+`--out/training-receipt.json`. No policy is verified or stored, even with
+`--put`; old files stay intact. Use its run ID and the same remote configuration
+with `remote_train.sh watch/pull` into a fresh destination, then verify before
+storing and declaring. Detached walk continuation is not automated.
+On a leg timeout, the process group gets a full five-second SIGTERM cleanup
+grace even if its direct child exits early, then an unconditional SIGKILL.
+For toy CPU runs, use `JAX_PLATFORMS=cpu`; `training/SETUP.md` §b gives
+the invocation and resource bounds, including for a CUDA-capable venv.
 `agent.json.updated_at` records changed session identity or model, not every
-attempt. A refused turn still saves changed identity for resumption; unchanged
-identity leaves that file untouched. Opening may refresh accepted restore
+attempt. A refused turn saves a changed session ID for resumption; the same
+session ID leaves that file untouched, including its previous model. Turns
+choose explicit `--model`, nonblank `$CADEX_MODEL`, the recorded project model,
+then the CLI default; `--resume` controls only conversation continuity. Opening may refresh accepted restore
 attempt metadata in `script.json`, even when the subsequent turn fails.
 A refused walk does not roll that bookkeeping back or create a failure commit.
+After failed retraining, the accepted sweep stays applied with `policy_on=0`;
+prior artifacts and history survive. Retry with a fresh `--out` and `--name`,
+the last successful policy/parent task and an explicit task-change reason.
+`docs/CLI.md` §2 gives the tested recovery command and comparison contract.
 The walk's `{progress}` row and project commit subject name the output
 relative to this project, or by basename for an external output, so the
 recorded run label contains no absolute machine path.
+Before dispatch, `walk.engine_source_comparison` reports whether installed
+top-level Python bytes match the checkout (dev prefix or payload manifest).
+Lists stop at ten with full counts. This neither certifies binary/loaded-module
+provenance nor refuses or rebuilds; see `docs/CLI.md` for interpretation.
 The artifacts are the same project-relative paths in both modes: the
 bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
-and the generated `{docs}/inventory.md` component report (also summarized
-in the review's `inventory` block). Catalog totals count placed instances;
-they cannot identify hardware fused into other solids or infer purchases.
+and the latest `{docs}/inventory.md` report. The review saves inventory counts
+and its latest-report link; recover historical rows from the walk's Git commit
+(see the CLI guide's walk review contract).
 The review also writes `{docs}/clearance.md` and the
 review's `clearance` block. Named front/top/right/iso previews and their
 summary live in `review/render/<accepted-revision>/`; the `render` block
@@ -157,11 +188,19 @@ carries project-relative paths, revision/digest, approximation, limits and
 acquisition/render timings. The walk refuses rendering failures or a revision
 that differs from the rollout; old files are never a successful fallback.
 `walk_seconds` measures the entry point through review (before final commit).
-The `section` block carries the shared snapshot cut at world XZ, Y = 3.125 mm,
-under `review/section/<accepted-revision>/XZ-3.125/` (SVG and JSON). It
-retains status, availability, revision/digest, plane, units, approximation,
-limits and acquisition/section timings. This interior plane cuts both reference
-mechanisms without dispatch by mechanism. Empty cuts are available with no
+The `section` block describes the shared snapshot cut at world XZ under
+`review/section/<accepted-revision>/XZ-<derived-offset>/` (SVG and JSON).
+It carries revision/digest, availability, units, approximation, limits and
+timings. Every `offset_candidates_mm` plane is cut; most objects cut wins.
+`offset_source` records the derivation; `objects_cut` of `objects` measures
+coverage, without mechanism-specific constants.
+The walk adds `section.missed_objects`: uncut object identities, section statuses
+and `moved` (true, false or null for unknown). Exact rollout component matches
+carry translation in mm and rotation in degrees; either nonzero channel counts
+as movement. Shared sources and labels cannot identify an instance. Missing
+traces, unmatched identities and incomplete travel stay unknown with a reason.
+This join appears only in the walk review, not the standalone section summary.
+Empty cuts are available with no
 contours; unsupported cuts are unavailable with per-object reasons. Section
 errors and rollout digest mismatches fail the walk; retained old artifacts
 never imply current success. Clearance covers only the initial solved pose,
@@ -169,9 +208,9 @@ at 0.1 mm minimum distance and 1e-6 mm³ maximum common volume. Its own
 `{progress}` row carries offending, unknown and checked pair counts;
 unavailable measurements stay unavailable. Training and rollout rows
 retain their numbers, so rows
-from either mode compare line for line. **Remote runs are cold runs only:** the dispatcher carries the
-bundle and the model out and nothing else, so a warm start
-(`--init-from`) trains locally. With the GUI attached the same commands
+from either mode compare line for line. **A warm start travels (ADR-268):** the dispatcher carries the
+bundle and the model out, and `--init-from`'s policy and its parent
+bundle beside them, so an iterate has the same shape in either mode. With the GUI attached the same commands
 run from a terminal beside the open file, one at a time while no rebuild
 is in flight; the shell's own agent cannot run them, and it sees an
 accepted run on the next Rebuild Model or reopen. Rebuild Model or
@@ -193,6 +232,20 @@ note is pasted back into the next turn's prompt, so a mechanism with
 actuators or sensors should leave `{docs}/actuators.md` and
 `{docs}/sensors.md` behind. `{docs}/inventory.md` and
 `{docs}/clearance.md` are the CLI's generated reports, not note subjects.
+
+The walk reads this convention back rather than only offering it
+(ADR-256). After the rollout it parses the MJCF it trained on and takes
+each declared section as a note subject: an `<actuator>` section with
+children asks this project for `{docs}/actuators.md`, a `<sensor>`
+section for `{docs}/sensors.md`. The `documentation` block in
+`review.json` and the `{progress}` row report the notes kept here, the
+subjects the model declares, and the ones with no note — `docs notes N,
+none missing` or `docs notes N, no <subjects>`. A missing note is a
+finding for the next design turn, never a walk failure, and the CLI never
+writes the note itself: what drives a joint and what a sensor measures
+are this project's to say, and an invented note would be pasted back as
+if it were knowledge. A run that exported no model declares nothing and
+reports nothing.
 """
 
 _DECISIONS_TEMPLATE = """\
@@ -208,7 +261,11 @@ Created by the `cadex` CLI on first visit, with `{architecture}` and
 `{progress}` beside it. Outside another work tree, the CLI initializes a
 repository if needed and creates default ignore rules only if `.gitignore`
 is absent at initialization. Existing repositories keep their ignore rules;
-check them before generating checkpoints and traces. In a project-root
+check them before generating checkpoints and traces. To keep a walk local,
+append `/runs/<name>/`, `/review/`, and `/assets/<name>.cxpolicy` to the root
+`.gitignore` AFTER `!assets/*.cxpolicy`; `.git/info/exclude` cannot override
+that negation. Ignores affect untracked files only; existing tracked or
+explicitly staged files still enter automatic commits. In a project-root
 repository, accepted runs attempt to commit all working changes, including
 unrelated edits. A project nested beneath another repository root, without
 its own `.git`, gets no automatic commit and leaves the parent index untouched.
@@ -230,12 +287,34 @@ CLI from what actually happened; read by the agent on every visit. A
 number a previous row also carried shows its change against that row,
 as `total_reward 127.8 (Δ -1602.1 vs 2996fb73 at 1729.9)`: the delta,
 the digest of the run compared against, and that run's value. In a
-project-root repository, the CLI attempts a commit after each accepted run;
-`committed <sha>.` in the command's notes confirms success. Rows still land
-without Git or when the project is nested beneath another repository root
+project-root repository, the CLI attempts a commit after each accepted run.
+Only `committed <sha>.` in the command's notes confirms success; a row alone
+does not prove a commit. Rows still land without Git or in a nested project
 without its own `.git`; those rows have no automatic commit.
 
 For lifecycle comparisons, record iterations, environment count and seeds.
+Training `--seed` is a bounded unsigned 32-bit integer (default 0); it does
+not change the rollout seed declared in the xscript. Train and walk rows record
+`training_seed`, `rollout_seed` (unavailable for training alone), an objective
+identity and the prior same-kind row's evidence. Missing historical evidence is
+marked `unavailable (legacy row)`; no seed or objective is inferred retroactively.
+A trace seed of `None` means an explicitly unseeded rollout, not missing evidence.
+
+`training.comparison` and the walk's `review.json` comparison block retain the
+objective metadata and full action rows. Objective `v1` is SHA-256 over compact,
+key-sorted JSON of the exported task's `schema`, `observations` (including units),
+`reward`, `termination`, `episode` and `functions`. List order and expression text
+are significant. Model identity, actions, seeds, reset variation, randomisation,
+disturbances and runtime versions are excluded; this identifies the declared
+objective, not experimental equivalence or mathematical equivalence of formulas.
+The separate `actions` hash in progress rows covers full action metadata; inspect
+`comparison.actions` for physical bounds and units. The quill's 40 mm and 60 mm
+action bounds have different scaling despite matching rewards and objectives.
+Deltas remain descriptive, never evidence of improved learning or equal control
+difficulty. Prior evidence refers to the previous train/walk row of that kind;
+metric deltas still refer to the last row carrying each metric, which may differ.
+Standalone rollout rows retain their existing numeric format.
+
 `total_reward` sums rewards over the verified rollout's `step_count`;
 divide by that count for rollout reward per step. The trainer's
 `reward/step` is its final training-batch mean, a different measurement.
@@ -303,10 +382,26 @@ def scaffold_project_docs(root: Path | str) -> list[str]:
 
 
 def _bounded(text: str, limit: int, *, keep: str) -> str:
+    """Shorten *text* to *limit* characters, keeping the ``keep`` end.
+
+    ``keep="ends"`` keeps both, halving the budget between them. That is
+    what a document with boilerplate at the top and the project's own
+    writing underneath needs: keeping only the head made a scaffold that
+    grew past the limit evict every line the project wrote about itself,
+    silently and without changing a test that used a short document
+    (ADR-279).
+    """
+
     if len(text) <= limit:
         return text
     if keep == "tail":
         return f"[… {len(text) - limit} earlier characters omitted …]\n" + text[-limit:]
+    if keep == "ends":
+        head = limit // 2
+        tail = limit - head
+        return (text[:head]
+                + f"\n[… {len(text) - limit} characters omitted …]\n"
+                + text[-tail:])
     return text[:limit] + f"\n[… {len(text) - limit} more characters omitted …]"
 
 
@@ -326,7 +421,7 @@ def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str
             text = path.read_text(encoding="utf-8")
         except OSError:
             continue
-        keep = "tail" if doc_name == PROGRESS_NAME else "head"
+        keep = "ends" if doc_name == ARCHITECTURE_NAME else "tail"
         parts.append(f"--- {doc_name} ---\n{_bounded(text.strip(), limit, keep=keep)}")
     for relative, path in domain_note_paths(root).items():
         try:
@@ -336,6 +431,14 @@ def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str
         bounded = _bounded(text.strip(), NOTE_DOC_LIMIT, keep="tail")
         parts.append(f"--- {relative} ---\n{bounded}")
     return "\n\n".join(parts)
+
+
+#: The numbers cell is the one that carries several findings at once --
+#: a walk row states its clearance, its motion in two channels and its
+#: documentation check together -- so it gets more room than a cell that
+#: holds one phrase. It was 160 and truncated the walk's documentation
+#: half the day motion was added beside it (ADR-259).
+PROGRESS_NUMBERS_LIMIT = 1024
 
 
 def _cell(text: Any, limit: int = 160) -> str:
@@ -373,8 +476,23 @@ def trace_total_reward(outputs: Iterable[ExportedOutput]) -> float | None:
 
 
 #: The numbers a row carries that a later row is compared against, as
-#: they are spelled in the column: the label, then the value.
-COMPARED_NUMBERS = ("total_reward", "reward/step")
+#: they are spelled in the column: the label, then the value. The two
+#: travel labels are why the motion cell is spelled with a label rather
+#: than a unit (ADR-260): `motion 103.3 mm` is unparseable here, and a
+#: walk row that carries no delta cannot say the travel held while the
+#: reward fell — which is the one thing an iterate run is for.
+#: ``clearance offending`` joins them for the same reason and reads back
+#: off every row ever written, because the cell already spelled the label
+#: before the count (ADR-271): a geometry iterate that answers a clearance
+#: finding turns exactly this number, and a bare ``0`` cannot say that the
+#: pair it replaced was there. ``unknown`` is deliberately not compared —
+#: it is a coverage figure that only means anything beside ``pairs
+#: checked``, and a delta on it alone would read as a verdict on the
+#: mechanism rather than on what the check could reach.
+COMPARED_NUMBERS = (
+    "total_reward", "reward/step", "travel_mm", "travel_deg",
+    "clearance offending",
+)
 
 _NUMBER_RE = {
     label: re.compile(re.escape(label) + r" (-?\d+(?:\.\d+)?(?:e[-+]?\d+)?)")
@@ -413,19 +531,33 @@ def previous_numbers(root: Path | str) -> dict[str, tuple[float, str]]:
     return found
 
 
-def _compared(
+def spelled_number(label: str, value: float) -> str:
+    """How a compared number is written in the column.
+
+    One decimal for a reward total, four significant figures for the
+    rest — a travel of 0.0004 mm is not the same claim as a travel of 0.0,
+    and a rounding that erased the difference would be the row lying.
+    """
+
+    return f"{value:.1f}" if label == "total_reward" else f"{value:.4g}"
+
+
+def compared_number(
     label: str,
     value: float,
-    spelled: str,
     previous: Mapping[str, tuple[float, str]],
 ) -> str:
+    """One compared number, with its change against the last row that
+    carried it (ADR-194). Without a previous row, the number alone."""
+
+    spelled = spelled_number(label, value)
     before = previous.get(label)
     if before is None:
         return f"{label} {spelled}"
     was, digest = before
     delta = value - was
-    was_spelled = f"{was:.4g}" if label == "reward/step" else f"{was:.1f}"
-    delta_spelled = f"{abs(delta):.4g}" if label == "reward/step" else f"{abs(delta):.1f}"
+    was_spelled = spelled_number(label, was)
+    delta_spelled = spelled_number(label, abs(delta))
     # The sign of what is shown, not of the float: a change that rounds
     # to nothing is "±0.0", never "-0.0".
     if float(delta_spelled) == 0.0:
@@ -433,6 +565,46 @@ def _compared(
     else:
         sign = "+" if delta > 0 else "-"
     return f"{label} {spelled} (Δ {sign}{delta_spelled} vs {digest} at {was_spelled})"
+
+
+def task_comparison(path: Path | str) -> dict[str, Any]:
+    """Objective v1 excludes model, actions and stochastic conditions (ADR-263)."""
+    try:
+        task = json.loads(Path(path).read_text(encoding="utf-8"))
+        fields = ("schema", "observations", "reward", "termination", "episode", "functions")
+        objective = {key: task[key] for key in fields}
+        encoded = json.dumps(objective, sort_keys=True, separators=(",", ":"),
+                             allow_nan=False).encode("utf-8")
+        return {"objective_id": "v1:" + hashlib.sha256(encoded).hexdigest(),
+                "objective": objective, "actions": task["actions"],
+                "actions_id": hashlib.sha256(json.dumps(
+                    task["actions"], sort_keys=True, separators=(",", ":"),
+                    allow_nan=False).encode("utf-8")).hexdigest()}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"objective_id": None, "reason": "exported task metadata unavailable"}
+
+
+def comparison_cell(root: Path | str, run: str, evidence: Mapping[str, Any]) -> str:
+    """State current evidence and the last same-kind row's evidence, even legacy."""
+    objective = evidence.get("objective_id") or "unavailable"
+    def seed(key):
+        return str(evidence[key]) if key in evidence else "unavailable"
+    current = (f"objective {objective}; training_seed {seed('training_seed')}; "
+               f"rollout_seed {seed('rollout_seed')}")
+    prior = "none"
+    try:
+        for line in (Path(root) / PROGRESS_NAME).read_text(encoding="utf-8").splitlines():
+            match = _ROW_RE.match(line.strip())
+            if match and match.group(2) == run:
+                found = re.search(r"objective (v1:[0-9a-f]{64}|unavailable); "
+                                  r"training_seed ([^;]+); rollout_seed ([^;]+)",
+                                  match.group(6))
+                prior = found.group(0) if found else "unavailable (legacy row)"
+    except OSError:
+        pass
+    return (f"; {current}; actions {evidence.get('actions_id') or 'unavailable'}; "
+            f"previous evidence: {prior}; deltas are descriptive; "
+            "matching objectives do not establish equivalent control difficulty")
 
 
 def progress_numbers(
@@ -452,13 +624,13 @@ def progress_numbers(
     previous = previous or {}
     reward = trace_total_reward(outputs)
     if reward is not None:
-        items.append(_compared("total_reward", reward, f"{reward:.1f}", previous))
+        items.append(compared_number("total_reward", reward, previous))
     if training:
         per_step = training.get("reward_per_step")
         if per_step is not None:
             try:
                 value = float(per_step)
-                items.append(_compared("reward/step", value, f"{value:.4g}", previous))
+                items.append(compared_number("reward/step", value, previous))
             except (TypeError, ValueError):
                 pass
         wall = training.get("wall_time_s")
@@ -471,6 +643,22 @@ def progress_numbers(
         if sha:
             items.append(f"sha256 {sha[:8]}")
     return ", ".join(items)
+
+
+def _replace_document(path: Path, text: str) -> None:
+    """Keep the previous document intact until its replacement is complete."""
+
+    path = path.resolve()  # Preserve an existing document symlink.
+    handle, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    scratch = Path(name)
+    try:
+        os.close(handle)
+        scratch.write_text(text, encoding="utf-8")
+        if path.exists():
+            shutil.copymode(path, scratch)
+        os.replace(scratch, path)
+    finally:
+        scratch.unlink(missing_ok=True)
 
 
 def append_progress_row(
@@ -498,14 +686,14 @@ def append_progress_row(
         rev=_cell(revision[:8] if revision else "—", 12),
         digest=_cell(digest[:8] if digest else "—", 12),
         what=_cell(what),
-        numbers=_cell(numbers),
+        numbers=_cell(numbers, PROGRESS_NUMBERS_LIMIT),
     )
     text = path.read_text(encoding="utf-8")
     if PROGRESS_HEADER not in text:
         text = text.rstrip("\n") + f"\n\n{PROGRESS_HEADER}\n{PROGRESS_RULE}\n"
     if not text.endswith("\n"):
         text += "\n"
-    path.write_text(text + row + "\n", encoding="utf-8")
+    _replace_document(path, text + row + "\n")
     return row
 
 
@@ -576,7 +764,7 @@ def record_notes(root: Path | str, text: str) -> list[str]:
             existing = _NOTE_TEMPLATE.format(title=stem.replace("-", " "))
         if not existing.endswith("\n"):
             existing += "\n"
-        path.write_text(f"{existing}\n- ({date}) {body}\n", encoding="utf-8")
+        _replace_document(path, f"{existing}\n- ({date}) {body}\n")
         relative = f"{DOMAIN_DOCS_DIRNAME}/{path.name}"
         if relative not in written:
             written.append(relative)
@@ -600,6 +788,36 @@ def domain_note_paths(root: Path | str) -> dict[str, Path]:
         f"{DOMAIN_DOCS_DIRNAME}/{path.name}": path
         for path in entries
         if path.stem not in GENERATED_DOC_STEMS
+    }
+
+
+#: The note subjects a mechanism's own declaration asks for, by the MJCF
+#: section that declares them (ADR-256). The CLI never writes these notes --
+#: what drives a joint and what a sensor measures are the design turn's to
+#: say -- but a walk can read what the model it trained on declares and
+#: report which of those subjects the project keeps no note for.
+DECLARED_NOTE_SUBJECTS = {"actuator": "actuators", "sensor": "sensors"}
+
+
+def documentation_status(
+    root: Path | str, expected: Iterable[str] = ()
+) -> dict[str, Any]:
+    """The project's domain notes, and the subjects its model asks for.
+
+    ``expected`` is what the mechanism declares, as note subjects
+    (:data:`DECLARED_NOTE_SUBJECTS`). ``missing`` is the subjects with no
+    ``docs/<subject>.md`` -- a finding for the next design turn, which
+    reads the notes back in its prompt, and never a failure: the CLI does
+    not write a note whose content it would have to invent.
+    """
+
+    notes = domain_note_paths(root)
+    stems = {Path(relative).stem for relative in notes}
+    wanted = list(dict.fromkeys(str(subject) for subject in expected if subject))
+    return {
+        "notes": list(notes),
+        "expected": wanted,
+        "missing": [subject for subject in wanted if subject not in stems],
     }
 
 
@@ -636,7 +854,7 @@ def record_decisions(root: Path | str, text: str) -> list[str]:
         number += 1
     if not existing.endswith("\n"):
         existing += "\n"
-    path.write_text(existing + "".join(chunks), encoding="utf-8")
+    _replace_document(path, existing + "".join(chunks))
     return entries
 
 
@@ -650,6 +868,7 @@ _GITIGNORE_TEMPLATE = """\
 script_artifacts/
 # What is bulk — frames and renders are outputs of the model, not the model:
 frames/
+/review/
 *.mp4
 *.png
 # What a walk re-makes (ADR-199): the store keeps the policy a script names,

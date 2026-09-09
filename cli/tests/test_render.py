@@ -168,7 +168,7 @@ result = {"block": block, "rod": rod, "a": a, "b": b, "asm": asm, "diag": diag}
         assert bounds[1] == pytest.approx([12, 40, 9])
     import subprocess
     tracked = subprocess.check_output(['git', '-C', str(root), 'ls-files', 'review/render'], text=True)
-    assert len(tracked.splitlines()) == 5
+    assert tracked == ""  # Generated review files remain available locally.
     assert 'render → review/render/' in (root / 'PROGRESS.md').read_text()
 
 

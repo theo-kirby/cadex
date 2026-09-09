@@ -32,6 +32,10 @@ from CadexTools import tool_failure
 import CadexScriptedDomains as contracts
 from cadex_domain_api import create_domain_api
 
+#: How many threads a worker's BLAS may build a scratch pool for. Not a speed
+#: knob -- an address-space one; see ``worker_environment``.
+WORKER_BLAS_THREADS = 4
+
 # Worker attempts are deliberately self-contained. The project bundle stages
 # every capability domain plus the shared domain-worker helpers; the project
 # entry module replaces cadex_domain_worker as the staged worker.py (see
@@ -880,6 +884,18 @@ def worker_environment(staging: str | Path) -> dict[str, str]:
     environment.update(
         {
             "HOME": staging,
+            # OpenBLAS reserves a per-thread scratch buffer at dlopen time --
+            # measured at ~136 MB each on this build -- and sizes its pool
+            # from the *host's* core count. On a 32-core box `import numpy`,
+            # which `assembly.mjcf` reaches through mujoco, therefore reserves
+            # 4.4 GB of address space before it does any arithmetic, the
+            # worker's 6144 MB RLIMIT_AS refuses the mapping, and OpenBLAS
+            # spins in its allocation retry loop until RLIMIT_CPU kills it.
+            # Four threads is 624 MB, and it is the same four everywhere: a
+            # worker that behaves differently on a laptop and a build box is
+            # the bug this pins shut, the way PYTHONHASHSEED pins hashing
+            # (ADR-250).
+            "OPENBLAS_NUM_THREADS": str(WORKER_BLAS_THREADS),
             "PYTHONHASHSEED": "0",
             "PYTHONNOUSERSITE": "1",
             "TEMP": staging,
@@ -896,6 +912,51 @@ def worker_environment(staging: str | Path) -> dict[str, str]:
             environment["HOMEDRIVE"] = drive
             environment["HOMEPATH"] = tail or "\\"
     return environment
+
+
+#: The kernel's own budget refusals, which leave no ``result.json`` and so
+#: used to arrive as the generic "exited without a result".
+_RESOURCE_SIGNAL_FAILURES: dict[int, tuple[str, str]] = {
+    24: (  # SIGXCPU
+        "DOMAIN_CPU_LIMIT_EXCEEDED",
+        "XScript domain execution exceeded its CPU limit of {seconds:g} "
+        "CPU-seconds. That limit is charged across every thread the worker "
+        "runs, so a parallel pass can reach it well inside the {seconds:g} "
+        "second wall-clock timeout.",
+    ),
+    25: (  # SIGXFSZ
+        "DOMAIN_OUTPUT_LIMIT_EXCEEDED",
+        "XScript domain execution exceeded its output file size limit.",
+    ),
+}
+
+
+def _resource_signal_failure(
+    process: Mapping[str, Any], prepared: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """Name the cap when the kernel, not the watchdog, ended the worker.
+
+    ``run_process`` owns a wall-clock timeout; ``_resource_limits`` in the
+    worker owns ``RLIMIT_CPU`` and ``RLIMIT_FSIZE``, set from the same
+    numbers but charged in different units. When the kernel wins that race
+    the worker dies by signal with no ``result.json`` written, which read
+    as a crash. It is a budget refusal and says so.
+    """
+
+    returncode = process.get("returncode")
+    if not isinstance(returncode, int) or returncode >= 0:
+        return None
+    known = _RESOURCE_SIGNAL_FAILURES.get(-returncode)
+    if known is None:
+        return None
+    code, template = known
+    return _failure(
+        str(prepared["tool_name"]),
+        code,
+        "external_process",
+        template.format(seconds=float(prepared["timeout_seconds"])),
+        observed=process,
+    )
 
 
 def execute_candidate(
@@ -959,6 +1020,9 @@ def execute_candidate(
             "XScript domain execution exceeded its memory limit.",
             observed=process,
         )
+    resource_failure = _resource_signal_failure(process, prepared)
+    if resource_failure is not None:
+        return resource_failure
     result_path = Path(str(prepared["staging"])) / "result.json"
     if not result_path.is_file():
         return _failure(

@@ -20,9 +20,10 @@
 # train that do not involve this file at all.
 #
 # This is dispatch machinery and nothing more. It builds no bundle, installs
-# no package, and creates no virtualenv -- it copies two files out, runs the
-# trainer that is already on the box, and copies one file back, which is the
-# same three steps `training/README.md` documents by hand. ADR-084 stands:
+# no package, and creates no virtualenv -- it copies two files out (four for
+# a warm start, ADR-268), runs the trainer that is already on the box, and
+# copies one file back, which is the same three steps
+# `training/README.md` documents by hand. ADR-084 stands:
 # nothing here enters `pixi.toml`, no CMake rule references it, and the
 # engine still cannot train.
 #
@@ -513,13 +514,46 @@ REMOTE
 # `<bundle>/<basename>` (cadex_train.py:198-203), and that documented flat
 # fallback is what this copies into: two files, side by side, in one scratch
 # directory. Anything else would need the project tree on the box.
+#
+# A WARM START TRAVELS TOO, and it is the only other thing that does. The
+# curriculum pair (ADR-161) is `--init-from <policy>` and
+# `--init-from-parent-task <bundle>` after the `--`, and both name files on
+# THIS machine that the box has never seen. They are lifted out of the
+# trailing flags, copied into a `warm/` subdirectory of the run directory --
+# a subdirectory rather than beside the bundle, so a parent task named like
+# the child cannot overwrite it -- and the two flags are re-emitted pointing
+# at the copies. Everything else after the `--` is passed through untouched,
+# which is what keeps the caller-s flags and this leg-s flags the same
+# argument list. The trainer reads the parent bundle as bytes and ties its
+# digest to the policy header, so the copy has to be byte-identical; rsync
+# -a is, and the trainer refuses if it is not.
 
 cmd_train() {
     load_config
 
     local allow_cpu=0 detach=0 bundle="" out="" extra="" seen_dashdash=0
+    local warm_policy="" warm_parent=""
     while [ "$#" -gt 0 ]; do
         if [ "${seen_dashdash}" -eq 1 ]; then
+            case "$1" in
+                --init-from|--init-from-parent-task)
+                    if [ "$#" -lt 2 ]; then
+                        echo "FAIL: $1 needs a path after it."; exit 2
+                    fi
+                    if [ "$1" = "--init-from" ]; then warm_policy="$2"
+                    else warm_parent="$2"
+                    fi
+                    shift 2; continue ;;
+                --init-from=*|--init-from-parent-task=*)
+                    # Not carried silently: the value is a local path this
+                    # rewrites, and the joined form would reach the box
+                    # naming a file that is not there.
+                    echo "FAIL: write ${1%%=*} <path> with a space, not =PATH."
+                    echo "      The path names a file on this machine and is"
+                    echo "      rewritten to the box-s copy; the joined form is"
+                    echo "      not carried out."
+                    exit 2 ;;
+            esac
             extra="${extra} $(shquote "$1")"; shift; continue
         fi
         case "$1" in
@@ -544,6 +578,25 @@ cmd_train() {
     require CADEX_TRAIN_VENV "${remote_venv}"
     require CADEX_TRAIN_WORK "${remote_work}"
     [ -f "${bundle}" ] || { echo "FAIL: ${bundle} does not exist."; exit 1; }
+    # The warm start-s files, checked here rather than after the copy has
+    # started: a dispatch that dies half-transferred leaves a run directory
+    # on the box nobody named.
+    if [ -n "${warm_policy}" ]; then
+        [ -f "${warm_policy}" ] || {
+            echo "FAIL: --init-from ${warm_policy} does not exist."; exit 1; }
+    fi
+    if [ -n "${warm_parent}" ]; then
+        [ -f "${warm_parent}" ] || {
+            echo "FAIL: --init-from-parent-task ${warm_parent} does not exist."
+            exit 1; }
+    fi
+    if [ -n "${warm_policy}" ] && [ -n "${warm_parent}" ] \
+       && [ "$(basename "${warm_policy}")" = "$(basename "${warm_parent}")" ]; then
+        echo "FAIL: the warm start-s two files share the basename"
+        echo "      $(basename "${warm_policy}"), so one would overwrite the"
+        echo "      other in the box-s warm/ directory. Rename one."
+        exit 1
+    fi
     command -v python3 >/dev/null 2>&1 || {
         echo "FAIL: python3 is not on PATH; it reads the bundle's model reference."
         exit 1
@@ -585,6 +638,31 @@ PY
 
     on_box "mkdir -p $(shquote "${remote_dir}")"
     rsync -e "${rsync_ssh}" -a "${bundle}" "${model}" "${target}:${remote_dir}/"
+
+    # The warm start, carried and re-pointed. Both the detached and the
+    # blocking path run the trainer with `${extra}`, so rewriting it here
+    # covers both.
+    if [ -n "${warm_policy}" ] || [ -n "${warm_parent}" ]; then
+        on_box "mkdir -p $(shquote "${remote_dir}/warm")"
+        if [ -n "${warm_policy}" ] && [ -n "${warm_parent}" ]; then
+            rsync -e "${rsync_ssh}" -a "${warm_policy}" "${warm_parent}" \
+                  "${target}:${remote_dir}/warm/"
+        elif [ -n "${warm_policy}" ]; then
+            rsync -e "${rsync_ssh}" -a "${warm_policy}" \
+                  "${target}:${remote_dir}/warm/"
+        else
+            rsync -e "${rsync_ssh}" -a "${warm_parent}" \
+                  "${target}:${remote_dir}/warm/"
+        fi
+        if [ -n "${warm_policy}" ]; then
+            echo "==> warm   ${warm_policy}"
+            extra="${extra} --init-from $(shquote "${remote_dir}/warm/$(basename "${warm_policy}")")"
+        fi
+        if [ -n "${warm_parent}" ]; then
+            echo "==> parent ${warm_parent}"
+            extra="${extra} --init-from-parent-task $(shquote "${remote_dir}/warm/$(basename "${warm_parent}")")"
+        fi
+    fi
 
     if [ "${detach}" -eq 1 ]; then
         detached_train "${run_id}" "${remote_dir}" "${bundle_name}" \
@@ -729,6 +807,12 @@ detached_train() {
     echo "==> watch it:   $(basename "$0") watch ${run_id}"
     echo "==> stop it:    $(basename "$0") stop ${run_id}"
     echo "==> bring home: $(basename "$0") pull ${run_id}"
+    python3 - "${run_id}" "${target}" "${remote_dir}" "${pid}" "${out_name}" <<'PYRECEIPT'
+import json, sys
+run_id, target, remote_dir, pid, policy_name = sys.argv[1:]
+print(json.dumps(dict(state="pending", run_id=run_id, target=target,
+                     remote_dir=remote_dir, pid=int(pid), policy_name=policy_name)))
+PYRECEIPT
 }
 
 # One poll: mirror progress.json and any new .cxpolicy back, print a line.

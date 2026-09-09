@@ -20,25 +20,32 @@ guessing them (``--num-envs`` for ``--envs``, ``--output`` for ``--out``);
 ``test_train.py`` reads them back out of the trainer's source so a rename
 there fails here.
 
-**Remote training is the same leg with one word changed** (ADR-200). With
-``--remote`` the command is ``training/remote_train.sh train <bundle>
-<out> -- <the same trainer flags>`` (ADR-089) instead of the venv's
-interpreter: the bundle and the model go out from ``--out``, the policy
-comes back to the very path the local trainer would have written, and
-the receipt is read off the same last JSON line. Everything after the
-receipt — the store, the digest edit, the verified rollout — never learns
-where the trainer ran. What this module adds for both is the check the
-remote script already makes and the local path never needed: the file at
-``--out`` hashes to the sha256 the receipt claims, or the leg fails.
+**Remote training** (ADR-200) substitutes `remote_train.sh` for the local
+interpreter. Blocking dispatch copies the policy back to the same path and
+checks its digest; warm-start files travel and are re-pointed by the dispatcher
+(ADR-268). With `--detach` (ADR-278), the dispatcher instead returns a pending
+run locator. The caller persists it without checking or storing any policy.
+The full walk remains blocking.
+
+**And the leg can be planned rather than run** (ADR-255). ``--dry-run``
+stops after the export and reports :func:`training_plan`: the files the
+leg would touch and the steps it would take, in either mode. It is how the
+claim that the two modes land the same artifacts is checked on a machine
+that may not dispatch to a box at all — and it is the preflight to put in
+front of ``cadex walk --remote``, whose remote leg otherwise fails only
+after the design and assembly legs have already run.
 """
 
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+import threading
 from typing import Any, Sequence
 
 from .engine import REPO_ROOT
@@ -201,6 +208,7 @@ def remote_trainer_command(
     out: Path | str,
     *,
     allow_cpu: bool = False,
+    detach: bool = False,
     script: Path | str | None = None,
     **flags: Any,
 ) -> list[str]:
@@ -214,26 +222,181 @@ def remote_trainer_command(
     fell back to CPU unless ``allow_cpu`` — a policy from a silent CPU run
     is real and costs hours it did not need to.
 
-    A warm start is refused here rather than on the box: the script carries
-    two files out, the bundle and the model, and the ``--init-from`` policy
-    and its parent bundle are local paths the box has never seen. Carrying
-    them is a change to the dispatcher, its own unit; until then the remote
-    leg trains cold.
+    A warm start travels (ADR-268). ``--init-from`` and
+    ``--init-from-parent-task`` name files on this machine, and the
+    dispatcher lifts those two out of the trailing flags, copies them into
+    the run directory's ``warm/`` and re-emits the flags pointing at the
+    copies. Nothing changes here: the flags this builds are still the local
+    trainer's, byte for byte, which is what makes the two legs the same
+    argument list. The rewriting is transport, and transport is the
+    dispatcher's job (ADR-089).
     """
 
-    if flags.get("init_from") or flags.get("init_from_parent_task") or (
-        flags.get("init_from_task_change")
-    ):
-        raise TrainError(
-            "--remote trains cold: remote_train.sh carries the bundle and the "
-            "model and nothing else, so --init-from's policy would not be on "
-            "the box. Drop the warm start, or train locally."
-        )
     command = [str(script if script is not None else REMOTE_SCRIPT),
                "train", str(bundle), str(out)]
     if allow_cpu:
         command.append("--allow-cpu")
+    if detach:
+        command.append("--detach")
     return [*command, "--", *trainer_flags(**flags)]
+
+
+#: The two steps a remote leg has and a local one does not (ADR-089): the
+#: transport either side of the trainer. Everything else about the leg —
+#: which files it reads, which file it writes, what is verified and what is
+#: stored — is the same, and :func:`training_plan` is what lets a person
+#: check that offline rather than by dispatching.
+REMOTE_TRANSPORT_STEPS = ("copy-out", "copy-back")
+
+#: The warm-start flags whose values are local file paths, and which the
+#: remote leg therefore has to carry (ADR-268). ``--init-from-task-change``
+#: is a sentence and is not here.
+WARM_START_PATH_FLAGS = {
+    "--init-from": "warm_start_policy",
+    "--init-from-parent-task": "warm_start_parent_task",
+}
+
+
+def warm_start_files(command: Sequence[str]) -> dict[str, str]:
+    """The warm start's local files named in ``command``, keyed by artifact
+    name, or an empty mapping for a cold run.
+
+    Read back out of the built command rather than passed in beside it, so
+    the plan cannot disagree with the argument list it describes — and so
+    both modes derive the same answer from the same flags.
+    """
+
+    items = [str(item) for item in command]
+    found: dict[str, str] = {}
+    for flag, name in WARM_START_PATH_FLAGS.items():
+        if flag in items:
+            index = items.index(flag)
+            if index + 1 < len(items):
+                found[name] = items[index + 1]
+    return found
+
+
+def resolve_bundle_model(bundle: Path | str) -> Path:
+    """The model file a training bundle names, resolved the way the trainer
+    and ``remote_train.sh`` resolve it: the recorded relative path against
+    the bundle's grandparent, then its basename beside the bundle.
+
+    The remote leg copies these two out for every run — and a warm start's
+    two more beside them (ADR-268) — so a plan that cannot name the model
+    is a dispatch that would fail on the box after the copy started.
+    """
+
+    path = Path(bundle)
+    try:
+        task = json.loads(path.read_text(encoding="utf-8"))
+        relative = Path(str(task["model"]["path"]))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise TrainError(
+            f"{path}: not a training bundle naming a model ({exc})."
+        ) from exc
+    for candidate in (path.parent.parent / relative, path.parent / relative.name):
+        if candidate.exists():
+            return candidate
+    raise TrainError(
+        f"the model {relative} this bundle references is beside neither "
+        f"{path.parent.parent} nor {path.parent}."
+    )
+
+
+def training_plan(
+    command: Sequence[str],
+    *,
+    bundle: Path | str,
+    out: Path | str,
+    remote: bool,
+    allow_cpu: bool = False,
+    store_as: str = "",
+) -> dict[str, Any]:
+    """What the training leg would do, without doing any of it (``--dry-run``).
+
+    This answers the one question ``--remote`` raises that nothing offline
+    could otherwise answer: does the box's leg land the same artifacts as
+    this machine's? The plan names the files the leg touches — the bundle,
+    the model beside it, the policy, and the stored asset — and the ordered
+    steps that touch them. **The artifacts are identical in both modes by
+    construction**, because the remote leg writes the policy to the very
+    path the local trainer would have; the remote mode's steps are the
+    local mode's with :data:`REMOTE_TRANSPORT_STEPS` around the trainer,
+    because the trainer runs somewhere else.
+
+    Nothing here runs a subprocess, reads ``training/.remote.env`` or
+    reaches a box: a dry run is exactly as offline as ``--json``. That is
+    also its limit — it proves the shape of the leg, never that the box is
+    reachable, which is what ``training/remote_train.sh check`` is for.
+    """
+
+    bundle_path = Path(bundle)
+    policy = Path(out)
+    model = resolve_bundle_model(bundle_path)
+    runner = Path(command[0])
+    steps: list[dict[str, str]] = [
+        {
+            "step": "export",
+            "where": "this machine",
+            "detail": f"{bundle_path} and the model it names, {model}",
+        }
+    ]
+    warm = warm_start_files(command)
+    if remote:
+        carried = f"{bundle_path.name} and {model.name}"
+        if warm:
+            carried += ", and " + " and ".join(
+                Path(value).name for value in warm.values()
+            ) + " into its warm/"
+        steps.append({
+            "step": "copy-out",
+            "where": "this machine -> the box",
+            "detail": (
+                f"{runner.name} copies {carried} into the box's run directory"
+            ),
+        })
+    steps.append({
+        "step": "train",
+        "where": f"the box, through {runner.name}" if remote else str(runner),
+        "detail": " ".join(str(item) for item in command),
+    })
+    if remote:
+        steps.append({
+            "step": "copy-back",
+            "where": "the box -> this machine",
+            "detail": f"{runner.name} brings the policy home to {policy}",
+        })
+    steps.append({
+        "step": "verify",
+        "where": "this machine",
+        "detail": f"{policy} hashes to the sha256 the receipt claims",
+    })
+    if store_as:
+        steps.append({
+            "step": "store",
+            "where": "this machine",
+            "detail": f"put_asset {store_as} into the project store",
+        })
+    return {
+        "mode": "remote" if remote else "local",
+        "runner": str(runner),
+        "allow_cpu": bool(allow_cpu and remote),
+        "command": [str(item) for item in command],
+        "artifacts": {
+            "bundle": str(bundle_path),
+            "model": str(model),
+            "policy": str(policy),
+            "stored_asset": store_as,
+            #: Present in both modes for a warm start (ADR-268), and in
+            #: neither for a cold one: the files are the leg's inputs
+            #: wherever the trainer runs.
+            **warm,
+        },
+        "steps": steps,
+        #: Always false. The field is here so a pipeline reading a plan can
+        #: never mistake it for a receipt.
+        "executed": False,
+    }
 
 
 def verify_returned_policy(out: Path | str, receipt: dict[str, Any]) -> None:
@@ -269,6 +432,29 @@ def verify_returned_policy(out: Path | str, receipt: dict[str, Any]) -> None:
     receipt["out"] = str(path)
 
 
+#: How many of the trainer's last stderr lines are kept for a failure
+#: message. A jax or MuJoCo traceback is a dozen frames; four lines of it
+#: is the exception and the frame that raised, which is the part that
+#: names the cause.
+_STDERR_TAIL_LINES = 4
+
+
+def _tee_stderr(stream, keep: collections.deque) -> None:
+    """Write the trainer's stderr through to ours, keeping the last lines.
+
+    Progress must still stream live while the trainer runs, so this reads
+    a line at a time and writes it straight on rather than buffering the
+    whole stream and replaying it at the end.
+    """
+
+    for line in stream:
+        sys.stderr.write(line)
+        sys.stderr.flush()
+        if line.strip():
+            keep.append(line.rstrip())
+    stream.close()
+
+
 def run_trainer(
     command: Sequence[str], *, timeout: float = 0.0
 ) -> dict[str, Any]:
@@ -279,38 +465,73 @@ def run_trainer(
     is one JSON object on the last line, and that object is the receipt:
     nothing here reads a number off a stream the trainer did not mean as
     data (ADR-093). A ``timeout`` of zero is no limit.
+
+    **A failure names its cause** (ADR-280). Passing stderr straight through
+    is right for a person watching a terminal and useless to the caller who
+    reads ``--json``: an MJX refusal to build the model arrives as a
+    traceback on a stream the envelope never saw, so ``walk.json`` reported
+    two benign import warnings off stdout and not the ``NotImplementedError``
+    that actually stopped the leg. The stream is therefore *teed* — written
+    through as before, and its last lines kept — so the machine-readable
+    error carries what the terminal showed.
     """
 
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             list(command),
             stdout=subprocess.PIPE,
-            stderr=None,  # inherit ours: progress belongs on stderr
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout or None,
         )
     except OSError as exc:
         raise TrainError(f"could not run the trainer: {exc}") from exc
-    except subprocess.TimeoutExpired as exc:
+
+    # Both pipes are drained by threads: stderr through to ours as it
+    # arrives, stdout into a buffer for the receipt. Draining only one of
+    # them would deadlock a chatty trainer on the other's full pipe.
+    kept: collections.deque = collections.deque(maxlen=_STDERR_TAIL_LINES)
+    chunks: list[str] = []
+    pumps = [
+        threading.Thread(
+            target=_tee_stderr, args=(process.stderr, kept), daemon=True
+        ),
+        threading.Thread(target=lambda: chunks.append(process.stdout.read())),
+    ]
+    for pump in pumps:
+        pump.start()
+    try:
+        process.wait(timeout=timeout or None)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        for pump in pumps:
+            pump.join(timeout=5.0)
         raise TrainError(
             f"the trainer was stopped after {timeout:g}s (--timeout)."
-        ) from exc
-    if completed.returncode != 0:
+        ) from None
+    for pump in pumps:
+        pump.join(timeout=5.0)
+    process.stdout.close()
+    stdout = "".join(chunks)
+
+    if process.returncode != 0:
         # The remote dispatcher explains its refusals on stdout (``FAIL:
-        # ...``), which nobody sees once it is captured; the last lines go
-        # into the error instead of the bin.
-        tail = [line for line in completed.stdout.splitlines() if line.strip()][-4:]
+        # ...``), which nobody sees once it is captured; the trainer
+        # explains its own on stderr. Both tails go into the error instead
+        # of the bin, stderr last because it is where a crash lands.
+        tail = [line for line in stdout.splitlines() if line.strip()]
+        tail = tail[-_STDERR_TAIL_LINES:] + list(kept)
         raise TrainError(
-            f"the trainer exited {completed.returncode}; its stderr is above."
+            f"the trainer exited {process.returncode}; its stderr is above."
             + ("".join("\n  " + line for line in tail) if tail else "")
         )
-    receipt = _last_json_line(completed.stdout)
+    receipt = last_json_line(stdout)
     if receipt is None:
         raise TrainError("the trainer exited 0 but printed no receipt.")
     return receipt
 
 
-def _last_json_line(stdout: str) -> dict[str, Any] | None:
+def last_json_line(stdout: str) -> dict[str, Any] | None:
     for line in reversed(stdout.splitlines()):
         line = line.strip()
         if not line.startswith("{"):

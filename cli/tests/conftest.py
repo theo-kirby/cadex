@@ -67,3 +67,9 @@ def protocol():
     """
 
     return load_protocol(SOURCE_MODULE_DIR)
+
+
+@pytest.fixture
+def cpu_training(monkeypatch):
+    """Select CPU for requested toy runs, including child dispatchers."""
+    monkeypatch.setenv("JAX_PLATFORMS", "cpu")

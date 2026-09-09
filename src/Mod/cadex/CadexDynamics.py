@@ -1015,6 +1015,33 @@ _COLLISION_GEOM_TYPES = {
 }
 _COLLISION_FROM_SHAPE = ("mesh", "hull")
 
+#: The collision **type pairs MJX does not implement**, by the geom-kind
+#: names a script writes rather than by MuJoCo's enum. Every one of them is
+#: a perfectly ordinary MuJoCo model that the C engine simulates and this
+#: engine rolls out: the limit belongs to MJX's JAX backend, which builds a
+#: contact function per type pair and has none for these four.
+#:
+#: It is a *static* table on purpose. The engine may not import ``mjx`` or
+#: ``jax`` (ADR-084, ``test_engine_purity_guardrails``), so the one honest
+#: alternative to hard-coding this is to find out twenty minutes into a
+#: training run -- which is exactly what a walk paid for (ADR-281). The
+#: table is checked against the real ``mjx.has_collision_fn`` by an
+#: MJX-gated test that runs from the training venv and skips here, so a
+#: future MJX that implements one of these fails that test rather than
+#: silently keeping a refusal nobody needs any more.
+_MJX_UNSUPPORTED_PAIRS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("box", "cylinder"),
+        ("cylinder", "mesh"),
+        ("box", "ellipsoid"),
+        ("ellipsoid", "mesh"),
+    }
+)
+
+#: The kinds a script may swap an unsupported one for, in the order a
+#: refusal offers them: the two MJX collides with everything.
+_MJX_SAFE_KINDS = ("box", "capsule", "sphere")
+
 
 def _scipy_hull() -> Any:
     """The one import site for Qhull, with the payload failure named."""
@@ -4613,6 +4640,141 @@ def _verify_exported_pose(
     return worst_mm
 
 
+def _geom_kind_name(mujoco: Any, geom_type: int) -> str:
+    """A compiled geom's type as the word a script wrote for it."""
+
+    return str(mujoco.mjtGeom(int(geom_type)).name).removeprefix("mjGEOM_").lower()
+
+
+def candidate_collision_pairs(mujoco: Any, model: Any) -> list[tuple[int, int]]:
+    """Every geom pair a compiled model can generate a contact for.
+
+    MuJoCo's *static* contact filter, and only that: explicit ``<pair>``
+    rows, then, for every pair of bodies, the exclusion signatures, the
+    same-weld and parent-child filters, and the ``contype``/``conaffinity``
+    masks. What survives is the set a backend must have a contact function
+    for -- it is not broadphase, and it says nothing about whether two
+    geoms ever come near each other.
+
+    It is written out here rather than taken from a library because the
+    only library that has it is MJX, and the engine may not import MJX
+    (ADR-084). The MJX-gated test compares the two.
+    """
+
+    pairs: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+
+    def add(first: int, second: int) -> None:
+        if int(model.geom_type[first]) > int(model.geom_type[second]):
+            first, second = second, first
+        if (first, second) in seen:
+            return
+        seen.add((first, second))
+        pairs.append((first, second))
+
+    for index in range(int(model.npair)):
+        add(int(model.pair_geom1[index]), int(model.pair_geom2[index]))
+
+    excluded = {int(value) for value in model.exclude_signature}
+    filter_parent = not (
+        int(model.opt.disableflags) & int(mujoco.mjtDisableBit.mjDSBL_FILTERPARENT)
+    )
+    plane = int(mujoco.mjtGeom.mjGEOM_PLANE)
+    hfield = int(mujoco.mjtGeom.mjGEOM_HFIELD)
+
+    def geoms_of(body: int) -> list[int]:
+        start = int(model.body_geomadr[body])
+        return [
+            geom
+            for geom in range(start, start + int(model.body_geomnum[body]))
+            if int(model.geom_contype[geom]) or int(model.geom_conaffinity[geom])
+        ]
+
+    contactful = {body: geoms_of(body) for body in range(int(model.nbody))}
+    for first_body in range(int(model.nbody)):
+        if not contactful[first_body]:
+            continue
+        first_weld = int(model.body_weldid[first_body])
+        first_weld_parent = int(model.body_weldid[int(model.body_parentid[first_weld])])
+        for second_body in range(first_body, int(model.nbody)):
+            if not contactful[second_body]:
+                continue
+            if ((first_body << 16) + second_body) in excluded:
+                continue
+            second_weld = int(model.body_weldid[second_body])
+            if first_weld == second_weld:
+                continue
+            second_weld_parent = int(
+                model.body_weldid[int(model.body_parentid[second_weld])]
+            )
+            if (
+                filter_parent
+                and first_weld
+                and second_weld
+                and (first_weld == second_weld_parent or second_weld == first_weld_parent)
+            ):
+                continue
+            for first in contactful[first_body]:
+                for second in contactful[second_body]:
+                    kinds = {int(model.geom_type[first]), int(model.geom_type[second])}
+                    if kinds == {plane} or kinds == {plane, hfield}:
+                        continue
+                    mask = int(model.geom_contype[first]) & int(
+                        model.geom_conaffinity[second]
+                    )
+                    mask |= int(model.geom_contype[second]) & int(
+                        model.geom_conaffinity[first]
+                    )
+                    if not mask:
+                        continue
+                    add(first, second)
+    return pairs
+
+
+def mjx_unsupported_collision_pairs(mujoco: Any, model: Any) -> list[dict[str, Any]]:
+    """The candidate pairs MJX has no contact function for, named.
+
+    One row per offending geom pair, carrying both geom names, both body
+    names and the two kinds, so a refusal can say which shape to change
+    rather than that something somewhere is wrong.
+    """
+
+    rows: list[dict[str, Any]] = []
+    for first, second in candidate_collision_pairs(mujoco, model):
+        kinds = (
+            _geom_kind_name(mujoco, model.geom_type[first]),
+            _geom_kind_name(mujoco, model.geom_type[second]),
+        )
+        if tuple(sorted(kinds)) not in _MJX_UNSUPPORTED_PAIRS:
+            continue
+        rows.append(
+            {
+                "geoms": [
+                    str(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, first)),
+                    str(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, second)),
+                ],
+                "bodies": [
+                    str(
+                        mujoco.mj_id2name(
+                            model,
+                            mujoco.mjtObj.mjOBJ_BODY,
+                            int(model.geom_bodyid[first]),
+                        )
+                    ),
+                    str(
+                        mujoco.mj_id2name(
+                            model,
+                            mujoco.mjtObj.mjOBJ_BODY,
+                            int(model.geom_bodyid[second]),
+                        )
+                    ),
+                ],
+                "kinds": list(kinds),
+            }
+        )
+    return rows
+
+
 def _verify_solver_flags(mujoco: Any, model: Any) -> None:
     """The determinism flags survived the compile, and nothing else joined.
 
@@ -6830,6 +6992,44 @@ def task_records(
     """
 
     mujoco = _mujoco_module()
+
+    # A task is a training bundle and nothing else, and training is MJX
+    # (ADR-084: the trainer is offboard, and it is the only consumer of
+    # this file). MJX builds one contact function per geom type pair and
+    # has none for four of them, so a model that simulates and rolls out
+    # perfectly here can still be untrainable -- and it says so twenty
+    # minutes later, in a traceback from a process the design turn never
+    # sees. The refusal belongs at the moment the task is declared, where
+    # the author still has the collision shape in front of them (ADR-281).
+    #
+    # It is checked on ``reloaded`` rather than on the engine's own model
+    # for the same reason everything else in this function is: the trainer
+    # loads the file, so the file is what has to be trainable.
+    unsupported = mjx_unsupported_collision_pairs(mujoco, reloaded)
+    if unsupported:
+        first = unsupported[0]
+        raise DynamicsError(
+            f"{context} would train a model MJX cannot build: "
+            f"{first['geoms'][0]} on {first['bodies'][0]} and "
+            f"{first['geoms'][1]} on {first['bodies'][1]} can touch, and MJX "
+            f"has no {first['kinds'][0]}/{first['kinds'][1]} contact.",
+            reason="mjx_unsupported_collision_pair",
+            correction=(
+                "MuJoCo simulates this pair and the rollout will look right; "
+                "the trainer will not build it. Give one of the two shapes a "
+                "kind MJX collides with everything ("
+                + ", ".join(_MJX_SAFE_KINDS)
+                + ") -- a capsule is the usual stand-in for a shaft or a "
+                "rail. Or separate the two with collision groups: put one in "
+                "its own contact_group and give the *other* a collides_with "
+                "that omits that group, because MuJoCo's mask test is "
+                "symmetric and one side declaring nothing is not enough. "
+                "Joining the two components also excludes them, if they are "
+                "in fact joined."
+            ),
+            observed={"unsupported_pairs": unsupported},
+        )
+
     tree = built["tree"]
     joint_records = built["joint_records"]
     actuators = list(built["actuators"])
