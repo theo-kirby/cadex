@@ -144,6 +144,11 @@ leg on the box `training/remote_train.sh` names.) Fill in which, and
 why; `{progress}` marks each remote row `(remote)`.
 
 The shared mode artifacts table in `docs/CLI.md` is the walk contract.
+`cadex train --remote --detach` returns pending in `training` and project-local
+`--out/training-receipt.json`. No policy is verified or stored, even with
+`--put`; old files stay intact. Use its run ID and the same remote configuration
+with `remote_train.sh watch/pull` into a fresh destination, then verify before
+storing and declaring. Detached walk continuation is not automated.
 On a leg timeout, the process group gets a full five-second SIGTERM cleanup
 grace even if its direct child exits early, then an unconditional SIGKILL.
 For toy CPU runs, use `JAX_PLATFORMS=cpu`; `training/SETUP.md` §b gives
@@ -162,12 +167,10 @@ the last successful policy/parent task and an explicit task-change reason.
 The walk's `{progress}` row and project commit subject name the output
 relative to this project, or by basename for an external output, so the
 recorded run label contains no absolute machine path.
-Before the first leg, `walk.engine_source_comparison` in the JSON envelope
-and stderr report matching, different or unavailable top-level Python bytes
-against the checkout. Dev runs compare the binary prefix's `Mod/cadex`;
-payload runs compare the manifest's module directory. Name lists stop at ten,
-with full counts. This does not certify binary or loaded-module provenance,
-determine which copy is newer, refuse a run, or rebuild the engine.
+Before dispatch, `walk.engine_source_comparison` reports whether installed
+top-level Python bytes match the checkout (dev prefix or payload manifest).
+Lists stop at ten with full counts. This neither certifies binary/loaded-module
+provenance nor refuses or rebuilds; see `docs/CLI.md` for interpretation.
 The artifacts are the same project-relative paths in both modes: the
 bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
@@ -181,14 +184,12 @@ carries project-relative paths, revision/digest, approximation, limits and
 acquisition/render timings. The walk refuses rendering failures or a revision
 that differs from the rollout; old files are never a successful fallback.
 `walk_seconds` measures the entry point through review (before final commit).
-The `section` block carries the shared snapshot cut at world XZ, at an
-offset derived from that snapshot's own bounds, under
-`review/section/<accepted-revision>/XZ-<derived-offset>/` (SVG and JSON). It
-retains status, availability, revision/digest, plane, units, approximation,
-limits, acquisition/section timings, `offset_source` and the ordered
-`offset_candidates_mm`, and `objects_cut` of `objects`. Every candidate is
-cut and the plane that cuts the most objects wins, so no mechanism needs its
-own constant -- and `objects_cut` says how much of it the drawing reached.
+The `section` block describes the shared snapshot cut at world XZ under
+`review/section/<accepted-revision>/XZ-<derived-offset>/` (SVG and JSON).
+It carries revision/digest, availability, units, approximation, limits and
+timings. Every `offset_candidates_mm` plane is cut; most objects cut wins.
+`offset_source` records the derivation; `objects_cut` of `objects` measures
+coverage, without mechanism-specific constants.
 The walk adds `section.missed_objects`: uncut object identities, section statuses
 and `moved` (true, false or null for unknown). Exact rollout component matches
 carry translation in mm and rotation in degrees; either nonzero channel counts

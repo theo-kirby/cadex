@@ -807,6 +807,12 @@ detached_train() {
     echo "==> watch it:   $(basename "$0") watch ${run_id}"
     echo "==> stop it:    $(basename "$0") stop ${run_id}"
     echo "==> bring home: $(basename "$0") pull ${run_id}"
+    python3 - "${run_id}" "${target}" "${remote_dir}" "${pid}" "${out_name}" <<'PYRECEIPT'
+import json, sys
+run_id, target, remote_dir, pid, policy_name = sys.argv[1:]
+print(json.dumps(dict(state="pending", run_id=run_id, target=target,
+                     remote_dir=remote_dir, pid=int(pid), policy_name=policy_name)))
+PYRECEIPT
 }
 
 # One poll: mirror progress.json and any new .cxpolicy back, print a line.

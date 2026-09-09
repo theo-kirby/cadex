@@ -20,19 +20,12 @@ guessing them (``--num-envs`` for ``--envs``, ``--output`` for ``--out``);
 ``test_train.py`` reads them back out of the trainer's source so a rename
 there fails here.
 
-**Remote training is the same leg with one word changed** (ADR-200). With
-``--remote`` the command is ``training/remote_train.sh train <bundle>
-<out> -- <the same trainer flags>`` (ADR-089) instead of the venv's
-interpreter: the bundle and the model go out from ``--out``, the policy
-comes back to the very path the local trainer would have written, and
-the receipt is read off the same last JSON line. A warm start goes out
-beside the bundle and the flags are re-pointed at the copies, by the
-dispatcher rather than here (ADR-268), so an iterate has the same shape in
-both modes. Everything after the
-receipt — the store, the digest edit, the verified rollout — never learns
-where the trainer ran. What this module adds for both is the check the
-remote script already makes and the local path never needed: the file at
-``--out`` hashes to the sha256 the receipt claims, or the leg fails.
+**Remote training** (ADR-200) substitutes `remote_train.sh` for the local
+interpreter. Blocking dispatch copies the policy back to the same path and
+checks its digest; warm-start files travel and are re-pointed by the dispatcher
+(ADR-268). With `--detach` (ADR-278), the dispatcher instead returns a pending
+run locator. The caller persists it without checking or storing any policy.
+The full walk remains blocking.
 
 **And the leg can be planned rather than run** (ADR-255). ``--dry-run``
 stops after the export and reports :func:`training_plan`: the files the
@@ -212,6 +205,7 @@ def remote_trainer_command(
     out: Path | str,
     *,
     allow_cpu: bool = False,
+    detach: bool = False,
     script: Path | str | None = None,
     **flags: Any,
 ) -> list[str]:
@@ -239,6 +233,8 @@ def remote_trainer_command(
                "train", str(bundle), str(out)]
     if allow_cpu:
         command.append("--allow-cpu")
+    if detach:
+        command.append("--detach")
     return [*command, "--", *trainer_flags(**flags)]
 
 

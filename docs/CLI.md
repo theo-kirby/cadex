@@ -744,12 +744,24 @@ local walk's line for line. What the flag changes and what it refuses:
   files share a basename and would collide in one flat `warm/`.
   `--trainer-python` with `--remote` is a usage error: the box's venv is
   `CADEX_TRAIN_VENV`.
-- **`--timeout` is local.** It ends the ssh that holds the run, not the
-  run; a long run belongs to `remote_train.sh train --detach` and
-  `pull`, outside the walk, which then continues from `cadex asset --put`
-  and `cadex script --set` (§2 above). `--leg-timeout` is local in the
-  same way and for the same reason: it kills the train leg's session
-  here, including the ssh, and the box keeps computing.
+- **Detached launch is pending, not a trained policy** (ADR-278).
+  `cadex train --remote --detach --project P --out P/runs/new/train --json`
+  returns exit 0 with `training.state: "pending"`, the dispatcher's `run_id`,
+  `target`, `remote_dir`, `pid` and `policy_name`. The same object lands in
+  `--out/training-receipt.json`, with its local `destination` and
+  `receipt_path`. Use a fresh output directory under the project.
+  No policy is verified, stored (even with `--put`), declared or rolled out;
+  an older policy at the destination is untouched. PROGRESS records pending
+  without reward or digest claims. Use the same remote configuration with
+  `training/remote_train.sh watch RUN_ID FRESH_DEST` or `pull RUN_ID FRESH_DEST`.
+  Inspect the returned progress and policy before `cadex asset --put` and
+  `cadex script --set`. Pending proves launch acknowledgement, not continued
+  execution, device choice, training success or a verified policy.
+  `--detach` needs `--remote`, rejects `--dry-run`, and is unavailable on
+  `walk`; automatic detached collection and walk continuation remain unimplemented.
+- **`--timeout` is local.** It ends the local dispatcher/SSH process, not
+  remote training. `--leg-timeout` has the same limit. Use the detached run
+  ID with `remote_train.sh stop` to stop training on the box.
 - **The project's docs say which mode it trains in.** The
   `ARCHITECTURE.md` scaffold carries a `## Training` section for the
   agent to fill in — local venv or `--remote`, and why — that states the

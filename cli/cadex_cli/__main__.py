@@ -391,6 +391,11 @@ def build_parser() -> argparse.ArgumentParser:
         "take, here or on the box. Runs no trainer, reaches no box, stores "
         "nothing. The preflight for `walk --remote`.",
     )
+    train_parser.add_argument(
+        "--detach", action="store_true",
+        help="With --remote: launch and return a pending run receipt in --out. "
+        "Does not verify or store a policy; --out must be inside the project.",
+    )
     _remote_flags(train_parser)
     walk_parser = subparsers.add_parser(
         "walk",
@@ -1263,6 +1268,15 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     if remote_error:
         report.error = remote_error
         return EXIT_USAGE
+    if args.detach:
+        if args.dry_run:
+            report.error = "--detach cannot be combined with --dry-run."
+            return EXIT_USAGE
+        if not Path(args.out).expanduser().resolve().is_relative_to(
+            Path(args.project).expanduser().resolve()
+        ):
+            report.error = "--detach needs --out inside the project for its run receipt."
+            return EXIT_USAGE
     python = None if args.remote else resolve_trainer_python(args.trainer_python or None)
 
     with _engine_session(args, report) as (engine, client):
@@ -1294,12 +1308,11 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         init_from_task_change=args.init_from_task_change,
     )
     if args.remote:
-        # The same leg on the box (ADR-200): the bundle and the model go
-        # out from --out, the policy comes back to policy_path, and the
-        # receipt is the same last JSON line. Nothing after this branch
-        # knows where the trainer ran.
+        # Blocking dispatch returns a policy; detached dispatch returns
+        # the same remote run identity used by watch/pull (ADR-278).
         command = remote_trainer_command(
-            task.files["json"], policy_path, allow_cpu=args.allow_cpu, **flags
+            task.files["json"], policy_path, allow_cpu=args.allow_cpu,
+            detach=args.detach, **flags
         )
         where = f"remote, {Path(command[0]).name}"
     else:
@@ -1335,6 +1348,24 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         f"  ({where})"
     )
     report.training = run_trainer(command, timeout=args.timeout)
+    if args.detach:
+        if report.training.get("state") != "pending" or not all(
+            report.training.get(key) for key in ("run_id", "target", "remote_dir", "pid")
+        ):
+            raise TrainError("detached launch returned no pending run locator.")
+        receipt_path = out_dir / "training-receipt.json"
+        report.training["destination"] = str(out_dir)
+        report.training["receipt_path"] = str(receipt_path)
+        receipt_path.write_text(
+            json.dumps(report.training, indent=2) + "\n", encoding="utf-8"
+        )
+        report.notes.append(
+            f"pending remote run {report.training['run_id']}; locator: {receipt_path}. "
+            "No policy verified or stored. Use remote_train.sh watch/pull with this "
+            "run ID and a fresh destination; --put has not run."
+        )
+        report.ok = True
+        return EXIT_OK
     verify_returned_policy(policy_path, report.training)
     report.training["comparison"] = {**task_comparison(task.files["json"]),
                                      "training_seed": args.seed}
@@ -1384,6 +1415,8 @@ def _remote_usage_error(args: argparse.Namespace) -> str:
     flags, so an iterate has the same shape in both modes.
     """
 
+    if getattr(args, "detach", False) and not args.remote:
+        return "--detach needs --remote."
     if not args.remote:
         if args.allow_cpu:
             return "--allow-cpu is remote_train.sh's flag; it needs --remote."
@@ -1826,6 +1859,8 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
             int(args.iterations), int(args.envs), label
         )
     if command == "train":
+        if report.training.get("state") == "pending":
+            return f"train pending {report.training['run_id']} (remote; no policy stored)"
         # The mode is part of what happened: a row trained on the box says
         # so, and the project's ARCHITECTURE.md scaffold names the marker.
         return "train {:d} it × {:d} envs → {:s}{:s}{:s}".format(
@@ -1947,7 +1982,8 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             what=_progress_what(command, args, report),
             revision=report.accepted_revision,
             digest=report.digest,
-            numbers=((
+            numbers=("pending; no policy verified"
+                     if report.training.get("state") == "pending" else (
                 _clearance_cell(report.walk["review"]["clearance"], previous)
                 + _motion_cell(report.walk["review"].get("motion") or {}, previous)
                 + _documentation_cell(report.walk["review"].get("documentation") or {})
@@ -1959,7 +1995,8 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
                 report.project_root, command,
                 report.walk.get("review", {}).get("comparison", {})
                 if command == "walk" else report.training.get("comparison", {}),
-            ) if command in ("walk", "train") else ""),
+            ) if command in ("walk", "train")
+                 and report.training.get("state") != "pending" else ""),
         )
     except OSError as exc:
         report.notes.append(f"PROGRESS.md not written: {exc}")

@@ -22326,3 +22326,24 @@ Fixtures exercise pure rotation, translation, stationary components, shared
 sources, unavailable traces and invalid travel through the persisted review.
 The CLI suite is the gate; the stored ot4-swing2 trace supplies the live-data
 check. The lifecycle guide and project scaffold carry the same contract.
+
+
+## ADR-278 — Detached training returns a pending run locator (2026-09-08)
+
+Expose the dispatcher's existing detach path through `cadex train --remote
+--detach`. Replace the unconditional completion assumption with an early
+pending return: no policy verification, put_asset, declaration or rollout,
+including when an older policy exists at the output path. Keep blocking
+behavior and warm-start transport. The dispatcher emits its own run identity
+as JSON after launch acknowledgement; the CLI retains it in the report and
+project-local `--out/training-receipt.json`. PROGRESS says pending and carries
+no measurements from the exported prior rollout. No second registry or polling
+service is introduced. Reject detach without remote, outside-project output,
+and detach plus dry-run; the existing blocking preflight remains available.
+
+This is a lower-level handoff, not automatic detached walk continuation.
+Collection uses existing watch/pull with the same remote configuration and a
+fresh destination; launch success does not certify trainer completion or device.
+Local SSH/rsync stand-ins drive the real dispatcher and engine to test launch,
+pending persistence, old-policy preservation, warm-start repointing and launch
+failure. The CLI suite and bash syntax check are the gates.

@@ -254,10 +254,15 @@ and, with `--put`, stores it — so the policy lands at the path the local
 trainer would have written and every later step (`cadex script --set`,
 the verified rollout, `review.json`) is unchanged. `cadex walk --remote`
 is the whole walk with that one leg on the box. `--allow-cpu` passes
-through; `--detach` does not (a walk waits for its leg — a run too long
-to hold an ssh open for is dispatched by hand, above, and continued with
-`cadex asset --put`). A warm start goes too (below). Run `check`
-first: the CLI reads none of `.remote.env` and repairs nothing.
+through. `cadex train --remote --detach` returns a pending launch receipt in
+`--out/training-receipt.json`; `--out` must lie inside the project. No policy
+is verified or stored, even with `--put`. Use its run ID with `watch`/`pull`
+into a fresh destination, then verify and store the returned policy explicitly.
+The same locator is printed as the last JSON line by the dispatcher itself.
+`walk` remains blocking; detached collection and continuation are not automated.
+A warm start goes too (below). Run `check` first: the CLI reads none of
+`.remote.env` and repairs nothing. See ADR-278 and `docs/CLI.md` for pending
+semantics and the timeout limit (ending SSH does not stop remote training).
 `docs/CLI.md` §2 is the contract.
 
 ### A warm start, on the box (ADR-268)

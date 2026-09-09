@@ -60,6 +60,8 @@ class RunReport:
     #: `device`, the witness margin. Not re-derived here: a receipt taken
     #: from a stream is a receipt something else can write into (ADR-093),
     #: so this is the one the trainer meant as data.
+    #: Detached remote dispatch instead carries state="pending" and a run
+    #: locator, with no policy digest or training measurements (ADR-278).
     training: dict[str, Any] = field(default_factory=dict)
     #: ``cadex train --dry-run`` (ADR-255): what the training leg *would*
     #: do — the files it would touch and the steps it would take, here or

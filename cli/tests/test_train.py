@@ -447,6 +447,9 @@ def test_usage_errors_come_before_any_engine_or_trainer(tmp_path, capsys) -> Non
     for wrong, word in (
         (["--remote", "--trainer-python", sys.executable], "CADEX_TRAIN_VENV"),
         (["--allow-cpu"], "--remote"),
+        (["--detach"], "--remote"),
+        (["--detach", "--remote", "--dry-run"], "--dry-run"),
+        (["--detach", "--remote"], "inside the project"),
     ):
         code, envelope = _run(
             capsys, "train", "--project", str(project), "--out",
@@ -876,6 +879,16 @@ while args and args[0].startswith("-"):
         args.pop(0)
 args = args[1:]                       # drop the target
 command = " ".join(args)
+if "setsid sh -c" in command:
+    if os.environ.get("FAKE_DETACH_FAIL"):
+        print("FAIL: detached launch refused")
+        raise SystemExit(7)
+    words = shlex.split(command)
+    inner = shlex.split(words[words.index("-c") + 1])
+    pid_path = pathlib.Path(inner[inner.index(">") + 1].rstrip(";"))
+    pid_path.write_text("12345")
+    pathlib.Path(os.environ["FAKE_SSH_LOG"]).write_text(json.dumps(inner))
+    raise SystemExit(0)
 if "cadex_train.py" in command and "--out" in command:   # not the sha256sum
     # The remote shell is what splits this line, so split it the same way.
     words = shlex.split(command)
@@ -1024,3 +1037,65 @@ def test_the_dispatcher_refuses_a_warm_start_it_cannot_carry(box, tmp_path) -> N
                           "--init-from-parent-task", str(twin))
     assert collision.returncode == 1 and "share the basename" in collision.stdout
     assert not box.exists(), "the trainer ran despite a refusal"
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_detached_train_returns_pending_without_consuming_an_old_policy(
+    task_project, box, tmp_path, capsys, monkeypatch, fail
+) -> None:
+    """Real engine and dispatcher, local transports; launch is not completion."""
+    from cadex_cli import __main__ as cli_main
+
+    out = task_project / "runs" / "detached"
+    out.mkdir(parents=True)
+    old = out / "job.cxpolicy"
+    old.write_bytes(b"previous local policy")
+    script_before = (task_project / "script.py").read_bytes()
+    _, _, warm, parent = _warm_start_job(tmp_path)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("a pending launch must not verify a returned policy")
+
+    monkeypatch.setattr(cli_main, "verify_returned_policy", forbidden)
+    monkeypatch.setattr(cli_main, "progress_numbers", forbidden)
+    monkeypatch.setattr(cli_main, "comparison_cell", forbidden)
+    if fail:
+        monkeypatch.setenv("FAKE_DETACH_FAIL", "1")
+    code, envelope = _run(
+        capsys, "train", "--project", str(task_project), "--out", str(out),
+        "--remote", "--detach", "--put", "--iterations", "2", "--envs", "4",
+        "--init-from", str(warm), "--init-from-parent-task", str(parent),
+        "--init-from-task-change", "a harder band",
+    )
+    assert old.read_bytes() == b"previous local policy"
+    assert (task_project / "script.py").read_bytes() == script_before
+    assert not list((task_project / "assets").glob("*.cxpolicy"))
+    locator = out / "training-receipt.json"
+    if fail:
+        assert code == EXIT_FAILURE, envelope
+        assert "detached launch refused" in envelope["error"]
+        assert not locator.exists()
+        assert not box.exists()
+        return
+
+    assert code == EXIT_OK, envelope
+    receipt = envelope["training"]
+    assert receipt == json.loads(locator.read_text())
+    assert receipt["state"] == "pending" and receipt["pid"] == 12345
+    assert receipt["target"] == "box.invalid"
+    assert receipt["policy_name"] == old.name
+    assert Path(receipt["remote_dir"]).name == receipt["run_id"]
+    assert receipt["destination"] == str(out)
+    assert "sha256" not in receipt and "reward_per_step" not in receipt
+    assert "assets" not in envelope
+    words = json.loads(box.read_text())
+    remote = Path(receipt["remote_dir"])
+    assert (remote / "train.pid").read_text() == "12345"
+    assert (remote / "job-task.json").is_file()
+    assert (remote / "model-model.xml").is_file()
+    assert Path(words[words.index("--init-from") + 1]).read_bytes() == warm.read_bytes()
+    assert Path(words[words.index("--init-from-parent-task") + 1]).read_bytes() == parent.read_bytes()
+    assert words[words.index("--out") + 1] == str(remote / old.name)
+    row = (task_project / "PROGRESS.md").read_text().splitlines()[-1]
+    assert "train pending" in row and "no policy stored" in row
+    assert "reward" not in row and "sha256" not in row

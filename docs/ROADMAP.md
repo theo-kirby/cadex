@@ -2374,6 +2374,10 @@ What makes them experimental, and what would settle it:
   lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
   domain-doc convention. No engine change, no file tool for the agent.
   §7c row 10 closes.
+- [x] **Detached train reports pending honestly** (ADR-278). Project-local run
+  receipt, preserved prior policy, no verify/store or completion claims; tested
+  with the real dispatcher over local transport stand-ins. Detached walk
+  collection and continuation remain unimplemented.
 - [x] **Project model continuity survives a refused override** (ADR-276).
   Prompt and walk turns resolve flag, environment, recorded model, default;
   failed turns with the same session ID preserve the previous record.
