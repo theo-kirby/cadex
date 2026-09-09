@@ -2322,6 +2322,22 @@ What makes them experimental, and what would settle it:
   session limit: exit 1, 1.94 s design, 2.003486 s total, 382,861,312 bytes
   peak tree RSS. No later leg or eye ran; fresh crank-slider success remains
   unevidenced. This checkbox records the experiment, not lifecycle completion.
+- [x] **A fresh mixed-joint crank-slider walk reaches geometry** (2026-09-08,
+  iteration 52; ADR-280, `docs/CLI.md` §2). Design exit 0 in 1135.85 s against
+  `claude-opus-5`: a four-body closed-loop slider-crank, mobility 1, worst
+  closure residual 0.0015 mm, with `DECISION:` lines and `linkage-geometry`,
+  `actuators` and `sensors` notes landed in the project. The train leg then
+  failed in 2.27 s — `mjx.put_model` does not implement cylinder-box
+  collisions, so the guide rail is untrainable under MJX though the MJCF is
+  valid. 1138.30 s total, 729,931,776 bytes peak tree RSS, no watchdog
+  intervention. Declare, rollout and all four eyes were not reached. This
+  checkbox records the experiment and the geometry result, not lifecycle
+  completion.
+- [x] **A failed training leg names its cause in the envelope** (ADR-280,
+  2026-09-08). `run_trainer` tees the trainer's stderr instead of only
+  inheriting it, so the `--json` error carries the crash rather than two
+  benign stdout warnings. Regression fails on the previous source; 24 CLI
+  train tests pass.
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected

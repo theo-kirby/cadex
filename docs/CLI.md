@@ -691,6 +691,48 @@ mixed-joint walk unevidenced; the model refusal is the observed stopping
 point, with no retry scheduled against a clock. Runtime and scaffold
 behavior are unchanged.
 
+**Measured fresh crank-slider walk, `ot4-mix52` (2026-09-08).** The same
+invocation into an empty project, with `--iterations 5 --envs 16 --seed 0
+--timeout 600 --leg-timeout 1800`, reached geometry this time.
+
+| Leg | Result |
+|---|---|
+| Design (`claude-opus-5`) | **Exit 0, 1135.85 s**; accepted revision `3892e8cd…`, digest `df4ee45f…` |
+| Train | Exit 1, 2.27 s; `mjx.put_model` raised `NotImplementedError: (mjGEOM_CYLINDER, mjGEOM_BOX) collisions not implemented` |
+| Declare / rollout | Not reached |
+| Render / section / inventory / clearance | Not reached; review block empty |
+| Total reward / witness error | Unavailable; training produced no policy |
+| Whole invocation | Exit 1, 1138.30 s |
+| Peak process-tree RSS | 729,931,776 bytes, sampled every 0.2 s |
+
+No watchdog intervention (2.9 GiB guard). The engine source comparison
+reported `match` across 56 files against a freshly built and installed
+engine. The design turn produced a four-body closed-loop slider-crank —
+grounded frame with a round guide rail, an 11.3 g crank on a revolute
+driven by a 250 N·mm position servo, a 25.7 g coupler and a 38.3 g slider
+block on a prismatic joint — mobility 1, one MuJoCo `connect` closure,
+worst closure residual 0.0015 mm over a 2 s driven run, peak servo effort
+17.3 N·mm unsaturated. It refused the all-revolute version as redundant and
+spent the three surplus 3D constraints on a cylindrical crank pin and a
+ball wrist pin rather than disconnecting anything, which is what the prompt
+asked for. Four `DECISION:` lines and three notes (`linkage-geometry`,
+`actuators`, `sensors`) landed in the project.
+
+**MJX does not implement every MuJoCo geom pair, and that bounds what a
+design turn may author.** The cylinder used for the guide rail against the
+box bodies is one such pair, so the exported model is valid MuJoCo and
+untrainable under MJX. A design turn that wants a trainable mechanism should
+prefer capsule or box collision geometry, or mark the rail contact-free.
+The refusal is the trainer's, not the engine's: the geometry, the assembly
+solve, the MJCF export and the task are all accepted. **The envelope now
+names it** (ADR-280): before that fix, `walk.json` quoted two benign
+`Failed to import warp` lines off stdout and the `NotImplementedError`
+reached only the inherited terminal, so a `--json` caller could not tell
+why the leg died. Local evidence is in `runs/fresh52/{walk.json,
+walk.stderr,monitor.json}`, excluded from Git. This leaves the fresh
+mixed-joint walk **evidenced through design and stopped at train**: the
+first leg that a person would otherwise have to guess at is now reported.
+
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through
 `training/remote_train.sh train` (ADR-089, `training/SETUP.md` §d) instead

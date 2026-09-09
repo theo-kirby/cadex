@@ -22369,3 +22369,42 @@ budget is unchanged.
 The regression test builds the real scaffold rather than a synthetic string, so
 a future guide line cannot restore the eviction without failing it. It fails on
 the previous bounding. The CLI suite is the gate.
+
+
+## ADR-280 — A failed training leg names its cause in the envelope (2026-09-08)
+
+Measured on a fresh crank-slider walk (`ot4-mix52`). The design leg succeeded:
+the agent authored a four-body closed-loop slider-crank, spent the planar
+loop's three redundant 3D constraints on a cylindrical crank pin and a ball
+wrist pin rather than disconnect anything, and the export solved with a worst
+closure residual of 0.0015 mm. The train leg then failed in 2.27 s, and
+`walk.json` said:
+
+    training did not produce a policy (leg train, exit 1): the trainer
+    exited 1; its stderr is above.
+      Failed to import warp: No module named 'warp'
+      Failed to import mujoco_warp: No module named 'warp'
+
+Both quoted lines are benign. The real failure was
+`NotImplementedError: (mjGEOM_CYLINDER, mjGEOM_BOX) collisions not
+implemented`, raised by `mjx.put_model`, and it never reached the envelope at
+all: `run_trainer` inherited the trainer's stderr so a person at a terminal
+would see it, and captured only stdout, so the `--json` caller — which is the
+whole point of a headless walk — was left with two import warnings and the
+words "its stderr is above" pointing at a stream it does not have.
+
+Tee the stream instead: write each stderr line through as it arrives, exactly
+as before, and keep the last four. A nonzero exit now carries the stdout tail
+(the remote dispatcher's `FAIL:` lines) *and* the stderr tail, stderr last
+because that is where a crash lands. Both pipes are drained by threads, so a
+chatty trainer cannot deadlock on a full one. Live progress is unchanged.
+
+This does not make MJX build the model. The unsupported cylinder-box geom pair
+is a real constraint on what a design turn may author and is recorded as such
+in `docs/CLI.md` §2; naming it in the envelope is what lets the next turn act
+on it without a person reading a log.
+
+The regression drives a real subprocess that prints the benign lines on stdout
+and the traceback on stderr, and asserts both that the error names the cause
+and that stderr still passed through live. It fails on the previous source.
+The CLI suite is the gate.

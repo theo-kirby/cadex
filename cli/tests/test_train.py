@@ -407,6 +407,39 @@ def test_a_trainer_that_fails_or_hangs_is_a_failure_with_the_reason(
         run_trainer([sys.executable, str(hang)], timeout=0.5)
 
 
+def test_a_crash_on_stderr_reaches_the_machine_readable_error(
+    tmp_path, capfd
+) -> None:
+    """The failure names its cause, not whatever stdout happened to say.
+
+    Measured on the ot4-mix52 walk: MJX refused the exported crank-slider
+    with ``NotImplementedError: (mjGEOM_CYLINDER, mjGEOM_BOX) collisions
+    not implemented`` on stderr, while the two benign ``Failed to import
+    warp`` lines on stdout were all that reached ``walk.json``. An agent
+    reading ``--json`` could not tell why the leg died.
+    """
+
+    crash = tmp_path / "crash.py"
+    crash.write_text(
+        "import sys\n"
+        "print('Failed to import warp: No module named \\'warp\\'')\n"
+        "print('Failed to import mujoco_warp: No module named \\'warp\\'')\n"
+        "sys.stderr.write('Traceback (most recent call last):\\n')\n"
+        "sys.stderr.write('NotImplementedError: "
+        "(mjGEOM_CYLINDER, mjGEOM_BOX) collisions not implemented.\\n')\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(TrainError) as caught:
+        run_trainer([sys.executable, str(crash)])
+    message = str(caught.value)
+    assert "collisions not implemented" in message
+    assert "Failed to import warp" in message  # the stdout tail still travels
+
+    # ...and stderr still passed through live, where a person reads it.
+    assert "collisions not implemented" in capfd.readouterr().err
+
+
 # -- the command, end to end ---------------------------------------------
 
 

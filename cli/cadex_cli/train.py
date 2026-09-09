@@ -38,11 +38,14 @@ after the design and assembly legs have already run.
 
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+import threading
 from typing import Any, Sequence
 
 from .engine import REPO_ROOT
@@ -429,6 +432,29 @@ def verify_returned_policy(out: Path | str, receipt: dict[str, Any]) -> None:
     receipt["out"] = str(path)
 
 
+#: How many of the trainer's last stderr lines are kept for a failure
+#: message. A jax or MuJoCo traceback is a dozen frames; four lines of it
+#: is the exception and the frame that raised, which is the part that
+#: names the cause.
+_STDERR_TAIL_LINES = 4
+
+
+def _tee_stderr(stream, keep: collections.deque) -> None:
+    """Write the trainer's stderr through to ours, keeping the last lines.
+
+    Progress must still stream live while the trainer runs, so this reads
+    a line at a time and writes it straight on rather than buffering the
+    whole stream and replaying it at the end.
+    """
+
+    for line in stream:
+        sys.stderr.write(line)
+        sys.stderr.flush()
+        if line.strip():
+            keep.append(line.rstrip())
+    stream.close()
+
+
 def run_trainer(
     command: Sequence[str], *, timeout: float = 0.0
 ) -> dict[str, Any]:
@@ -439,32 +465,67 @@ def run_trainer(
     is one JSON object on the last line, and that object is the receipt:
     nothing here reads a number off a stream the trainer did not mean as
     data (ADR-093). A ``timeout`` of zero is no limit.
+
+    **A failure names its cause** (ADR-280). Passing stderr straight through
+    is right for a person watching a terminal and useless to the caller who
+    reads ``--json``: an MJX refusal to build the model arrives as a
+    traceback on a stream the envelope never saw, so ``walk.json`` reported
+    two benign import warnings off stdout and not the ``NotImplementedError``
+    that actually stopped the leg. The stream is therefore *teed* — written
+    through as before, and its last lines kept — so the machine-readable
+    error carries what the terminal showed.
     """
 
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             list(command),
             stdout=subprocess.PIPE,
-            stderr=None,  # inherit ours: progress belongs on stderr
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout or None,
         )
     except OSError as exc:
         raise TrainError(f"could not run the trainer: {exc}") from exc
-    except subprocess.TimeoutExpired as exc:
+
+    # Both pipes are drained by threads: stderr through to ours as it
+    # arrives, stdout into a buffer for the receipt. Draining only one of
+    # them would deadlock a chatty trainer on the other's full pipe.
+    kept: collections.deque = collections.deque(maxlen=_STDERR_TAIL_LINES)
+    chunks: list[str] = []
+    pumps = [
+        threading.Thread(
+            target=_tee_stderr, args=(process.stderr, kept), daemon=True
+        ),
+        threading.Thread(target=lambda: chunks.append(process.stdout.read())),
+    ]
+    for pump in pumps:
+        pump.start()
+    try:
+        process.wait(timeout=timeout or None)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        for pump in pumps:
+            pump.join(timeout=5.0)
         raise TrainError(
             f"the trainer was stopped after {timeout:g}s (--timeout)."
-        ) from exc
-    if completed.returncode != 0:
+        ) from None
+    for pump in pumps:
+        pump.join(timeout=5.0)
+    process.stdout.close()
+    stdout = "".join(chunks)
+
+    if process.returncode != 0:
         # The remote dispatcher explains its refusals on stdout (``FAIL:
-        # ...``), which nobody sees once it is captured; the last lines go
-        # into the error instead of the bin.
-        tail = [line for line in completed.stdout.splitlines() if line.strip()][-4:]
+        # ...``), which nobody sees once it is captured; the trainer
+        # explains its own on stderr. Both tails go into the error instead
+        # of the bin, stderr last because it is where a crash lands.
+        tail = [line for line in stdout.splitlines() if line.strip()]
+        tail = tail[-_STDERR_TAIL_LINES:] + list(kept)
         raise TrainError(
-            f"the trainer exited {completed.returncode}; its stderr is above."
+            f"the trainer exited {process.returncode}; its stderr is above."
             + ("".join("\n  " + line for line in tail) if tail else "")
         )
-    receipt = _last_json_line(completed.stdout)
+    receipt = _last_json_line(stdout)
     if receipt is None:
         raise TrainError("the trainer exited 0 but printed no receipt.")
     return receipt
