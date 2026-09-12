@@ -17,8 +17,8 @@ each testing one idea, and reads the reports. Ouroboros, hypergraph, and cadex
 each carry part of that. Everything below serves it.
 
 Autonomous, reviewable progress on cadex, in this priority order. Ticked
-criteria shipped in earlier runs (ADR-186..198); they declare no gap. The agents
-re-plan from the ladder after every maintainer pass and record their bets.
+criteria shipped in earlier runs; they declare no gap. The agents
+re-plan from the ladder after every reconcile and record their bets.
 
 1. **File lifecycle** — the most fragile part of the product. Keep it working.
 2. **The robot lifecycle loop, end to end, agent-driven, headless, in the repo.**
@@ -65,13 +65,21 @@ remove more than we add.
 
 Claims about the world. Each open box here becomes one gap node on the frontier
 at run start, so this section is deliberately short: it is *this run's* frontier,
-not the whole backlog. The backlog lives under `## Later criteria` below, where
-nothing is seeded. Promote a criterion by moving it up when the frontier lands
-or blocks; that is a human edit, and it mints a new directive.
+not the whole backlog. The backlog lives under the later-criteria section below,
+where nothing is seeded. Promote a criterion by moving it up when the frontier
+lands or blocks; that is a human edit, and it mints a new directive.
 
-**This run's frontier is the lifecycle walk and the eyes it reviews itself
-with.** Inherited-tree reduction is done enough — nt2 removed 2.79M lines — so
-it is standing work on the long rung now, not a target.
+**Why this section changed for ot5.** Four runs ticked nothing, and ot4's digest
+named the cause: each criterion was a compound claim no single unit could finish,
+so nobody would declare one true. Every open box below is now **one claim with
+one piece of evidence** -- a file the run writes, or a command that exits 0 --
+and the record node that produces that evidence is allowed to say "this ticks
+criterion N". The ticks above the line are the human's, made on the evidence the
+state graph holds from ot4 (`crisp-reef-5607`, `swift-dusk-2951`,
+`witty-spark-2613`, `damp-moon-9297`).
+
+**This run's frontier is three things: the eyes that see motion, a real gait
+on the GPU, and the first variant study with a report a person can read.**
 
 **File lifecycle (shipped):**
 
@@ -82,67 +90,124 @@ it is standing work on the long rung now, not a target.
       `write_script` recovers it from the UI.
 - [x] Save-As carries `.cxpolicy` forward (the shell suffix list).
 
-**Robot lifecycle loop:**
+**Robot lifecycle loop (shipped in ot4; ticked by the human on 2026-09-12):**
 
-- [ ] **The walk exists and is tested headlessly.** One documented entry point
-      (a CLI prompt or a headless script) takes a mechanism from design →
-      assembly → MJCF → task → toy-scale local CPU training → policy verify →
-      rollout → review, on this machine, with no human step. The rehearsal in
-      `gilded-trail-2519` named the gaps; they are closed or recorded as the
-      lifecycle frontier.
+- [x] **The walk exists and is tested headlessly.** `cadex walk` takes a
+      mechanism from design through training, verify, rollout and review with no
+      human step; four mechanisms have run it from nothing on this machine
+      (`chilly-basin-7378`, `dry-falcon-5463`).
 - [x] **Iterate works.** Change a part or a policy parameter, retrain, compare
       against the previous run, and the comparison lands in the project's
       `PROGRESS.md` with the numbers.
 - [x] **Project as codebase.** Creating or first visiting a project scaffolds
       `ARCHITECTURE.md`, `DECISIONS.md`, `PROGRESS.md`; the agent tool surface
-      reads and updates them; a convention for domain docs (e.g.
-      `docs/gear-ratios.md`, `docs/sensors.md`) is documented and used by the
-      walk. Everything is committed in the project directory.
-- [ ] **Three modes, one shape.** The walk runs headless (exercised), with the
-      GUI attached (documented, not exercised while the headless-only constraint
-      holds), and with training on a remote machine (the handoff is documented
-      and scripted, not executed while the local-only constraint holds). The
-      loop's steps and artifacts are the same in all three.
-- [ ] **The walk holds on a second mechanism.** The same entry point, with no
-      code change specific to the mechanism, takes a second mechanism through
-      the whole loop, and both projects' `PROGRESS.md` carry comparable numbers.
+      reads and updates them; a convention for domain docs is documented and
+      used by the walk. Everything is committed in the project directory.
+- [x] **Three modes, one shape.** Headless exercised; GUI-attached documented
+      leg by leg (ADR-269); remote scripted as `--remote --detach` and
+      `--complete` (ADR-282), not executed against a live box.
+- [x] **The walk holds on a second mechanism.** The same entry point, no
+      mechanism-specific code, four rigs including one with a passive joint;
+      every project's `PROGRESS.md` carries the same columns.
 
-**Inherited-tree reduction:**
+**Inherited-tree reduction (shipped):**
 
 - [x] At least two Phase 13b shell-side removals landed under the two-commit
       protocol (disable commit, delete commit, DECISIONS entry).
 - [x] The exploded-view import in `cadex_assembly_worker.py` is resolved, or a
       record node says why not.
 - [x] **Phase 8 `src/Gui` delete commit landed** under the two-commit protocol,
-      with the DECISIONS entry and the gate green after it (ADR-214/215, nt2:
-      thirteen Gui directories and three retired sources, 3,734 files; release
-      build, install and stage fresh, 2,021 engine tests passed / 52 skipped,
-      inherited CTest baseline unchanged).
+      with the DECISIONS entry and the gate green after it (ADR-214/215).
 - [x] **Two Phase 13b engine-side removals landed** under the two-commit
-      protocol, DECISIONS entries included (nt2 landed six: Help ADR-216/217/218,
-      Start ADR-219/220/221 with the GSL submodule, Material ADR-225, the Main
-      resource template ADR-226, the Test Tk runner ADR-230/231, and the
-      translation updater ADR-232).
+      protocol, DECISIONS entries included (nt2 landed six: ADR-216..232).
 
-**Headless review:**
+**Headless review (shipped in ot4; ticked by the human on 2026-09-12):**
 
-- [ ] **The agent can see its work without a screen.** One CLI call each, with
-      outputs landing in the project directory: render from named angles,
-      section view through a named plane, list the parts of an assembly with
-      catalog ids, and a clearance and intersection check that names the
-      offending pairs. The lifecycle walk's review step uses them.
+- [x] **The agent can see its work without a screen.** `cadex render`,
+      `cadex section`, `cadex inventory` and `cadex clearance` each land their
+      output in the project directory, and the walk's review step runs all four
+      (`idle-pond-4961`).
+
+**Motion-aware eyes (this run):** the two eyes that ot4 found measuring a still
+mechanism. The engine half of the first landed as ADR-283; the walk does not use
+it yet.
+
+- [ ] **C1. The walk's clearance is swept, not posed.** A `cadex walk` run on a
+      project that declares clearance pairs writes `review.json` whose clearance
+      block carries `scope: "rollout trace"` (or equivalent wording chosen in
+      the unit), the number of frames measured, and a `closest_approach` naming
+      the pair, the millimetres and the frame index. Evidence: that file from
+      one walk on this machine, and a `cli/tests` test that fails if the scope
+      falls back to the initial pose.
+- [ ] **C2. A walk names an interference that exists only in motion.** One
+      project in `~/cadex-projects/` whose initial pose is clear but whose
+      rollout brings two named parts within the declared clearance; the walk's
+      `review.json` reports it with the frame index, and the project's
+      `PROGRESS.md` row says so. Evidence: the two files.
+- [ ] **C3. The derived section cuts the part that moves.** On every ot4 walk
+      project that recorded a `moved: true` entry under `section.missed_objects`
+      (`ot4-cart` is one), re-running `cadex section` with no `--offset-mm`
+      produces a cut whose `missed_objects` has no `moved: true` entry.
+      Evidence: the section JSON for each such project, and a `cli/tests` test
+      pinning the ranking term that made it so.
+
+**Gait on the GPU (this run):** the loop runs on the machine with the 5090 and
+the training bound is lifted to what a gait needs (see Constraints). The
+standing benchmark is `mg-legs`; its project lives outside this repo at
+`~/cdx-rl/projects/mg-legs.cadex` and is copied, never edited in place, into
+`~/cadex-projects/mg-legs/` as the first unit.
+
+- [ ] **G1. mg-legs walks through the unchanged entry point on this machine.**
+      `cadex walk` on the copied project, training on the GPU inside the bound,
+      exits 0 with every leg run and all four eyes in `review.json`. Evidence:
+      that `review.json` and the project's `PROGRESS.md` row.
+- [ ] **G2. A GPU-trained policy steps and survives.** A checkpoint from a run
+      under this charter's bound scores at least half on the conjunction
+      "stepped at least 10 mm *and* survived" over at least twelve rollout
+      episodes -- the criterion `~/cdx-rl/README.md` measures B6 (6/12) and
+      experiment 003 (17/24) against -- selected by that table and not by
+      reward, with the table in the project's `PROGRESS.md`. Evidence: the
+      `PROGRESS.md` row and the `.cxpolicy` digest it names.
+- [ ] **G3. mg-legs survives the declared shove band, backward first.** Over
+      the declared `assembly.disturbance` band, fewer than half of the episodes
+      end `tipped`, and the backward direction is measured separately with its
+      own number. Evidence: the numbers in `PROGRESS.md`, produced by a table
+      the record node cites by path.
+
+**Variant study and report (this run):**
+
+- [ ] **V1. Five variants of one joint from one script.** One xscript project
+      whose parameters generate at least five variants of one joint (a hip, an
+      ankle, a knee -- the unit chooses and writes why in the project's
+      `DECISIONS.md`), each built by `cadex params --set`, each passing the same
+      review. Evidence: the project, and its `PROGRESS.md` with one row per
+      variant.
+- [ ] **V2. The variants are ranked and the winner is used.** All five go
+      through the same walk with the same task; a ranking by the stepping table
+      or the task's own objective lands in `PROGRESS.md`; the winning variant's
+      parameters are the project's committed defaults. Evidence: the ranking
+      table and the commit that set the defaults.
+- [ ] **V3. A report renders headlessly from `PROGRESS.md`.** One CLI call
+      turns a project's `PROGRESS.md` into a document with at least one graph
+      (reward curve, ranking bar chart) under the project's `report/` directory,
+      with no display and no tokens. Evidence: the rendered file from the V2
+      project and a `cli/tests` test that renders a fixture.
 
 Every unit (a rule, not a gap; the critic grades it):
 
 - The zone's gate ran and the output is reported honestly; a record node with
   real `## State Impact` targets; ROADMAP checkbox and ADR line where AGENTS.md
   asks for them.
+- **The record node names the criterion code (C1..V3) it advances and states
+  whether the evidence that criterion asks for now exists.** If it does, say
+  "ticks C1" in the record; the human confirms by editing this file.
 
 ## Later criteria
 
 Real criteria, not seeded as gaps. The planner may not target these; the human
-promotes one into `## Done criteria` above when the frontier lands or blocks.
-They are here so that a short frontier does not mean a forgotten backlog.
+promotes one into the done-criteria section above when the frontier lands or
+blocks. They are here so that a short frontier does not mean a forgotten
+backlog.
 
 **Inherited-tree reduction:**
 
@@ -152,32 +217,20 @@ They are here so that a short frontier does not mean a forgotten backlog.
 
 **Parts library:**
 
-- [ ] An L2 boards family exists over `CadexCatalog`, with tests that include a
-      real-kernel build, and the packaged lifecycle gate passes.
-- [ ] **L3 motors and mechanisms families exist** over `CadexCatalog`, same
-      test shape as the boards family, and the packaged lifecycle gate passes.
+- [ ] **A planetary gearbox exists as a parametric library value** with a mesh
+      test that passes; ADR-235's planet-ring overlap is resolved or the
+      composition is replaced.
 - [ ] **25T horns and servo pigtails come from manufacturer STEP sources**, with
       the provenance recorded the way `docs/PROVENANCE.md` asks.
 - [ ] **The catalog is broad enough for a robot prompt**: at least five servos,
       ten actuators, a bearings family, and M2 to M5 nuts and bolts, each with
       provenance and a real-kernel test.
-- [ ] **Compound mechanisms exist as parametric library values** built from
-      catalog parts: a rack and pinion and a planetary gearbox at least, each
-      with a mesh and clearance test.
 
 **Outside knowledge:**
 
 - [ ] **One mechanism in the repo came from a paper or a real product**: the
       source is cited in the project's `DECISIONS.md`, the implementation is
       tested, and the walk built it.
-
-**Experiments and reports:**
-
-- [ ] **A variant study exists**: several variants of one joint generated by
-      one script, tested the same way, ranked in a report with a graph, and the
-      winner used by the walk.
-- [ ] **A research report renders headlessly** from a project's `PROGRESS.md`
-      numbers into a document with graphs a person can read.
 
 **Fleet:**
 
@@ -189,56 +242,62 @@ They are here so that a short frontier does not mean a forgotten backlog.
 - [ ] **The robot prompt works unattended**: from a prompt naming the servos,
       bearings, and hardware, the loop produces a printable mesh export, a
       trained policy, and a rollout video, with no human step.
+- [ ] **A biped the loop designed from a prompt trains end to end on this
+      machine's GPU** and its policy steps and survives on the same table as G2.
 
 **Shell:**
 
 - [ ] **The `hide_render` shell bug from `docs/IDEAS.md` is fixed** with a test
       that fails on the old behaviour.
 
-**RL follow-ups:**
-
-- [ ] **mg-legs tips at the declared shove band, backward first**, with the
-      numbers in the project's `PROGRESS.md`.
-
 ## Horizon ladder
 
-Sizes, not times. What to do when the rung above is exhausted. The planner
-re-plans from this after every maintainer pass and reads the run budget from the
-loop, not from this file.
+Sizes, not times. What to do when the rung above is exhausted. The critic
+re-plans from this after every reconcile and names the next unit in its reply;
+the ladder is the first plan, not the last.
 
-**One thing leads this run: the lifecycle walk, run end to end on this machine.**
-nt2 never ran it. It spent 40+ iterations on inherited-tree reduction instead,
-ticked 58 ROADMAP boxes, and closed no criterion. Reduction is finished as a
-target; it is standing work on the long rung and nothing more.
+**One thing leads this run: a mechanism the eyes can see moving, trained for
+real on the GPU, and a study that ends in a report.** ot4 proved the walk on
+four toy rigs; ot5 makes the walk say something true about a mechanism that
+matters.
 
-- **short-term:** (units, one iteration each) **Run the documented headless
-  lifecycle entry point end to end, on this machine, and record exactly which
-  leg still needs a person or a guess.** That run is the unit. A clean run is
-  the evidence that closes the walk gap; a failed run names the next unit. Do
-  this before anything else, every time the short rung is empty. Then close the
-  named legs one unit each: the remote-training handoff script and doc, the
-  GUI-attached mode doc, the domain-doc convention the walk exercises
-  (`docs/gear-ratios.md`, `docs/sensors.md`).
-- **medium-term:** (gaps, several units each) The headless review calls, one CLI
-  call at a time — render from named angles, section through a named plane,
-  assembly inventory, clearance and intersection — then wire each into the
-  walk's review step as it lands. Then the walk's third mode: the remote
-  handoff, scripted and documented, not executed. nt2 left the second-mechanism
-  walk close to done (`sage-peak-2689`: the linear carriage ran through the same
-  entry point with no dispatch change, and both projects carry comparable
-  baseline numbers); finish and evidence it rather than restarting it.
-- **long-term:** (directions, and the standing work that never ends) Toward the
-  north star, in this order, one rung opened at a time:
-  **(1)** the four criteria above — this run's whole frontier;
-  **(2)** a fresh Linux machine runs the walk after one documented install
-  script, headlessly, with no step that needs a person;
-  **(3)** a biped the loop designed from a prompt, trained end to end on that
-  machine's GPU.
+- **short-term:** (units, one iteration each)
+  1. Wire ADR-283's swept clearance into the walk's review step so
+     `review.json` reports the trace scope and the worst frame (C1).
+  2. Copy `~/cdx-rl/projects/mg-legs.cadex` into `~/cadex-projects/mg-legs/`,
+     scaffold its project docs, and run `cadex walk` on it with training on the
+     GPU inside the bound; record exactly which leg fails and why (G1). A clean
+     run is the evidence; a failed run names the next unit.
+  3. Fix the section ranking so a plane that cuts the moving part beats one
+     that cuts more still parts, and re-cut `ot4-cart` (C3).
+  4. Pick the joint for the variant study, write it as one parametric xscript
+     with five named parameter sets, and build all five with `cadex params`
+     (V1).
+  5. The smallest `cadex report` that draws one graph from a `PROGRESS.md`
+     fixture (V3, first half).
+  Whenever the short rung is empty: run `cadex walk` on the mg-legs project
+  again and record what changed. That run is always a unit.
+- **medium-term:** (gaps, several units each)
+  1. A rig whose interference exists only in motion, walked and reported (C2).
+  2. The GPU gait: iterations and envs raised until a checkpoint steps and
+     survives on the table (G2), then the shove band with backward measured on
+     its own (G3). One training run per unit; `--detach` and `--complete` split
+     a long run across iterations if it needs it.
+  3. The five variants through the same walk and ranked, the winner as the
+     project's defaults (V2), then the report rendered from that project (V3).
+  4. Every project under `~/cadex-projects/` keeps `PROGRESS.md` rows that are
+     comparable across projects; a doc in `docs/CLI.md` says which columns are.
+- **long-term:** (directions, and the standing work that never ends)
+  Toward the north star, in this order, one rung opened at a time:
+  **(1)** the nine criteria above -- this run's whole frontier;
+  **(2)** a biped the loop designed from a prompt, trained end to end on this
+  machine's GPU, on the same stepping table;
+  **(3)** a fresh Linux machine runs the walk after one documented install
+  script, headlessly, with no step that needs a person.
   Then print-ready export, G-code, the rollout video, each as one more leg of the
-  same walk. **Rungs 2 and 3 are parked in `## Later criteria` and are not on the
-  frontier.** The planner may not target a parked criterion, and may not treat
-  this list as permission to start one: the human promotes a rung by editing this
-  file between runs, and the loop picks the new gaps up at the next run start.
+  same walk. **Rungs 2 and 3 are parked in the later-criteria section and are
+  not on the frontier.** The human promotes a rung by editing this file between
+  runs.
   Standing work, always open: keep every gate green, every doc true to the code,
   the delta manifest honest, the project docs current, and the frontier short.
   Inherited-tree reduction lives here now: take a removal only when a change
@@ -305,13 +364,19 @@ target; it is standing work on the long rung and nothing more.
   launch the GUI. Use `pixi run build-shell`, `pixi run gate`, `pixi run
   build-release`, and the pytest suites. The GUI-attached mode is documented,
   not exercised.
-- **Training stays bounded, even though the GPU is right here**: at most 15
-  minutes of wall clock and 3 GB of memory per training run, per
-  `training/SETUP.md`. The 5090 may be used inside that bound; `jax` with the
-  CUDA plugin and `mujoco-mjx` are installed in `~/cadex-train-venv`. Training a
-  policy for real is rung 3 of the horizon ladder and is **parked** — the GPU is
-  available to this run, and it is not this run's target. A long training job is
-  not a unit of work and never fits in an iteration.
+- **Training is bounded, and the bound is now a gait's size: at most 2 hours
+  of wall clock and 20 GB of memory per training run.** The 5090 is this run's
+  trainer; `jax` with the CUDA plugin and `mujoco-mjx` are installed in
+  `~/cadex-train-venv`. One training run per unit, launched inside the
+  iteration; a run that needs more than the iteration has left is started with
+  `--detach` and collected with `--complete` in the next one. Never two
+  training runs at once. Never a run without `--timeout`.
+- **mg-legs is read from `~/cdx-rl` and never written there.** Copy the
+  project into `~/cadex-projects/mg-legs/` once and work only on the copy. The
+  `cdx-rl` repository is another project's tree; do not commit to it.
+- **Projects live under `~/cadex-projects/`**, each its own git repository as
+  the walk scaffolds it. They are not in this repo and are not committed here;
+  the record node cites the project path and the numbers.
 
 ## Question policy
 
@@ -362,8 +427,10 @@ no such direction exists, the long-term rung's standing work is the work.
 
 ## Reconcile
 
-Maintainer pass every 5 work iterations, or as soon as 3 record nodes are
-unreconciled. The run branch is the single-writer branch for this run. The
-planner runs after each maintainer pass and owns the `plan` view (PLAN.md);
-the maintainer never touches it. The human may merge the run branch into main
-with a merge commit at any time; the run continues on its branch.
+Housekeeping every 5 work iterations, or as soon as 3 record nodes are
+unreconciled: the actor's next iteration is the reconcile pass (fold impacts,
+advance the high-water mark, regenerate `STATE.md`, check, commit). The
+maintainer and planner roles are off for this run; the critic's reply names the
+next unit. The run branch is the single-writer branch for this run. The human
+may merge the run branch into main with a merge commit at any time; the run
+continues on its branch.

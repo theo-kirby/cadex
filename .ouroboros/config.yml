@@ -14,7 +14,7 @@ idle_interval: 30m
 roles:
   actor:
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5-1
     timeout: 90m
     resume_for: 1
     fallback:
@@ -24,16 +24,16 @@ roles:
     model: gpt-6-astra
     timeout: 10m
     fallback:
-      - { harness: claude, model: claude-opus-5 }
+      - { harness: claude, model: claude-fable-5-1 }
   maintainer:             # only called with maintainer: true
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5-1
     timeout: 30m
     fallback:
       - { harness: codex, model: gpt-6-astra }
   planner:                # only called with planner: true
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5-1
     timeout: 20m
     fallback:
       - { harness: codex, model: gpt-6-astra }
