@@ -23,9 +23,8 @@ escapes its base, a run that does not exist — is a 404 that says so, and
 no filesystem path in the request is ever joined onto the project root.
 
 The page is plain HTML and JavaScript under ``review_static/`` with no
-framework: the viewer is a few hundred lines of WebGL because a review
-client that depends on a CDN is not reachable on a private network with
-no internet, and because there is nothing to add a dependency *for*.
+framework. Its shared viewport/video scene uses a shipped, pinned Three.js
+module and an attributed prototype environment (ADR-301), with no CDN.
 """
 
 from __future__ import annotations
@@ -64,6 +63,9 @@ STATIC_FILES = {
     "index.html": ("text/html; charset=utf-8", STATIC_DIR / "index.html"),
     "review.css": ("text/css; charset=utf-8", STATIC_DIR / "review.css"),
     "review.js": ("text/javascript; charset=utf-8", STATIC_DIR / "review.js"),
+    **{name: ("text/javascript; charset=utf-8", STATIC_DIR / name) for name in
+       ("three.module.js", "floor.js", "environment.js", "review_scene.js", "stl.js", "capture.js")},
+    "capture.html": ("text/html; charset=utf-8", STATIC_DIR / "capture.html"),
     "viewer.js": ("text/javascript; charset=utf-8", STATIC_DIR / "viewer.js"),
 }
 #: Content types for the retained artifacts; anything else downloads as bytes.

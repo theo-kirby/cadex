@@ -46,3 +46,12 @@ Iteration 39 reverified this same persistent URL without restarting it. The
 [operator results](../review-style/operator.json) again pass current identity,
 playback/download and polling/history preservation. The requested D11 environment
 is not yet implemented. No new experiment or working-project switch occurred.
+
+
+Iteration 40 restarted this same service to load the shared scene and kept its
+project/run unchanged. [D11 implementation evidence](../review-style/implementation.json)
+now records the persistent viewport, new final/checkpoint recordings, actual
+light reference and same-pose/camera parity. Playback/download, polling and
+historical selection pass at the private URL. Current published status remains
+`ot5-biped-copy29 / copy100`; there is no new training attempt. The service stays
+running. D10's real experiment-spanning observation is still open.

@@ -2770,3 +2770,8 @@ field, and every client gets it through the surface it already reads.
 - [x] Retain tessellation on ordinary parameter sweeps (ADR-293): real-engine
       `walk --set` browser regression checks the assembled model before trainer
       dispatch and preserves its identity and mesh bytes across a later revision.
+
+- [x] Shared reference environment for the live review viewport and headless
+      checkpoint/final videos (ADR-301): local attributed Three.js scene, exact
+      retained poses, fixed trajectory camera, portable style identity and
+      retained legacy recordings; real Reed same-camera/frame comparison.

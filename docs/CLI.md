@@ -1357,7 +1357,7 @@ the stored script no longer re-runs, and the walk's digest edit — a `cadex
 script` read followed by a `cadex script --set` — is what repairs it. Every
 other command keeps the restore.
 
-### The review dashboard (ADR-286)
+### The review dashboard (ADR-286, ADR-301)
 
 ```bash
 ./cadex review --project ~/cadex-projects/biped --host "$(tailscale ip -4)" --port 8765
@@ -1862,7 +1862,7 @@ Fast, and honest about what it did not run.
 | `test_walk.py` | `cadex walk` against a fake `cadex` (leg order, flags, refusals; no engine), and the toy through two real walks with the real engine and trainer — **skips** the latter without the training venv. |
 | `test_review_server.py` | The review dashboard (ADR-286): the API, the allowlist and its refusals, the CLI command, and the page in a headless Chromium over its DevTools pipe (`cdp_browser.py`) — **skips** the browser half without a Chromium (`CADEX_BROWSER` names one); the private-address smoke runs only with `CADEX_REVIEW_HOST` set. |
 | `test_review_lifecycle.py` | The dashboard across restart and copy (D6/D7): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. Whole-directory copy coverage checks independent accepted fixtures and historical model/curves/video access with the original path unavailable. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
-| `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** the browser half without a Chromium and everything without FFmpeg. Fixture coverage, not fresh-biped evidence. |
+| `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** rendering/playback without both Chromium and FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
 go through the same `validate_response` path production uses, so a fixture
@@ -1912,3 +1912,42 @@ about a payload (ADR-023).
 - One `--set` per parameter, and parameters are numeric — that is what
   `num(...)` declares. A switch is a `num` with `min=0, max=1, step=1`
   and a `>= 0.5` test in the script (ADR-192).
+
+
+### Shared review scene and rollout recording (ADR-301)
+
+```bash
+PYTHONPATH=cli pixi run python -m cadex_cli.video --project ~/cadex-projects/biped --run RUN
+```
+
+The viewport and newly recorded videos use the same locally shipped Three.js
+r160 scene: light prototype-grid floor, sky gradient, distance-scaled fog,
+ACES exposure 0.95, rough component materials and a fitted 2048² shadow map.
+The environment is adapted from the MIT neural-whoop reference; see
+[provenance and visual evidence](probes/review-style/README.md).
+CAD geometry stays in millimetres with unchanged poses; the renderer applies
+one uniform conversion to metres. The environmental floor sits just below the
+model bounds, and is front-sided so below-floor CAD inspection remains possible.
+The finite model ground slab remains geometry, with its own edges and identity.
+
+Recording requires headless Chromium (`CADEX_BROWSER`, PATH, or the existing
+Playwright browser cache) and FFmpeg. It needs no desktop, Python browser package,
+engine, trainer or internet. The existing DevTools pipe driver is now product
+code, shared with the tests. A loopback server serves only the configured
+project and shipped static allowlist while capture runs; it closes afterward.
+The persistent operator server is independent and remains running.
+
+Python verifies retained model/policy/task/seed identities and solved poses,
+fits a fixed perspective camera over the entire trajectory, and sends exact
+solved samples at 10 fps plus the final pose to the common scene. It encodes
+512×512 VP9 WebM and decodes every frame before publication. The per-project
+render lock and 300-second frame-production budget remain; encoding and decode
+each have a separate 60-second timeout. Render failures report their own status
+and preserve prior videos without touching training.
+
+Each new video records style version/digest, Three.js and Chromium versions,
+resolution, projection, camera and trajectory bounds alongside revision,
+policy, seed, trace digest and simulation time. New recordings appear first;
+earlier entries and content-addressed files remain retained and downloadable.
+Identical video bytes are deduplicated. Old entries lacking a style are labelled
+“historical legacy style”. Copy the full project directory to retain all of them.

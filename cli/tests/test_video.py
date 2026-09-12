@@ -15,6 +15,7 @@ import time
 import pytest
 
 from cadex_cli.video import render, placed, stl
+from cadex_cli.browser import find_browser
 from cadex_cli.review_record import read_run_record
 from cadex_cli.review_server import serve
 from test_review_server import (browser, needs_browser, _open, _mesh_run,
@@ -54,8 +55,8 @@ def video_project(tmp_path):
 
 @pytest.fixture
 def rendered(video_project):
-    if not shutil.which('ffmpeg'):
-        pytest.skip('FFmpeg not available')
+    if not shutil.which('ffmpeg') or not find_browser():
+        pytest.skip('FFmpeg and headless Chromium required')
     return video_project, render(video_project, 'sample')
 
 
@@ -306,3 +307,56 @@ def test_browser_plays_downloads_and_keeps_playback_across_polls(rendered, brows
     finally:
         server.shutdown()
         server.server_close()
+
+
+@needs_browser
+def test_shared_scene_matches_decoded_video_and_keeps_older_recording(rendered, browser):
+    """Same solved pose/camera pixels, plus a real retained older encoding."""
+    root, video = rendered
+    run = root / 'runs/sample'
+    legacy_path = run / 'legacy.webm'
+    subprocess.run(['ffmpeg', '-v', 'error', '-i', str(run/video['path']),
+                    '-c', 'copy', '-metadata', 'comment=prior recording', str(legacy_path)], check=True)
+    legacy = {**video, 'path': legacy_path.name,
+              'sha256': hashlib.sha256(legacy_path.read_bytes()).hexdigest()}
+    legacy.pop('style')
+    # The original recording may predate video.json and live in run.json.
+    (run/'video.json').unlink()
+    original = json.loads((run/'run.json').read_text())
+    original['videos'] = [legacy]
+    (run/'run.json').write_text(json.dumps(original))
+    newest = render(root, 'sample')
+    record = read_run_record(run, root)
+    assert record['videos'] == [newest, legacy]
+    assert all(v['exists'] and not v['error'] for v in record['resolved']['videos'])
+    assert newest['style'] == 'cadex-prototype-light-v1'
+    assert len(newest['style_sha256']) == 64
+    server, _ = serve(root, '127.0.0.1', 0)
+    try:
+        page = _open(browser, server.url)
+        page.wait_for("document.getElementById('model-status').dataset.state === 'loaded'")
+        assert 'historical legacy style' in page.text('#videos')
+        trace = json.loads((run/'rollout/assembly-simulation-trace.json').read_text())
+        frame = next(f for f in trace['frames'] if f.get('frame_kind') == 'solver_output')
+        page.evaluate("document.getElementById('viewer').style.cssText='width:512px;height:512px;border:0;padding:0'")
+        page.evaluate('cadexReview.viewer().frameBounds('+json.dumps(newest['bounds'])+');'
+                      'cadexReview.viewer().setCamera('+json.dumps(newest['camera'])+');'
+                      'cadexReview.viewer().setPoses('+json.dumps(frame['component_placements'])+')')
+        import base64
+        image = run/'viewport.png'
+        image.write_bytes(base64.b64decode(page.evaluate('cadexReview.viewer().png()')))
+        def rgb(path):
+            return subprocess.check_output(['ffmpeg','-v','error','-i',str(path),'-frames:v','1',
+                                            '-f','rawvideo','-pix_fmt','rgb24','-'])
+        a,b = rgb(image),rgb(run/newest['path'])
+        assert len(a) == len(b) == 512*512*3
+        assert sum(abs(x-y) for x,y in zip(a,b))/len(a) < 3
+        for index in (0, 1):
+            selector = f'#videos li[data-video="{index}"]'
+            page.wait_for(f'document.querySelector(\'{selector} video\').readyState >= 2')
+            page.evaluate(f"window.retainedVideo=document.querySelector('{selector} video');retainedVideo.muted=true;retainedVideo.play()", await_promise=True)
+            page.wait_for('retainedVideo.currentTime > .1')
+            download = page.download(selector+' a')
+            assert hashlib.sha256(download.path.read_bytes()).hexdigest() == record['videos'][index]['sha256']
+    finally:
+        server.shutdown();server.server_close()

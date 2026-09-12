@@ -1,0 +1,146 @@
+"""D11: real retained Reed, persistent viewport, decoded video, actual light reference.
+
+PYTHONPATH=cli pixi run python docs/probes/review-style/compare.py URL PROJECT REFERENCE
+Reference checkout is read-only; all images are retained with the project.
+"""
+import base64
+import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+from pathlib import Path
+import subprocess
+import sys
+import threading
+
+from cadex_cli.browser import HeadlessBrowser, find_browser
+from cadex_cli.review_record import read_run_record
+from cadex_cli.review_server import run_model
+from cadex_cli.video import stl
+
+url, project, reference = sys.argv[1:]
+root, ref = Path(project), Path(reference)
+out = root / 'evidence/style40'; out.mkdir(parents=True, exist_ok=True)
+record = read_run_record(root/'runs/copy100', root)
+video = record['videos'][0]
+trace = json.loads((root/'runs/copy100'/record['artifacts']['trace']).read_text())
+frame = next(f for f in trace['frames'] if f.get('frame_kind') == 'solver_output')
+manifest = run_model(root, record)
+entries = [{'name': e['name'], 'placement': frame['component_placements'][e['name']],
+            'positions': [v for t in stl(root/'runs/copy100/rollout'/(e['output']+'.stl')) for p in t for v in p]}
+           for e in manifest['components'] if e['name'] in frame['component_placements']]
+evidence = {'project': root.name, 'run': 'copy100', 'video': video, 'screenshots': {},
+            'reference_commit': subprocess.check_output(['git','-C',str(ref),'rev-parse','HEAD'],text=True).strip()}
+
+def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def canvas(page, expression, name):
+    path = out/(name+'.png'); path.write_bytes(base64.b64decode(page.evaluate(expression)))
+    evidence['screenshots'][name] = sha(path)
+
+subprocess.run(['ffmpeg','-v','error','-y','-i',str(root/'runs/copy100'/video['path']),
+                '-frames:v','1',str(out/'video-frame0.png')],check=True)
+with HeadlessBrowser(find_browser()) as browser:
+    page = browser.page(url)
+    page.evaluate('cadexReview.ready',await_promise=True)
+    assert page.text('#project-name') == root.name+' — review'
+    assert page.text('#view-kind') == 'RUN copy100'
+    page.wait_for("document.getElementById('model-status').dataset.state === 'loaded'")
+    page.evaluate("document.getElementById('viewer').style.cssText='width:512px;height:512px;border:0;padding:0'; cadexReview.viewer().draw()")
+    canvas(page,'cadexReview.viewer().png()', 'persistent-default')
+    # Model remains the dashboard's own retained first solved pose. Only the camera
+    # and fit volume are set equal to the video, not its geometry or identity.
+    page.evaluate('cadexReview.viewer().frameBounds('+json.dumps(video['bounds'])+'); cadexReview.viewer().setCamera('+json.dumps(video['camera'])+')')
+    canvas(page,'cadexReview.viewer().png()', 'persistent-same-pose')
+    evidence['persistent_identity'] = page.evaluate('cadexReview.state()')
+    evidence['camera'] = page.evaluate('cadexReview.viewer().camera()')
+    evidence['stats'] = page.evaluate('cadexReview.viewer().stats()')
+    for label, scale, pitch in [('close',.7,.25),('wide',3,.08),('under',1,-.5)]:
+        c={**video['camera'],'distance':video['camera']['distance']*scale,'pitch':pitch,'yaw':1.8}
+        page.evaluate('cadexReview.viewer().setCamera('+json.dumps(c)+')')
+        canvas(page,'cadexReview.viewer().png()', 'persistent-'+label)
+    # Identical capture API and explicit same pose/camera, lossless before encoding.
+    capture = browser.page(url+'capture.html');capture.wait_for('window.cadexCapture?.available')
+    capture.evaluate('cadexCapture.install('+json.dumps(entries)+');cadexCapture.frameBounds('+json.dumps(video['bounds'])+');cadexCapture.setCamera('+json.dumps(video['camera'])+')')
+    canvas(capture,'cadexCapture.png()', 'capture-same-pose')
+    assert (out/'persistent-same-pose.png').read_bytes() == (out/'capture-same-pose.png').read_bytes()
+    evidence['lossless_viewport_capture_equal'] = True
+
+    page.send("Page.bringToFront")
+    page.click('#views li[data-run="probe3-checkpoint20"]')
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN probe3-checkpoint20'")
+    page.wait_for("!!document.querySelector('#videos video')")
+    checkpoint = read_run_record(root/'runs/probe3-checkpoint20',root)['videos'][0]
+    page.evaluate("window.checkpointVideo=document.querySelector('#videos video');checkpointVideo.muted=true;checkpointVideo.play()",await_promise=True)
+    page.wait_for('checkpointVideo.currentTime > .1')
+    downloaded=page.download('#videos li[data-video="0"] a')
+    assert sha(downloaded.path)==checkpoint['sha256']
+    page.evaluate('cadexReview.refresh()',await_promise=True)
+    assert page.evaluate("checkpointVideo === document.querySelector('#videos video') && !checkpointVideo.paused")
+    page.click('#current-run');assert page.text('#view-kind')=='RUN copy100'
+    evidence['checkpoint']=checkpoint
+    evidence['checkpoint_playback_download_poll']=True
+    subprocess.run(['ffmpeg','-v','error','-y','-i',str(root/'runs/probe3-checkpoint20'/checkpoint['path']),
+                    '-frames:v','1',str(out/'checkpoint-frame0.png')],check=True)
+
+    # An in-memory harness uses the actual unmodified reference scene/environment
+    # modules. No file is written into the sibling checkout, no drone glyph scaling.
+    routes = {'/scene.js':ref/'web/studio/scene.js','/environment.js':ref/'web/studio/environment.js',
+              '/geometry.js':ref/'web/studio/geometry.js',
+              '/three.js':ref/'.cache/three/28f7db420fe306d9_three.module.js',
+              '/OrbitControls.js':ref/'.cache/three/10917d0867f0b694_OrbitControls.js'}
+    html=b'''<style>body{margin:0}#scene{width:512px;height:512px;border:0;padding:0}</style><div id="scene"></div>
+    <script type="importmap">{"imports":{"three":"/three.js","three/addons/controls/OrbitControls.js":"/OrbitControls.js"}}</script>'''
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self,*args): pass
+        def do_GET(self):
+            if self.path != '/' and self.path not in routes:
+                self.send_error(404);return
+            body=html if self.path=='/' else routes[self.path].read_bytes()
+            self.send_response(200);self.send_header('Content-Type','text/html' if self.path=='/' else 'text/javascript');self.end_headers();self.wfile.write(body)
+    server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+    thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+    try:
+        page=browser.page('http://127.0.0.1:'+str(server.server_port)+'/')
+        page.evaluate('window.entries='+json.dumps(entries)+';window.cameraValue='+json.dumps(video['camera']))
+        page.evaluate('''(async()=>{
+          const THREE=await import('three');
+          const {createScene,setToneMapping,configureKeyLight}=await import('/scene.js');
+          const {createEnvironment}=await import('/environment.js');
+          const v=createScene(document.getElementById('scene'),{grid:false,preserveDrawingBuffer:true});
+          v.renderer.setPixelRatio(1);v.controls.enabled=false;v.ground.visible=false;
+          setToneMapping(v.renderer,.95);const env=createEnvironment(v);env.setTheme('light');
+          const palette=[0x5b9dcd,0xde8f47,0x6ab270,0xc468b4,0xdcc85a,0x7878c8,0xc86e6e,0x6ebebe];
+          entries.forEach((e,i)=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(e.positions.map(x=>x/1000),3));g.computeVertexNormals();
+            const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:palette[i%8],roughness:.72,metalness:.05,side:THREE.DoubleSide}));
+            m.position.fromArray(e.placement.position_mm).multiplyScalar(.001);m.quaternion.fromArray(e.placement.rotation_xyzw);m.castShadow=true;m.receiveShadow=true;v.world.add(m);});
+          const c=cameraValue,t=c.target.map(x=>x/1000),d=c.distance/1000,cp=Math.cos(c.pitch);
+          v.camera.position.set(t[0]+d*cp*Math.cos(c.yaw),t[2]+d*Math.sin(c.pitch),-t[1]-d*cp*Math.sin(c.yaw));
+          v.controls.target.set(t[0],t[2],-t[1]);v.camera.lookAt(v.controls.target);
+          env.setStage({camDist:d});env.setSize({floorZ:-.013});
+          configureKeyLight(v,{focus:v.controls.target,extent:.35});v.resize();v.render();window.referenceView=v;
+        })()''',await_promise=True)
+        canvas(page,"referenceView.renderer.domElement.toDataURL('image/png').split(',')[1]",'reference-light-reed')
+    finally:server.shutdown();server.server_close()
+# Codec tolerance measured on decoded RGB, separate from lossless scene parity.
+def rgb(path):
+    return subprocess.check_output(['ffmpeg','-v','error','-i',str(path),'-f','rawvideo','-pix_fmt','rgb24','-'])
+a,b=rgb(out/'persistent-same-pose.png'),rgb(out/'video-frame0.png')
+assert len(a)==len(b)==512*512*3
+error=sum(abs(x-y) for x,y in zip(a,b))/len(a)
+assert error<3,error
+evidence['codec_mean_absolute_rgb_error']=error
+evidence['images']={p.name:sha(p) for p in out.glob('*.png')}
+# Standalone side-by-side review artifact; images remain project-local.
+columns=['reference-light-reed','persistent-same-pose','video-frame0']
+html='<meta charset="utf-8"><style>body{font:16px sans-serif;margin:12px}main{display:flex}figure{margin:8px}img{width:360px}</style><main>'
+for name in columns:
+    html+='<figure><figcaption>'+name+'</figcaption><img src="data:image/png;base64,'+base64.b64encode((out/(name+'.png')).read_bytes()).decode()+'"></figure>'
+html+='</main>'
+(out/'side-by-side.html').write_text(html)
+with HeadlessBrowser(find_browser(),width=1160,height=420) as browser:
+    page=browser.page('data:text/html;base64,'+base64.b64encode(html.encode()).decode())
+    page.send('Emulation.setDeviceMetricsOverride',{'width':1160,'height':430,'deviceScaleFactor':1,'mobile':False})
+    page.screenshot(out/'side-by-side.png')
+evidence['images']['side-by-side.png']=sha(out/'side-by-side.png')
+(out/'comparison.json').write_text(json.dumps(evidence,indent=2)+'\n')
+print(json.dumps(evidence,indent=2))

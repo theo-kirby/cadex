@@ -3,12 +3,13 @@
 """Render a retained, engine-verified rollout without opening the engine.
 
 Run with ``python -m cadex_cli.video --project DIR --run NAME``. FFmpeg is
-an external encoder, never imported. One CPU render per project; no trainer
+an external encoder, never imported. One headless browser render per project; no trainer
 handles, process groups or training files are touched.
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import bisect
 import fcntl
 import hashlib
@@ -22,7 +23,8 @@ import subprocess
 import tempfile
 import time
 
-from .render import BASES, PALETTE, png, rasterize
+from .browser import HeadlessBrowser, find_browser
+from .review_server import serve, STATIC_DIR
 from .review_record import read_run_record, resolve_reference
 from .review_server import run_model
 
@@ -101,7 +103,7 @@ def _render(root, directory):
     status_path = directory / 'video.json'
     require(not status_path.is_symlink() and not status_path.with_suffix('.partial').is_symlink(),
             'symlinked video status refused')
-    old = {}
+    old = {"videos": read_run_record(directory, root).get("videos", [])}
     if status_path.is_file():
         old = json.loads(status_path.read_text())
     status = {'schema': 'cadex-run-video-v1', 'state': 'rendering',
@@ -147,26 +149,46 @@ def _render(root, directory):
         def geometry(frame):
             poses = frame['component_placements']
             require(set(poses) == set(names), 'incomplete frame')
-            return [(PALETTE[i % len(PALETTE)], tri) for i, name in enumerate(names)
+            return [(name, tri) for name in names
                     for tri in placed(meshes[name], poses[name])]
         # Fit once over every visited pose: a moving camera would conceal travel.
-        lo, hi = [math.inf]*2, [-math.inf]*2
+        lo, hi = [math.inf]*3, [-math.inf]*3
         for frame in frames:
             require(time.monotonic()-started < 300, 'render exceeded 300 seconds')
             for _, tri in geometry(frame):
                 for point in tri:
-                    for j, axis in enumerate(BASES['iso'][:2]):
-                        v = sum(point[k]*axis[k] for k in range(3))
+                    for j, v in enumerate(point):
                         lo[j], hi[j] = min(lo[j], v), max(hi[j], v)
         count = math.ceil(times[-1]*FPS) + 1
         with tempfile.TemporaryDirectory(prefix='.video-', dir=directory) as temporary:
             work = Path(temporary)
-            for i in range(count):
-                require(time.monotonic()-started < 300, 'render exceeded 300 seconds')
-                # Hold the latest solved sample; never invent interpolated dynamics.
-                frame = frames[-1] if i == count-1 else frames[max(0, bisect.bisect_right(times, i/FPS)-1)]
-                pixels, _ = rasterize(geometry(frame), BASES['iso'], bounds=(lo, hi))
-                (work / f'{i:04d}.png').write_bytes(png(pixels))
+            executable = find_browser()
+            require(executable is not None, 'headless Chromium required (CADEX_BROWSER or PATH)')
+            server, _ = serve(root, '127.0.0.1', 0)
+            try:
+                with HeadlessBrowser(executable, width=512, height=512) as browser:
+                    page = browser.page(server.url + 'capture.html')
+                    page.wait_for('window.cadexCapture?.available')
+                    # Manifest order is the component colour identity in both clients.
+                    entries = [{'name': entry['name'],
+                                'positions': [v for tri in meshes[entry['name']] for p in tri for v in p],
+                                'placement': frames[0]['component_placements'][entry['name']]}
+                               for entry in manifest['components'] if entry['name'] in meshes]
+                    page.evaluate('cadexCapture.install(' + json.dumps(entries) + ')')
+                    bounds = {'min': lo, 'max': hi, 'center': [(a+b)/2 for a,b in zip(lo,hi)],
+                              'radius': math.dist(lo,hi)/2 or 1}
+                    page.evaluate('cadexCapture.frameBounds(' + json.dumps(bounds) + '); cadexCapture.fit()')
+                    camera = page.evaluate('cadexCapture.camera()')
+                    for i in range(count):
+                        require(time.monotonic()-started < 300, 'render exceeded 300 seconds')
+                        frame = frames[-1] if i == count-1 else frames[max(0, bisect.bisect_right(times, i/FPS)-1)]
+                        data = page.evaluate('cadexCapture.setPoses(' + json.dumps(frame['component_placements']) + '); cadexCapture.png()')
+                        (work / f'{i:04d}.png').write_bytes(base64.b64decode(data))
+                    style = page.evaluate('cadexCapture.stats().style')
+                    browser_version = browser.send('Browser.getVersion')['product']
+            finally:
+                server.shutdown()
+                server.server_close()
             result = subprocess.run(['ffmpeg', '-v', 'error', '-nostdin', '-threads', '1',
                 '-framerate', str(FPS), '-i', str(work / '%04d.png'), '-an', '-c:v', 'libvpx-vp9',
                 '-threads', '1', '-pix_fmt', 'yuv420p', str(work / 'rollout.webm')],
@@ -188,14 +210,26 @@ def _render(root, directory):
                  'sim_seconds': times[-1], 'duration_seconds': count/FPS, 'fps': FPS,
                  'frames': count, 'trace_sha256': digest(trace_path),
                  'render_seconds': round(time.monotonic()-started, 3),
+                 'style': style, 'style_sha256': style_digest(),
+                 'renderer': 'Three.js r160 / ' + browser_version, 'width': 512, 'height': 512,
+                 'projection': 'perspective 55 degrees', 'camera': camera, 'bounds': bounds,
                  'sampling': '10 fps, latest solved pose plus final pose, fixed camera; tessellation preview'}
-        status.update(state='ready', videos=[video])
+        status.update(state='ready', videos=[video] + [v for v in old.get('videos', []) if v.get('sha256') != sha])
         atomic_json(status_path, status)
         return video
     except Exception as exc:
         status.update(state='failed', error=f'{type(exc).__name__}: {exc}')
         atomic_json(status_path, status)
         raise
+
+
+def style_digest():
+    """Identity of all shipped code that determines pixels, including the library."""
+    h = hashlib.sha256()
+    for name in ('review_scene.js', 'environment.js', 'floor.js', 'three.module.js', 'stl.js'):
+        h.update(name.encode())
+        h.update((STATIC_DIR / name).read_bytes())
+    return h.hexdigest()
 
 
 def main():

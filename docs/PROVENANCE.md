@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-09-07
+Verified against source: 2026-09-12
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -873,3 +873,23 @@ or copied geometry. `docs/experiments/planetary_mesh_probe.py` tests m1,
 sun18/planet18/ring54; the first planet–ring mesh overlaps by 0.000354806
 mm³, above the 1e-6 bound. This is negative evidence, not a new catalog
 part or a qualified internal-gear profile.
+
+
+## Headless review rendering (ADR-301)
+
+The CLI ships Three.js **r160**, copyright 2010–2023 three.js authors, MIT,
+from upstream `build/three.module.min.js` as `review_static/three.module.js`.
+Its full notice is `review_static/THREE-LICENSE.txt`. This pinned local copy
+provides shared tone mapping, material lighting and shadow rendering without
+runtime CDN access or an npm toolchain.
+
+`review_static/environment.js` and the floor-only extract `floor.js` adapt
+`neural-whoop/web/studio/environment.js` and `geometry.js` at commit
+`31caeb28abb3bdab8d9030bfc91f0c3f48ffa63a`, copyright 2026 Theo, MIT.
+`REFERENCE-LICENSE.txt` retains the complete notice. Changes use local imports,
+allow the stage height to follow the CAD bounds, remove the 3 mm presentation
+lift, and make the environment floor front-sided for underside inspection.
+The light rig follows that reference's scene contract. Drone geometry, glyph
+scaling, controls, dashboard and capture application code are not imported.
+The sibling checkout is only a read-only comparison input; delivered Cadex
+rendering is self-contained. Our scene/adapter code remains LGPL-2.1-or-later.

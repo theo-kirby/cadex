@@ -23020,3 +23020,43 @@ reference drone's glyph enlargement into CAD. No dependency is added by this
 decision; any adopted renderer library needs its own pinned licence and written
 reason. Delivered assets must be self-contained. D11 stays open until real-biped
 viewport/video and light-reference comparisons prove the look and interactions.
+
+
+## ADR-301 — One local reference scene for inspection and recorded rollout frames
+
+2026-09-12. [Cadex-new] Implements ADR-300 for D11.
+
+The viewport's handwritten WebGL shader and the video's orthographic CPU
+rasterizer showed different places. Replace those review paths with one
+`review_scene.js`, called by both the interactive viewer and explicit headless
+capture. Keep the unrelated CLI still-image renderer. Python continues verifying
+retained identities, geometry, solved poses, timing, locking and complete decode;
+it never rebuilds historical geometry. The camera fits the whole trajectory once.
+
+Add a pinned, local Three.js r160 module (655 KiB, MIT) because shared ACES colour
+management, rough materials, antialiasing and fitted shadow maps need a rendering
+library; reimplementing those features in our shader is unnecessary surface.
+No npm, Python dependency, runtime CDN, engine payload or trainer change.
+Promote the existing DevTools pipe driver from tests to the CLI and keep a test
+import shim, instead of adding Playwright/Selenium or duplicating browser code.
+Headless video capture now requires Chromium as well as FFmpeg.
+
+Adapt the MIT neural-whoop environment and floor-only geometry, retaining full
+notices and source identity in PROVENANCE.md. Local imports remove sibling/CDN
+runtime dependencies. Cadex's finite ground slab and all poses stay truthful;
+the separate environment is just below model bounds and front-sided to permit
+underside inspection. Fitted shadows resolve the small model instead of spending
+the map on the huge environment. Camera APIs retain mm/Z-up/xyzw coordinates.
+
+Publish style/code digest, renderer versions, dimensions and explicit camera
+with each new video. Preserve prior video references and files; a failed render
+retains them too. Byte-identical outputs are deduplicated. Legacy recordings
+remain visibly labelled. Source-order colours now agree across both render paths.
+
+Evidence: `docs/probes/review-style/implementation.json` and README. Real Reed
+checkpoint/final recordings, actual reference-module light frame with the same
+Reed geometry, pixel-identical persistent viewport/capture PNGs and decoded
+codec comparison. The CLI browser regression covers both encodings' playback
+and downloads, while existing polling/history/orbit gates continue to run.
+This is a shared rendering unit, not a new training experiment; it cannot measure
+concurrent GPU overhead or close D10's experiment-spanning observation gap.

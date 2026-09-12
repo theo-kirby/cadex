@@ -258,7 +258,7 @@
     recorded.forEach(function (video, index) {
       var item = (resolved.videos || [])[index] || {};
       var line = el('li', { 'data-video': String(index) });
-      var label = 'video ' + index + ' · ' + (video.path || '?') + ' · revision ' + short(video.accepted_revision || (run.model || {}).accepted_revision) + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s';
+      var label = 'video ' + index + ' · ' + (video.path || '?') + ' · revision ' + short(video.accepted_revision || (run.model || {}).accepted_revision) + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s · ' + (video.style || 'historical legacy style');
       if (item.exists && !item.error) {
         var url = '/video/run/' + encodeURIComponent(run.run) + '/' + index;
         line.appendChild(el('div', { text: label }));
@@ -390,7 +390,7 @@
     return pendingPoll;
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
+  function initialize() {
     state.viewer = window.CadexViewer.create($('viewer'));
     $('current-run').addEventListener('click', function () {
       if (!state.review) return;
@@ -400,7 +400,7 @@
     $('model-fit').addEventListener('click', function () { state.viewer.fit(); });
     poll().then(function () { readyResolve(true); });
     setInterval(poll, POLL_MS);
-  });
+  }
 
   window.cadexReview = {
     ready: ready,
@@ -415,4 +415,6 @@
                runs: state.review ? state.review.runs.map(function (r) { return r.run; }) : [] };
     }
   };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize);
+  else initialize();
 })();
