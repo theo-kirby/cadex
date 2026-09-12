@@ -2725,3 +2725,10 @@ field, and every client gets it through the surface it already reads.
 - [x] Final policy publication failures publish failed telemetry (ADR-288),
       retaining metrics/checkpoints with headless browser fault-injection evidence.
       D8's real interrupted biped run and successful new attempt remain open.
+
+- [x] Dashboard restart lifecycle test (D6, fixture half): the real `cadex review`
+      command stopped and restarted on its port under an independent telemetry
+      producer; the open page recovers without reload, a reopened page reads the
+      same identities, curves, history and video, the producer is neither stopped
+      nor duplicated, and no project file changes. D6's fresh-biped pass with real
+      artifacts and its engine restart remain open.

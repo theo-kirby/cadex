@@ -18,10 +18,9 @@ from test_review_server import (browser, needs_browser, _open, _mesh_run,
                                 _rewrite_record, _project, REVISION_A)
 
 
-@pytest.fixture
-def video_project(tmp_path):
-    root = _project(tmp_path)
-    run = _mesh_run(root, 'sample', revision=REVISION_A)
+def _video_run(root, name='sample'):
+    """A walked run whose trace moves and names its policy: renderable."""
+    run = _mesh_run(root, name, revision=REVISION_A)
     record = json.loads((run / 'run.json').read_text())
     sha = hashlib.sha256((root / 'assets/gait.cxpolicy').read_bytes()).hexdigest()
     record['policy']['sha256'] = sha
@@ -39,6 +38,13 @@ def video_project(tmp_path):
                        'model_sha256': hashlib.sha256((run / record['artifacts']['model_xml']).read_bytes()).hexdigest(),
                        'seed': record['rollout']['seed']}
     trace_path.write_text(json.dumps(trace))
+    return run
+
+
+@pytest.fixture
+def video_project(tmp_path):
+    root = _project(tmp_path)
+    _video_run(root)
     return root
 
 

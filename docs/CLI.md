@@ -1420,6 +1420,28 @@ of access from a second device or of the fresh biped lifecycle. The browser
 suite also narrows a loaded model view from 1280 to 1000 pixels and checks
 that the canvas stays within the page before exercising orbit and zoom.
 
+**Restarting the dashboard is not an event for the project or its training**
+(D6, fixture half). `cli/tests/test_review_lifecycle.py` runs the real
+`cadex review` command, opens the page, selects a run whose telemetry a
+separate producer process — one the server never spawned and never learns
+about — commits every 0.3 s in the trainer's snapshot format, stops the
+command with SIGINT, checks the open page reads `stale` with its last
+identities and its video element intact, restarts the command on the same
+port, and checks the same page returns to `live` on its own poll without
+reloading: same selected run, same recorded revision, the loss history one
+point longer than the iteration it now shows, the same video element still
+decodable, and the served video byte-identical to the retained file. A
+second page opened afresh against the restarted server reads the accepted
+revision, the same run list, the historical label, the recorded parameters,
+telemetry still advancing and a playable, downloadable video. Throughout,
+the producer is the same PID, its iteration sequence never resets, and on
+Linux exactly one process carries its marker; every file in the project other
+than the producer's own snapshot has the same digest afterwards as before.
+No engine runs anywhere in this test — the reader opens none, which is why
+restarting an engine cannot change what the dashboard shows — but this is
+fixture evidence: D6's required pass on the fresh biped with real training
+artifacts, and save/reopen of a project a real walk wrote, remain separate.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -1746,6 +1768,7 @@ Fast, and honest about what it did not run.
 | `test_commands.py` | `main()` end to end against a real engine. |
 | `test_walk.py` | `cadex walk` against a fake `cadex` (leg order, flags, refusals; no engine), and the toy through two real walks with the real engine and trainer — **skips** the latter without the training venv. |
 | `test_review_server.py` | The review dashboard (ADR-286): the API, the allowlist and its refusals, the CLI command, and the page in a headless Chromium over its DevTools pipe (`cdp_browser.py`) — **skips** the browser half without a Chromium (`CADEX_BROWSER` names one); the private-address smoke runs only with `CADEX_REVIEW_HOST` set. |
+| `test_review_lifecycle.py` | The dashboard across a restart (D6): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
 | `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** the browser half without a Chromium and everything without FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
