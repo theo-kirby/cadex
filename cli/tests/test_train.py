@@ -1132,3 +1132,20 @@ def test_detached_train_returns_pending_without_consuming_an_old_policy(
     row = (task_project / "PROGRESS.md").read_text().splitlines()[-1]
     assert "train pending" in row and "no policy stored" in row
     assert "reward" not in row and "sha256" not in row
+
+
+def test_training_refuses_a_design_changed_after_review_retention(
+    task_project, fake_trainer, capsys
+):
+    run = task_project / 'runs' / 'frozen'
+    run.mkdir(parents=True)
+    (run / 'training-view.json').write_text(json.dumps({
+        'identity': {'available': True, 'revision': 'old-revision', 'digest': 'old-digest'},
+    }))
+    code, envelope = _run(
+        capsys, 'train', '--project', str(task_project), '--out', str(run / 'train'),
+        '--trainer-python', sys.executable, '--iterations', '1', '--envs', '4',
+    )
+    assert code == EXIT_REJECTED, envelope
+    assert 'design changed after review inputs were retained' in envelope['error']
+    assert not (run / 'train/job.cxpolicy').exists()

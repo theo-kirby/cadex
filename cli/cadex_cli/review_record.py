@@ -229,9 +229,15 @@ def write_run_record(
     train_dir = run_dir / "train"
     progress = train_dir / "progress.json"
     receipt = train_dir / "training-receipt.json"
-    docs = snapshot_project_docs(root, run_dir) if snapshot_docs else {
-        "dir": None, "files": {}, "skipped": [], "note": "not snapshotted",
-    }
+    frozen, _ = _load_json(run_dir / "training-view.json")
+    docs = frozen["project_docs"] if frozen else (
+        snapshot_project_docs(root, run_dir) if snapshot_docs else {
+            "dir": None, "files": {}, "skipped": [], "note": "not snapshotted",
+        })
+    if frozen and frozen["identity"].get("available"):
+        param_specs = frozen["identity"].get("param_specs")
+        specs_source = "project manifest before training"
+        params = frozen["identity"].get("param_values", params)
     artifacts = {
         "script": "script.py" if (run_dir / "script.py").is_file() else None,
         "review": "review.json" if (run_dir / "review.json").is_file() else None,

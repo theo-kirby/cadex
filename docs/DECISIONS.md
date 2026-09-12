@@ -22843,3 +22843,26 @@ bounded fix makes retained parts inspectable; preserving the assembled pose
 before training remains an open D2 requirement. No dependency or engine
 change. Browser regression covers historical identity, actual orbit/zoom,
 mesh bytes, read-only behavior and missing/symlink/escaping references.
+
+
+## ADR-291 — Freeze a walk's review inputs before training (2026-09-12)
+
+Status updates used to replace document snapshots, while training exports
+retained parts without assembly mappings or placements. A walk now retains
+the accepted review model and mesh bytes, values/specs and documents before
+training dispatch, under the project lock. The run-local training-view marker
+is published last and never replaced by later status writes. The dashboard
+reads that view before falling back to legacy export parts, checks its revision
+and digest, and permits only its retained mesh references. Recorded placement
+sources remain explicit: declared placement is not a solved pose.
+
+A design accepted between retention and training is refused before trainer
+dispatch, rather than labelled with the old input. Retained mesh digests are
+checked before serving; missing or changed bytes are unavailable.
+
+No historical run is reconstructed or backfilled. Rollouts still use their
+own trace; the training input's specs and decisions remain frozen. The browser
+regression changes the accepted revision and documents, deletes the original
+staging directory, lands a failed status, and verifies the earlier assembly,
+mesh bytes, specs and decision snapshot; a symlinked mesh is refused. No new
+dependency or engine/protocol change.

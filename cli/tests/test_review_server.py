@@ -943,3 +943,69 @@ def test_browser_retained_training_parts_survive_revision_change(served, browser
     assert _get(server.url + 'mesh/run/exported/torso.stl')[0] == 404
     _rewrite_record(run, artifacts={**record['artifacts'], 'model_xml': '../outside.xml'})
     assert not _json(server.url + 'api/model/run/exported')['available']
+
+
+@needs_browser
+def test_browser_training_snapshot_keeps_assembly_and_documents(tmp_path, browser):
+    from cadex_cli.review_server import retain_training_view
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_A)
+    staging = _stage_accepted(root, REVISION_A)
+    run = _training_run(root, 'frozen', revision=REVISION_A)
+    (root / 'DECISIONS.md').write_text('## ADR-1: Original narrow stance\n')
+    retain_training_view(root, run)
+    frozen = (run / 'training-view.json').read_bytes()
+    identity = json.loads(frozen)['identity']
+    mesh = (run / 'training-view/torso.stl').read_bytes()
+    _manifest(root, REVISION_B)
+    revised = _stage_accepted(root, REVISION_B)
+    (revised / 'outputs/assembly-simulation-trace.json').write_text(
+        _trace({'body': [1000.0, 0.0, 0.0]}))
+    shutil.rmtree(staging)
+    manifest = json.loads((root / 'script.json').read_text())
+    manifest['param_values'] = {'leg_len': 120}
+    manifest['param_specs'] = [{'name': 'leg_len', 'default': 110}]
+    (root / 'script.json').write_text(json.dumps(manifest))
+    (root / 'DECISIONS.md').write_text('## ADR-2: Wider revised stance\n')
+    retain_training_view(root, run)
+    write_run_record(run, project_root=root, status='failed', mode='blocking',
+                     accepted_revision=REVISION_A, digest='d' * 64,
+                     snapshot_docs=True, params={'leg_len': 999})
+    assert (run / 'training-view.json').read_bytes() == frozen
+    assert (run / 'training-view/torso.stl').read_bytes() == mesh
+    server, _thread = serve(root, '127.0.0.1', 0)
+    try:
+        page = _open(browser, server.url)
+        accepted_target = page.evaluate('window.cadexReview.viewer().camera().target')
+        page.click("#views li[data-run='frozen']")
+        page.wait_for("document.getElementById('view-kind').textContent === 'RUN frozen'")
+        assert _model_state(page) == 'loaded'
+        assert page.text('#view-revision') == REVISION_A
+        assert page.text('#view-relation').startswith('HISTORICAL')
+        record = read_run_record(run, root)
+        assert record['params']['values'] == identity['param_values']
+        assert record['params']['specs'] == identity['param_specs']
+        assert page.text("#params tr[data-param='leg_len'] td:nth-child(2)") == '90'
+        assert page.text("#params tr[data-param='leg_len'] td:nth-child(3)") == '80'
+        assert 'retained before training' in page.text('#model-status')
+        assert page.evaluate('window.cadexReview.viewer().camera().target') != accepted_target
+        assert page.evaluate('window.cadexReview.viewer().nonBackgroundPixels()') > 1000
+        model = _json(server.url + 'api/model/run/frozen')
+        assert model['components'][0]['name'] == 'body'
+        assert model['components'][0]['placement']['position_mm'] == [5, 0, 10]
+        page.click("#docs li[data-doc='DECISIONS.md'] a")
+        page.wait_for("document.body.textContent.includes('Original narrow stance')")
+        assert 'Wider revised stance' not in page.text('body')
+        assert _get(server.url + 'mesh/run/frozen/torso.stl')[2] == mesh
+        (run / 'training-view/torso.stl').write_bytes(b'changed mesh')
+        assert _get(server.url + 'mesh/run/frozen/torso.stl')[0] == 404
+        assert _json(server.url + 'api/model/run/frozen')['components'][0]['mesh_status'] == 'digest mismatch'
+        (run / 'training-view/torso.stl').unlink()
+        (run / 'training-view/torso.stl').symlink_to(root / 'script.json')
+        assert _get(server.url + 'mesh/run/frozen/torso.stl')[0] == 404
+        (run / 'training-view.json').write_text('{')
+        assert not _json(server.url + 'api/model/run/frozen')['available']
+    finally:
+        server.shutdown()
+        server.server_close()

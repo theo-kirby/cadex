@@ -2747,3 +2747,10 @@ field, and every client gets it through the surface it already reads.
       with no rollout is drawn from the accepted attempt only when both halves
       of its identity are the accepted ones now. Browser-tested through failure
       on fixtures; the `policy_on` defect and the real-artifact passes stay open.
+
+
+- [x] Freeze assembled review inputs before walk training (ADR-291): run-local
+      meshes, component mappings/placements, parameter specs and document snapshots
+      survive accepted-design changes and staging pruning, verified in a headless
+      browser. Older missing history is not reconstructed; the real D5/D9 design
+      change and retraining remain open.

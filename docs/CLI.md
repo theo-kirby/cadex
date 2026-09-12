@@ -435,7 +435,14 @@ is killed leaves a file saying it never finished; as `running` again before
 the train leg when a design turn or sweep has moved the accepted revision;
 then `ok`, `failed` (with the leg and its error) or `pending` (a detached
 train leg launched, nothing collected) when it ends. Each write replaces
-the file, and each write snapshots the project documents (below).
+the file. Before training starts, the walk freezes the accepted assembled view,
+parameter values/specs and project documents in `training-view.json`,
+`training-view/*.stl` and `project-docs/` (ADR-291). Subsequent status writes
+reuse these documents and specs; design changes do not replace them. Retain
+and copy these files with the entire run directory. If another design is
+accepted between retention and the train leg, training refuses and asks for
+a new walk. Runs that failed before
+reaching training retain the documents from their last status write.
 
 What it carries, all from what the manifest and the legs reported and
 nothing re-derived:
@@ -1393,7 +1400,11 @@ What the page shows, and where each thing comes from:
   own files only; nothing is rebuilt from today's script. A `running`
   record is labelled as started and never finished, with the next CLI
   action; a legacy run reads `unrecorded`.
-  Before a rollout, a run with recorded revision/digest and `model_xml`
+  Before a rollout, new walks show their retained assembled training view,
+  including component identities and the recorded placement source (a trace's
+  first frame or declared placements, explicitly labelled). Missing snapshot
+  meshes remain missing. Older runs are not backfilled from current state.
+  Without this snapshot, a run with recorded revision/digest and `model_xml`
   can show the STL parts retained beside that training export (ADR-290).
   These are explicitly labelled **individual parts at identity, not a
   solved pose**: the export does not retain component placements. This

@@ -553,15 +553,10 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
     assert record["project_artifacts"]["inventory"] == "docs/inventory.md"
     assert record["videos"] == []
     assert [leg["leg"] for leg in record["legs"]] == ["train", "declare", "rollout"]
-    # The fake legs scaffold no ARCHITECTURE.md or DECISIONS.md, and this
-    # run's PROGRESS.md row lands after the command returns, so the
-    # snapshot holds exactly the two reports the walk itself wrote.
+    # No documents existed before training. Reports produced by the review
+    # must not be presented as documents that informed its training input.
     docs = record["project_docs"]
-    assert docs["dir"] == "project-docs"
-    assert set(docs["files"]) == {"docs/clearance.md", "docs/inventory.md"}
-    for relative, digest in docs["files"].items():
-        copied = out / "project-docs" / relative
-        assert hashlib.sha256(copied.read_bytes()).hexdigest() == digest
+    assert docs["dir"] is None and docs["files"] == {}
     for absolute in (str(out), str(toy_root)):
         assert absolute not in (out / RUN_RECORD_FILENAME).read_text()
     # ...and it reads back through the reader with nothing missing, as the
@@ -708,7 +703,7 @@ def test_a_walk_names_its_training_input_before_training_and_keeps_it_on_failure
     assert at_train["model"] == {"accepted_revision": "t" * 64, "digest": "m" * 64,
                                 "identity_source": "project manifest (script.json) at walk start"}
     assert at_train["params"]["specs"] == [{"name": "arm_len", "default": 40.0, "unit": "mm"}]
-    assert at_train["params"]["specs_source"] == "project manifest (script.json) at walk start"
+    assert at_train["params"]["specs_source"] == "project manifest before training"
     assert at_train["project_docs"]["dir"] == "project-docs"
     assert list(at_train["project_docs"]["files"]) == ["DECISIONS.md"]
     record = json.loads((out / RUN_RECORD_FILENAME).read_text())
@@ -740,7 +735,7 @@ def test_a_walk_that_fails_after_training_keeps_the_train_leg_s_identity(
     assert [leg["leg"] for leg in record["legs"]] == ["train", "declare"]
     assert record["model"] == {"accepted_revision": "r" * 64, "digest": "d" * 64,
                                "identity_source": "train leg envelope"}
-    assert record["params"]["specs_source"] == "project manifest (script.json) at walk start"
+    assert record["params"]["specs_source"] == "project manifest before training"
     assert record["policy"]["sha256"] and record["policy"]["name"] == "job.cxpolicy"
     # A design turn moves the revision before training: the record is
     # re-landed as `running` with the moved identity before the train leg.
@@ -753,7 +748,7 @@ def test_a_walk_that_fails_after_training_keeps_the_train_leg_s_identity(
     assert at_train["status"] == "running"
     assert at_train["model"]["identity_source"] == "design leg envelope"
     assert at_train["model"]["accepted_revision"] == "r" * 64
-    assert at_train["params"]["specs_source"] == "project manifest (script.json) before the train leg"
+    assert at_train["params"]["specs_source"] == "project manifest before training"
     assert [leg["leg"] for leg in at_train["legs"]] == ["design"]
 
 

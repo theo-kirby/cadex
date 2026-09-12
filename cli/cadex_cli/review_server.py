@@ -168,6 +168,38 @@ def _identity_model(**fields: Any) -> dict[str, Any]:
     return base
 
 
+def retain_training_view(project_root: Path | str, run_dir: Path | str) -> None:
+    """Freeze accepted review inputs before a walk dispatches training."""
+    from .review_record import read_accepted_identity, snapshot_project_docs
+
+    root, destination = Path(project_root), Path(run_dir)
+    marker = destination / "training-view.json"
+    if marker.exists():
+        return
+    model = accepted_model(root)
+    project = ReviewProject(root)
+    mesh_dir = destination / "training-view"
+    mesh_dir.mkdir(parents=True, exist_ok=True)
+    for entry in model["components"]:
+        output = entry.get("output")
+        if not entry.get("mesh"):
+            continue
+        data = project.accepted_mesh(output)
+        if data is None:
+            raise OSError(f"accepted mesh disappeared while retaining {output}")
+        mesh_path = mesh_dir / f"{output}.stl"
+        mesh_path.write_bytes(data)
+        entry["sha256"] = _sha256(mesh_path)
+        entry["mesh"] = f"/mesh/run/{destination.name}/{output}.stl"
+    model.pop("meshes", None)
+    payload = {"schema": "cadex-training-view-v1", "model": model,
+               "identity": read_accepted_identity(root),
+               "project_docs": snapshot_project_docs(root, destination)}
+    temporary = marker.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2) + "\n")
+    temporary.replace(marker)
+
+
 def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, Any]:
     """The model a run retained: its rollout meshes, placed as its trace says.
 
@@ -179,8 +211,9 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
     the component is. A mesh with no component is shown unplaced and says
     so; a component with no mesh is listed as missing one.
 
-    With no recorded trace, STL parts beside the recorded training model
-    remain inspectable at identity, explicitly without assembly placements.
+    With no recorded trace, new walks use the frozen assembled training view.
+    Older STL parts beside the recorded training model remain inspectable at
+    identity, explicitly without assembly placements.
     A missing recorded trace or training export never borrows other geometry.
     """
 
@@ -194,6 +227,31 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
     )
     trace_item = ((record.get("resolved") or {}).get("artifacts") or {}).get("trace") or {}
     if trace_item.get("path") is None:
+        snapshot_path = run_dir / "training-view.json"
+        if snapshot_path.exists():
+            reference = resolve_reference(run_dir, "training-view.json")
+            snapshot = _load_json(snapshot_path) if not reference["error"] else None
+            retained = (snapshot or {}).get("model") or {}
+            if ((snapshot or {}).get("schema") != "cadex-training-view-v1"
+                    or not isinstance(retained.get("components"), list)):
+                model["reason"] = "retained training view is unreadable or incomplete"
+                return model
+            if (retained.get("revision") != model["revision"]
+                    or retained.get("digest") != model["digest"]):
+                model["reason"] = "retained training view identity does not match run"
+                return model
+            model.update({key: retained.get(key) for key in
+                          ("available", "components", "placement_source", "reason")})
+            model["source"] = "assembled model retained before training"
+            for entry in model["components"]:
+                output = entry.get("output")
+                item = resolve_reference(run_dir, f"training-view/{output}.stl")
+                if entry.get("mesh"):
+                    if item["error"] or not item["exists"]:
+                        entry.update(mesh=None, mesh_status="missing")
+                    elif _sha256(run_dir / item["path"]) != entry.get("sha256"):
+                        entry.update(mesh=None, mesh_status="digest mismatch")
+            return model
         exported = ((record.get("resolved") or {}).get("artifacts") or {}).get("model_xml") or {}
         if exported.get("path") is not None:
             if not model.get("revision") or not model.get("digest"):
@@ -664,6 +722,8 @@ class ReviewProject:
         wanted = f"/mesh/run/{name}/{output}.stl"
         if not any(entry.get("mesh") == wanted for entry in model["components"]):
             return None
+        if model.get("source") == "assembled model retained before training":
+            return self.root / RUNS_DIRNAME / name / "training-view" / f"{output}.stl"
         artifacts = record["resolved"]["artifacts"]
         anchor = artifacts["trace"]["path"] or artifacts["model_xml"]["path"]
         path = (self.root / RUNS_DIRNAME / name / anchor).parent / f"{output}.stl"

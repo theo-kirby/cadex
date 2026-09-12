@@ -1335,6 +1335,17 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
             return EXIT_REJECTED
         _finish(args, report, engine, reply.get("display"))
         _refresh_script_state(client, report)
+        # A walk froze this input before launching the train leg. A design
+        # accepted in between must not train under the earlier run's identity.
+        retained_view = Path(args.out).expanduser().parent / "training-view.json"
+        if retained_view.is_file():
+            retained = json.loads(retained_view.read_text())["identity"]
+            if retained.get("available") and (
+                retained["revision"] != report.accepted_revision
+                or retained["digest"] != report.digest
+            ):
+                report.error = "design changed after review inputs were retained; start a new walk"
+                return EXIT_REJECTED
     try:
         task = find_task(report.outputs, args.task_name)
     except TrainError as exc:
@@ -1713,6 +1724,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             specs = manifest_identity(report.project_root, "before the train leg")
             known.update(param_specs=specs["param_specs"],
                          specs_source=specs["specs_source"])
+            land_record("running")
+
+        from .review_server import retain_training_view
+        with project_lock(Path(report.project_root), wait=bool(args.wait)):
+            retain_training_view(report.project_root, out_dir)
             land_record("running")
 
         # Train, and bring the policy home.
