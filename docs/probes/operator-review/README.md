@@ -40,3 +40,9 @@ poll, historical `probe3-final` selection and return to current. This was a
 headless Chromium observation through this machine's private-network address,
 not a second-device test or an observation during new GPU training. D10 still
 needs the persistent URL observed across a real experiment start/completion.
+
+Iteration 39 reverified this same persistent URL without restarting it. The
+[visual baseline](../review-style/README.md) records its current appearance;
+[operator results](../review-style/operator.json) again pass current identity,
+playback/download and polling/history preservation. The requested D11 environment
+is not yet implemented. No new experiment or working-project switch occurred.

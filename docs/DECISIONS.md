@@ -23003,3 +23003,20 @@ training or the protocol. Browser tests cover active precedence, newer failure,
 stale telemetry, deliberate history and video playback across a newer attempt.
 The persistent-server probe and operating command live in
 `docs/probes/operator-review/README.md`.
+
+## ADR-300 — Share the review scene with policy-video capture (2026-09-12)
+
+The D11 baseline finds separate visual systems: a perspective WebGL viewport
+and orthographic CPU video rasterizer, neither with the requested environment.
+Use one browser scene for viewport and explicit headless frame capture, retaining
+Python's verified-artifact checks, sampling, locking, time bounds and encoding.
+This decision is not an implemented renderer. The measured reference, light/dark
+distinction, truthful ground-slab constraint, portable style identity and retained
+video-history requirements are in `docs/probes/review-style/README.md`.
+
+The decoded neural-whoop examples use its dark theme; the owner explicitly chose
+the light-grey style, whose source palette therefore governs. Do not copy the
+reference drone's glyph enlargement into CAD. No dependency is added by this
+decision; any adopted renderer library needs its own pinned licence and written
+reason. Delivered assets must be self-contained. D11 stays open until real-biped
+viewport/video and light-reference comparisons prove the look and interactions.
