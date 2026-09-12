@@ -7,15 +7,15 @@ parents:
 - crisp-sun-1239
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-**Immutable training snapshots now survive accepted revisions; the real design-edit/retraining comparison remains open.** ADR-291 retains assembled model placements, checked mesh bytes, parameter specs and project documents before training, preserves the original documents/specs on subsequent status writes and refuses a changed accepted identity before dispatch. Browser regression changes accepted design and decisions, deletes old staging and confirms the old run still shows its own model, values and documents [rec: quiet-arbor-0259].
+**Review history survives the real 70→90 mm foot edit and GPU retraining.** Both designs remain browser-selectable with distinct model/spec identities, 240-point reward/loss/episode-length curves and playable/downloadable videos. All 250 pre-existing run/asset files remain byte-identical. This supplies the physical design-change comparison previously missing, so status is `working`; actor-authored revision is a separate remaining D9 limitation [rec: candid-forest-9800].
 
-Probe3 adds a real immutable eight-component training snapshot and preserves earlier run records byte-for-byte across policy-playback revisions, with historical model identity, curves and playable videos browser-verified. It exercises the retention helper directly rather than the `cadex walk` orchestration. Complete project copies must include the entire run directory and ignored policies, traces and videos; Git alone is insufficient [rec: light-brook-2640].
+ADR-291 retains assembled placements, checked mesh bytes, parameter specs and project documents before training and preserves them through later status writes [rec: quiet-arbor-0259]. ADR-293's real-engine browser regression additionally preserves the prior swept run's mesh bytes, assembled components, revision/digest and specs after a later physical parameter edit while current geometry changes [rec: forest-ledge-2219].
 
-Keep `open`: accepting checkpoint/final playback is not a physical design edit followed by retraining. The original probe1 null-identity record and probe2 missing historical inputs remain unreconstructed [rec: quiet-arbor-0259] [rec: light-brook-2640].
+Historical gaps remain explicit: foot90's original unavailable training snapshot is not rewritten from its later working rollout geometry, and the fix is verified on a real-engine fixture rather than another biped GPU run [rec: candid-forest-9800] [rec: forest-ledge-2219]. Complete project copies must include run directories and ignored policies, traces and videos; Git alone is insufficient [rec: light-brook-2640].
 
 Charter criterion: **D5. Review history survives a design change** Each run retains the model/script revision, specs, task/training configuration, metrics, policy identity and review/video references needed to interpret it; after a design edit and retraining, both runs remain selectable with their own curves, models and videos. Evidence: before/after identity and artifact checks, and browser assertions that old results have not silently switched to the new design. Declared target `gap-d5-review-history-survives-design` [rec: lucky-comet-0031].
 
@@ -33,3 +33,5 @@ Charter criterion: **D5. Review history survives a design change** Each run reta
 - lively-gate-6535 — ADR-289: identity from the manifest at walk start, kept through failure, moved by design turns
 - quiet-arbor-0259 — training-start specs/documents stay frozen and dispatch identity is guarded
 - light-brook-2640 — real retained snapshot, preserved prior records and policy-playback history; redesign still outstanding
+- candid-forest-9800 — real physical edit/retraining retains both designs, curves and videos with all old run/assets unchanged
+- forest-ledge-2219 — parameter-sweep history regression retains original assembly, meshes and specs without backfill

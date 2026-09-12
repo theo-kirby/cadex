@@ -7,15 +7,15 @@ parents:
 - crisp-sun-1239
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-**Real completed biped artifacts survive engine restores and dashboard restart; restart during actual training remains open.** Two real `cadexd` processes restore the saved accepted project with `performed=true` and `matches_accepted=true`. Accepted revision/digest and all non-cache manifest fields stay equal, and all 255 checked retained files are byte-identical. Cache `updated_at`, `attempt_id` and `staging` legitimately regenerate [rec: simple-quartz-9812].
+**Real biped save/reopen, engine restore and dashboard restart now have completed-artifact and active-training evidence.** Two real `cadexd` processes restore the saved accepted project with `performed=true` and `matches_accepted=true`; accepted identity and non-cache manifest fields match, and all 255 checked retained files remain byte-identical. Browser history, specs, curves and video playback/download survive restart and fresh-page reopen; cache timestamps, attempt and staging legitimately regenerate [rec: simple-quartz-9812].
 
-Before/after browser observations match run history, historical model identities, parameters/document links and loaded model statistics. Probe3 retains 240 reward/loss/episode-length samples; checkpoint and final videos advance playback and download at their recorded hashes. The original page recovers stale-to-live without navigation across dashboard restart, and a fresh page reopens the same saved project. This tests previously durable acceptance, not a new authoring transaction; no trainer, render or policy import ran [rec: simple-quartz-9812].
+During foot90 GPU training the private-address dashboard restarted while the same single trainer PID/start-tick identity advanced iterations 35–43. The same browser document labelled the outage stale, recovered without navigation, and displayed growing loss histories. Together with the completed-artifact restore evidence this closes the missing restart requirement: status is `working`; it does not establish D7 copy isolation [rec: candid-forest-9800].
 
-The automated lifecycle fixture independently exercises restart while a separate telemetry producer keeps its PID and sequence, preserving identities and video bytes [rec: shady-bay-0771]. Keep `open`: that producer is not a real trainer. Dashboard restart during actual biped training without stopping or duplicating it remains required, as does no claim here of copy isolation [rec: simple-quartz-9812].
+The automated lifecycle fixture also checks restart under a separate telemetry producer, preserving identities and video bytes; the real-training observation now supplies the evidence that fixture alone could not [rec: shady-bay-0771] [rec: candid-forest-9800].
 
 Charter criterion: **D6. Save, reopen and restart preserve the project** Save/reopen and restarting the dashboard and engine preserve accepted identity, specs, run history, curves and video access; restarting the dashboard during training neither stops nor duplicates that training. Evidence: an automated lifecycle test and a recorded pass on the fresh biped with real artifacts. Declared target `gap-d6-save-reopen-restart-preserve` [rec: lucky-comet-0031], introduced with no implementation claimed [rec: dusty-peak-9330].
 
@@ -29,3 +29,4 @@ None yet.
 - dusty-peak-9330 — the owner's charter revision (ADR-284) that introduced D1–D9, claiming none complete
 - shady-bay-0771 — handoff record for the D6 restart test (commit 38c35f6a): dashboard restart under independent telemetry, and its stated limits
 - simple-quartz-9812 — two real engine restores, dashboard restart and exact completed-artifact/browser preservation
+- candid-forest-9800 — real dashboard restart preserves the single active GPU trainer and browser document; closes D6 restart gap
