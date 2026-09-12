@@ -3,8 +3,11 @@
 """Independent synthetic rollout fixtures; real verification is in test_walk."""
 import hashlib
 import json
+import os
 from pathlib import Path
+import select
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -15,7 +18,8 @@ from cadex_cli.video import render, placed, stl
 from cadex_cli.review_record import read_run_record
 from cadex_cli.review_server import serve
 from test_review_server import (browser, needs_browser, _open, _mesh_run,
-                                _rewrite_record, _project, REVISION_A)
+                                _rewrite_record, _project, REVISION_A,
+                                REVISION_B, _manifest, _get, _model_state, CLI_DIR)
 
 
 def _video_run(root, name='sample'):
@@ -129,6 +133,142 @@ def test_quaternion_placement_rotates_about_component_origin():
                           'rotation_xyzw': [0, 0, math.sqrt(.5), math.sqrt(.5)]})
     assert result[0][0] == pytest.approx((10, 21, 30))
     assert result[0][1] == pytest.approx((9, 20, 30))
+
+
+@needs_browser
+def test_browser_revisits_history_beyond_video_cache_across_process_restart(rendered, browser):
+    """257 independent retained paths, real process restart, synthetic rollouts.
+
+    These are repeated runs of one model, not 257 trained policies. The early
+    and late run names must survive selection even though their model is shared.
+    """
+    root, video = rendered
+    _manifest(root, REVISION_B)
+    sample = root / 'runs/sample'
+    for index in range(257):
+        run = root / 'runs' / f'history-{index:03d}'
+        shutil.copytree(sample, run)
+        record_path = run / 'run.json'
+        record = json.loads(record_path.read_text())
+        record['run'] = run.name
+        record['training']['requested']['iterations'] = index + 10
+        record_path.write_text(json.dumps(record))
+        (run / 'train/progress.json').write_text(json.dumps({
+            'schema': 'cadex-training-progress-v1', 'state': 'done',
+            'updated_at': time.time(), 'task_sha256': record['task']['sha256'],
+            'iteration': index + 10, 'total': index + 10,
+            'reward_per_step': index, 'loss': 1, 'episode_steps': 20,
+            'curve': [[i, i] for i in range(index + 1)],
+            'loss_curve': [[i, 1] for i in range(index + 1)],
+            'episode_steps_curve': [[i, 20] for i in range(index + 1)],
+            'checkpoints': [],
+        }))
+    shutil.rmtree(sample)
+
+    def snapshot():
+        return {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in root.rglob('*') if path.is_file()}
+
+    before = snapshot()
+    processes = []
+
+    def start(port=0):
+        process = subprocess.Popen(
+            [sys.executable, '-m', 'cadex_cli', 'review', '--project', str(root),
+             '--port', str(port), '--json'], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True,
+            env={**os.environ, 'PYTHONPATH': str(CLI_DIR)})
+        processes.append(process)
+        assert select.select([process.stderr], [], [], 20)[0], 'server did not start'
+        line = process.stderr.readline()
+        assert ' at http://' in line, line
+        return process, line.split(' at ')[1].split(' ')[0]
+
+    def stop(process):
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=20)
+        assert process.returncode == 0, stdout + stderr
+
+    def visit(page, name, *, damaged=False):
+        page.click(f"#views li[data-run='{name}']")
+        page.wait_for("document.getElementById('view-kind').textContent === "
+                      + json.dumps('RUN ' + name))
+        assert page.text('#view-revision') == REVISION_A
+        assert page.text('#view-digest') == 'd' * 64
+        assert page.text('#view-relation').startswith('HISTORICAL')
+        assert page.text("#params tr[data-param='leg_len'] td:nth-child(2)") == '90'
+        assert page.text("#params tr[data-param='leg_len'] td:nth-child(3)") == '80'
+        assert _model_state(page) == 'loaded'
+        state = page.evaluate('window.cadexReview.state()')
+        assert state['selected'] == name and state['model']['revision'] == REVISION_A
+        assert name in page.text('#model-status')
+        assert video['policy_sha256'] in page.text("#training tr[data-key='policy']")
+        index = int(name.rsplit('-', 1)[1])
+        assert page.attribute('#telemetry', 'data-state') == 'done'
+        assert page.text("#training tr[data-key='requested iterations'] td") == str(index + 10)
+        assert page.text('[data-metric=iteration]') == f'iteration: {index + 10}'
+        for curve in ('curve', 'loss_curve', 'episode_steps_curve'):
+            assert page.attribute(f'[data-history={curve}]', 'data-points') == str(index + 1)
+        assert 'seed 7' in page.text('#videos')
+        if damaged:
+            page.wait_for("document.getElementById('videos').textContent.includes('digest mismatch')")
+            assert not page.evaluate("!!document.querySelector('#videos video, #videos a')")
+            assert 'Retry the CLI video command' in page.text('#videos')
+            for headers in ({}, {'Range': 'bytes=0-15'}):
+                assert _get(url + f'video/run/{name}/0', headers)[0] == 404
+        else:
+            page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+            page.evaluate("window.historyVideo=document.querySelector('#videos video'); "
+                          "historyVideo.muted=true; historyVideo.loop=true; historyVideo.play()",
+                          await_promise=True)
+            page.wait_for('historyVideo.currentTime > 0.1')
+            download = page.download('#videos a')
+            assert f'/video/run/{name}/0?download=1' in download.url
+            assert hashlib.sha256(download.path.read_bytes()).hexdigest() == video['sha256']
+
+    early = root / 'runs/history-000' / video['path']
+    original = early.read_bytes()
+    try:
+        first, url = start()
+        page = _open(browser, url)
+        assert page.evaluate("document.querySelectorAll('#views li[data-run]').length") == 257
+        for name in ('history-000', 'history-256', 'history-000'):
+            visit(page, name)
+        assert snapshot() == before
+
+        # Same-size corruption, with mtime restored, after cache churn. The
+        # other retained runs must still play; corruption must survive restart.
+        stamp = early.stat()
+        early.write_bytes(bytes([original[0] ^ 1]) + original[1:])
+        os.utime(early, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+        page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        visit(page, 'history-000', damaged=True)
+        visit(page, 'history-256')
+        page.evaluate("window.historyRestartMarker='same page'")
+        stop(first)
+        page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        assert page.attribute('#freshness', 'data-state') == 'stale'
+        second, restarted_url = start(int(url.rstrip('/').rsplit(':', 1)[1]))
+        assert second.pid != first.pid and restarted_url == url
+        page.wait_for("document.getElementById('freshness').dataset.state === 'live'")
+        assert page.evaluate('window.historyRestartMarker') == 'same page'
+        for name in ('history-256', 'history-000'):
+            visit(page, name, damaged=name == 'history-000')
+
+        replacement = early.with_suffix('.partial')
+        replacement.write_bytes(original)
+        replacement.replace(early)
+        page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        for name in ('history-000', 'history-256', 'history-000'):
+            visit(page, name)
+        assert page.evaluate("performance.getEntriesByType('navigation').length") == 1
+        stop(second)
+        assert snapshot() == before, 'inspection changed retained project content'
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=20)
 
 
 @needs_browser

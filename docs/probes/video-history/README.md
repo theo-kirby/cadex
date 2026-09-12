@@ -62,3 +62,36 @@ First-read latency and histories larger than the digest cache retain their
 limits. Unrelated video checks may wait behind the process-wide lock; separate
 servers have independent locks and caches. A 257-file reader regression proves
 the cache remains bounded at 256 entries and rehashes an evicted file.
+
+## Browser history beyond cache capacity
+
+The browser lifecycle regression in `cli/tests/test_video.py` retains 257
+independent video paths and revisits `history-000` and `history-256`. These
+are synthetic repeats of one rendered model, with distinct run names,
+requested iteration counts and reward/loss/episode-length histories. They
+are not 257 training runs or evidence of a physical design change.
+
+```bash
+pixi run python -m pytest cli/tests/test_video.py -k beyond_video_cache -q
+```
+
+The test checks historical model/revision/digest and parameter/spec identity,
+per-run training histories, playback and browser downloads. It changes one
+early video's bytes without changing its size or mtime, verifies refusal
+of both ordinary and range requests, then stops the server process. A new
+process binds the same port; the original browser page recovers without a
+reload and revisits both runs. The damaged early video remains refused while
+the late video plays. Atomic restoration restores playback and downloads.
+A content-hash inventory proves inspection left all project files unchanged
+after the injected damage was restored.
+
+The recorded fixture has 4,122 protected files and 257 WebM files of 5,402
+bytes each (1,388,314 video bytes total). The full CLI suite including this
+regression passed on 2026-09-12: 370 passed, 1 skipped in 355.03 seconds.
+
+This exercises eviction and a genuinely empty cache after process restart,
+using small playable files and a loopback browser on the server machine.
+It does not establish large-video throughput, cold-storage performance,
+private-network reachability or real GPU training. Histories above capacity
+can still rehash on each full scan; no five-second guarantee follows from
+this lifecycle check.
