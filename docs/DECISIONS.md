@@ -22721,6 +22721,24 @@ across eight redraws and no page-wide horizontal overflow. Private-address
 smoke reproduction is documented in `docs/CLI.md`; it exercises a fixture
 on the serving machine, not a second device or the fresh biped lifecycle.
 
+**Download evidence follow-up (2026-09-12).** The D4 browser test's
+download step failed on this machine while the server was blameless: a
+plain HTTP fetch of the `?download=1` route returned the retained file
+byte for byte with its attachment disposition. The failure was collection.
+Ubuntu's Chromium is a snap, and under confinement its `/tmp` is a private
+namespace — Chromium reported the download into pytest's `tmp_path` as
+*completed* into a directory the test could never read — while a hidden
+directory under `$HOME` is refused, reported as *canceled* after every
+byte arrived. `cdp_browser.py` now owns the download: `Page.download`
+saves into a directory chosen for the browser at hand (visible under
+`$HOME` for a snap, the system temporary directory otherwise, removed with
+the browser), waits on the browser's own `Browser.downloadProgress` events
+rather than polling for a file, and raises naming the state and the bytes
+received when the browser cancels. The test asserts the browser's received
+and total byte counts against the file it wrote and the file's digest
+against the record. This is fixture coverage of the download path, not
+real biped evidence; D4 still needs the fresh biped's videos.
+
 
 ## ADR-287 — Retain training histories and observe them in project review (2026-09-12)
 

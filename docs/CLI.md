@@ -1400,6 +1400,12 @@ and, in a headless Chromium driven over its DevTools pipe
 (`cli/tests/cdp_browser.py`, no Playwright), the labels, the historical
 view, real mouse orbit and zoom on the canvas, the stale label and
 reachability over a private address (`CADEX_REVIEW_HOST`).
+`cli/tests/test_video.py` adds the D4 half in the same browser: a
+rendered rollout plays, keeps playing across freshness polls, and
+downloads — the harness saves the download where that Chromium can
+write (a snap's `/tmp` is private to it, and it may not write hidden
+paths under `$HOME`), waits on the browser's own download-progress events,
+and compares the bytes it wrote with the retained file's digest.
 
 Reproduce the private-address smoke on the serving machine, without a desktop:
 
@@ -1740,6 +1746,7 @@ Fast, and honest about what it did not run.
 | `test_commands.py` | `main()` end to end against a real engine. |
 | `test_walk.py` | `cadex walk` against a fake `cadex` (leg order, flags, refusals; no engine), and the toy through two real walks with the real engine and trainer — **skips** the latter without the training venv. |
 | `test_review_server.py` | The review dashboard (ADR-286): the API, the allowlist and its refusals, the CLI command, and the page in a headless Chromium over its DevTools pipe (`cdp_browser.py`) — **skips** the browser half without a Chromium (`CADEX_BROWSER` names one); the private-address smoke runs only with `CADEX_REVIEW_HOST` set. |
+| `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** the browser half without a Chromium and everything without FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
 go through the same `validate_response` path production uses, so a fixture

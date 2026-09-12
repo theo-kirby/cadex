@@ -126,7 +126,7 @@ def test_quaternion_placement_rotates_about_component_origin():
 
 
 @needs_browser
-def test_browser_plays_downloads_and_keeps_playback_across_polls(rendered, browser, tmp_path):
+def test_browser_plays_downloads_and_keeps_playback_across_polls(rendered, browser):
     root, video = rendered
     server, _ = serve(root, '127.0.0.1', 0)
     try:
@@ -142,15 +142,12 @@ def test_browser_plays_downloads_and_keeps_playback_across_polls(rendered, brows
             page.evaluate('window.cadexReview.refresh()', await_promise=True)
             assert page.evaluate("testVideo === document.querySelector('#videos video') && !testVideo.paused")
         assert abs(page.evaluate('testVideo.duration') - .6) < .11
-        download = tmp_path / 'download'
-        download.mkdir()
-        page.send('Browser.setDownloadBehavior', {'behavior': 'allow', 'downloadPath': str(download)})
-        page.click('#videos a')
-        deadline = time.monotonic()+10
-        target = download / video['path']
-        while not target.exists() and time.monotonic() < deadline:
-            time.sleep(.05)
-        assert hashlib.sha256(target.read_bytes()).hexdigest() == video['sha256']
+        # The download the browser itself wrote: the retained file, byte for byte.
+        download = page.download('#videos a')
+        assert download.url.endswith('/video/run/sample/0?download=1')
+        assert download.path.name == video['path']
+        assert download.received_bytes == download.total_bytes == download.path.stat().st_size
+        assert hashlib.sha256(download.path.read_bytes()).hexdigest() == video['sha256']
         # A failed rerender preserves the prior playable result and names its failure.
         (root / 'assets/gait.cxpolicy').write_bytes(b'changed')
         with pytest.raises(ValueError, match='policy digest'):
