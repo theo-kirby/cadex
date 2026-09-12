@@ -2754,3 +2754,6 @@ field, and every client gets it through the surface it already reads.
       survive accepted-design changes and staging pruning, verified in a headless
       browser. Older missing history is not reconstructed; the real D5/D9 design
       change and retraining remain open.
+- [x] Retain tessellation on ordinary parameter sweeps (ADR-293): real-engine
+      `walk --set` browser regression checks the assembled model before trainer
+      dispatch and preserves its identity and mesh bytes across a later revision.

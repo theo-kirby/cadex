@@ -949,8 +949,11 @@ def command_params(args: argparse.Namespace, report: RunReport) -> int:
     with _engine_session(args, report) as (engine, client):
         revision = read_working_revision(client)
         _progress(f" · set_params  {', '.join(sorted(values))}")
+        # Retain triangles in this accepted attempt so a following walk can
+        # freeze its assembled training view without rebuilding the revision.
         reply = client.request(
-            "set_params", {"values": values, "expected_revision": revision}
+            "set_params", {"values": values, "expected_revision": revision,
+                           "display": {"quality": "standard", "edges": False}}
         )
         apply_modeling_reply(report, reply)
         if reply.get("ok") is not True:

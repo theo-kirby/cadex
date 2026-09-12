@@ -444,6 +444,12 @@ accepted between retention and the train leg, training refuses and asks for
 a new walk. Runs that failed before
 reaching training retain the documents from their last status write.
 
+`cadex params` requests standard tessellation as part of parameter acceptance
+(ADR-293). This includes the sweep in `cadex walk --set`: its accepted assembled
+model is available to the snapshot reader before training starts, without an
+extra render or rebuild. Previously recorded missing snapshots remain missing;
+later geometry is never used to backfill them.
+
 What it carries, all from what the manifest and the legs reported and
 nothing re-derived:
 

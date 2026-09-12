@@ -1009,3 +1009,100 @@ def test_browser_training_snapshot_keeps_assembly_and_documents(tmp_path, browse
     finally:
         server.shutdown()
         server.server_close()
+
+
+@needs_browser
+def test_browser_walk_parameter_sweep_retains_model_before_training(
+    engine, tmp_path, capsys, monkeypatch, browser,
+):
+    """Real engine/params/walk; stop at trainer dispatch, then revise again."""
+    from cadex_cli import __main__ as command
+    from cadex_cli.report import EXIT_FAILURE
+    from cadex_cli.walk import Leg
+    from test_train import _run
+    from test_walk import TOY
+
+    root = tmp_path / 'swept-project'
+    source = tmp_path / 'mechanism.py'
+    source.write_text(TOY.replace(
+        'p = params(', 'p = params(arm_len=num(80, min=40, max=160), '
+    ).replace('part.box(80, 8, 8)', 'part.box(p.arm_len, 8, 8)'))
+    code, result = _run(capsys, 'script', '--project', str(root), '--set', str(source))
+    assert code == EXIT_OK, result
+    initial_revision = result['accepted_revision']
+    run = root / 'runs/swept'
+    server, _thread = serve(root, '127.0.0.1', 0)
+    real_run_leg = command.run_leg
+    evidence = {}
+
+    def dispatch(name, argv, **kwargs):
+        if name != 'train':
+            return real_run_leg(name, argv, **kwargs)
+        # This callback is the exact boundary before any trainer starts.
+        record = read_run_record(run, root)
+        revision = record['model']['accepted_revision']
+        assert revision != initial_revision
+        assert record['status'] == 'running'
+        assert record['params']['values']['arm_len'] == 100
+        model = _json(server.url + 'api/model/run/swept')
+        assert model['available'], model
+        assert model['revision'] == revision
+        assert model['digest'] == record['model']['digest']
+        assert {c['name'] for c in model['components']} == {'base', 'swing'}
+        assert all(c['placement'] for c in model['components'])
+        mesh_bytes = {c['name']: _get(server.url.rstrip('/') + c['mesh'])[2]
+                      for c in model['components']}
+        page = _open(browser, server.url)
+        page.click("#views li[data-run='swept']")
+        page.wait_for("document.getElementById('view-kind').textContent === 'RUN swept'")
+        assert _model_state(page) == 'loaded'
+        assert page.text('#view-revision') == revision
+        assert page.text("#params tr[data-param='arm_len'] td:nth-child(2)") == '100'
+        assert page.text("#params tr[data-param='arm_len'] td:nth-child(3)") == '80'
+        assert page.text('#view-relation').startswith('CURRENT')
+        assert 'assembled model retained before training' in page.text('#model-status')
+        page.scroll_into_view('#viewer')
+        rect = page.rect('#viewer')
+        x, y = rect['x'] + rect['width']/2, rect['y'] + rect['height']/2
+        camera = page.evaluate('window.cadexReview.viewer().camera()')
+        page.drag(x, y, x+90, y+40)
+        page.wait_for(f'window.cadexReview.viewer().camera().yaw !== {camera["yaw"]}')
+        page.wheel(x, y, -240)
+        page.wait_for(f'window.cadexReview.viewer().camera().distance < {camera["distance"]}')
+        assert page.evaluate('window.cadexReview.viewer().nonBackgroundPixels()') > 1000
+        evidence.update(page=page, model=model, meshes=mesh_bytes,
+                        marker=(run / 'training-view.json').read_bytes())
+        return Leg(name, argv, code=EXIT_FAILURE,
+                   envelope={'error': 'intentional stop at training dispatch'})
+
+    monkeypatch.setattr(command, 'run_leg', dispatch)
+    try:
+        code, result = _run(capsys, 'walk', '--project', str(root), '--out', str(run),
+                            '--set', 'arm_len=100', '--iterations', '1', '--envs', '4')
+        assert code == EXIT_FAILURE, result
+        assert 'intentional stop' in result['error']
+        code, later = _run(capsys, 'params', '--project', str(root), '--set', 'arm_len=140')
+        assert code == EXIT_OK, later
+        assert later['accepted_revision'] != evidence['model']['revision']
+        # Retained bytes, rather than any staging cache, are what the URL serves.
+        page = evidence['page']
+        page.wait_for("document.getElementById('view-relation').textContent.startsWith('HISTORICAL')",
+                      timeout=10)
+        assert _model_state(page) == 'loaded'
+        assert page.text('#view-revision') == evidence['model']['revision']
+        assert page.text("#params tr[data-param='arm_len'] td:nth-child(2)") == '100'
+        assert page.text("#params tr[data-param='arm_len'] td:nth-child(3)") == '80'
+        assert (run / 'training-view.json').read_bytes() == evidence['marker']
+        historical = _json(server.url + 'api/model/run/swept')
+        assert historical['components'] == evidence['model']['components']
+        for component in historical['components']:
+            assert _get(server.url.rstrip('/') + component['mesh'])[2] == evidence['meshes'][component['name']]
+        record = read_run_record(run, root)
+        assert record['params']['values']['arm_len'] == 100
+        assert record['status'] == 'failed'
+        accepted = _json(server.url + 'api/model/accepted')
+        swing = next(c for c in accepted['components'] if c['name'] == 'swing')
+        assert _get(server.url.rstrip('/') + swing['mesh'])[2] != evidence['meshes']['swing']
+    finally:
+        server.shutdown()
+        server.server_close()

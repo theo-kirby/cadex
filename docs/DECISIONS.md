@@ -22884,3 +22884,20 @@ parameter sweep. Keep that failure visible; do not fabricate a historical
 training pose from the later rollout. This experiment changes no product code.
 Commands, hashes, harness corrections, limits and comparative results are in
 `docs/HEADLESS-BIPED-REVIEW.md` and `docs/probes/reed-foot90/`.
+
+## ADR-293 — Tessellate parameter acceptance for live walk review (2026-09-12)
+
+[Cadex-new] `cadex params` now requests standard tessellation, without edges,
+inside its existing `set_params` transaction. The ordinary `walk --set` sweep
+therefore leaves meshes in its own accepted attempt for pre-training snapshot
+retention. This costs tessellation on parameter edits, with no additional
+rebuild, acceptance transaction, command leg, dependency or protocol change.
+The dashboard continues to read only retained artifacts.
+
+A real-engine browser regression changes an arm length from 80 to 100 mm,
+observes the current assembled model at the training-dispatch boundary, then
+accepts 140 mm and verifies that the old model becomes historical with unchanged
+identity, parameter values and mesh bytes. Training is deliberately intercepted;
+this test makes no real-training claim. The test fails on the prior code because
+the retained model is unavailable. Reed foot90's missing training snapshot is
+historical evidence and remains untouched.
