@@ -17,7 +17,9 @@ Twenty public-CLI baseline rollouts on seeds 0–9, eight seconds each, show che
 
 After two product-agent quota refusals, the actor applied the disclosed 70→90 mm foot-length hypothesis through public `cadex walk --set`, with no warm start and unchanged task semantics. One 240-iteration GPU run exits 0, passes policy witnesses and retains a decoded, playable/downloadable final video. Ten matching seed/episode rollouts yield nine falls at 0.50–0.80 seconds and one eight-second survivor; mean duration is 1.338 seconds and mean forward displacement 160.842 mm. This remains poor gait, not repeatable walking or general improvement [rec: candid-forest-9800].
 
-Keep `open`: the physical edit, retraining, common-seed comparison and real browser history/restart evidence now exist, but actor fallback does not satisfy product-agent revision authorship. The full real D7 copy/edit/retraining lifecycle also remains unproven. No charter checkbox or whole-goal completion is implied [rec: candid-forest-9800].
+The independent copy now completes another real physical edit (90→100 mm feet), fresh bounded GPU training, verified video and source-unavailable engine/browser reopen, closing D7. The source and inherited histories remain unchanged. Copy100 falls at 0.62 seconds on seed 0; this single-seed outcome adds no common-seed gait-improvement claim [rec: clever-fern-7568].
+
+Keep `open`: product-agent revision authorship remains unmet. The copy edit used a disclosed actor fallback after quota refusal; two subsequent review-informed physical-revision requests were also refused before authoring, with no substitute revision or new training. Their authorized fallback work improved retained-video recovery and measured polling performance. No charter checkbox or whole-goal completion is implied [rec: clever-fern-7568] [rec: icy-pond-7346] [rec: young-cedar-2719].
 
 Charter criterion: **D9. The fresh biped completes the whole recorded lifecycle** The product agent creates and documents a new biped, trains and reviews it through this system, uses that review to make a reasoned design change, and retrains; both runs have saved playable videos and measured displacement, survival and falls over the same declared episode/seed set. Evidence: the project history, a lifecycle report linking D1–D8 evidence, and the comparative results; poor gait is a valid measured result, skipped training or missing recording is not. Declared target `gap-d9-fresh-biped-completes-whole` [rec: lucky-comet-0031].
 
@@ -39,3 +41,7 @@ Charter criterion: **D9. The fresh biped completes the whole recorded lifecycle*
 - light-brook-2640 — completed baseline, active/final video evidence and honest seed-0 comparison
 - brave-field-8478 — ten-seed checkpoint/final baseline establishes common episode comparison with unchanged source artifacts
 - candid-forest-9800 — actor-applied foot edit, bounded GPU retraining, verified video and ten-seed comparison; agent authorship and D7 remain open
+
+- clever-fern-7568 — D7 real copy lifecycle closes; further actor fallback does not establish product-agent revision authorship
+- icy-pond-7346 — comparison-informed product-agent revision refused on quota; video-recovery fallback, D9 stays open
+- young-cedar-2719 — further quota refusal before authorship; measured polling fallback adds no revision or training

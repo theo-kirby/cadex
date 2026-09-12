@@ -17,11 +17,13 @@ ADR-287 supplies atomic progress snapshots, bounded histories, two-second dashbo
 
 Reconciliation judgement: `working` is supported by the real multi-update observation under the fix plus existing telemetry tests; the charter specifies no minimum training duration beyond multiple actual updates. This does not edit the owner's checkbox or claim a longer observation. Histories remain sampled, remote progress mirrors are outside this path and checkpoint-hashing overhead is unmeasured [rec: merry-star-6951] [rec: kind-fountain-5086].
 
+**Retained-video verification has measured steady-state bounds (ADR-296).** For 64 synthetic sparse 256 MiB files (16 GiB logical history), uncached project polling took 6.59–7.00 seconds. A process-local cache of at most 256 digest entries reduces unchanged requests to 12–13 ms after the initial 7.041-second verification; three synthetic browser telemetry updates arrived in 1.930–2.023 seconds without reload. This supplements the real-training evidence above; it does not replace it [rec: young-cedar-2719].
+
 Charter criterion: **D3. Training is visible while it runs** The biped's real GPU training updates status, iteration, reward and loss histories, episode length and checkpoint availability without a page reload; committed telemetry appears within five seconds under the measured test conditions; missing or stale data is labelled. Evidence: a browser observation spanning multiple actual training updates plus telemetry tests — synthetic data alone cannot tick it. Declared target `gap-d3-training-visible-while-runs` [rec: lucky-comet-0031], introduced with no implementation claimed [rec: dusty-peak-9330].
 
 ## Negative knowledge
 
-None yet.
+- [scope: ADR-296 64-file synthetic retained-video workload | confidence: high | evidence: young-cedar-2719] Initial verification, restart, changed files and eviction still require byte reads; histories exceeding 256 cached file versions are outside the measured steady-state result. Sparse files, warm filesystem cache and loopback Chromium do not establish cold-storage, real-video, second-device or universal five-second performance.
 
 ## Provenance
 
@@ -32,3 +34,5 @@ None yet.
 - lucid-journey-6875 — first real observation during the fresh biped's GPU probe; the null-identity defect
 - lively-gate-6535 — ADR-289: run identity recorded from the manifest before training, fixture-browser-tested
 - merry-star-6951 — real multi-update browser re-observation under the identity fix within the five-second threshold
+
+- young-cedar-2719 — measured long-history verification cost and bounded cache with explicit first-read/eviction and synthetic-workload limits
