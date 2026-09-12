@@ -2,13 +2,12 @@
 
 Verified against source: 2026-09-12. [Cadex-new]
 
-The shared private-network dashboard on port 8765 now serves
-`ot5-biped-copy29`, the independent Reed working copy. Its latest recorded
-attempt is `shin55-final`, the product-agent-authored 55 mm shin revision
-(project ADR-007) at revision `67b5000f3de1…`, with 100 mm feet. Twelve
-retained runs include the original 70 mm design, the 90 mm and 100 mm foot
-revisions, the `shin55` training record and its checkpoint 20 playback.
-No training is active at this check.
+The shared private-network dashboard on port 8765 now serves `ot5-wren`,
+the second fresh agent-authored biped, at accepted revision `5309bebc6597…`.
+It has no runs: a fresh visit selects ACCEPTED NOW, with twelve declared
+parameter defaults and eight drawn components (seven biped solids plus ground). No training is active.
+[Iteration 46 receipt](../wren-fresh/README.md) verifies this working-project
+switch; Reed's retained results remain in their original project directories.
 
 Keep the server running between iterations. On this Linux host, from the
 checkout, the detached command is:
@@ -16,7 +15,7 @@ checkout, the detached command is:
 ```bash
 systemd-run --user --unit=cadex-operator-review --property=Restart=on-failure \
   --working-directory="$PWD" "$PWD/cadex" review \
-  --project "$HOME/cadex-projects/ot5-biped-copy29" \
+  --project "$HOME/cadex-projects/ot5-wren" \
   --host "$(tailscale ip -4)" --port 8765
 ```
 
@@ -27,7 +26,7 @@ exit and tests; it is not a reboot installation. Do not restart Ouroboros or
 training. Update this published status on experiment start/completion and
 project switches.
 
-The read-only probe uses the existing persistent server; it never launches or
+The following historical Reed read-only probe uses the existing persistent server; it never launches or
 stops a test server:
 
 ```bash
@@ -85,3 +84,5 @@ played, downloaded with the recorded digest and preserved across a poll,
 labelled HISTORICAL, and return to current. No training was active, no
 experiment started and no project switch occurred; published status stays
 `ot5-biped-copy29 / shin55-final` and the service keeps running.
+
+For the current run-less Wren page, use the [Wren probe](../wren-fresh/README.md), not the historical run/video probe above.

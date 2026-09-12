@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""Reopen a fresh, run-less project through the engine and inspect it on the
-persistent operator server; never starts or stops a server.
+"""Reopen a disposable copy of a fresh, run-less project through the engine
+and inspect the original on the persistent operator server; never starts or
+stops a server. Inventory checks exclude only this invocation's output directory
+and .git, keeping all earlier evidence under the read-only assertion.
 
 PYTHONPATH=cli:cli/tests pixi run python docs/probes/wren-fresh/lifecycle.py \\
     URL PROJECT EVIDENCE_NAME [--intact OTHER_PROJECT=SNAPSHOT.json ...]
@@ -15,6 +17,8 @@ import base64
 import hashlib
 import json
 import sys
+import shutil
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -24,9 +28,10 @@ from cadex_cli.engine import resolve_engine
 from cdp_browser import HeadlessBrowser, find_browser
 
 
-def inventory(root):
+def inventory(root, exclude=None):
     return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(root.rglob('*')) if p.is_file() and '.git' not in p.parts}
+            for p in sorted(root.rglob('*')) if p.is_file() and '.git' not in p.parts
+            and (exclude is None or not p.is_relative_to(exclude))}
 
 
 def accepted_manifest(root):
@@ -50,25 +55,30 @@ root = Path(project).resolve()
 out = root / 'evidence' / name
 out.mkdir(parents=True, exist_ok=True)
 manifest = accepted_manifest(root)
-before = inventory(root)
+before = inventory(root, exclude=out)
 receipt = {'project': root.name, 'url_host': url.split('//')[1].split('/')[0], 'evidence': name,
            'accepted_revision': manifest['accepted_revision'], 'accepted_digest': manifest['accepted_digest'],
-           'param_values': manifest['param_values'], 'engine_opens': [], 'intact': {}}
+           'param_values': {**{p['name']: p['default'] for p in manifest['param_specs']}, **manifest['param_values']}, 'engine_opens': [], 'intact': {}}
 
-# Save/reopen: the accepted revision restores through two fresh engine processes.
-for _ in range(2):
-    with CadexdClient(resolve_engine()) as client:
-        pid = client._process.pid
-        reply = open_project(client, root, restore=True)
-    assert reply['restore']['matches_accepted'] is True, reply
-    receipt['engine_opens'].append({'pid': pid, 'matches_accepted': True,
-                                    'restore': {k: v for k, v in reply['restore'].items() if k != 'outputs'}})
-    assert inventory(root) == before, 'restore changed retained inputs'
-    assert accepted_manifest(root) == manifest, 'restore changed the accepted manifest'
+# Restore deliberately republishes attempt artifacts. Exercise it on a full
+# disposable copy; the served project remains under the strict inventory check.
+with tempfile.TemporaryDirectory(prefix='wren-reopen-', dir=root.parent) as temporary:
+    reopened = Path(temporary) / root.name
+    shutil.copytree(root, reopened)
+    for _ in range(2):
+        with CadexdClient(resolve_engine()) as client:
+            pid = client._process.pid
+            reply = open_project(client, reopened, restore=True)
+        assert reply['restore']['matches_accepted'] is True, reply
+        receipt['engine_opens'].append({'pid': pid, 'matches_accepted': True,
+                                       'restore': {k: v for k, v in reply['restore'].items() if k != 'outputs'}})
+        assert accepted_manifest(reopened) == manifest, 'restore changed accepted identity'
+        assert inventory(root, exclude=out) == before, 'restore changed served inputs'
 assert receipt['engine_opens'][0]['pid'] != receipt['engine_opens'][1]['pid']
+receipt['engine_reopen_scope'] = 'disposable full copy; served project byte-checked'
 
 # The server's own view of the project, before the page reads it.
-api = json.loads(urllib.request.urlopen(url.rstrip('/') + '/api/review', timeout=15).read())
+api = json.loads(urllib.request.urlopen(url.rstrip('/') + '/api/project', timeout=15).read())
 assert api['accepted']['available'] and api['accepted']['revision'] == manifest['accepted_revision']
 assert api['accepted']['digest'] == manifest['accepted_digest']
 assert api['runs'] == [], api['runs']
@@ -99,8 +109,10 @@ with HeadlessBrowser(find_browser()) as browser:
                         'bounds': stats['bounds'], 'style': stats['style'], 'drawn_pixels': drawn,
                         'status': page.text('#model-status')}
     assert page.text('#params-note') == 'specs from project manifest at the accepted revision'
-    shown = page.evaluate("Array.from(document.querySelectorAll('#params tr[data-param]')).map(r => [r.dataset.param, r.children[1].textContent])")
-    assert {k: float(v) for k, v in shown} == {k: float(v) for k, v in manifest['param_values'].items()}, shown
+    shown = page.evaluate("Array.from(document.querySelectorAll('#params tr[data-param]')).map(r => [r.dataset.param, r.children[1].textContent, r.children[2].textContent])")
+    assert {k: float(default if v == '—' else v) for k, v, default in shown} == receipt['param_values'], shown
+    assert {k: float(v) for k, v, default in shown if v != '—'} == manifest['param_values'], shown
+    receipt['parameter_display'] = 'explicit overrides or declared default column'
     receipt['params_shown'] = len(shown)
     assert page.attribute('#telemetry', 'data-state') == 'unselected'
     assert page.text('#telemetry').startswith('Training telemetry: unselected')
@@ -142,7 +154,7 @@ for other, snapshot in intact.items():
     now = inventory(Path(other))
     assert now == snapshot, f'{other} changed: ' + str(sorted(set(now.items()) ^ set(snapshot.items()))[:5])
     receipt['intact'][Path(other).name] = {'files': len(snapshot), 'unchanged': True}
-assert inventory(root) == before
+assert inventory(root, exclude=out) == before
 receipt['retained_files'] = len(before)
 receipt['private_address_same_machine'] = True
 (out / 'lifecycle.json').write_text(json.dumps(receipt, indent=2) + '\n')

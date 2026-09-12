@@ -928,3 +928,16 @@ up in [`docs/probes/reed-lifecycle/README.md`](probes/reed-lifecycle/README.md).
 evidence. The persistent operator URL was checked again while generating it:
 `shin55-final` selected by default, historical `probe3-final` playable, and
 a route back to the current run.
+
+## Second fresh project: Wren
+
+Iteration 46 repairs the previously unrecorded Wren probe and verifies
+`ot5-wren` at accepted revision `5309bebc6597…` on the persistent port 8765.
+[Receipt and limitations](probes/wren-fresh/README.md): eight drawn components (seven biped solids plus ground),
+twelve declared defaults, pointer orbit/zoom, empty run state across polling,
+and two accepted-identity engine reopens on a disposable full copy. Both Reed
+projects remain byte-identical across this probe. Wren has no training or
+videos yet; this is the opening slice of the repeated lifecycle, not another
+completed D9 lifecycle. In-place restore was found to replace retained
+attempt artifacts without tessellation; the successful receipt deliberately
+checks copy reopens and read-only browsing separately.

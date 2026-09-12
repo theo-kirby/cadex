@@ -5,7 +5,7 @@
 with its claims.
 
 ``docs/probes/wren-fresh/lifecycle.py`` reopens a run-less agent-authored
-project through two fresh engine processes, inspects it on the persistent
+project copy through two fresh engine processes, inspects the original on the persistent
 operator server over the private-network address, and proves the earlier
 Reed projects unchanged by hash inventory. ``evidence.json`` is that receipt
 for ``ot5-wren``, committed without its images. The project lives outside
@@ -55,7 +55,7 @@ def test_every_declared_parameter_reached_the_page(receipt):
 def test_the_model_was_drawn_and_orbited_over_the_private_address(receipt):
     assert receipt["url_host"].endswith(":8765") and not receipt["url_host"].startswith("127.")
     model = receipt["model"]
-    assert model["components"] == 7 and model["triangles"] > 0 and model["drawn_pixels"] > 1000
+    assert model["components"] == 8 and model["triangles"] > 0 and model["drawn_pixels"] > 1000
     assert model["style"] == "cadex-prototype-light-v1"
     orbit = receipt["orbit"]
     assert orbit["after_drag"]["yaw"] != orbit["default"]["yaw"]
@@ -67,6 +67,7 @@ def test_the_model_was_drawn_and_orbited_over_the_private_address(receipt):
 
 
 def test_two_engine_reopens_restored_the_accepted_revision(receipt):
+    assert receipt["engine_reopen_scope"] == "disposable full copy; served project byte-checked"
     opens = receipt["engine_opens"]
     assert len(opens) == 2 and opens[0]["pid"] != opens[1]["pid"]
     assert all(item["matches_accepted"] is True for item in opens)
@@ -87,3 +88,27 @@ def test_documents_cite_the_receipt(receipt):
     assert short in readme and "ot5-wren" in readme
     assert "ot5-wren" in operator and short in operator
     assert "ot5-wren" in review and short in review
+
+
+def test_inventory_excludes_only_invocation_outputs(tmp_path):
+    # Load the helper without executing the real-project command-line probe.
+    import ast
+    import hashlib
+
+    tree = ast.parse((PROBE / 'lifecycle.py').read_text())
+    helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'inventory')
+    namespace = {'hashlib': hashlib}
+    exec(compile(ast.Module(body=[helper], type_ignores=[]), '<inventory>', 'exec'), namespace)
+    inventory = namespace['inventory']
+    current = tmp_path / 'evidence' / 'current'
+    previous = tmp_path / 'evidence' / 'previous'
+    current.mkdir(parents=True)
+    previous.mkdir()
+    (previous / 'retained.png').write_bytes(b'old evidence')
+    (tmp_path / 'script.py').write_text('accepted source')
+    before = inventory(tmp_path, exclude=current)
+    (current / 'screenshot.png').write_bytes(b'new output')
+    assert inventory(tmp_path, exclude=current) == before
+    (previous / 'retained.png').write_bytes(b'changed evidence')
+    assert inventory(tmp_path, exclude=current) != before
+    assert 'script.py' in before and 'evidence/previous/retained.png' in before
