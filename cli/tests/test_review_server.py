@@ -1185,3 +1185,61 @@ def test_browser_coalesces_polls_during_initial_video_verification(served, brows
     page.wait_for("document.getElementById('view-status').textContent === 'failed'")
     assert page.attribute('#freshness', 'data-state') == 'live'
     assert len(reads) == 1
+
+
+def test_two_browser_clients_share_cold_video_verification(served, browser, monkeypatch):
+    """Concurrent clients must share byte reads and both refuse corrupt output."""
+    from cadex_cli import review_record
+    root, server = served
+    run = root / 'runs/first'
+    video = run / 'shared-cold.webm'
+    video.write_bytes(b'corrupt retained video')
+    _rewrite_record(run, videos=[{'path': video.name, 'sha256': '0' * 64}])
+    entered, second, release = threading.Event(), threading.Event(), threading.Event()
+    original_hash = review_record._sha256
+    original_verify = review_record._video_sha256
+    reads, requests = [], []
+
+    def verify(path):
+        if path == video:
+            requests.append(path)
+            if len(requests) == 2:
+                second.set()
+        return original_verify(path)
+
+    def slow_hash(path):
+        if path == video:
+            reads.append(path)
+            entered.set()
+            if not release.wait(20):
+                raise OSError('test verification timed out')
+        return original_hash(path)
+
+    monkeypatch.setattr(review_record, '_sha256', slow_hash)
+    monkeypatch.setattr(review_record, '_video_sha256', verify)
+    first = browser.page(server.url)
+    try:
+        assert entered.wait(5)
+        other = browser.page(server.url)
+        assert second.wait(5), 'second browser must reach server verification'
+        for page in (first, other):
+            assert page.attribute('#freshness', 'data-state') == 'loading'
+            assert not page.evaluate("!!document.querySelector('#videos video')")
+    finally:
+        release.set()
+    for page in (first, other):
+        page.evaluate('window.cadexReview.ready', await_promise=True)
+        page.click("#views li[data-run='first']")
+        page.wait_for("document.getElementById('videos').textContent.includes('digest mismatch')")
+        assert not page.evaluate("!!document.querySelector('#videos video')")
+    assert len(reads) == 1, 'two cold clients must hash the shared file once'
+    # Publish one file version: truncating in place exposes an intermediate
+    # empty file to timer polls, which correctly needs another verification.
+    replacement = video.with_suffix('.partial')
+    replacement.write_bytes(b'changed corrupt bytes')
+    replacement.replace(video)
+    for page in (first, other):
+        page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        assert 'digest mismatch' in page.text('#videos')
+    assert len(reads) == 2, 'changed bytes need one fresh verification'
+    assert review_record._cached_video_sha256.cache_info().maxsize == 256

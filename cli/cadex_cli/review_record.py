@@ -42,6 +42,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import threading
 from typing import Any, Mapping, Sequence
 
 RUN_RECORD_FILENAME = "run.json"
@@ -91,6 +92,9 @@ def _video_stamp(path: Path) -> tuple[int, ...]:
     return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
 
 
+_video_verification_lock = threading.Lock()
+
+
 @lru_cache(maxsize=256)
 def _cached_video_sha256(path: Path, stamp: tuple[int, ...]) -> str:
     """Bounded process-local digests; never retain file bytes or project state."""
@@ -104,8 +108,11 @@ def _video_sha256(path: Path) -> str:
     # Containment is checked by the caller on every read, before this cache.
     # ctime catches same-size edits even when a writer restores mtime.
     path = path.resolve()
-    stamp = _video_stamp(path)
-    digest = _cached_video_sha256(path, stamp)
+    # lru_cache protects its mapping, but permits concurrent duplicate misses.
+    # Serialize lookup plus hashing, with no per-file lock registry to grow.
+    with _video_verification_lock:
+        stamp = _video_stamp(path)
+        digest = _cached_video_sha256(path, stamp)
     if _video_stamp(path) != stamp:
         raise OSError("video changed during verification")
     return digest

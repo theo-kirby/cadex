@@ -517,3 +517,26 @@ def test_video_modified_during_verification_is_not_cached(tmp_path, monkeypatch)
         review_record._video_sha256(video)
     monkeypatch.setattr(review_record, '_sha256', original_hash)
     assert review_record._video_sha256(video) == hashlib.sha256(b'after').hexdigest()
+
+
+def test_video_digest_cache_evicts_oldest_file(tmp_path, monkeypatch):
+    from cadex_cli import review_record
+    review_record._cached_video_sha256.cache_clear()
+    original_hash = review_record._sha256
+    reads = []
+
+    def counted(path):
+        reads.append(path)
+        return original_hash(path)
+
+    monkeypatch.setattr(review_record, '_sha256', counted)
+    for index in range(257):
+        video = tmp_path / f'{index}.webm'
+        video.write_bytes(str(index).encode())
+        review_record._video_sha256(video)
+    assert review_record._cached_video_sha256.cache_info().currsize == 256
+    review_record._video_sha256(video)
+    assert len(reads) == 257
+    assert review_record._video_sha256(tmp_path / '0.webm') == hashlib.sha256(b'0').hexdigest()
+    assert len(reads) == 258
+    assert review_record._cached_video_sha256.cache_info().currsize == 256

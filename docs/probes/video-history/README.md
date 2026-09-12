@@ -45,5 +45,20 @@ throughput measurement or a real training observation. Run it with:
 pixi run python -m pytest cli/tests/test_review_server.py -k coalesces -q
 ```
 
-Each page now shares its pending request. Multiple clients, first-read latency
-and histories larger than the digest cache remain outside this bound.
+Each page now shares its pending request. ADR-298 also serializes video cache
+lookup and hashing within the server process. A second browser page is opened
+while the first hash is blocked; the test waits until both requests reach
+verification. Before this fix there are two byte reads, after it one. Both
+pages refuse the corrupt video, and changed bytes trigger one fresh hash.
+The unfixed control failed on the duplicate-read assertion in 1.19 seconds.
+This counts duplicate work under deterministic fault injection, not storage
+throughput or real training latency. Reproduce with:
+
+```bash
+pixi run python -m pytest cli/tests/test_review_server.py -k two_browser_clients -q
+```
+
+First-read latency and histories larger than the digest cache retain their
+limits. Unrelated video checks may wait behind the process-wide lock; separate
+servers have independent locks and caches. A 257-file reader regression proves
+the cache remains bounded at 256 entries and rehashes an evicted file.

@@ -2717,6 +2717,9 @@ field, and every client gets it through the surface it already reads.
 
 ## Live headless project review (ADR-284)
 
+- [x] Share cold retained-video verification across concurrent browser clients
+      (ADR-298), with two-client corruption refusal and bounded-cache eviction tests.
+
 - [x] Bound retained-video digest memory and reuse unchanged verification
       (ADR-296): 64-file/16 GiB synthetic history measured through HTTP and
       headless-browser telemetry, with corruption/refusal/recovery regression.

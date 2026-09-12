@@ -1465,7 +1465,11 @@ Each browser page keeps at most one project poll in flight (ADR-297): timer
 ticks and explicit refreshes share the pending request, including initial
 verification after a server restart. Initial loading remains labelled until
 verification completes; slow reads do not multiply requests from that page.
-Separate browser clients can still verify concurrently.
+Within one server process, video cache lookup and hashing are serialized
+(ADR-298): concurrent clients reuse a completed digest instead of duplicating
+the same cold read. An unrelated cold video can wait behind that verification;
+separate server processes do not share this lock or cache. The cache remains
+bounded at 256 entries, and failures release the lock for subsequent requests.
 
 What it serves is an allowlist, never a path. Every route names a run by
 its directory name, an artifact by its record key, a document by the name

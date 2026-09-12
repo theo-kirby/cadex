@@ -22965,3 +22965,23 @@ A headless-browser regression holds initial video hashing across three timer
 intervals, asserts one byte read and loading without playback, then releases
 verification, checks corruption refusal and observes a subsequent status edit.
 No dependency, engine, protocol or training change.
+
+## ADR-298 — Serialize retained-video cache misses across clients (2026-09-12)
+
+Two headless browser pages reaching the same cold retained video caused two
+byte reads before either verification finished, despite ADR-297's per-page
+poll guard. Python's LRU cache protects its mapping but allows concurrent
+misses to compute twice. One process-local lock now covers the video stat,
+cache lookup and hash. Waiting clients reuse the resulting digest; exceptions
+release the lock, and file stamps and recorded digests remain checked. This
+replaces duplicate concurrent hashing without a growing per-file lock registry
+or a new dependency. The cache still holds at most 256 digests.
+
+The deliberate tradeoff is serialization: an unrelated cold video can wait
+behind another verification, including a cached lookup waiting for the lock.
+Separate processes have independent caches and locks. This is a duplicate-work
+bound, not a cold-storage latency or five-second telemetry guarantee. The
+browser regression reproduces two reads before the fix and one after, keeps
+both clients loading until verification ends, refuses corruption in both and
+rehashes changed bytes once. A 257-file test proves eviction and revalidation;
+existing mutation, replacement and containment tests remain required.
