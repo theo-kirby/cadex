@@ -37,6 +37,7 @@ import os
 from pathlib import Path
 import signal
 import sys
+import threading
 import time
 from typing import Any, Iterator, Mapping, Sequence
 
@@ -108,6 +109,7 @@ from .train import (
     trainer_command,
 )
 from .review_record import write_run_record
+from .review_server import serve as serve_review
 from .walk import (
     DEFAULT_LEG_TIMEOUT_S,
     POLICY_SWITCH,
@@ -515,6 +517,26 @@ def build_parser() -> argparse.ArgumentParser:
         "turn and no trainer.",
     )
     _remote_flags(walk_parser)
+
+    review_parser = subparsers.add_parser(
+        "review",
+        help="Serve this project's review dashboard, read-only, to a browser "
+        "on the private network (ADR-286). No engine, no tokens.",
+    )
+    _common(review_parser, inherit=True)
+    review_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Address to bind. Default 127.0.0.1 (this machine only); give "
+        "the machine's Tailscale or LAN address to reach it from another "
+        "device, or 0.0.0.0 for every interface.",
+    )
+    review_parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="TCP port. Default 8765; 0 takes a free port and reports it.",
+    )
     return parser
 
 
@@ -1461,6 +1483,47 @@ def _walk_common(args: argparse.Namespace) -> list[str]:
     return common
 
 
+def command_review(args: argparse.Namespace, report: RunReport) -> int:
+    """Serve one project's review dashboard until interrupted (ADR-286).
+
+    Inspection only: the server reads the project's manifest, records and
+    retained artifacts on every request and writes nothing, so stopping it
+    — Ctrl-C, SIGTERM — changes nothing about the project, and a walk or a
+    training run in progress is neither stopped nor duplicated by starting
+    or restarting it. The URL is printed on stderr as soon as the socket is
+    bound, which is what a pipeline (or a test) waits for.
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"review: project directory not found: {root}")
+    port = int(args.port)
+    if port < 0 or port > 65535:
+        raise ValueError(f"review: --port must be 0..65535, not {port}")
+    try:
+        server, thread = serve_review(root, str(args.host), port)
+    except OSError as exc:
+        raise ValueError(f"review: cannot bind {args.host}:{port}: {exc}") from exc
+    stop = threading.Event()
+
+    def _stop(_signum: int, _frame: Any) -> None:
+        stop.set()
+
+    previous = {sig: signal.signal(sig, _stop) for sig in (signal.SIGINT, signal.SIGTERM)}
+    _progress(f"review: serving {root.name} at {server.url} (read-only; Ctrl-C to stop)")
+    try:
+        while not stop.is_set() and thread.is_alive():
+            stop.wait(0.5)
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+        server.shutdown()
+        server.server_close()
+    report.ok = True
+    report.notes.append(f"review: served {server.url}; stopped")
+    return EXIT_OK
+
+
 def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     """The lifecycle walk as one command (ADR-199).
 
@@ -1950,6 +2013,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_train(args, report)
         elif command == "walk":
             code = command_walk(args, report)
+        elif command == "review":
+            code = command_review(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
     except (ValueError, ExportError, InventoryError, TrainError, WalkError) as exc:
@@ -2146,6 +2211,8 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
+    if command == "review":  # inspection only: no row, no commit (ADR-286)
+        return
     # Read once, before the row is appended: both branches compare against
     # the last row that carried each number, and the walk branch is why
     # travel figures are comparable at all (ADR-260).
@@ -2187,6 +2254,8 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
     """
 
     if command == "asset" and not getattr(args, "put_files", None):
+        return
+    if command == "review":
         return
     # A walk's legs each committed; what is left is its review.json, when
     # --out lies under the project, plus generated project review artifacts.

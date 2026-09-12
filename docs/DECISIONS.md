@@ -22641,3 +22641,73 @@ one. `docs/CLI.md` documents the contract, retention and copying;
 `cli/tests/test_review_record.py` pins the writer, the snapshot bounds,
 path isolation and the reader's labels; `cli/tests/test_walk.py` pins the
 walk writing it on success and on a refused leg.
+
+## ADR-286 — A one-project review dashboard that only reads (2026-09-12)
+
+**Context.** The ot5 charter (ADR-284) asks for a headless project to be
+observable while work happens and reviewable afterward, from a browser on
+another device, with no display session on the machine that serves it.
+ADR-285 put the identities on disk — `runs/<name>/run.json` and a reader
+that resolves every reference under a containment check — and left the
+browser for the next unit. The engine has no HTTP surface and must not
+grow one for a UI (AGENTS.md: no UI in the engine); the shell is a
+desktop application; the CLI is the third protocol client and already
+the walk's home.
+
+**Decision.** `cadex review --project DIR [--host ADDR] [--port N]`
+serves **one** project to a browser, **inspection only**, from
+`cli/cadex_cli/review_server.py` on the standard library alone:
+`ThreadingHTTPServer`, one request per connection, no framework, no
+template engine, no CDN — the page under `review_static/` is plain HTML
+and a few hundred lines of JavaScript with a hand-written WebGL viewer
+(orbit, zoom, flat shading), because a review client on a private network
+with no internet cannot fetch a library and there is nothing to add one
+for. The server holds no state and caches nothing: every request reads
+the manifest, the records and the retained files as they stand, so a
+landing walk appears on the next poll and stopping or restarting the
+server changes nothing about the project. It writes nothing, adds no
+`PROGRESS.md` row and makes no commit; `--host` defaults to loopback and
+the private-network address is an explicit choice.
+
+**Where the model comes from.** A run's model is the meshes its rollout
+leg exported beside its trace, placed where that trace's first frame put
+each component and linked to components through the run's render summary
+— that run's geometry at that run's revision, never today's. The accepted
+model now is the accepted attempt's own tessellation (`display/*.tess`
+under the staging directory the manifest names), each buffer linked to its
+output by the BREP's sha256 rather than by file order, placed by the
+attempt's own simulation trace; a staging directory that does not lie
+under the accepted revision is refused. That is the second read the review
+client makes of the store's layout (ADR-285 documented the first), and it
+is written down in `docs/CLI.md` for the same reason: if the layout moves,
+this is what moves with it. Reading a project cannot re-accept anything;
+the viewer draws what was retained or says what is missing.
+
+**What it refuses.** Every route is an allowlist — a run by its directory
+name, an artifact by its record key, a document by the name its record
+lists, a mesh by its output, a video by its index — resolved through the
+reader's containment check. Nothing in a request is ever joined onto the
+project root; a path with `..`, a record reference that escapes its base,
+the project's own `script.json`, the server's source, all answer `404`.
+
+**How it is tested.** Dashboard behaviour needs a browser, and adding
+Playwright would have been a new dependency for one suite. Chromium
+started with `--remote-debugging-pipe` speaks the DevTools protocol as
+NUL-separated JSON on file descriptors 3 and 4; `cli/tests/cdp_browser.py`
+is a hundred lines over that pipe — evaluate, real mouse events, a
+screenshot — using whatever Chromium the machine has, and the browser
+tests skip without one the way engine tests skip without an engine.
+`cli/tests/test_review_server.py` pins the API, the refusals, the command,
+and in the browser: displayed identities against the records they came
+from, a historical run labelled and drawn from its own mesh with its own
+parameters, orbit and zoom moving the camera over a drawn model (pixels
+counted), missing data labelled, the stale label when the server goes
+away, and reachability over a private address when `CADEX_REVIEW_HOST`
+names one.
+
+**What this is not.** Not a second shell, not a training control, not a
+multi-project catalog, not a public host: one project, one address,
+read-only, on the private network the operator already has. Training
+telemetry while it runs and policy videos are the D3 and D4 slots the
+page already has cells for — the freshness poll and the video route are
+in place, the trainer's progress file and the renders are not yet wired.

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<!-- SPDX-FileCopyrightText: 2026 Cadex Authors
+     SPDX-License-Identifier: LGPL-2.1-or-later -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cadex review</title>
+<link rel="stylesheet" href="/review.css">
+</head>
+<body>
+<header id="top">
+  <div>
+    <h1 id="project-name">Cadex review</h1>
+    <div id="accepted-line" class="muted">loading…</div>
+  </div>
+  <div id="freshness" data-state="loading">loading…</div>
+</header>
+<main>
+  <nav id="sidebar">
+    <h2>Views</h2>
+    <ul id="views"></ul>
+    <p class="muted small">Inspection only. Authoring and training stay on the CLI; this page holds no project state.</p>
+  </nav>
+  <section id="detail">
+    <div id="identity" class="card">
+      <div class="badges"><span id="view-kind" class="badge"></span><span id="view-relation" class="badge"></span><span id="view-status" class="badge"></span></div>
+      <table class="kv">
+        <tr><th>revision</th><td id="view-revision" class="mono"></td></tr>
+        <tr><th>digest</th><td id="view-digest" class="mono"></td></tr>
+        <tr><th>identity from</th><td id="view-identity-source"></td></tr>
+        <tr><th>recorded</th><td id="view-recorded"></td></tr>
+        <tr><th>note</th><td id="view-note"></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Model</h2>
+      <div id="model-status" class="muted" data-state="empty">no model loaded</div>
+      <canvas id="viewer" width="960" height="540"></canvas>
+      <div class="muted small">drag to orbit · wheel to zoom · <button id="model-fit" type="button">fit</button></div>
+      <ul id="model-components"></ul>
+    </div>
+    <div class="card">
+      <h2>Parameters and specs</h2>
+      <div id="params-note" class="muted"></div>
+      <table id="params" class="grid"><thead><tr><th>name</th><th>value</th><th>default</th><th>min</th><th>max</th><th>unit</th><th>label</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card" id="training-card">
+      <h2>Training and rollout</h2>
+      <table id="training" class="kv"><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <h2>Artifacts</h2>
+      <ul id="problems"></ul>
+      <table id="artifacts" class="grid"><thead><tr><th>artifact</th><th>path</th><th>status</th></tr></thead><tbody></tbody></table>
+      <ul id="videos"></ul>
+    </div>
+    <div class="card">
+      <h2>Documents and decisions</h2>
+      <div id="docs-note" class="muted"></div>
+      <ul id="docs"></ul>
+      <ul id="decisions"></ul>
+      <pre id="doc-view" class="hidden"></pre>
+    </div>
+  </section>
+</main>
+<script src="/viewer.js"></script>
+<script src="/review.js"></script>
+</body>
+</html>

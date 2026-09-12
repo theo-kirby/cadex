@@ -60,6 +60,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. With `--dry-run`, report the plan — the files the leg would touch and the steps it would take, in either mode — and train nothing. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
+| `cadex review --host ADDR --port N` | Serve **this one project's** review dashboard to a browser, read-only (ADR-286): the accepted identity now, every recorded run labelled current/historical, its parameters and specs as recorded, training and rollout figures, retained artifacts, document snapshots, and the model in an orbit/zoom WebGL view — a run's own rollout meshes at its own revision, or the accepted attempt's tessellation. Opens no engine, rebuilds nothing, writes nothing, adds no `PROGRESS.md` row. Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. | no |
 
 Flags, valid on either side of the subcommand:
 
@@ -1304,6 +1305,71 @@ the stored script no longer re-runs, and the walk's digest edit — a `cadex
 script` read followed by a `cadex script --set` — is what repairs it. Every
 other command keeps the restore.
 
+### The review dashboard (ADR-286)
+
+```bash
+./cadex review --project ~/cadex-projects/biped --host "$(tailscale ip -4)" --port 8765
+# review: serving biped at http://100.x.y.z:8765/ (read-only; Ctrl-C to stop)
+```
+
+One project per server, inspection only. The page is for a person, on
+another device, with no display session on the machine that serves it:
+`--host` defaults to `127.0.0.1` (this machine only); give it the
+machine's Tailscale or LAN address to reach it across the private network,
+or `0.0.0.0` for every interface. `--port 0` takes a free port; the URL is
+printed on stderr the moment the socket is bound, which is what a script
+waits for. The server holds no state: every request reads the manifest,
+the records and the retained files as they stand, so a walk that lands
+while the page is open shows up on its next poll (five seconds), and
+stopping or restarting the server — Ctrl-C, SIGTERM — changes nothing
+about the project and neither stops nor duplicates a walk or a training
+run in progress. Browser state is not project state; authoring and
+training stay on the CLI.
+
+What the page shows, and where each thing comes from:
+
+- **Accepted now**: the revision, digest and parameter specs from the
+  project manifest, the current documents and decision headings, and the
+  model from the **accepted attempt's own tessellation** — the
+  `display/*.tess` files under the staging directory the manifest names,
+  each linked to its output by the BREP's sha256, placed where the
+  attempt's own simulation trace put each component at its first frame.
+  This is the second and last read the review client makes of the
+  project store's layout (ADR-285 documented the first, `script.json`);
+  a staging directory that does not lie under the accepted revision is
+  refused rather than shown as the accepted model.
+- **A run**: everything from its `run.json` (ADR-285) — identity, params
+  and specs *as recorded*, training request and receipt, rollout seed and
+  reward, artifacts with each one's status, the document snapshot — and
+  the model from the **meshes its rollout leg exported beside its trace**,
+  placed by that trace's first frame, with component-to-output links from
+  the run's render summary. A historical run is labelled `HISTORICAL —
+  recorded at <its revision>, accepted now is <today's>` and drawn from its
+  own files only; nothing is rebuilt from today's script. A `running`
+  record is labelled as started and never finished, with the next CLI
+  action; a legacy run reads `unrecorded`.
+- **Labels, never guesses**: an artifact is `retained` (linked, with a
+  download), `missing`, `not recorded` or `refused: <why>`; a run with no
+  trace has *no model to show* and says which file is missing; the header
+  reads `live: updated <time>` while the server answers and `stale: server
+  unreachable, last update <time>` when it stops, with the last good view
+  left on screen. Videos are the D4 slot: a recorded video plays inline
+  (byte ranges are served, so seeking works) and downloads, identified by
+  policy digest, seed and simulated seconds; none recorded says so.
+
+What it serves is an allowlist, never a path. Every route names a run by
+its directory name, an artifact by its record key, a document by the name
+its record lists, a mesh by the output it belongs to, a video by its
+index; each is looked up in what the reader returned and resolved through
+the reader's containment check. A reference that escapes its base is
+listed under the run's problems and answered `404`, as is anything the
+records do not name — the project's own `script.json`, a path with `..`,
+the server's source. `cli/tests/test_review_server.py` pins the refusals
+and, in a headless Chromium driven over its DevTools pipe
+(`cli/tests/cdp_browser.py`, no Playwright), the labels, the historical
+view, real mouse orbit and zoom on the canvas, the stale label and
+reachability over a private address (`CADEX_REVIEW_HOST`).
+
 ### Exit codes
 
 | Code | Meaning |
@@ -1629,6 +1695,7 @@ Fast, and honest about what it did not run.
 | `test_turn_loop.py` | `mock_backend.py` + a real engine. |
 | `test_commands.py` | `main()` end to end against a real engine. |
 | `test_walk.py` | `cadex walk` against a fake `cadex` (leg order, flags, refusals; no engine), and the toy through two real walks with the real engine and trainer — **skips** the latter without the training venv. |
+| `test_review_server.py` | The review dashboard (ADR-286): the API, the allowlist and its refusals, the CLI command, and the page in a headless Chromium over its DevTools pipe (`cdp_browser.py`) — **skips** the browser half without a Chromium (`CADEX_BROWSER` names one); the private-address smoke runs only with `CADEX_REVIEW_HOST` set. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
 go through the same `validate_response` path production uses, so a fixture
