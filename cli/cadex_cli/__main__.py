@@ -107,6 +107,7 @@ from .train import (
     run_trainer,
     trainer_command,
 )
+from .review_record import write_run_record
 from .walk import (
     DEFAULT_LEG_TIMEOUT_S,
     POLICY_SWITCH,
@@ -1553,11 +1554,44 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         "complete" if args.complete else "detach" if args.detach else "blocking"
     )
 
+    # The run record (ADR-285): written as `running` now, so a walk that is
+    # killed leaves a file saying it never finished, and rewritten whole
+    # when the walk ends. `known` collects what later legs learn.
+    known: dict[str, Any] = {}
+    requested = {
+        "iterations": int(args.iterations), "envs": int(args.envs),
+        "seed": int(args.seed), "timeout_s": float(args.timeout),
+        "remote": bool(args.remote), "allow_cpu": bool(args.allow_cpu),
+        "label": args.label or None, "task": args.task_name or None,
+        "init_from": args.init_from or None,
+        "init_from_parent_task": args.init_from_parent_task or None,
+        "init_from_task_change": args.init_from_task_change or None,
+        "prompts": len(args.prompts or []), "assignments": dict(assignments),
+    }
+
+    def land_record(status: str, **extra: Any) -> None:
+        try:
+            path = write_run_record(
+                out_dir, project_root=report.project_root, status=status,
+                mode=report.walk["mode"], legs=legs, error=report.error or None,
+                accepted_revision=report.accepted_revision, digest=report.digest,
+                params=report.params, training=report.training, requested=requested,
+                walk_seconds=time.monotonic() - walk_started,
+                **{**known, **extra},
+            )
+        except OSError as exc:
+            report.notes.append(f"run record not written: {exc}")
+            return
+        report.walk["run_record"] = str(path)
+
+    land_record("running")
+
     def failed(leg: Any, what: str) -> int:
         legs.append(leg.to_json())
         report.error = "{:s} (leg {:s}, exit {:d}): {:s}".format(
             what, leg.name, leg.code, str(leg.envelope.get("error") or "no envelope")
         )
+        land_record("failed")
         return leg.code if leg.code in (EXIT_USAGE, EXIT_REJECTED) else EXIT_FAILURE
 
     if not args.complete:
@@ -1627,6 +1661,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                 return EXIT_FAILURE
             report.training = dict(training)
             bundle, task_sha256 = task_bundle(out_dir / TRAIN_DIRNAME)
+            known.update(task_bundle=bundle, task_sha256=task_sha256)
             pending_path = write_pending(
                 out_dir, training=training, legs=legs, project=args.project,
                 bundle=bundle, task_sha256=task_sha256, seed=int(args.seed),
@@ -1644,17 +1679,22 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                     str(Path(args.project).expanduser()), str(out_dir),
                 )
             )
+            land_record("pending")
             report.ok = True
             return EXIT_OK
         stored = [row for row in leg.envelope.get("assets") or []
                   if row.get("sha256") == training.get("sha256")]
+        report.training = dict(training)
         if not training.get("sha256") or not stored:
             report.error = "train reported no stored policy sha256; nothing to declare."
+            land_record("failed")
             return EXIT_FAILURE
-        report.training = dict(training)
         report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
         weights = str(stored[0].get("name") or Path(str(training.get("out"))).name)
         sha256 = str(training["sha256"])
+        bundle, task_sha256 = task_bundle(out_dir / TRAIN_DIRNAME)
+        known.update(policy_name=weights, policy_sha256=sha256,
+                     task_bundle=bundle, task_sha256=task_sha256)
     else:
         # Completion: the policy the dispatcher brought home, stored through
         # the same `cadex asset --put` leg the blocking train leg's --put
@@ -1666,11 +1706,13 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             )
         except WalkError as exc:
             report.error = str(exc)
+            land_record("failed")
             return EXIT_REJECTED
         # The comparison block the blocking train leg puts in its receipt,
         # off the same bundle, so a completed detached walk lands the same
         # PROGRESS.md comparison an in-line one does (ADR-263).
-        bundle, _digest = task_bundle(out_dir / TRAIN_DIRNAME)
+        bundle, bundle_digest = task_bundle(out_dir / TRAIN_DIRNAME)
+        known.update(task_bundle=bundle, task_sha256=bundle_digest)
         if bundle is not None:
             training["comparison"] = {
                 **task_comparison(bundle),
@@ -1693,9 +1735,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                 "the collected policy was stored under a different digest "
                 "than the trainer reported; nothing to declare."
             )
+            land_record("failed")
             return EXIT_FAILURE
         weights = str(stored[0].get("name") or policy_path.name)
         sha256 = str(training["sha256"])
+        known.update(policy_name=weights, policy_sha256=sha256)
 
     # Declare: the digest edit, then the script write.
     _progress(" · walk  declare")
@@ -1707,6 +1751,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     except WalkError as exc:
         legs.append(leg.to_json())
         report.error = str(exc)
+        land_record("failed")
         return EXIT_REJECTED
     script_path = out_dir / SCRIPT_FILENAME
     script_path.write_text(source, encoding="utf-8")
@@ -1746,6 +1791,16 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         accepted_snapshot = acquire_snapshot(client)
         if accepted_snapshot[1]["digest"] != report.digest:
             raise InventoryError("review: accepted digest differs from rollout")
+        # The parameter specs at the accepted revision, for the run record
+        # (ADR-285): read now, while the engine holds that revision, because
+        # a historical run must never be re-run to learn what its
+        # parameters meant. A read that fails is recorded as unavailable.
+        try:
+            known["param_specs"] = list(read_script_state(client)["params"]["specs"])
+            known["specs_source"] = "inspect scope=script at the accepted revision"
+        except RuntimeError as exc:
+            known["param_specs"] = None
+            known["specs_source"] = f"unavailable: {exc}"
         render_path, rendering = write_render(
             client, report.project_root, expected_revision=report.accepted_revision,
             accepted_snapshot=accepted_snapshot,
@@ -1773,6 +1828,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     # docs/sensors.md (ADR-245's convention, ADR-256's check). The notes
     # are the design turn's to write, so a gap is reported, never filled.
     subjects, model_path = declared_note_subjects(out_dir / TRAIN_DIRNAME)
+    known["model_xml"] = model_path
     documentation = documentation_status(report.project_root, subjects)
     if model_path is not None:
         documentation["model"] = str(model_path)
@@ -1842,6 +1898,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         params=report.params,
     )
     report.walk["review_file"] = str(review_path)
+    land_record("ok", review=review, trace=review.get("trace"), snapshot_docs=True)
     if review.get("total_reward") is None:
         report.notes.append(
             "the rollout exported no trace with a policy block; the walk "

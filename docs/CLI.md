@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-09. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-12. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -421,6 +421,74 @@ The scaffold's `## Training` section carries this same path convention.
 | Store / declare | `assets/<name>.cxpolicy`, `runs/<name>/script.py` |
 | Verify / rollout | `runs/<name>/rollout/` (including the simulation trace) |
 | Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory, clearance and motion summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg` and `summary.json`, `review/section/<accepted-revision>/XZ-<derived-offset>/{section.svg,summary.json}`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
+| Record | `runs/<name>/run.json` (the run record, below) and `runs/<name>/project-docs/` (the project documents as they stood when the run was recorded) |
+
+### The run record (ADR-285)
+
+`review.json` carries a walk's numbers; **`run.json`** carries its
+identities, so a reader who arrives later — a person, or a review client
+with no engine — can tell *which* model, parameters, task and policy a run
+belongs to without rebuilding anything. Schema `cadex-run-record-v1`,
+written by `cadex walk` three times: `running` when the walk starts, so a
+walk that is killed leaves a file saying it never finished; then `ok`,
+`failed` (with the leg and its error) or `pending` (a detached train leg
+launched, nothing collected) when it ends. Each write replaces the file.
+
+What it carries, all from what the legs reported and nothing re-derived:
+
+- `model`: the `accepted_revision` and `digest` the rollout leg ran at, and
+  `identity_source` (`rollout leg envelope`, or `not reached` for a walk
+  that failed earlier — no identity is claimed for a leg that never ran).
+- `params`: the `values` the rollout ran at, and the `specs` read with
+  `inspect scope=script` **at that accepted revision**, while the engine
+  held it, with `specs_source` saying so or saying `unavailable: …`. A
+  historical run is never re-run to learn what its parameters meant.
+- `task` (bundle, sha256, model XML), `training` (`requested`: the flags
+  the walk was given; `receipt`: the trainer's named figures), `policy`
+  (name, sha256, stored asset), `rollout` (trace, seed, total reward),
+  `legs` (as `review.json`, without argv), and `videos` — an empty list
+  until a policy video is recorded; empty means *none recorded*, not
+  missing.
+- `artifacts` (run-relative) and `project_artifacts` (project-relative):
+  every retained file the run refers to. **Every path is relative** to the
+  run directory or the project root; a file outside both is recorded as
+  `null`, never as an absolute path, so the record reads the same from a
+  copy of the project.
+- `project_docs`: `ARCHITECTURE.md`, `DECISIONS.md`, `PROGRESS.md` and
+  `docs/*.md` copied into `runs/<name>/project-docs/` with their sha256s,
+  bounded at 32 files of 256 KB (anything past that is listed under
+  `skipped`), so the specs and decisions a run was made under stay
+  readable after the design moves on. `PROGRESS.md` is copied before this
+  run's own row lands.
+
+**The reader** is `cadex_cli.review_record.read_project_review(root)`: the
+project's accepted identity now (read-only, from the manifest, and
+`available: false` with a reason when there is none), its documents and
+decision headings, and every directory under `runs/` — oldest recorded
+first — with each reference resolved against the disk. It **only reads**:
+no engine, no rebuild, no re-acceptance. Each run carries `relation`
+(`current` when its recorded revision is the accepted one now,
+`historical` otherwise, `unknown` when either side is unavailable),
+`outcome` in words (a `running` record reads `started and never finished:
+still running, or interrupted`, because the reader cannot tell which), and
+`problems`: references that are recorded but missing, snapshot pages whose
+digest no longer matches, and references that **escape their base** by
+`..`, by an absolute path or by a symlink — those are reported and never
+opened, which is what lets a review client serve a project's permitted
+artifacts and nothing else. A run from before records existed is read from
+its `review.json` and labelled `unrecorded`, with its identity taken from
+the rollout leg's envelope fields and nothing inferred beyond that.
+
+**Retention and copying.** The record and the snapshot are small and are
+committed with the run when `runs/<name>/` is inside the project's own
+repository; the trace, bundle and checkpoints beside them fall under the
+default ignore rules (below) and stay local. Copy a project with
+`cp -r`/`rsync` of the whole directory, `runs/` and `review/` included: the
+record's references are relative, so the copy reviews as the original did,
+and a copy that omits `runs/<name>/rollout/` or `review/render/<revision>/`
+reviews with those references listed under `problems` rather than silently
+resolving to another project's files. Deleting a run directory is deleting
+its history; nothing rebuilds it.
 
 `cli/tests/test_walk.py` checks local/remote artifact parity through policy
 verification and rollout using a local CPU stand-in for the dispatcher.

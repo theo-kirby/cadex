@@ -22596,3 +22596,48 @@ fleet setup and unrelated removals are outside this run's frontier.
 This is a charter decision, not a claim that the dashboard or lifecycle tests
 exist. `.ouroboros/goal.md` carries D1-D9 and the evidence required to close
 them. The existing run configuration and per-training-run limits are retained.
+
+## ADR-285 — A run record beside every walk, and a reader that only reads (2026-09-12)
+
+`review.json` carried a walk's numbers and, by accident of its `legs`
+block, the accepted revision the rollout ran at; nothing carried the
+parameter specs at that revision, the task and policy identities as one
+unit, the documents the run was designed under, or a state a killed walk
+leaves behind. The ot5 charter (ADR-284) needs all four before a browser
+can show "the right model and specs" for a historical run (D2) or keep two
+runs apart across a design change (D5).
+
+Decision: `cadex walk` lands `runs/<name>/run.json` (`cadex-run-record-v1`)
+— `running` at start, then `ok`, `failed` or `pending` — carrying the
+rollout leg's accepted revision and digest, the parameter values and the
+specs read with `inspect scope=script` while the engine held that
+revision, the task bundle and its sha256, the trainer's receipt figures and
+the flags requested, the policy name, digest and stored asset, the trace,
+the review references, the legs, and an empty `videos` list for the
+policy videos still to come. Beside it, `runs/<name>/project-docs/` holds
+`ARCHITECTURE.md`, `DECISIONS.md`, `PROGRESS.md` and `docs/*.md` as they
+stood, with sha256s, bounded at 32 files of 256 KB. Every path is relative
+to the run or the project; a file outside both is `null`, never absolute.
+
+The reader, `cadex_cli.review_record.read_project_review`, reads the
+project's accepted identity from its manifest (read-only, schema-checked,
+`available: false` with a reason otherwise), lists every run oldest first,
+labels each `current`, `historical` or `unknown` against the accepted
+revision now, and resolves every reference with a containment check: a
+reference that escapes its base by `..`, an absolute path or a symlink is
+a named problem and is never opened, as is a missing file or a snapshot
+page whose digest moved. Runs from before this ADR are read from their
+`review.json`, labelled `unrecorded`, with only what the legs reported. The
+reader opens no engine, rebuilds nothing and re-accepts nothing — a
+historical run is shown from its own record and snapshot, never from
+today's script.
+
+Three things this deliberately is not: not a second copy of `review.json`'s
+numbers (they stay there; the record references it), not a project-wide
+index (each run is its own file, so copying a run copies its record and
+losing one loses one), and not a subcommand — the reader is a module for
+the review client to import; a CLI door can follow if a pipeline needs
+one. `docs/CLI.md` documents the contract, retention and copying;
+`cli/tests/test_review_record.py` pins the writer, the snapshot bounds,
+path isolation and the reader's labels; `cli/tests/test_walk.py` pins the
+walk writing it on success and on a refused leg.
