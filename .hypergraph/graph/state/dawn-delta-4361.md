@@ -19,6 +19,8 @@ Reconciliation judgement: `working` is supported by the real multi-update observ
 
 **Retained-video verification has measured steady-state bounds (ADR-296).** For 64 synthetic sparse 256 MiB files (16 GiB logical history), uncached project polling took 6.59–7.00 seconds. A process-local cache of at most 256 digest entries reduces unchanged requests to 12–13 ms after the initial 7.041-second verification; three synthetic browser telemetry updates arrived in 1.930–2.023 seconds without reload. This supplements the real-training evidence above; it does not replace it [rec: young-cedar-2719].
 
+Browser polling permits one pending request per page: a 7.2-second blocked verification produced one byte read instead of four across timer ticks [rec: neat-vine-2517]. A process-local verification lock also lets concurrent clients hash shared unchanged video once; the cache remains capped at 256 entries. Cold verification still delays responses, and unrelated checks, including cached lookups, can wait behind the lock. Separate processes do not share coordination; no universal five-second bound follows [rec: dusty-oak-7376].
+
 Charter criterion: **D3. Training is visible while it runs** The biped's real GPU training updates status, iteration, reward and loss histories, episode length and checkpoint availability without a page reload; committed telemetry appears within five seconds under the measured test conditions; missing or stale data is labelled. Evidence: a browser observation spanning multiple actual training updates plus telemetry tests — synthetic data alone cannot tick it. Declared target `gap-d3-training-visible-while-runs` [rec: lucky-comet-0031], introduced with no implementation claimed [rec: dusty-peak-9330].
 
 ## Negative knowledge
@@ -36,3 +38,5 @@ Charter criterion: **D3. Training is visible while it runs** The biped's real GP
 - merry-star-6951 — real multi-update browser re-observation under the identity fix within the five-second threshold
 
 - young-cedar-2719 — measured long-history verification cost and bounded cache with explicit first-read/eviction and synthetic-workload limits
+- neat-vine-2517 — ADR-297: one pending browser poll prevents overlapping cold verification
+- dusty-oak-7376 — ADR-298: shared cold verification across clients with explicit serialization limits

@@ -21,6 +21,10 @@ Judgement: mark `working` because the successful retry closes this node's declar
 
 Integrity checks now reuse a bounded process-local digest cache keyed by resolved path, device, inode, size and nanosecond modification/change timestamps, with current path/digest checks and post-hash mutation refusal. Regression coverage rejects same-size corruption with restored mtime, atomic replacement, changed record hashes, escaping symlinks and mutation during verification. Real-copy missing/truncated/restored playback recovery still passes and preserves all 418 protected files [rec: young-cedar-2719].
 
+During delayed verification the browser shows loading without playback, refuses corrupt bytes on release and resumes status polling [rec: neat-vine-2517]. Two-client coverage verifies one shared cold hash, corruption refusal in both pages and fresh verification after atomic byte replacement; a 257-file reader test proves 256-entry eviction. Real Reed-copy recovery still preserves all 418 protected files [rec: dusty-oak-7376].
+
+A 257-path synthetic browser lifecycle additionally refuses same-size corruption with restored mtime after cache churn and dashboard-process restart, including full/range HTTP requests. The intact late video remains playable; atomic restoration recovers early playback/download and all 4,122 project files match their original content. These small repeated video fixtures establish correctness, not large-video throughput or new GPU evidence [rec: weathered-sage-2750].
+
 Charter criterion: **D8. Interrupted and failed runs remain understandable** A controlled training interruption, a failed run, and missing/partial review output are tested; the dashboard distinguishes interrupted/failed/stale states from success, preserves prior completed results and explains the next CLI action. Evidence: fault-injection tests and one real interrupted biped training run followed by a successful new attempt; checkpoint resume is not required. Declared target `gap-d8-interrupted-failed-runs-remain` [rec: lucky-comet-0031].
 
 ## Negative knowledge
@@ -42,3 +46,6 @@ Charter criterion: **D8. Interrupted and failed runs remain understandable** A c
 
 - icy-pond-7346 — ADR-295: damaged-video refusal and real copied-biped same-page recovery with histories preserved
 - young-cedar-2719 — ADR-296: bounded digest cache retains integrity checks and real-copy recovery
+- neat-vine-2517 — delayed-verification loading, corrupt-video refusal and subsequent polling regression
+- dusty-oak-7376 — two-client integrity, changed-byte verification, cache eviction and real-copy recovery
+- weathered-sage-2750 — beyond-cache corruption refusal across restart and restoration with 4,122 files preserved
