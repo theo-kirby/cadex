@@ -22572,3 +22572,27 @@ solvers as `_clearance_promise`, and the pair-name lookup the native path
 open-coded, now `_declared_clearance`. No op changed, so `OP_ARG_SPECS`,
 `docs/INTEGRATION.md` and the shell client are untouched; a `clearance` key
 on a simulation summary is one the native path has published since ADR-130.
+
+## ADR-284 — Live headless project review becomes the run's focus (2026-09-12)
+
+The owner replaced ot5's motion-review, mg-legs gait and five-variant targets
+with one outcome: build a live headless review dashboard and prove the complete
+file lifecycle through it with a fresh agent-designed biped. The dashboard is
+inspection-only and serves one project per server over the existing private
+network. It displays interactive models, design specs, live training metrics,
+run history and saved playable/downloadable policy videos, including an
+intermediate checkpoint while training is active. Agents continue driving the
+CLI. This authorizes a review client, not the Phase 12 replacement shell.
+
+Historical results must retain their model/spec/configuration and policy
+identities through edits, reopen, restart and independent project copying.
+Interrupted or failed work must remain distinguishable from completed work.
+The biped must complete training, recorded review, a reasoned design revision
+and retraining; gait quality is measured honestly and is not a pass gate.
+mg-legs is retired from the active charter and new acceptance workflow; prior
+records and the separate cdx-rl project are preserved. Catalog expansion,
+fleet setup and unrelated removals are outside this run's frontier.
+
+This is a charter decision, not a claim that the dashboard or lifecycle tests
+exist. `.ouroboros/goal.md` carries D1-D9 and the evidence required to close
+them. The existing run configuration and per-training-run limits are retained.
