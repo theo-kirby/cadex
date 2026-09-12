@@ -29,6 +29,27 @@ clearly, and verify the operator-facing page over the private-network address.
 Use the dashboard yourself during design, training and review. A temporary
 browser-test server does not satisfy this instruction.
 
+**Visual reference (owner steering, 2026-09-12).** Both rendered policy videos
+and the dashboard's 3D viewport must match the visual environment and rendering
+style of the operator's sibling `neural-whoop` checkout. The owner identifies
+this as the same environment style used by mg-legs. This is an explicit visual
+reference, not permission to restore mg-legs as a mechanism or benchmark.
+Read `neural-whoop/web/studio/environment.js`, `web/studio/scene.js`,
+`web/studio/geometry.js`, `web/capture/` and `render-examples/README.md` in that
+checkout, and inspect actual reference frames before implementing the look.
+Match its fogged grey prototype-grid floor, seamless floor-to-background fade,
+sky gradient, lighting/material treatment, grounded soft shadows, antialiasing,
+and camera/framing quality. Floor extent, fog, grid subdivision and shadows
+must scale with subject size and framing so no stage edge or wall/ceiling seam
+appears. The viewport and saved videos must use a common environment/style
+contract so they show the same place, not independently approximated looks.
+Keep Cadex geometry dimensions, placements and recorded motion truthful; any
+reference drone-specific glyph enlargement is not a CAD modelling convention.
+Treat the reference checkout as read-only, honor licensing/provenance, and make
+Cadex's delivered renderer self-contained rather than dependent on sibling
+checkout paths. The scope is viewport/video appearance, not copying unrelated
+neural-whoop dashboard features.
+
 Success means the complete recorded lifecycle works. Measure gait quality
 honestly; a repeatable walking gait is not a completion gate. Retire mg-legs
 from the active charter and test workflow. Create a new parametric biped from a
@@ -113,6 +134,21 @@ say "ticks D1" when its evidence exists; the human owns the checkbox edit.
   historical-view preservation. The immediate acceptance check is that the
   shared URL shows the active biped work rather than ot4-carriage.
 
+- [ ] **D11. Viewport and videos match the neural-whoop visual reference.**
+  The persistent biped dashboard and newly rendered checkpoint/final-policy
+  videos use the shared reference-matching environment described in the mission.
+  Evidence: identified neural-whoop reference screenshots/frames and matching
+  Cadex viewport screenshots plus decoded video frames, compared side by side
+  at equivalent framing, with an explicit assessment of floor/grid, horizon/fog,
+  palette, lighting/shadows, materials and camera quality. Also compare the same
+  Cadex pose/camera in viewport and video, and test close/wide framing and orbit
+  for visible stage edges, bad scale or lost contact shadows. A generic grid or
+  passing pixel-coverage test alone does not establish visual similarity. Use
+  the real biped on the persistent operator URL and retain the render/style
+  identity with newly produced videos; preserve older recordings as historical.
+  Browser interaction, live polling, verified playback/download and headless
+  operation must continue to pass after the visual change.
+
 ## Horizon ladder
 
 Granularity, not elapsed time. The critic selects the next unit after each actor
@@ -121,13 +157,15 @@ turn; this ladder is the starting plan, not a fixed implementation sequence.
 - **short-term:**
   0. First, put the active biped project/run on the persistent shared dashboard,
      verify it through the browser, and keep it current throughout work (D10).
-  1. Define the smallest project/run recording contract and its revision and
+  1. After making the persistent dashboard current, implement and visually
+     compare the shared neural-whoop viewport/video environment (D11).
+  2. Define the smallest project/run recording contract and its revision and
      artifact identities; document it alongside a tested reader (D2, D5).
-  2. Deliver a vertical slice: one-project server, real model/spec view and a
+  3. Deliver a vertical slice: one-project server, real model/spec view and a
      headless browser test; establish private-network reachability (D1, D2).
-  3. Create the fresh agent-authored biped and start a bounded training probe;
+  4. Create the fresh agent-authored biped and start a bounded training probe;
      connect its actual telemetry, including retained loss history (D3, D9).
-  4. Render one verified rollout into a saved browser-playable video (D4).
+  5. Render one verified rollout into a saved browser-playable video (D4).
 - **medium-term:**
   1. Publish checkpoint videos during active training, preserving model/policy
      identity and recording measured overhead (D3, D4).
@@ -199,7 +237,7 @@ charter revision, not an actor interpretation.
 
 ## Exhaustion policy
 
-Maintain within this mission. Once D1-D10 have evidence, repeat the lifecycle,
+Maintain within this mission. Once D1-D11 have evidence, repeat the lifecycle,
 fix demonstrated recording/review defects and improve bounded operation. Do not
 expand into gait research, another dashboard mode or parked product work merely
 to fill the run. Report completion evidence honestly when no defect remains.
