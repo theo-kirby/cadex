@@ -1461,6 +1461,11 @@ First reads, changed files and histories exceeding the cache can still require
 reading all recorded video bytes. This is not a five-second latency guarantee
 for arbitrary histories. The [64-file measurement](probes/video-history/README.md)
 records both the cold-read cost and subsequent browser polling latency.
+Each browser page keeps at most one project poll in flight (ADR-297): timer
+ticks and explicit refreshes share the pending request, including initial
+verification after a server restart. Initial loading remains labelled until
+verification completes; slow reads do not multiply requests from that page.
+Separate browser clients can still verify concurrently.
 
 What it serves is an allowlist, never a path. Every route names a run by
 its directory name, an artifact by its record key, a document by the name

@@ -22950,3 +22950,18 @@ not playable policies or real training; they supply no new D3/D4/D9 evidence.
 Tests cover metadata-preserving corruption, atomic replacement, changed
 recorded hashes, escaping symlinks, mutation during hashing and browser
 refusal/recovery without rehashing unchanged video bytes on each poll.
+
+## ADR-297 — Share a pending dashboard poll during slow verification (2026-09-12)
+
+The two-second browser timer started overlapping project requests while cold
+video verification could take seven seconds (ADR-296). The digest cache does
+not merge concurrent misses, so those requests could repeat the same disk
+reads before the first verification finished. Keep one pending poll promise
+per page, shared by timer ticks and explicit refreshes, and release it after
+success or failure. This replaces overlapping requests without caching project
+state or changing integrity checks. Initial loading still waits for verified
+data; this does not shorten the cold read or bound concurrent browser clients.
+A headless-browser regression holds initial video hashing across three timer
+intervals, asserts one byte read and loading without playback, then releases
+verification, checks corruption refusal and observes a subsequent status edit.
+No dependency, engine, protocol or training change.

@@ -32,3 +32,18 @@ but verification reads 16 GiB per uncached pass. It never edits a real biped.
 The compact [results](results.json) retain before/after timings and the latest
 product-agent quota refusal. That refusal occurred before revision authorship;
 D9 remains open, with no new physical revision or training in this iteration.
+
+The initial-verification browser regression (ADR-297) injects a blocked hash
+for 7.2 seconds, crossing three real two-second browser timer ticks. Before
+poll coalescing it observes four simultaneous reads; after, exactly one.
+While blocked the page says loading and offers no video. When released it
+labels the intentionally corrupt artifact, then receives a changed run status
+on a later poll. This is deterministic fault injection, not another storage
+throughput measurement or a real training observation. Run it with:
+
+```bash
+pixi run python -m pytest cli/tests/test_review_server.py -k coalesces -q
+```
+
+Each page now shares its pending request. Multiple clients, first-read latency
+and histories larger than the digest cache remain outside this bound.

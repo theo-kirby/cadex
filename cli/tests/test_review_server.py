@@ -25,6 +25,7 @@ import signal
 import struct
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -1143,3 +1144,44 @@ def test_browser_refuses_damaged_video_and_recovers(served, browser, monkeypatch
     video.unlink()
     page.wait_for("document.querySelector('#videos [data-video]').textContent.includes('missing')")
     assert 'Retry the CLI video command' in page.text('#videos')
+
+
+def test_browser_coalesces_polls_during_initial_video_verification(served, browser, monkeypatch):
+    """Cold verification exceeding three poll intervals must read bytes once."""
+    from cadex_cli import review_record
+    root, server = served
+    run = root / 'runs/first'
+    video = run / 'cold.webm'
+    video.write_bytes(b'corrupt retained video')
+    _rewrite_record(run, videos=[{'path': video.name, 'sha256': '0' * 64}])
+    entered, release = threading.Event(), threading.Event()
+    original_hash = review_record._sha256
+    reads = []
+
+    def slow_hash(path):
+        if path == video:
+            reads.append(path)
+            entered.set()
+            if not release.wait(20):
+                raise OSError('test verification timed out')
+        return original_hash(path)
+
+    monkeypatch.setattr(review_record, '_sha256', slow_hash)
+    page = browser.page(server.url)
+    try:
+        assert entered.wait(5)
+        page.evaluate('new Promise(resolve => setTimeout(resolve, 7200))', await_promise=True)
+        assert page.attribute('#freshness', 'data-state') == 'loading'
+        assert not page.evaluate("!!document.querySelector('#videos video')")
+        assert len(reads) == 1, 'slow initial verification must not launch overlapping polls'
+    finally:
+        release.set()
+    page.evaluate('window.cadexReview.ready', await_promise=True)
+    page.click("#views li[data-run='first']")
+    page.wait_for("document.getElementById('videos').textContent.includes('digest mismatch')")
+    assert not page.evaluate("!!document.querySelector('#videos video')")
+    # Completion releases the pending request, so subsequent changes still arrive.
+    _rewrite_record(run, status='failed')
+    page.wait_for("document.getElementById('view-status').textContent === 'failed'")
+    assert page.attribute('#freshness', 'data-state') == 'live'
+    assert len(reads) == 1

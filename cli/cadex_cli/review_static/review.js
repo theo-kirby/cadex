@@ -11,6 +11,7 @@
   var POLL_MS = 2000;
   var state = { review: null, selected: 'accepted', lastOk: null, stale: false, model: null, viewer: null,
                 error: null };
+  var pendingPoll = null;
   var readyResolve;
   var ready = new Promise(function (resolve) { readyResolve = resolve; });
 
@@ -359,7 +360,8 @@
   }
 
   function poll() {
-    return fetchJson('/api/project').then(function (review) {
+    if (pendingPoll) return pendingPoll;
+    pendingPoll = fetchJson('/api/project').then(function (review) {
       var first = !state.review;
       state.review = review; state.lastOk = new Date(); state.stale = false; state.error = null;
       render();
@@ -367,7 +369,8 @@
     }).catch(function (error) {
       state.stale = true; state.error = error.message;
       renderFreshness();
-    });
+    }).finally(function () { pendingPoll = null; });
+    return pendingPoll;
   }
 
   document.addEventListener('DOMContentLoaded', function () {
