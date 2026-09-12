@@ -1453,6 +1453,15 @@ What the page shows, and where each thing comes from:
   (byte ranges are served, so seeking works) and downloads, identified by
   policy digest, seed and simulated seconds; none recorded says so.
 
+Video verification retains at most 256 digests in process memory (ADR-296).
+Each read still checks containment and file identity, size, and nanosecond
+modification/change times; changed files are hashed again, including same-size
+edits whose modification time was restored. Restarting clears this cache.
+First reads, changed files and histories exceeding the cache can still require
+reading all recorded video bytes. This is not a five-second latency guarantee
+for arbitrary histories. The [64-file measurement](probes/video-history/README.md)
+records both the cold-read cost and subsequent browser polling latency.
+
 What it serves is an allowlist, never a path. Every route names a run by
 its directory name, an artifact by its record key, a document by the name
 its record lists, a mesh by the output it belongs to, a video by its

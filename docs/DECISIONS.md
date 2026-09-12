@@ -22930,3 +22930,23 @@ run's recorded video bytes on each read; no digest cache or new dependency.
 The real-copy browser probe checks missing/truncated/restored video, playback
 and download; the regression also covers equal-length corruption and range
 requests. No accepted geometry, run status or policy identity is rewritten.
+
+## ADR-296 — Reuse retained-video digests while file identity is unchanged (2026-09-12)
+
+ADR-295's per-read verification takes 6.59–7.00 seconds per project HTTP poll
+with 64 synthetic 256 MiB video files (16 GiB logical bytes). Cache at most 256
+computed video digests per process, keyed by resolved path, device, inode,
+size, mtime_ns and ctime_ns. Resolve containment and stat on every read;
+compare the computed digest to the current record every time. Verify the
+stamp again after hashing, refusing changes during verification without caching
+the result. Store no file bytes, telemetry or accepted state. This replaces
+repeated byte reads for unchanged files; no dependency or durable cache.
+
+The same 64-file workload takes 12–13 ms on subsequent HTTP polls and three
+synthetic browser telemetry updates appear in 1.93–2.03 seconds. The first
+verification still takes 7.04 seconds; changes, restart and cache eviction pay
+that cost again. Measurements use sparse zero files as hashing workloads,
+not playable policies or real training; they supply no new D3/D4/D9 evidence.
+Tests cover metadata-preserving corruption, atomic replacement, changed
+recorded hashes, escaping symlinks, mutation during hashing and browser
+refusal/recovery without rehashing unchanged video bytes on each poll.

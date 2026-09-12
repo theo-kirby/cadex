@@ -2717,6 +2717,11 @@ field, and every client gets it through the surface it already reads.
 
 ## Live headless project review (ADR-284)
 
+- [x] Bound retained-video digest memory and reuse unchanged verification
+      (ADR-296): 64-file/16 GiB synthetic history measured through HTTP and
+      headless-browser telemetry, with corruption/refusal/recovery regression.
+      Cold reads and cache eviction retain their full hashing cost.
+
 - [x] Retained training telemetry and dashboard polling (ADR-287): bounded
       reward/loss/episode histories, checkpoint integrity and missing/stale/failed
       states, verified across atomic updates in a headless browser. D3's actual

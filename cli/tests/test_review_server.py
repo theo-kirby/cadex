@@ -1108,7 +1108,7 @@ def test_browser_walk_parameter_sweep_retains_model_before_training(
         server.server_close()
 
 
-def test_browser_refuses_damaged_video_and_recovers(served, browser):
+def test_browser_refuses_damaged_video_and_recovers(served, browser, monkeypatch):
     root, server = served
     run = root / 'runs/first'
     video = run / 'final.webm'
@@ -1119,6 +1119,17 @@ def test_browser_refuses_damaged_video_and_recovers(served, browser):
     page = _open(browser, server.url)
     page.click("#views li[data-run='first']")
     page.wait_for("!!document.querySelector('#videos video')")
+    from cadex_cli import review_record
+    original_hash = review_record._sha256
+    reads = []
+    def counted(path):
+        if path == video:
+            reads.append(path)
+        return original_hash(path)
+    monkeypatch.setattr(review_record, '_sha256', counted)
+    for _ in range(3):
+        page.evaluate('window.cadexReview.refresh()', await_promise=True)
+    assert not reads, 'polling an unchanged retained video must not reread its bytes'
     for damaged in (original[:32], b'x' * len(original)):
         video.write_bytes(damaged)
         page.wait_for("document.getElementById('videos').textContent.includes('digest mismatch')")

@@ -457,3 +457,63 @@ def test_the_reader_reads_a_copied_project_the_same(tmp_path) -> None:
     assert review["project"] == "biped-copy"
     assert review["runs"][0]["problems"] == []
     assert review["runs"][0]["relation"] == "current"
+
+
+def test_video_verification_reuses_unchanged_bytes_but_detects_replaced_content(tmp_path, monkeypatch):
+    from cadex_cli import review_record
+
+    root = _project(tmp_path)
+    run = root / 'runs/video'
+    run.mkdir(parents=True)
+    video = run / 'final.mp4'
+    original = b'original policy video'
+    video.write_bytes(original)
+    payload = {'schema': RUN_RECORD_SCHEMA, 'run': 'video', 'status': 'ok',
+               'videos': [{'path': video.name, 'sha256': hashlib.sha256(original).hexdigest()}]}
+    (run / RUN_RECORD_FILENAME).write_text(json.dumps(payload))
+    reads = []
+    real_hash = review_record._sha256
+    def counted(path):
+        reads.append(path)
+        return real_hash(path)
+    monkeypatch.setattr(review_record, '_sha256', counted)
+    for _ in range(3):
+        assert not read_run_record(run, root)['problems']
+    assert reads == [video]
+    # Restoring size and mtime must not conceal an in-place corruption.
+    before = video.stat()
+    video.write_bytes(b'x' * len(original))
+    os.utime(video, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert 'digest mismatch' in read_run_record(run, root)['problems'][0]
+    replacement = video.with_suffix('.partial')
+    replacement.write_bytes(original)
+    os.utime(replacement, ns=(before.st_atime_ns, before.st_mtime_ns))
+    replacement.replace(video)
+    assert not read_run_record(run, root)['problems']
+    # A changed recorded digest is checked even when the file stays the same.
+    payload['videos'][0]['sha256'] = '0' * 64
+    (run / RUN_RECORD_FILENAME).write_text(json.dumps(payload))
+    assert 'digest mismatch' in read_run_record(run, root)['problems'][0]
+    # Cached bytes never permit a newly escaping reference.
+    video.unlink()
+    outside = tmp_path / 'outside.mp4'
+    outside.write_bytes(original)
+    video.symlink_to(outside)
+    assert 'escapes' in read_run_record(run, root)['problems'][0]
+
+
+def test_video_modified_during_verification_is_not_cached(tmp_path, monkeypatch):
+    from cadex_cli import review_record
+
+    video = tmp_path / 'changing.mp4'
+    video.write_bytes(b'before')
+    original_hash = review_record._sha256
+    def changing(path):
+        digest = original_hash(path)
+        path.write_bytes(b'after')
+        return digest
+    monkeypatch.setattr(review_record, '_sha256', changing)
+    with pytest.raises(OSError, match='changed during verification'):
+        review_record._video_sha256(video)
+    monkeypatch.setattr(review_record, '_sha256', original_hash)
+    assert review_record._video_sha256(video) == hashlib.sha256(b'after').hexdigest()

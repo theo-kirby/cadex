@@ -620,11 +620,12 @@ def training_telemetry(root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
 class ReviewProject:
     """What the server knows how to serve for one project, resolved per request.
 
-    Nothing is cached across requests: a walk that lands while the page is
+    Records are read anew across requests: a walk that lands while the page is
     open shows up on its next poll, and a record that is rewritten from
     ``running`` to ``ok`` is read as it stands. The cost is one directory
     walk of ``runs/`` per request, which is what a review client should
-    pay to never show a stale run.
+    pay to never show a stale run. Only video digests are cached, bounded and
+    keyed by file identity, size and nanosecond modification/change times.
     """
 
     def __init__(self, project_root: Path | str) -> None:

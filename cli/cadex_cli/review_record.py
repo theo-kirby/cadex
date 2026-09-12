@@ -37,6 +37,7 @@ permitted artifacts and nothing else.
 from __future__ import annotations
 
 import datetime as _datetime
+from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
@@ -83,6 +84,31 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _video_stamp(path: Path) -> tuple[int, ...]:
+    stat = path.stat()
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+@lru_cache(maxsize=256)
+def _cached_video_sha256(path: Path, stamp: tuple[int, ...]) -> str:
+    """Bounded process-local digests; never retain file bytes or project state."""
+    digest = _sha256(path)
+    if _video_stamp(path) != stamp:
+        raise OSError("video changed during verification")
+    return digest
+
+
+def _video_sha256(path: Path) -> str:
+    # Containment is checked by the caller on every read, before this cache.
+    # ctime catches same-size edits even when a writer restores mtime.
+    path = path.resolve()
+    stamp = _video_stamp(path)
+    digest = _cached_video_sha256(path, stamp)
+    if _video_stamp(path) != stamp:
+        raise OSError("video changed during verification")
+    return digest
 
 
 def relative_under(base: Path | str, path: Path | str | None) -> str | None:
@@ -513,7 +539,7 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
         expected = (record["videos"][index] or {}).get("sha256")
         if expected and item["exists"] and not item["error"]:
             try:
-                if _sha256(directory / item["path"]) != expected:
+                if _video_sha256(directory / item["path"]) != expected:
                     item["error"] = "video digest mismatch"
             except OSError:
                 item["error"] = "video unavailable during verification"
