@@ -578,3 +578,33 @@ def test_browser_reaches_the_dashboard_over_the_private_network_address(tmp_path
     finally:
         server.shutdown()
         server.server_close()
+
+
+@needs_browser
+def test_browser_unaccepted_project_reports_missing_model_and_next_cli_action(tmp_path, browser) -> None:
+    """A first design refusal can leave documents but no accepted manifest."""
+    root = tmp_path / "fresh-biped"
+    root.mkdir()
+    progress = "# Progress\n\nNo accepted design turns.\n"
+    (root / "PROGRESS.md").write_text(progress)
+    before = {p.name: p.read_bytes() for p in root.iterdir()}
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        assert page.text("#project-name") == "fresh-biped — review"
+        assert "nothing accepted: no script.json" in page.text("#accepted-line")
+        assert "0 run(s)" in page.text("#accepted-line")
+        assert page.text("#view-revision") == "none"
+        assert page.text("#view-digest") == "none"
+        assert page.text("#view-status") == ""
+        assert "cadex -p" in page.text("#view-note")
+        assert _model_state(page) == "missing"
+        assert "no model to show" in page.text("#model-status")
+        assert "specs unavailable" in page.text("#params-note")
+        assert page.evaluate("document.querySelectorAll('#views li[data-run]').length") == 0
+        page.click("#docs li[data-doc='PROGRESS.md'] a")
+        page.wait_for("document.getElementById('doc-view').textContent.includes('No accepted design turns.')")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert {p.name: p.read_bytes() for p in root.iterdir()} == before

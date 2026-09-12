@@ -480,6 +480,11 @@ artifacts and nothing else. A run from before records existed is read from
 its `review.json` and labelled `unrecorded`, with its identity taken from
 the rollout leg's envelope fields and nothing inferred beyond that.
 
+A refused first design prompt can leave scaffold documents with no accepted
+manifest or run record. The dashboard shows missing geometry and a next CLI
+action, but does not display that provider error; retain the CLI envelope.
+See the [fresh biped evidence and retry procedure](HEADLESS-BIPED-REVIEW.md).
+
 **Retention and copying.** The record and the snapshot are small and are
 committed with the run when `runs/<name>/` is inside the project's own
 repository; the trace, bundle and checkpoints beside them fall under the
