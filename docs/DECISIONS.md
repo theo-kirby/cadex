@@ -22711,3 +22711,12 @@ read-only, on the private network the operator already has. Training
 telemetry while it runs and policy videos are the D3 and D4 slots the
 page already has cells for — the freshness poll and the video route are
 in place, the trainer's progress file and the renders are not yet wired.
+
+**Verification follow-up (2026-09-12).** The headless browser now also
+narrows a loaded model from 1280 to 1000 pixels before orbit and zoom.
+The original grid and unbroken artifact paths overflowed the viewport;
+the model column may now shrink below its content's intrinsic width and
+artifact tables wrap long paths. The test asserts stable canvas width
+across eight redraws and no page-wide horizontal overflow. Private-address
+smoke reproduction is documented in `docs/CLI.md`; it exercises a fixture
+on the serving machine, not a second device or the fresh biped lifecycle.

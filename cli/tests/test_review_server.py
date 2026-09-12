@@ -492,6 +492,17 @@ def test_browser_orbit_and_zoom_move_the_camera_over_a_drawn_model(served, brows
     assert stats["bounds"]["min"][2] == -40.0 and stats["bounds"]["max"][2] == 20.0
     drawn_before = page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()")
     assert drawn_before > 1000, "the model is not drawn"
+    page.send("Emulation.setDeviceMetricsOverride", {
+        "width": 1000, "height": 900, "deviceScaleFactor": 1, "mobile": False,
+    })
+    # Redrawing resizes the canvas backing store. Its intrinsic size must not
+    # widen the grid column on each subsequent layout (and move mouse targets).
+    widths = page.evaluate("""Array.from({length: 8}, () => {
+        window.cadexReview.viewer().nonBackgroundPixels();
+        return document.getElementById('viewer').getBoundingClientRect().width;
+    })""")
+    assert max(widths) - min(widths) <= 1, widths
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     page.scroll_into_view("#viewer")
     rect = page.rect("#viewer")
     cx, cy = rect["x"] + rect["width"] / 2, rect["y"] + rect["height"] / 2

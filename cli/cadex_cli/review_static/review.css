@@ -8,7 +8,10 @@ header#top { display: flex; justify-content: space-between; align-items: baselin
              padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
 h1 { font-size: 18px; margin: 0; }
 h2 { font-size: 14px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-main { display: grid; grid-template-columns: 280px 1fr; gap: 16px; padding: 16px 20px; }
+main { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; padding: 16px 20px; }
+/* Allow the model column to shrink when the browser narrows, even after
+   the canvas backing store was sized for a wider viewport. */
+section#detail { min-width: 0; }
 nav#sidebar ul { list-style: none; margin: 0; padding: 0; }
 nav#sidebar li { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; cursor: pointer; }
 nav#sidebar li[data-selected="true"] { border-color: var(--info); background: #202a35; }
@@ -26,7 +29,7 @@ nav#sidebar li .name { font-weight: 600; }
 .badge[data-tone="accepted"] { background: #1f2f3f; color: #a9d4f5; }
 table.kv th { text-align: left; color: var(--muted); font-weight: 500; padding: 2px 12px 2px 0; vertical-align: top; white-space: nowrap; }
 table.kv td { padding: 2px 0; word-break: break-all; }
-table.grid { width: 100%; border-collapse: collapse; }
+table.grid { width: 100%; border-collapse: collapse; overflow-wrap: anywhere; }
 table.grid th, table.grid td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.grid th { color: var(--muted); font-weight: 500; }
 .mono { font-family: ui-monospace, monospace; font-size: 12px; }

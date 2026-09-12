@@ -1370,6 +1370,19 @@ and, in a headless Chromium driven over its DevTools pipe
 view, real mouse orbit and zoom on the canvas, the stale label and
 reachability over a private address (`CADEX_REVIEW_HOST`).
 
+Reproduce the private-address smoke on the serving machine, without a desktop:
+
+```bash
+CADEX_REVIEW_HOST="$(tailscale ip -4)" pixi run python -m pytest cli/tests/test_review_server.py -q -s
+```
+
+This starts a temporary fixture server, opens its private-address URL in
+headless Chromium, checks the displayed project and accepted revision, and
+stops the server. It is a same-machine private-address check, not evidence
+of access from a second device or of the fresh biped lifecycle. The browser
+suite also narrows a loaded model view from 1280 to 1000 pixels and checks
+that the canvas stays within the page before exercising orbit and zoom.
+
 ### Exit codes
 
 | Code | Meaning |
