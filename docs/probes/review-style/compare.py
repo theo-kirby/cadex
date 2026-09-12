@@ -1,7 +1,13 @@
 """D11: real retained Reed, persistent viewport, decoded video, actual light reference.
 
-PYTHONPATH=cli pixi run python docs/probes/review-style/compare.py URL PROJECT REFERENCE
-Reference checkout is read-only; all images are retained with the project.
+PYTHONPATH=cli pixi run python docs/probes/review-style/compare.py \
+    URL PROJECT REFERENCE [RUN [HISTORICAL [EVIDENCE_DIR]]]
+RUN is the run whose retained pose and video are compared (default copy100);
+HISTORICAL is the clip played, downloaded and polled from the same page
+(default probe3-checkpoint20); EVIDENCE_DIR is a directory name under the
+project's evidence/ (default style40). The persistent server is never started
+or stopped, the reference checkout is read-only, and all images stay with the
+project.
 """
 import base64
 import hashlib
@@ -17,18 +23,20 @@ from cadex_cli.review_record import read_run_record
 from cadex_cli.review_server import run_model
 from cadex_cli.video import stl
 
-url, project, reference = sys.argv[1:]
+url, project, reference, *rest = sys.argv[1:]
+run, historical, evidence_dir = (rest + ['copy100', 'probe3-checkpoint20', 'style40'][len(rest):])[:3]
 root, ref = Path(project), Path(reference)
-out = root / 'evidence/style40'; out.mkdir(parents=True, exist_ok=True)
-record = read_run_record(root/'runs/copy100', root)
+out = root / 'evidence' / evidence_dir; out.mkdir(parents=True, exist_ok=True)
+record = read_run_record(root/'runs'/run, root)
 video = record['videos'][0]
-trace = json.loads((root/'runs/copy100'/record['artifacts']['trace']).read_text())
+trace = json.loads((root/'runs'/run/record['artifacts']['trace']).read_text())
 frame = next(f for f in trace['frames'] if f.get('frame_kind') == 'solver_output')
 manifest = run_model(root, record)
 entries = [{'name': e['name'], 'placement': frame['component_placements'][e['name']],
-            'positions': [v for t in stl(root/'runs/copy100/rollout'/(e['output']+'.stl')) for p in t for v in p]}
+            'positions': [v for t in stl(root/'runs'/run/'rollout'/(e['output']+'.stl')) for p in t for v in p]}
            for e in manifest['components'] if e['name'] in frame['component_placements']]
-evidence = {'project': root.name, 'run': 'copy100', 'video': video, 'screenshots': {},
+evidence = {'project': root.name, 'run': run, 'historical': historical, 'evidence_dir': evidence_dir,
+            'video': video, 'screenshots': {},
             'reference_commit': subprocess.check_output(['git','-C',str(ref),'rev-parse','HEAD'],text=True).strip()}
 
 def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -37,13 +45,14 @@ def canvas(page, expression, name):
     path = out/(name+'.png'); path.write_bytes(base64.b64decode(page.evaluate(expression)))
     evidence['screenshots'][name] = sha(path)
 
-subprocess.run(['ffmpeg','-v','error','-y','-i',str(root/'runs/copy100'/video['path']),
+subprocess.run(['ffmpeg','-v','error','-y','-i',str(root/'runs'/run/video['path']),
                 '-frames:v','1',str(out/'video-frame0.png')],check=True)
 with HeadlessBrowser(find_browser()) as browser:
     page = browser.page(url)
     page.evaluate('cadexReview.ready',await_promise=True)
     assert page.text('#project-name') == root.name+' — review'
-    assert page.text('#view-kind') == 'RUN copy100'
+    assert page.text('#view-kind') == 'RUN '+run
+    assert page.text('#view-revision') == record['model']['accepted_revision']
     page.wait_for("document.getElementById('model-status').dataset.state === 'loaded'")
     page.evaluate("document.getElementById('viewer').style.cssText='width:512px;height:512px;border:0;padding:0'; cadexReview.viewer().draw()")
     canvas(page,'cadexReview.viewer().png()', 'persistent-default')
@@ -58,6 +67,30 @@ with HeadlessBrowser(find_browser()) as browser:
         c={**video['camera'],'distance':video['camera']['distance']*scale,'pitch':pitch,'yaw':1.8}
         page.evaluate('cadexReview.viewer().setCamera('+json.dumps(c)+')')
         canvas(page,'cadexReview.viewer().png()', 'persistent-'+label)
+    # Orbit and zoom by real pointer input on the persistent page, not by API camera
+    # placement: the environment must restage under the framing a person reaches.
+    page.evaluate('cadexReview.viewer().frameBounds('+json.dumps(video['bounds'])+'); cadexReview.viewer().setCamera('+json.dumps(video['camera'])+')')
+    page.scroll_into_view('#viewer'); rect = page.rect('#viewer')
+    cx, cy = rect['x']+rect['width']/2, rect['y']+rect['height']/2
+    before = page.evaluate('cadexReview.viewer().camera()')
+    page.drag(cx, cy, cx-180, cy+30)
+    dragged = page.wait_for('(function(){var c=cadexReview.viewer().camera();return c.yaw!=='+repr(before['yaw'])+'&&c.pitch!=='+repr(before['pitch'])+'&&c})()')
+    assert dragged['distance'] == before['distance']
+    canvas(page,'cadexReview.viewer().png()', 'persistent-orbit-drag')
+    page.wheel(cx, cy, -360)
+    zoomed = page.wait_for('(function(){var c=cadexReview.viewer().camera();return c.distance<'+repr(dragged['distance'])+'&&c})()')
+    canvas(page,'cadexReview.viewer().png()', 'persistent-orbit-zoom')
+    page.wheel(cx, cy, 1200)
+    zoomed_out = page.wait_for('(function(){var c=cadexReview.viewer().camera();return c.distance>'+repr(before['distance'])+'*2&&c})()')
+    canvas(page,'cadexReview.viewer().png()', 'persistent-orbit-far')
+    evidence['orbit'] = {'before': before, 'after_drag': dragged, 'after_zoom_in': zoomed, 'after_zoom_out': zoomed_out,
+                         'model_pixels': {'drag': page.evaluate('(cadexReview.viewer().setCamera('+json.dumps(dragged)+'), cadexReview.viewer().nonBackgroundPixels())'),
+                                          'zoom_in': page.evaluate('(cadexReview.viewer().setCamera('+json.dumps(zoomed)+'), cadexReview.viewer().nonBackgroundPixels())'),
+                                          'zoom_out': page.evaluate('(cadexReview.viewer().setCamera('+json.dumps(zoomed_out)+'), cadexReview.viewer().nonBackgroundPixels())')},
+                         'stage_far': page.evaluate('cadexReview.viewer().stats().stage')}
+    assert min(evidence['orbit']['model_pixels'].values()) > 1000
+    page.evaluate('cadexReview.viewer().setCamera('+json.dumps(video['camera'])+')')
+
     # Identical capture API and explicit same pose/camera, lossless before encoding.
     capture = browser.page(url+'capture.html');capture.wait_for('window.cadexCapture?.available')
     capture.evaluate('cadexCapture.install('+json.dumps(entries)+');cadexCapture.frameBounds('+json.dumps(video['bounds'])+');cadexCapture.setCamera('+json.dumps(video['camera'])+')')
@@ -66,20 +99,21 @@ with HeadlessBrowser(find_browser()) as browser:
     evidence['lossless_viewport_capture_equal'] = True
 
     page.send("Page.bringToFront")
-    page.click('#views li[data-run="probe3-checkpoint20"]')
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN probe3-checkpoint20'")
+    page.click('#views li[data-run="'+historical+'"]')
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN "+historical+"'")
     page.wait_for("!!document.querySelector('#videos video')")
-    checkpoint = read_run_record(root/'runs/probe3-checkpoint20',root)['videos'][0]
+    checkpoint = read_run_record(root/'runs'/historical,root)['videos'][0]
+    evidence['historical_relation'] = page.text('#view-relation')
     page.evaluate("window.checkpointVideo=document.querySelector('#videos video');checkpointVideo.muted=true;checkpointVideo.play()",await_promise=True)
     page.wait_for('checkpointVideo.currentTime > .1')
     downloaded=page.download('#videos li[data-video="0"] a')
     assert sha(downloaded.path)==checkpoint['sha256']
     page.evaluate('cadexReview.refresh()',await_promise=True)
     assert page.evaluate("checkpointVideo === document.querySelector('#videos video') && !checkpointVideo.paused")
-    page.click('#current-run');assert page.text('#view-kind')=='RUN copy100'
+    page.click('#current-run');assert page.text('#view-kind')=='RUN '+run
     evidence['checkpoint']=checkpoint
     evidence['checkpoint_playback_download_poll']=True
-    subprocess.run(['ffmpeg','-v','error','-y','-i',str(root/'runs/probe3-checkpoint20'/checkpoint['path']),
+    subprocess.run(['ffmpeg','-v','error','-y','-i',str(root/'runs'/historical/checkpoint['path']),
                     '-frames:v','1',str(out/'checkpoint-frame0.png')],check=True)
 
     # An in-memory harness uses the actual unmodified reference scene/environment
@@ -101,7 +135,8 @@ with HeadlessBrowser(find_browser()) as browser:
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
         page=browser.page('http://127.0.0.1:'+str(server.server_port)+'/')
-        page.evaluate('window.entries='+json.dumps(entries)+';window.cameraValue='+json.dumps(video['camera']))
+        page.evaluate('window.entries='+json.dumps(entries)+';window.cameraValue='+json.dumps(video['camera'])
+                      +';window.floorZ='+repr(video['bounds']['min'][2]/1000-0.003))
         page.evaluate('''(async()=>{
           const THREE=await import('three');
           const {createScene,setToneMapping,configureKeyLight}=await import('/scene.js');
@@ -116,7 +151,7 @@ with HeadlessBrowser(find_browser()) as browser:
           const c=cameraValue,t=c.target.map(x=>x/1000),d=c.distance/1000,cp=Math.cos(c.pitch);
           v.camera.position.set(t[0]+d*cp*Math.cos(c.yaw),t[2]+d*Math.sin(c.pitch),-t[1]-d*cp*Math.sin(c.yaw));
           v.controls.target.set(t[0],t[2],-t[1]);v.camera.lookAt(v.controls.target);
-          env.setStage({camDist:d});env.setSize({floorZ:-.013});
+          env.setStage({camDist:d});env.setSize({floorZ:floorZ});
           configureKeyLight(v,{focus:v.controls.target,extent:.35});v.resize();v.render();window.referenceView=v;
         })()''',await_promise=True)
         canvas(page,"referenceView.renderer.domElement.toDataURL('image/png').split(',')[1]",'reference-light-reed')

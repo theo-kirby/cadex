@@ -1,0 +1,267 @@
+{
+  "project": "ot5-biped-copy29",
+  "run": "shin55-final",
+  "historical": "shin55-checkpoint20",
+  "evidence_dir": "style44",
+  "video": {
+    "accepted_revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274",
+    "bounds": {
+      "center": [
+        0.0,
+        0.0,
+        106.79760184974006
+      ],
+      "max": [
+        200.0,
+        150.0,
+        223.59520369948012
+      ],
+      "min": [
+        -200.0,
+        -150.0,
+        -10.0
+      ],
+      "radius": 275.9378187161927
+    },
+    "camera": {
+      "distance": 687.2321484636462,
+      "pitch": 0.5,
+      "target": [
+        0,
+        0,
+        106.79760184974006
+      ],
+      "yaw": 0.8
+    },
+    "duration_seconds": 0.6,
+    "fps": 10,
+    "frames": 6,
+    "height": 512,
+    "model_digest": "d9025761e4fefd59ffd8a08cc7cdcfc7e934f95445cd006b5454e8a0a1619108",
+    "path": "rollout-c23508ad3e92e4742164ecdc6d7d97dd5dd83f32194f56944d8d459275f6ddb1.webm",
+    "policy_sha256": "609ef8e83c1852736a26fe041e1cd3ae315ee65eeb1ce0ef53bed830da0a5312",
+    "projection": "perspective 55 degrees",
+    "render_seconds": 2.026,
+    "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+    "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+    "seed": 0,
+    "sha256": "c23508ad3e92e4742164ecdc6d7d97dd5dd83f32194f56944d8d459275f6ddb1",
+    "sim_seconds": 0.46,
+    "style": "cadex-prototype-light-v1",
+    "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+    "task_sha256": "7a7205e338c5f6974c6e31cd18bf22ec70fe3fb0033535c8d5391b0c2149fcbd",
+    "trace_sha256": "091656578cbe9f01e7f610dc0212f9080d5bc64245d105a9ced40dce8bdbe52a",
+    "width": 512
+  },
+  "screenshots": {
+    "persistent-default": "3bd31fe2d227f9a0acfa2a9995fc423e1db9b0d9b088191c4fa20c6fa1834904",
+    "persistent-same-pose": "3bd31fe2d227f9a0acfa2a9995fc423e1db9b0d9b088191c4fa20c6fa1834904",
+    "persistent-close": "261866bd302b2b75053339079dbd65a77c3acdff2c60554b1fec9c8b8d61f0ca",
+    "persistent-wide": "8d39c92c8406480a5b030fc50e4e99d4a79fb71a3b53fb3365572772e9985e0e",
+    "persistent-under": "eb81b0c75a217078e450a6913b6ac3076768554059b0d8d629562bd494425324",
+    "persistent-orbit-drag": "dd13857759c387baca91046711a25fcbff5850e48ba44fe556bbf6c968ce0a61",
+    "persistent-orbit-zoom": "a6c16f0151b7241f7de788779641269f8650378cd5d7f0704a208372ddd7c12d",
+    "persistent-orbit-far": "93be5f6685c96c3adc1a3c4175d83e41070e6dcd6c02c3e09bf477bfdbad2a46",
+    "capture-same-pose": "3bd31fe2d227f9a0acfa2a9995fc423e1db9b0d9b088191c4fa20c6fa1834904",
+    "reference-light-reed": "9a7dbe20eb46526fada98065600ac228c3b5e78bda79e59f50d8799f37c7a5d3"
+  },
+  "reference_commit": "31caeb28abb3bdab8d9030bfc91f0c3f48ffa63a",
+  "persistent_identity": {
+    "selected": "shin55-final",
+    "stale": false,
+    "error": null,
+    "revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274",
+    "relation": "current",
+    "model": {
+      "available": true,
+      "reason": null,
+      "revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274"
+    },
+    "runs": [
+      "probe1",
+      "probe1-playback",
+      "probe2-checkpoint20",
+      "probe2",
+      "probe3-checkpoint20",
+      "probe3",
+      "probe3-final",
+      "foot90",
+      "copy100",
+      "shin55-checkpoint20",
+      "shin55",
+      "shin55-final"
+    ]
+  },
+  "camera": {
+    "distance": 687.2321484636462,
+    "pitch": 0.5,
+    "target": [
+      0,
+      0,
+      106.79760184974006
+    ],
+    "yaw": 0.8
+  },
+  "stats": {
+    "available": true,
+    "components": 8,
+    "triangles": 96,
+    "bounds": {
+      "center": [
+        0,
+        0,
+        106.79760184974006
+      ],
+      "max": [
+        200,
+        150,
+        223.59520369948012
+      ],
+      "min": [
+        -200,
+        -150,
+        -10
+      ],
+      "radius": 275.9378187161927
+    },
+    "style": "cadex-prototype-light-v1",
+    "stage": {
+      "roomSize": 38.485000313964186,
+      "fog": {
+        "near": 1.0308482226954694,
+        "far": 9.621250078491046
+      },
+      "pitch": 1,
+      "minor": 0.2,
+      "frameSpan": 0.7155008251401201
+    }
+  },
+  "orbit": {
+    "before": {
+      "distance": 687.2321484636462,
+      "pitch": 0.5,
+      "target": [
+        0,
+        0,
+        106.79760184974006
+      ],
+      "yaw": 0.8
+    },
+    "after_drag": {
+      "distance": 687.2321484636462,
+      "pitch": 0.8000000000000003,
+      "target": [
+        0,
+        0,
+        106.79760184974006
+      ],
+      "yaw": 2.6
+    },
+    "after_zoom_in": {
+      "distance": 400.48333349241204,
+      "pitch": 0.8000000000000003,
+      "target": [
+        0,
+        0,
+        106.79760184974006
+      ],
+      "yaw": 2.6
+    },
+    "after_zoom_out": {
+      "distance": 2422.782983002015,
+      "pitch": 0.8000000000000003,
+      "target": [
+        0,
+        0,
+        106.79760184974006
+      ],
+      "yaw": 2.6
+    },
+    "model_pixels": {
+      "drag": 46134,
+      "zoom_in": 117678,
+      "zoom_out": 3763
+    },
+    "stage_far": {
+      "roomSize": 135.67584704811284,
+      "fog": {
+        "near": 3.6341744745030224,
+        "far": 33.91896176202821
+      },
+      "pitch": 1,
+      "minor": 0,
+      "frameSpan": 2.522441983176641
+    }
+  },
+  "lossless_viewport_capture_equal": true,
+  "historical_relation": "HISTORICAL \u2014 recorded at a3591f651443, accepted now is 67b5000f3de1",
+  "checkpoint": {
+    "accepted_revision": "a3591f651443fb00ee135b569bbef9df0ac84ea173e276c2299c0a83d3157477",
+    "bounds": {
+      "center": [
+        0.0,
+        0.0,
+        106.79760184974006
+      ],
+      "max": [
+        200.0,
+        150.0,
+        223.59520369948012
+      ],
+      "min": [
+        -200.0,
+        -150.0,
+        -10.0
+      ],
+      "radius": 275.9378187161927
+    },
+    "camera": {
+      "distance": 687.2321484636462,
+      "pitch": 0.5,
+      "target": [
+        0,
+        0,
+        106.79760184974006
+      ],
+      "yaw": 0.8
+    },
+    "duration_seconds": 8.1,
+    "fps": 10,
+    "frames": 81,
+    "height": 512,
+    "model_digest": "fa9cc627b409a048edf8545ee37f3cbe3c7e73c395613fbee4e59446328faad8",
+    "path": "rollout-89bfc9ecde0e6e1e36ee2f8d1bb208677c899c065cb13c29d7608edc87e4887d.webm",
+    "policy_sha256": "4745829c6f8032da76a7e6bfb58deb90498290090a9158dd8d104abcde11b5e7",
+    "projection": "perspective 55 degrees",
+    "render_seconds": 14.019,
+    "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+    "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+    "seed": 0,
+    "sha256": "89bfc9ecde0e6e1e36ee2f8d1bb208677c899c065cb13c29d7608edc87e4887d",
+    "sim_seconds": 8.0,
+    "style": "cadex-prototype-light-v1",
+    "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+    "task_sha256": "7a7205e338c5f6974c6e31cd18bf22ec70fe3fb0033535c8d5391b0c2149fcbd",
+    "trace_sha256": "3d8d83d69a4d10bfba93618e32f1a738dfa04b573ab1f13a4379df3771dbf83d",
+    "width": 512
+  },
+  "checkpoint_playback_download_poll": true,
+  "codec_mean_absolute_rgb_error": 1.6731821695963542,
+  "images": {
+    "persistent-same-pose.png": "3bd31fe2d227f9a0acfa2a9995fc423e1db9b0d9b088191c4fa20c6fa1834904",
+    "persistent-orbit-far.png": "93be5f6685c96c3adc1a3c4175d83e41070e6dcd6c02c3e09bf477bfdbad2a46",
+    "persistent-default.png": "3bd31fe2d227f9a0acfa2a9995fc423e1db9b0d9b088191c4fa20c6fa1834904",
+    "persistent-wide.png": "8d39c92c8406480a5b030fc50e4e99d4a79fb71a3b53fb3365572772e9985e0e",
+    "checkpoint-frame0.png": "0560ca7945f38c6d02ff1db78dd7b830ff80546ef9886fe6af42cfeb48853689",
+    "persistent-under.png": "eb81b0c75a217078e450a6913b6ac3076768554059b0d8d629562bd494425324",
+    "checkpoint-frame40.png": "f01b2791917d94df268ef04e5fc1f7bf8e4926ab43bcd7cab221785e562f8ae2",
+    "persistent-close.png": "261866bd302b2b75053339079dbd65a77c3acdff2c60554b1fec9c8b8d61f0ca",
+    "side-by-side.png": "7d2110a186bd68b6ec352065dbdfd4eead6bd238299d140314181638eb0a3b9a",
+    "reference-light-reed.png": "9a7dbe20eb46526fada98065600ac228c3b5e78bda79e59f50d8799f37c7a5d3",
+    "video-frame5.png": "86dcdf15b6dde50227cc68fdd051396fee2ca90baf4ea6f2ea8c8deea39c8a53",
+    "persistent-orbit-zoom.png": "a6c16f0151b7241f7de788779641269f8650378cd5d7f0704a208372ddd7c12d",
+    "persistent-orbit-drag.png": "dd13857759c387baca91046711a25fcbff5850e48ba44fe556bbf6c968ce0a61",
+    "video-frame0.png": "0560ca7945f38c6d02ff1db78dd7b830ff80546ef9886fe6af42cfeb48853689",
+    "capture-same-pose.png": "3bd31fe2d227f9a0acfa2a9995fc423e1db9b0d9b088191c4fa20c6fa1834904"
+  }
+}

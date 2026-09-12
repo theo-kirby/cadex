@@ -2,13 +2,80 @@
 
 Verified against source: 2026-09-12. [Cadex-new]
 
-**The shared renderer is delivered (ADR-301).** The persistent Reed dashboard,
-new `copy100` final-policy video and `probe3-checkpoint20` recording use the same
-reference-derived light scene. The charter's D11 evidence list is assessed item
-by item, with its remaining limits, in the
+**The shared renderer is delivered (ADR-301) and its comparison has been
+repeated on the current design.** The persistent Reed dashboard, the
+`copy100` and `shin55-final` final-policy videos and the `probe3-checkpoint20`
+and `shin55-checkpoint20` recordings use the same reference-derived light
+scene. The charter's D11 evidence list is assessed item by item in the
 [lifecycle report](../reed-lifecycle/README.md#d11-assessment); the evidence
 below is that assessment's source and claims no new training experiment or
 completion of the lifecycle charter.
+
+## Repeat on `shin55-final` — iteration 44
+
+The same-pose, same-camera comparison was first made on `copy100`. It has now
+been repeated on the run the persistent operator page selects by default,
+`shin55-final`, at accepted revision `67b5000f3de1…`, with `shin55-checkpoint20`
+as the historical clip played, downloaded and polled from the same page:
+
+```bash
+PYTHONPATH=cli pixi run python docs/probes/review-style/compare.py \
+  "http://$(tailscale ip -4):8765/" "$HOME/cadex-projects/ot5-biped-copy29" \
+  "$HOME/neural-whoop" shin55-final shin55-checkpoint20 style44
+```
+
+[Compact evidence](shin55.json) retains the identities, camera, stage, orbit
+numbers and image digests; the PNGs, `side-by-side.html` and its screenshot
+live in the project's `evidence/style44/`, beside the decoded final frame
+(`video-frame5.png`) and a mid-clip checkpoint frame (`checkpoint-frame40.png`)
+decoded afterwards with the same FFmpeg. Nothing in the server, project or
+reference checkout was changed; the service on port 8765 was not restarted.
+
+What the run established, and what was seen in the images:
+
+- **Same pose, same camera, viewport and video.** The persistent viewport at
+  the video's fixed camera and the capture page at the identical pose are
+  byte-identical 512² PNGs (`3bd31fe2d227…`). FFmpeg's decoded frame zero of
+  the real `shin55-final` clip differs from that viewport by mean absolute RGB
+  error **1.6732 / 255**, inside the 3 / 255 codec tolerance and within 0.03 of
+  the `copy100` figure. The page's default fit for this design is the same
+  camera, so `persistent-default` and `persistent-same-pose` are one image.
+- **Side by side with the reference.** `reference-light-reed` (the unmodified
+  reference modules on Reed's exact `shin55` geometry), `persistent-same-pose`
+  and `video-frame0` show the same fogged grey prototype grid with its
+  `PROTOTYPE` / `1 METER` tile labels and fine subdivisions, the same smooth
+  floor-to-sky fade, the same cool-grey palette and bright rough component
+  colours, the same steep key with the biped's grounded, filtered shadow on the
+  orange slab, and identical framing. The only differences are the ones ADR-301
+  chose deliberately: Cadex's tighter shadow frustum and scale-derived bias
+  give a slightly crisper contact edge.
+- **Motion frames.** The final clip's last frame (0.46 s, fallen forward) and
+  the checkpoint's frame 40 (crouched, 4 s) keep the same grid, labels, fog and
+  lighting; the falls are the recorded motion, unaltered.
+- **Close and wide framing, and orbit by real pointer input.** Staged 0.7×
+  close (torso and feet retained, shadow on slab), 3× wide at low pitch (floor
+  fades into the horizon, no stage edge) and underside (front-sided
+  presentation floor gone, real slab underside inspectable) match the
+  `copy100` findings. A real left-button drag on the persistent canvas then
+  moved the camera from yaw 0.8 / pitch 0.5 to yaw 2.6 / pitch 0.8 at the same
+  distance and the grid restaged around the new view; a wheel zoom-in to
+  400 mm kept the contact shadow and the grid under the feet; a wheel zoom-out
+  to 2423 mm (3.5×) restaged the environment to a 136 m room with fog far at
+  33.9 m and major lines only, and showed no edge, wall or ceiling seam. The
+  model stayed drawn throughout (46 134 / 117 678 / 3 763 model pixels).
+- **Playback, download, polling and history.** `shin55-checkpoint20` is
+  labelled `HISTORICAL — recorded at a3591f651443, accepted now is
+  67b5000f3de1`; its clip played, its download digest matched its record
+  (`89bfc9ecde0e…`, 81 frames, same style digest as the final), playback
+  survived a poll, and the current-run control returned to `shin55-final`.
+
+No visual defect was demonstrated, so no renderer change was made. The
+`shin55-checkpoint20` and `shin55-final` clips share their first frame because
+they share geometry, initial pose, bounds and camera; their policies, traces
+and later frames differ. As before, every observation is same-machine over the
+private address, and the checkout still ships no light-themed reference clip.
+
+## First comparison on `copy100` — iteration 40
 
 ```bash
 PYTHONPATH=cli pixi run python -m cadex_cli.video \

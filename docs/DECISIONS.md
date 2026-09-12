@@ -23061,6 +23061,13 @@ and downloads, while existing polling/history/orbit gates continue to run.
 This is a shared rendering unit, not a new training experiment; it cannot measure
 concurrent GPU overhead or close D10's experiment-spanning observation gap.
 
+Repeated on the current design (2026-09-12, iteration 44): `compare.py` now
+takes the run, the historical clip and the evidence directory, and drives a
+real pointer drag, wheel zoom-in and zoom-out on the persistent page. On
+`shin55-final` the viewport/capture PNGs are again byte-identical, the decoded
+frame is within 1.67/255, and close/wide/orbit views show no stage edge; no
+renderer change followed. Evidence: `docs/probes/review-style/shin55.json`.
+
 ## ADR-302 — Byte-identical outputs each keep their accepted tessellation (2026-09-12)
 
 [Cadex-new] Fixes a review defect the Reed shin55 experiment exposed on the

@@ -173,20 +173,21 @@ what is honestly still thin:
 | Charter evidence | Exists | Where | Limit |
 |---|---|---|---|
 | Identified neural-whoop reference frames | Yes: decoded frame zero of the three shipped policy clips (dark theme), and one light frame rendered by the unmodified reference modules on Reed's geometry at commit `31caeb28…` | `docs/probes/review-style/evidence.json`, `implementation.json` | The checkout ships no light-themed clip, so the light reference is the reference renderer on our subject, not a reference-native subject. |
-| Matching Cadex viewport screenshots and decoded video frames, side by side at equivalent framing | Yes: same pose, camera and resolution; viewport and capture PNGs byte-identical, decoded video frame within 1.64/255 | `implementation.json`, project `evidence/style40/` | Done on `copy100`; `shin55` videos carry the same style digest but the parity capture was not repeated on them. |
+| Matching Cadex viewport screenshots and decoded video frames, side by side at equivalent framing | Yes: same pose, camera and resolution; viewport and capture PNGs byte-identical, decoded video frame within 1.64/255 on `copy100` and 1.67/255 on `shin55-final` | `implementation.json`, `shin55.json`, project `evidence/style40/` and `evidence/style44/` | Two designs, one pose and one camera each. |
 | Explicit assessment of floor/grid, horizon/fog, palette, lighting/shadows, materials, camera | Yes, property by property | `docs/probes/review-style/README.md` | Shadow frustum and bias differ deliberately from the reference; neither side simulates area-light penumbrae. |
-| Same Cadex pose/camera in viewport and video | Yes, byte-identical PNGs | `implementation.json` | One pose, one camera. |
-| Close/wide framing and orbit checked for stage edges, scale and contact shadows | Yes: fit, 0.7× close, 3× wide and underside orbits, no edge or seam, shadows grounded | `docs/probes/review-style/README.md` | Single-position screenshots per framing, judged by inspection. |
+| Same Cadex pose/camera in viewport and video | Yes, byte-identical PNGs on `copy100` and on `shin55-final` | `implementation.json`, `shin55.json` | One pose, one camera per design. |
+| Close/wide framing and orbit checked for stage edges, scale and contact shadows | Yes: fit, 0.7× close, 3× wide and underside orbits, plus a real pointer drag, wheel zoom-in and 3.5× zoom-out on the persistent page; no edge or seam, shadows grounded, model drawn throughout | `docs/probes/review-style/README.md`, `shin55.json` | Judged by inspection of retained screenshots. |
 | Real biped on the persistent operator URL; new videos retain the style identity; older recordings historical | Yes: port 8765, `shin55-checkpoint20` and `shin55-final` rendered in the style during and after live training; legacy videos kept and labelled | `docs/probes/reed-agentrev/evidence.json`, table above | — |
 | Browser interaction, live polling, playback/download and headless operation still pass | Yes, on the persistent URL during the shin55 experiment and again in this report's check | `reed-agentrev/evidence.json`, `report.json` | Same machine throughout. |
 
 Every item the charter names has an artifact behind it. The charter does
 not reserve visual acceptance to the owner in any wording beyond the rule
 that applies to every criterion — the human owns the checkbox edit — and an
-earlier state summary that said otherwise was unsupported. What remains
-open on D11 is what the limits column says: the parity capture and
-side-by-side were made on `copy100` rather than repeated on the current
-`shin55-final`, and the checkout offers no light-themed reference subject.
+earlier state summary that said otherwise was unsupported. The parity
+capture, side-by-side and framing/orbit checks have been made on both
+`copy100` and the current `shin55-final`. The one limit the evidence
+cannot remove is that the checkout offers no light-themed reference
+subject, so the light reference is the reference renderer on our geometry.
 
 ## Limits of this report
 

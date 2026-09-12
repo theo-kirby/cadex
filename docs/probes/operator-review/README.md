@@ -75,3 +75,13 @@ video with the recorded digest, kept playing across a poll, showed
 `probe3-final` as HISTORICAL and returned to current. No training was active,
 no experiment started and no project switch occurred; published status stays
 `ot5-biped-copy29 / shin55-final` and the service keeps running.
+
+Iteration 44 reverified this same URL without restarting it, through the
+[shin55-final visual comparison](../review-style/README.md#repeat-on-shin55-final--iteration-44):
+`shin55-final` selected by default at the accepted revision, its viewport
+byte-identical to the capture page at the video's camera and within 1.67/255 of
+the decoded clip, a real drag/zoom orbit on the canvas, `shin55-checkpoint20`
+played, downloaded with the recorded digest and preserved across a poll,
+labelled HISTORICAL, and return to current. No training was active, no
+experiment started and no project switch occurred; published status stays
+`ot5-biped-copy29 / shin55-final` and the service keeps running.
