@@ -1,4 +1,5 @@
 """Compare actual Reed baseline and revised models/specs/videos in Chromium."""
+import argparse
 import hashlib
 import base64
 import json
@@ -10,14 +11,22 @@ import sys
 from cadex_cli.review_server import serve
 from cdp_browser import HeadlessBrowser, find_browser
 
-root = Path(sys.argv[1]).resolve()
+parser = argparse.ArgumentParser(__doc__)
+parser.add_argument('project', type=Path)
+parser.add_argument('--view', action='append', help='Run name:expected foot length in mm')
+parser.add_argument('--output', default='foot90-history.json')
+args = parser.parse_args()
+root = args.project.resolve()
+views = [(name, float(length)) for name, length in
+         (item.rsplit(':', 1) for item in (args.view or ['probe3-final:70', 'foot90:90']))]
+assert Path(args.output).name == args.output
 server, _ = serve(root, subprocess.check_output(['tailscale', 'ip', '-4'], text=True).strip(), 0)
 rows = {}
 try:
     with HeadlessBrowser(find_browser()) as browser:
         page = browser.page(server.url)
         page.evaluate('window.cadexReview.ready', await_promise=True)
-        for name, length in [('probe3-final', 70), ('foot90', 90)]:
+        for name, length in views:
             record = json.loads((root / 'runs' / name / 'run.json').read_text())
             video = json.loads((root / 'runs' / name / 'video.json').read_text())['videos'][0]
             page.click("#views li[data-run='%s']" % name)
@@ -39,17 +48,16 @@ try:
             assert abs(max(xs) - min(xs) - length) < .001
             assert record['params']['values']['foot_len'] == length
             params = page.text('#params')
-            assert 'Foot length (X)' in params and str(length) in params
+            assert 'Foot length (X)' in params and format(length, 'g') in params
             page.click("#docs li[data-doc='docs/design-specs.md'] a")
             expected_doc = (root / 'runs' / name / 'project-docs/docs/design-specs.md').read_text()
             page.wait_for("document.getElementById('doc-view').textContent.endsWith(" + json.dumps(expected_doc) + ")")
             docs = page.text('#doc-view')
-            assert ('Review experiment: foot90' in docs) == (name == 'foot90')
             page.wait_for("document.getElementById('telemetry').dataset.state === 'done'")
             curves = {key: page.attribute('[data-history=' + key + ']', 'data-points')
                       for key in ('curve', 'loss_curve', 'episode_steps_curve')}
             assert set(curves.values()) == {'240'}
-            if name == 'probe3-final':
+            if name != views[-1][0]:
                 assert page.text('#view-relation').startswith('HISTORICAL')
             assert page.evaluate('window.cadexReview.viewer().nonBackgroundPixels()') > 1000
             page.scroll_into_view('#viewer')
@@ -72,9 +80,9 @@ try:
                           'foot_length_mm': max(xs) - min(xs),
                           'foot_mesh_sha256': hashlib.sha256(mesh).hexdigest(),
                           'orbit_zoom': True, 'video_played': True, 'download_sha256': video['sha256']}
-        assert rows['probe3-final']['digest'] != rows['foot90']['digest']
+        assert len({row['digest'] for row in rows.values()}) == len(views)
 finally:
     server.shutdown()
     server.server_close()
-    (root / 'evidence/foot90-history.json').write_text(json.dumps(rows, indent=2) + '\n')
+    (root / 'evidence' / args.output).write_text(json.dumps(rows, indent=2) + '\n')
 print(json.dumps({'ok': True, 'views': list(rows)}))

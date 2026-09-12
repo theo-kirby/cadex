@@ -536,9 +536,12 @@ opens both projects in headless Chromium, changes the copy's accepted fixture,
 and verifies the source stays byte-identical. With the original path unavailable,
 a fresh page still reads the copy's historical model, parameters, three metric
 histories and playable/downloadable video. It checks retained artifact hashes.
-This is synthetic fixture evidence for D7, not a real biped design or retraining
-pass. Copying an active project and external symlink targets are not covered by
-this procedure; project artifacts must be retained within the project directory.
+This test uses synthetic fixtures. The separate
+[real Reed copy lifecycle](HEADLESS-BIPED-REVIEW.md#independent-real-project-copy-d7)
+records a whole-project copy, physical revision and bounded GPU retraining,
+then engine reopen and three-design browser/video review with the original
+path unavailable and every original file unchanged. Copying an active project
+and external symlink targets are not covered by this procedure; project artifacts must be retained within the project directory.
 
 `cli/tests/test_walk.py` checks local/remote artifact parity through policy
 verification and rollout using a local CPU stand-in for the dispatcher.

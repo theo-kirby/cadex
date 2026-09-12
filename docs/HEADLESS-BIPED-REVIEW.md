@@ -657,3 +657,103 @@ All 250 pre-existing run/asset files retain their hashes. Compact evidence is
 history remain outside this repository. Copy the whole project, including
 ignored review artifacts. CLI regression suite: **362 passed, 1 skipped**.
 No engine, shell or protocol code changed and no build was performed.
+
+## Independent real-project copy (D7)
+
+Copy a stopped project with the whole-directory command in `docs/CLI.md`;
+retain hidden files, Git history, checkpoints, videos and traces. This pass uses
+`ot5-biped-copy29`, copied from Reed after foot90. A SHA-256 inventory of every
+file is retained in the copy's `evidence/copy29-before.json`. The source has no
+active authoring, training or rendering process during this operation.
+
+To reproduce the initial inventory and copy with an absent destination, run
+this before any edits (set `SOURCE` and `COPY` to the external project paths):
+
+```bash
+python3 - "$SOURCE" "$COPY" <<'PYTHON'
+import hashlib, json, subprocess, sys
+from pathlib import Path
+source, copy = map(Path, sys.argv[1:])
+assert source.is_dir() and not copy.exists()
+def inventory(root):
+    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in root.rglob('*') if p.is_file()}
+before = inventory(source)
+subprocess.run(['cp', '-R', str(source), str(copy)], check=True)
+assert inventory(copy) == before
+(copy / 'evidence/copy29-before.json').write_text(json.dumps(before, sort_keys=True))
+PYTHON
+```
+
+The product-agent request to change the copy's feet from 90 to 100 mm was
+refused on session quota before authoring. The copy's ADR-006 and design specs
+explicitly record the actor's parameter fallback. The hypothesis is greater
+fore/aft support, with increased foot mass/inertia; the nine foot90 falls in
+ten seeds motivate a test but establish no improvement. This run tests copy
+independence; it does not supply a new ten-seed gait comparison or satisfy D9's
+product-agent revision requirement.
+
+Commands from the repository root (`COPY` is the external copied project):
+
+```bash
+systemd-run --user --scope --unit=cadex-copy29 -p MemoryMax=20G \
+  env XLA_PYTHON_CLIENT_MEM_FRACTION=0.45 \
+  timeout --signal=TERM --kill-after=20s 2100 \
+  ./cadex walk --project "$COPY" --out "$COPY/runs/copy100" \
+  --set foot_len=100 --name copy100.cxpolicy --iterations 240 --envs 1024 \
+  --seed 0 --timeout 1800 --leg-timeout 2000 --json
+PYTHONPATH=cli pixi run python -m cadex_cli.video --project "$COPY" --run copy100
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/reed-copy/verify.py \
+  "$HOME/cadex-projects/ot5-biped" "$COPY"
+```
+
+The [isolation probe](probes/reed-copy/verify.py) requires stopped writers and
+an unchanged original inventory. It temporarily renames the source directory,
+restores it in `finally`, reopens/exports the copy through the real engine with
+its accepted revision and digest unchanged, and runs a new private-address review server with
+headless Chromium against the copy. It compares the 70, 90 and 100 mm models
+with retained STL bytes, declared parameters, exact saved design specs and
+revision/digest identities; exercises orbit/zoom; checks all three training
+curves; and plays/downloads each final video. Earlier designs must display
+HISTORICAL. The additional video check decodes the new video and compares its
+frame count, timing, policy/revision labels and download digest. The probe
+checks every original file again after restoring the source. Bulk outputs
+remain in the copy's `evidence/` and `runs/`; keep them with the project.
+
+**Result: D7 has real lifecycle evidence.** The walk exited 0 after 240 GPU
+iterations (324.882 seconds reported training time; 418.39 seconds for the
+whole training leg). All 32 engine witness samples passed, maximum error
+`9.154e-08` against `0.0001`. A cgroup sample recorded a 5,070,766,080-byte
+peak with `MemoryMax=21,474,836,480`; this is a sampled peak, not a claim about
+unsampled GPU memory. No other biped training or warm start occurred.
+
+The separate private-address browser showed the accepted training model at
+iteration 32 with 33 points in all three curves. After final recording, the
+source-unavailable engine and browser checks passed. All **1,206 original
+files**, including Git history, remain byte-identical, and all **322 inherited
+run/asset files** match in the edited copy. The original was restored to its
+normal path. Each of the three browser views retains its own model/spec identity,
+240-point curves and playable/downloadable video. No second-device test is
+claimed. The copy's accepted revision is `25d9b6ab7472…`; policy digest is
+`9e1674abf4dd…`. Its final video SHA-256 is
+`2308fe3baa4d0a5a2256a37deadfa798256ab6cca978ff8daeacc56c76a2ab24`.
+It decodes to eight 512×512 frames at 10 fps, 0.8 encoded seconds for 0.62
+simulation seconds, with distinct endpoint frames. On seed 0 the policy falls;
+this single episode does not establish a ten-seed gait result.
+
+[Compact evidence](probes/reed-copy/evidence.json) records exact identities,
+measurements, browser observations and the full original-inventory digest.
+The complete inventory, CLI receipts, renderer logs, browser screenshots and
+original video-checker source remain project-local in `evidence/`. D9's
+product-agent revision authorship remains unproven after the quota refusal.
+No product implementation, engine, shell, protocol, payload or dependency changed.
+
+Validation: `pixi run python -m pytest cli/tests` passed **363 tests, one
+skipped**, in 305.12 seconds, after the biped trainer exited. Focused lifecycle
+browser tests passed 2/2, review/record/video tests passed 57 with one skip,
+and command tests passed 23/23. An earlier full-suite attempt was interrupted
+to prevent its toy training from overlapping the biped. That interrupted run
+showed one command-test failure without a completed diagnostic; its cause was
+not established, and the isolated and full reruns both passed. Probe compilation
+and `git diff --check` passed. No engine-suite rerun or build was required for
+this documentation/probe-only unit.

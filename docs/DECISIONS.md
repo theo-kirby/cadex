@@ -22901,3 +22901,19 @@ identity, parameter values and mesh bytes. Training is deliberately intercepted;
 this test makes no real-training claim. The test fails on the prior code because
 the retained model is unavailable. Reed foot90's missing training snapshot is
 historical evidence and remains untouched.
+
+## ADR-294 — Exercise Reed's independent whole-project copy (2026-09-12)
+
+[Cadex-new] Keep the documented stopped-writer whole-directory copy contract.
+Test it on Reed with retained real policies, videos and history, then a single
+90→100 mm foot parameter edit and fresh bounded GPU retraining in the copy.
+The product agent again refuses on session quota; disclose the actor's public
+parameter fallback in the copied project's decisions and specs. It supplies
+no product-agent authorship evidence and establishes no gait improvement.
+
+Extend the existing browser history probe to accept explicit run/foot-length
+pairs and compare exact saved specs for each. The copy probe makes the original
+path unavailable during private-address browser review, verifies inherited
+run/asset hashes, and restores and checks every original file. This changes no
+product behavior, dependency, engine or shell code. Commands, outcomes and
+limits are recorded in `docs/HEADLESS-BIPED-REVIEW.md`.
