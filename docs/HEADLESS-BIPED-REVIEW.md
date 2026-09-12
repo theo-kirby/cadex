@@ -513,3 +513,50 @@ That check belongs in the upcoming design-change retraining and must prove the
 same trainer continues without duplication. This completed-run experiment does
 not claim that requirement, a new design revision, copy isolation, or a
 second-device test.
+
+## Ten-seed baseline before the design edit (D9)
+
+The retained checkpoint20 and final policies were evaluated through the public
+CLI on seeds **0–9**, each with the original **8-second / 400-step** episode.
+The [evaluation harness](probes/reed-baseline/evaluate.py) creates an independent
+whole-project copy and changes only the playback policy declaration and rollout
+seed. Run it from the product repository with a stopped source project and a
+destination that does not exist:
+
+```bash
+python3 docs/probes/reed-baseline/evaluate.py \
+  ~/cadex-projects/ot5-biped ~/cadex-projects/ot5-biped-baseline-seeds-v2
+```
+
+The command exited 0 with **20 real engine rollouts**. Each accepted script
+transaction verifies the policy witness. All model, task and policy hashes
+match the retained reference for that policy; both seed-0 trace objects equal
+the previous saved traces in full. The source project's non-Git file manifest
+is byte-identical before and after. No training, rendering or browser change
+was performed. The [compact results](probes/reed-baseline/results.json) retain
+each seed's revision, trace digest, policy/model/task identity and measurements.
+Full traces and CLI receipts live in the copied project's
+`evidence/baseline-seeds/`; retain that directory with the copy.
+
+| Policy | Falls / episodes | Observed seconds, mean (range) | Forward displacement mm, mean (range) |
+|---|---:|---:|---:|
+| checkpoint20, `74750cc6d8e7` | 0 / 10 | 8.000 (8–8) | 39.352 (34.295–45.941) |
+| final, `a06b4bf489529` | 10 / 10 | 0.498 (0.48–0.52) | 200.854 (189.535–210.536) |
+
+Displacement is last minus first published torso-link world X position, not
+distance walked. Falls use the engine's `termination="fell"`; survival here
+means reaching the episode limit without that declared termination, not a
+separate physical assessment. The trace's sampled final pose need not be the
+termination integration step. `truncated=true` means the episode reached its
+time limit; the initial harness incorrectly rejected it, then passed after
+checking that its end time is eight seconds. That initial copy and failure log
+were retained outside the product repository.
+
+The final policy's extra displacement comes with consistently short survival,
+so it is not evidence of improved walking. A longer foot is a plausible single
+parametric experiment to enlarge fore/aft support, but these measurements do
+not establish why the policy falls or that this edit will help. Compare the
+next design's retained policy on this same seed/episode set, keeping task and
+training settings explicit. The physical edit and bounded retraining, new
+verified video, two-design browser checks and live dashboard restart remain
+open; this measurement alone does not tick D2, D5, D6 or D9.

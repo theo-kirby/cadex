@@ -1,0 +1,440 @@
+{
+  "schema": "reed-baseline-evaluation-v1",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "episode_limit_s": 8,
+  "source_unchanged": true,
+  "seed_zero_traces_reproduced": true,
+  "rows": [
+    {
+      "policy": "probe3-checkpoint20",
+      "seed": 0,
+      "episode_limit_s": 8,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        45.94098805157761,
+        1.8984358660122087,
+        -29.309025485245883
+      ],
+      "total_reward": 333.02443433799135,
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "82a8a5806ef5c1ac9104680c38722b776f1f6b0c511eaedce7c5a7562e071846",
+      "accepted_revision": "0fb4ffb59c69f646897d5c4464876b954ad3531e807313d6163244f648dcad15"
+    },
+    {
+      "policy": "probe3-checkpoint20",
+      "seed": 1,
+      "episode_limit_s": 8,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        38.42740712886123,
+        -0.6637997922901958,
+        -32.713460265728
+      ],
+      "total_reward": 327.333744202052,
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "96933d5a6c4493bfc143ad29a987898420ebb13731d107cfd08a97594c53bf25",
+      "accepted_revision": "8b4d267bcdb3c9f66195c46806bddba2091473c2156d4b6df7f24a8023623419"
+    },
+    {
+      "policy": "probe3-checkpoint20",
+      "seed": 2,
+      "episode_limit_s": 8,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        39.66738793578977,
+        10.58851766860766,
+        -25.573423761184443
+      ],
+      "total_reward": 329.31422435402334,
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "babfbcae9d037eb4ad3206d302c4b12751284d6fe4bdc7a4a1fe1bdd33379429",
+      "accepted_revision": "0582ed22ba5af0bebe86e544dfc5c5084d64640d9f4d51437fa01f986ad5549f"
+    },
+    {
+      "policy": "probe3-checkpoint20",
+      "seed": 3,
+      "episode_limit_s": 8,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        37.890701160914176,
+        -2.35781823841172,
+        -28.768775054901568
+      ],
+      "total_reward": 326.95292010716867,
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "3f42809a869b4255f76cad3298b9564d8624ff85cd999f098abd33bbae98b81b",
+      "accepted_revision": "be41a5e031c44cf18808615e2f5181d94d3965b99bc7a812a646f20397b5e380"
+    },
+    {
+      "policy": "probe3-checkpoint20",
+      "seed": 4,
+      "episode_limit_s": 8,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        35.70796430977913,
+        0.19951654795320964,
+        -29.027791957962762
+      ],
+      "total_reward": 325.0523748660756,
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "8b85db870abb7e0904c15a76caf0e20c4d18ac3a3b8393d578bf7be8cb153646",
+      "accepted_revision": "8ac2298102d24dd7cb2e18b5c2acae0449e7eb05e2b98f6459a134d1e3a835b8"
+    },
+    {
+      "policy": "probe3-checkpoint20",
+      "seed": 5,
+      "episode_limit_s": 8,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        43.85704498166805,
+        -0.31108309040684773,
+        -33.04648607610622
+      ],
+      "total_reward": 332.03790437115595,
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "2818cc130745aaf6229a898511503a749244309230cd360fb1f99a1b98031f2b",
+      "accepted_revision": "7718d0da10ce6e296dfba947516e83dc653256e1033af6e1cc356164d0082226"
+    },
+    {
+      "policy": "probe3-checkpoint20",
+      "seed": 6,
+      "episode_limit_s": 8,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        44.396709161137835,
+        2.7434293863510355,
+        -29.944823238424704
+      ],
+      "total_reward": 331.71445782982386,
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "1fcb4fdf61198ec3cfc91b1aa50628c86d84c6793b0e7885556154857e8e19b4",
+      "accepted_revision": "0aa91c5551f7b5710613c9d4f38b7d108135d5fb057f97a6eb808db4a96420a3"
+    },
+    {
+      "policy": "probe3-checkpoint20",
+      "seed": 7,
+      "episode_limit_s": 8,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        34.29499341461482,
+        2.0082218862776418,
+        -31.574273776577087
+      ],
+      "total_reward": 323.8797163962386,
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "80cfe6c08446005a2e491b529af081eaac6738ab82e7f6f987af6fd4a6572506",
+      "accepted_revision": "d245c1bc38d726f9d53f07ba014dc93a5354e3b3dad12224332ed09523c87ee0"
+    },
+    {
+      "policy": "probe3-checkpoint20",
+      "seed": 8,
+      "episode_limit_s": 8,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        38.199717188606314,
+        3.9392322001607725,
+        -26.33475049688664
+      ],
+      "total_reward": 326.962844067674,
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "27ff46bc5a4a2cb36c258c54e21ccae0209c99471f023c796c82329c2d7cc130",
+      "accepted_revision": "629b867c5272a0335b3c3d1d0e0bc42653bbc1e1bfd89ed70d6d97f9d99fa9d1"
+    },
+    {
+      "policy": "probe3-checkpoint20",
+      "seed": 9,
+      "episode_limit_s": 8,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        35.14027884755974,
+        -2.5828582608001533,
+        -26.445347680569654
+      ],
+      "total_reward": 324.99047774565406,
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "afe0cd11599bcb1edee478e164c3127d579c491fee4ff2f03646199b01e49608",
+      "accepted_revision": "0f51354e832359b09df9b84b9d5f4fb913f00e26bbfd4cf612b02e3ed5c57d8c"
+    },
+    {
+      "policy": "probe3-final",
+      "seed": 0,
+      "episode_limit_s": 8,
+      "observed_s": 0.52,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 26,
+      "displacement_mm": [
+        210.53571786647387,
+        -0.018993665565961465,
+        -83.10315934771663
+      ],
+      "total_reward": 198.2042987226712,
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "66e6fd738070ec4e7b7a723690c5d001cff69a9db3d9c4ded14587aa36b0a1d3",
+      "accepted_revision": "a7ee956cafc8de6b1732bc83cb3f59d832a6fe46b5406f3624e88267f479fa2d"
+    },
+    {
+      "policy": "probe3-final",
+      "seed": 1,
+      "episode_limit_s": 8,
+      "observed_s": 0.5,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 25,
+      "displacement_mm": [
+        206.09959847349126,
+        -3.7712026785517523,
+        -88.62825014372085
+      ],
+      "total_reward": 193.7386876405485,
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "bc9a1b2d1ac70c11b013bf36a2841f62aafc59b43b6ebff2232aecd5141e3281",
+      "accepted_revision": "7e96990645b1137dab3af17833bf72208acdc984ae83eaecfa3596c26cb7ab17"
+    },
+    {
+      "policy": "probe3-final",
+      "seed": 2,
+      "episode_limit_s": 8,
+      "observed_s": 0.5,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 25,
+      "displacement_mm": [
+        204.43986121532416,
+        9.04674508172439,
+        -83.26792959783994
+      ],
+      "total_reward": 191.4070265246135,
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "45b51612b2abc23fc0fa93aebf68243cf56bcb5008333dca991c6f030eb619d3",
+      "accepted_revision": "87242638e1eb8765897bfa80ae4e296414c89114530048e0078095071491c86b"
+    },
+    {
+      "policy": "probe3-final",
+      "seed": 3,
+      "episode_limit_s": 8,
+      "observed_s": 0.5,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 25,
+      "displacement_mm": [
+        204.6970689500546,
+        -4.730610769647042,
+        -85.12560252771638
+      ],
+      "total_reward": 192.29156235907104,
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "ea08ecf806330a42ac09ba17fcae0407807ba475d5440ef7744cb4a446d15b06",
+      "accepted_revision": "922b4cce9d14493ea1f8346309c986b13243970526ae1bbae56a777621f922da"
+    },
+    {
+      "policy": "probe3-final",
+      "seed": 4,
+      "episode_limit_s": 8,
+      "observed_s": 0.48,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 24,
+      "displacement_mm": [
+        189.53508665502423,
+        -2.257499441373861,
+        -72.03966305528036
+      ],
+      "total_reward": 178.26918505698671,
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "52a4ec13c74a2b54913c9e0c9c6a993fd6bb307a9d7b65a41a1c57e59ef6f048",
+      "accepted_revision": "f18eb738b1d75860086489b8f56ab68c5b7a494244eb93dde632a38bdf8e6808"
+    },
+    {
+      "policy": "probe3-final",
+      "seed": 5,
+      "episode_limit_s": 8,
+      "observed_s": 0.5,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 25,
+      "displacement_mm": [
+        198.664147824011,
+        -2.7695868695105132,
+        -76.80085146515077
+      ],
+      "total_reward": 187.07487501846046,
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "ff1b7649a8602934d220315532e827b8e6f1038c789a597e4aa4ccf6437bcced",
+      "accepted_revision": "75ea468f3e65ad6a6778b5746e9728c36c2f4be9d9daf24170b7fa8efd19d789"
+    },
+    {
+      "policy": "probe3-final",
+      "seed": 6,
+      "episode_limit_s": 8,
+      "observed_s": 0.5,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 25,
+      "displacement_mm": [
+        201.03448099147428,
+        0.8847997591188639,
+        -75.97354646652963
+      ],
+      "total_reward": 188.7122038661957,
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "0c04f6f0194e9d708b21229fb26d6c98fb13bf7ab502049986343a486c975eab",
+      "accepted_revision": "a3c4218195db21a689e35ae685d6c26f8cbc5059350cb8ffd2b8872c135257d0"
+    },
+    {
+      "policy": "probe3-final",
+      "seed": 7,
+      "episode_limit_s": 8,
+      "observed_s": 0.5,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 25,
+      "displacement_mm": [
+        203.0841101868609,
+        0.3658528267147461,
+        -88.90386380214227
+      ],
+      "total_reward": 191.1570088979995,
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "cceb0ee3b13b2f8148475971fb44341be488880c5aa8d67f228e6ac430cc4015",
+      "accepted_revision": "89e648aad0c7455e505c06fa5dd000e13163df59bc84da89e8e4944ffea4d7ef"
+    },
+    {
+      "policy": "probe3-final",
+      "seed": 8,
+      "episode_limit_s": 8,
+      "observed_s": 0.48,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 24,
+      "displacement_mm": [
+        191.70700235097564,
+        2.750895689165306,
+        -71.0222941242468
+      ],
+      "total_reward": 179.96149248400218,
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "1ed92e100506165d504137073e175a61c98fb982f95db96155bd27e1ebff51e6",
+      "accepted_revision": "66d383f725e28769b03688b45e5036c22c69cd532ad3ae87483c37bcdfd2b2fd"
+    },
+    {
+      "policy": "probe3-final",
+      "seed": 9,
+      "episode_limit_s": 8,
+      "observed_s": 0.5,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 25,
+      "displacement_mm": [
+        198.74218528562014,
+        -3.5617245144204945,
+        -78.94217372600136
+      ],
+      "total_reward": 187.17710883545266,
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "model_sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+      "task_sha256": "59508724bb6aef368fac7cc2c6cdfa11c342d8e1bec9d56c7698405b9376bfad",
+      "trace_sha256": "21e856d0fd7d88c039bae57d9f8152053690df9c42e098c199cb4a04308e5198",
+      "accepted_revision": "25cf42bd8dda173c803dd6a18b95a1238577924d520e4a39810f26745aa80bc3"
+    }
+  ]
+}
