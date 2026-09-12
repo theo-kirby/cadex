@@ -432,7 +432,9 @@ def accepted_model(project_root: Path | str) -> dict[str, Any]:
     if not result or not isinstance(result.get("outputs"), list):
         model["reason"] = "accepted attempt has no readable result.json"
         return model
-    brep_digests: dict[str, str] = {}
+    # Several outputs may be byte-identical BREP (a mirrored pair of legs);
+    # every one of them owns the tessellation made from those bytes.
+    brep_digests: dict[str, list[str]] = {}
     outputs_by_name: dict[str, Mapping[str, Any]] = {}
     for output in result["outputs"]:
         if not isinstance(output, Mapping) or not isinstance(output.get("name"), str):
@@ -442,17 +444,18 @@ def accepted_model(project_root: Path | str) -> dict[str, Any]:
         if output.get("artifact_kind") == "brep" and isinstance(artifact, str):
             item = resolve_reference(staging, artifact)
             if item["exists"] and not item["error"]:
-                brep_digests[_sha256(staging / artifact)] = output["name"]
+                brep_digests.setdefault(_sha256(staging / artifact), []).append(output["name"])
     tess_by_output: dict[str, dict[str, Any]] = {}
     for sidecar_path in sorted((staging / "display").glob("*.tess.json")):
         sidecar = _load_json(sidecar_path)
         if not sidecar or sidecar.get("schema") != TESSELLATION_SCHEMA:
             continue
-        output = brep_digests.get(str(sidecar.get("source_sha256")))
         artifact = resolve_reference(staging, sidecar.get("artifact_path"))
-        if output and artifact["exists"] and not artifact["error"]:
-            tess_by_output[output] = {"sidecar": sidecar_path.name, "artifact": artifact["path"],
-                                      "triangles": (sidecar.get("counts") or {}).get("triangles")}
+        if not artifact["exists"] or artifact["error"]:
+            continue
+        for output in brep_digests.get(str(sidecar.get("source_sha256")), []):
+            tess_by_output.setdefault(output, {"sidecar": sidecar_path.name, "artifact": artifact["path"],
+                                               "triangles": (sidecar.get("counts") or {}).get("triangles")})
     if not tess_by_output:
         model["reason"] = "accepted attempt retained no tessellation"
         return model

@@ -1422,8 +1422,10 @@ What the page shows, and where each thing comes from:
   project manifest, the current documents and decision headings, and the
   model from the **accepted attempt's own tessellation** — the
   `display/*.tess` files under the staging directory the manifest names,
-  each linked to its output by the BREP's sha256, placed where the
-  attempt's own simulation trace put each component at its first frame.
+  each linked to its output by the BREP's sha256 — every output whose
+  BREP bytes match keeps that tessellation, so a mirrored pair of limbs
+  shows both sides (ADR-302) — placed where the attempt's own simulation
+  trace put each component at its first frame.
   This is the second and last read the review client makes of the
   project store's layout (ADR-285 documented the first, `script.json`);
   a staging directory that does not lie under the accepted revision is

@@ -2771,6 +2771,11 @@ field, and every client gets it through the surface it already reads.
       `walk --set` browser regression checks the assembled model before trainer
       dispatch and preserves its identity and mesh bytes across a later revision.
 
+- [x] Byte-identical outputs each keep their accepted tessellation (ADR-302):
+      a mirrored pair of limbs no longer loses one side in the accepted view or
+      the retained training view; regression on two identical thighs. Exposed
+      by the persistent dashboard during the Reed shin55 experiment.
+
 - [x] Shared reference environment for the live review viewport and headless
       checkpoint/final videos (ADR-301): local attributed Three.js scene, exact
       retained poses, fixed trajectory camera, portable style identity and

@@ -1311,3 +1311,41 @@ def test_browser_playing_video_survives_new_current_attempt(served, browser):
     assert fresh.text('#view-status') == 'failed'
     page.click('#current-run')
     assert page.text('#view-kind') == 'RUN second'
+
+
+def test_byte_identical_outputs_each_keep_their_accepted_mesh(served, tmp_path) -> None:
+    """A mirrored pair of legs is two outputs with one BREP digest; the
+    accepted model and the retained training view show both, not one."""
+
+    root, server = served
+    staging = _stage_accepted(root, REVISION_B)
+    for index, side in ((1, "thigh_l"), (2, "thigh_r")):
+        brep = staging / "outputs" / f"output-00{index}.brep"
+        brep.write_bytes(b"DBRep_DrawableShape same thigh both sides\n")
+        sidecar, data = _cube_tessellation(8.0)
+        sidecar["artifact_path"] = f"display/display-00{index}.tess.bin"
+        sidecar["source_sha256"] = hashlib.sha256(brep.read_bytes()).hexdigest()
+        (staging / "display" / f"display-00{index}.tess.json").write_text(json.dumps(sidecar))
+        (staging / "display" / f"display-00{index}.tess.bin").write_bytes(data)
+    result = json.loads((staging / "result.json").read_text())
+    result["component_sources"].update({"src-2": "thigh_l", "src-3": "thigh_r"})
+    for index, side, y in ((1, "thigh_l", 25.0), (2, "thigh_r", -25.0)):
+        result["outputs"].append({"name": side, "type": "solid", "artifact_kind": "brep",
+                                  "artifact_path": f"outputs/output-00{index}.brep"})
+        result["outputs"].append({"name": side + "_link", "type": "component_link", "definition": {
+            "arguments": [{"object_name": f"src-{index + 1}"}],
+            "properties": {"placement": {"position": [0.0, y, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0]}}}})
+    (staging / "result.json").write_text(json.dumps(result))
+    model = _json(server.url + "api/model/accepted")
+    meshes = {c["name"]: c["mesh_status"] for c in model["components"]}
+    assert meshes == {"body": "retained", "thigh_l_link": "retained", "thigh_r_link": "retained"}
+    for side in ("thigh_l", "thigh_r"):
+        status, _headers, body = _get(server.url + f"mesh/accepted/{side}.stl")
+        assert status == 200 and body.startswith(b"cadex tessellation as binary STL")
+    from cadex_cli.review_server import retain_training_view
+    run = root / "runs" / "frozen"
+    run.mkdir(parents=True)
+    retain_training_view(root, run)
+    assert sorted(p.name for p in (run / "training-view").iterdir()) == ["thigh_l.stl", "thigh_r.stl", "torso.stl"]
+    retained = json.loads((run / "training-view.json").read_text())["model"]["components"]
+    assert all(entry["mesh"] for entry in retained), retained

@@ -23060,3 +23060,20 @@ codec comparison. The CLI browser regression covers both encodings' playback
 and downloads, while existing polling/history/orbit gates continue to run.
 This is a shared rendering unit, not a new training experiment; it cannot measure
 concurrent GPU overhead or close D10's experiment-spanning observation gap.
+
+## ADR-302 — Byte-identical outputs each keep their accepted tessellation (2026-09-12)
+
+[Cadex-new] Fixes a review defect the Reed shin55 experiment exposed on the
+persistent operator dashboard: while the run trained, its retained training
+view listed eight components but drew only five, with the left thigh, shin
+and foot "mesh missing". `copy100` and `probe3` had frozen four of eight the
+same way. Cause: `accepted_model` mapped each BREP digest to one output name,
+so a mirrored pair of identical solids — the same box on both sides — kept
+only the last-registered side's tessellation; the "Accepted now" view and
+`retain_training_view` both inherited the loss. Now every output whose BREP
+bytes match owns the tessellation made from those bytes, the run-mesh path
+is untouched, and a regression builds two identical thighs and asserts both
+appear in the accepted model and in a retained training view. Views that
+earlier runs already froze stay as recorded — a historical view is never
+rebuilt (charter constraint) — so `shin55`'s own training-time snapshot
+keeps its five meshes and its playback runs carry the full rollout model.
