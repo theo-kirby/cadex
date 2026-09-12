@@ -21,11 +21,11 @@ The owner's fixed choices, made in conversation and not open to actor interpreta
 - **Headless only**, one training run at a time on this machine with an explicit timeout (≤ 2 h, ≤ 20 GB), the existing offboard training environment, and the existing private network — no tunnel, no cloud [rec: lucky-comet-0031].
 - **A historical view must not rebuild an old run with today's script and present it as the original**; reading a project cannot re-accept changed geometry [rec: lucky-comet-0031].
 
-**What exists versus what is to be built** (as the owner surveyed it before the redirect): the trainer publishes reward history and the *current* loss; retained loss history, the dashboard and the video pipeline are work to implement, not existing capabilities. The headless review eyes from the previous run made model inspection part of the walk (`damp-moon-9297`), which is what this direction builds on [rec: dusty-peak-9330]. No D criterion is claimed complete; the previous gait/shove and variant-study criteria were retired, not declared achieved [rec: dusty-peak-9330].
-
 **Launch baseline, green** (2026-09-12, at `ed6ce8d8`): engine suite 2102 passed / 54 skipped in 325.28 s; CLI suite 301 passed in 293.03 s; both harnesses authenticated, preflight ready, the RTX 5090 machine available, Hypergraph 0.0.13 matching the project. The preflight's 99 % Codex weekly-usage warning is historical usage, not a fresh measurement; the Claude fallback stays configured [rec: hidden-reef-8369].
 
-The nine done criteria D1–D9 are one child state node each, below this one; work closes them through declared impacts. Maintainer judgement: the directive declared them as new top-level targets, and they are parented here rather than under the root so the run's frontier reads as one group — derivable from the directive alone [rec: lucky-comet-0031].
+The eleven done criteria D1–D11 are child state nodes. The latest operator directive adds shared neural-whoop viewport/video appearance to the persistent-dashboard obligation; keep the current dashboard serving first, then implement and visually compare that environment. Reconcile judgement: group the new gaps here with the existing criteria; the directive expands the frontier without reopening previously evidenced D1–D8 [rec: simple-raven-5405] [rec: modest-dawn-3706].
+
+**D10 immediate acceptance passes:** persistent port 8765 serves Reed copy29/copy100 with current-attempt defaults, historical/playback preservation and private-address browser evidence. The server stayed active after tests. Real experiment-spanning persistent-URL evidence remains open; D11 visual comparison is newly required and unproven [rec: falling-ocean-4411] [rec: modest-dawn-3706].
 
 ## Negative knowledge
 
@@ -36,3 +36,6 @@ None yet.
 - dusty-peak-9330 — the owner redirected ot5 to live headless project review and lifecycle recording; ADR-284; the fixed choices and what is already there versus to be built
 - hidden-reef-8369 — the launch baseline: green engine and CLI suites, harnesses authenticated, GPU box available (declared no state impact; folded here as context only)
 - lucky-comet-0031 — the ot5 operator directive: the charter verbatim, the nine criteria declared as gaps
+- simple-raven-5405 — adds persistent current-project dashboard criterion D10
+- falling-ocean-4411 — current Reed operator dashboard acceptance passes; real experiment-spanning evidence remains open
+- modest-dawn-3706 — adds shared neural-whoop visual-reference criterion D11
