@@ -175,3 +175,110 @@ neither training overhead nor intermediate-checkpoint publication. D4
 remains open for those requirements. The video and trace stay outside the
 product repository; copy the entire project including ignored review
 artifacts for portability. Git alone does not carry its WebM or trace.
+
+## Active-training checkpoint experiment (probe2)
+
+`evidence/probe2-experiment.py` is a project-local experiment harness using
+existing CLI commands and record writers. It exports with `policy_on=0`,
+checks model/task bytes against probe1, snapshots the accepted identity and
+specs in `runs/probe2`, and launches the existing offboard trainer. This
+attempt was interrupted by its harness, as detailed below; the harness is
+retained as experimental evidence, not a recommended unattended launcher:
+
+```bash
+systemd-run --user --scope --unit=cadex-probe2 -p MemoryMax=20G \
+  timeout --signal=TERM --kill-after=20s 1800 \
+  "$HOME/cadex-train-venv/bin/python" training/cadex_train.py \
+  "$PROJECT/runs/probe2/train/reed_walk-task.json" \
+  --out "$PROJECT/runs/probe2/train/probe2.cxpolicy" \
+  --iterations 240 --envs 1024 --seed 0 --checkpoint-every 20
+```
+
+The launcher sets `XLA_PYTHON_CLIENT_MEM_FRACTION=0.45`. This is one local
+GPU training run; `MemoryMax` bounds host memory, while GPU use is sampled
+separately. No old policy initializes it. The checkpoint flag belongs to the
+offboard trainer; `cadex train` does not currently expose it.
+
+The browser observer (`evidence/probe2_observe.py`) opens the real review
+command at the machine's private Tailscale address, selects probe2, checks
+its recorded revision, exercises orbit/zoom on its drawn model, and compares
+multiple automatic telemetry updates with committed progress timestamps.
+The playback harness imports checkpoint 20 through `cadex asset`, declares
+its actual hash through `cadex script --set`, and exports an engine-verified
+seed-0 rollout through `cadex params`. The original mechanism and task stay
+unchanged. It retains that playback as `probe2-checkpoint20`, with its own script, specs, trace, model, component mapping and video,
+citing the training run. The planned final-policy stage was not reached.
+The original `probe1` and `probe1-playback` records are checked unchanged.
+
+This is an explicit CLI-driven experiment, not an automatic checkpoint
+publication service or a successful product-agent design revision. The
+training process reads its retained inputs independently of subsequent
+playback edits. Videos and bulk artifacts remain project-local outside this
+repository. Preserve the entire project, including ignored files.
+
+**Measured outcome: partial success, then harness-induced interruption.**
+The initial browser assertion timed out waiting for probe2's model to load.
+Its revision label was correct (`6ab8a1d090c8…`, digest `850acf23a05a…`),
+but model state was `missing`. Training continued independently. The
+collector attached to that same trainer; it did not start another run.
+The retained observer log documents the failure. The telemetry-only retry
+passed: page iterations **20, 21, 23, 24, 26, 27, 29**, navigation count **1**,
+committed-to-page delays **0.23–1.29 s**, with changing reward, loss, episode
+length and curve samples and checkpoint availability. This supplies real D3
+observation under the identity fix; it does not supply D2's model interaction.
+
+Checkpoint 20 policy `fa37e8259a3a…` passed 32 engine witness samples at
+maximum error **3.2584348144126806e-08**, below `0.0001`. Its retained rollout
+revision is `3d28c70c890f…`, digest `c77cc2784bd4…`; model/task bytes still
+match the training input. Seed 0 ran **8.0 simulated seconds**, total reward
+**333.20822667851917**. This is not the declared seeds 0–9 gait comparison.
+Rendering while training was active produced **81 frames, 10 fps, 8.1 encoded
+seconds**, in **16.414 s**. Video SHA-256:
+`e9255cbcb3dfdf5f6c7914de945c434cf8c6d40ba2f5b619d8b53391fe6adf17`.
+
+The first video browser check reached the player but incorrectly expected
+`8.00000 s`; the UI correctly formats the integer as `8 s`. The collector's
+`finally` cleanup then terminated the training scope. The trainer printed
+iteration 39; its last committed snapshot is **iteration 38, state training**.
+No final policy exists. The run record now explicitly reports the harness
+failure/interruption and tells the operator to start a new bounded attempt;
+the stale telemetry is preserved. This is neither a successful train run nor
+a product renderer failure. Future experiment orchestration must keep a
+browser/render failure from terminating training. The collector also briefly
+rewrote the initial empty progress snapshot when attaching; the trainer's
+next atomic update restored it. A collector must only read trainer telemetry.
+
+After correcting the integer-label expectation, the standalone video check
+passed: all 81 frames decoded, first/last differ, timing matches, Chromium
+played across three dashboard refreshes, and download bytes matched the hash.
+That successful playback/download check happened **after training stopped**.
+No probe2 final-policy video or successful browser playback during active
+training is claimed. The original final-policy video in `probe1-playback`
+remains intact, and both original run records match project commit `c6a9dc8`.
+
+The approximate render window comes from `video.json` mtime minus the
+renderer elapsed time. Eleven preceding committed iteration intervals had
+median **1.325 s**; four wholly inside the window had median **1.301 s**, max
+**1.322 s**. A checkpoint boundary overlapped the end; these sparse intervals
+show progress during rendering, not an isolated causal overhead estimate.
+Peak host cgroup memory was **5,501,710,336 bytes**; sampled GPU use peaked at
+**15,092 MiB**. Raw timing/memory samples, witness, hashes and qualifications
+are retained in `evidence/probe2-result.json`, `probe2-timeline.json`,
+`probe2-memory.json`, `probe2-observe.json`, `probe2-checkpoint20-check.json`
+and the experiment/collector logs. This was a same-machine private-address
+browser test. D4 remains open; no final-policy completion is inferred from
+an intermediate checkpoint. No second training run was launched to hide the
+failed attempt.
+
+A subsequent private-address browser check also passed on the real interrupted
+record: probe2 shows **failed**, telemetry **stale**, and the explanatory next
+CLI action; both probe1's earlier video and checkpoint20 remain accessible
+(`evidence/probe2-interrupted-browser.json`). This advances the interruption
+half of D8, but no successful new attempt follows it yet. The checkpoint
+trace has 400 steps, `truncated: true`, and no fall termination; no walking
+claim follows from one seed surviving the declared horizon.
+
+External project commit `73611af` retains the interrupted record, checkpoint
+review and compact evidence. The saved experiment harnesses document this
+attempt's failure; use the standalone video/interruption checks to inspect
+its artifacts, rather than rerunning the launcher into the same run directory.
