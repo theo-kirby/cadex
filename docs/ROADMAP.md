@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-09
+Verified against source: 2026-09-12
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -2713,3 +2713,11 @@ field, and every client gets it through the surface it already reads.
       and rack values exist (ADR-233) and the rack and pinion is composed
       with mesh and clearance evidence (ADR-234); the planetary gearbox is
       still its own slice.
+
+
+## Live headless project review (ADR-284)
+
+- [x] Retained training telemetry and dashboard polling (ADR-287): bounded
+      reward/loss/episode histories, checkpoint integrity and missing/stale/failed
+      states, verified across atomic updates in a headless browser. D3's actual
+      fresh-biped GPU observation remains open; fixture evidence does not tick it.

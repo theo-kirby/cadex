@@ -89,8 +89,8 @@ PROGRESS_SCHEMA = "cadex-training-progress-v1"
 CURVE_POINTS_CAP = 512
 
 
-def decimated_curve(curve, cap=CURVE_POINTS_CAP):
-    """The reward curve as ``[[iteration, reward_per_step], ...]``, capped.
+def decimated_curve(curve, cap=CURVE_POINTS_CAP, key="reward_per_step"):
+    """A metric history as ``[[iteration, value], ...]``, capped.
 
     Uniform stride with the first and last points always kept, so the
     shape survives and the newest point is always the real newest point.
@@ -99,8 +99,8 @@ def decimated_curve(curve, cap=CURVE_POINTS_CAP):
     """
 
     points = [
-        [int(entry["iteration"]), float(entry["reward_per_step"])]
-        for entry in curve
+        [int(entry["iteration"]), float(entry[key])]
+        for entry in curve if entry.get(key) is not None
     ]
     if cap < 2 or len(points) <= cap:
         return points
@@ -2265,6 +2265,8 @@ def main(argv: Sequence[str]) -> int:
             print(f"checkpoint {path.name}  ({written[-1]['sha256'][:12]})",
                   file=sys.stderr)
 
+    last_report: dict[str, Any] = {}
+
     def report(**fields: Any) -> None:
         """``progress.json``, rewritten atomically.
 
@@ -2276,6 +2278,12 @@ def main(argv: Sequence[str]) -> int:
         write into.
         """
 
+        last_report.update(fields)
+        if "curve" in fields:
+            last_report["curve"] = list(fields["curve"])
+        if "best" in fields:
+            last_report["best"] = dict(fields["best"])
+        fields = dict(last_report)
         curve = list(fields.pop("curve", ()) or ())
         best = dict(fields.pop("best", ()) or {})
         iteration = int(fields.get("iteration", -1))
@@ -2296,6 +2304,9 @@ def main(argv: Sequence[str]) -> int:
                 else 0.0
             ),
             "started_at": started_at,
+            "updated_at": time.time(),
+            "task_sha256": bundle["task_sha256"],
+            "model_sha256": bundle["model_sha256"],
             "device": str(fields.get("device", "")),
             "reward_per_step": (
                 float(curve[-1]["reward_per_step"]) if curve else None
@@ -2322,6 +2333,8 @@ def main(argv: Sequence[str]) -> int:
             # shape rather than its last number. A reader written before
             # this field renders exactly what it always did.
             "curve": decimated_curve(curve),
+            "loss_curve": decimated_curve(curve, key="loss"),
+            "episode_steps_curve": decimated_curve(curve, key="episode_steps"),
             "best_reward_per_step": (
                 None if not best or best.get("iteration", -1) < 0
                 else float(best["reward_per_step"])
@@ -2346,8 +2359,7 @@ def main(argv: Sequence[str]) -> int:
         # panel both sit on "training" for ever. The exception is re-raised
         # unchanged: this adds a line to an artifact, it does not handle
         # anything.
-        report(state="failed", iteration=-1, total=int(options.iterations),
-               curve=[], best={}, wall=time.time() - started_at, device="",
+        report(state="failed", wall=time.time() - started_at,
                error=f"{type(error).__name__}: {error}")
         raise
 

@@ -608,3 +608,88 @@ def test_browser_unaccepted_project_reports_missing_model_and_next_cli_action(tm
         server.shutdown()
         server.server_close()
     assert {p.name: p.read_bytes() for p in root.iterdir()} == before
+
+
+def _telemetry(root, iteration=0, **changes):
+    data = {"schema": "cadex-training-progress-v1", "state": "training",
+            "updated_at": time.time(), "task_sha256": "t" * 64,
+            "iteration": iteration, "total": 10, "reward_per_step": iteration + 0.5,
+            "loss": 3.0 - iteration, "episode_steps": 12 + iteration,
+            "curve": [[i, i + 0.5] for i in range(iteration + 1)],
+            "loss_curve": [[i, 3.0-i] for i in range(iteration + 1)],
+            "episode_steps_curve": [[i, 12+i] for i in range(iteration + 1)],
+            "checkpoints": []}
+    data.update(changes)
+    path = root / "runs/first/train/progress.json"
+    temporary = path.with_suffix('.partial')
+    temporary.write_text(json.dumps(data))
+    temporary.replace(path)
+    return path
+
+
+def test_telemetry_refuses_escape_mismatch_and_invalid_histories(served):
+    root, server = served
+    def read():
+        return next(r for r in _json(server.url + 'api/project')['runs'] if r['run'] == 'first')['telemetry']
+    path = _telemetry(root, task_sha256='wrong')
+    assert read()['state'] == 'invalid'
+    _telemetry(root, loss_curve=[[0, float('nan')]])
+    assert read()['state'] == 'invalid'
+    _telemetry(root, loss_curve=[[0, 1]] * 513)
+    assert read()['state'] == 'invalid'
+    _telemetry(root, checkpoints=[{'path': '../../../script.json'}, {'path': 'lost.cxpolicy'}])
+    assert [c['status'] for c in read()['checkpoints']] == ['refused', 'missing']
+    path.unlink()
+    path.symlink_to(root / 'script.json')
+    assert read()['state'] == 'missing'
+    assert 'refused' in read()['reason']
+
+
+@needs_browser
+def test_browser_polls_training_histories_checkpoints_and_stale_states(served, browser):
+    root, server = served
+    path = root / 'runs/first/train/progress.json'
+    path.unlink()
+    record = json.loads((path.parent.parent / RUN_RECORD_FILENAME).read_text())
+    _rewrite_record(path.parent.parent, artifacts={**record['artifacts'], 'progress': None})
+    page = _open(browser, server.url)
+    page.click("#views li[data-run='first']")
+    page.wait_for("document.getElementById('telemetry').dataset.state === 'missing'")
+    path.write_text('{partial')
+    page.wait_for("document.getElementById('telemetry').dataset.state === 'invalid'")
+    page.evaluate("window.telemetryTestIdentity = {}")
+    for iteration in range(3):
+        started = time.monotonic()
+        _telemetry(root, iteration)
+        page.wait_for("document.querySelector('[data-metric=iteration]').textContent === " + json.dumps(f'iteration: {iteration}'))
+        assert time.monotonic() - started < 5
+        assert page.attribute('#telemetry', 'data-state') == 'training'
+        assert page.attribute('[data-history=loss_curve]', 'data-points') == str(iteration + 1)
+        assert page.text('[data-metric=loss]') == f'loss: {3-iteration}'
+        assert page.text('[data-metric=episode_steps]') == f'episode_steps: {12+iteration}'
+        assert page.text('#view-revision') == REVISION_A
+        assert page.evaluate('!!window.telemetryTestIdentity')
+    checkpoint = path.parent / 'iter-2.cxpolicy'
+    checkpoint.write_bytes(b'fixture checkpoint, not a verified policy')
+    item = {'path': checkpoint.name, 'iteration': 2, 'sha256': hashlib.sha256(checkpoint.read_bytes()).hexdigest()}
+    _telemetry(root, 2, checkpoints=[item])
+    page.wait_for("document.querySelector('#checkpoints li').dataset.status === 'retained'")
+    checkpoint.write_bytes(b'changed')
+    page.wait_for("document.querySelector('#checkpoints li').dataset.status === 'digest mismatch'")
+    _telemetry(root, 2, updated_at=time.time()-31)
+    page.wait_for("document.getElementById('telemetry').dataset.state === 'stale'")
+    assert 'process state unknown' in page.text('#telemetry')
+    assert page.attribute('#freshness', 'data-state') == 'live'
+    _telemetry(root, 2, state='failed', error='controlled fixture failure')
+    page.wait_for("document.getElementById('telemetry').dataset.state === 'failed'")
+    assert 'controlled fixture failure' in page.text('#telemetry')
+    assert 'cadex walk' in page.text('#telemetry')
+    assert page.attribute('[data-history=loss_curve]', 'data-points') == '3'
+    _telemetry(root, 2, state='done', updated_at=time.time()-3600)
+    page.wait_for("document.getElementById('telemetry').dataset.state === 'done'")
+    page.click("#views li[data-run='second']")
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN second'")
+    assert page.attribute('#telemetry', 'data-state') == 'invalid'
+    page.click("#views li[data-run='first']")
+    page.wait_for("document.getElementById('telemetry').dataset.state === 'done'")
+    assert page.attribute('[data-history=loss_curve]', 'data-points') == '3'

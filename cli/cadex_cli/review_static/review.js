@@ -8,7 +8,7 @@
 (function () {
   'use strict';
 
-  var POLL_MS = 5000;
+  var POLL_MS = 2000;
   var state = { review: null, selected: 'accepted', lastOk: null, stale: false, model: null, viewer: null,
                 error: null };
   var readyResolve;
@@ -156,10 +156,49 @@
       : 'specs unavailable' + (source ? ': ' + source : '') + (names.length ? ' — values only' : ''));
   }
 
+  function renderTelemetry(run) {
+    var panel = $('telemetry');
+    clearChildren(panel);
+    var data = run ? (run.telemetry || {state: 'missing'}) : {state: 'unselected'};
+    panel.dataset.state = data.state;
+    panel.appendChild(el('p', {text: 'Training telemetry: ' + data.state + (data.reason ? ' — ' + data.reason : '')}));
+    if (!run) return;
+    if (['missing', 'invalid', 'stale', 'failed', 'unknown'].includes(data.state)) {
+      panel.appendChild(el('p', {text: 'Inspect the CLI training output; if the run stopped, start a new cadex walk --out runs/<new-name>. Stale data does not prove interruption.'}));
+    }
+    ['iteration', 'total', 'reward_per_step', 'loss', 'episode_steps'].forEach(function (key) {
+      panel.appendChild(el('div', {'data-metric': key, text: key + ': ' + fmt(data[key])}));
+    });
+    [['curve', 'Reward per step'], ['loss_curve', 'Loss'], ['episode_steps_curve', 'Episode length (steps)']].forEach(function (item) {
+      var points = data[item[0]] || [], block = el('div', {'data-history': item[0], 'data-points': String(points.length)});
+      block.appendChild(el('p', {text: item[1] + (points.length ? ' · ' + points.length + ' retained samples' : ' — history missing')}));
+      if (points.length) {
+        var xs = points.map(function (p) {return p[0];}), ys = points.map(function (p) {return p[1];});
+        var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 400 100'); svg.style.width = '100%'; svg.style.maxWidth = '600px';
+        svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', item[1] + ' by iteration');
+        var line = document.createElementNS(svg.namespaceURI, 'polyline');
+        line.setAttribute('points', points.map(function (p) {return (5 + 390 * (p[0]-x0)/(x1-x0 || 1)) + ',' + (95 - 90 * (p[1]-y0)/(y1-y0 || 1));}).join(' '));
+        line.setAttribute('fill', 'none'); line.setAttribute('stroke', '#4da6ff'); line.setAttribute('stroke-width', '2');
+        svg.appendChild(line); block.appendChild(svg);
+        block.appendChild(el('small', {text: 'iterations ' + x0 + '–' + x1 + ' · range ' + fmt(y0) + '–' + fmt(y1)}));
+      }
+      panel.appendChild(block);
+    });
+    var checkpoints = el('ul', {id: 'checkpoints'});
+    (data.checkpoints || []).forEach(function (item) {
+      checkpoints.appendChild(el('li', {'data-status': item.status, text: item.path + ' · iteration ' + fmt(item.iteration) + ' · ' + item.status + ' · sha256 ' + item.sha256}));
+    });
+    if (!(data.checkpoints || []).length) checkpoints.appendChild(el('li', {text: 'checkpoints: none reported'}));
+    panel.appendChild(checkpoints);
+  }
+
   function renderTraining() {
     var body = $('training').querySelector('tbody');
     clearChildren(body);
     var run = selectedRun();
+    renderTelemetry(run);
     function row(key, value) { body.appendChild(el('tr', { 'data-key': key }, [el('th', { text: key }), el('td', { text: value })])); }
     if (!run) { row('training', 'select a run to see its training and rollout'); return; }
     var training = run.training || {}, requested = training.requested || {}, receipt = training.receipt || {};

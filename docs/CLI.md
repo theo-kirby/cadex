@@ -1325,11 +1325,34 @@ or `0.0.0.0` for every interface. `--port 0` takes a free port; the URL is
 printed on stderr the moment the socket is bound, which is what a script
 waits for. The server holds no state: every request reads the manifest,
 the records and the retained files as they stand, so a walk that lands
-while the page is open shows up on its next poll (five seconds), and
+while the page is open shows up on its next poll (two seconds), and
 stopping or restarting the server — Ctrl-C, SIGTERM — changes nothing
 about the project and neither stops nor duplicates a walk or a training
 run in progress. Browser state is not project state; authoring and
 training stay on the CLI.
+
+Training telemetry (ADR-287) is read from each selected run's
+`runs/<name>/train/progress.json`, including before the initial running record
+has observed that file. Local `cadex walk` training writes there automatically.
+The browser polls every two seconds and plots retained reward, loss and episode
+length histories (at most 512 samples each), alongside iteration, total and
+checkpoint availability. Checkpoint bytes must match the reported sha256 to
+appear as retained; this is integrity evidence, not engine policy verification.
+The snapshots and checkpoints belong to the run: retain and copy its whole
+`train/` directory with the project. No server or browser is needed to retain
+them. Older trainers may lack loss/episode histories; the page labels these
+missing rather than inferring them from final metrics.
+
+Missing, invalid, failed and stale telemetry are explicit. A starting/training
+snapshot older than 30 seconds is stale even when the server is reachable;
+this includes slow compilation and does not establish that the process died.
+Terminal `done` and `failed` snapshots do not expire. Failures caught during
+training preserve the last metrics. A hard kill can leave a stale snapshot;
+inspect CLI output and start a new named walk if training stopped. Remote
+mirrors named `training-progress.json` are not observed by this local path.
+The synthetic browser test spans committed updates without reloading and
+requires each to appear within five seconds on the test machine. Actual biped
+GPU observation remains required for D3; synthetic tests do not satisfy it.
 
 What the page shows, and where each thing comes from:
 

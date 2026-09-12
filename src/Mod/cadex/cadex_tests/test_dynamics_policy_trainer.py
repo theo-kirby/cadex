@@ -1222,6 +1222,9 @@ def test_the_trainer_publishes_the_reward_curve(tmp_path) -> None:
     assert [pair[0] for pair in curve] == [0, 1, 2]
     assert curve[-1][1] == pytest.approx(progress["reward_per_step"])
     assert curve[-1][1] == pytest.approx(report["reward_per_step"])
+    for field, metric in [("loss_curve", "loss"), ("episode_steps_curve", "episode_steps")]:
+        assert [pair[0] for pair in progress[field]] == [0, 1, 2]
+        assert progress[field][-1][1] == pytest.approx(progress[metric])
 
 
 def test_shquote_survives_a_string_containing_a_quote() -> None:
@@ -1244,3 +1247,32 @@ def test_shquote_survives_a_string_containing_a_quote() -> None:
         done = sp.run(["bash", "-c", harness, "bash", original],
                       capture_output=True, text=True, check=True)
         assert done.stdout == original, (original, done.stdout)
+
+
+def test_retained_telemetry_preserves_histories_on_training_failure(tmp_path, monkeypatch):
+    import types
+    module = _trainer_module()
+    monkeypatch.setitem(sys.modules, 'jax', types.ModuleType('jax'))
+    monkeypatch.setitem(sys.modules, 'jax.numpy', types.ModuleType('jax.numpy'))
+    monkeypatch.setattr(module, 'globals_for', lambda _: {})
+    monkeypatch.setattr(module, 'load_bundle', lambda *_: {'task_sha256': 'task', 'model_sha256': 'model'})
+    rows = [{'iteration': i, 'reward_per_step': i / 10, 'loss': 1000-i,
+             'episode_steps': i+1} for i in range(600)]
+    def failing_train(bundle, options, *, emit, progress):
+        progress(state='training', iteration=599, total=700, curve=rows, wall=1, device='fixture')
+        rows.append({'iteration': 600, 'reward_per_step': float('nan'),
+                     'loss': float('nan'), 'episode_steps': 1})
+        raise RuntimeError('controlled failure')
+    monkeypatch.setattr(module, 'train', failing_train)
+    target = tmp_path / 'policy.cxpolicy'
+    with pytest.raises(RuntimeError, match='controlled failure'):
+        module.main(['trainer', 'bundle.json', '--out', str(target)])
+    data = json.loads((tmp_path / 'progress.json').read_text())
+    assert data['state'] == 'failed' and data['iteration'] == 599
+    assert data['task_sha256'] == 'task' and data['model_sha256'] == 'model'
+    assert data['updated_at'] >= data['started_at']
+    for name, key in [('curve', 'reward_per_step'), ('loss_curve', 'loss'), ('episode_steps_curve', 'episode_steps')]:
+        assert len(data[name]) == 512
+        assert data[name][0] == [0, rows[0][key]]
+        assert data[name][-1] == [599, rows[599][key]]
+    assert not target.exists()

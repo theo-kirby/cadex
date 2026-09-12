@@ -420,6 +420,76 @@ def tessellation_to_stl(sidecar: Mapping[str, Any], data: bytes) -> bytes:
     return bytes(out)
 
 
+def training_telemetry(root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
+    """Observe the run-local trainer snapshot; never infer process success."""
+    result: dict[str, Any] = {"state": "missing", "reason": "training telemetry missing",
+                              "checkpoints": [], "curve": [], "loss_curve": [],
+                              "episode_steps_curve": []}
+    run_ref = resolve_reference(root, f"runs/{record['run']}")
+    if run_ref["error"] or not run_ref["exists"]:
+        result["reason"] = "training run directory refused or missing"
+        return result
+    run_dir = root / run_ref["path"]
+    # Fixed location also works before the running record sees the first snapshot.
+    ref = resolve_reference(run_dir, "train/progress.json")
+    if ref["error"] or not ref["exists"]:
+        result["reason"] = "training telemetry refused or missing"
+        return result
+    path = run_dir / ref["path"]
+    data = _load_json(path, limit=2 * 1024 * 1024)
+    if not data or data.get("schema") != "cadex-training-progress-v1":
+        result.update(state="invalid", reason="training telemetry unreadable or unsupported")
+        return result
+    expected = (record.get("task") or {}).get("sha256")
+    if expected and data.get("task_sha256") and expected != data["task_sha256"]:
+        result.update(state="invalid", reason="training telemetry task identity mismatch")
+        return result
+    try:
+        stamp = float(data.get("updated_at", path.stat().st_mtime))
+        age = max(0.0, _datetime.datetime.now(_datetime.timezone.utc).timestamp() - stamp)
+        if not math.isfinite(stamp):
+            raise ValueError("nonfinite timestamp")
+        for key in ("curve", "loss_curve", "episode_steps_curve"):
+            points = data.get(key, [])
+            if not isinstance(points, list) or len(points) > 512:
+                raise ValueError("invalid history")
+            result[key] = [[int(i), float(v)] for i, v in points]
+            if any(not math.isfinite(v) for i, v in result[key]):
+                raise ValueError("nonfinite history")
+        for key in ("iteration", "total", "reward_per_step", "loss", "episode_steps"):
+            value = data.get(key)
+            if value is not None and (not isinstance(value, (int, float)) or not math.isfinite(value)):
+                raise ValueError("invalid metric")
+            result[key] = value
+    except (OSError, TypeError, ValueError, OverflowError):
+        return {"state": "invalid", "reason": "training telemetry has invalid metrics"}
+    reported = data.get("state")
+    result.update(state=reported if reported in ("starting", "training", "done", "failed") else "unknown",
+                  reported_state=reported, age_s=age, reason=str(data.get("error") or ""))
+    if reported in ("starting", "training") and age > 30:
+        result.update(state="stale", reason="no telemetry update for over 30 s; process state unknown")
+    checkpoints = data.get("checkpoints", [])
+    if not isinstance(checkpoints, list):
+        result.update(state="invalid", reason="invalid checkpoint list")
+        return result
+    for item in checkpoints[:512]:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("path")
+        ref = resolve_reference(run_dir, "train/" + name) if isinstance(name, str) and Path(name).name == name else {"error": "invalid checkpoint path", "exists": False}
+        status = "refused" if ref["error"] else "missing"
+        if ref["exists"] and not ref["error"]:
+            checkpoint = run_dir / ref["path"]
+            try:
+                status = ("retained" if checkpoint.is_file() and checkpoint.stat().st_size <= 4 * 1024 * 1024
+                          and _sha256(checkpoint) == item.get("sha256") else "digest mismatch")
+            except OSError:
+                status = "missing"
+        result["checkpoints"].append({"path": name, "iteration": item.get("iteration"),
+                                      "sha256": item.get("sha256"), "status": status})
+    return result
+
+
 class ReviewProject:
     """What the server knows how to serve for one project, resolved per request.
 
@@ -435,6 +505,8 @@ class ReviewProject:
 
     def review(self) -> dict[str, Any]:
         review = read_project_review(self.root)
+        for record in review["runs"]:
+            record["telemetry"] = training_telemetry(self.root, record)
         review["served_at"] = _now()
         return review
 

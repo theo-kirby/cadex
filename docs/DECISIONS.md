@@ -22720,3 +22720,21 @@ artifact tables wrap long paths. The test asserts stable canvas width
 across eight redraws and no page-wide horizontal overflow. Private-address
 smoke reproduction is documented in `docs/CLI.md`; it exercises a fixture
 on the serving machine, not a second device or the fresh biped lifecycle.
+
+
+## ADR-287 — Retain training histories and observe them in project review (2026-09-12)
+
+The trainer already atomically published reward history but discarded past loss
+and episode length from its progress file. Extend that existing artifact with
+bounded loss/episode histories, task/model identities and an update timestamp;
+remove the failure path's clearing of the last metrics. No new telemetry store,
+trainer dependency or engine/protocol change.
+
+The inspection dashboard reads the fixed run-local train/progress.json location,
+even before a running record observes the first write, and polls every two
+seconds. It distinguishes missing/invalid data, failed training and a snapshot
+older than 30 seconds; stale means process state unknown, including a slow JIT.
+Checkpoint availability checks containment and sha256, without claiming engine
+verification. Browser tests observe multiple atomic fixture updates, historical
+selection and missing/stale/failure states. Real biped GPU observation remains
+open after the product agent again refused creation on its session quota.
