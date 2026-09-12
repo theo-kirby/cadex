@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**Wren's repaired accepted display passes private-address browser review:** eight solids, twelve declared parameter defaults, accepted identity, pointer orbit, wheel zoom and empty-run polling. The compact receipt is committed. This check follows a public rebuild that restored tessellation at unchanged accepted identity; it does not establish preservation through in-place engine restore, tracked as the D6 gap [rec: mild-river-8224].
+
 **Real 70/90/100/55 mm Reed designs pass browser model/spec identity and orbit/zoom checks, sweeps retain geometry before training, and byte-identical parts each keep their mesh.** ADR-291 freezes assembled placements, checked run-local mesh bytes, parameter specs and project documents; later status writes preserve them and changed accepted identity before dispatch is refused [rec: quiet-arbor-0259]. ADR-293 fixes ordinary `walk --set` sweeps, which had lost accepted tessellation for foot90's training snapshot, by requesting standard tessellation without edges inside the parameter acceptance transaction, with a real-engine browser regression at trainer dispatch and after a later physical parameter change [rec: candid-forest-9800] [rec: forest-ledge-2219].
 
 ADR-302 fixes a defect the persistent dashboard exposed during the shin55 experiment: outputs with byte-identical BREP (a mirrored pair of limbs) kept only one side's mesh in the accepted view and the retained training view, so the running biped showed one leg. Each byte-identical output now retains its own accepted tessellation, verified over the API after a service restart; the regression fails on the old source. Frozen training views of shin55, copy100 and probe3 keep their partial meshes as recorded, by the no-rebuild constraint, and shin55's says so [rec: fair-crow-5108].
@@ -39,3 +41,4 @@ None yet.
 - candid-forest-9800 — real physical-design browser comparison and discovery of missing swept training tessellation
 - forest-ledge-2219 — ADR-293 closes parameter-sweep retention defect with real-engine browser regression; historical gap remains labelled
 - fair-crow-5108 — ADR-302: byte-identical outputs each keep their accepted tessellation; earlier frozen views stay as recorded
+- mild-river-8224 — Wren accepted-view identity, defaults and browser interaction receipt; restore limitation disclosed

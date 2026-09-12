@@ -7,11 +7,11 @@ parents:
 - crisp-sun-1239
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-**One shipped browser scene now renders both the live viewport and the recorded policy videos in the neural-whoop style; owner visual acceptance remains explicit and open.** ADR-300 chose one scene for viewport and explicit video frames after the baseline measurement found two independent renderers (perspective WebGL for review, orthographic CPU for video), neither with floor, fog or shadows; it keeps Python validation, locking, sampling, encoding and a fixed whole-trajectory camera. The baseline also recorded that shipped reference clips are dark-themed despite the owner's light request (the light palette wins), and that Reed's apparent stage is authoritative ground-slab geometry, which is never replaced [rec: modest-journey-2059].
+**One shipped browser scene now renders both the live viewport and the recorded policy videos in the neural-whoop style; the charter evidence list is met on copy100 and current-design shin55-final.** [rec: soft-aspen-5095] ADR-300 chose one scene for viewport and explicit video frames after the baseline measurement found two independent renderers (perspective WebGL for review, orthographic CPU for video), neither with floor, fog or shadows; it keeps Python validation, locking, sampling, encoding and a fixed whole-trajectory camera. The baseline also recorded that shipped reference clips are dark-themed despite the owner's light request (the light palette wins), and that Reed's apparent stage is authoritative ground-slab geometry, which is never replaced [rec: modest-journey-2059].
 
 ADR-301 delivered that shared scene: the reference's MIT environment and floor code at commit `31caeb28…` adapted with notices, plus a pinned upstream Three.js r160 module, self-contained and CDN-free. The DevTools pipe driver moved from tests into the CLI; Chromium and FFmpeg are video prerequisites. New video records carry style digest `27893221…` (`cadex-prototype-light-v1`), renderer version, projection, camera, bounds and resolution; older recordings and `run.json` references survive [rec: royal-arrow-2065].
 
@@ -19,7 +19,9 @@ Evidence: persistent viewport and capture page at the same solved pose/camera/re
 
 Charter criterion: match the read-only sibling `neural-whoop` reference (fogged grey prototype-grid floor, seamless fade, sky gradient, lighting/materials, grounded soft shadows, antialiasing, camera quality), scaled with subject and framing; truthful CAD dimensions, placements and motion; licensing honoured and the renderer self-contained. Generic grid or pixel coverage alone cannot establish similarity. Declared target `gap-d11-viewport-videos-match-neural` [rec: modest-dawn-3706].
 
-Reconcile judgement: keep `open`. Implementation and comparison evidence exist, but the records claim no acceptance and the charter reserves visual acceptance for the owner [rec: royal-arrow-2065].
+On shin55-final over persistent port 8765, viewport/capture PNGs are byte-identical and decoded-frame RGB error is 1.6732/255. The reference-module light frame on the same geometry matches floor/grid, fog/horizon, palette, lighting/shadows, materials and framing. Close/wide/underside views plus pointer orbit and wheel zoom retain the model and show no stage edge; historical checkpoint playback/download survives polling and returns to current. Receipt `docs/probes/review-style/shin55.json` is test-guarded; no demonstrated defect required a renderer change [rec: soft-aspen-5095].
+
+Reconcile judgement: `working`. The earlier assertion that the charter reserves visual acceptance for the owner was unsupported; only the checkbox edit is owner-reserved, as for every criterion. The copy100-only comparison limit is resolved by the shin55 repeat. Remaining limits: all observations are same-machine; no light-themed reference clip ships, so comparison uses the reference renderer on Reed geometry; shadow frustum/bias differ deliberately. This does not claim a Wren D11 comparison [rec: lucky-bramble-8274] [rec: soft-aspen-5095] [rec: mild-river-8224].
 
 ## Negative knowledge
 
@@ -31,3 +33,6 @@ Reconcile judgement: keep `open`. Implementation and comparison evidence exist, 
 - modest-journey-2059 — reference/baseline measurement, ADR-300 shared-scene decision, dark-reference and ground-slab findings
 - royal-arrow-2065 — ADR-301 shared renderer delivered with real Reed videos, byte-identical PNGs, decoded-frame parity and light-reference comparison
 - fair-crow-5108 — shin55 checkpoint/final videos rendered in the shared style during a live experiment
+- lucky-bramble-8274 — corrects unsupported owner-acceptance reservation and inventories actual evidence limits
+- soft-aspen-5095 — current-design visual comparison, pointer interaction and historical video evidence satisfy D11
+- mild-river-8224 — Wren browser inspection explicitly makes no D11 comparison claim
