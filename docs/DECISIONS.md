@@ -23084,3 +23084,21 @@ appear in the accepted model and in a retained training view. Views that
 earlier runs already froze stay as recorded — a historical view is never
 rebuilt (charter constraint) — so `shin55`'s own training-time snapshot
 keeps its five meshes and its playback runs carry the full rollout model.
+
+
+## ADR-303 — Identical restore retains the accepted artifact attempt (2026-09-12)
+
+Wren's in-place reopen replaced its accepted artifact locator with a replay
+that had no display buffers. The dashboard consequently lost all tessellation
+although accepted revision and digest matched. At acceptance, an identical
+revision/digest with no display request now retains the previous attempt if
+its result.json exists. It remains the pruning pin. Live geometry still goes
+through execution, validation and publication; restore digest refusal remains
+unchanged. Explicit display requests, changed identities and absent retained
+results select the new attempt. No protocol fields or dependencies change.
+A real-engine regression restores a disposable accepted project twice in place
+and checks identity, the locator and every retained byte; unit cases cover the
+replacement paths and pruning. The CLI refused-turn regression now expects
+the retained accepted attempt and a distinct latest candidate from restore.
+This preserves existing meshes rather than
+repairing their loss through a subsequent rebuild.

@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-09-08
+Verified against source: 2026-09-12
 
 **Optional Blender recipe runtime (ADR-185).** A shell-owned cadexd child
 receives `CADEX_BLENDER_EXECUTABLE` naming the shell's own binary. The engine
@@ -199,6 +199,11 @@ is not that: it is a store left broken by something with no business writing
 it, so the pass retries once from the accepted revision's pinned source and,
 if that reproduces the accepted digest, reports
 `repaired_from_accepted: true` and leaves the store consistent (ADR-044).
+An identical revision/digest replay without a display request retains the
+existing accepted artifact attempt when its result is present (ADR-303).
+Restore still rebuilds and validates the ephemeral geometry, while saved
+tessellation stays byte-for-byte available and pinned against pruning. An
+explicit display request or changed identity publishes a new attempt.
 
 `stdout` is the script's own printed output. It is sent on success as well
 as on failure (ADR-044): a `print()` that only reaches the caller when the

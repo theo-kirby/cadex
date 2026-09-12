@@ -48,3 +48,32 @@ plate, so the predecessor test's expected count of seven was wrong. This is
 not a new D11 similarity assessment. The inventory regression also changes
 an earlier evidence file and verifies it is still detected; generating this
 invocation's screenshot alone does not change the inventory.
+
+
+## In-place restore preservation (iteration 48, ADR-303)
+
+The demonstrated restore loss above is fixed at acceptance: identical
+revision/digest replays without a display request keep the existing accepted
+attempt and its pruning pin. No post-restore rebuild is needed. The earlier
+iteration 46 receipt remains historical; [restore-evidence.json](restore-evidence.json)
+records the new in-place evidence. Wren was restored through two fresh engine
+processes, preserving accepted revision, digest, contract, artifact locator and
+all 28 retained attempt files byte-for-byte. Then the existing browser probe
+loaded the persistent private URL in 1.19 seconds, drew eight solids, showed
+12 defaults, exercised pointer orbit/zoom and kept the accepted view on polling.
+Screenshots and full receipts live under Wren's evidence/restore48 and
+evidence/restore48-browser directories. This is a same-machine private-network
+check, with no training or second-device claim.
+
+```bash
+PYTHONPATH=cli pixi run python docs/probes/wren-fresh/restore.py \
+  "$HOME/cadex-projects/ot5-wren" restore48
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/wren-fresh/lifecycle.py \
+  "http://$(tailscale ip -4):8765/" "$HOME/cadex-projects/ot5-wren" restore48-browser
+```
+
+The real-engine regression creates and restores a disposable accepted project
+in place twice, checks its stored mesh/sidecar and every retained byte, and
+fails on the previous code's changed accepted_attempt. The source unit cases
+also verify replacement on explicit display, changed revision/digest or absent
+retained result, and verify that pruning keeps the preserved attempt.

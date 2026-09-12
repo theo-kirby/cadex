@@ -390,9 +390,11 @@ def test_refused_walk_preserves_session_unless_identity_changes(
     after = json.loads((root / "script.json").read_text())
     for key in ("accepted_revision", "accepted_digest", "param_values"):
         assert after[key] == before[key]
-    assert after["accepted_attempt"]["attempt_id"] != before["accepted_attempt"]["attempt_id"]
+    # Restore re-proves the live model while retaining its saved display
+    # artifacts (ADR-303); the replay remains visible as the latest candidate.
+    assert after["accepted_attempt"] == before["accepted_attempt"]
     assert (root / after["accepted_attempt"]["staging"] / "outputs").is_dir()
-    assert after["latest_candidate"]["attempt_id"] == after["accepted_attempt"]["attempt_id"]
+    assert after["latest_candidate"]["attempt_id"] != after["accepted_attempt"]["attempt_id"]
     stored = json.loads(agent.read_text())
     expected_model = "sonnet" if session_id == "offline-session" else model
     assert (stored["session_id"], stored["model"]) == (session_id, expected_model)

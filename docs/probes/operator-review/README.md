@@ -8,6 +8,10 @@ It has no runs: a fresh visit selects ACCEPTED NOW, with twelve declared
 parameter defaults and eight drawn components (seven biped solids plus ground). No training is active.
 [Iteration 46 receipt](../wren-fresh/README.md) verifies this working-project
 switch; Reed's retained results remain in their original project directories.
+[Iteration 48 restore evidence](../wren-fresh/restore-evidence.json) now verifies
+two in-place engine restores with the original 28 artifact files unchanged,
+followed by eight drawn solids at the same persistent URL. No Wren training
+has started; the service remains running.
 
 Keep the server running between iterations. On this Linux host, from the
 checkout, the detached command is:

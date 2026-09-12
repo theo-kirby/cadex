@@ -433,3 +433,33 @@ def test_only_write_script_can_drop_outputs_by_accident(
     # A project with nothing accepted yet has nothing to lose.
     first = dict(prepared, accepted_contract_before=None)
     assert dropped_outputs(first, gone) == []
+
+
+@pytest.mark.parametrize("change", ["none", "digest", "revision", "display", "missing"])
+def test_identical_acceptance_retains_attempt_unless_replaced(tmp_path, freecad_home, change):
+    root = tmp_path / "project.cadex"
+    store = CadexProjectScriptStore(root)
+    prepared = _prepare(root, freecad_home, GOOD_SOURCE)
+    validated = {"digest": "d", "contract": [], "stdout": ""}
+    publication = {"live_outputs": {}, "removed": []}
+    accept_project_candidate(prepared, publication, validated)
+    old = store.read_state()["accepted_attempt"]
+    result = root / old["staging"] / "result.json"
+    result.write_text("{}")
+    replay = _prepare(root, freecad_home, GOOD_SOURCE)
+    if change == "digest":
+        validated["digest"] = "different"
+    elif change == "revision":
+        replay["revision"] = "a" * 64
+    elif change == "display":
+        replay["arguments"]["display"] = {"quality": "standard"}
+    elif change == "missing":
+        result.unlink()
+    accept_project_candidate(replay, publication, validated)
+    after = store.read_state()["accepted_attempt"]
+    assert (after == old) is (change == "none")
+    if change == "none":
+        store.prune_artifacts(keep_recent=0)
+        assert result.is_file(), "the retained attempt must stay pinned"
+    else:
+        assert after["attempt_id"] == replay["attempt_id"]
