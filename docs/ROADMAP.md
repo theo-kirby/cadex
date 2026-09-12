@@ -2740,3 +2740,10 @@ field, and every client gets it through the surface it already reads.
       against it (`docs/HEADLESS-BIPED-REVIEW.md`). The walk failed at declare
       because the fresh script has no `policy_on` switch, and a running or failed
       run shows no model identity; both are open defects, D2–D9 stay open.
+
+- [x] A run is identified from its first record (ADR-289): the walk records
+      the manifest's revision, digest and specs before training and each leg's
+      reported identity after it, a failed run keeps the last one, and a run
+      with no rollout is drawn from the accepted attempt only when both halves
+      of its identity are the accepted ones now. Browser-tested through failure
+      on fixtures; the `policy_on` defect and the real-artifact passes stay open.

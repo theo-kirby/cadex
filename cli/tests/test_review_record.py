@@ -25,6 +25,7 @@ from cadex_cli.review_record import (
     RUN_RECORD_FILENAME,
     RUN_RECORD_SCHEMA,
     list_runs,
+    manifest_identity,
     read_accepted_identity,
     read_project_review,
     read_run_record,
@@ -169,6 +170,44 @@ def test_a_running_record_claims_nothing_and_is_rewritten_whole(tmp_path) -> Non
 
 
 # -- the document snapshot ----------------------------------------------------
+
+
+def test_the_manifest_names_the_training_input_before_any_leg_runs(tmp_path) -> None:
+    """What a walk can claim before its first leg: the manifest's revision,
+    digest and specs, labelled with the moment they were read; nothing at
+    all, with the reason, when there is no manifest."""
+
+    root = _project(tmp_path)
+    assert manifest_identity(root, "at walk start") == {
+        "accepted_revision": "", "digest": "", "identity_source": "", "param_specs": None,
+        "specs_source": "unavailable: project manifest at walk start: no script.json",
+    }
+    _manifest(root, REVISION_A)
+    fields = manifest_identity(root, "at walk start")
+    assert fields == {
+        "accepted_revision": REVISION_A, "digest": "d" * 64,
+        "identity_source": "project manifest (script.json) at walk start",
+        "param_specs": [{"name": "leg_len", "default": 80.0}],
+        "specs_source": "project manifest (script.json) at walk start",
+    }
+    run = root / "runs" / "training"
+    write_run_record(run, project_root=root, status="running", mode="blocking", **fields)
+    record = read_run_record(run, root)
+    assert record["model"] == {"accepted_revision": REVISION_A, "digest": "d" * 64,
+                               "identity_source": "project manifest (script.json) at walk start"}
+    assert record["params"] == {"values": {}, "specs": [{"name": "leg_len", "default": 80.0}],
+                                "specs_source": "project manifest (script.json) at walk start"}
+    assert record["outcome"].startswith("started and never finished")
+    reviewed = read_project_review(root)
+    assert reviewed["runs"][0]["relation"] == "current"
+    # An explicit source wins over the derived one; blank keeps the old rule.
+    write_run_record(run, project_root=root, status="failed", mode="blocking",
+                     accepted_revision=REVISION_A, digest="d" * 64,
+                     identity_source="train leg envelope", error="refused")
+    assert read_run_record(run, root)["model"]["identity_source"] == "train leg envelope"
+    write_run_record(run, project_root=root, status="failed", mode="blocking",
+                     accepted_revision=REVISION_A, digest="d" * 64, error="refused")
+    assert read_run_record(run, root)["model"]["identity_source"] == "rollout leg envelope"
 
 
 def test_the_snapshot_copies_the_project_documents_with_digests(tmp_path) -> None:

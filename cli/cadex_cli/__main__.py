@@ -108,7 +108,7 @@ from .train import (
     run_trainer,
     trainer_command,
 )
-from .review_record import write_run_record
+from .review_record import manifest_identity, write_run_record
 from .review_server import serve as serve_review
 from .walk import (
     DEFAULT_LEG_TIMEOUT_S,
@@ -1619,8 +1619,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
 
     # The run record (ADR-285): written as `running` now, so a walk that is
     # killed leaves a file saying it never finished, and rewritten whole
-    # when the walk ends. `known` collects what later legs learn.
-    known: dict[str, Any] = {}
+    # when the walk ends. `known` collects what later legs learn. It starts
+    # with what the manifest says the training input is — revision, digest
+    # and specs — so the record names the model being trained before the
+    # first telemetry sample lands, and keeps naming it if the walk fails.
+    known: dict[str, Any] = manifest_identity(report.project_root, "at walk start")
     requested = {
         "iterations": int(args.iterations), "envs": int(args.envs),
         "seed": int(args.seed), "timeout_s": float(args.timeout),
@@ -1637,15 +1640,32 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             path = write_run_record(
                 out_dir, project_root=report.project_root, status=status,
                 mode=report.walk["mode"], legs=legs, error=report.error or None,
-                accepted_revision=report.accepted_revision, digest=report.digest,
                 params=report.params, training=report.training, requested=requested,
                 walk_seconds=time.monotonic() - walk_started,
-                **{**known, **extra},
+                **{"snapshot_docs": True, **known, **extra},
             )
         except OSError as exc:
             report.notes.append(f"run record not written: {exc}")
             return
         report.walk["run_record"] = str(path)
+
+    def learned(leg: Any) -> None:
+        """A finished leg's envelope identity is the record's, from here on.
+
+        Each leg reports the accepted revision it left the project at, so
+        the last one to speak is the revision the next leg runs against —
+        the train leg's is what the trainer was given, the rollout leg's
+        is what the review measures.
+        """
+
+        legs.append(leg.to_json())
+        revision = str(leg.envelope.get("accepted_revision") or "")
+        if revision:
+            known.update(
+                accepted_revision=revision,
+                digest=str(leg.envelope.get("digest") or ""),
+                identity_source=f"{leg.name} leg envelope",
+            )
 
     land_record("running")
 
@@ -1671,7 +1691,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             leg = run_leg("design", argv, timeout=leg_timeout)
             if leg.code != EXIT_OK:
                 return failed(leg, "the design turn was not accepted")
-            legs.append(leg.to_json())
+            learned(leg)
 
         # Iterate: blank the switch and apply the change; the bundle is exported
         # at its new digest (ADR-192).
@@ -1684,7 +1704,16 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             leg = run_leg("sweep", argv, timeout=leg_timeout)
             if leg.code != EXIT_OK:
                 return failed(leg, "the change was refused")
-            legs.append(leg.to_json())
+            learned(leg)
+        if legs:
+            # A design turn or sweep moved the accepted revision: the specs
+            # the record carries must be the moved manifest's, and the
+            # `running` record on disk must name the training input before
+            # the train leg starts writing telemetry beside it.
+            specs = manifest_identity(report.project_root, "before the train leg")
+            known.update(param_specs=specs["param_specs"],
+                         specs_source=specs["specs_source"])
+            land_record("running")
 
         # Train, and bring the policy home.
         argv = [
@@ -1710,7 +1739,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         leg = run_leg("train", argv, timeout=train_timeout)
         if leg.code != EXIT_OK:
             return failed(leg, "training did not produce a policy")
-        legs.append(leg.to_json())
+        learned(leg)
         training = leg.envelope.get("training") or {}
         if args.detach:
             # Pending is not success, and the difference is what this
@@ -1789,7 +1818,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                                   "--json"], timeout=leg_timeout)
         if leg.code != EXIT_OK:
             return failed(leg, "the returned policy could not be stored")
-        legs.append(leg.to_json())
+        learned(leg)
         report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
         stored = [row for row in report.assets
                   if row.get("sha256") == training.get("sha256")]
@@ -1822,7 +1851,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                   timeout=leg_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "the re-declared script was refused")
-    legs.append(leg.to_json())
+    learned(leg)
 
     # Verify and roll out: the switch on, the trace exported.
     _progress(" · walk  rollout")
@@ -1832,7 +1861,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     ], timeout=leg_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "the policy did not verify")
-    legs.append(leg.to_json())
+    learned(leg)
     report.params = dict(leg.envelope.get("params") or {})
     report.accepted_revision = str(leg.envelope.get("accepted_revision") or "")
     report.digest = str(leg.envelope.get("digest") or "")
@@ -1961,7 +1990,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         params=report.params,
     )
     report.walk["review_file"] = str(review_path)
-    land_record("ok", review=review, trace=review.get("trace"), snapshot_docs=True)
+    land_record("ok", review=review, trace=review.get("trace"))
     if review.get("total_reward") is None:
         report.notes.append(
             "the rollout exported no trace with a policy block; the walk "

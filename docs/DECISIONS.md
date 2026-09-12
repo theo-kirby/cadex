@@ -22776,3 +22776,51 @@ the next CLI action and preserves another run's record. These tests advance
 D8's failure evidence; they do not claim real biped training or interruption.
 An unwritable progress file or hard process kill can still prevent a terminal
 snapshot. A saved checkpoint is retained evidence, not engine verification.
+
+## ADR-289 — A run is the run of a revision from its first record, not from its rollout (2026-09-12)
+
+The fresh biped's first walk (`docs/HEADLESS-BIPED-REVIEW.md`) trained on
+the GPU for ninety seconds and failed at its declare leg; throughout, and
+afterwards, its `run.json` said `identity_source: "not reached"` with null
+revision and digest, because ADR-285 took the run's identity from the
+rollout leg's envelope and from nowhere else. The dashboard therefore
+showed `RELATION UNKNOWN` and no model for the one run a reviewer most
+wanted to identify — the one in progress — and a failed run could not be
+tied to the design it failed on (D3, D5, D8 of ADR-284).
+
+Decision: the walk starts `known` from the project manifest — accepted
+revision, digest and parameter specs, `identity_source` and `specs_source`
+both `project manifest (script.json) at walk start` — so the `running`
+record names the training input before the trainer writes its first
+telemetry sample beside it; every leg that reports an identity (design,
+sweep, train, collect, declare, rollout) replaces it with `<leg> leg
+envelope`; a design turn or sweep re-reads the manifest's specs and
+re-lands `running` before the train leg; and a failed or pending record
+keeps whatever was last learned. `not reached` now means only that there
+was no manifest and no leg spoke. Every write snapshots the project
+documents, so a failed run keeps the specs and decisions it ran under.
+`write_run_record` gains an explicit `identity_source`; the derived default
+is unchanged for callers that pass none.
+
+On the reading side, `run_model` no longer answers "no rollout trace
+retained" for a run that has not rolled out yet. When the record names a
+revision **and** digest that are both the accepted ones now, the accepted
+attempt's tessellation is the geometry that run trained on and is shown,
+with `source` saying it is borrowed and why. A historical run with no
+rollout, a record with no identity, and an accepted digest that has moved
+all still show nothing, with the reason: the standing constraint that a
+historical view never presents today's script as the original is kept by
+requiring both halves of the identity to match rather than by refusing to
+draw anything. Nothing is rebuilt and nothing is re-accepted.
+
+Proven by `cli/tests/test_walk.py` (the fake `cadex` copies `run.json` as
+it stood when the train leg started; refusals at train and at declare keep
+the manifest's and the train leg's identity respectively; a design turn
+moves it before training), `cli/tests/test_review_record.py` (the manifest
+helper and the explicit source), and `cli/tests/test_review_server.py`: an
+HTTP test that borrows the accepted model for exactly one of four
+identities, and a headless-browser test that selects a training run, reads
+its revision, digest, specs and borrowed model, watches telemetry arrive,
+then watches the trainer and the walk fail and asserts every identity is
+still on screen with the state changed. `probe1`'s own record is left as it
+was written; records are not rewritten after the fact.

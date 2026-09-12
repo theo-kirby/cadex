@@ -430,20 +430,32 @@ The scaffold's `## Training` section carries this same path convention.
 identities, so a reader who arrives later — a person, or a review client
 with no engine — can tell *which* model, parameters, task and policy a run
 belongs to without rebuilding anything. Schema `cadex-run-record-v1`,
-written by `cadex walk` three times: `running` when the walk starts, so a
-walk that is killed leaves a file saying it never finished; then `ok`,
-`failed` (with the leg and its error) or `pending` (a detached train leg
-launched, nothing collected) when it ends. Each write replaces the file.
+written by `cadex walk` as `running` when the walk starts, so a walk that
+is killed leaves a file saying it never finished; as `running` again before
+the train leg when a design turn or sweep has moved the accepted revision;
+then `ok`, `failed` (with the leg and its error) or `pending` (a detached
+train leg launched, nothing collected) when it ends. Each write replaces
+the file, and each write snapshots the project documents (below).
 
-What it carries, all from what the legs reported and nothing re-derived:
+What it carries, all from what the manifest and the legs reported and
+nothing re-derived:
 
-- `model`: the `accepted_revision` and `digest` the rollout leg ran at, and
-  `identity_source` (`rollout leg envelope`, or `not reached` for a walk
-  that failed earlier — no identity is claimed for a leg that never ran).
-- `params`: the `values` the rollout ran at, and the `specs` read with
-  `inspect scope=script` **at that accepted revision**, while the engine
-  held it, with `specs_source` saying so or saying `unavailable: …`. A
-  historical run is never re-run to learn what its parameters meant.
+- `model`: the `accepted_revision` and `digest` the run is tied to, and
+  `identity_source` saying where they came from. At walk start they are
+  read from the project manifest (`project manifest (script.json) at walk
+  start`), so the record names the model being trained **before the first
+  telemetry sample lands**; every later leg that reports an identity
+  replaces it (`design leg envelope`, `sweep leg envelope`, `train leg
+  envelope` — the revision the trainer was given — `declare leg envelope`,
+  `rollout leg envelope`). A run that fails keeps the last identity it
+  learned, so a failed or interrupted run is still the run *of* a revision.
+  `not reached` appears only when there was no manifest and no leg spoke.
+- `params`: the `values` the rollout ran at, and the `specs`: from the
+  manifest at walk start (and again before the train leg, when a design
+  turn or sweep moved it), then read with `inspect scope=script` **at the
+  accepted revision** while the engine held it during the review, with
+  `specs_source` saying which, or saying `unavailable: …`. A historical
+  run is never re-run to learn what its parameters meant.
 - `task` (bundle, sha256, model XML), `training` (`requested`: the flags
   the walk was given; `receipt`: the trainer's named figures), `policy`
   (name, sha256, stored asset), `rollout` (trace, seed, total reward),

@@ -199,15 +199,24 @@ def write_run_record(
     review: Mapping[str, Any] | None = None,
     walk_seconds: float | None = None,
     snapshot_docs: bool = False,
+    identity_source: str = "",
 ) -> Path:
     """Land ``run.json`` under ``out_dir``; rewritten whole at each state.
 
-    Written three times by a walk: ``running`` when it starts (so an
-    interrupted walk leaves a record that says it never finished), then
-    ``ok``, ``failed`` or ``pending`` when it ends. Every path is relative
-    to the run directory or the project root; anything outside either is
-    recorded as null rather than as an absolute path, so the file reads the
-    same from a copy of the project.
+    Written by a walk as ``running`` when it starts (so an interrupted walk
+    leaves a record that says it never finished), again as ``running``
+    before its train leg when a design turn or sweep moved the accepted
+    revision, then ``ok``, ``failed`` or ``pending`` when it ends. Every
+    path is relative to the run directory or the project root; anything
+    outside either is recorded as null rather than as an absolute path, so
+    the file reads the same from a copy of the project.
+
+    ``identity_source`` names where ``accepted_revision`` and ``digest``
+    came from — the project manifest at walk start, or the last leg whose
+    envelope reported them — so a run that is still training, or that
+    failed before its rollout, is tied to the revision it trained on
+    rather than to nothing. Left blank, it is ``rollout leg envelope`` when
+    a revision is given and ``not reached`` otherwise.
     """
 
     if status not in RUN_STATES:
@@ -257,7 +266,7 @@ def write_run_record(
         "model": {
             "accepted_revision": accepted_revision or None,
             "digest": digest or None,
-            "identity_source": (
+            "identity_source": identity_source or (
                 "rollout leg envelope" if accepted_revision else "not reached"
             ),
         },
@@ -343,6 +352,34 @@ def read_accepted_identity(project_root: Path | str) -> dict[str, Any]:
         "updated_at": payload.get("updated_at"),
         "param_specs": list(payload.get("param_specs") or []),
         "param_values": dict(payload.get("param_values") or {}),
+    }
+
+
+def manifest_identity(project_root: Path | str, moment: str) -> dict[str, Any]:
+    """The record fields a walk can claim from the manifest alone, at ``moment``.
+
+    Read before any leg runs, and again before the train leg once a design
+    turn or sweep has moved the accepted revision: the revision, digest and
+    parameter specs the training input *is*, so the record on disk names
+    them before the first telemetry sample lands and keeps them if the walk
+    fails. Nothing is inferred from a manifest that is unavailable — the
+    fields stay empty and ``specs_source`` says why. The keys are
+    :func:`write_run_record` keyword arguments.
+    """
+
+    accepted = read_accepted_identity(project_root)
+    if not accepted.get("available"):
+        return {
+            "accepted_revision": "", "digest": "", "identity_source": "",
+            "param_specs": None,
+            "specs_source": f"unavailable: project manifest {moment}: {accepted['reason']}",
+        }
+    return {
+        "accepted_revision": accepted["revision"],
+        "digest": accepted["digest"],
+        "identity_source": f"project manifest ({PROJECT_SCRIPT_FILENAME}) {moment}",
+        "param_specs": accepted["param_specs"],
+        "specs_source": f"project manifest ({PROJECT_SCRIPT_FILENAME}) {moment}",
     }
 
 

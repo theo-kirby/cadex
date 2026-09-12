@@ -189,13 +189,13 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
         revision=model_block.get("accepted_revision"), digest=model_block.get("digest"),
     )
     trace_item = ((record.get("resolved") or {}).get("artifacts") or {}).get("trace") or {}
+    if trace_item.get("path") is None:
+        return _model_before_rollout(root, model)
     if trace_item.get("error"):
         model["reason"] = f"trace reference not honoured: {trace_item['error']}"
         return model
     if not trace_item.get("exists"):
-        model["reason"] = ("no rollout trace retained for this run"
-                           if trace_item.get("path") is None else
-                           f"rollout trace missing: {trace_item['path']}")
+        model["reason"] = f"rollout trace missing: {trace_item['path']}"
         return model
     trace_path = run_dir / trace_item["path"]
     mesh_dir = trace_path.parent
@@ -236,6 +236,44 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
                   "(the rollout leg's exports at this run's revision)",
         "placement_source": placement_source,
         "components": entries,
+    })
+    return model
+
+
+def _model_before_rollout(root: Path, model: dict[str, Any]) -> dict[str, Any]:
+    """A run that has not rolled out yet: the accepted model, if it *is* this one.
+
+    While a walk trains, and after one fails before its rollout, the run
+    has no meshes of its own — the rollout leg is what exports them. The
+    record still names the revision and digest the trainer was given
+    (``identity_source`` says from where), and when **both** equal the
+    accepted revision and digest now, the accepted attempt's tessellation
+    is exactly that geometry and is shown, labelled as borrowed. Any other
+    case — a historical run, a record with no identity, an accepted digest
+    that has moved — shows nothing, with the reason, rather than today's
+    script standing in for what the run trained on.
+    """
+
+    if not model.get("revision"):
+        model["reason"] = "no rollout trace retained for this run, and no revision recorded to match the accepted model against"
+        return model
+    accepted = accepted_model(root)
+    same = (accepted["revision"] == model["revision"]
+            and accepted["digest"] is not None and accepted["digest"] == model.get("digest"))
+    if not same:
+        model["reason"] = ("no rollout trace retained for this run; its recorded revision "
+                           "is not the accepted one now, so no model is shown for it")
+        return model
+    if not accepted["available"]:
+        model["reason"] = f"no rollout trace retained for this run, and the accepted model it matches is unavailable: {accepted['reason']}"
+        return model
+    model.update({
+        "available": True,
+        "source": "the accepted attempt's tessellation, borrowed: this run retained no "
+                  "rollout, and its recorded revision and digest are the accepted ones now",
+        "placement_source": accepted["placement_source"],
+        "components": accepted["components"],
+        "meshes": accepted.get("meshes") or {},
     })
     return model
 

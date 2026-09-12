@@ -74,13 +74,24 @@ episode length and the reward/loss histories (14 → 24 retained samples)
 updated with it; telemetry state `training`, freshness `live`. Results in
 `evidence/probe1-observe.json` and a screenshot beside it.
 
-The same observation exposed a review defect: **a run in progress has no
-model identity.** `run.json` is written at walk start with
-`identity_source: "not reached"` and null revision/digest, and the failed
-record keeps them null although the train leg reported both. The page
-therefore shows `RELATION UNKNOWN — no revision recorded for this run` and
-`no model to show` for the run being trained, and for the failed run
-afterwards. The accepted-now view shows the biped. This is open.
+The same observation exposed a review defect, since fixed (ADR-289): **a
+run in progress had no model identity.** `run.json` was written at walk
+start with `identity_source: "not reached"` and null revision/digest, and
+the failed record kept them null although the train leg reported both. The
+page therefore showed `RELATION UNKNOWN — no revision recorded for this
+run` and `no model to show` for the run being trained, and for the failed
+run afterwards, while the accepted-now view showed the biped. Now the walk
+records the manifest's revision, digest and specs before its first leg and
+each leg's reported identity after it, a failed run keeps the last one it
+learned, and a run with no rollout of its own is drawn from the accepted
+attempt when — and only when — its recorded revision *and* digest are the
+accepted ones now, labelled as borrowed. `probe1`'s record is left exactly
+as it was written: records are what the walk said at the time, and the fix
+is proven by `cli/tests/test_walk.py` (the record as the train leg saw it,
+and after a refusal at train and at declare) and by a headless-browser test
+that follows a training run into failure
+(`cli/tests/test_review_server.py`). The next real walk on this project is
+what ticks the fixture evidence over to real-artifact evidence.
 
 D2's orbit/zoom check on the fresh biped, D4's videos, D5–D9 remain open.
 A quota reset time is a provider report, not proof a subsequent attempt

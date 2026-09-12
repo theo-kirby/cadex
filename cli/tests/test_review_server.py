@@ -33,7 +33,7 @@ import pytest
 
 from cadex_cli.__main__ import main
 from cadex_cli.report import EXIT_OK, EXIT_USAGE
-from cadex_cli.review_record import RUN_RECORD_FILENAME, read_run_record
+from cadex_cli.review_record import RUN_RECORD_FILENAME, read_run_record, write_run_record
 from cadex_cli.review_server import (
     REVIEW_MODEL_SCHEMA,
     accepted_model,
@@ -246,6 +246,53 @@ def test_a_run_without_its_trace_has_no_model_and_says_why(served) -> None:
     assert _get(server.url + "mesh/run/broken/torso.stl")[0] == 404
     record = _json(server.url + "api/run/broken")
     assert "artifacts.trace: missing" in record["problems"]
+
+
+def _training_run(root: Path, name: str, *, revision: str, digest: str = "d" * 64,
+                  status: str = "running", error: str | None = None) -> Path:
+    """A walk that has trained (or is training) and never rolled out: no
+    meshes of its own, identity from the manifest at walk start."""
+
+    run = root / "runs" / name
+    (run / "train").mkdir(parents=True, exist_ok=True)
+    write_run_record(
+        run, project_root=root, status=status, mode="blocking", error=error,
+        accepted_revision=revision, digest=digest,
+        identity_source="project manifest (script.json) at walk start",
+        param_specs=[{"name": "leg_len", "default": 80.0}],
+        specs_source="project manifest (script.json) at walk start",
+        requested={"iterations": 40, "envs": 1024, "seed": 0},
+        legs=[{"leg": "train", "exit": 3, "seconds": 1.0, "argv": ["never"]}] if error else [],
+    )
+    return run
+
+
+def test_a_run_before_its_rollout_borrows_the_accepted_model_only_when_it_is_that_model(served) -> None:
+    root, server = served
+    _stage_accepted(root, REVISION_B)
+    _training_run(root, "training", revision=REVISION_B)
+    _training_run(root, "old", revision=REVISION_A)
+    _training_run(root, "moved", revision=REVISION_B, digest="e" * 64)
+    _training_run(root, "blank", revision="")
+    model = _json(server.url + "api/model/run/training")
+    assert model["available"] and model["relation"] == "current"
+    assert model["revision"] == REVISION_B and model["digest"] == "d" * 64
+    assert "borrowed" in model["source"] and "retained no rollout" in model["source"]
+    assert [c["mesh"] for c in model["components"]] == ["/mesh/accepted/torso.stl"]
+    status, _headers, body = _get(server.url + "mesh/accepted/torso.stl")
+    assert status == 200 and body.startswith(b"cadex tessellation as binary STL")
+    # Nothing is served under the run's own mesh route: it retained none.
+    assert _get(server.url + "mesh/run/training/torso.stl")[0] == 404
+    for name, wording in (("old", "not the accepted one now"), ("moved", "not the accepted one now"),
+                          ("blank", "no revision recorded")):
+        model = _json(server.url + f"api/model/run/{name}")
+        assert not model["available"] and wording in model["reason"], (name, model["reason"])
+        assert model["components"] == []
+    # After the design moves on, the same training run is historical and
+    # shows nothing rather than today's geometry.
+    _manifest(root, REVISION_A)
+    model = _json(server.url + "api/model/run/training")
+    assert not model["available"] and model["relation"] == "historical"
 
 
 def test_the_accepted_model_comes_from_the_accepted_attempt_only(served) -> None:
@@ -693,6 +740,78 @@ def test_browser_polls_training_histories_checkpoints_and_stale_states(served, b
     page.click("#views li[data-run='first']")
     page.wait_for("document.getElementById('telemetry').dataset.state === 'done'")
     assert page.attribute('[data-history=loss_curve]', 'data-points') == '3'
+
+
+@needs_browser
+def test_browser_identifies_a_training_run_s_model_and_keeps_it_through_failure(tmp_path, browser):
+    """The fresh biped's first walk on screen: a run that is training shows
+    the revision, digest, specs and model it trains on — borrowed from the
+    accepted attempt, labelled — and keeps every one of them when the
+    trainer and then the walk report failure."""
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_B)
+    _stage_accepted(root, REVISION_B)
+    run = _training_run(root, "probe", revision=REVISION_B)
+    progress = run / "train" / "progress.json"
+
+    def telemetry(iteration, **changes):
+        data = {"schema": "cadex-training-progress-v1", "state": "training",
+                "updated_at": time.time(), "task_sha256": "t" * 64,
+                "iteration": iteration, "total": 40, "reward_per_step": 0.1 * iteration,
+                "loss": 2.0, "episode_steps": 30,
+                "curve": [[i, 0.1 * i] for i in range(iteration + 1)],
+                "loss_curve": [[i, 2.0] for i in range(iteration + 1)],
+                "episode_steps_curve": [[i, 30] for i in range(iteration + 1)], "checkpoints": []}
+        data.update(changes)
+        temporary = progress.with_suffix(".partial")
+        temporary.write_text(json.dumps(data))
+        temporary.replace(progress)
+
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.click("#views li[data-run='probe']")
+        page.wait_for("document.getElementById('view-kind').textContent === 'RUN probe'")
+        assert page.text("#view-relation").startswith("CURRENT")
+        assert page.attribute("#views li[data-run='probe']", "data-relation") == "current"
+        assert page.text("#view-revision") == REVISION_B
+        assert page.text("#view-digest") == "d" * 64
+        assert page.text("#view-identity-source") == "project manifest (script.json) at walk start"
+        assert "never finished" in page.text("#view-status")
+        assert "project manifest (script.json) at walk start" in page.text("#params-note")
+        assert page.text("#params tr[data-param='leg_len'] td:nth-child(3)") == "80"
+        assert _model_state(page) == "loaded"
+        assert "borrowed" in page.text("#model-status") and "run probe" in page.text("#model-status")
+        assert page.attribute("#model-components li[data-component='body']", "data-mesh") == "retained"
+        # Telemetry arrives beside an identity that is already on screen.
+        telemetry(3)
+        page.wait_for("document.querySelector('[data-metric=iteration]').textContent === 'iteration: 3'")
+        assert page.attribute("#telemetry", "data-state") == "training"
+        assert page.text("#view-revision") == REVISION_B
+        # The trainer fails, then the walk lands its failed record: the run's
+        # identity, specs and model stay; only the state changes.
+        telemetry(3, state="failed", error="controlled fixture failure")
+        _training_run(root, "probe", revision=REVISION_B, status="failed",
+                      error="training did not produce a policy (leg train, exit 3): controlled fixture failure")
+        page.wait_for("document.getElementById('view-status').textContent === 'failed'")
+        page.wait_for("document.getElementById('telemetry').dataset.state === 'failed'")
+        assert page.text("#view-relation").startswith("CURRENT")
+        assert page.text("#view-revision") == REVISION_B
+        assert page.text("#view-identity-source") == "project manifest (script.json) at walk start"
+        assert "controlled fixture failure" in page.text("#view-note")
+        assert page.text("#params tr[data-param='leg_len'] td:nth-child(3)") == "80"
+        assert page.attribute("#telemetry", "data-state") == "failed"
+        assert page.attribute("[data-history=loss_curve]", "data-points") == "4"
+        assert _model_state(page) == "loaded" and "borrowed" in page.text("#model-status")
+        # The accepted view is untouched by any of it.
+        page.click("#views li[data-view='accepted']")
+        page.wait_for("document.getElementById('view-kind').textContent === 'ACCEPTED NOW'")
+        assert page.text("#view-revision") == REVISION_B
+        assert _model_state(page) == "loaded" and "borrowed" not in page.text("#model-status")
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 @needs_browser
