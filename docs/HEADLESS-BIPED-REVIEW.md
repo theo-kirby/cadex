@@ -803,3 +803,115 @@ Final validation: `pixi run python -m pytest cli/tests -q` — **364 passed,
 1 skipped** in 329.64 s; `pixi run test-engine` — **2,103 passed, 54 skipped**
 in 281.57 s. Probe compilation and `git diff --check` pass. No full build or
 packaged/shell gate was run; no engine, protocol, payload or shell code changed.
+
+## Product-agent shin-length revision and its recorded experiment (D9, D10)
+
+The product agent, on the project's stored model `claude-sonnet-5`, authored
+the design revision this time. A one-word capacity probe preceded the request,
+as the earlier refusals suggested. The prompt (retained as
+`evidence/agentrev.prompt.txt`) gave it the recorded 70/90/100 mm foot
+results and asked it to choose exactly one physical geometry revision it could
+justify, keep the task semantics unchanged, turn `policy_on` off first, record
+the reasoning in the project's decisions and design specs, and not train:
+
+```bash
+timeout --signal=TERM --kill-after=10s 900 ./cadex --project "$COPY" \
+  --out "$COPY/evidence/agentrev" --json -p "$(cat "$COPY/evidence/agentrev.prompt.txt")"
+```
+
+It chose to shorten the shin, `shin_len` 80 → 55 mm, keeping the 100 mm
+feet and everything else, on the stated mechanism that the rigid-ankle
+biped's forward-pitch recovery is bounded by the unchanged 200 N·mm hip/knee
+torque against a gravitational tipping torque that scales with CoM height
+(203 → 178 mm), whereas the three foot-length probes only widened the base of
+support. Its receipt is `evidence/agentrev-agent.json` (exit 0, accepted
+revision `fe266d481062…`, digest `a0dc163fde65…`, `policy_on` 0, all other
+parameters unchanged); project ADR-007 and the design-specs entry are its own
+words, committed by the CLI as `af0339d`. This is the product-agent-authored,
+review-supported revision D9 was missing. The training model hash changed
+from copy100's; the task JSON differs only in its model metadata.
+
+`evidence/shin55-experiment.py` then ran one bounded GPU training on that
+revision — 240 iterations, 1024 environments, seed 0, checkpoints every 20,
+an independent 1800 s timeout and a 20 GiB host cgroup cap, no warm start —
+and published from it. Unlike the probe2/probe3 harnesses it observes the
+**persistent operator server on port 8765**, never a temporary one:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python "$COPY/evidence/shin55-experiment.py" \
+  "$COPY" shin55 "http://$(tailscale ip -4):8765/"
+```
+
+**Persistent dashboard at experiment start (D10).** The server listed
+`shin55` as `running` on its next request, before the trainer's first
+iteration. `evidence/agentrev_observe.py` opened the persistent URL fresh:
+without a click, the page selected **RUN shin55** (`Current run: shin55`),
+labelled CURRENT at revision `fe266d481062…`, loaded its retained model,
+and passed orbit/zoom. It then saw page iterations 3, 4, 6, 7, 9, 10, 11
+appear within **0.26–1.69 s** of their commit, one navigation, live
+freshness, with reward, loss, episode-length and curve-point counts all
+changing (`shin55-observe.json`). The observer's exit did not touch the
+trainer.
+
+**Checkpoint video while training.** Checkpoint 20 (policy
+`4745829c6f80…`) passed the engine witness check at 3.66e-08 against 1e-4,
+rolled out seed 0 for the full 8 s without a fall, and was retained as
+`runs/shin55-checkpoint20` with its own script, specs, trace, model and
+render. Its video (`89bfc9ecde0e…`, 81 frames, 10 fps, 8.1 s encoded for
+8.0 s simulated, style `cadex-prototype-light-v1`) rendered in **14.2 s**
+and passed decode, persistent-URL playback across three polls, matching
+download and the revision/policy/seed/time labels while the trainer was
+still active (committed iteration 18 before the publication, 34 after it).
+The harness deliberately waited for the trainer to be back in ordinary
+iterations (23) before rendering, so the window measures throughput rather
+than the checkpoint's own publication cost: nine committed intervals fell
+inside the 14.2 s render, median **1.414 s** (max 1.463 s), against a median
+of **1.438 s** for the non-checkpoint intervals in the 90 s before it and
+**1.341 s** in the 90 s after it. Under
+these conditions the shared-scene renderer's overhead on GPU training was
+not measurable; the trainer's own checkpoint publication (one ~53 s
+interval at each boundary) dominates. This is one same-machine measurement,
+not a general claim.
+
+**A review defect this exposed (ADR-302).** The retained training view drew
+five of Reed's eight parts — the left thigh, shin and foot were "mesh
+missing" — because the accepted model mapped each BREP digest to one output
+name, and a mirrored pair of identical boxes shares a digest. `copy100` and
+`probe3` had frozen four of eight the same way. The fix and its regression
+landed in this pass; frozen views from earlier runs stay as recorded.
+
+**Final policy and the ten-seed comparison.** The trainer exited 0 on the
+GPU after 850 s wall clock for the whole run (240 iterations, last index
+239, reward/step 0.508, loss 2.37, estimated episode length 930.9 steps;
+sampled host cgroup peak 8.28 GB, GPU peak 15,134 MiB). The final policy
+`609ef8e83c18…` passed the witness check at 7.03e-08 and is retained as
+`runs/shin55-final` with a 6-frame, 0.46 s video (`c23508ad3e92…`) that
+passed the same decode/playback/download checks on the persistent URL.
+All nine earlier `run.json` records are byte-identical to before the
+experiment. The independent evaluation copy `ot5-biped-shin55-seeds`
+(`docs/probes/reed-baseline/evaluate.py --run shin55-final`) reproduced the
+seed-0 trace exactly and left the source unchanged:
+
+| Design (final policy, seeds 0–9, 8 s) | Falls | 8 s survivors | Mean duration | Mean forward torso displacement |
+|---|---:|---:|---:|---:|
+| 70 mm feet (probe3) | 10 | 0 | 0.498 s | 200.9 mm (all during falls) |
+| 90 mm feet (foot90) | 9 | 1 | 1.338 s | 160.8 mm |
+| 100 mm feet + 55 mm shins (shin55) | 4 | 6 | 5.034 s | 79.1 mm |
+
+The shin55 falls come at 0.44–0.90 s on seeds 0, 2, 5 and 6; the six
+survivors end 44.7–49.5 mm forward, which is the same standing shuffle the
+70 mm checkpoint 20 showed (39.4 mm), not a walking gait. So the product
+agent's review-driven change measurably improved survival on the common
+seed set and did not produce repeatable walking; both halves are the
+recorded result. Compact identities: `docs/probes/reed-agentrev/evidence.json`.
+
+**Persistent dashboard at completion and after the fix.** A fresh visit to
+the persistent URL after the trainer exited opened **RUN shin55-final** by
+default at revision `67b5000f3de1…`, played and downloaded its video with
+the recorded digest, kept playback through a poll, showed `probe3-final`
+as HISTORICAL on request and returned to the current run
+(`evidence/shin55-operator-final.json`). The service was then restarted once
+to load ADR-302; the accepted model now retains all eight meshes and the
+same operator check passed again (`shin55-operator-restart.json`). The
+restart happened after training, deliberately: D6's restart-during-training
+evidence already exists and no run was active.

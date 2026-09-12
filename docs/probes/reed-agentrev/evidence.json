@@ -1,0 +1,362 @@
+{
+  "schema": "reed-agentrev-evidence-v1",
+  "project": "ot5-biped-copy29",
+  "authorship": {
+    "model": "claude-sonnet-5",
+    "ok": true,
+    "error": null,
+    "accepted_revision": "fe266d4810620cbd7154202f4ad440822260455ebe2681d80509aa8aa4a77adb",
+    "digest": "a0dc163fde65b97fb70049eba6c83cb7ad7fb68f5ad2809e04deff8c06365ca5",
+    "changed_parameter": {
+      "shin_len": {
+        "before": 80.0,
+        "after": 55.0
+      }
+    },
+    "policy_on_after_turn": 0.0,
+    "project_decision": "ADR-007 in the project DECISIONS.md; docs/design-specs.md carries the shin-length entry"
+  },
+  "training": {
+    "run": "shin55",
+    "accepted_revision": "fe266d4810620cbd7154202f4ad440822260455ebe2681d80509aa8aa4a77adb",
+    "digest": "a0dc163fde65b97fb70049eba6c83cb7ad7fb68f5ad2809e04deff8c06365ca5",
+    "geometry": {
+      "reed_model-model.xml": {
+        "copy100": "3502b95af78bed55fa9e88ed26f143b3b2bfb04b3bbc31ecc7189641fa47d9ec",
+        "shin55": "3baec1c1dca8da213d8e49691b22d7b4622a318cca5581e5959944b7b8c052b6"
+      },
+      "reed_walk-task.json": {
+        "copy100": "ebfc10df7d35b88ecec017b50e4c4a52cb5367f22bfad1a46a50c1f121f60ae6",
+        "shin55": "7a7205e338c5f6974c6e31cd18bf22ec70fe3fb0033535c8d5391b0c2149fcbd"
+      }
+    },
+    "training_exit": 0,
+    "training_wall_seconds": 850.288,
+    "trainer_final": {
+      "iteration": 239,
+      "state": "done",
+      "reward_per_step": 0.5080401301383972,
+      "loss": 2.3736798763275146,
+      "episode_steps": 930.9091186523438,
+      "seconds": null,
+      "device": "gpu"
+    },
+    "memory": {
+      "host_peak_bytes": 8275820544,
+      "gpu_peak_mib": 15134,
+      "samples": 170
+    },
+    "preserved_earlier_records": [
+      "copy100",
+      "foot90",
+      "probe1",
+      "probe1-playback",
+      "probe2",
+      "probe2-checkpoint20",
+      "probe3",
+      "probe3-checkpoint20",
+      "probe3-final"
+    ]
+  },
+  "persistent_dashboard_during_training": {
+    "url": "http://100.104.232.88:8765/",
+    "ok": true,
+    "project_name": "ot5-biped-copy29 \u2014 review",
+    "default_view_on_fresh_visit": "RUN shin55",
+    "current_run_label": "Current run: shin55",
+    "view_relation": "CURRENT \u2014 this run's revision is the accepted revision now",
+    "model_state": "loaded",
+    "orbit_zoom": true,
+    "page_iterations": [
+      3,
+      4,
+      6,
+      7,
+      9,
+      10,
+      11
+    ],
+    "reload_count": 1,
+    "committed_to_page_s": {
+      "4": 1.69,
+      "6": 0.69,
+      "7": 1.2,
+      "9": 0.26,
+      "10": 0.82,
+      "11": 1.39
+    }
+  },
+  "checkpoint_video_while_training": {
+    "run": "shin55-checkpoint20",
+    "before": 18,
+    "after": 34,
+    "trainer_active_after_browser": true,
+    "browser_check_exit": 0,
+    "render_seconds": 14.182,
+    "render_before": 23,
+    "render_after": 33,
+    "video": {
+      "path": "rollout-89bfc9ecde0e6e1e36ee2f8d1bb208677c899c065cb13c29d7608edc87e4887d.webm",
+      "sha256": "89bfc9ecde0e6e1e36ee2f8d1bb208677c899c065cb13c29d7608edc87e4887d",
+      "frames": 81,
+      "duration_seconds": 8.1,
+      "sim_seconds": 8.0,
+      "style": "cadex-prototype-light-v1",
+      "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+      "render_seconds": 14.019
+    },
+    "policy_sha256": "4745829c6f8032da76a7e6bfb58deb90498290090a9158dd8d104abcde11b5e7",
+    "overhead": {
+      "note": "trainer-committed iteration intervals; the render window is wall clock around the video render only",
+      "before_window": {
+        "count": 22,
+        "median_s": 1.406,
+        "median_excluding_checkpoint_boundaries_s": 1.438,
+        "max_s": 53.513
+      },
+      "during_window": {
+        "count": 9,
+        "median_s": 1.414,
+        "median_excluding_checkpoint_boundaries_s": 1.414,
+        "max_s": 1.463
+      },
+      "after_window": {
+        "count": 24,
+        "median_s": 1.335,
+        "median_excluding_checkpoint_boundaries_s": 1.341,
+        "max_s": 53.656
+      },
+      "during_rows": [
+        {
+          "iteration": 25,
+          "seconds": 1.414,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 26,
+          "seconds": 1.451,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 27,
+          "seconds": 1.444,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 28,
+          "seconds": 1.463,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 29,
+          "seconds": 1.453,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 30,
+          "seconds": 1.391,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 31,
+          "seconds": 1.408,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 32,
+          "seconds": 1.358,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 33,
+          "seconds": 1.279,
+          "checkpoint_boundary": false
+        }
+      ]
+    },
+    "failure": null
+  },
+  "final_video": {
+    "run": "shin55-final",
+    "browser_check_exit": 0,
+    "render_seconds": 2.167,
+    "video": {
+      "path": "rollout-c23508ad3e92e4742164ecdc6d7d97dd5dd83f32194f56944d8d459275f6ddb1.webm",
+      "sha256": "c23508ad3e92e4742164ecdc6d7d97dd5dd83f32194f56944d8d459275f6ddb1",
+      "frames": 6,
+      "duration_seconds": 0.6,
+      "sim_seconds": 0.46,
+      "style": "cadex-prototype-light-v1",
+      "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+      "render_seconds": 2.026
+    },
+    "policy_sha256": "609ef8e83c1852736a26fe041e1cd3ae315ee65eeb1ce0ef53bed830da0a5312"
+  },
+  "witness": {
+    "checkpoint20": {
+      "witness_error": 3.657056430128591e-08,
+      "witness_tolerance": 0.0001
+    },
+    "final": {
+      "witness_error": 7.032256270633752e-08,
+      "witness_tolerance": 0.0001
+    }
+  },
+  "browser_video_checks": {
+    "shin55-checkpoint20": {
+      "persistent_server": true,
+      "url": "http://100.104.232.88:8765/",
+      "private_address_same_machine": true,
+      "browser_playback": true,
+      "download_sha256": "89bfc9ecde0e6e1e36ee2f8d1bb208677c899c065cb13c29d7608edc87e4887d",
+      "decoded_frames": 81,
+      "decoded_frames_differ": true,
+      "encoded_seconds": 8.1,
+      "simulation_seconds": 8.0,
+      "original_failed_run_preserved": true,
+      "accepted_revision": "a3591f651443fb00ee135b569bbef9df0ac84ea173e276c2299c0a83d3157477",
+      "policy_sha256": "4745829c6f8032da76a7e6bfb58deb90498290090a9158dd8d104abcde11b5e7",
+      "seed": 0,
+      "style": "cadex-prototype-light-v1",
+      "returned_to_current": "RUN shin55"
+    },
+    "shin55-final": {
+      "persistent_server": true,
+      "url": "http://100.104.232.88:8765/",
+      "private_address_same_machine": true,
+      "browser_playback": true,
+      "download_sha256": "c23508ad3e92e4742164ecdc6d7d97dd5dd83f32194f56944d8d459275f6ddb1",
+      "decoded_frames": 6,
+      "decoded_frames_differ": true,
+      "encoded_seconds": 0.6,
+      "simulation_seconds": 0.46,
+      "original_failed_run_preserved": true,
+      "accepted_revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274",
+      "policy_sha256": "609ef8e83c1852736a26fe041e1cd3ae315ee65eeb1ce0ef53bed830da0a5312",
+      "seed": 0,
+      "style": "cadex-prototype-light-v1",
+      "returned_to_current": "RUN shin55-final"
+    }
+  },
+  "persistent_dashboard_after_training": {
+    "project": "ot5-biped-copy29",
+    "run": "shin55-final",
+    "current": {
+      "selected": "shin55-final",
+      "stale": false,
+      "error": null,
+      "revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274",
+      "relation": "current",
+      "model": {
+        "available": true,
+        "reason": null,
+        "revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274"
+      },
+      "runs": [
+        "probe1",
+        "probe1-playback",
+        "probe2-checkpoint20",
+        "probe2",
+        "probe3-checkpoint20",
+        "probe3",
+        "probe3-final",
+        "foot90",
+        "copy100",
+        "shin55-checkpoint20",
+        "shin55",
+        "shin55-final"
+      ]
+    },
+    "foot_len_mm": 100.0,
+    "video_sha256": "c23508ad3e92e4742164ecdc6d7d97dd5dd83f32194f56944d8d459275f6ddb1",
+    "playback_preserved_on_poll": true,
+    "historical_run": "probe3-final",
+    "return_to_current": true,
+    "private_address_same_machine": true
+  },
+  "persistent_dashboard_after_restart": {
+    "project": "ot5-biped-copy29",
+    "run": "shin55-final",
+    "current": {
+      "selected": "shin55-final",
+      "stale": false,
+      "error": null,
+      "revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274",
+      "relation": "current",
+      "model": {
+        "available": true,
+        "reason": null,
+        "revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274"
+      },
+      "runs": [
+        "probe1",
+        "probe1-playback",
+        "probe2-checkpoint20",
+        "probe2",
+        "probe3-checkpoint20",
+        "probe3",
+        "probe3-final",
+        "foot90",
+        "copy100",
+        "shin55-checkpoint20",
+        "shin55",
+        "shin55-final"
+      ]
+    },
+    "foot_len_mm": 100.0,
+    "video_sha256": "c23508ad3e92e4742164ecdc6d7d97dd5dd83f32194f56944d8d459275f6ddb1",
+    "playback_preserved_on_poll": true,
+    "historical_run": "probe3-final",
+    "return_to_current": true,
+    "private_address_same_machine": true
+  },
+  "ten_seed_evaluation": {
+    "seeds_project": "ot5-biped-shin55-seeds",
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "episode_limit_s": 8,
+    "source_unchanged": true,
+    "seed_zero_trace_reproduced": true,
+    "falls": 4,
+    "survivors": 6,
+    "mean_observed_s": 5.034,
+    "mean_forward_displacement_mm": 79.128,
+    "observed_s": [
+      0.46,
+      8.0,
+      0.9,
+      8.0,
+      8.0,
+      0.44,
+      0.54,
+      8.0,
+      8.0,
+      8.0
+    ],
+    "forward_displacement_mm": [
+      133.693,
+      49.532,
+      123.705,
+      47.875,
+      46.215,
+      126.599,
+      127.445,
+      45.104,
+      46.424,
+      44.692
+    ],
+    "policy_sha256": "609ef8e83c1852736a26fe041e1cd3ae315ee65eeb1ce0ef53bed830da0a5312",
+    "model_sha256": "3baec1c1dca8da213d8e49691b22d7b4622a318cca5581e5959944b7b8c052b6",
+    "task_sha256": "7a7205e338c5f6974c6e31cd18bf22ec70fe3fb0033535c8d5391b0c2149fcbd"
+  }
+}

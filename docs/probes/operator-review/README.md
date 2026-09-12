@@ -4,10 +4,11 @@ Verified against source: 2026-09-12. [Cadex-new]
 
 The shared private-network dashboard on port 8765 now serves
 `ot5-biped-copy29`, the independent Reed working copy. Its latest recorded
-attempt is `copy100`, completed at revision `25d9b6ab7472…` with 100 mm feet.
-Nine retained runs include the original 70 mm design and the 90 mm revision.
-The subsequent product-agent revision requests were refused before authorship;
-they did not create another walk attempt. No training is active at this check.
+attempt is `shin55-final`, the product-agent-authored 55 mm shin revision
+(project ADR-007) at revision `67b5000f3de1…`, with 100 mm feet. Twelve
+retained runs include the original 70 mm design, the 90 mm and 100 mm foot
+revisions, the `shin55` training record and its checkpoint 20 playback.
+No training is active at this check.
 
 Keep the server running between iterations. On this Linux host, from the
 checkout, the detached command is:
@@ -55,3 +56,14 @@ light reference and same-pose/camera parity. Playback/download, polling and
 historical selection pass at the private URL. Current published status remains
 `ot5-biped-copy29 / copy100`; there is no new training attempt. The service stays
 running. D10's real experiment-spanning observation is still open.
+
+Iteration 41 spanned a real experiment on this same URL: `shin55` appeared as
+`running` before its first iteration, a fresh visit selected it by default,
+seven live iterations showed within 0.26–1.69 s, the checkpoint 20 video was
+published and played here while training continued, and after the trainer
+exited a fresh visit selected `shin55-final` with its video, playback across a
+poll, historical `probe3-final` and return to current. The service was then
+restarted once, after training, to load ADR-302 (all eight accepted meshes now
+retained) and the same check passed again. Evidence:
+[reed-agentrev](../reed-agentrev/README.md). Published status is now
+`ot5-biped-copy29 / shin55-final`; the service stays running.
