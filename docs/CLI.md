@@ -515,6 +515,25 @@ reviews with those references listed under `problems` rather than silently
 resolving to another project's files. Deleting a run directory is deleting
 its history; nothing rebuilds it.
 
+For a consistent headless copy, first let CLI authoring, training and video
+rendering finish; copying a directory while its writers commit files is not an
+atomic snapshot. With the destination absent, copy the entire project (including
+hidden files and ignored artifacts), then serve that copy independently:
+
+```bash
+cp -R ~/cadex-projects/biped ~/cadex-projects/biped-copy
+./cadex review --project ~/cadex-projects/biped-copy --port 8766
+```
+
+The copy test in `cli/tests/test_review_lifecycle.py` exercises this command,
+opens both projects in headless Chromium, changes the copy's accepted fixture,
+and verifies the source stays byte-identical. With the original path unavailable,
+a fresh page still reads the copy's historical model, parameters, three metric
+histories and playable/downloadable video. It checks retained artifact hashes.
+This is synthetic fixture evidence for D7, not a real biped design or retraining
+pass. Copying an active project and external symlink targets are not covered by
+this procedure; project artifacts must be retained within the project directory.
+
 `cli/tests/test_walk.py` checks local/remote artifact parity through policy
 verification and rollout using a local CPU stand-in for the dispatcher.
 It runs no remote command. GUI attachment remains documented, not exercised;
@@ -1802,7 +1821,7 @@ Fast, and honest about what it did not run.
 | `test_commands.py` | `main()` end to end against a real engine. |
 | `test_walk.py` | `cadex walk` against a fake `cadex` (leg order, flags, refusals; no engine), and the toy through two real walks with the real engine and trainer — **skips** the latter without the training venv. |
 | `test_review_server.py` | The review dashboard (ADR-286): the API, the allowlist and its refusals, the CLI command, and the page in a headless Chromium over its DevTools pipe (`cdp_browser.py`) — **skips** the browser half without a Chromium (`CADEX_BROWSER` names one); the private-address smoke runs only with `CADEX_REVIEW_HOST` set. |
-| `test_review_lifecycle.py` | The dashboard across a restart (D6): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
+| `test_review_lifecycle.py` | The dashboard across restart and copy (D6/D7): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. Whole-directory copy coverage checks independent accepted fixtures and historical model/curves/video access with the original path unavailable. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
 | `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** the browser half without a Chromium and everything without FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The review dashboard across a restart (D6 of ADR-284, fixture half).
+"""The review dashboard across restart and copy (D6/D7, fixture evidence).
 
 The dashboard is a process a person stops and starts; the project and the
 training that writes into it are not. This module restarts the real
@@ -15,6 +15,8 @@ Fixture coverage only: the project is laid out by hand, the producer is
 a loop writing the trainer's snapshot format, and no engine runs at any
 point. That last fact is the engine half of D6 for this reader — there is
 no engine to restart — and the real fresh-biped pass remains separate.
+The copy test checks independent accepted fixtures and retained review artifacts
+with the original path unavailable; it does not run real design or training.
 Browser tests **skip** without a Chromium; the video half without FFmpeg.
 """
 
@@ -254,3 +256,78 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
         first.stop()
     assert _tree_digest(root, ignore=progress) == before
     assert producer.process.returncode in (-signal.SIGTERM, 0)
+
+
+@needs_browser
+def test_copied_project_reopens_without_source_and_keeps_edits_isolated(tmp_path, browser):
+    """D7 fixture: whole-directory copy, independent edits, offline source."""
+    from test_review_record import _manifest
+
+    root, video = _lifecycle_project(tmp_path)
+    progress = root / 'runs/sample/train/progress.json'
+    progress.write_text(json.dumps({
+        'schema': 'cadex-training-progress-v1', 'state': 'done',
+        'updated_at': time.time(), 'task_sha256': 't' * 64,
+        'iteration': 2, 'total': 2, 'reward_per_step': 0.5,
+        'loss': 0.25, 'episode_steps': 14,
+        'curve': [[0, 0.1], [1, 0.3], [2, 0.5]],
+        'loss_curve': [[0, 1], [1, 0.5], [2, 0.25]],
+        'episode_steps_curve': [[0, 12], [1, 13], [2, 14]],
+        'checkpoints': [],
+    }))
+    # No file is excluded: accepted artifacts, assets and retained runs travel.
+    before = _tree_digest(root, ignore=root / 'nonexistent')
+    copy = tmp_path / 'independent-copy'
+    subprocess.run(['cp', '-R', str(root), str(copy)], check=True)
+    assert _tree_digest(copy, ignore=copy / 'nonexistent') == before
+    source = ReviewCommand(root, 0)
+    copied = ReviewCommand(copy, 0)
+    try:
+        original_page = _open(browser, source.url)
+        copied_page = _open(browser, copied.url)
+        assert original_page.text('#view-revision') == REVISION_B
+        assert copied_page.text('#view-revision') == REVISION_B
+        # Simulate an accepted design change in the copy, without an engine.
+        # This proves reader isolation; it does not claim a real design/retrain.
+        revision_c = 'c' * 64
+        (copy / 'script.py').write_text('# independently revised fixture\n')
+        _manifest(copy, revision_c)
+        _stage_accepted(copy, revision_c)
+        copied_page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        copied_page.wait_for("document.getElementById('view-revision').textContent === " + json.dumps(revision_c))
+        original_page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        assert original_page.text('#view-revision') == REVISION_B
+        assert _tree_digest(root, ignore=root / 'nonexistent') == before
+        assert source.stop()[0] == EXIT_OK
+        unavailable = tmp_path / 'source-unavailable'
+        root.rename(unavailable)
+        assert not root.exists()
+        # A new browser page must resolve every historical artifact in the copy.
+        reopened = _open(browser, copied.url)
+        assert reopened.text('#view-revision') == revision_c
+        assert sorted(reopened.evaluate('window.cadexReview.state().runs')) == ['broken', 'first', 'sample', 'second']
+        reopened.click("#views li[data-run='sample']")
+        reopened.wait_for("document.getElementById('view-revision').textContent === " + json.dumps(REVISION_A))
+        assert reopened.text('#view-relation').startswith('HISTORICAL')
+        assert reopened.text("#params tr[data-param='leg_len'] td:nth-child(2)") == '90'
+        reopened.wait_for('window.cadexReview.viewer().stats().triangles === 24')
+        assert reopened.attribute('#telemetry', 'data-state') == 'done'
+        for history in ('curve', 'loss_curve', 'episode_steps_curve'):
+            assert reopened.attribute(f'[data-history={history}]', 'data-points') == '3'
+        reopened.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+        reopened.evaluate("window.copyVideo=document.querySelector('#videos video'); copyVideo.muted=true; copyVideo.loop=true; copyVideo.play()", await_promise=True)
+        reopened.wait_for('copyVideo.currentTime > 0.1')
+        assert video['policy_sha256'][:12] in reopened.text('#videos')
+        download = reopened.download('#videos a')
+        assert hashlib.sha256(download.path.read_bytes()).hexdigest() == video['sha256']
+        assert hashlib.sha256(_server_video(copied.url)).hexdigest() == video['sha256']
+        assert _tree_digest(unavailable, ignore=unavailable / 'nonexistent') == before
+        # Historical bytes in the edited copy remain exactly the copied bytes.
+        after = _tree_digest(copy, ignore=copy / 'nonexistent')
+        for name, digest in before.items():
+            if name.startswith(('runs/', 'review/', 'assets/')):
+                assert after[name] == digest, name
+    finally:
+        source.stop()
+        code, output = copied.stop()
+        assert code == EXIT_OK, output
