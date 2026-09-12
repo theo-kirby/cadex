@@ -2,43 +2,86 @@
 
 Verified against source: 2026-09-12. [Cadex-new]
 
-The first creation attempt for `ot5-biped` did **not** create a model.
-The product agent (`claude-fable-5`) returned exit 1 with “You've hit your
-session limit”, reporting a reset at 2:30pm America/New_York. The project
-is under the operator's `cadex-projects` directory, outside this checkout.
-It contains its own Git repository and scaffold documents, plus the captured
-CLI envelope and stderr under `evidence/create.json` and `create.stderr`.
-No old project, mechanism, checkpoint or history was imported. No training
-was started. There is no `script.json`, accepted revision, or component list.
+The project is `ot5-biped` under the operator's `cadex-projects` directory,
+outside this checkout, with its own Git history. Nothing was imported from
+any older project, mechanism, checkpoint or policy.
 
-A same-machine headless Chromium opened this project's dashboard through
-its Tailscale address. It displayed `nothing accepted: no script.json ·
-0 run(s)`, revision/digest `none`, model state `missing`, and `specs
-unavailable: no script.json`. The next-action note names `cadex -p`.
-The scaffold's PROGRESS document opened in the browser. The server was
-stopped afterward; no second-device test is claimed. Observations are
-retained in `evidence/refusal-browser.json` in the project.
+## Creation
 
-A refused initial prompt does not produce a training/run record or an
-accepted progress row. Its provider error is **not shown in dashboard
-history**: retain the CLI envelope when diagnosing this case. The dashboard
-correctly distinguishes missing geometry from a completed model, but this
-is not evidence of D8's interrupted/failed training handling. The regression
-`test_browser_unaccepted_project_reports_missing_model_and_next_cli_action`
-pins the missing-state labels, document access, next CLI action and absence
-of writes. D2/D9 still need the actual biped and model interaction checks.
-
-To retry after provider capacity is available, preserve this project and
-its evidence. From the repository root, with `PROJECT` set to that existing
-project directory, run:
+Three product-agent attempts (`evidence/create.*`, `retry-7.*`, `retry-8.*`)
+were refused before authoring: `claude-fable-5` reported "You've hit your
+session limit", quoting a reset at 2:30pm America/New_York. The CLI's
+documented correction for an unavailable default model is `--model` or
+`$CADEX_MODEL` (§2); it was **not needed**. A one-word probe of the default
+model succeeded at 12:54 local, before the quoted reset, and the ninth
+attempt — the same documented command, no `--resume`, no model override,
+prompt retained in `evidence/attempt-9.prompt.txt` — authored the biped:
 
 ```bash
-./cadex --project "$PROJECT" --resume --json -p \
-  'Create Reed, a fresh parametric biped from scratch: compact torso, two articulated legs with hips, knees and broad feet, simple analytic geometry, editable dimensions, documented specs and rationale. Declare masses, collision, actuators, free root, ground and a forward locomotion task for a bounded GPU PPO probe. Read the API, save and inspect a validated accepted revision. Import no previous project or policy. Do not train yet.' \
-  > "$PROJECT/evidence/create-retry.json" 2> "$PROJECT/evidence/create-retry.stderr"
-./cadex review --project "$PROJECT" --host "$(tailscale ip -4)" --port 8765
+timeout --signal=TERM --kill-after=20s 1500 ./cadex --project "$PROJECT" --json \
+  -p "$(cat "$PROJECT/evidence/attempt-9.prompt.txt")"
 ```
 
-Verify the envelope's accepted identity against the browser, component names,
-parameters and specs, then exercise orbit/zoom on rendered geometry. A quota
-reset time is a provider report, not proof a subsequent attempt will succeed.
+Envelope: `ok: true`, accepted revision `23c6fe93f47a…`, digest
+`850acf23a05a…`, 37 tool calls, one `write_script`. The script declares
+fourteen parameters (`torso_w/d/h`, `thigh_len`, `shin_len`, `limb_w`,
+`foot_len/w/t`, `hip_spacing`, `printed_density`, `servo_torque`,
+`fall_height`, `episode_s`), seven solids plus a ground plate, revolute hips
+(±60°) and one-way knees (0–110°), fixed ankles, a free torso root, box
+collisions, four 200 N·mm torque motors, the MJCF `reed_model` and one
+training task `reed_walk` (400 steps at 50 Hz, forward axis world +X, fall
+below 120 mm ends the episode, reset tilt/lift/stumble variation). The
+agent's closing lines landed as ADR-002/003 in the project's `DECISIONS.md`
+and `docs/design-specs.md`, `actuators.md`, `sensors.md`: standing height
+238 mm, mass 0.651 kg at 1250 kg/m³, success measured as forward
+displacement, survival and falls over seeds 0–9. A refused prompt leaves no
+progress row; the accepted one is the first row in `PROGRESS.md`.
+
+## The first bounded training probe
+
+```bash
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.5 /usr/bin/time -v ./cadex walk --project "$PROJECT" \
+  --out "$PROJECT/runs/probe1" --name probe1.cxpolicy --iterations 40 --envs 1024 \
+  --seed 0 --timeout 1800 --leg-timeout 2400 --json
+```
+
+The train leg ran on the local RTX 5090 from `~/cadex-train-venv`: 40 PPO
+iterations × 1024 environments in 89.5 s of training (182 s for the leg
+with export and compile), final reward/step 1.211, policy `probe1.cxpolicy`
+stored as sha256 `01865c8e06aa…`, `probe1.best.cxpolicy` beside it. Peak
+host RSS 5.7 GB, GPU memory 16.7 GB, sampled every 5 s
+(`evidence/probe1-memory.log`) — inside the 20 GB bound. The walk then
+**exited 3 at its declare leg**: "the script declares no `policy_on=num(...)`
+parameter: the walk needs the iterate convention (§2, ADR-192)". The system
+prompt asks for the switch only *when a script declares a policy*; the fresh
+script declared none, so the first walk on an agent-authored project cannot
+finish. `runs/probe1/run.json` is retained as `status: failed` with that
+error, the stored policy and the two legs; no rollout, review or video
+exists, and `PROGRESS.md` carries the train row only. Next action: one
+design turn adding the switch (a placeholder `assembly.policy` behind
+`policy_on=0`), then `cadex walk --out runs/<new-name>`.
+
+## Live observation of the real training (D3)
+
+`evidence/probe1_observe.py` started the real `cadex review` command on the
+machine's Tailscale address, opened it in headless Chromium, selected
+`probe1` while the trainer was iterating and, at 0.25 s, read the trainer's
+committed `progress.json` iteration beside the page's. Over 12 s the page
+moved 13 → 23 through seven distinct iterations on its own 2 s poll, with no
+reload (`performance` navigation count 1); each shown iteration appeared
+between 0.21 s and 1.4 s after the trainer's `updated_at`. Reward, loss,
+episode length and the reward/loss histories (14 → 24 retained samples)
+updated with it; telemetry state `training`, freshness `live`. Results in
+`evidence/probe1-observe.json` and a screenshot beside it.
+
+The same observation exposed a review defect: **a run in progress has no
+model identity.** `run.json` is written at walk start with
+`identity_source: "not reached"` and null revision/digest, and the failed
+record keeps them null although the train leg reported both. The page
+therefore shows `RELATION UNKNOWN — no revision recorded for this run` and
+`no model to show` for the run being trained, and for the failed run
+afterwards. The accepted-now view shows the biped. This is open.
+
+D2's orbit/zoom check on the fresh biped, D4's videos, D5–D9 remain open.
+A quota reset time is a provider report, not proof a subsequent attempt
+will succeed.

@@ -1354,8 +1354,10 @@ progress file can leave a stale snapshot;
 inspect CLI output and start a new named walk if training stopped. Remote
 mirrors named `training-progress.json` are not observed by this local path.
 The synthetic browser test spans committed updates without reloading and
-requires each to appear within five seconds on the test machine. Actual biped
-GPU observation remains required for D3; synthetic tests do not satisfy it.
+requires each to appear within five seconds on the test machine. One real
+observation exists: the fresh biped's first GPU probe, seven iterations shown
+within 0.21–1.4 s of their commit on the page's own poll, with the run's
+revision still unrecorded while it trained (`docs/HEADLESS-BIPED-REVIEW.md`).
 
 What the page shows, and where each thing comes from:
 
