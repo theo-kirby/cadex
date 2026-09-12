@@ -2354,53 +2354,54 @@ def main(argv: Sequence[str]) -> int:
            curve=[], best={}, wall=0.0, device="")
     try:
         trained = train(bundle, options, emit=emit, progress=report)
+
+        header = policy_header(bundle, options, trained,
+                               cadex_importable=cadex_importable)
+        blob = checked_policy(header, trained, what="This policy")
+        worst, _sample, _action = witness_disagreement(header, trained["parameters"])
+        margin = POLICY_WITNESS_TOLERANCE / max(worst, 1.0e-30)
+        if not options.quiet:
+            print(f"witness agrees to {worst:.3e} ({margin:,.0f}x inside the "
+                  f"engine's tolerance)", file=sys.stderr)
+        # A short run cannot prove a long one will pass, and saying so is the
+        # whole point of printing the margin rather than a verdict. The witness
+        # error is a *relative* one, so it grows with the activations a policy
+        # learns: the run this check was written for measured a 14x margin after
+        # 2 iterations and failed outright after 2000. A margin this thin means
+        # the same run at length will not survive, and the time to know that is
+        # now.
+        if margin < 100.0:
+            print(
+                f"WARNING: {margin:,.0f}x is a thin margin. This error scales "
+                f"with the size of the activations a policy learns, so a longer "
+                f"run on this task will very likely be refused even though this "
+                f"one passed. Do not start one on the strength of this result.",
+                file=sys.stderr,
+            )
+
+        write_atomically(target, blob)
+        curve = trained["reward_curve"]
+        best_row = max(curve, key=lambda row: row["reward_per_step"]) if curve else None
+        report(
+            state="done",
+            iteration=len(curve) - 1,
+            total=int(options.iterations),
+            curve=curve,
+            best=({"iteration": best_row["iteration"],
+                   "reward_per_step": best_row["reward_per_step"]}
+                  if best_row else {}),
+            wall=float(trained["wall_time_s"]),
+            device=trained["backend"],
+        )
+
     except BaseException as error:
-        # A run that died has to say so in the file, or a `watch` loop and a
-        # panel both sit on "training" for ever. The exception is re-raised
+        # Training or final policy publication failed. Publish the failure
+        # so observers do not remain on "training". The exception is re-raised
         # unchanged: this adds a line to an artifact, it does not handle
         # anything.
         report(state="failed", wall=time.time() - started_at,
                error=f"{type(error).__name__}: {error}")
         raise
-
-    header = policy_header(bundle, options, trained,
-                           cadex_importable=cadex_importable)
-    blob = checked_policy(header, trained, what="This policy")
-    worst, _sample, _action = witness_disagreement(header, trained["parameters"])
-    margin = POLICY_WITNESS_TOLERANCE / max(worst, 1.0e-30)
-    if not options.quiet:
-        print(f"witness agrees to {worst:.3e} ({margin:,.0f}x inside the "
-              f"engine's tolerance)", file=sys.stderr)
-    # A short run cannot prove a long one will pass, and saying so is the
-    # whole point of printing the margin rather than a verdict. The witness
-    # error is a *relative* one, so it grows with the activations a policy
-    # learns: the run this check was written for measured a 14x margin after
-    # 2 iterations and failed outright after 2000. A margin this thin means
-    # the same run at length will not survive, and the time to know that is
-    # now.
-    if margin < 100.0:
-        print(
-            f"WARNING: {margin:,.0f}x is a thin margin. This error scales "
-            f"with the size of the activations a policy learns, so a longer "
-            f"run on this task will very likely be refused even though this "
-            f"one passed. Do not start one on the strength of this result.",
-            file=sys.stderr,
-        )
-
-    write_atomically(target, blob)
-    curve = trained["reward_curve"]
-    best_row = max(curve, key=lambda row: row["reward_per_step"]) if curve else None
-    report(
-        state="done",
-        iteration=len(curve) - 1,
-        total=int(options.iterations),
-        curve=curve,
-        best=({"iteration": best_row["iteration"],
-               "reward_per_step": best_row["reward_per_step"]}
-              if best_row else {}),
-        wall=float(trained["wall_time_s"]),
-        device=trained["backend"],
-    )
 
     print(json.dumps({
         "out": str(target),

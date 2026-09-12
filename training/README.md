@@ -337,7 +337,9 @@ under `cadex-training-progress-v1`. Like `curve`, each history is capped at 512
 uniformly selected samples including the first and last. These are retained
 sampled histories, not full-resolution logs. Checkpoint names and digests stay
 in `checkpoints`; files are written before their progress snapshot is committed.
-A caught training failure preserves the last reported histories and iteration.
-Hard kills and failures during final policy packaging may instead leave a stale
-training snapshot; the dashboard does not call it success. Keep `progress.json`
+A caught training or final policy packaging/saving failure preserves the last
+reported histories, iteration and checkpoint references and publishes `failed`
+with the error (ADR-288). `done` is published only after the final policy is
+validated and saved. Hard kills or an unwritable progress file may instead leave
+a stale training snapshot; the dashboard does not call it success. Keep `progress.json`
 and its policy files together when retaining or copying a run. No new dependency.

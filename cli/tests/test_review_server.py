@@ -693,3 +693,88 @@ def test_browser_polls_training_histories_checkpoints_and_stale_states(served, b
     page.click("#views li[data-run='first']")
     page.wait_for("document.getElementById('telemetry').dataset.state === 'done'")
     assert page.attribute('[data-history=loss_curve]', 'data-points') == '3'
+
+
+@needs_browser
+@pytest.mark.parametrize('failure_stage', ['header', 'validation', 'witness', 'save'])
+def test_browser_observes_final_policy_publication_failure(served, browser, monkeypatch, failure_stage):
+    """Fault the real trainer's publication path after a retained checkpoint.
+
+    Training and policy math are fixtures; the atomic writer, failure handler,
+    HTTP reader and browser are real. No GPU or verified-policy claim is made.
+    """
+    import importlib.util
+    import types
+
+    root, server = served
+    trainer_path = CLI_DIR.parent / 'training/cadex_train.py'
+    spec = importlib.util.spec_from_file_location('review_test_trainer', trainer_path)
+    trainer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(trainer)
+    monkeypatch.setitem(sys.modules, 'jax', types.ModuleType('jax'))
+    monkeypatch.setitem(sys.modules, 'jax.numpy', types.ModuleType('jax.numpy'))
+    monkeypatch.setattr(trainer, 'globals_for', lambda _: {})
+    monkeypatch.setattr(trainer, 'load_bundle', lambda *_: {
+        'task_sha256': 't' * 64, 'model_sha256': 'm' * 64})
+    monkeypatch.setattr(trainer, 'policy_header', lambda *_, **__: {})
+    monkeypatch.setattr(trainer, 'checked_policy', lambda *_, **__: b'fixture policy')
+    monkeypatch.setattr(trainer, 'witness_disagreement', lambda *_: (0.0, 0, 0))
+    target = root / 'runs/first/train/final.cxpolicy'
+    progress_path = target.parent / 'progress.json'
+    prior_run = root / 'runs/second' / RUN_RECORD_FILENAME
+    prior_bytes = prior_run.read_bytes()
+    error = RuntimeError('controlled final policy ' + failure_stage + ' failure')
+    original_write = trainer.write_atomically
+
+    def fail(*_, **__):
+        raise error
+
+    page = _open(browser, server.url)
+    page.click("#views li[data-run='first']")
+    page.evaluate('window.publicationTestIdentity = {}')
+
+    def trained_fixture(bundle, options, *, emit, progress):
+        rows = [{'iteration': 0, 'reward_per_step': 0.5, 'loss': 2.0,
+                 'episode_steps': 12}]
+        trained = {'parameters': [], 'reward_curve': rows,
+                   'wall_time_s': 1.0, 'backend': 'fixture'}
+        emit('iter-0', 0, 0.5, trained)
+        progress(state='training', iteration=0, total=1, curve=rows,
+                 wall=1.0, device='fixture')
+        page.wait_for("document.getElementById('telemetry').dataset.state === 'training'")
+        if failure_stage == 'save':
+            def write(path, blob):
+                if path == target:
+                    raise error
+                return original_write(path, blob)
+            monkeypatch.setattr(trainer, 'write_atomically', write)
+        else:
+            function = {'header': 'policy_header', 'validation': 'checked_policy',
+                        'witness': 'witness_disagreement'}[failure_stage]
+            monkeypatch.setattr(trainer, function, fail)
+        return trained
+
+    monkeypatch.setattr(trainer, 'train', trained_fixture)
+    with pytest.raises(RuntimeError) as raised:
+        trainer.main(['trainer', 'fixture-task.json', '--out', str(target), '--quiet', '--iterations', '1'])
+    assert raised.value is error
+    data = json.loads(progress_path.read_text())
+    assert data['state'] == 'failed'
+    assert data['iteration'] == 0 and data['total'] == 1
+    assert data['curve'] == [[0, 0.5]]
+    assert data['loss_curve'] == [[0, 2.0]]
+    assert data['episode_steps_curve'] == [[0, 12.0]]
+    assert data['task_sha256'] == 't' * 64 and data['model_sha256'] == 'm' * 64
+    assert data['updated_at'] >= data['started_at']
+    assert not target.exists()
+    checkpoint = data['checkpoints'][0]
+    assert hashlib.sha256((target.parent / checkpoint['path']).read_bytes()).hexdigest() == checkpoint['sha256']
+    page.wait_for("document.getElementById('telemetry').dataset.state === 'failed'")
+    assert str(error) in page.text('#telemetry')
+    assert 'cadex walk' in page.text('#telemetry')
+    assert page.text('[data-metric=iteration]') == 'iteration: 0'
+    assert page.attribute('[data-history=loss_curve]', 'data-points') == '1'
+    assert page.attribute('#checkpoints li', 'data-status') == 'retained'
+    assert page.text('#view-revision') == REVISION_A
+    assert page.evaluate('!!window.publicationTestIdentity')
+    assert prior_run.read_bytes() == prior_bytes

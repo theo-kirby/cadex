@@ -2721,3 +2721,7 @@ field, and every client gets it through the surface it already reads.
       reward/loss/episode histories, checkpoint integrity and missing/stale/failed
       states, verified across atomic updates in a headless browser. D3's actual
       fresh-biped GPU observation remains open; fixture evidence does not tick it.
+
+- [x] Final policy publication failures publish failed telemetry (ADR-288),
+      retaining metrics/checkpoints with headless browser fault-injection evidence.
+      D8's real interrupted biped run and successful new attempt remain open.

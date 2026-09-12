@@ -1347,7 +1347,10 @@ Missing, invalid, failed and stale telemetry are explicit. A starting/training
 snapshot older than 30 seconds is stale even when the server is reachable;
 this includes slow compilation and does not establish that the process died.
 Terminal `done` and `failed` snapshots do not expire. Failures caught during
-training preserve the last metrics. A hard kill can leave a stale snapshot;
+training or final policy validation/saving preserve the last metrics and
+checkpoint references and report the error (ADR-288). Final policy publication
+must succeed before telemetry reports `done`. A hard kill or an unwritable
+progress file can leave a stale snapshot;
 inspect CLI output and start a new named walk if training stopped. Remote
 mirrors named `training-progress.json` are not observed by this local path.
 The synthetic browser test spans committed updates without reloading and

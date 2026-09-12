@@ -22738,3 +22738,23 @@ Checkpoint availability checks containment and sha256, without claiming engine
 verification. Browser tests observe multiple atomic fixture updates, historical
 selection and missing/stale/failure states. Real biped GPU observation remains
 open after the product agent again refused creation on its session quota.
+
+
+## ADR-288 — Report final policy publication failures in retained telemetry (2026-09-12)
+
+The trainer's failure handler covered PPO and intermediate checkpoints but ended
+before final policy header construction, witness validation and atomic saving.
+A failure there left `progress.json` reporting training until the dashboard
+labelled it stale, even though the trainer had already exited with an error.
+Extend the same handler through final policy publication and its done snapshot.
+Preserve the last metrics and checkpoint references and re-raise the failure.
+No new status, store, dependency, engine import or process contract is needed.
+
+Fault-injection browser tests run the actual trainer orchestration and atomic
+writer with fixture training/math, then fail header construction, policy
+validation, witness comparison or final saving. Each observes training followed
+by failed without reloading, retains checkpoint integrity and curves, reports
+the next CLI action and preserves another run's record. These tests advance
+D8's failure evidence; they do not claim real biped training or interruption.
+An unwritable progress file or hard process kill can still prevent a terminal
+snapshot. A saved checkpoint is retained evidence, not engine verification.
