@@ -2717,6 +2717,11 @@ field, and every client gets it through the surface it already reads.
 
 ## Live headless project review (ADR-284)
 
+- [x] Current-attempt default and persistent Reed operator server (ADR-299):
+      active training first, newest attempt otherwise; preserve deliberate history
+      and playback, with a route back to current. Private-address browser check
+      passes on the real working copy; D10 experiment-spanning evidence remains.
+
 - [x] Share cold retained-video verification across concurrent browser clients
       (ADR-298), with two-client corruption refusal and bounded-cache eviction tests.
 

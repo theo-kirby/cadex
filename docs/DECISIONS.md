@@ -22985,3 +22985,21 @@ browser regression reproduces two reads before the fix and one after, keeps
 both clients loading until verification ends, refuses corruption in both and
 rehashes changed bytes once. A 257-file test proves eviction and revalidation;
 existing mutation, replacement and containment tests remain required.
+
+## ADR-299 — Open review on current work and preserve deliberate browsing (2026-09-12)
+
+The persistent operator page previously opened accepted geometry and remained
+on the obsolete carriage project. Per the owner D10 directive, port 8765 now
+serves the Reed working copy. New visits select the newest running/pending
+record with fresh starting/training telemetry, otherwise the latest recorded
+attempt regardless of success. Record time orders attempts, with run name as
+tie-breaker; no runs falls back to accepted geometry. Stale telemetry does not
+establish active training. Existing status and missing-output labels remain.
+
+An untouched page follows current work on polls. Choosing any view or playing a
+video pins that view; a visible Current run button returns to following. This
+replaces the unconditional accepted-view default without changing project state,
+training or the protocol. Browser tests cover active precedence, newer failure,
+stale telemetry, deliberate history and video playback across a newer attempt.
+The persistent-server probe and operating command live in
+`docs/probes/operator-review/README.md`.

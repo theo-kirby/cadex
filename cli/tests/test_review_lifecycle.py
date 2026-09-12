@@ -181,6 +181,7 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
     try:
         producer.snapshot()
         page = _open(browser, first.url)
+        page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
         assert page.text("#view-revision") == REVISION_B
         runs_before = page.evaluate("window.cadexReview.state().runs")
         assert sorted(runs_before) == ["broken", "first", "sample", "second"]
@@ -226,6 +227,7 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
 
         # Reopen: a fresh page against the restarted server reads the same project.
         reopened = _open(browser, second.url)
+        reopened.evaluate("window.cadexReview.select('accepted')", await_promise=True)
         assert reopened.text("#view-revision") == REVISION_B
         assert REVISION_B[:12] in reopened.text("#accepted-line")
         assert sorted(reopened.evaluate("window.cadexReview.state().runs")) == sorted(runs_before)
@@ -285,6 +287,8 @@ def test_copied_project_reopens_without_source_and_keeps_edits_isolated(tmp_path
     try:
         original_page = _open(browser, source.url)
         copied_page = _open(browser, copied.url)
+        original_page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
+        copied_page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
         assert original_page.text('#view-revision') == REVISION_B
         assert copied_page.text('#view-revision') == REVISION_B
         # Simulate an accepted design change in the copy, without an engine.
@@ -304,6 +308,7 @@ def test_copied_project_reopens_without_source_and_keeps_edits_isolated(tmp_path
         assert not root.exists()
         # A new browser page must resolve every historical artifact in the copy.
         reopened = _open(browser, copied.url)
+        reopened.evaluate("window.cadexReview.select('accepted')", await_promise=True)
         assert reopened.text('#view-revision') == revision_c
         assert sorted(reopened.evaluate('window.cadexReview.state().runs')) == ['broken', 'first', 'sample', 'second']
         reopened.click("#views li[data-run='sample']")

@@ -10,7 +10,7 @@
 
   var POLL_MS = 2000;
   var state = { review: null, selected: 'accepted', lastOk: null, stale: false, model: null, viewer: null,
-                error: null };
+                error: null, following: true };
   var pendingPoll = null;
   var readyResolve;
   var ready = new Promise(function (resolve) { readyResolve = resolve; });
@@ -67,7 +67,19 @@
     return 'warn';
   }
 
+  function currentView() {
+    // The reader returns records oldest first, with run name breaking time ties.
+    var runs = state.review.runs;
+    var active = runs.filter(function (run) {
+      return ['running', 'pending'].includes(run.status) &&
+        ['starting', 'training'].includes((run.telemetry || {}).state);
+    });
+    var candidates = active.length ? active : runs;
+    return candidates.length ? candidates[candidates.length - 1].run : 'accepted';
+  }
+
   function renderSidebar() {
+    text('current-run', 'Current run: ' + currentView());
     var list = $('views');
     clearChildren(list);
     var accepted = state.review.accepted;
@@ -354,6 +366,7 @@
   }
 
   function select(view) {
+    state.following = false;
     state.selected = view;
     render();
     return loadModel();
@@ -362,10 +375,14 @@
   function poll() {
     if (pendingPoll) return pendingPoll;
     pendingPoll = fetchJson('/api/project').then(function (review) {
-      var first = !state.review;
+      var first = !state.review, previous = state.selected;
+      if (Array.from($('videos').querySelectorAll('video')).some(function (video) {
+        return !video.paused && !video.ended;
+      })) state.following = false;
       state.review = review; state.lastOk = new Date(); state.stale = false; state.error = null;
+      if (state.following) state.selected = currentView();
       render();
-      if (first) return loadModel();
+      if (first || previous !== state.selected) return loadModel();
     }).catch(function (error) {
       state.stale = true; state.error = error.message;
       renderFreshness();
@@ -375,6 +392,11 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     state.viewer = window.CadexViewer.create($('viewer'));
+    $('current-run').addEventListener('click', function () {
+      if (!state.review) return;
+      select(currentView());
+      state.following = true;
+    });
     $('model-fit').addEventListener('click', function () { state.viewer.fit(); });
     poll().then(function () { readyResolve(true); });
     setInterval(poll, POLL_MS);

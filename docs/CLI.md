@@ -1378,6 +1378,16 @@ about the project and neither stops nor duplicates a walk or a training
 run in progress. Browser state is not project state; authoring and
 training stay on the CLI.
 
+New visits open the current run (ADR-299): newest running/pending record with
+fresh starting/training telemetry first, otherwise the latest recorded attempt,
+including failed or interrupted work. Record time orders runs, with run name
+breaking ties. With no runs, the accepted view opens. An untouched page follows
+current work on polls; selecting a view or playing a video preserves that view.
+The **Current run** button names the current attempt and returns to following it.
+Missing/stale output stays labelled; an older success is never substituted for
+a newer failure. The [persistent operator command and status](probes/operator-review/README.md)
+describe the shared Reed server and its browser verification.
+
 Training telemetry (ADR-287) is read from each selected run's
 `runs/<name>/train/progress.json`, including before the initial running record
 has observed that file. Local `cadex walk` training writes there automatically.

@@ -470,6 +470,7 @@ def test_browser_shows_the_accepted_identity_and_every_run_with_its_relation(ser
     page = _open(browser, server.url)
     assert page.text("#project-name") == "biped — review"
     assert REVISION_B[:12] in page.text("#accepted-line")
+    page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
     assert page.text("#view-kind") == "ACCEPTED NOW"
     assert page.text("#view-revision") == REVISION_B
     assert page.text("#view-digest") == "d" * 64
@@ -589,6 +590,7 @@ def test_browser_draws_the_accepted_attempt_and_labels_a_lost_server_stale(tmp_p
     try:
         page = _open(browser, server.url)
         assert _model_state(page) == "loaded"
+        page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
         assert page.text("#model-status").startswith("accepted model at revision " + REVISION_B[:12])
         assert "1 component(s), 12 triangles" in page.text("#model-status")
         assert page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()") > 1000
@@ -978,6 +980,7 @@ def test_browser_training_snapshot_keeps_assembly_and_documents(tmp_path, browse
     server, _thread = serve(root, '127.0.0.1', 0)
     try:
         page = _open(browser, server.url)
+        page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
         accepted_target = page.evaluate('window.cadexReview.viewer().camera().target')
         page.click("#views li[data-run='frozen']")
         page.wait_for("document.getElementById('view-kind').textContent === 'RUN frozen'")
@@ -1243,3 +1246,68 @@ def test_two_browser_clients_share_cold_video_verification(served, browser, monk
         assert 'digest mismatch' in page.text('#videos')
     assert len(reads) == 2, 'changed bytes need one fresh verification'
     assert review_record._cached_video_sha256.cache_info().maxsize == 256
+
+
+@needs_browser
+def test_browser_current_attempt_selection_preserves_deliberate_history(served, browser):
+    root, server = served
+    first = root / 'runs/first'
+    second = root / 'runs/second'
+    _rewrite_record(first, recorded_at='2026-01-01T00:00:00Z', status='running')
+    _rewrite_record(second, recorded_at='2026-01-03T00:00:00Z', status='failed')
+    _rewrite_record(root / 'runs/broken', recorded_at='2026-01-02T00:00:00Z')
+    _telemetry(root)
+    page = _open(browser, server.url)
+    assert page.text('#view-kind') == 'RUN first'  # active beats newer failure
+    assert page.attribute('#telemetry', 'data-state') == 'training'
+    _telemetry(root, state='failed')
+    _rewrite_record(first, status='failed')
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN second'")
+    assert page.text('#view-status') == 'failed'
+    assert _model_state(page) == 'loaded'
+    assert page.text('#view-revision') == REVISION_B
+    fresh = _open(browser, server.url)
+    assert fresh.text('#view-kind') == 'RUN second'
+    page.click("#views li[data-run='first']")
+    page.wait_for("document.getElementById('model-status').dataset.state === 'loaded'")
+    _rewrite_record(second, recorded_at='2026-01-04T00:00:00Z')
+    page.evaluate('window.cadexReview.refresh()', await_promise=True)
+    assert page.text('#view-kind') == 'RUN first'
+    assert page.text('#view-revision') == REVISION_A
+    assert 'second' in page.text('#current-run')
+    page.click('#current-run')
+    assert page.text('#view-kind') == 'RUN second'
+    _rewrite_record(first, status='running')
+    _telemetry(root, updated_at=time.time() - 60)
+    page.evaluate('window.cadexReview.refresh()', await_promise=True)
+    assert page.text('#view-kind') == 'RUN second'  # stale is not active
+    _telemetry(root)
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN first'")
+
+
+@needs_browser
+def test_browser_playing_video_survives_new_current_attempt(served, browser):
+    from test_video import _video_run
+    from cadex_cli.video import render as render_video
+
+    if not shutil.which('ffmpeg'):
+        pytest.skip('FFmpeg not available')
+    root, server = served
+    run = _video_run(root)
+    render_video(root, 'sample')
+    _rewrite_record(run, recorded_at='2099-01-01T00:00:00Z')
+    page = _open(browser, server.url)
+    assert page.text('#view-kind') == 'RUN sample'
+    page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+    page.evaluate("window.playing = document.querySelector('#videos video'); playing.muted = true; playing.loop = true; playing.play()", await_promise=True)
+    page.wait_for('playing.currentTime > 0.1')
+    _rewrite_record(root / 'runs/second', recorded_at='2099-01-02T00:00:00Z', status='failed')
+    page.evaluate('window.cadexReview.refresh()', await_promise=True)
+    assert page.text('#view-kind') == 'RUN sample'
+    assert page.evaluate("playing === document.querySelector('#videos video') && !playing.paused")
+    assert 'second' in page.text('#current-run')
+    fresh = _open(browser, server.url)
+    assert fresh.text('#view-kind') == 'RUN second'
+    assert fresh.text('#view-status') == 'failed'
+    page.click('#current-run')
+    assert page.text('#view-kind') == 'RUN second'
