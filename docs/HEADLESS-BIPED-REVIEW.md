@@ -915,3 +915,16 @@ to load ADR-302; the accepted model now retains all eight meshes and the
 same operator check passed again (`shin55-operator-restart.json`). The
 restart happened after training, deliberately: D6's restart-during-training
 evidence already exists and no run was active.
+
+## Lifecycle report (D9)
+
+The whole recorded lifecycle — every step above in order, the D1–D8
+evidence each rests on, the twelve retained run identities with the model
+view the page serves for each, which training snapshots are incomplete and
+why, and the four-design common-seed comparison — is assembled from the
+project's own records by `docs/probes/reed-lifecycle/report.py` and written
+up in [`docs/probes/reed-lifecycle/README.md`](probes/reed-lifecycle/README.md).
+`cli/tests/test_lifecycle_report.py` holds the committed report to its
+evidence. The persistent operator URL was checked again while generating it:
+`shin55-final` selected by default, historical `probe3-final` playable, and
+a route back to the current run.

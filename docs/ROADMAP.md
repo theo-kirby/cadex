@@ -2780,3 +2780,10 @@ field, and every client gets it through the surface it already reads.
       checkpoint/final videos (ADR-301): local attributed Three.js scene, exact
       retained poses, fixed trajectory camera, portable style identity and
       retained legacy recordings; real Reed same-camera/frame comparison.
+
+- [x] Lifecycle report for the fresh biped (D9): `docs/probes/reed-lifecycle/`
+      assembles the D1–D8 evidence index, twelve retained run identities with
+      the model view served for each (incomplete training snapshots named),
+      and the four-design common-seed comparison from the project's records;
+      a test holds the committed report to its evidence. Survival improved,
+      no design walks; the checkbox edit is the owner's.

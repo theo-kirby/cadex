@@ -509,6 +509,9 @@ A refused first design prompt can leave scaffold documents with no accepted
 manifest or run record. The dashboard shows missing geometry and a next CLI
 action, but does not display that provider error; retain the CLI envelope.
 See the [fresh biped evidence and retry procedure](HEADLESS-BIPED-REVIEW.md).
+The whole recorded lifecycle of that biped — its D1–D8 evidence index, every
+retained run identity and the common-seed comparison of its designs — is
+[`docs/probes/reed-lifecycle/README.md`](probes/reed-lifecycle/README.md).
 
 **Retention and copying.** The record and the snapshot are small and are
 committed with the run when `runs/<name>/` is inside the project's own

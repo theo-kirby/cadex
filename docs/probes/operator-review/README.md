@@ -67,3 +67,11 @@ restarted once, after training, to load ADR-302 (all eight accepted meshes now
 retained) and the same check passed again. Evidence:
 [reed-agentrev](../reed-agentrev/README.md). Published status is now
 `ot5-biped-copy29 / shin55-final`; the service stays running.
+
+Iteration 43 reverified this same URL without restarting it, while assembling
+the [lifecycle report](../reed-lifecycle/README.md): a fresh visit selected
+`shin55-final` by default at the accepted revision, played and downloaded its
+video with the recorded digest, kept playing across a poll, showed
+`probe3-final` as HISTORICAL and returned to current. No training was active,
+no experiment started and no project switch occurred; published status stays
+`ot5-biped-copy29 / shin55-final` and the service keeps running.

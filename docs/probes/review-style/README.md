@@ -4,9 +4,11 @@ Verified against source: 2026-09-12. [Cadex-new]
 
 **The shared renderer is delivered (ADR-301).** The persistent Reed dashboard,
 new `copy100` final-policy video and `probe3-checkpoint20` recording use the same
-reference-derived light scene. The owner retains visual acceptance; the evidence
-below advances D11 without claiming a new training experiment or completion of
-the lifecycle charter.
+reference-derived light scene. The charter's D11 evidence list is assessed item
+by item, with its remaining limits, in the
+[lifecycle report](../reed-lifecycle/README.md#d11-assessment); the evidence
+below is that assessment's source and claims no new training experiment or
+completion of the lifecycle charter.
 
 ```bash
 PYTHONPATH=cli pixi run python -m cadex_cli.video \
