@@ -457,3 +457,59 @@ The full serial CLI gate passed:
 experiment. Both product and external-project `git diff --check` passed.
 External project commit `7a597cc` closes the experiment evidence and progress
 entry; preceding CLI commits retain each accepted import/declaration/rollout.
+
+## Real saved-project reopen and restart (D6, completed-run portion)
+
+The saved probe3 project passed an engine/dashboard restart experiment:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python "$PROJECT/evidence/d6-reopen.py" "$PROJECT"
+```
+
+The harness uses the public `open_project` protocol with `restore=true` in two
+separate cadexd processes, shuts each down, stops the real `cadex review`
+command and restarts it on the same port. The already-open Chromium page reports
+stale while the server is down and recovers without navigation; a new browser
+page then reopens the selected project. This test binds loopback on the server
+machine; private-address reachability is evidenced separately above.
+
+Both engine restores report `performed=true`, `matches_accepted=true` and
+accepted digest `14d56ed42ef87185db899cb2485180a81f8eb0959aaf2f8356c7031760a6ebb1`.
+The accepted revision remains
+`a7ee956cafc8de6b1732bc83cb3f59d832a6fe46b5406f3624e88267f479fa2d`.
+Before/after browser observations agree on the complete run list, selected
+revision/digest, displayed parameters, project-document links, historical label
+and loaded model statistics for `probe3`, `probe3-checkpoint20` and
+`probe3-final`. Each model produces more than 1,000 non-background pixels.
+Probe3 retains 240 points in each reward, loss and episode-length history;
+checkpoint and final videos play with advancing browser time and download with
+the same SHA-256 values recorded above. All **255 files** under retained runs,
+assets and design documents, plus script source and project decisions, remain
+byte-identical. The comparison excludes staging caches and checks the accepted
+manifest semantically, removing only `updated_at`, cache `attempt_id` and
+`staging` fields. Every other manifest field remains equal.
+
+The harness initially made three incorrect assumptions: it read a video digest
+from the wrapper rather than `videos[0]`, attempted unmuted autoplay without a
+browser gesture, and expected cache attempt metadata to remain byte-identical
+on engine restore. Correcting these assertions and muting browser playback
+produced the pass; no product code changed. The three failure logs are retained
+beside `evidence/d6-reopen.py`, `d6-reopen-result.json` and `d6-reopen.log`.
+The result includes both engine replies, process IDs, browser observations and
+the retained-file hash inventory. No training, policy import, authoring or
+rendering was performed in this experiment.
+
+Headless edits are saved when accepted; there is no separate `save_project`
+protocol operation. This checks the saved acceptance from probe3's final
+playback through actual engine restore, rather than issuing a new authoring
+transaction and calling that a save. The automated fixture restart regression
+also passed: `pixi run python -m pytest cli/tests/test_review_lifecycle.py -q`
+— **1 passed**, 7.37 seconds, with Chromium and FFmpeg available. No engine,
+CLI or shell code changed, so no build or full zone-suite rerun was needed;
+the immediately preceding full-suite results remain reported above.
+
+D6 remains open for the **real dashboard restart during active training**.
+That check belongs in the upcoming design-change retraining and must prove the
+same trainer continues without duplication. This completed-run experiment does
+not claim that requirement, a new design revision, copy isolation, or a
+second-device test.
