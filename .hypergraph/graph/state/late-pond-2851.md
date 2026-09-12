@@ -41,6 +41,8 @@ What works, and is not in doubt:
 
 **Still open**: B7 (blocked on the GPU box's stale checkout, above); half the mg-legs episodes at the declared shove band end `tipped`, and backward is the worst direction [rec: humble-path-4466] [rec: western-badger-3023]. The two CLI tool-surface gaps are unchanged and are now items 2 and 3 of the lifecycle frontier on `calm-peak-5247` [rec: gilded-trail-2519] [rec: sweet-light-3396].
 
+**Retired from the active charter (2026-09-12, ADR-284).** The owner redirected run `ot5` to live headless project review and lifecycle recording on a *fresh, agent-designed* biped, and retired mg-legs from the active charter and the acceptance workflow: no new acceptance test may depend on it, and the new biped is built without importing the old mechanism, checkpoints or project history [rec: dusty-peak-9330] [rec: lucky-comet-0031]. Gait and shove optimisation are outside that mission, so **B7 and the shove-band tipping above are no longer on any active frontier** — they stay recorded here as history, and the general RL capabilities this node describes remain in place and in use. The old gait/shove criteria were retired, not declared achieved; historical records and the cdx-rl tree are not deletion targets [rec: dusty-peak-9330]. Maintainer judgement: status stays `open` because B7 is unfinished, not because anyone is working it; the active work lives on `crisp-sun-1239`.
+
 ## Negative knowledge
 
 - [scope: reading a trainer reward curve | confidence: high | evidence: humble-path-4466] Trainer reward is not survival, and selecting a checkpoint by reward has lost to selecting by measured behaviour three separate times. Select by stepping-and-surviving.
@@ -70,3 +72,5 @@ What works, and is not in doubt:
 - sweet-light-3396 — the two CLI gaps re-measured with one agent turn (flags guessed, put_asset invented, refusals clean), and the lifecycle walk split out to its own state node
 - sleepy-grove-5790 — ADR-281 closes the MJX collision-pair trap at the engine: `assembly.task` refuses the four pairs MJX cannot build, at declaration time
 - chilly-basin-7378 — the fresh mixed-joint walk's design turn authored only supported collision shapes unaided, so the ADR-281 refusal never fired and the train leg completed
+- dusty-peak-9330 — the owner retired mg-legs from the active charter and acceptance workflow (ADR-284); gait/shove work is outside the ot5 mission, history preserved
+- lucky-comet-0031 — the ot5 directive: a fresh biped, built without the old mechanism, checkpoints or history
