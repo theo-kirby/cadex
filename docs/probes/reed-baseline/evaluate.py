@@ -24,16 +24,23 @@ def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument('source', type=Path)
     parser.add_argument('destination', type=Path)
+    parser.add_argument('--run', action='append', help='Retained run to evaluate; repeatable.')
+    parser.add_argument('--evidence-directory', default='baseline-seeds')
     args = parser.parse_args()
     source, destination = args.source.resolve(), args.destination.resolve()
     assert source != destination and source not in destination.parents
     before = manifest(source)
     shutil.copytree(source, destination)  # Refuse overwriting an existing project.
-    evidence = destination / 'evidence' / 'baseline-seeds'
+    assert Path(args.evidence_directory).name == args.evidence_directory
+    evidence = destination / 'evidence' / args.evidence_directory
     evidence.mkdir()
     rows = []
-    for name in ('probe3-checkpoint20', 'probe3-final'):
-        script = (source / 'evidence' / (name + '-script.py')).read_text()
+    for name in args.run or ('probe3-checkpoint20', 'probe3-final'):
+        assert Path(name).name == name
+        script_path = source / 'runs' / name / 'script.py'
+        if not script_path.is_file():
+            script_path = source / 'evidence' / (name + '-script.py')
+        script = script_path.read_text()
         assert script.count('seed=0)') == 1
         reference = json.loads((source / 'runs' / name / 'rollout' /
                                 'assembly-simulation-trace.json').read_text())

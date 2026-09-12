@@ -560,3 +560,100 @@ next design's retained policy on this same seed/episode set, keeping task and
 training settings explicit. The physical edit and bounded retraining, new
 verified video, two-design browser checks and live dashboard restart remain
 open; this measurement alone does not tick D2, D5, D6 or D9.
+
+## Review-driven foot-length revision (foot90)
+
+The actor completed one 70 → 90 mm foot-length experiment through the public
+CLI. Two product-agent prompts (default and `claude-sonnet-5`) were refused
+with the provider's session-limit message before authoring. This is an explicit
+fallback, **not a product-agent-authored revision**. Project ADR-005 and
+`docs/design-specs.md` retain the rationale: test greater fore/aft support,
+including the accompanying increase in foot mass/inertia, without assuming
+an improvement. All other effective parameters are unchanged. The task JSON
+changes only its model metadata; the model hash changes from `973dbfc260a4…`
+to `3f84f92d3f57…`. Training acceptance is `cf98060cdac1…` /
+`11394a342e1c…`; verified playback acceptance is `0596013572c6…` /
+`395faa6bd23f…`.
+
+From the product checkout, with `PROJECT` pointing at the external biped:
+
+```bash
+systemd-run --user --scope --unit=cadex-foot90 -p MemoryMax=20G \
+  env XLA_PYTHON_CLIENT_MEM_FRACTION=0.45 \
+  timeout --signal=TERM --kill-after=20s 2100 \
+  ./cadex walk --project "$PROJECT" --out "$PROJECT/runs/foot90" \
+  --set foot_len=90 --name foot90.cxpolicy --iterations 240 --envs 1024 \
+  --seed 0 --timeout 1800 --leg-timeout 2000 --json
+# While that independent command trains:
+PYTHONPATH=cli:cli/tests pixi run python \
+  docs/probes/reed-foot90/restart.py "$PROJECT" foot90
+# After it finishes:
+PYTHONPATH=cli pixi run python -m cadex_cli.video --project "$PROJECT" --run foot90
+PYTHONPATH=cli:cli/tests pixi run python \
+  "$PROJECT/evidence/check-probe3-video.py" "$PROJECT" foot90
+PYTHONPATH=cli:cli/tests pixi run python \
+  docs/probes/reed-foot90/history.py "$PROJECT"
+# Stop all evidence writers before taking the evaluation copy:
+python3 docs/probes/reed-baseline/evaluate.py "$PROJECT" \
+  "$HOME/cadex-projects/ot5-biped-foot90-seeds-v2" \
+  --run foot90 --evidence-directory foot90-seeds
+```
+
+The walk exited 0 after 240 GPU iterations (317.802 s reported training time).
+The final policy is `4e573dd637af…`; all 32 witness samples passed, maximum
+error `9.817e-08` against `0.0001`. The host cgroup enforced 20 GiB with an
+independent timeout; thirty one-second samples observed a 5,060,366,336-byte
+host peak and 15,084 MiB GPU use. These samples do not establish an unsampled
+whole-run GPU peak. No other training run was started.
+
+The real dashboard restart passed on the same machine's private address:
+trainer PID and `/proc` start ticks remained identical, exactly one trainer
+was present, and committed iterations advanced 35 → 43. The same Chromium
+page labelled the outage stale, recovered automatically, and showed iterations
+37, 39, 41 and 43 with growing loss histories and no navigation. This supplies
+the previously missing active-training part of D6; it does not claim a
+second-device test.
+
+**A remaining D2 defect was exposed:** ordinary `walk --set` retained a
+training view with `available: false`, reason `accepted attempt retained no
+tessellation`. The first restart probe failed because it expected a loaded
+model. Its corrected observation records the missing-model label and tests
+restart independently. The trainer continued through both attempts. The
+completed run's actual rollout model loads successfully, but this does not
+repair or replace the missing pre-training snapshot. The earlier probe3
+harness explicitly rendered before retaining that snapshot; the ordinary walk
+path does not. Preserve this failure for a targeted product fix.
+
+The final saved video decoded to six distinct-endpoint 512×512 frames at
+10 fps: 0.6 encoded seconds for 0.5 simulated seconds, seed 0. Chromium played
+it across three refreshes and downloaded bytes matching SHA-256
+`1e17ab439a024be0908764aa00a90c2bb9999816c8a2d412dfa3c9c0b36719b7`.
+Historical `probe3-final` and revised `foot90` both passed orbit/zoom, identity,
+retained design-spec content, video playback and download checks. The browser
+fetched each run's actual foot STL, matched it to retained bytes and measured
+70 and 90 mm respectively. The baseline is visibly historical. This advances
+D2/D5's two-design review evidence while leaving the live-model defect open.
+
+The independent-copy ten-seed evaluation reproduces seed 0 exactly and pins
+every policy/model/task digest. Results (`probes/reed-foot90/results.json`):
+
+| Final policy | Eight-second survivors | Falls | Mean observed seconds | Mean +X displacement |
+|---|---:|---:|---:|---:|
+| probe3, 70 mm feet | 0/10 | 10/10 | 0.498 | 200.854 mm |
+| foot90, 90 mm feet | 1/10 | 9/10 | 1.338 | 160.842 mm |
+
+Foot90's nine falls occur at 0.50–0.80 s; seed 9 survives eight seconds with
+43.370 mm displacement. This is still poor gait, not repeatable walking or
+proof of a general improvement. The baseline checkpoint20 remains the more
+reliable survivor in this declared seed set. No warm start was used.
+
+The first history harness assumed binary STL and read the document-link list
+as document text; both assumptions were corrected and the real browser check
+rerun. An initial evaluation overlapped that browser's evidence write and
+correctly failed its source-unchanged assertion. The successful fresh-copy
+rerun starts after all writers stop. Initial logs/copies remain external.
+All 250 pre-existing run/asset files retain their hashes. Compact evidence is
+`probes/reed-foot90/evidence.json`; full outputs, video, traces and project
+history remain outside this repository. Copy the whole project, including
+ignored review artifacts. CLI regression suite: **362 passed, 1 skipped**.
+No engine, shell or protocol code changed and no build was performed.

@@ -1,0 +1,242 @@
+{
+  "design": {
+    "before": {
+      "policy_on": 0.0,
+      "torso_w": 90.0,
+      "torso_d": 60.0,
+      "torso_h": 70.0,
+      "thigh_len": 80.0,
+      "shin_len": 80.0,
+      "limb_w": 18.0,
+      "foot_len": 70.0,
+      "foot_w": 35.0,
+      "foot_t": 8.0,
+      "hip_spacing": 50.0,
+      "printed_density": 1250.0,
+      "servo_torque": 200.0,
+      "fall_height": 120.0,
+      "episode_s": 8.0
+    },
+    "after": {
+      "policy_on": 0.0,
+      "torso_w": 90.0,
+      "torso_d": 60.0,
+      "torso_h": 70.0,
+      "thigh_len": 80.0,
+      "shin_len": 80.0,
+      "limb_w": 18.0,
+      "foot_len": 90.0,
+      "foot_w": 35.0,
+      "foot_t": 8.0,
+      "hip_spacing": 50.0,
+      "printed_density": 1250.0,
+      "servo_torque": 200.0,
+      "fall_height": 120.0,
+      "episode_s": 8.0
+    },
+    "training_revision": "cf98060cdac1f4dc75e9ca4c84c1af6c3568376bc0754e8509aec40ccaac0be9",
+    "training_digest": "11394a342e1c00c22fc2623136562415c86a3143ef6d93b81deb6fc29560ec89",
+    "model_before": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756",
+    "model_after": "3f84f92d3f573153b73dda19a24b84a133c72959c7995aeb5d3862cd84a909bc",
+    "task_only_changed_key": "model",
+    "agent_attempts": [
+      {
+        "ok": false,
+        "error": "You've hit your session limit \u00b7 resets 5:30pm (America/New_York)",
+        "model": "claude-fable-5",
+        "accepted_revision": ""
+      },
+      {
+        "ok": false,
+        "error": "You've hit your session limit \u00b7 resets 5:30pm (America/New_York)",
+        "model": "claude-sonnet-5",
+        "accepted_revision": ""
+      }
+    ]
+  },
+  "restart": {
+    "run": "foot90",
+    "same_machine_private_address": true,
+    "training_model_state": "missing",
+    "training_model_message": "no model to show: accepted attempt retained no tessellation (revision cf98060cdac1)",
+    "ok": true,
+    "trainer_before": [
+      {
+        "pid": 1758581,
+        "start_ticks": "97084543"
+      }
+    ],
+    "trainer_after": [
+      {
+        "pid": 1758581,
+        "start_ticks": "97084543"
+      }
+    ],
+    "iteration_before": 35,
+    "iteration_after": 43,
+    "accepted_revision": "cf98060cdac1f4dc75e9ca4c84c1af6c3568376bc0754e8509aec40ccaac0be9",
+    "samples": [
+      {
+        "page_iteration": 37,
+        "file_iteration": 37,
+        "loss_points": "38"
+      },
+      {
+        "page_iteration": 39,
+        "file_iteration": 40,
+        "loss_points": "40"
+      },
+      {
+        "page_iteration": 41,
+        "file_iteration": 41,
+        "loss_points": "42"
+      },
+      {
+        "page_iteration": 43,
+        "file_iteration": 43,
+        "loss_points": "44"
+      }
+    ],
+    "stale_during_outage": true,
+    "recovered_without_reload": true,
+    "server_pids": [
+      1763592,
+      1763915
+    ]
+  },
+  "video_check": {
+    "private_address_same_machine": true,
+    "browser_playback": true,
+    "download_sha256": "1e17ab439a024be0908764aa00a90c2bb9999816c8a2d412dfa3c9c0b36719b7",
+    "decoded_frames": 6,
+    "decoded_frames_differ": true,
+    "encoded_seconds": 0.6,
+    "simulation_seconds": 0.5,
+    "original_failed_run_preserved": true,
+    "accepted_revision": "0596013572c6ca53ac1a83f7ee8153ae4bb88fcefa87486818c93f6aaaecaa48",
+    "policy_sha256": "4e573dd637af0f4cd35ce466bef5b42aec59fae63b5825622d7127666c1af1e5",
+    "seed": 0
+  },
+  "video": {
+    "accepted_revision": "0596013572c6ca53ac1a83f7ee8153ae4bb88fcefa87486818c93f6aaaecaa48",
+    "duration_seconds": 0.6,
+    "fps": 10,
+    "frames": 6,
+    "model_digest": "395faa6bd23ffbedc920bdfd6161aef1b7f2b144c2917b39794adc7c22b25cb4",
+    "path": "rollout-1e17ab439a024be0908764aa00a90c2bb9999816c8a2d412dfa3c9c0b36719b7.webm",
+    "policy_sha256": "4e573dd637af0f4cd35ce466bef5b42aec59fae63b5825622d7127666c1af1e5",
+    "render_seconds": 1.255,
+    "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+    "seed": 0,
+    "sha256": "1e17ab439a024be0908764aa00a90c2bb9999816c8a2d412dfa3c9c0b36719b7",
+    "sim_seconds": 0.5,
+    "task_sha256": "61dfcccb75fb4d6c655347ecc0a3d113638de6b6179cdf3db21c21f1ce5fca9a",
+    "trace_sha256": "3e8672bc4f9ebe2cef19e3882457e2605874941a774a851b0ecc178c2bede48e"
+  },
+  "history": {
+    "probe3-final": {
+      "revision": "a7ee956cafc8de6b1732bc83cb3f59d832a6fe46b5406f3624e88267f479fa2d",
+      "digest": "14d56ed42ef87185db899cb2485180a81f8eb0959aaf2f8356c7031760a6ebb1",
+      "relation": "HISTORICAL \u2014 recorded at a7ee956cafc8, accepted now is 0596013572c6",
+      "model": {
+        "available": true,
+        "components": 8,
+        "triangles": 96,
+        "bounds": {
+          "min": [
+            -200,
+            -150,
+            -10
+          ],
+          "max": [
+            200,
+            150,
+            248.59519958496094
+          ],
+          "center": [
+            0,
+            0,
+            119.29759979248047
+          ],
+          "radius": 281.4566917166768
+        }
+      },
+      "curve_points": {
+        "curve": "240",
+        "loss_curve": "240",
+        "episode_steps_curve": "240"
+      },
+      "foot_length_mm": 70.0,
+      "foot_mesh_sha256": "25d1583d794391230aaf36481e411182b9616caf4aa927d0355a71c6040f7f0b",
+      "orbit_zoom": true,
+      "video_played": true,
+      "download_sha256": "59724f619c5540468f8fd6e109aa319507be6a449eafcc8ef9f3259af6046853"
+    },
+    "foot90": {
+      "revision": "0596013572c6ca53ac1a83f7ee8153ae4bb88fcefa87486818c93f6aaaecaa48",
+      "digest": "395faa6bd23ffbedc920bdfd6161aef1b7f2b144c2917b39794adc7c22b25cb4",
+      "relation": "CURRENT \u2014 this run's revision is the accepted revision now",
+      "model": {
+        "available": true,
+        "components": 8,
+        "triangles": 96,
+        "bounds": {
+          "min": [
+            -200,
+            -150,
+            -10
+          ],
+          "max": [
+            200,
+            150,
+            248.59519958496094
+          ],
+          "center": [
+            0,
+            0,
+            119.29759979248047
+          ],
+          "radius": 281.4566917166768
+        }
+      },
+      "curve_points": {
+        "curve": "240",
+        "loss_curve": "240",
+        "episode_steps_curve": "240"
+      },
+      "foot_length_mm": 90.0,
+      "foot_mesh_sha256": "ab419b61ad7523f92f9103be3432497a97a8a54fc413c837f371d4bb6f14fb3d",
+      "orbit_zoom": true,
+      "video_played": true,
+      "download_sha256": "1e17ab439a024be0908764aa00a90c2bb9999816c8a2d412dfa3c9c0b36719b7"
+    }
+  },
+  "training": {
+    "device": "gpu",
+    "wall_time_s": 317.8022558159428,
+    "sha256": "4e573dd637af0f4cd35ce466bef5b42aec59fae63b5825622d7127666c1af1e5",
+    "model_sha256": "3f84f92d3f573153b73dda19a24b84a133c72959c7995aeb5d3862cd84a909bc",
+    "task_sha256": "61dfcccb75fb4d6c655347ecc0a3d113638de6b6179cdf3db21c21f1ce5fca9a",
+    "witness_error": 9.816973033593967e-08,
+    "witness_samples": 32,
+    "witness_tolerance": 0.0001
+  },
+  "preserved_baseline_files": 250,
+  "preserved_baseline_manifest_sha256": "a421a36fbf3f89d99d49b4734f9662ef67c21ecb283d4811de7e5bfca839b800",
+  "sampled_memory": {
+    "samples": 30,
+    "host_peak_bytes": 5060366336,
+    "gpu_peak_mib": 15084
+  },
+  "cli_suite": {
+    "passed": 362,
+    "skipped": 1,
+    "seconds": 304.69
+  },
+  "limitations": [
+    "Two product-agent quota refusals; revision applied by actor through CLI",
+    "Ordinary walk --set has no retained training tessellation; completed rollout models pass",
+    "Same-machine private-address browser tests, no second device",
+    "Initial evaluation rejected concurrent evidence writer; clean copy rerun passed"
+  ]
+}

@@ -22866,3 +22866,21 @@ regression changes the accepted revision and documents, deletes the original
 staging directory, lands a failed status, and verifies the earlier assembly,
 mesh bytes, specs and decision snapshot; a symlinked mesh is refused. No new
 dependency or engine/protocol change.
+
+## ADR-292 — Measure a review-driven foot revision through the public walk (2026-09-12)
+
+[Cadex-new] The fresh Reed baseline's final policy fell on all ten declared
+seeds. Test a single 70 → 90 mm foot-length change with unchanged task and
+240-iteration/1024-environment/seed-0 training, retaining both histories and
+videos. Two product-agent quota refusals led to an explicitly actor-applied
+`walk --set foot_len=90`; this does not satisfy product-agent revision authorship.
+The completed GPU run and verified video show nine falls and one eight-second
+survivor, not repeatable gait. A real private-address dashboard restart leaves
+one identical trainer running. Browser checks distinguish both actual foot
+meshes and retained specs/videos; old artifacts remain unchanged.
+
+The ordinary walk also exposes a missing training-model snapshot after its
+parameter sweep. Keep that failure visible; do not fabricate a historical
+training pose from the later rollout. This experiment changes no product code.
+Commands, hashes, harness corrections, limits and comparative results are in
+`docs/HEADLESS-BIPED-REVIEW.md` and `docs/probes/reed-foot90/`.
