@@ -442,6 +442,14 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
         record = {"run": directory.name, "status": "empty",
                   "error": "no run.json and no review.json", "artifacts": {},
                   "project_artifacts": {}, "videos": [], "legs": []}
+    video_status = resolve_reference(directory, "video.json")
+    if video_status["exists"] and not video_status["error"]:
+        payload, error = _load_json(directory / "video.json")
+        if payload and payload.get("schema") == "cadex-run-video-v1":
+            record["video_render"] = {key: payload.get(key) for key in ("state", "error")}
+            record["videos"] = payload.get("videos") or []
+        else:
+            record["video_render"] = {"state": "invalid", "error": error or "unsupported video status"}
     resolved = {
         "artifacts": _resolved(directory, record.get("artifacts") or {}, RUN_ARTIFACT_KEYS),
         "project_artifacts": _resolved(root, record.get("project_artifacts") or {},

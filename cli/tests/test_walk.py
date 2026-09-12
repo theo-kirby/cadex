@@ -1281,6 +1281,20 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert _git(root, "status", "--porcelain") == ""
 
 
+    # D4: render the original verified rollout after subsequent design changes.
+    # Historical geometry comes from its exports, never a rebuild of today's script.
+    from cadex_cli.video import render as render_video
+    from cadex_cli.review_record import read_run_record
+    import shutil
+    if shutil.which("ffmpeg"):
+        video = render_video(root, "walk-1")
+        assert video["policy_sha256"] == sha1
+        assert video["seed"] == 3
+        assert video["frames"] > 1
+        assert read_run_record(out1, root)["videos"] == [video]
+        assert (out1 / video["path"]).is_file()
+
+
 @pytest.mark.skipif(
     REAL_TRAINER_PYTHON is None,
     reason="No training venv with jax and mujoco (training/SETUP.md).",

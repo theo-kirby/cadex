@@ -140,11 +140,13 @@ def snapshot(reply):
                        'approximation': APPROXIMATION, 'limits': LIMITS}
 
 
-def rasterize(triangles, basis):
+def rasterize(triangles, basis, *, bounds=None):
     projected = [(color, [tuple(sum(p[j]*axis[j] for j in range(3)) for axis in basis)
                           for p in points]) for color, points in triangles]
     points = [p for _, tri in projected for p in tri]
     lo, hi = ([fn(p[j] for p in points) for j in range(2)] for fn in (min, max))
+    if bounds is not None:
+        lo, hi = bounds
     extent = max(hi[j] - lo[j] for j in range(2))
     _require(extent > 0, 'zero projected extent')
     scale = (SIZE - 64) / extent

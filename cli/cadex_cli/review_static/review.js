@@ -215,8 +215,8 @@
   function renderArtifacts() {
     var run = selectedRun();
     var problems = $('problems'), body = $('artifacts').querySelector('tbody'), videos = $('videos');
-    clearChildren(problems); clearChildren(body); clearChildren(videos);
-    if (!run) { body.appendChild(el('tr', {}, [el('td', { text: 'select a run to see its retained artifacts' }), el('td'), el('td')])); return; }
+    clearChildren(problems); clearChildren(body);
+    if (!run) { clearChildren(videos); delete videos.dataset.key; body.appendChild(el('tr', {}, [el('td', { text: 'select a run to see its retained artifacts' }), el('td'), el('td')])); return; }
     (run.problems || []).forEach(function (problem) { problems.appendChild(el('li', { text: problem })); });
     var resolved = run.resolved || { artifacts: {}, project_artifacts: {}, videos: [] };
     function rows(group, prefix) {
@@ -235,12 +235,17 @@
     }
     rows('artifacts', '/artifact/run/');
     rows('project_artifacts', '/artifact/project/');
+    var videoKey = JSON.stringify([run.run, run.videos, resolved.videos, run.video_render]);
+    if (videos.dataset.key === videoKey) return;
+    videos.dataset.key = videoKey;
+    clearChildren(videos);
+    if (run.video_render) videos.appendChild(el('li', {text: 'Video render: ' + run.video_render.state + (run.video_render.error ? ' — ' + run.video_render.error + '. Retry the CLI video command after fixing the retained inputs or encoder.' : '')}));
     var recorded = run.videos || [];
     if (!recorded.length) videos.appendChild(el('li', { className: 'muted', text: 'videos: none recorded for this run' }));
     recorded.forEach(function (video, index) {
       var item = (resolved.videos || [])[index] || {};
       var line = el('li', { 'data-video': String(index) });
-      var label = 'video ' + index + ' · ' + (video.path || '?') + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s';
+      var label = 'video ' + index + ' · ' + (video.path || '?') + ' · revision ' + short(video.accepted_revision || (run.model || {}).accepted_revision) + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s';
       if (item.exists && !item.error) {
         var url = '/video/run/' + encodeURIComponent(run.run) + '/' + index;
         line.appendChild(el('div', { text: label }));
