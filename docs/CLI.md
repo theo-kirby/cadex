@@ -1446,7 +1446,10 @@ What the page shows, and where each thing comes from:
   which file is missing; the header
   reads `live: updated <time>` while the server answers and `stale: server
   unreachable, last update <time>` when it stops, with the last good view
-  left on screen. Videos are the D4 slot: a recorded video plays inline
+  left on screen. Retained videos with a recorded SHA-256 are verified before
+  playback or download; a mismatch is refused and labelled with a CLI retry
+  action. Restoring the matching artifact recovers on the next poll. Older
+  entries without a digest retain existence-only checks. Videos are the D4 slot: a recorded video plays inline
   (byte ranges are served, so seeking works) and downloads, identified by
   policy digest, seed and simulated seconds; none recorded says so.
 

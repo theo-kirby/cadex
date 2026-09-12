@@ -510,6 +510,13 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
             elif not item["exists"]:
                 problems.append(f"{group}.{key}: missing")
     for index, item in enumerate(resolved["videos"]):
+        expected = (record["videos"][index] or {}).get("sha256")
+        if expected and item["exists"] and not item["error"]:
+            try:
+                if _sha256(directory / item["path"]) != expected:
+                    item["error"] = "video digest mismatch"
+            except OSError:
+                item["error"] = "video unavailable during verification"
         if item["error"]:
             problems.append(f"videos[{index}]: {item['error']}")
         elif not item["exists"]:

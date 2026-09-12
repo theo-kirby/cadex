@@ -252,7 +252,7 @@
         line.appendChild(el('video', { controls: true, preload: 'metadata', src: url, width: 480 }));
         line.appendChild(el('a', { href: url + '?download=1', text: 'download' }));
       } else {
-        line.appendChild(el('span', { className: 'status-missing', text: label + ' — ' + (item.error ? 'refused: ' + item.error : 'missing') }));
+        line.appendChild(el('span', { className: 'status-missing', text: label + ' — ' + (item.error ? 'refused: ' + item.error : 'missing') + '. Retry the CLI video command after restoring the retained inputs.' }));
       }
       videos.appendChild(line);
     });

@@ -1106,3 +1106,29 @@ def test_browser_walk_parameter_sweep_retains_model_before_training(
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_browser_refuses_damaged_video_and_recovers(served, browser):
+    root, server = served
+    run = root / 'runs/first'
+    video = run / 'final.webm'
+    original = bytes(range(128))
+    video.write_bytes(original)
+    _rewrite_record(run, videos=[{'path': video.name,
+                                 'sha256': hashlib.sha256(original).hexdigest()}])
+    page = _open(browser, server.url)
+    page.click("#views li[data-run='first']")
+    page.wait_for("!!document.querySelector('#videos video')")
+    for damaged in (original[:32], b'x' * len(original)):
+        video.write_bytes(damaged)
+        page.wait_for("document.getElementById('videos').textContent.includes('digest mismatch')")
+        assert not page.evaluate("!!document.querySelector('#videos video')")
+        assert 'Retry the CLI video command' in page.text('#videos')
+        assert _get(server.url + 'video/run/first/0')[0] == 404
+        assert _get(server.url + 'video/run/first/0', {'Range': 'bytes=0-5'})[0] == 404
+        video.write_bytes(original)
+        page.wait_for("!!document.querySelector('#videos video')")
+        assert _get(server.url + 'video/run/first/0')[2] == original
+    video.unlink()
+    page.wait_for("document.querySelector('#videos [data-video]').textContent.includes('missing')")
+    assert 'Retry the CLI video command' in page.text('#videos')

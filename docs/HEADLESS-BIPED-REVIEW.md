@@ -757,3 +757,49 @@ showed one command-test failure without a completed diagnostic; its cause was
 not established, and the isolated and full reruns both passed. Probe compilation
 and `git diff --check` passed. No engine-suite rerun or build was required for
 this documentation/probe-only unit.
+
+## Missing and partial video recovery on the copy (D8, ADR-295)
+
+The next product-agent request supplied the recorded ten-seed 70/90 mm
+comparison and asked it to choose and author one reasoned physical revision.
+It exited 1 on the session limit before authoring (model `claude-sonnet-5`).
+D9 remains open; no actor-authored substitute or new training was performed.
+The full request receipt is retained in the copy's
+`evidence/revision30-agent.json`; the compact evidence records the refusal.
+
+Run this against the stopped independent copy, with no video renderer active:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/reed-copy/video_recovery.py "$COPY"
+```
+
+The probe temporarily moves copy100's real video to a backup, checks the
+missing label and HTTP refusal, writes a 64-byte truncated file, checks the
+refusal and CLI recovery message, then restores the backup. The same Chromium
+page must resume playback and download the recorded SHA-256 without a reload;
+foot90's prior completed video must remain available. A `finally` block restores
+the original file even on assertion failure. Keep the whole project and its
+retained inputs; an actual lost file can be regenerated with the documented
+`python -m cadex_cli.video --project "$COPY" --run copy100` command.
+This probe restores saved bytes; it does not claim to have rerendered them.
+
+The first pass failed at the truncated-file label: the reader checked existence
+but not the recorded video digest. ADR-295 fixes that defect. The corrected
+private-address, same-machine browser pass observed missing refusal, partial
+refusal, and restored playback/download. **418 copied run/asset/history and
+accepted-script files** remained byte-identical; a separate inventory check
+confirmed all **1,206 original project files** still matched the pre-copy
+inventory. Video SHA-256 remains `2308fe3baa4d…`. No second-device test or
+training-concurrency claim is made. [Compact evidence](probes/reed-copy/video-recovery.json)
+contains the outcomes and quota limit; full outputs remain project-local.
+
+The focused browser/server suite passed 27 tests with one skip. A local
+100-read measurement of copy100 averaged 1.36 ms per `read_run_record`
+with integrity verification; this short-video measurement does not establish
+long-video or concurrent-training performance. Verification streams fixed-size
+chunks but reads the recorded video bytes on each request.
+
+Final validation: `pixi run python -m pytest cli/tests -q` — **364 passed,
+1 skipped** in 329.64 s; `pixi run test-engine` — **2,103 passed, 54 skipped**
+in 281.57 s. Probe compilation and `git diff --check` pass. No full build or
+packaged/shell gate was run; no engine, protocol, payload or shell code changed.

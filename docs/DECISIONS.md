@@ -22917,3 +22917,16 @@ path unavailable during private-address browser review, verifies inherited
 run/asset hashes, and restores and checks every original file. This changes no
 product behavior, dependency, engine or shell code. Commands, outcomes and
 limits are recorded in `docs/HEADLESS-BIPED-REVIEW.md`.
+
+## ADR-295 — Refuse damaged retained dashboard videos (2026-09-12)
+
+Reed copy fault injection exposed that an existing but truncated video remained
+playable/downloadable in the dashboard. Verify entries carrying `sha256` using
+the reader's streaming hash helper, refuse mismatches through the existing
+artifact error path, and tell the reviewer to retry the CLI video command.
+Restored bytes recover on the next poll. Legacy entries without a hash retain
+their existence-only contract. This adds disk reads proportional to the selected
+run's recorded video bytes on each read; no digest cache or new dependency.
+The real-copy browser probe checks missing/truncated/restored video, playback
+and download; the regression also covers equal-length corruption and range
+requests. No accepted geometry, run status or policy identity is rewritten.
