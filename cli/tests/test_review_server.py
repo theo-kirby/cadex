@@ -897,3 +897,49 @@ def test_browser_observes_final_policy_publication_failure(served, browser, monk
     assert page.text('#view-revision') == REVISION_A
     assert page.evaluate('!!window.publicationTestIdentity')
     assert prior_run.read_bytes() == prior_bytes
+
+
+@needs_browser
+def test_browser_retained_training_parts_survive_revision_change(served, browser):
+    root, server = served
+    run = _training_run(root, 'exported', revision=REVISION_A)
+    model_xml = run / 'train/model.xml'
+    model_xml.write_text('<mujoco/>')
+    mesh = run / 'train/torso.stl'
+    mesh.write_text(_cube_stl(20))
+    record = json.loads((run / RUN_RECORD_FILENAME).read_text())
+    _rewrite_record(run, artifacts={**record['artifacts'], 'model_xml': 'train/model.xml'})
+    before = {p: p.read_bytes() for p in run.rglob('*') if p.is_file()}
+    page = _open(browser, server.url)
+    page.click("#views li[data-run='exported']")
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN exported'")
+    assert _model_state(page) == 'loaded'
+    assert page.text('#view-revision') == REVISION_A
+    assert page.text('#view-relation').startswith('HISTORICAL')
+    assert 'assembly placements not recorded' in page.text('#model-status')
+    assert 'not a solved pose' in page.text('#model-status')
+    page.scroll_into_view('#viewer')
+    rect = page.rect('#viewer')
+    x, y = rect['x'] + rect['width']/2, rect['y'] + rect['height']/2
+    camera = page.evaluate('window.cadexReview.viewer().camera()')
+    page.drag(x, y, x+100, y+40)
+    page.wait_for(f'window.cadexReview.viewer().camera().yaw !== {camera["yaw"]}')
+    page.wheel(x, y, -240)
+    page.wait_for(f'window.cadexReview.viewer().camera().distance < {camera["distance"]}')
+    assert page.evaluate('window.cadexReview.viewer().nonBackgroundPixels()') > 1000
+    assert _get(server.url + 'mesh/run/exported/torso.stl')[2] == mesh.read_bytes()
+    assert before == {p: p.read_bytes() for p in run.rglob('*') if p.is_file()}
+    # A deleted export, escaping anchor or symlinked mesh cannot borrow today's model.
+    mesh.unlink()
+    mesh.symlink_to(root / 'runs/second/rollout/torso.stl')
+    assert not _json(server.url + 'api/model/run/exported')['available']
+    assert _get(server.url + 'mesh/run/exported/torso.stl')[0] == 404
+    mesh.unlink()
+    mesh.write_text(_cube_stl(20))
+    model_xml.unlink()
+    assert not _json(server.url + 'api/model/run/exported')['available']
+    model_xml.symlink_to(root / 'script.json')
+    assert not _json(server.url + 'api/model/run/exported')['available']
+    assert _get(server.url + 'mesh/run/exported/torso.stl')[0] == 404
+    _rewrite_record(run, artifacts={**record['artifacts'], 'model_xml': '../outside.xml'})
+    assert not _json(server.url + 'api/model/run/exported')['available']

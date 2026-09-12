@@ -178,6 +178,10 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
     the run's render summary when it resolves, else from a mesh named as
     the component is. A mesh with no component is shown unplaced and says
     so; a component with no mesh is listed as missing one.
+
+    With no recorded trace, STL parts beside the recorded training model
+    remain inspectable at identity, explicitly without assembly placements.
+    A missing recorded trace or training export never borrows other geometry.
     """
 
     root = Path(project_root).expanduser()
@@ -190,6 +194,33 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
     )
     trace_item = ((record.get("resolved") or {}).get("artifacts") or {}).get("trace") or {}
     if trace_item.get("path") is None:
+        exported = ((record.get("resolved") or {}).get("artifacts") or {}).get("model_xml") or {}
+        if exported.get("path") is not None:
+            if not model.get("revision") or not model.get("digest"):
+                model["reason"] = "training export has no recorded revision and digest"
+                return model
+            if exported.get("error") or not exported.get("exists"):
+                model["reason"] = "training model reference unavailable: " + (exported.get("error") or "missing")
+                return model
+            mesh_dir = (run_dir / exported["path"]).parent
+            meshes = [p for p in sorted(mesh_dir.glob("*.stl"))
+                      if p.is_file() and not p.is_symlink()]
+            if not meshes:
+                model["reason"] = "no STL parts retained beside the recorded training model"
+                return model
+            model.update({
+                "available": True,
+                "source": "retained training export parts at this run's revision; "
+                          "assembly placements not recorded (parts shown at identity, not a solved pose)",
+                "placement_source": "assembly placements not recorded: individual parts at identity",
+                "components": [{
+                    "name": p.stem, "output": p.stem,
+                    "mesh": f"/mesh/run/{run_name}/{p.stem}.stl",
+                    "mesh_status": "retained", "placement": None,
+                    "placement_source": "individual exported part: identity",
+                } for p in meshes],
+            })
+            return model
         return _model_before_rollout(root, model)
     if trace_item.get("error"):
         model["reason"] = f"trace reference not honoured: {trace_item['error']}"
@@ -243,8 +274,8 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
 def _model_before_rollout(root: Path, model: dict[str, Any]) -> dict[str, Any]:
     """A run that has not rolled out yet: the accepted model, if it *is* this one.
 
-    While a walk trains, and after one fails before its rollout, the run
-    has no meshes of its own — the rollout leg is what exports them. The
+    Without a recorded training export or rollout, the reader cannot
+    locate the run's own meshes. The
     record still names the revision and digest the trainer was given
     (``identity_source`` says from where), and when **both** equal the
     accepted revision and digest now, the accepted attempt's tessellation
@@ -633,8 +664,9 @@ class ReviewProject:
         wanted = f"/mesh/run/{name}/{output}.stl"
         if not any(entry.get("mesh") == wanted for entry in model["components"]):
             return None
-        trace = record["resolved"]["artifacts"]["trace"]["path"]
-        path = (self.root / RUNS_DIRNAME / name / trace).parent / f"{output}.stl"
+        artifacts = record["resolved"]["artifacts"]
+        anchor = artifacts["trace"]["path"] or artifacts["model_xml"]["path"]
+        path = (self.root / RUNS_DIRNAME / name / anchor).parent / f"{output}.stl"
         return path if path.is_file() and not path.is_symlink() else None
 
     def accepted_mesh(self, output: str) -> bytes | None:

@@ -282,3 +282,43 @@ External project commit `73611af` retains the interrupted record, checkpoint
 review and compact evidence. The saved experiment harnesses document this
 attempt's failure; use the standalone video/interruption checks to inspect
 its artifacts, rather than rerunning the launcher into the same run directory.
+
+## Retained probe2 training parts (iteration 17)
+
+The missing-model investigation found eight original STL parts beside
+`runs/probe2/train/reed_model-model.xml`. `run.json` names that permitted
+model artifact and the successful `probe2-export.json` envelope names those
+same STL exports at revision
+`6ab8a1d090c812865d70d5d6c9300907dc1076cb19ec3f2d4885a44baeaa12c8`, digest
+`850acf23a05ade2fa76275a6484caaefc9e2d22230fb002ead681c533e530697`.
+The old revision's staging directory no longer exists. There is no retained
+assembly placement map for this export; the mesh parts are in local frames.
+
+ADR-290 makes those exports inspectable, explicitly labelled as individual
+parts at identity, **not a solved pose**. The project-local read-only check:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python "$PROJECT/evidence/check-training-parts.py" "$PROJECT"
+```
+
+passed against a server bound to the machine's Tailscale address. Chromium
+selected historical `probe2`, checked exact revision/digest and the placement
+limitation label, loaded all eight parts (96 triangles), and compared every
+mesh response byte-for-byte with the retained STL. Mouse orbit changed yaw
+0.8 to -0.2 and pitch 0.5 to 0.9; wheel zoom changed distance 658.2674 to
+459.2576 mm; 219,902 non-background pixels remained. The accepted manifest,
+run record, trainer telemetry and all eight meshes had unchanged hashes
+before/after. Evidence is `evidence/training-parts-result.json`. No engine
+was started, no trainer was started/stopped, and no telemetry was written.
+No second-device claim. D2 advances with real exported-part interaction,
+but remains open for a retained, assembled training-model pose and the full
+model/spec history checks. This check does not reconstruct missing poses
+from the later checkpoint playback or today's script.
+
+The same check then selected `probe2-checkpoint20` and exercised the assembled
+biped from that run's own meshes, mapping and first rollout frame at revision
+`3d28c70c890f79ff6b98ef314dc8bf672746311aae5b3d23b845c89808c387f8`.
+Its eight components / 96 triangles passed orbit (yaw 0.8 to -0.2, pitch
+0.5 to 0.9) and zoom (distance 731.7874 to 510.5507 mm), with 135,542
+non-background pixels. Thus real assembled-biped interaction is also proven;
+this does not supply the missing assembly placement record for `probe2`.

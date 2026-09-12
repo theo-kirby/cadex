@@ -1393,9 +1393,18 @@ What the page shows, and where each thing comes from:
   own files only; nothing is rebuilt from today's script. A `running`
   record is labelled as started and never finished, with the next CLI
   action; a legacy run reads `unrecorded`.
+  Before a rollout, a run with recorded revision/digest and `model_xml`
+  can show the STL parts retained beside that training export (ADR-290).
+  These are explicitly labelled **individual parts at identity, not a
+  solved pose**: the export does not retain component placements. This
+  works after the accepted revision changes or staging is pruned. Missing
+  or refused recorded exports show the reason. With neither a trace nor a
+  training export recorded, current tessellation can be borrowed only
+  when both revision and digest match; historical geometry is never rebuilt.
 - **Labels, never guesses**: an artifact is `retained` (linked, with a
   download), `missing`, `not recorded` or `refused: <why>`; a run with no
-  trace has *no model to show* and says which file is missing; the header
+  recorded trace whose file is missing has *no model to show* and says
+  which file is missing; the header
   reads `live: updated <time>` while the server answers and `stale: server
   unreachable, last update <time>` when it stops, with the last good view
   left on screen. Videos are the D4 slot: a recorded video plays inline

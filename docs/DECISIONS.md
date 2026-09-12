@@ -22824,3 +22824,22 @@ its revision, digest, specs and borrowed model, watches telemetry arrive,
 then watches the trainer and the walk fail and asserts every identity is
 still on screen with the state changed. `probe1`'s own record is left as it
 was written; records are not rewritten after the fact.
+
+## ADR-290 — Review retained training export parts before a rollout (2026-09-12)
+
+Probe2 retained eight STL outputs beside its recorded training `model_xml`,
+but the review reader considered only rollout meshes or the current accepted
+attempt. The old staging directory was pruned and no rollout was recorded
+for that training run. Read the run-local training export directory when
+no trace was recorded, require a recorded revision/digest, and use the same
+permitted-reference and mesh allowlist checks as the rollout route. This
+replaces the unconditional pre-rollout fallback. A missing/refused recorded
+export stays missing, and a missing recorded rollout never falls through.
+
+These are individual exported parts, shown at identity and visibly labelled
+as having no recorded assembly placements. Do not infer component mappings
+from names or rebuild historical geometry from the current script. This
+bounded fix makes retained parts inspectable; preserving the assembled pose
+before training remains an open D2 requirement. No dependency or engine
+change. Browser regression covers historical identity, actual orbit/zoom,
+mesh bytes, read-only behavior and missing/symlink/escaping references.
