@@ -7,15 +7,15 @@ parents:
 - crisp-sun-1239
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-**Real final-policy and intermediate-checkpoint videos are retained and browser-verified; active-training playback and failure isolation remain open.** Probe1's retained final policy was engine-verified against identical model/task bytes and recorded separately as `probe1-playback`, leaving failed probe1 unchanged. Seed 0 fell at 0.66 simulated seconds; eight frames at 10 fps encode 0.8 seconds. Private-address Chromium playback across refreshes, identity labels and byte-identical download passed, with all frames decoded [rec: amber-gate-7498].
+**Probe3 has browser-verified intermediate playback/download while training is active and a retained verified final-policy video.** Checkpoint20 passes the engine witness check, runs eight simulated seconds and yields 81 decoded frames/8.1 encoded seconds. Both sequential checkpoint render collections pass playback, three refreshes, matching-byte download and revision/policy/seed/time labels while training remains active. The currently referenced repeated video and the original bytes/receipt remain retained [rec: light-brook-2640].
 
-Probe2 checkpoint20 was engine-verified and rendered while its trainer remained active: 81 frames, eight simulated seconds, 8.1 encoded seconds and 16.414 seconds rendering. Corrected browser playback/download and frame/timing checks passed after training stopped. An erroneous browser time-format assertion triggered external harness cleanup that interrupted the trainer before a final policy. The prior final video survives. Sparse committed intervals show progress during rendering, not causal overhead evidence [rec: merry-star-6951].
+The successful 240-iteration trainer produces a verified final policy and a seven-frame/0.7 encoded-second video of a seed-0 fall at 0.52 simulated seconds. Final decoding, playback across refreshes, download digest and labels pass after correcting a numeric-format assertion; collection reuses existing artifacts without further training or rendering [rec: light-brook-2640].
 
-Keep `open`: successful browser playback during active training, a final video for the new run and reliable failure isolation remain unproved. The interruption was an external experiment-harness failure, not a product-renderer failure; no second-device test is claimed [rec: merry-star-6951]. Fixture download coverage proves received bytes and hashes using browser-accessible download directories, including snap Chromium [rec: ready-orchard-4806].
+Judgement: mark `working` because the required active checkpoint, final video and reported failed-render isolation are now demonstrated. A missing-trace render request exits 1 while training stays active; this proves that refusal path, not an encoder crash. Renderer throughput cost is unisolated, and browser evidence is on this machine's private address rather than a second device [rec: light-brook-2640].
 
 Charter criterion: **D4. Policy videos render, persist and play headlessly** At least one verified intermediate checkpoint is rendered and appears in the dashboard while training remains active, and the final policy also has a saved video; both play and download in the browser, each identifying model revision, policy digest, rollout seed and simulation time. Evidence: real biped video files, a decoded frame/timing check and a browser playback/download test; a failed render leaves training running and reports its own failure. Declared target `gap-d4-policy-videos-render-persist` [rec: lucky-comet-0031], introduced with no implementation claimed [rec: dusty-peak-9330].
 
@@ -31,3 +31,4 @@ Charter criterion: **D4. Policy videos render, persist and play headlessly** At 
 - ready-orchard-4806 — traced the failure to snap-confined Chromium; harness collects downloads where the browser can write and proves bytes and digest
 - amber-gate-7498 — first real final-policy video, decoded and browser-played/downloaded
 - merry-star-6951 — active-training checkpoint render, later successful browser verification and explicit interruption limits
+- light-brook-2640 — active intermediate and final video verification; missing-trace refusal leaves trainer active

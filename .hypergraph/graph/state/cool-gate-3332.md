@@ -7,15 +7,15 @@ parents:
 - crisp-sun-1239
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-**A real harness-induced training interruption is retained and browser-readable; a subsequent successful new attempt remains open.** Probe2's collector sent SIGTERM after an erroneous browser time-format assertion. Last committed iteration was 38; telemetry remains `training` and becomes stale, final policy absent. Its explicit failed/interrupted run record identifies the harness failure and next action. Browser checks passed for failed status, stale telemetry and continued access to the prior final-policy and checkpoint20 videos [rec: merry-star-6951].
+**A successful new GPU attempt now follows the retained real interruption, with both outcomes readable in the browser.** Probe3 exits 0 after 240 iterations; the browser shows `ok`/done with 240-point reward/loss histories alongside failed probe2's stale telemetry and the preserved prior/new videos. The final browser harness formatting failure is corrected using existing artifacts and separately recorded from successful training [rec: light-brook-2640].
 
-Probe1 trained and stored its policy but failed at declaration; its original failed record remains unchanged [rec: lucid-journey-6875]. ADR-289 preserves run identity and specs from walk start through failure, with browser coverage [rec: lively-gate-6535]. ADR-288's trainer failure handler publishes failed telemetry for final-policy publication errors, with four browser fault-injection cases preserving metrics, identity and checkpoints [rec: long-cove-3626]. Missing/partial output and stale-state coverage comes from the telemetry work [rec: kind-fountain-5086].
+Probe2's external collector previously sent SIGTERM after a faulty browser assertion, leaving iteration 38 and no final policy. Its explicit failed/interrupted record explains the harness failure and next action; failed status, stale telemetry and prior video access passed browser checks [rec: merry-star-6951]. Fixture fault-injection covers final-policy publication failures and retained metrics/checkpoints; missing/partial and stale telemetry have separate coverage [rec: long-cove-3626] [rec: kind-fountain-5086].
 
-Keep `open`: no successful new training attempt followed the real interruption. The external harness failure is not a product-renderer failure; browser/render failure must not stop training. The historical collector briefly wrote an empty progress snapshot, restored by the trainer's next update; future collectors must only read telemetry [rec: merry-star-6951].
+Judgement: mark `working` because the successful retry closes this node's declared remaining gap. This does not claim checkpoint resume or an encoder-crash test: the real interruption was harness-induced, and probe3's render failure test covers missing-trace refusal with the trainer still active [rec: light-brook-2640].
 
 Charter criterion: **D8. Interrupted and failed runs remain understandable** A controlled training interruption, a failed run, and missing/partial review output are tested; the dashboard distinguishes interrupted/failed/stale states from success, preserves prior completed results and explains the next CLI action. Evidence: fault-injection tests and one real interrupted biped training run followed by a successful new attempt; checkpoint resume is not required. Declared target `gap-d8-interrupted-failed-runs-remain` [rec: lucky-comet-0031].
 
@@ -34,3 +34,4 @@ Charter criterion: **D8. Interrupted and failed runs remain understandable** A c
 - lucid-journey-6875 — the real failed `probe1` run and how the page reads it
 - lively-gate-6535 — ADR-289: failed-run identity persists and is browser-covered through failure
 - merry-star-6951 — real harness-induced interruption, explicit failed record and stale-state browser verification; subsequent success absent
+- light-brook-2640 — successful real retry after interruption, with failed/stale and successful/done browser distinction
