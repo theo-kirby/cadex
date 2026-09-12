@@ -17,6 +17,18 @@ and is **for inspection only**; the agent continues authoring and training throu
 the CLI. The script and project records remain authoritative. Browser state is
 not project state. The dashboard is a review client, not the replacement shell.
 
+**Live operator dashboard (owner steering, 2026-09-12).** The persistent
+private-network dashboard must show the project and experiment currently being
+worked on. Maintaining that live page is part of every experiment, not only a
+test fixture. At the next work iteration, update the existing shared dashboard
+on port 8765 from the obsolete ot4-carriage project to the active Reed/biped
+project or its current working copy. Keep that operator URL stable and the
+server running between iterations. Run one project per server as before.
+When work moves to a copy, deliberately update the served project, identify it
+clearly, and verify the operator-facing page over the private-network address.
+Use the dashboard yourself during design, training and review. A temporary
+browser-test server does not satisfy this instruction.
+
 Success means the complete recorded lifecycle works. Measure gait quality
 honestly; a repeatable walking gait is not a completion gate. Retire mg-legs
 from the active charter and test workflow. Create a new parametric biped from a
@@ -85,12 +97,30 @@ say "ticks D1" when its evidence exists; the human owns the checkbox edit.
   a lifecycle report linking D1-D8 evidence, and the comparative results. Poor
   gait is a valid measured result; skipped training or missing recording is not.
 
+- [ ] **D10. The persistent operator dashboard stays current.** The existing
+  shared dashboard URL serves the actual working project, with the current run
+  selected by default for a new visit (active training first, otherwise the
+  latest attempt, including failed/interrupted attempts). It shows that run's
+  model/spec identity, available curves and videos, and explicit pending/stale/
+  failed states where outputs are not ready. Never silently substitute an older
+  successful run for a newer failed one. Preserve deliberate historical browsing
+  and video playback in an already-open page, with a visible route back to the
+  current run. On each experiment start/completion and working-project switch,
+  verify the persistent URL's project/run identity and update the published
+  status. Keep serving after tests and between iterations. Evidence: browser
+  checks on the persistent private-network URL across a real experiment and a
+  working-copy switch, plus regression coverage for current-run selection and
+  historical-view preservation. The immediate acceptance check is that the
+  shared URL shows the active biped work rather than ot4-carriage.
+
 ## Horizon ladder
 
 Granularity, not elapsed time. The critic selects the next unit after each actor
 turn; this ladder is the starting plan, not a fixed implementation sequence.
 
 - **short-term:**
+  0. First, put the active biped project/run on the persistent shared dashboard,
+     verify it through the browser, and keep it current throughout work (D10).
   1. Define the smallest project/run recording contract and its revision and
      artifact identities; document it alongside a tested reader (D2, D5).
   2. Deliver a vertical slice: one-project server, real model/spec view and a
@@ -169,7 +199,7 @@ charter revision, not an actor interpretation.
 
 ## Exhaustion policy
 
-Maintain within this mission. Once D1-D9 have evidence, repeat the lifecycle,
+Maintain within this mission. Once D1-D10 have evidence, repeat the lifecycle,
 fix demonstrated recording/review defects and improve bounded operation. Do not
 expand into gait research, another dashboard mode or parked product work merely
 to fill the run. Report completion evidence honestly when no defect remains.
@@ -181,7 +211,8 @@ to fill the run. Report completion evidence honestly when no defect remains.
 - Real training, decoded videos and real lifecycle artifacts are required where
   the criteria say so. Record commands, observed identities, failures and limits.
 - A unit changes product code, a meaningful test or a user-facing document and
-  advances a D criterion. Bookkeeping alone is reserved for reconcile passes.
+  advances a D criterion. The operator-facing dashboard must track the active
+  project/run; fixture-only success cannot excuse leaving it on an obsolete project. Bookkeeping alone is reserved for reconcile passes.
 - Record causally with real State Impact targets; removals/direction changes earn
   an ADR, behavior changes update their docs, and landed roadmap items are marked.
 - Prove project isolation and permitted-path handling; distinguish a valid empty
