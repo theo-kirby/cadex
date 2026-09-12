@@ -322,3 +322,138 @@ Its eight components / 96 triangles passed orbit (yaw 0.8 to -0.2, pitch
 0.5 to 0.9) and zoom (distance 731.7874 to 510.5507 mm), with 135,542
 non-background pixels. Thus real assembled-biped interaction is also proven;
 this does not supply the missing assembly placement record for `probe2`.
+
+## Successful-retry experiment with the retained training snapshot
+
+The next bounded attempt is `probe3`, using the same fresh biped and unchanged
+model/task bytes. Its project-local harness invokes the existing CLI for export,
+asset import, policy declaration, rollout and rendering. Before dispatch it calls
+the CLI's `retain_training_view` under `project_lock`, then writes the running
+record with the exported identity and document/spec snapshot. This measures the
+snapshot contract directly; it is not a claim that `cadex walk` was exercised.
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python "$PROJECT/evidence/probe3-experiment.py" "$PROJECT"
+```
+
+The trainer uses the existing offboard venv, seed 0, 240 iterations, 1024
+environments and checkpoints every 20 iterations. Its independent systemd scope
+sets `MemoryMax=20G`; `timeout --signal=TERM --kill-after=20s 1800` bounds it,
+with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.45`. One trainer and one renderer at a
+time. Browser failures are collected without terminating the bounded trainer.
+There is no warm start or mechanism change. The initial `python` helper command
+was unavailable; `python3` generated the harness before any training started.
+
+Training revision `c26c92b09dbb3142c973d9807024373cf8d7c5b0f080a5c21ba8f66d3badf49e`
+has digest `850acf23a05ade2fa76275a6484caaefc9e2d22230fb002ead681c533e530697`.
+`training-view.json` retains eight components with declared placements (no solved
+training trace), parameter defaults/values and project documents. The live browser
+observer passed orbit/zoom and seven actual iterations (3, 5, 6, 7, 9, 10, 12)
+over 11.78 seconds, one navigation, committed-to-page delay 0.18–1.33 seconds.
+Reward/loss histories grew from 4 to 13 samples. Its `model_state` field was
+captured during loading; the subsequent loaded-state, rendered-pixel and camera
+assertions passed. Evidence: `evidence/probe3-observe.json` and observer log.
+
+Checkpoint 20's policy is
+`74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78`.
+Its retained playback revision is
+`0fb4ffb59c69f646897d5c4464876b954ad3531e807313d6163244f648dcad15`,
+digest `9c6f79478f4d8acfce28bd33e9f56f622e891ef621a2cbe512839730d830872a`.
+Video `757a0c4ed104a9238b26412d8a1570e3a5588a5e2cf78a6f6e8a340532218e74`
+contains 81 decoded frames, 10 fps, 8.1 encoded seconds / 8 simulation seconds;
+first and last frames differ. It rendered in 16.536 seconds and passed browser
+playback, three refreshes without replacing/stopping the player, matching-byte
+download and revision/policy/seed/time labels while the trainer was still active.
+This browser was on the server machine, using its Tailscale address; no second
+device was tested. `probe3-checkpoint20-publication.json` records the active
+process check before and after the browser test. The trainer remained in its
+checkpoint publication work throughout this render: committed iteration stayed
+18. Thus this window proves coexistence, **not a throughput overhead estimate**.
+
+A deliberately invalid render of the training-only `probe3` run exited 1 with
+`video: no successful recorded rollout at this identity`; its scope remained
+active. This is missing-trace refusal and failure isolation, not an injected
+encoder crash. After checkpoint playback changed the accepted script, the
+browser selected historical `probe3`, checked its retained revision/digest,
+loaded model and exercised orbit/zoom. The first external history assertion used
+`accepted_revision` where the snapshot uses `revision`; correcting that harness
+field passed. No product code changed to make either browser test pass.
+
+Keep the entire project, including ignored policies, traces and videos. The
+project-local experiment scripts, publication receipts, telemetry timeline,
+memory samples, browser checks and `runs/probe3*` are the detailed evidence;
+this product document contains compact identities rather than bulk artifacts.
+
+A sequential repeat of the checkpoint render took 27.675 seconds during
+checkpoint 60's publication (committed iteration stayed 58). The engine suite
+was also running then, so neither render timing is an isolated overhead
+measurement. Re-encoding produced different container bytes, now referenced by
+`video.json` as
+`c479457f48ad7217cfa4d69f79925d8f4c35add98b0ed8fa17d9580020674f8f`;
+the earlier file remains on disk. The currently referenced video independently
+passed the same decode/playback/download checks while the scope was active
+(`probe3-repeat-browser.log`). The first browser receipt is preserved as
+`probe3-checkpoint20-first-check.json`; the current receipt names the new bytes.
+
+The checkpoint's engine witness error was `3.996235200531828e-08` against
+`0.0001`. Seed 0 completed 400 steps / 8 seconds, `truncated=true`, no fall
+termination, reward 333.02443433799135. Torso-link displacement was
+`[45.940988, 1.898436, -29.309025]` mm. This is link-origin displacement from
+the retained trace, not a separately integrated centre-of-mass measurement and
+not a multi-seed walking claim.
+
+Verification on this source: `pixi run test-engine` passed (2103 passed,
+54 skipped, 428.49 seconds); the focused browser/record suite
+`pixi run python -m pytest cli/tests/test_review_server.py cli/tests/test_review_record.py -q`
+passed (48 passed, one skipped, 51.46 seconds). The engine suite overlapped
+training after the first checkpoint video check; its MJX-dependent training
+checks skip in the pixi environment. Trainer-capable CLI verification is serial.
+
+The trainer exited **0** on GPU, reporting 1003.681 seconds of training,
+240 iterations (last index 239), reward/step 7.442540, loss 899.636 and
+estimated episode length 25.409 steps. Sampled host peak was 9,321,664,512
+bytes; GPU peak 15,152 MiB. The final policy is
+`a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911`,
+82,008 bytes, engine witness error `7.370347304913593e-08 < 0.0001`.
+It is retained in `runs/probe3/train` and imported into `assets/`; the training
+record remains at its original snapshot identity with status `ok`.
+
+Final playback revision
+`a7ee956cafc8de6b1732bc83cb3f59d832a6fe46b5406f3624e88267f479fa2d`,
+digest `14d56ed42ef87185db899cb2485180a81f8eb0959aaf2f8356c7031760a6ebb1`,
+retains video
+`59724f619c5540468f8fd6e109aa319507be6a449eafcc8ef9f3259af6046853`:
+seven decoded frames at 10 fps, 0.7 encoded seconds, 1.407-second render.
+The verified seed-0 rollout **fell after 26 steps / 0.52 seconds**
+(`terminated_step=25`, `truncated=false`), reward 198.204299, torso-link
+displacement `[210.535718, -0.018994, -83.103159]` mm. These are honest
+poor-gait results: more forward travel before falling is not better survival.
+Both policies used the same eight-second episode and seed 0; seeds 1–9 and
+the review-driven design change/retraining remain unmeasured in this unit.
+
+The first final browser assertion failed because Python's `.5g` generated
+`0.52` while JavaScript's `toPrecision(5)` displayed `0.52000`. Parsing the
+visible numeric time instead passed, including actual playback, three refreshes,
+full matching-byte download and labels. The initial experiment harness exited 1
+**after successful training and video rendering**; collection of those existing
+artifacts passed without another trainer, import or render. This distinction is
+retained in `probe3-experiment-result.json` (`training_exit=0`,
+`initial_experiment_exit=1`, `collection_exit=0`) and its original failure log.
+
+The subsequent browser retry/history check passed: `probe3` is `ok`, telemetry
+is `done`, and both reward/loss curves have 240 points; `probe2` remains failed
+with stale telemetry. Probe1 playback, probe2 checkpoint and both probe3 videos
+all load at their own recorded revisions. Its initial harness assertion checked
+page-poll freshness instead of training-telemetry staleness; using the telemetry
+panel correctly passed. Evidence: `probe3-retry-browser.json`,
+`probe3-summary.json`, final browser log and project-local publication receipts.
+This supplies D8's successful new attempt following the real interruption and
+D4's active intermediate plus final video evidence. It does not complete the
+D5–D9 design-change/copy/restart lifecycle or measure an encoder crash.
+
+The full serial CLI gate passed:
+`pixi run python -m pytest cli/tests -q` — **361 passed, one skipped**,
+297.44 seconds, exit 0. No product-code change or build was needed for this
+experiment. Both product and external-project `git diff --check` passed.
+External project commit `7a597cc` closes the experiment evidence and progress
+entry; preceding CLI commits retain each accepted import/declaration/rollout.
