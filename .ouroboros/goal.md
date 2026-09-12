@@ -194,7 +194,7 @@ to fill the run. Report completion evidence honestly when no defect remains.
 Every five work iterations or three unreconciled records, the actor's next unit
 is the reconcile pass: fold impacts, advance the high-water mark, regenerate the
 views, export, check and commit. Separate maintainer and planner remain off; the
-critic names the next unit. Unattended roles never edit this charter. The next
-run start ingests this revision and declares its criteria; editing the file does
-not prove a running process has adopted it. Do not launch or restart a run as
+critic names the next unit. Unattended roles never edit this charter. The runner ingests operator charter edits at the next iteration boundary and
+records a versioned directive; confirm adoption in its charter-reload log.
+The current actor and critic finish under their original charter. Do not launch or restart a run as
 part of charter authoring.
