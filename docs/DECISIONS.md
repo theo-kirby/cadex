@@ -23873,3 +23873,35 @@ module's `light` palette, because the videos are captured in the same scene
 and switching or deleting that palette is D3's unit, which ships with
 decoded frames beside the reference and its own ADR. No engine, protocol,
 payload, shell or dependency change.
+
+## ADR-330 — The review viewer orbits by pointer events, and a video plays from the page's own control (2026-09-13)
+
+`review_scene.js` listened for `mousedown`/`mousemove`/`mouseup` and the
+wheel only, so on a phone — where the canvas's `touch-action: none` already
+kept a finger from scrolling — a drag did nothing at all, and the ot6
+charter's "orbitable by touch" (ADR-328, D2) was false in the code while the
+spec's §9 described a test that did not exist. The handlers are now pointer
+events: one pointer, mouse or finger, orbits; two fingers pinch-zoom; the
+wheel zooms; the canvas captures the pointer so a drag that leaves it still
+orbits. The existing mouse orbit test passes unchanged, because a mouse is
+a pointer.
+
+Each video's caption leads with a Play / Pause button of the page's own
+(`[data-video-play]`), a `--control`-height target, because the native
+controls' tap targets are not the same on every phone and, under headless
+Chromium's touch emulation, a tap on the surface only shows them. The native
+controls stay for scrubbing; playback state drives the label.
+
+The capture driver (`cli/cadex_cli/browser.py`) gains `touch`, `touch_drag`,
+`pinch`, `tap`, a `by_touch` download and a `clip` on `screenshot`, so the
+phone test and the operator capture drive the page as a finger would.
+Evidence: `test_phone_touch_orbits_pinches_plays_and_downloads` (orbit,
+pinch, Fit, legible curves, playback from a tap, download by tap with the
+recorded digest, all at 400×850 with touch emulation on a real encoded
+video), the phone receipt and seven region screenshots on the operator URL
+(`docs/REVIEW-DESIGN.md` §8a), and §9 of the spec rewritten to say exactly
+which test shows what. One behaviour of Chromium's gesture recogniser is
+recorded rather than worked around in the page: a tap within a few hundred
+milliseconds of a drag's end is dropped, so the capture script waits a
+second before tapping Fit. No engine, protocol, payload, shell or dependency
+change.

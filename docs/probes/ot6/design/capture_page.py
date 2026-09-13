@@ -10,12 +10,17 @@ reported: the selected project and run, horizontal overflow at each width,
 the computed type sizes of the headings and body, and the palette tokens the
 stylesheet declares (the spec's names, plus the pre-spec names so the same
 script measured the "before"; a name the stylesheet no longer declares is
-simply absent). Inspects only; it never starts or stops a server, and
+simply absent). At the phone size it also drives the page by touch — a
+one-finger drag on the model, a tap on Fit — and records the camera before
+and after, then clips each of the spec's regions (§2) to
+``<label>-400-<region>.png``, at most one phone screen tall, recording each
+region's full height. Inspects only; it never starts or stops a server, and
 the URL is an argument so no private address enters a committed file.
 """
 import json
 from pathlib import Path
 import sys
+import time
 
 from cdp_browser import HeadlessBrowser, find_browser
 
@@ -47,6 +52,9 @@ MEASURE = """(function () {
 })()"""
 
 
+REGIONS = ("top", "sidebar", "identity", "model", "curves", "videos-region", "record")
+
+
 def capture(browser, url, width, height, mobile, path):
     page = browser.page("about:blank")
     page.send("Emulation.setDeviceMetricsOverride", {
@@ -59,7 +67,48 @@ def capture(browser, url, width, height, mobile, path):
     page.wait_for("document.getElementById('model-status').dataset.state !== 'empty'", timeout=30)
     page.wait_for("document.getElementById('freshness').dataset.state !== 'loading'", timeout=30)
     page.screenshot(path)
-    return page.evaluate(MEASURE)
+    result = page.evaluate(MEASURE)
+    if not mobile:
+        return result
+    # Touch: one finger orbits, a tap on Fit restores the camera. The page
+    # must not scroll under the finger.
+    page.scroll_into_view("#viewer")
+    box = page.rect("#viewer")
+    cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    before = page.evaluate("window.cadexReview.viewer().camera()")
+    scroll = page.evaluate("scrollY")
+    page.touch_drag(cx, cy, cx + 120, cy + 50)
+    after = page.evaluate("window.cadexReview.viewer().camera()")
+    scrolled = page.evaluate("scrollY") - scroll
+    # A finger lifts and comes back: Chromium drops a tap that lands within
+    # a few hundred ms of the drag's end, on a phone as under emulation.
+    time.sleep(1.0)
+    page.tap(*_centre(page, "#model-fit"))
+    try:
+        fitted = page.wait_for("(function(){var c=window.cadexReview.viewer().camera(); return c.yaw === 0.8 && c})()", timeout=5)
+    except Exception:  # noqa: BLE001 — recorded as a failure, not raised
+        fitted = page.evaluate("window.cadexReview.viewer().camera()")
+    result["touch"] = {"camera_before": before, "camera_after_drag": after,
+                       "orbited": after["yaw"] != before["yaw"] and after["pitch"] != before["pitch"]
+                       and after["distance"] == before["distance"],
+                       "page_scrolled_px": scrolled,
+                       "camera_after_fit": fitted, "fit_restored": fitted == before}
+    page.evaluate("scrollTo(0, 0)")
+    result["regions"] = {}
+    for region in REGIONS:
+        box = page.rect("#" + region)
+        clip = dict(box, height=min(box["height"], height))
+        region_path = path.with_name(f"{path.stem.split('-')[0]}-400-{region}.png")
+        page.screenshot(region_path, clip=clip)
+        result["regions"][region] = {"width": box["width"], "height": box["height"],
+                                     "captured_height": clip["height"], "png_bytes": region_path.stat().st_size}
+    return result
+
+
+def _centre(page, selector):
+    page.scroll_into_view(selector)
+    box = page.rect(selector)
+    return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
 
 
 def main(url, out, label):

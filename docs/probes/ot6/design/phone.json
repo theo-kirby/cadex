@@ -1,0 +1,231 @@
+{
+  "url_host": "8765",
+  "shots": {
+    "1400": {
+      "innerWidth": 1400,
+      "innerHeight": 900,
+      "visual_viewport": {
+        "width": 1385,
+        "scale": 1
+      },
+      "scrollWidth": 1385,
+      "horizontal_overflow_px": 0,
+      "page_height": 3829,
+      "fonts": {
+        "body": "14px",
+        "h1": "22px",
+        "h2": "17px",
+        "badge": "12px",
+        "mono": "12px",
+        "small": "12px",
+        "button": "14px"
+      },
+      "canvas": {
+        "width": 999,
+        "height": 561.9375,
+        "left": 345
+      },
+      "sidebar": {
+        "width": 280,
+        "top": 109.1875
+      },
+      "tokens": {
+        "--bg": "#141414",
+        "--surface": "#1b1b1b",
+        "--surface-2": "#242424",
+        "--surface-3": "#2c2c2c",
+        "--rule": "#3a3a3a",
+        "--rule-strong": "#4a4a4a",
+        "--ink": "#ededed",
+        "--ink-2": "#9a9a9a",
+        "--accent": "#dcdcdc",
+        "--ok": "#8be0b0",
+        "--warn": "#ffe08a",
+        "--bad": "#ff9d9d",
+        "--info": "#6ff0f0"
+      },
+      "project": "ot5-lark-copy85 \u2014 review",
+      "view": "RUN lark109-engine2",
+      "freshness": "live",
+      "model": "loaded",
+      "png_bytes": 238941
+    },
+    "400x850": {
+      "innerWidth": 400,
+      "innerHeight": 850,
+      "visual_viewport": {
+        "width": 400,
+        "scale": 1
+      },
+      "scrollWidth": 400,
+      "horizontal_overflow_px": 0,
+      "page_height": 6463,
+      "fonts": {
+        "body": "14px",
+        "h1": "22px",
+        "h2": "17px",
+        "badge": "12px",
+        "mono": "12px",
+        "small": "12px",
+        "button": "14px"
+      },
+      "canvas": {
+        "width": 350,
+        "height": 262.5,
+        "left": 25
+      },
+      "sidebar": {
+        "width": 376,
+        "top": 163.171875
+      },
+      "tokens": {
+        "--bg": "#141414",
+        "--surface": "#1b1b1b",
+        "--surface-2": "#242424",
+        "--surface-3": "#2c2c2c",
+        "--rule": "#3a3a3a",
+        "--rule-strong": "#4a4a4a",
+        "--ink": "#ededed",
+        "--ink-2": "#9a9a9a",
+        "--accent": "#dcdcdc",
+        "--ok": "#8be0b0",
+        "--warn": "#ffe08a",
+        "--bad": "#ff9d9d",
+        "--info": "#6ff0f0"
+      },
+      "project": "ot5-lark-copy85 \u2014 review",
+      "view": "RUN lark109-engine2",
+      "freshness": "live",
+      "model": "loaded",
+      "touch": {
+        "camera_before": {
+          "yaw": 0.8,
+          "pitch": 0.5,
+          "distance": 1339.4621774751774,
+          "target": [
+            0,
+            0,
+            102.69468447377805
+          ]
+        },
+        "camera_after_drag": {
+          "yaw": -0.4,
+          "pitch": 1,
+          "distance": 1339.4621774751774,
+          "target": [
+            0,
+            0,
+            102.69468447377805
+          ]
+        },
+        "orbited": true,
+        "page_scrolled_px": 0,
+        "camera_after_fit": {
+          "yaw": 0.8,
+          "pitch": 0.5,
+          "distance": 1339.4621774751774,
+          "target": [
+            0,
+            0,
+            102.69468447377805
+          ]
+        },
+        "fit_restored": true
+      },
+      "regions": {
+        "top": {
+          "width": 400,
+          "height": 151.171875,
+          "captured_height": 151.171875,
+          "png_bytes": 16167
+        },
+        "sidebar": {
+          "width": 376,
+          "height": 62.296875,
+          "captured_height": 62.296875,
+          "png_bytes": 4509
+        },
+        "identity": {
+          "width": 376,
+          "height": 641.359375,
+          "captured_height": 641.359375,
+          "png_bytes": 55010
+        },
+        "model": {
+          "width": 376,
+          "height": 791.265625,
+          "captured_height": 791.265625,
+          "png_bytes": 100043
+        },
+        "curves": {
+          "width": 376,
+          "height": 845.234375,
+          "captured_height": 845.234375,
+          "png_bytes": 65110
+        },
+        "videos-region": {
+          "width": 376,
+          "height": 87.9375,
+          "captured_height": 87.9375,
+          "png_bytes": 4989
+        },
+        "record": {
+          "width": 376,
+          "height": 3707.875,
+          "captured_height": 850,
+          "png_bytes": 58947
+        }
+      },
+      "png_bytes": 73192
+    },
+    "400-desktop": {
+      "innerWidth": 400,
+      "innerHeight": 850,
+      "visual_viewport": {
+        "width": 385,
+        "scale": 1
+      },
+      "scrollWidth": 385,
+      "horizontal_overflow_px": 0,
+      "page_height": 6790,
+      "fonts": {
+        "body": "14px",
+        "h1": "22px",
+        "h2": "17px",
+        "badge": "12px",
+        "mono": "12px",
+        "small": "12px",
+        "button": "14px"
+      },
+      "canvas": {
+        "width": 335,
+        "height": 251.25,
+        "left": 25
+      },
+      "sidebar": {
+        "width": 361,
+        "top": 163.171875
+      },
+      "tokens": {
+        "--bg": "#141414",
+        "--surface": "#1b1b1b",
+        "--surface-2": "#242424",
+        "--surface-3": "#2c2c2c",
+        "--rule": "#3a3a3a",
+        "--rule-strong": "#4a4a4a",
+        "--ink": "#ededed",
+        "--ink-2": "#9a9a9a",
+        "--accent": "#dcdcdc",
+        "--ok": "#8be0b0",
+        "--warn": "#ffe08a",
+        "--bad": "#ff9d9d",
+        "--info": "#6ff0f0"
+      },
+      "project": "ot5-lark-copy85 \u2014 review",
+      "view": "RUN lark109-engine2",
+      "freshness": "live",
+      "model": "loaded",
+      "png_bytes": 73599
+    }
+  }
+}

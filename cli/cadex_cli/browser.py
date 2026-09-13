@@ -255,8 +255,9 @@ class Page:
     def click(self, selector: str) -> None:
         self.evaluate(f"document.querySelector({json.dumps(selector)}).click()")
 
-    def download(self, selector: str, timeout: float = 15.0) -> Download:
-        """Click ``selector`` and return the download it produced, once the browser has written it.
+    def download(self, selector: str, timeout: float = 15.0, *, by_touch: bool = False) -> Download:
+        """Click ``selector`` (or tap it, ``by_touch``) and return the download it
+        produced, once the browser has written it.
 
         Raises ``BrowserError`` when the browser cancels the download, naming the
         directory and the bytes it had received, so a confinement problem reads
@@ -266,7 +267,12 @@ class Page:
         directory = self.browser.download_dir()
         self.send("Browser.setDownloadBehavior", {
             "behavior": "allow", "downloadPath": str(directory), "eventsEnabled": True})
-        self.click(selector)
+        if by_touch:
+            self.scroll_into_view(selector)
+            box = self.rect(selector)
+            self.tap(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        else:
+            self.click(selector)
         begin = self.browser.wait_event("Browser.downloadWillBegin", self.session, timeout=timeout)
         guid = begin["guid"]
         final = self.browser.wait_event(
@@ -313,6 +319,45 @@ class Page:
         self.send("Input.dispatchMouseEvent", {"type": "mouseWheel", "x": x, "y": y,
                                                "deltaX": 0, "deltaY": delta_y})
 
-    def screenshot(self, path: str | Path) -> None:
-        data = self.send("Page.captureScreenshot", {"format": "png"})["data"]
+    def touch(self, kind: str, points: list[tuple[float, float]]) -> None:
+        """One touch event as a finger would send it: ``touchStart``,
+        ``touchMove`` with every finger still down, ``touchEnd`` with none."""
+
+        self.send("Input.dispatchTouchEvent", {
+            "type": kind, "touchPoints": [{"x": x, "y": y, "id": index} for index, (x, y) in enumerate(points)]})
+
+    def touch_drag(self, x0: float, y0: float, x1: float, y1: float, steps: int = 8) -> None:
+        """A one-finger drag: touch down, moves, lift."""
+
+        self.touch("touchStart", [(x0, y0)])
+        for step in range(1, steps + 1):
+            t = step / steps
+            self.touch("touchMove", [(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)])
+        self.touch("touchEnd", [])
+
+    def pinch(self, cx: float, cy: float, start: float, end: float, steps: int = 8) -> None:
+        """Two fingers on a horizontal line through ``(cx, cy)``, their gap
+        going from ``start`` to ``end`` px: a spread when ``end > start``."""
+
+        def fingers(gap: float) -> list[tuple[float, float]]:
+            return [(cx - gap / 2, cy), (cx + gap / 2, cy)]
+        self.touch("touchStart", fingers(start))
+        for step in range(1, steps + 1):
+            self.touch("touchMove", fingers(start + (end - start) * step / steps))
+        self.touch("touchEnd", [])
+
+    def tap(self, x: float, y: float) -> None:
+        self.touch("touchStart", [(x, y)])
+        self.touch("touchEnd", [])
+
+    def screenshot(self, path: str | Path, clip: dict[str, float] | None = None) -> None:
+        """The viewport as a PNG, or ``clip`` (``x``, ``y``, ``width``,
+        ``height`` in page CSS px, from ``rect``) even when it lies beyond it."""
+
+        params: dict[str, Any] = {"format": "png"}
+        if clip:
+            params["clip"] = {"x": clip["x"] + self.evaluate("scrollX"), "y": clip["y"] + self.evaluate("scrollY"),
+                              "width": clip["width"], "height": clip["height"], "scale": 1}
+            params["captureBeyondViewport"] = True
+        data = self.send("Page.captureScreenshot", params)["data"]
         Path(path).write_bytes(base64.b64decode(data))

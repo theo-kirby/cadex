@@ -124,7 +124,8 @@ ul#videos { list-style: none; margin: 0; padding: 0; }
 ul#videos > li { margin-bottom: var(--s4); overflow-wrap: anywhere; }
 ul#videos > li:last-child { margin-bottom: 0; }
 ul#videos video { display: block; width: 100%; height: auto; background: var(--bg); border: var(--bw) solid var(--rule); border-radius: var(--radius); margin: var(--s2) 0; }
-ul#videos .caption { font-size: var(--fs-0); color: var(--ink-2); }
+ul#videos .caption { font-size: var(--fs-0); color: var(--ink-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); }
+ul#videos .caption .video-play { flex: 0 0 auto; }
 
 /* 6 · Record */
 ul#problems, ul#docs, ul#decisions, ul#disk-dirs, ul#disk-shared { margin: var(--s2) 0 0; padding-left: var(--s4); overflow-wrap: anywhere; }

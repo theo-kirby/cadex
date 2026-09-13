@@ -446,8 +446,16 @@
       var label = 'video ' + index + ' · ' + (video.path || '?') + ' · revision ' + short(video.accepted_revision || (run.model || {}).accepted_revision) + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s · ' + (video.style || 'historical legacy style');
       if (item.exists && !item.error) {
         var url = '/video/run/' + encodeURIComponent(run.run) + '/' + index;
-        line.appendChild(el('video', { controls: true, preload: 'metadata', src: url }));
-        line.appendChild(el('div', { className: 'caption' }, [el('span', { text: label }), el('span', { 'data-video-size': String(index) }),
+        var player = el('video', { controls: true, preload: 'metadata', src: url });
+        // A play control of the page's own, sized for a finger (REVIEW-DESIGN.md
+        // §5): the native controls' tap targets are not the same on every phone.
+        var play = el('button', { type: 'button', className: 'video-play', 'data-video-play': String(index), text: 'Play' });
+        play.addEventListener('click', function () { if (player.paused) player.play(); else player.pause(); });
+        ['play', 'pause', 'ended'].forEach(function (event) {
+          player.addEventListener(event, function () { play.textContent = player.paused ? 'Play' : 'Pause'; });
+        });
+        line.appendChild(player);
+        line.appendChild(el('div', { className: 'caption' }, [play, el('span', { text: label }), el('span', { 'data-video-size': String(index) }),
                                                             document.createTextNode(' · '), el('a', { href: url + '?download=1', text: 'download' })]));
       } else {
         line.appendChild(el('span', { className: 'status-missing', text: label + ' — ' + (item.error ? 'refused: ' + item.error : 'missing') + '. Retry the CLI video command after restoring the retained inputs.' }));

@@ -105,11 +105,24 @@ export function create(canvas) {
     model.visible=false;renderer.render(scene,camera);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,b);
     model.visible=true;draw();let n=0;for(let i=0;i<a.length;i+=4)if(Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2])>12)n++;return n;
   }
-  let drag=null;
-  canvas.addEventListener('mousedown',e=>{drag=[e.clientX,e.clientY];e.preventDefault();});
-  window.addEventListener('mousemove',e=>{if(!drag)return;c.yaw-=(e.clientX-drag[0])*.01;c.pitch=Math.max(-1.5,Math.min(1.5,c.pitch+(e.clientY-drag[1])*.01));drag=[e.clientX,e.clientY];draw();});
-  window.addEventListener('mouseup',()=>drag=null);
-  canvas.addEventListener('wheel',e=>{e.preventDefault();c.distance=Math.max((bounds?.radius||1)*.2,c.distance*Math.exp(e.deltaY*.0015));draw();},{passive:false});
+  // Orbit and zoom by pointer events, so a mouse and a finger drive the same
+  // camera (REVIEW-DESIGN.md §5): one pointer orbits, two pinch, the wheel
+  // zooms. The canvas captures the pointer, so a drag that leaves it still
+  // orbits, and its `touch-action: none` keeps the page from scrolling.
+  const pointers=new Map(); let pinch=0;
+  const zoom=f=>{c.distance=Math.max((bounds?.radius||1)*.2,c.distance*f);};
+  const span=()=>{const [a,b]=[...pointers.values()];return Math.hypot(a[0]-b[0],a[1]-b[1]);};
+  canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);if(pointers.size===2)pinch=span();e.preventDefault();});
+  canvas.addEventListener('pointermove',e=>{
+    const p=pointers.get(e.pointerId);if(!p)return;
+    if(pointers.size===1){c.yaw-=(e.clientX-p[0])*.01;c.pitch=Math.max(-1.5,Math.min(1.5,c.pitch+(e.clientY-p[1])*.01));}
+    pointers.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pointers.size===2){const s=span();if(s>0&&pinch>0)zoom(pinch/s);pinch=s;}
+    draw();
+  });
+  const lift=e=>{pointers.delete(e.pointerId);pinch=0;};
+  canvas.addEventListener('pointerup',lift);canvas.addEventListener('pointercancel',lift);
+  canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0015));draw();},{passive:false});
   window.addEventListener('resize',draw);
   return {available:true,load,install,clear,fit,draw,setPoses,frameBounds,setCamera,nonBackgroundPixels,
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,style:STYLE,stage}),

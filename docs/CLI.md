@@ -1667,8 +1667,10 @@ What the page shows, and where each thing comes from:
   labelled recorded render outcome is historical: `ready` does not mean its
   output still exists or passes verification. Restoring the original bytes
   recovers playback on the next poll. Videos are the D4 slot: a recorded video plays inline
-  (byte ranges are served, so seeking works) and downloads, identified by
-  policy digest, seed and simulated seconds; none recorded says so.
+  from the page's own Play control or the native controls (byte ranges are
+  served, so seeking works) and downloads, identified by policy digest, seed
+  and simulated seconds; none recorded says so. The model orbits by mouse or
+  finger and pinch-zooms (ADR-330).
   Downloads preserve Unicode filenames through an encoded UTF-8 name and an
   ASCII fallback in the response header (ADR-323).
   A download the browser cancels mid-transfer is the client's decision: the

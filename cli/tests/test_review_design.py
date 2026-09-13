@@ -19,7 +19,9 @@ abreast at desk and stacked on the phone.
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 import re
+import shutil
 import socket
 import struct
 import json
@@ -228,6 +230,82 @@ def test_rendered_page_follows_the_spec(served, browser, size) -> None:
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
+def _centre(page, selector):
+    page.scroll_into_view(selector)
+    box = page.rect(selector)
+    return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+
+
+@needs_browser
+def test_phone_touch_orbits_pinches_plays_and_downloads(served, browser) -> None:
+    """D2's interaction half at 400×850 with touch emulation, on a run with a
+    real encoded video: one finger orbits the model without scrolling the
+    page, two fingers pinch-zoom, a tap on Fit resets the camera, the curves
+    are legible, a tap starts the video and a tap downloads it whole."""
+
+    from cadex_cli.video import render as render_video
+    from test_video import _video_run
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("FFmpeg not available")
+    root, server = served
+    _video_run(root, "clip")
+    video = render_video(root, "clip")
+    _telemetry(root, iteration=4, run="clip")
+    page = _rendered(browser, server.url, "phone")
+    page.evaluate("window.cadexReview.select('clip')", await_promise=True)
+    assert _model_state(page) == "loaded"
+    page.wait_for("document.querySelectorAll('[data-history] svg').length === 3")
+    assert page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()") > 1000, "the model is not drawn"
+    # One finger orbits: yaw and pitch change, the distance does not, and the
+    # page stays where it was (touch-action: none on the canvas).
+    cx, cy = _centre(page, "#viewer")
+    before = page.evaluate("window.cadexReview.viewer().camera()")
+    scroll = page.evaluate("scrollY")
+    page.touch_drag(cx, cy, cx + 120, cy + 50)
+    orbited = page.wait_for(
+        "(function(){var c=window.cadexReview.viewer().camera();"
+        f"return (c.yaw !== {before['yaw']} && c.pitch !== {before['pitch']}) && c}})()")
+    assert orbited["distance"] == before["distance"]
+    assert page.evaluate("scrollY") == scroll, "the drag scrolled the page"
+    # Two fingers spreading zoom in; the orbit is untouched.
+    page.pinch(cx, cy, 60, 180)
+    zoomed = page.wait_for(
+        "(function(){var c=window.cadexReview.viewer().camera();"
+        f"return c.distance < {orbited['distance']} && c}})()")
+    assert zoomed["yaw"] == orbited["yaw"] and zoomed["pitch"] == orbited["pitch"]
+    assert page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()") > 1000
+    # A tap on Fit — a 40 px control under a coarse pointer — resets the camera.
+    assert page.rect("#model-fit")["height"] >= 40
+    page.tap(*_centre(page, "#model-fit"))
+    reset = page.wait_for("(function(){var c=window.cadexReview.viewer().camera(); return c.yaw === 0.8 && c})()")
+    assert reset["distance"] == before["distance"]
+    # The curves are legible: each history fills the width, its caption is
+    # body-sized or larger, and nothing on the page is below 12 px.
+    curves = page.evaluate("""Array.from(document.querySelectorAll('[data-history]')).map(function (n) {
+      var r = n.getBoundingClientRect(), s = n.querySelector('svg').getBoundingClientRect();
+      return {width: r.width, svg: s.width, height: s.height,
+              caption: Math.min.apply(null, Array.from(n.querySelectorAll('*')).map(function (e) {
+                return parseFloat(getComputedStyle(e).fontSize); }))}; })""")
+    assert len(curves) == 3
+    for curve in curves:
+        assert curve["svg"] >= 0.9 * curve["width"] >= 300 and curve["height"] >= 60, curve
+        assert curve["caption"] >= 12, curve
+    # The video plays from a tap on the page's own Play control, which then
+    # reads Pause, and a tap on the download link fetches it whole.
+    page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+    assert page.rect("#videos video")["width"] >= 0.9 * (SIZES["phone"][0] - 2 * PHONE_GUTTER - 2 * PHONE_GUTTER)
+    page.evaluate("document.querySelector('#videos video').muted = true")
+    assert page.text("#videos [data-video-play]") == "Play" and page.rect("#videos [data-video-play]")["height"] >= 40
+    page.tap(*_centre(page, "#videos [data-video-play]"))
+    page.wait_for("(function(){var v=document.querySelector('#videos video');return !v.paused && v.currentTime > 0.1})()")
+    assert page.text("#videos [data-video-play]") == "Pause"
+    download = page.download("#videos li[data-video] a[href$='download=1']", by_touch=True)
+    assert hashlib.sha256(download.path.read_bytes()).hexdigest() == video["sha256"]
+    assert download.received_bytes == download.total_bytes == download.path.stat().st_size
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
 def test_after_receipt_records_the_page_the_spec_describes():
     """The operator URL, captured at both sizes after the redesign (§8)."""
 
@@ -252,3 +330,31 @@ def test_after_receipt_records_the_page_the_spec_describes():
 def test_after_screenshots_are_the_two_charter_sizes():
     assert png_size(REPO / "docs/review-design/after-1400.png") == (1400, 900)
     assert png_size(REPO / "docs/review-design/after-400x850.png") == (400, 850)
+
+
+REGIONS = ("top", "sidebar", "identity", "model", "curves", "videos-region", "record")
+
+
+def test_phone_receipt_records_touch_orbit_and_every_region_on_the_operator_url():
+    """The operator URL at 400×850 under touch emulation (§8): a one-finger
+    drag orbited without scrolling the page, a tap on Fit restored the
+    camera, and each of §2's regions was clipped to a screenshot at most one
+    phone screen tall, committed beside the spec under the image cap."""
+
+    receipt = json.loads((REPO / "docs/probes/ot6/design/phone.json").read_text())
+    phone = receipt["shots"]["400x850"]
+    assert phone["project"].endswith(" — review") and phone["view"].startswith("RUN ")
+    assert phone["freshness"] == "live" and phone["model"] == "loaded"
+    assert phone["innerWidth"] == 400 and phone["horizontal_overflow_px"] == 0
+    touch = phone["touch"]
+    assert touch["orbited"] and touch["page_scrolled_px"] == 0 and touch["fit_restored"]
+    assert touch["camera_after_drag"]["distance"] == touch["camera_before"]["distance"]
+    assert touch["camera_after_fit"] == touch["camera_before"]
+    assert tuple(phone["regions"]) == REGIONS
+    text = SPEC.read_text()
+    for region, measured in phone["regions"].items():
+        assert measured["captured_height"] == min(measured["height"], 850)
+        width, height = png_size(REPO / f"docs/review-design/phone-{region}.png")
+        # A clip's fractional height is truncated by the browser, not rounded.
+        assert width == int(measured["width"]) and height == int(measured["captured_height"]), region
+        assert f"phone-{region}.png" in text, f"spec §8 does not cite phone-{region}.png"

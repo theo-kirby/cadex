@@ -167,9 +167,16 @@ A 4 px base: `--s1` 4, `--s2` 8, `--s3` 12, `--s4` 16, `--s5` 24, `--s6` 32.
   620 px tall) and 4:3 on phone, always the full width of its column, with
   `touch-action: none` so a one-finger drag orbits instead of scrolling the
   page. The canvas backing store follows the box, so the model is never
-  stretched.
+  stretched. **Orbit is by pointer events** (ADR-330): one pointer — mouse
+  or finger — orbits, two fingers pinch-zoom, the wheel zooms, and the
+  canvas captures the pointer so a drag that leaves it still orbits. The
+  Fit button restores the framing.
 - **Video** elements are the full width of their card with the same radius as
-  the viewport; the caption sits beneath, never overlaid.
+  the viewport; the caption sits beneath, never overlaid, and leads with a
+  **Play / Pause control of the page's own** (`[data-video-play]`, a
+  `--control`-height button) because the native controls' tap targets differ
+  from phone to phone; the native controls stay for scrubbing. The download
+  link is the caption's last item.
 
 ## 6. Breakpoints
 
@@ -275,14 +282,72 @@ The rendered-page half of `cli/tests/test_review_design.py` asserts §6's five
 invariants at both sizes on a fixture project, and pins the receipt above to
 this table.
 
+### 8a. The phone, region by region, and by touch
+
+Captured the same day on the same operator URL, same project and run, by
+the same script with the label `phone` (receipt:
+`docs/probes/ot6/design/phone.json`), after the viewer moved to pointer
+events. Under touch emulation at 400 × 850 the script dragged one finger
+120 × 50 px across the model, then tapped Fit:
+
+| | before | after the drag | after Fit |
+|---|---|---|---|
+| yaw / pitch | 0.8 / 0.5 | **−0.4 / 1.0** | 0.8 / 0.5 |
+| distance | 1 339.46 mm | 1 339.46 mm | 1 339.46 mm |
+| page scroll during the drag | | **0 px** | |
+
+Then it clipped each region of §2 to a screenshot at most one phone screen
+tall (the quantised copies are beside this document):
+
+| # | Region | Height at 400 px | Screenshot |
+|---|---|---|---|
+| 0 | Masthead | 151 px | [phone-top.png](review-design/phone-top.png) |
+| 1 | Run selection (closed disclosure) | 62 px | [phone-sidebar.png](review-design/phone-sidebar.png) |
+| 2 | Identity | 641 px | [phone-identity.png](review-design/phone-identity.png) |
+| 3 | Model | 791 px | [phone-model.png](review-design/phone-model.png) |
+| 4 | Curves | 845 px | [phone-curves.png](review-design/phone-curves.png) |
+| 5 | Videos | 88 px (this run recorded none) | [phone-videos-region.png](review-design/phone-videos-region.png) |
+| 6 | Record | 3 708 px, first 850 shown | [phone-record.png](review-design/phone-record.png) |
+
+The masthead is the full 400 px; every other region is 376 px inside the
+12 px gutters. `test_phone_receipt_records_touch_orbit_and_every_region_on_the_operator_url`
+pins the receipt and the PNG sizes to this table.
+
 ## 9. Evidence for D1 and D2
 
-D1's evidence is this document, the before and after screenshots at the two
-sizes committed beside it, the design test asserting §6's invariants and §4's
-tokens on the rendered page, and the operator URL showing the new design on
-the active project (§8). What D1 still lacks is the viewport's half of "one
-palette": the light scene stays until D3 removes it. D2's evidence is the same test's phone half: touch emulation at
-400 × 850, a touch orbit that changes the camera, curves legible, a video
-that plays and downloads. Each ships as a receipt under `docs/probes/ot6/`
-within the charter's caps (16 KB per receipt, 200 KB per image), which
-`cli/tests/test_review_design.py` enforces.
+**D1** has this document; the before and after screenshots at the two sizes
+beside it (§7, §8); `test_rendered_page_follows_the_spec`, which reads §4's
+tokens, §3's type scale and §6's invariants back from the rendered page at
+both sizes; and the operator URL receipts showing the design on the active
+project and run (§8). What D1 still lacks is the viewport's half of "one
+palette": the light scene stays until D3 removes it.
+
+**D2** has two halves, both in `cli/tests/test_review_design.py`, both at
+400 × 850 with `Emulation.setDeviceMetricsOverride(mobile: true)` and touch
+emulation, both skipping without a Chromium:
+
+- *Layout* — `test_rendered_page_follows_the_spec[phone]`: the layout
+  viewport is 400 px, nothing overflows it, nothing is below 12 px, the
+  run list is a closed disclosure that opens on a tap, the canvas fills the
+  width, the three curves stack at ≥ 90 % of their card. §8's receipt shows
+  the same on the operator URL.
+- *Interaction* — `test_phone_touch_orbits_pinches_plays_and_downloads`, on a
+  fixture run with a real FFmpeg-encoded video (skips without FFmpeg): a
+  one-finger drag dispatched as `Input.dispatchTouchEvent` orbits the model
+  (yaw and pitch change, distance does not) and the page does not scroll; a
+  two-finger spread zooms in without disturbing the orbit; a tap on the
+  40 px Fit control restores the camera; each curve fills its width with a
+  caption of at least 12 px; a tap on the Play control starts playback
+  (the control reads Pause, `currentTime` advances); a tap on the download
+  link fetches the file whole, with the recorded SHA-256. §8a's receipt
+  shows the orbit and the Fit tap on the operator URL, and the region
+  screenshots are §8a's table.
+
+What the evidence is not: a physical phone. Headless Chromium's touch
+emulation and its gesture recogniser are what is measured, and one of that
+recogniser's behaviours is recorded in the capture script — a tap landing
+within a few hundred milliseconds of a drag's end is dropped, on a device as
+under emulation, so the script lets a second pass before tapping Fit.
+
+Every receipt ships under `docs/probes/ot6/` within the charter's caps
+(16 KB per receipt, 200 KB per image), which the same test file enforces.
