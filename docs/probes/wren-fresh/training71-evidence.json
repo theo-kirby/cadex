@@ -1,0 +1,569 @@
+{
+  "run": "wren71",
+  "geometry": {
+    "wren_model-model.xml": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+    "wren_walk-task.json": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276"
+  },
+  "accepted_revision": "062e927c0196cc06ef7250010c40dbb6069cad4f2a7d1bef113d0845db4207b9",
+  "digest": "4d327bf8081a94e8fb4e407332a89607488650d82cbaff9bf07cd996a777d66f",
+  "intermediate": {
+    "run": "wren71-checkpoint20",
+    "start": 1789273048.6047075,
+    "end": 1789273095.1519377,
+    "before": 18,
+    "after": 35,
+    "trainer_active_after_browser": true,
+    "browser_check_exit": 0,
+    "render_start": 1789273079.0459855,
+    "render_end": 1789273093.0845492,
+    "render_seconds": 14.039,
+    "render_before": 23,
+    "render_after": 33,
+    "video": {
+      "path": "rollout-3fef14c9cde01bffb632c500a7bde061bd00c72e18a0fe550989fde802c53d37.webm",
+      "sha256": "3fef14c9cde01bffb632c500a7bde061bd00c72e18a0fe550989fde802c53d37",
+      "frames": 81,
+      "duration_seconds": 8.1,
+      "sim_seconds": 8.0,
+      "style": "cadex-prototype-light-v1",
+      "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+      "render_seconds": 13.87
+    },
+    "witness": {
+      "witness_error": 2.799686037749635e-08,
+      "witness_tolerance": 0.0001,
+      "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+      "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276"
+    },
+    "policy_sha256": "442261d16a37593cfa88752cf5ebf6ca285ac0e359b500821235f3f49711f1ba",
+    "overhead": {
+      "note": "trainer-committed iteration intervals; the render window is wall clock around the video render only",
+      "before_window": {
+        "count": 22,
+        "median_s": 1.426,
+        "median_excluding_checkpoint_boundaries_s": 1.435,
+        "max_s": 54.859
+      },
+      "during_window": {
+        "count": 9,
+        "median_s": 1.356,
+        "median_excluding_checkpoint_boundaries_s": 1.356,
+        "max_s": 1.418
+      },
+      "after_window": {
+        "count": 24,
+        "median_s": 1.29,
+        "median_excluding_checkpoint_boundaries_s": 1.304,
+        "max_s": 31.632
+      },
+      "during_rows": [
+        {
+          "iteration": 25,
+          "seconds": 1.1,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 26,
+          "seconds": 1.2,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 27,
+          "seconds": 1.309,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 28,
+          "seconds": 1.322,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 29,
+          "seconds": 1.356,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 30,
+          "seconds": 1.397,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 31,
+          "seconds": 1.418,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 32,
+          "seconds": 1.417,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 33,
+          "seconds": 1.404,
+          "checkpoint_boundary": false
+        }
+      ]
+    }
+  },
+  "final": {
+    "run": "wren71-final",
+    "start": 1789273649.1828227,
+    "end": 1789273668.9821193,
+    "before": 239,
+    "after": 239,
+    "trainer_active_after_browser": false,
+    "browser_check_exit": 0,
+    "render_start": 1789273653.8320374,
+    "render_end": 1789273666.5139215,
+    "render_seconds": 12.682,
+    "render_before": 239,
+    "render_after": 239,
+    "video": {
+      "path": "rollout-a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5.webm",
+      "sha256": "a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5",
+      "frames": 81,
+      "duration_seconds": 8.1,
+      "sim_seconds": 8.0,
+      "style": "cadex-prototype-light-v1",
+      "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+      "render_seconds": 12.521
+    },
+    "witness": {
+      "witness_error": 7.87736723204737e-08,
+      "witness_tolerance": 0.0001,
+      "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+      "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276"
+    },
+    "policy_sha256": "fa7b28b8732a6a5d7b86f3157ecfa81ab531d374c5c53a38415edde0da71b343"
+  },
+  "preserved_records": {
+    "wren1": "eba33745218626ce955109f5f0377621f3f3a76726c64ff3b67331f7faf97241",
+    "wren1-checkpoint20": "bb07f0d0edb8fc8dc714615d15b4f2fc6218994c9c4d44e11fd6a00f7f9b1315",
+    "wren1-final": "62116e187388bb5d6d0539d9271a95a4b8adf734aa8fed35fcd9df311df2b65d",
+    "wren2": "360d954e2fed7f4f54e3581c2d3d04200846efa37e31c3afa29d7ad0b5cdf227",
+    "wren2-checkpoint20": "62995ef4c75a4ac49ca04113da964df1d3bd53352b2f893f7336dae773f4c387",
+    "wren2-final": "7ad2a954662b069ac27dc403e9e789ce231cfa80528d5033a83fffe32a0428dc",
+    "wren56-interrupt": "96e0a1528ecd3636d5f0e4beafa341779dc6021a145f8d605505e4d9a9865005",
+    "wren56b-interrupt": "5873311633d25a59781abb3dd310c762f404d77a0f1045ac5505fe9964116268",
+    "wren56c-interrupt": "864776a1149af1141615af3ddb430f92e62cccb787b6df3cc377c8913be761e0",
+    "wren56c-retry": "b0911b05fd5c321527d02c6f28dc5a167a755fef556ed6b6a212ad60c02a71e5",
+    "wren57-interrupt": "f535430aabaf02961950953a8ef76934b0337cc7d0c4c57417fe5ab8b2084caf",
+    "wren57-retry": "e92f381dda330d365e61d32762686e57e2c32f67b628e03fd4e8877404da8569",
+    "wren66": "89fc816ec9bea5e74014770c58abf9fd25192d301a2151315ba354123e870f53",
+    "wren66-checkpoint20": "5150b88eed4b49532e8d620e02518a71f4230f26e293be80e1a657b86f6be21e",
+    "wren66-final": "535333a0aeb771342e1b37a8ddc2f5ff11b5d2494f136aff5d24195f8a85a576"
+  },
+  "training_exit": 0,
+  "training_wall_seconds": 729.671,
+  "trainer_final": {
+    "iteration": 239,
+    "state": "done",
+    "reward_per_step": 0.3177766501903534,
+    "loss": 0.1686094105243683,
+    "episode_steps": 353.10345458984375,
+    "seconds": null,
+    "device": "gpu"
+  },
+  "memory": {
+    "host_peak_bytes": 7395639296,
+    "gpu_peak_mib": 31525,
+    "samples": 149,
+    "gpu_peak_scope": "whole GPU, including concurrent test/browser processes; not trainer-attributed"
+  },
+  "observer_exit": 0,
+  "schema": "wren-training-evidence-v1",
+  "project": "ot5-wren-copy54",
+  "resource_bound": {
+    "MemoryCurrent": "4841205760",
+    "MemoryPeak": "5037666304",
+    "MemoryMax": "21474836480",
+    "ActiveState": "active"
+  },
+  "live_browser": {
+    "run": "wren71",
+    "persistent_server": true,
+    "samples": [
+      {
+        "t": 0.0,
+        "file_state": "training",
+        "file_iteration": 4,
+        "page_iteration": 3,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.42666",
+        "loss": "loss: 25.065",
+        "episode_steps": "episode_steps: 44.814",
+        "curve_points": "4",
+        "loss_points": "4",
+        "checkpoints": 1
+      },
+      {
+        "t": 1.25,
+        "file_state": "training",
+        "file_iteration": 5,
+        "page_iteration": 4,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.024884",
+        "loss": "loss: 12.411",
+        "episode_steps": "episode_steps: 93.516",
+        "curve_points": "5",
+        "loss_points": "5",
+        "checkpoints": 1
+      },
+      {
+        "t": 3.01,
+        "file_state": "training",
+        "file_iteration": 6,
+        "page_iteration": 6,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.23587",
+        "loss": "loss: 17.885",
+        "episode_steps": "episode_steps: 83.252",
+        "curve_points": "7",
+        "loss_points": "7",
+        "checkpoints": 1
+      },
+      {
+        "t": 5.02,
+        "file_state": "training",
+        "file_iteration": 7,
+        "page_iteration": 7,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.18456",
+        "loss": "loss: 18.105",
+        "episode_steps": "episode_steps: 68.040",
+        "curve_points": "8",
+        "loss_points": "8",
+        "checkpoints": 1
+      },
+      {
+        "t": 7.03,
+        "file_state": "training",
+        "file_iteration": 9,
+        "page_iteration": 9,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.00059045",
+        "loss": "loss: 12.911",
+        "episode_steps": "episode_steps: 124.88",
+        "curve_points": "10",
+        "loss_points": "10",
+        "checkpoints": 1
+      },
+      {
+        "t": 9.03,
+        "file_state": "training",
+        "file_iteration": 10,
+        "page_iteration": 10,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.0073934",
+        "loss": "loss: 13.587",
+        "episode_steps": "episode_steps: 99.902",
+        "curve_points": "11",
+        "loss_points": "11",
+        "checkpoints": 1
+      },
+      {
+        "t": 11.04,
+        "file_state": "training",
+        "file_iteration": 11,
+        "page_iteration": 11,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: 0.065908",
+        "loss": "loss: 13.114",
+        "episode_steps": "episode_steps: 105.57",
+        "curve_points": "12",
+        "loss_points": "12",
+        "checkpoints": 1
+      }
+    ],
+    "first_seen": {
+      "4": {
+        "committed_to_page_s": 1.61,
+        "polled_to_page_s": 1.25
+      },
+      "6": {
+        "committed_to_page_s": 0.46,
+        "polled_to_page_s": 0.25
+      },
+      "7": {
+        "committed_to_page_s": 0.96,
+        "polled_to_page_s": 0.75
+      },
+      "9": {
+        "committed_to_page_s": 0.07,
+        "polled_to_page_s": 0.0
+      },
+      "10": {
+        "committed_to_page_s": 0.61,
+        "polled_to_page_s": 0.5
+      },
+      "11": {
+        "committed_to_page_s": 1.13,
+        "polled_to_page_s": 1.0
+      }
+    },
+    "project_name": "ot5-wren-copy54 \u2014 review",
+    "accepted": "accepted now: revision 062e927c0196 \u00b7 digest 4d327bf8081a \u00b7 updated 2026-09-13T04:15:18Z \u00b7 16 run(s)",
+    "runs": [
+      "wren1-checkpoint20",
+      "wren1",
+      "wren1-final",
+      "wren2-checkpoint20",
+      "wren2",
+      "wren2-final",
+      "wren56-interrupt",
+      "wren56b-interrupt",
+      "wren56c-interrupt",
+      "wren56c-retry",
+      "wren57-interrupt",
+      "wren57-retry",
+      "wren66-checkpoint20",
+      "wren66",
+      "wren66-final",
+      "wren71"
+    ],
+    "default_view_kind": "RUN wren71",
+    "current_run_label": "Current run: wren71",
+    "view_revision": "062e927c0196cc06ef7250010c40dbb6069cad4f2a7d1bef113d0845db4207b9",
+    "view_relation": "CURRENT \u2014 this run's revision is the accepted revision now",
+    "model_state": "loaded",
+    "model_components": "c_ground \u2190 ground \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_torso \u2190 torso \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_thigh_l \u2190 thigh_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_thigh_r \u2190 thigh_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_shin_l \u2190 shin_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_shin_r \u2190 shin_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_foot_l \u2190 foot_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_foot_r \u2190 foot_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)",
+    "params": "namevaluedefaultminmaxunitlabelfoot_len908560120mmFoot length (X)foot_t\u20148515mmFoot thicknessfoot_w\u2014402560mmFoot width (Y)hip_spacing\u20146040100mmLateral distance between leg centerlineslimb_w\u2014161025mmLeg member width/depthpolicy_on0001\u20141 = declare trained policy + rolloutprinted_density\u201412404002000kg/m3Printed material densityshin_len\u20148560130mmKnee-to-ankle lengththigh_len\u20148560130mmHip-to-knee lengthtorso_d\u20146040100mmTorso depth (forward X)torso_h\u20147550120mmTorso heighttorso_w\u201410060160mmTorso width (lateral Y)",
+    "orbit_zoom": true,
+    "page_iterations": [
+      3,
+      4,
+      6,
+      7,
+      9,
+      10,
+      11
+    ],
+    "file_iterations": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ],
+    "reload_count": 1,
+    "ok": true
+  },
+  "policies": {
+    "wren71-checkpoint20": {
+      "browser": {
+        "persistent_server": true,
+        "private_address_same_machine": true,
+        "browser_playback": true,
+        "foot_len_mm": 90.0,
+        "components": 8,
+        "curves_present": true,
+        "fresh_selection": "RUN wren71",
+        "historical_selection": null,
+        "download_sha256": "3fef14c9cde01bffb632c500a7bde061bd00c72e18a0fe550989fde802c53d37",
+        "decoded_frames": 81,
+        "decoded_frames_differ": true,
+        "encoded_seconds": 8.1,
+        "simulation_seconds": 8.0,
+        "accepted_revision": "3184c5dfc0f21290eaf44c1b8d91b677ad580dabec412ab54c22ad29b0aca80e",
+        "policy_sha256": "442261d16a37593cfa88752cf5ebf6ca285ac0e359b500821235f3f49711f1ba",
+        "seed": 0,
+        "style": "cadex-prototype-light-v1",
+        "returned_to_current": "RUN wren71"
+      },
+      "video": {
+        "accepted_revision": "3184c5dfc0f21290eaf44c1b8d91b677ad580dabec412ab54c22ad29b0aca80e",
+        "bounds": {
+          "center": [
+            0.0,
+            0.0,
+            127.8813289859041
+          ],
+          "max": [
+            300.0,
+            300.0,
+            265.7626579718082
+          ],
+          "min": [
+            -300.0,
+            -300.0,
+            -10.0
+          ],
+          "radius": 446.1067819288551
+        },
+        "camera": {
+          "distance": 1111.0435083365383,
+          "pitch": 0.5,
+          "target": [
+            0,
+            0,
+            127.8813289859041
+          ],
+          "yaw": 0.8
+        },
+        "duration_seconds": 8.1,
+        "fps": 10,
+        "frames": 81,
+        "height": 512,
+        "model_digest": "b147e221aa9a62ebdbe270400042683b6fbb5b3885dcc264d1b05b5147fba439",
+        "path": "rollout-3fef14c9cde01bffb632c500a7bde061bd00c72e18a0fe550989fde802c53d37.webm",
+        "policy_sha256": "442261d16a37593cfa88752cf5ebf6ca285ac0e359b500821235f3f49711f1ba",
+        "projection": "perspective 55 degrees",
+        "render_seconds": 13.87,
+        "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+        "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+        "seed": 0,
+        "sha256": "3fef14c9cde01bffb632c500a7bde061bd00c72e18a0fe550989fde802c53d37",
+        "sim_seconds": 8.0,
+        "style": "cadex-prototype-light-v1",
+        "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+        "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+        "trace_sha256": "fe0c16be9629970ccee84a8fba27f297583abc8712a81f252730c85fd8236d8e",
+        "width": 512
+      },
+      "episode_limit_s": 8,
+      "seed": 0,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        49.09419607347511,
+        2.1481694178314563,
+        -33.47701469608552
+      ],
+      "total_reward": 216.02037122514406,
+      "policy_sha256": "442261d16a37593cfa88752cf5ebf6ca285ac0e359b500821235f3f49711f1ba",
+      "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+      "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+      "trace_sha256": "fe0c16be9629970ccee84a8fba27f297583abc8712a81f252730c85fd8236d8e"
+    },
+    "wren71-final": {
+      "browser": {
+        "persistent_server": true,
+        "private_address_same_machine": true,
+        "browser_playback": true,
+        "foot_len_mm": 90.0,
+        "components": 8,
+        "curves_present": true,
+        "fresh_selection": "RUN wren71-final",
+        "historical_selection": "wren71-checkpoint20",
+        "download_sha256": "a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5",
+        "decoded_frames": 81,
+        "decoded_frames_differ": true,
+        "encoded_seconds": 8.1,
+        "simulation_seconds": 8.0,
+        "accepted_revision": "e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb",
+        "policy_sha256": "fa7b28b8732a6a5d7b86f3157ecfa81ab531d374c5c53a38415edde0da71b343",
+        "seed": 0,
+        "style": "cadex-prototype-light-v1",
+        "returned_to_current": "RUN wren71-final"
+      },
+      "video": {
+        "accepted_revision": "e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb",
+        "bounds": {
+          "center": [
+            0.0,
+            0.0,
+            127.8813289859041
+          ],
+          "max": [
+            300.0,
+            300.0,
+            265.7626579718082
+          ],
+          "min": [
+            -300.0,
+            -300.0,
+            -10.0
+          ],
+          "radius": 446.1067819288551
+        },
+        "camera": {
+          "distance": 1111.0435083365383,
+          "pitch": 0.5,
+          "target": [
+            0,
+            0,
+            127.8813289859041
+          ],
+          "yaw": 0.8
+        },
+        "duration_seconds": 8.1,
+        "fps": 10,
+        "frames": 81,
+        "height": 512,
+        "model_digest": "7a3f3a6603e4b0334975469fa64d80b067012b056ddee51363df2bb7a3e125cb",
+        "path": "rollout-a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5.webm",
+        "policy_sha256": "fa7b28b8732a6a5d7b86f3157ecfa81ab531d374c5c53a38415edde0da71b343",
+        "projection": "perspective 55 degrees",
+        "render_seconds": 12.521,
+        "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+        "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+        "seed": 0,
+        "sha256": "a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5",
+        "sim_seconds": 8.0,
+        "style": "cadex-prototype-light-v1",
+        "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+        "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+        "trace_sha256": "6ac7d87153c3d4a805ce1191117b0e655e95c37908746bc6b6efbafc0d03b8d3",
+        "width": 512
+      },
+      "episode_limit_s": 8,
+      "seed": 0,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        61.241066740537015,
+        2.3149526746682936,
+        -37.8831724158766
+      ],
+      "total_reward": 146.74562501182785,
+      "policy_sha256": "fa7b28b8732a6a5d7b86f3157ecfa81ab531d374c5c53a38415edde0da71b343",
+      "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+      "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+      "trace_sha256": "6ac7d87153c3d4a805ce1191117b0e655e95c37908746bc6b6efbafc0d03b8d3"
+    }
+  },
+  "completion_browser": {
+    "project-name": "ot5-wren-copy54 \u2014 review",
+    "view-kind": "RUN wren71-final",
+    "view-revision": "e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb",
+    "current-run": "Current run: wren71-final",
+    "params": "namevaluedefaultminmaxunitlabelfoot_len908560120mmFoot length (X)foot_t88515mmFoot thicknessfoot_w40402560mmFoot width (Y)hip_spacing606040100mmLateral distance between leg centerlineslimb_w16161025mmLeg member width/depthpolicy_on1001\u20141 = declare trained policy + rolloutprinted_density124012404002000kg/m3Printed material densityshin_len858560130mmKnee-to-ankle lengththigh_len858560130mmHip-to-knee lengthtorso_d606040100mmTorso depth (forward X)torso_h757550120mmTorso heighttorso_w10010060160mmTorso width (lateral Y)",
+    "telemetry": "Training telemetry: doneiteration: 239total: 240reward_per_step: 0.31778loss: 0.16861episode_steps: 353.10Reward per step \u00b7 240 retained samplesiterations 0\u2013239 \u00b7 range -0.42666\u20130.53891Loss \u00b7 240 retained samplesiterations 0\u2013239 \u00b7 range 0.083705\u201325.065Episode length (steps) \u00b7 240 retained samplesiterations 0\u2013239 \u00b7 range 44.814\u201320480Checkpoints: this run's train/, then recorded training run wren71wren71.000020.cxpolicy \u00b7 iteration 19 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 442261d16a37593cfa88752cf5ebf6ca285ac0e359b500821235f3f49711f1bawren71.best.cxpolicy \u00b7 iteration 18 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 f730fe1d576c8e12d0090f92d838ecb915ffd5d9d7625ee55487b569ef1178eewren71.000040.cxpolicy \u00b7 iteration 39 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 6d0051ec01d5e8a2e2e0ed2ab82ea47f8f15290e30acf9b54a8b9477ef51366awren71.000060.cxpolicy \u00b7 iteration 59 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 e43bc145af834ca13efd70c4d5b7a31752ec6ec1c8d02dc761bef1b5b815d9bdwren71.000080.cxpolicy \u00b7 iteration 79 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 62bd5a7165efaa9636e29fb5a8e7b896cffcf8d425d9fabdc4d5c56432955023wren71.000100.cxpolicy \u00b7 iteration 99 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 de86d305f2a9925282ba82e548daf61bdd675127bb53dd944ea69eb9f6ec5951wren71.000120.cxpolicy \u00b7 iteration 119 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 15ee0e90b0b1c742b91268590291dcc25397e7399f7e3192dee2bfb37f401108wren71.000140.cxpolicy \u00b7 iteration 139 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 86746a178c6605a6ca045f648953ad136a6b3da808af60f5d5f5d95fce01894dwren71.000160.cxpolicy \u00b7 iteration 159 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 9e714962d7ca51ea9613a1bebae02a14c73a079ee3d43aa7285c91bc2ced0085wren71.000180.cxpolicy \u00b7 iteration 179 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 02554e4664ae48029ceec716585309193116147f97c4fb80eae4c8bc436ae4e6wren71.000200.cxpolicy \u00b7 iteration 199 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 dfcf8f18138e027e6fa456799d3be1b8b9c5e1aa73bf133eadb4f3e888e295f5wren71.000220.cxpolicy \u00b7 iteration 219 \u00b7 retained \u00b7 from training run wren71 \u00b7 sha256 cc01dac3b7f3773c7899e313024cdee17f6c4961dcc86691e35a5745fa068265",
+    "private_address_same_machine": true,
+    "persistent_server": true,
+    "foot_len_mm": 90.0
+  },
+  "active_after_checkpoint_browser": {
+    "project-name": "ot5-wren-copy54 \u2014 review",
+    "view-kind": "RUN wren71",
+    "view-revision": "062e927c0196cc06ef7250010c40dbb6069cad4f2a7d1bef113d0845db4207b9",
+    "current-run": "Current run: wren71",
+    "params": "namevaluedefaultminmaxunitlabelfoot_len908560120mmFoot length (X)foot_t\u20148515mmFoot thicknessfoot_w\u2014402560mmFoot width (Y)hip_spacing\u20146040100mmLateral distance between leg centerlineslimb_w\u2014161025mmLeg member width/depthpolicy_on0001\u20141 = declare trained policy + rolloutprinted_density\u201412404002000kg/m3Printed material densityshin_len\u20148560130mmKnee-to-ankle lengththigh_len\u20148560130mmHip-to-knee lengthtorso_d\u20146040100mmTorso depth (forward X)torso_h\u20147550120mmTorso heighttorso_w\u201410060160mmTorso width (lateral Y)",
+    "telemetry": "Training telemetry: trainingiteration: 234total: 240reward_per_step: 0.41635loss: 1.5666episode_steps: 202.77Reward per step \u00b7 235 retained samplesiterations 0\u2013234 \u00b7 range -0.42666\u20130.53891Loss \u00b7 235 retained samplesiterations 0\u2013234 \u00b7 range 0.083705\u201325.065Episode length (steps) \u00b7 235 retained samplesiterations 0\u2013234 \u00b7 range 44.814\u201320480Checkpoints: this run's own train/ directorywren71.000020.cxpolicy \u00b7 iteration 19 \u00b7 retained \u00b7 sha256 442261d16a37593cfa88752cf5ebf6ca285ac0e359b500821235f3f49711f1bawren71.best.cxpolicy \u00b7 iteration 18 \u00b7 retained \u00b7 sha256 f730fe1d576c8e12d0090f92d838ecb915ffd5d9d7625ee55487b569ef1178eewren71.000040.cxpolicy \u00b7 iteration 39 \u00b7 retained \u00b7 sha256 6d0051ec01d5e8a2e2e0ed2ab82ea47f8f15290e30acf9b54a8b9477ef51366awren71.000060.cxpolicy \u00b7 iteration 59 \u00b7 retained \u00b7 sha256 e43bc145af834ca13efd70c4d5b7a31752ec6ec1c8d02dc761bef1b5b815d9bdwren71.000080.cxpolicy \u00b7 iteration 79 \u00b7 retained \u00b7 sha256 62bd5a7165efaa9636e29fb5a8e7b896cffcf8d425d9fabdc4d5c56432955023wren71.000100.cxpolicy \u00b7 iteration 99 \u00b7 retained \u00b7 sha256 de86d305f2a9925282ba82e548daf61bdd675127bb53dd944ea69eb9f6ec5951wren71.000120.cxpolicy \u00b7 iteration 119 \u00b7 retained \u00b7 sha256 15ee0e90b0b1c742b91268590291dcc25397e7399f7e3192dee2bfb37f401108wren71.000140.cxpolicy \u00b7 iteration 139 \u00b7 retained \u00b7 sha256 86746a178c6605a6ca045f648953ad136a6b3da808af60f5d5f5d95fce01894dwren71.000160.cxpolicy \u00b7 iteration 159 \u00b7 retained \u00b7 sha256 9e714962d7ca51ea9613a1bebae02a14c73a079ee3d43aa7285c91bc2ced0085wren71.000180.cxpolicy \u00b7 iteration 179 \u00b7 retained \u00b7 sha256 02554e4664ae48029ceec716585309193116147f97c4fb80eae4c8bc436ae4e6wren71.000200.cxpolicy \u00b7 iteration 199 \u00b7 retained \u00b7 sha256 dfcf8f18138e027e6fa456799d3be1b8b9c5e1aa73bf133eadb4f3e888e295f5wren71.000220.cxpolicy \u00b7 iteration 219 \u00b7 retained \u00b7 sha256 cc01dac3b7f3773c7899e313024cdee17f6c4961dcc86691e35a5745fa068265",
+    "private_address_same_machine": true,
+    "persistent_server": true,
+    "foot_len_mm": 90.0
+  },
+  "test_overlap": "Engine and CLI suites overlapped training and checkpoint rendering; throughput does not isolate render overhead.",
+  "final_history_points": {
+    "curve": 240,
+    "loss_curve": 240,
+    "episode_steps_curve": 240
+  }
+}

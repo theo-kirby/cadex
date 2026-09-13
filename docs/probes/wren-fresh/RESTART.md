@@ -50,3 +50,6 @@ lifecycle test separately exercises restart while an independent synthetic
 telemetry producer keeps advancing; it now also pins the fresh-visit default
 and every run's revision, digest, outcome and video identities across restart.
 The service remains running on the working copy afterward.
+
+The subsequent [real-training restart proof](RESTART-TRAINING.md) supplies
+the concurrency evidence this retained-artifact check deliberately excluded.

@@ -3,13 +3,15 @@
 Verified against source: 2026-09-13. [Cadex-new]
 
 The shared private-network dashboard on port 8765 serves **`ot5-wren-copy54`**,
-with **`wren66-final` selected by default**, playback revision
-**`de9692bd4ee5…`** and the product agent's 90 mm feet (iteration 66,
-[REVISION66.md](../wren-fresh/REVISION66.md)). That 240-update GPU retraining
-completed with exit 0; no experiment training remains active. Its checkpoint
-20 video was published while training ran and its final policy has an
-engine-verified 8-second seed-0 video; `wren57-retry` (110 mm) is the
-historical baseline the seed 0–4 comparison uses.
+with **`wren71-final` selected by default**, playback revision **`e9dee22bc90c…`**
+and the product agent's 90 mm feet. Iteration 71 completed a 240-update GPU
+repeat and restarted this persistent service during training: one unchanged
+trainer, telemetry recovery in 0.957 s, and historical `wren66-final` playback
+and download preserved. Checkpoint and final videos are verified, saved,
+playable and downloadable; a fresh completion visit confirmed the final default.
+No experiment trainer remains active. The service stays running.
+[Real-training restart proof and receipts](../wren-fresh/RESTART-TRAINING.md).
+The earlier [seed 0–4 comparison](../wren-fresh/REVISION66.md) remains historical.
 
 Iteration 69 verified two engine reopens and restarted the persistent service
 with the saved working project intact: all 15 run views matched, the open

@@ -206,7 +206,9 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
         page.wait_for("document.getElementById('telemetry').dataset.state === 'training'")
         page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
         page.evaluate("window.testVideo = document.querySelector('#videos video');"
-                      "window.lifecycleMarker = 'opened before restart'")
+                      "window.lifecycleMarker = 'opened before restart'; "
+                      "testVideo.muted = true; testVideo.loop = true; testVideo.play()", await_promise=True)
+        page.wait_for("!testVideo.paused && testVideo.currentTime > 0.1")
         page.wait_for("parseInt(document.querySelector('[data-metric=iteration]').textContent.split(': ')[1]) >= 2")
         shown_before = int(page.text("[data-metric=iteration]").split(": ")[1])
         assert page.attribute("[data-history=loss_curve]", "data-points") == str(shown_before + 1)
@@ -227,6 +229,7 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
         assert producer.alive()
 
         # Restart it on the same port; the open page recovers on its own poll.
+        restart_started = time.monotonic()
         second = ReviewCommand(root, first.port)
         assert second.url == first.url
         page.wait_for("document.getElementById('freshness').dataset.state === 'live'", timeout=10)
@@ -236,10 +239,13 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
         assert sorted(state["runs"]) == sorted(runs_before)
         assert page.text("#view-revision") == REVISION_A
         page.wait_for("parseInt(document.querySelector('[data-metric=iteration]').textContent.split(': ')[1]) > " + str(shown_before))
+        assert time.monotonic() - restart_started < 5
         shown_after = int(page.text("[data-metric=iteration]").split(": ")[1])
         assert page.attribute("#telemetry", "data-state") == "training"
         assert page.attribute("[data-history=loss_curve]", "data-points") == str(shown_after + 1)
-        assert page.evaluate("document.querySelector('#videos video') === window.testVideo && testVideo.readyState >= 2")
+        assert page.evaluate("document.querySelector('#videos video') === window.testVideo && testVideo.readyState >= 2 && !testVideo.paused")
+        playback_time = page.evaluate("testVideo.currentTime")
+        page.wait_for("testVideo.currentTime !== " + str(playback_time))
         assert hashlib.sha256(_server_video(second.url)).hexdigest() == video["sha256"]
 
         # Reopen: a fresh page against the restarted server reads the same project.

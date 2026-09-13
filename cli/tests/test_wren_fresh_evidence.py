@@ -289,3 +289,64 @@ def test_restart_receipt_preserves_every_run_across_engine_reopen_and_service_re
     for doc in ('RESTART.md', 'README.md'):
         assert 'restart69-evidence.json' in (PROBE / doc).read_text() or 'RESTART.md' in (PROBE / doc).read_text()
     assert 'restart69-evidence.json' in (PROBE / 'RESTART.md').read_text()
+
+
+def test_real_training_restart_receipt_tracks_one_trainer_and_automatic_recovery():
+    """Real GPU evidence complements the independent-producer browser regression."""
+    receipt = json.loads((PROBE / 'restart71-evidence.json').read_text())
+    assert receipt['schema'] == 'cadex-training-restart-evidence-v1'
+    assert receipt['project'] == 'ot5-wren-copy54' and receipt['run'] == 'wren71'
+    assert receipt['ok'] and receipt['private_address_same_machine'] and receipt['persistent_port'] == 8765
+    assert len(receipt['trainers_before']) == 1
+    assert receipt['trainers_before'] == receipt['trainers_after']
+    assert receipt['trainers_before'][0]['pid'] > 0 and receipt['trainers_before'][0]['start_ticks'].isdigit()
+    assert receipt['service_pids'][0] != receipt['service_pids'][1]
+    assert 0 < receipt['first_resumed_update_seconds'] < 5
+    assert receipt['iteration_after'] > receipt['iteration_before']
+    assert len(receipt['samples']) >= 7
+    iterations = [s['iteration'] for s in receipt['samples']]
+    assert iterations == sorted(set(iterations))
+    for sample in receipt['samples']:
+        assert 0 <= sample['commit_to_page_seconds'] < 5
+        assert sample['points'] == [sample['iteration'] + 1] * 3
+    assert receipt['historical_playback_preserved'] and receipt['historical_download_verified']
+    assert receipt['no_navigation'] and receipt['history'] == 'wren66-final'
+    assert receipt['fresh_default'] == receipt['return_to_current'] == 'RUN wren71'
+    assert receipt['revision'] != receipt['historical_revision']
+    old = json.loads((PROBE / 'restart69-evidence.json').read_text())
+    assert receipt['historical_video_sha256'] == old['download_before']['sha256']
+
+
+def test_restart_training_attempt_completed_with_verified_checkpoint_and_final_videos():
+    evidence = json.loads((PROBE / 'training71-evidence.json').read_text())
+    restart = json.loads((PROBE / 'restart71-evidence.json').read_text())
+    assert evidence['run'] == restart['run'] == 'wren71'
+    assert evidence['accepted_revision'] == restart['revision']
+    assert evidence['training_exit'] == evidence['observer_exit'] == 0
+    assert evidence['trainer_final']['state'] == 'done' and evidence['trainer_final']['device'] == 'gpu'
+    assert evidence['trainer_final']['iteration'] == 239
+    assert evidence['final_history_points'] == dict(curve=240, loss_curve=240, episode_steps_curve=240)
+    assert float(evidence['resource_bound']['MemoryMax']) == 20 * 1024 ** 3
+    assert evidence['memory']['host_peak_bytes'] < 20 * 1024 ** 3
+    assert evidence['training_wall_seconds'] < 1800
+    assert len(evidence['preserved_records']) == 15
+    assert evidence['intermediate']['trainer_active_after_browser']
+    assert evidence['intermediate']['after'] > evidence['intermediate']['before']
+    for phase, run in [('intermediate', 'wren71-checkpoint20'), ('final', 'wren71-final')]:
+        publication = evidence[phase]
+        policy = evidence['policies'][run]
+        assert publication['browser_check_exit'] == 0
+        assert publication['witness']['witness_error'] < publication['witness']['witness_tolerance']
+        assert policy['model_sha256'] == evidence['geometry']['wren_model-model.xml']
+        assert policy['task_sha256'] == evidence['geometry']['wren_walk-task.json']
+        assert policy['browser']['browser_playback'] and policy['browser']['decoded_frames_differ']
+        assert policy['browser']['decoded_frames'] == policy['video']['frames'] == 81
+        assert policy['browser']['download_sha256'] == publication['video']['sha256'] == policy['video']['sha256']
+        assert policy['video']['sim_seconds'] == 8 and policy['video']['duration_seconds'] == 8.1
+        assert policy['video']['seed'] == 0 and policy['video']['style'] == 'cadex-prototype-light-v1'
+        assert policy['browser']['policy_sha256'] == policy['policy_sha256'] == policy['video']['policy_sha256']
+    completion = evidence['completion_browser']
+    assert completion['view-kind'] == 'RUN wren71-final'
+    assert completion['view-revision'] == evidence['policies']['wren71-final']['video']['accepted_revision']
+    assert completion['persistent_server'] and completion['foot_len_mm'] == 90
+    assert evidence['active_after_checkpoint_browser']['view-kind'] == 'RUN wren71'

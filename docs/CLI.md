@@ -1568,7 +1568,11 @@ The [Wren working-copy restart proof](probes/wren-fresh/RESTART.md) supplies
 that retained-artifact check on the persistent private URL: two engine
 reopens, all 15 run views compared, current/historical video downloads and
 an open playing page preserved across a service restart. No trainer was
-running during that real-project check.
+running during that real-project check. The subsequent
+[real-training restart proof](probes/wren-fresh/RESTART-TRAINING.md) restarted
+the same persistent service during Wren GPU training: one unchanged trainer,
+automatic telemetry recovery within five seconds, historical playback and
+download preserved, and a fresh page selecting the active attempt.
 
 ### Exit codes
 
