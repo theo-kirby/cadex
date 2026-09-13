@@ -4,12 +4,85 @@ Verified against source: 2026-09-12. [Cadex-new]
 
 **The shared renderer is delivered (ADR-301) and its comparison has been
 repeated on the current design.** The persistent Reed dashboard, the
-`copy100` and `shin55-final` final-policy videos and the `probe3-checkpoint20`
-and `shin55-checkpoint20` recordings use the same reference-derived light
-scene. The charter's D11 evidence list is assessed item by item in the
+`copy100`, `shin55-final` and Wren's `wren57-retry` final-policy videos and the
+`probe3-checkpoint20`, `shin55-checkpoint20` and `wren2-final` recordings use
+the same reference-derived light scene. The charter's D11 evidence list is assessed item by item in the
 [lifecycle report](../reed-lifecycle/README.md#d11-assessment); the evidence
 below is that assessment's source and claims no new training experiment or
 completion of the lifecycle charter.
+
+## Repeat on Wren `wren57-retry` — iteration 64
+
+The persistent operator page now serves the Wren working copy, so the D11
+comparison was repeated on the run it selects by default, `wren57-retry` at
+accepted/playback revision `79f86c69bfc3…` (110 mm feet), with the earlier
+design's complete recording `wren2-final` (105 mm feet, its own revision
+`26332a5955e3…`) as the historical clip played, downloaded and polled from the
+same page:
+
+```bash
+PYTHONPATH=cli pixi run python docs/probes/review-style/compare.py \
+  "http://$(tailscale ip -4):8765/" "$HOME/cadex-projects/ot5-wren-copy54" \
+  "$HOME/neural-whoop" wren57-retry wren2-final style64
+```
+
+`compare.py` gained two things for this repeat, and its earlier commands stay
+true: the reference renderer is now restaged at the **same close (0.7×) and
+wide (3×) cameras** the persistent viewport is staged at, so framing scale, fog
+and shadow are compared like for like rather than only at the fit camera; and
+an **actual shipped reference frame** — `render-examples/orbit_maneuver_policy.mp4`
+at 4 s, the file the baseline decoded (`cbb4a98684bc…`), dark theme — sits in
+the side-by-side beside the reference-module light renders. [Compact
+evidence](wren.json) retains identities, cameras, stage, orbit numbers and
+image digests; the PNGs, the three-row `side-by-side.html` and its screenshot
+live in the project's `evidence/style64/`, with the retry's frames 40 and 80
+and the historical clip's frame 40 decoded afterwards with the same FFmpeg and
+digested under `motion_frames`. Nothing in the server, project or reference
+checkout was changed; the service on port 8765 was not restarted.
+
+What the run established, and what was seen in the images:
+
+- **Same pose, same camera, viewport and video.** The persistent viewport at
+  the video's fixed camera and the capture page at the identical pose are
+  byte-identical 512² PNGs (`38e90eef7395…`); the page's default fit is that
+  camera, so `persistent-default` is the same image. FFmpeg's decoded frame
+  zero of the real `wren57-retry` clip differs by mean absolute RGB error
+  **1.5044 / 255**, inside the 3 / 255 tolerance and below both Reed figures.
+- **Side by side with the reference, at three framings.** At fit, close and
+  wide, `reference-light-reed*` and `persistent-*` show the same fogged grey
+  prototype grid with `PROTOTYPE` / `1 METER` labels and fine subdivisions,
+  the same floor-to-sky fade, the same cool-grey palette and bright rough
+  component colours, the same steep key and grounded filtered shadow on Wren's
+  authored blue ground plate, at identical occupancy. At close range the
+  reference's shadow is marginally softer and wider — ADR-301's deliberate
+  tighter frustum and scale-derived bias — and at wide range both fade the
+  floor into the horizon with no stage edge, wall or ceiling seam. The shipped
+  dark drone frame has the same tile layout, label placement, major/minor
+  lines, fog-to-horizon and grounded contact shadow under a different palette
+  and subject; it is the reference-native look the light theme re-colours.
+- **Motion frames.** The retry's frames 40 and 80 (4 s and 8 s) show the policy
+  holding a bent standing pose on the plate — the recorded motion, unaltered,
+  and not a gait claim — and the historical clip's frame 40 shows the 105 mm
+  design in its own pose; all keep the same grid, labels, fog and lighting.
+- **Close and wide framing, underside, and orbit by real pointer input.**
+  Underside removes the front-sided presentation floor and leaves the plate's
+  real underside inspectable. A real left-button drag moved the camera from
+  yaw 0.8 / pitch 0.5 to yaw 2.6 / pitch 0.8 at the same 1111 mm and the grid
+  restaged around it; a wheel zoom-in to 647 mm kept the contact shadow under
+  the feet; a wheel zoom-out to 3917 mm (3.5×) restaged the environment from a
+  62 m room with fog far at 15.6 m to a 219 m room with fog far at 54.8 m and
+  major lines only, with no edge or seam. The model stayed drawn throughout
+  (50 553 / 130 069 / 4 138 model pixels).
+- **Playback, download, polling and history.** `wren2-final` is labelled
+  `HISTORICAL — recorded at 26332a5955e3, accepted now is 79f86c69bfc3`; its
+  clip played, its download digest matched its record (`59825c07950c…`, 81
+  frames, same style digest and renderer as the retry), playback survived a
+  poll, and the current-run control returned to `wren57-retry`.
+
+No visual defect was demonstrated, so no renderer change was made. Every
+observation is same-machine over the private address; the checkout still
+ships no light-themed clip, so the shipped frame is dark and the light
+comparison is the reference renderer on Wren's own geometry.
 
 ## Repeat on `shin55-final` — iteration 44
 

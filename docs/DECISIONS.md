@@ -23068,6 +23068,17 @@ real pointer drag, wheel zoom-in and zoom-out on the persistent page. On
 frame is within 1.67/255, and close/wide/orbit views show no stage edge; no
 renderer change followed. Evidence: `docs/probes/review-style/shin55.json`.
 
+Repeated on the persistent Wren copy (2026-09-12, iteration 64): with port
+8765 serving `ot5-wren-copy54`, `compare.py` now also restages the unmodified
+reference renderer at the same close and wide cameras as the persistent
+viewport and decodes an actual shipped reference frame into the side-by-side.
+On `wren57-retry` the viewport/capture PNGs are byte-identical, the decoded
+frame is within 1.5044/255, the close and wide framings agree with the
+reference apart from the deliberate shadow frustum/bias, real drag and zoom
+orbit showed no stage edge, and `wren2-final` played, downloaded and polled as
+historical. No renderer change followed. Evidence:
+`docs/probes/review-style/wren.json`.
+
 ## ADR-302 — Byte-identical outputs each keep their accepted tessellation (2026-09-12)
 
 [Cadex-new] Fixes a review defect the Reed shin55 experiment exposed on the

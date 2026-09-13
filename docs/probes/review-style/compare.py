@@ -1,4 +1,4 @@
-"""D11: real retained Reed, persistent viewport, decoded video, actual light reference.
+"""D11: real retained project, persistent viewport, decoded video, actual reference frames.
 
 PYTHONPATH=cli pixi run python docs/probes/review-style/compare.py \
     URL PROJECT REFERENCE [RUN [HISTORICAL [EVIDENCE_DIR]]]
@@ -47,6 +47,14 @@ def canvas(page, expression, name):
 
 subprocess.run(['ffmpeg','-v','error','-y','-i',str(root/'runs'/run/video['path']),
                 '-frames:v','1',str(out/'video-frame0.png')],check=True)
+# An actual shipped reference clip (dark theme, drone subject) decoded at a fixed time, so the
+# comparison also has a reference-native frame beside the reference-module light render.
+shipped = ref/'render-examples/orbit_maneuver_policy.mp4'
+subprocess.run(['ffmpeg','-v','error','-y','-ss','4','-i',str(shipped),'-frames:v','1',
+                str(out/'reference-shipped-orbit-4s.png')],check=True)
+evidence['reference_shipped_frame'] = {'video': 'render-examples/orbit_maneuver_policy.mp4',
+                                       'video_sha256': sha(shipped), 'seconds': 4, 'theme': 'dark',
+                                       'image_sha256': sha(out/'reference-shipped-orbit-4s.png')}
 with HeadlessBrowser(find_browser()) as browser:
     page = browser.page(url)
     page.evaluate('cadexReview.ready',await_promise=True)
@@ -152,9 +160,20 @@ with HeadlessBrowser(find_browser()) as browser:
           v.camera.position.set(t[0]+d*cp*Math.cos(c.yaw),t[2]+d*Math.sin(c.pitch),-t[1]-d*cp*Math.sin(c.yaw));
           v.controls.target.set(t[0],t[2],-t[1]);v.camera.lookAt(v.controls.target);
           env.setStage({camDist:d});env.setSize({floorZ:floorZ});
-          configureKeyLight(v,{focus:v.controls.target,extent:.35});v.resize();v.render();window.referenceView=v;
+          configureKeyLight(v,{focus:v.controls.target,extent:.35});v.resize();v.render();window.referenceView=v;window.referenceEnv=env;
         })()''',await_promise=True)
         canvas(page,"referenceView.renderer.domElement.toDataURL('image/png').split(',')[1]",'reference-light-reed')
+        # The same close and wide cameras the persistent viewport was staged at, restaged by the
+        # reference's own setStage, so framing scale, fog and shadow can be compared like for like.
+        for label, scale, pitch in [('close',.7,.25),('wide',3,.08)]:
+            page.evaluate('''(async()=>{
+              const {configureKeyLight}=await import('/scene.js');const v=referenceView;
+              const c=cameraValue,t=c.target.map(x=>x/1000),d=c.distance/1000*%r,yaw=1.8,pitch=%r,cp=Math.cos(pitch);
+              v.camera.position.set(t[0]+d*cp*Math.cos(yaw),t[2]+d*Math.sin(pitch),-t[1]-d*cp*Math.sin(yaw));
+              v.camera.lookAt(v.controls.target);referenceEnv.setStage({camDist:d});referenceEnv.setSize({floorZ:floorZ});
+              configureKeyLight(v,{focus:v.controls.target,extent:.35});v.render();
+            })()''' % (scale, pitch),await_promise=True)
+            canvas(page,"referenceView.renderer.domElement.toDataURL('image/png').split(',')[1]",'reference-light-reed-'+label)
     finally:server.shutdown();server.server_close()
 # Codec tolerance measured on decoded RGB, separate from lossless scene parity.
 def rgb(path):
@@ -166,15 +185,19 @@ assert error<3,error
 evidence['codec_mean_absolute_rgb_error']=error
 evidence['images']={p.name:sha(p) for p in out.glob('*.png')}
 # Standalone side-by-side review artifact; images remain project-local.
-columns=['reference-light-reed','persistent-same-pose','video-frame0']
-html='<meta charset="utf-8"><style>body{font:16px sans-serif;margin:12px}main{display:flex}figure{margin:8px}img{width:360px}</style><main>'
-for name in columns:
-    html+='<figure><figcaption>'+name+'</figcaption><img src="data:image/png;base64,'+base64.b64encode((out/(name+'.png')).read_bytes()).decode()+'"></figure>'
-html+='</main>'
+rows=[['reference-light-reed','persistent-same-pose','video-frame0'],
+      ['reference-light-reed-close','persistent-close','reference-shipped-orbit-4s'],
+      ['reference-light-reed-wide','persistent-wide','persistent-orbit-far']]
+html='<meta charset="utf-8"><style>body{font:16px sans-serif;margin:12px}main{display:flex}figure{margin:8px}img{width:360px}</style>'
+for columns in rows:
+    html+='<main>'
+    for name in columns:
+        html+='<figure><figcaption>'+name+'</figcaption><img src="data:image/png;base64,'+base64.b64encode((out/(name+'.png')).read_bytes()).decode()+'"></figure>'
+    html+='</main>'
 (out/'side-by-side.html').write_text(html)
-with HeadlessBrowser(find_browser(),width=1160,height=420) as browser:
+with HeadlessBrowser(find_browser(),width=1160,height=1250) as browser:
     page=browser.page('data:text/html;base64,'+base64.b64encode(html.encode()).decode())
-    page.send('Emulation.setDeviceMetricsOverride',{'width':1160,'height':430,'deviceScaleFactor':1,'mobile':False})
+    page.send('Emulation.setDeviceMetricsOverride',{'width':1160,'height':1260,'deviceScaleFactor':1,'mobile':False})
     page.screenshot(out/'side-by-side.png')
 evidence['images']['side-by-side.png']=sha(out/'side-by-side.png')
 (out/'comparison.json').write_text(json.dumps(evidence,indent=2)+'\n')

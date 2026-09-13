@@ -259,3 +259,20 @@ four playable reviews remain intact on the persistent dashboard. See
 [the attempt report and retry instructions](AGENT-REVISION.md) and
 [compact receipts](agent-attempt-evidence.json). The authorship gap remains
 open; the earlier caller parameter edit is not retroactively credited.
+
+## Visual-reference comparison on the persistent page (iteration 64)
+
+The D11 same-pose/same-camera comparison that was made on Reed's `copy100` and
+`shin55-final` has been repeated on this copy's default run `wren57-retry`, with
+`wren2-final` as the historical clip, through the persistent private-network
+URL on port 8765 and without restarting the service. The command, the
+per-property assessment and the numbers are in the
+[review-style README](../review-style/README.md#repeat-on-wren-wren57-retry--iteration-64);
+the committed receipt is [`wren.json`](../review-style/wren.json), guarded by
+`cli/tests/test_review_style_evidence.py`; the images stay in this project's
+`evidence/style64/`. Viewport and capture PNGs are byte-identical, the decoded
+retry frame is within 1.5044 / 255, the reference renderer restaged at the
+same close and wide cameras matches the persistent viewport, a shipped dark
+reference frame is in the side-by-side, and real drag/zoom orbit showed no
+stage edge with the model drawn. No visual defect was demonstrated and no
+product code changed; this is same-machine evidence, not a second-device test.
