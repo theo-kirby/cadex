@@ -498,6 +498,16 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
     root = Path(project_root).expanduser()
     record_path = directory / RUN_RECORD_FILENAME
     record: dict[str, Any]
+    if relative_under(root, directory) is None:
+        # A ``runs/<name>`` that is a symlink out of the project is not a
+        # run of this project: nothing under it is opened, so it carries
+        # no record, no references and no videos to resolve.
+        return {"run": directory.name, "status": "unreadable",
+                "error": "run directory escapes the project directory",
+                "artifacts": {}, "project_artifacts": {}, "videos": [], "legs": [],
+                "outcome": "record unreadable",
+                "resolved": {"artifacts": {}, "project_artifacts": {}, "videos": []},
+                "problems": ["run: directory escapes the project directory"]}
     if record_path.is_file():
         payload, error = _load_json(record_path)
         if payload is None:
@@ -648,19 +658,33 @@ def _retained_policies(root: Path) -> dict[str, list[dict[str, Any]]]:
     whatever either run is called. Files over ``POLICY_FILE_LIMIT_BYTES``
     and anything that is not a regular file inside ``runs/<run>/train`` are
     skipped: this is an identity index, not a directory listing.
+
+    Every path is resolved against the **project root**, never against the
+    run directory it sits in: a ``runs/<name>`` that is itself a symlink out
+    of the project would pass a check anchored at that already-escaped
+    directory, so the run, its ``train/`` and each file in it are each
+    required to resolve inside the project before anything is hashed — and
+    a file must also resolve inside that run's own ``train/``, because a
+    symlink to bytes kept elsewhere in the project is not this run
+    retaining them.
     """
 
     index: dict[str, list[dict[str, Any]]] = {}
+    root = root.expanduser()
     runs_dir = root / RUNS_DIRNAME
     if not runs_dir.is_dir():
         return index
     for run_dir in sorted(child for child in runs_dir.iterdir() if child.is_dir()):
-        train = resolve_reference(run_dir, "train")
+        train_reference = f"{RUNS_DIRNAME}/{run_dir.name}/train"
+        train = resolve_reference(root, train_reference)
         if train["error"] or not train["exists"] or not (run_dir / "train").is_dir():
             continue
+        train_dir = (run_dir / "train").resolve()
         for path in sorted((run_dir / "train").iterdir()):
-            ref = resolve_reference(run_dir / "train", path.name)
+            ref = resolve_reference(root, f"{train_reference}/{path.name}")
             if ref["error"] or not path.is_file() or path.name == "progress.json":
+                continue
+            if relative_under(train_dir, path) is None:
                 continue
             try:
                 if path.stat().st_size > POLICY_FILE_LIMIT_BYTES:
@@ -670,6 +694,21 @@ def _retained_policies(root: Path) -> dict[str, list[dict[str, Any]]]:
                 continue
             index.setdefault(digest, []).append({"run": run_dir.name, "path": path.name})
     return index
+
+
+def _retained_progress(root: Path, run_name: str) -> dict[str, Any] | None:
+    """A run's own telemetry, read only when ``runs/<run>/train/progress.json``
+    resolves inside the project and inside that run's own ``train/``; a
+    symlink out of either is never opened."""
+
+    reference = f"{RUNS_DIRNAME}/{run_name}/train/progress.json"
+    ref = resolve_reference(root, reference)
+    if ref["error"] or not ref["exists"]:
+        return None
+    if relative_under((root / RUNS_DIRNAME / run_name / "train").resolve(), root / reference) is None:
+        return None
+    progress, _ = _load_json(root / reference)
+    return progress
 
 
 def _origin(root: Path, records: Mapping[str, Mapping[str, Any]], index: Mapping[str, list[dict[str, Any]]],
@@ -694,7 +733,7 @@ def _origin(root: Path, records: Mapping[str, Mapping[str, Any]], index: Mapping
         kind, iteration = "retained", None
         if ((record.get("policy") or {}).get("sha256")) == digest:
             kind = "final"
-        progress, _ = _load_json(root / RUNS_DIRNAME / holder["run"] / "train" / "progress.json")
+        progress = _retained_progress(root, holder["run"])
         for item in (progress or {}).get("checkpoints") or []:
             if isinstance(item, Mapping) and item.get("sha256") == digest and item.get("path") == holder["path"]:
                 kind, iteration = "checkpoint", item.get("iteration")

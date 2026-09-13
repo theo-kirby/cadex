@@ -23,6 +23,15 @@ the copy's retraining (D7). No trainer remains active. Evidence:
 and in the copy `evidence/lark86/`, `evidence/guard86/` and
 `evidence/lark86-retry-video-completion86-browser.json`.
 
+Iteration 89 (ADR-317) restarted the service once, with no trainer active,
+so the operator URL runs the reader that anchors run, policy and telemetry
+resolution at the project root (a `runs/<name>` symlinked out of the project
+is now listed unreadable, never hashed or read). It still serves
+`ot5-lark-copy85` with all nine runs; a fresh visit selects
+`RUN lark86-retry-video` (origin `lark86-retry`, final, `source_agrees`
+true), which played through polls and downloaded hash-equal. Receipt in the
+copy: `evidence/lark86-retry-video-anchor89-check.json`.
+
 Iteration 88 (ADR-316) re-verified this URL without restarting it and with no
 trainer active: a fresh visit still selects `RUN lark86-retry-video`, which
 is what the reader's own `default_run` rule expects; that video and

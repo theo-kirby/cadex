@@ -509,9 +509,9 @@ the rollout leg's envelope fields and nothing inferred beyond that.
 (ADR-316): where a run's policy came from and which other runs play it, from
 retained identities and never from run names. A run's recorded
 `policy.sha256` is matched against the bytes every run keeps under its own
-`train/` (files up to 4 MiB inside `runs/<run>/train`, symlinks out of the
-project refused); the run holding them is the `origin`, `final` when its own
-record carries that digest as its policy, `checkpoint` with the iteration
+`train/` (files up to 4 MiB inside `runs/<run>/train`); the run holding them
+is the `origin`, `final` when its own record carries that digest as its
+policy, `checkpoint` with the iteration
 when its telemetry lists it, `retained` when neither says so, and the
 earliest recorded holder wins with the others under `also_retained_by`. The
 record's `training.requested.source_run` is reported beside it with
@@ -520,9 +520,16 @@ names one run and carries another's policy — shown, not reconciled), and
 `playbacks` lists every other run whose policy the same origin retains, with
 its kind, relation, status and video count in record order. It hashes
 `runs/*/train` once per call: a reader for checkers and reports, not a
-server route. The video checker beside the fresh-project probes uses it to
-find a video's training run and an older sibling without a naming
-convention.
+server route. Every run directory, `train/`, policy file and `progress.json`
+it touches is resolved against the **project root** before it is read or
+hashed (ADR-317): a `runs/<name>` that is itself a symlink out of the
+project would pass a check anchored at that already-escaped directory, so
+it is listed as unreadable with `run: directory escapes the project
+directory`, contributes no bytes to the index and has no telemetry read —
+and the same anchor applies to every run record the reader lists or the
+dashboard serves. The video checker beside the fresh-project probes uses
+the lineage to find a video's training run and an older sibling without a
+naming convention.
 
 A refused first design prompt can leave scaffold documents with no accepted
 manifest or run record. The dashboard shows missing geometry and a next CLI

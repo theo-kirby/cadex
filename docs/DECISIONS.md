@@ -23405,3 +23405,50 @@ identity; both decoded whole, played through polls and downloaded
 hash-equal. Receipt `docs/probes/lark-fresh/lineage88-evidence.json`, guarded
 in `cli/tests/test_lark_fresh_evidence.py`. No protocol, payload, engine,
 shell, page or dependency change; no training and no new video.
+
+## ADR-317 — Run, policy and telemetry resolution is anchored at the project root, never at a run directory (2026-09-13)
+
+**Context.** The critic found that `_retained_policies` in
+`cli/cadex_cli/review_record.py` anchored its containment checks at the run
+directory it was walking: `resolve_reference(run_dir, "train")` and
+`resolve_reference(run_dir / "train", name)`. A `runs/<name>` that is itself
+a symlink out of the project passes both, because the check begins inside
+the escape, so an external directory's policy bytes were hashed into the
+lineage index and its `progress.json` was read by `_origin` with no check
+at all. A throwaway fixture confirmed it: `runs/escaped → /tmp/…/outside`
+contributed `w.bin`'s digest to the index. The same shape reached
+`read_run_record`: `list_runs` and the dashboard's single-run route (which
+only checks `run_dir.parent`, which a symlink also passes) read an escaped
+run's `run.json` as if it were the project's.
+
+**Decision.** Every path the lineage reader and the run reader touch is
+resolved against the **project root** before it is read or hashed.
+`_retained_policies` resolves `runs/<run>/train` and each file in it as
+`resolve_reference(root, …)`, and additionally requires a file to resolve
+inside that run's own `train/` — a symlink to bytes kept elsewhere in the
+project is not this run retaining them (the pre-existing regression's
+in-project symlink stays refused). `_origin` reads telemetry only through
+`_retained_progress`, which applies both checks to `progress.json`.
+`read_run_record` returns an `unreadable` record with error
+`run directory escapes the project directory` and problem
+`run: directory escapes the project directory` — opening nothing under it —
+when the run directory resolves outside the project, which covers
+`list_runs`, `read_project_review`, the dashboard's `/api/run/<name>` and the
+video writer alike.
+
+**Evidence.** Regressions in `cli/tests/test_review_record.py`: an external
+run-directory symlink carrying a record, telemetry and policy bytes is listed
+unreadable with nothing opened, contributes no digest, and a run whose record
+names that digest resolves to no origin; an external `progress.json` symlink
+inside an in-project run is never read (its checkpoint is reported
+`retained`, not `checkpoint`) and an external policy-file symlink is not
+hashed. `test_review_record.py` + `test_video.py`: 35 passed, 5 skipped;
+`test_review_server.py`: 40 passed, 4 skipped; full CLI suite result in the
+record node. The persistent port 8765 unit was restarted onto the fixed
+reader with no trainer active and still serves `ot5-lark-copy85`: a fresh
+visit selects `RUN lark86-retry-video` (origin `lark86-retry`, final,
+`source_agrees` true), which played through polls and downloaded hash-equal
+(`1f53d43d1c18…`, 81 decoded frames); receipt
+`evidence/lark86-retry-video-anchor89-check.json` in the copy. No protocol,
+payload, engine, shell, page or dependency change; `docs/CLI.md` says what
+the anchor refuses.

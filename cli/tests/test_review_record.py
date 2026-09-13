@@ -25,6 +25,8 @@ from cadex_cli.review_record import (
     PROJECT_REVIEW_SCHEMA,
     RUN_RECORD_FILENAME,
     RUN_RECORD_SCHEMA,
+    _retained_policies,
+    _retained_progress,
     list_runs,
     manifest_identity,
     policy_lineage,
@@ -637,3 +639,100 @@ def test_policy_lineage_comes_from_retained_bytes_not_from_run_names(tmp_path) -
     assert mango["reason"].startswith("no run in this project retains")
     missing = policy_lineage(root, "nonesuch")
     assert missing["origin"] is None and "not in this project" in missing["reason"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="symlinks")
+def test_a_run_directory_symlinked_outside_the_project_is_never_read(tmp_path) -> None:
+    """A ``runs/<name>`` that is a symlink out of the project passes any
+    containment check anchored at that directory, because the check starts
+    inside the escape. Anchored at the project root instead: the run is
+    listed as unreadable without opening anything under it, its policy
+    bytes and telemetry are not hashed or read, and a run whose record
+    carries that digest resolves to no origin."""
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_A)
+    inside = _walked_run(root, "inside", revision=REVISION_A)
+    external = tmp_path / "elsewhere" / "external"
+    (external / "train").mkdir(parents=True)
+    leaked = hashlib.sha256(b"external policy").hexdigest()
+    (external / "train" / "ext.bin").write_bytes(b"external policy")
+    (external / "train" / "progress.json").write_text(json.dumps({
+        "schema": "cadex-training-progress-v1", "state": "done",
+        "checkpoints": [{"path": "ext.bin", "iteration": 5, "sha256": leaked}]}))
+    (external / RUN_RECORD_FILENAME).write_text(json.dumps({
+        "schema": RUN_RECORD_SCHEMA, "run": "external", "status": "ok",
+        "recorded_at": "2026-09-09T00:00:00Z", "model": {"accepted_revision": REVISION_A},
+        "policy": {"name": "ext.bin", "sha256": leaked, "asset": None},
+        "artifacts": {}, "project_artifacts": {}, "videos": [], "legs": []}))
+    os.symlink(external, root / "runs" / "external")
+    _set(inside, policy={"name": "ext.bin", "sha256": leaked, "asset": None},
+         training={"requested": {"source_run": "external"}, "receipt": {}})
+
+    index = _retained_policies(root)
+    assert leaked not in index
+    assert all(holder["run"] != "external" for holders in index.values() for holder in holders)
+    assert _retained_progress(root, "external") is None
+
+    listed = {record["run"]: record for record in list_runs(root)}
+    assert set(listed) == {"inside", "external"}
+    escaped = listed["external"]
+    assert escaped["status"] == "unreadable"
+    assert escaped["error"] == "run directory escapes the project directory"
+    assert escaped["problems"] == ["run: directory escapes the project directory"]
+    assert "policy" not in escaped and escaped["videos"] == [] and escaped["legs"] == []
+    assert read_run_record(root / "runs" / "external", root)["status"] == "unreadable"
+    assert listed["inside"]["status"] == "ok"
+
+    lineage = policy_lineage(root, "inside")
+    assert lineage["origin"] is None and lineage["source_agrees"] is None
+    assert lineage["reason"].startswith("no run in this project retains")
+    assert lineage["recorded_source_run"] == "external"
+    assert policy_lineage(root, "external")["reason"] == "no policy recorded for this run"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="symlinks")
+def test_external_progress_and_policy_symlinks_inside_a_run_are_never_followed(tmp_path) -> None:
+    """A run inside the project whose ``train/progress.json`` is a symlink to
+    a file outside it: the telemetry is not read, so a checkpoint the run
+    retains is reported as ``retained`` rather than ``checkpoint``; a policy
+    file symlinked out of the project is not hashed, so a record carrying
+    its digest resolves to no origin."""
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_A)
+    kestrel = _walked_run(root, "kestrel", revision=REVISION_A)
+    _set(kestrel, recorded_at="2026-09-01T00:00:00Z")
+    checkpoint = _retain(kestrel, "snap-2.bin", b"kestrel checkpoint two")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "progress.json").write_text(json.dumps({
+        "schema": "cadex-training-progress-v1", "state": "done",
+        "checkpoints": [{"path": "snap-2.bin", "iteration": 2, "sha256": checkpoint}]}))
+    (kestrel / "train" / "progress.json").unlink()
+    os.symlink(elsewhere / "progress.json", kestrel / "train" / "progress.json")
+    (elsewhere / "leak.bin").write_bytes(b"leaked policy")
+    leaked = hashlib.sha256(b"leaked policy").hexdigest()
+    os.symlink(elsewhere / "leak.bin", kestrel / "train" / "leak.bin")
+    shutil.rmtree(root / "review" / "render" / REVISION_A)
+    pear = _walked_run(root, "pear", revision=REVISION_A)
+    _set(pear, recorded_at="2026-09-02T00:00:00Z",
+         policy={"name": "snap-2.bin", "sha256": checkpoint, "asset": None},
+         training={"requested": {"source_run": "kestrel"}, "receipt": {}})
+    shutil.rmtree(root / "review" / "render" / REVISION_A)
+    mango = _walked_run(root, "mango", revision=REVISION_A)
+    _set(mango, recorded_at="2026-09-03T00:00:00Z",
+         policy={"name": "leak.bin", "sha256": leaked, "asset": None},
+         training={"requested": {"source_run": "kestrel"}, "receipt": {}})
+
+    assert _retained_progress(root, "kestrel") is None
+    index = _retained_policies(root)
+    assert index[checkpoint] == [{"run": "kestrel", "path": "snap-2.bin"}]
+    assert leaked not in index
+
+    lineage = policy_lineage(root, "pear")
+    assert lineage["origin"]["run"] == "kestrel" and lineage["origin"]["path"] == "snap-2.bin"
+    assert lineage["origin"]["kind"] == "retained" and lineage["origin"]["iteration"] is None
+    assert lineage["source_agrees"] is True
+    leak = policy_lineage(root, "mango")
+    assert leak["origin"] is None and leak["reason"].startswith("no run in this project retains")
