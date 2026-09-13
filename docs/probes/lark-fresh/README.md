@@ -5,6 +5,17 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Lark lifecycle report](LIFECYCLE.md) links D1–D11 evidence, the common-seed
 comparison, current visual assessment and remaining acceptance limits.
 
+**Iteration 107 (D4/D10 record, ADR-324):** no code change. Iterations 104
+and 106 landed unrecorded; their record now exists and carries the result
+those iterations owed: `pixi run python -m pytest cli/tests -q` at head —
+470 passed, 1 skipped, exit 0. The persistent dashboard was verified without a
+restart: `/api/project` names `ot5-lark-copy85`, and the server's own
+fresh-visit rule selects `lark98-final` with no trainer active (an HTTP check
+on the same machine; the browser receipts are those of iterations 104 and
+106). The two ADR-324 receipts establish different things: the real 14 KB
+video shows browser-side recovery only, and the server-side mid-transfer
+case rests on the synthetic 48 MiB regressions.
+
 **Iteration 106 (D4, ADR-324):** the persistent dashboard still serves
 `ot5-lark-copy85` and opens `lark98-final`; the server was not restarted. The
 cancellation that iteration 104 could only make with a raw socket now comes
