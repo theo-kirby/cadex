@@ -23905,3 +23905,42 @@ recorded rather than worked around in the page: a tap within a few hundred
 milliseconds of a drag's end is dropped, so the capture script waits a
 second before tapping Fit. No engine, protocol, payload, shell or dependency
 change.
+
+## ADR-331 — The review environment is dark only: one palette, no theme setter (2026-09-13)
+
+`review_static/environment.js` carried two palettes adapted from the
+neural-whoop reference — a light "prototype map" and the reference's own dark
+void — behind `setTheme`, and both the viewport and the video capturer built
+it light (ADR-301, the owner's light-grey request of the time). The ot6
+charter (ADR-328) chose dark only and said the light palette is removed, not
+kept behind a switch; the page's own palette (ADR-329) had already made
+`--bg` equal to the dark scene background, so until this change the viewport
+was the one light region inside a dark page.
+
+The module now exports one `PALETTE` (the reference's dark tile and scene
+values, unchanged) and no `setTheme`; `createEnvironment` applies it once at
+construction, and everything else — the fog derived from the standoff, the
+floor sized from the fog, the grid subdivision from the framing — is as it
+was. The viewer's style name, recorded into every new video, is
+`cadex-prototype-dark-v1`; recordings made as `cadex-prototype-light-v1`
+stay retained and are labelled with their own style, and the ot5 receipts
+that pin that style are unchanged because they describe those recordings.
+
+Evidence, from `docs/probes/ot6/look/compare.py` on the persistent operator
+dashboard serving `ot5-lark-copy85` with `lark98-final` re-rendered in the
+dark look: the viewport and the capture page are byte-identical at the same
+pose and camera; the decoded first video frame is within the codec tolerance
+of that viewport (mean absolute RGB error 1.10 of 255); the reference's own
+unmodified scene and environment modules, dark theme, drawing the same Lark
+solids at the same four cameras, give frames whose mean luminance matches
+ours to 0.1; and the shipped reference clips, decoded, sit beside them in
+`docs/probes/ot6/look/README.md` with the written assessment the charter
+asks for — floor and grid, horizon and fog, palette, lighting and shadows,
+materials, framing and camera — including what is *not* yet matched: the
+tracking camera at a declared framing fraction and the timer overlay, which
+D3 still owes.
+
+Removal, under the change policy: two palette objects and one function
+gone from a file that is ours; `test_the_environment_is_dark_only_and_the_style_says_so`
+holds the module to one palette and no theme setter. No engine, protocol,
+payload, shell or dependency change.

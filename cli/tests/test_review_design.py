@@ -74,13 +74,27 @@ def test_spec_has_every_required_section_and_a_verified_date():
         assert section in text, section
 
 
-def test_page_background_is_the_environment_dark_scene_background():
-    """One palette across chrome and viewport: ``--bg`` is the dark mat's ``scene.bg``."""
+def test_page_background_is_the_environment_scene_background():
+    """One palette across chrome and viewport: ``--bg`` is the mat's ``scene.bg``."""
 
     environment = (STATIC / "environment.js").read_text()
-    dark = re.search(r"dark:\s*\{.*?scene:\s*\{\s*bg:\s*0x([0-9a-f]{6})", environment, re.S)
-    assert dark, "environment.js no longer declares a dark scene background"
-    assert spec_tokens()["--bg"] == "#" + dark.group(1)
+    scene = re.search(r"export const PALETTE = \{.*?scene:\s*\{\s*bg:\s*0x([0-9a-f]{6})", environment, re.S)
+    assert scene, "environment.js no longer declares its scene background"
+    assert spec_tokens()["--bg"] == "#" + scene.group(1)
+
+
+def test_the_environment_is_dark_only_and_the_style_says_so():
+    """ADR-331: the light palette is removed, not kept behind a switch. The
+    module exports one palette and no theme setter; the viewer's style name,
+    which every new video records, names the dark look."""
+
+    environment = (STATIC / "environment.js").read_text()
+    assert environment.count("export const PALETTE = {") == 1
+    assert "THEME_PALETTES" not in environment and "setTheme" not in environment
+    assert not re.search(r"^\s*light:\s*\{", environment, re.M), "a light palette is declared"
+    scene = (STATIC / "review_scene.js").read_text()
+    assert re.search(r"^export const STYLE = 'cadex-prototype-dark-v1';$", scene, re.M)
+    assert "cadex-prototype-light" not in scene
 
 
 def test_every_palette_token_is_distinct_and_dark_chrome_is_darker_than_ink():
@@ -358,3 +372,50 @@ def test_phone_receipt_records_touch_orbit_and_every_region_on_the_operator_url(
         # A clip's fractional height is truncated by the browser, not rounded.
         assert width == int(measured["width"]) and height == int(measured["captured_height"]), region
         assert f"phone-{region}.png" in text, f"spec §8 does not cite phone-{region}.png"
+
+
+LOOK = REPO / "docs/probes/ot6/look"
+LOOK_IMAGES = ("side-by-side", "reference-shipped-orbit-4s", "reference-dark-lark", "persistent-same-pose",
+               "video-frame0", "persistent-framed", "persistent-wide", "persistent-orbit-far")
+
+
+def test_look_receipt_compares_the_dark_viewport_capture_video_and_reference():
+    """D3's comparison on the operator URL (ADR-331): the run the persistent
+    page selected, both style names dark, viewport and capture identical,
+    the decoded frame inside the codec tolerance, the reference renderer's
+    same-pose frame at the viewport's luminance, the floor outrunning the fog
+    at every framing reached, the model drawn through the orbit, and the
+    committed frames beside the assessment."""
+
+    receipt = json.loads((LOOK / "look.json").read_text())
+    identity = receipt["persistent_identity"]
+    assert identity["selected"] == receipt["run"] and identity["relation"] == "current"
+    assert not identity["stale"] and identity["error"] is None
+    assert identity["revision"] == receipt["video"]["accepted_revision"]
+    assert receipt["stats"]["style"] == receipt["capture_style"] == receipt["video"]["style"] == "cadex-prototype-dark-v1"
+    assert receipt["camera"] == receipt["video"]["camera"]
+    shots = receipt["screenshots"]
+    assert receipt["lossless_viewport_capture_equal"] is True
+    assert shots["persistent-same-pose"] == shots["capture-same-pose"]
+    assert 0 < receipt["codec_mean_absolute_rgb_error"] < 3
+    lum = receipt["luminance"]
+    for patch in ("all", "sky", "floor"):
+        assert abs(lum["reference-dark-lark"][patch] - lum["persistent-same-pose"][patch]) <= 0.2, patch
+    assert receipt["page_tokens"] == {"bg": spec_tokens()["--bg"], "body": "rgb(20, 20, 20)"}
+    for name, stage in receipt["stage"].items():
+        assert stage["roomSize"] >= 4 * stage["fog"]["far"] - 1e-6, name
+        assert stage["pitch"] == 1
+    assert receipt["stage"]["persistent-close"]["minor"] < receipt["stage"]["persistent-same-pose"]["minor"]
+    assert receipt["stage"]["persistent-wide"]["minor"] == 0
+    assert min(receipt["model_pixels"].values()) > 1000
+    assert receipt["framing"]["fraction"] == 0.22
+    assert set(receipt["reference_shipped"]) == {"orbit", "swing", "flip"}
+    assert len(receipt["reference_commit"]) == 40
+    text = (LOOK / "README.md").read_text()
+    for name in LOOK_IMAGES:
+        assert (LOOK / f"{name}.png").is_file(), name
+        assert receipt["images"][f"{name}.png"], name
+    for name in ("side-by-side", "persistent-same-pose", "video-frame0", "persistent-framed", "persistent-wide"):
+        assert f"{name}.png" in text, f"the assessment does not cite {name}.png"
+    assert f"{receipt['codec_mean_absolute_rgb_error']:.2f}" in text
+    assert "Verified against source: 2026-" in text

@@ -329,7 +329,7 @@ def test_shared_scene_matches_decoded_video_and_keeps_older_recording(rendered, 
     record = read_run_record(run, root)
     assert record['videos'] == [newest, legacy]
     assert all(v['exists'] and not v['error'] for v in record['resolved']['videos'])
-    assert newest['style'] == 'cadex-prototype-light-v1'
+    assert newest['style'] == 'cadex-prototype-dark-v1'
     assert len(newest['style_sha256']) == 64
     server, _ = serve(root, '127.0.0.1', 0)
     try:

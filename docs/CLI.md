@@ -2150,10 +2150,15 @@ PYTHONPATH=cli pixi run python -m cadex_cli.video --project ~/cadex-projects/bip
 ```
 
 The viewport and newly recorded videos use the same locally shipped Three.js
-r160 scene: light prototype-grid floor, sky gradient, distance-scaled fog,
-ACES exposure 0.95, rough component materials and a fitted 2048² shadow map.
-The environment is adapted from the MIT neural-whoop reference; see
-[provenance and visual evidence](probes/review-style/README.md).
+r160 scene, **dark only** (ADR-331): the near-black prototype-grid mat with
+its PROTOTYPE / pitch labels and a subdivision chosen from the framing, sky
+gradient, distance-scaled fog, ACES exposure 0.95, rough component materials
+and a fitted 2048² shadow map. The style a video records is
+`cadex-prototype-dark-v1`; earlier `cadex-prototype-light-v1` recordings stay
+retained and labelled with their own style. The environment is adapted from
+the MIT neural-whoop reference; the dark look is compared with it frame by
+frame in [docs/probes/ot6/look](probes/ot6/look/README.md) and the earlier
+light comparison stays in [docs/probes/review-style](probes/review-style/README.md).
 CAD geometry stays in millimetres with unchanged poses; the renderer applies
 one uniform conversion to metres. The environmental floor sits just below the
 model bounds, and is front-sided so below-floor CAD inspection remains possible.

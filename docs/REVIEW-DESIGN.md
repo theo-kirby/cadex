@@ -95,20 +95,20 @@ One family, one scale, one line height.
 
 ## 4. Palette
 
-**Dark only.** The light theme is removed from the environment module under
-D3 (ADR-328), not kept behind a switch. The chrome tokens below are chosen so
+**Dark only.** The light theme is removed from the environment module
+(ADR-331, under D3 of ADR-328), not kept behind a switch. The chrome tokens below are chosen so
 that the page background *is* the scene background: the viewport is a window
 onto the same near-black place the videos are captured in, not a light card
 inside a dark frame.
 
 The base is the greyscale of the `neural-whoop` reference studio (its `:root`
-dark set) and of `THEME_PALETTES.dark` in
-`cli/cadex_cli/review_static/environment.js`, which already carries the
-reference's tile and scene values.
+dark set) and of the one `PALETTE` in
+`cli/cadex_cli/review_static/environment.js`, which carries the reference's
+dark tile and scene values and nothing else (ADR-331).
 
 | Token | Value | Used for | Equals |
 |---|---|---|---|
-| `--bg` | `#141414` | page background | `THEME_PALETTES.dark.scene.bg` (`0x141414`) — chrome and viewport share it |
+| `--bg` | `#141414` | page background | `PALETTE.scene.bg` (`0x141414`) — chrome and viewport share it |
 | `--surface` | `#1b1b1b` | masthead, sidebar, cards | reference `--panel` |
 | `--surface-2` | `#242424` | controls, table heads, code blocks, curve backgrounds | reference `--panel-2`; between the mat's tiles `#1c1c1c` / `#232323` and its major line |
 | `--surface-3` | `#2c2c2c` | hover, the selected run | reference `--panel-3` |
@@ -137,11 +137,9 @@ The stylesheet declares exactly these tokens on `:root`, and the design test
 pins the table above to the environment module's dark scene background *and*
 reads every token back from the rendered page (`getComputedStyle`) at both
 charter sizes, so a palette drift is a failing test rather than a slow
-surprise. The chrome is at these values now (§8). The viewport is not yet:
-`review_scene.js` still builds the environment in its `light` palette, and
-the videos are captured in the same scene, so the viewport switches when D3
-removes the light theme from the module — a change that ships with decoded
-frames beside the reference, not with a stylesheet.
+surprise. The chrome is at these values now (§8), and so is the viewport
+(§10): the environment module has one palette, the videos are captured in
+the same scene, and the viewport's sky *is* `--bg`.
 
 ## 5. Spacing and shape
 
@@ -269,8 +267,8 @@ What changed, against §7:
   is the largest region, the curves are a stat row over three histories
   abreast, the videos have a region of their own, and the record — training,
   parameters, artifacts, documents — is the appendix. The viewport inside
-  that chrome is still the light scene (§4): that is the one thing on the
-  page the spec does not yet describe, and it is D3's.
+  that chrome was still the light scene when this was measured; §10 records
+  the dark viewport that replaced it the same day.
 - **At 400 × 850** the layout viewport is the device width. The runs are a
   one-line disclosure — *Runs · current: lark109-engine2 · 15 recorded* —
   closed until tapped; the identity pairs stack key over value; the canvas is
@@ -319,8 +317,8 @@ pins the receipt and the PNG sizes to this table.
 beside it (§7, §8); `test_rendered_page_follows_the_spec`, which reads §4's
 tokens, §3's type scale and §6's invariants back from the rendered page at
 both sizes; and the operator URL receipts showing the design on the active
-project and run (§8). What D1 still lacks is the viewport's half of "one
-palette": the light scene stays until D3 removes it.
+project and run (§8). The viewport's half of "one palette" is §10: the light
+scene is removed (ADR-331) and the viewport's background is the page's.
 
 **D2** has two halves, both in `cli/tests/test_review_design.py`, both at
 400 × 850 with `Emulation.setDeviceMetricsOverride(mobile: true)` and touch
@@ -351,3 +349,22 @@ under emulation, so the script lets a second pass before tapping Fit.
 
 Every receipt ships under `docs/probes/ot6/` within the charter's caps
 (16 KB per receipt, 200 KB per image), which the same test file enforces.
+
+## 10. The viewport: dark only, shared with the capture
+
+The environment module behind the viewport and the video capturer has one
+palette, the reference's dark one (ADR-331); the light palette and its theme
+setter are gone from the code rather than parked behind a switch. Its scene
+background is `--bg`, so the model sits in the same near-black place the
+page is, and the videos are captured in it. Measured on the persistent
+operator dashboard on 2026-09-13, serving `ot5-lark-copy85` with
+`lark98-final` re-rendered in the dark look: viewport and capture page
+byte-identical at the same pose and camera; the decoded first frame within
+1.1 of 255 of the viewport; the reference's own unmodified scene modules,
+dark theme, over the same solids at the same cameras, equal in mean
+luminance to 0.1. The frames, the numbers and the written assessment —
+floor and grid, horizon and fog, palette, lighting and shadows, materials,
+framing, camera — are `docs/probes/ot6/look/README.md`, with the composite
+[side-by-side.png](probes/ot6/look/side-by-side.png). What that assessment
+says D3 still owes: the capture's tracking camera at a declared framing
+fraction, and the timer overlay.

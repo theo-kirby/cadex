@@ -5,7 +5,7 @@
 import * as THREE from './three.module.js';
 import {createEnvironment, KEY_DIR} from './environment.js';
 import {parseStl} from './stl.js';
-export const STYLE = 'cadex-prototype-light-v1';
+export const STYLE = 'cadex-prototype-dark-v1';
 const PALETTE = [0x5b9dcd, 0xde8f47, 0x6ab270, 0xc468b4, 0xdcc85a, 0x7878c8, 0xc86e6e, 0x6ebebe];
 
 export function create(canvas) {
@@ -20,10 +20,12 @@ export function create(canvas) {
   const scene = new THREE.Scene(), world = new THREE.Group(), model = new THREE.Group();
   world.rotation.x = -Math.PI/2; scene.add(world); world.add(model);
   const camera = new THREE.PerspectiveCamera(55, 1, .0001, 800);
-  const hemi = new THREE.HemisphereLight(0xffffff, 0xbfc4cc, 2.2);
-  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+  // Key, hemisphere and opposite fill; the environment sets their intensities and ground tints
+  // from its one dark palette (ADR-331) when it is built over them.
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x2a2a2a, 1.6);
+  const sun = new THREE.DirectionalLight(0xffffff, 2.7);
   sun.castShadow = true; sun.shadow.mapSize.set(2048,2048);
-  const fill = new THREE.DirectionalLight(0xdfe6ff,1.1); fill.position.set(-12,6,-9);
+  const fill = new THREE.DirectionalLight(0xdfe6ff,1.0); fill.position.set(-12,6,-9);
   scene.add(hemi, sun, sun.target, fill);
   const environment = createEnvironment({scene,world,camera,renderer,lights:{hemi,sun,fill}}, {labels:true});
   let bounds=null, triangleCount=0, staged='', stage=null;

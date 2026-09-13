@@ -1,0 +1,418 @@
+{
+ "camera": {
+  "distance": 1339.647422168589,
+  "pitch": 0.5,
+  "target": [
+   0,
+   0,
+   103.03410581698574
+  ],
+  "yaw": 0.8
+ },
+ "capture_style": "cadex-prototype-dark-v1",
+ "codec_mean_absolute_rgb_error": 1.1010945638020833,
+ "framing": {
+  "distance_mm": 1030.642762033877,
+  "fraction": 0.22,
+  "subject_height_mm": 236.0682116339715
+ },
+ "images": {
+  "capture-same-pose.png": "25455b636fcdb857bc64dcfe4e093d91f65a36bb89cf64639e1e1ee18c3b53ac",
+  "persistent-close.png": "15c2ef89895716e4701f074bd3cc8c79119558bbedee8daae6162f463a01e332",
+  "persistent-default.png": "bea38b1855bc2165084f46bdd669ab1c07ccd782a2e510340861a9e8576e938c",
+  "persistent-framed.png": "e4bb41ba0e08c572f353cac365572c5e5699b6924ac13aae9b112d2a801c2919",
+  "persistent-orbit-drag.png": "b3415deaba5f41a3cd12384ceac357379ba00e07eaa6cd83ccbc180b0b840477",
+  "persistent-orbit-far.png": "e9c448d7faa97aa8af70c3fd386926bd01cdf188e8442c701f01197a349f4ae8",
+  "persistent-orbit-zoom.png": "84f4b1cd19b4c84301767191fc4dc11e695a16d6c2d2ebd8a57519f321388f50",
+  "persistent-same-pose.png": "25455b636fcdb857bc64dcfe4e093d91f65a36bb89cf64639e1e1ee18c3b53ac",
+  "persistent-under.png": "59f2e600d605e4580534d7ef8ee97cab7d1e272bbe16d6e8d4fe7c527d62cf28",
+  "persistent-wide.png": "c1a400820a7fd00f4f7edeb41a3af64e504e7af575a8bfa1cc1a1eb90e0bab26",
+  "reference-dark-lark-close.png": "d33374e80cdd15e82fca652af20aaf5098712597da5a6581a5420c6c822ea95d",
+  "reference-dark-lark-framed.png": "74e8ca6c0aa0e886559703935820df9f706a69670d5053b353163e11de4dcbb9",
+  "reference-dark-lark-wide.png": "4cc85055d81d7891fe75ab60185f76df4f5f4c86572ed4b5582b237c22b0006c",
+  "reference-dark-lark.png": "dbabf04cfe469283b5e33577a63262b048bc07f3769d4c11b5d5a32e1e22fe30",
+  "reference-shipped-flip-2s.png": "020b277a21619ff0a3e2863a1ca2021d4162300809920ebae6441efd68d47ef7",
+  "reference-shipped-orbit-4s.png": "9a7eb3f0efe50cf4046a82c10e6b8db4c0d210c9aba292ddfa51934c047a83c9",
+  "reference-shipped-swing-2s.png": "259ac4502755f7d89a60abf8f2911f7bdf0a7785e18d0b42725407f700e13e4e",
+  "side-by-side.png": "bd01be84a7875832f2c884645a102eb23b0baf07dd8d1964961c42d75dbc9976",
+  "video-frame0.png": "1f36aab0346bbae3a7cd3371c8ede968492a8297a6e5465cf91bcaa62aef9578",
+  "video-frame4s.png": "fb2a3cdc582b17533f9192eb0e464b17104c9728ff95f00cd5d8505d7e124e51"
+ },
+ "lossless_viewport_capture_equal": true,
+ "luminance": {
+  "capture-same-pose": {
+   "all": 64.0,
+   "floor": 32.5,
+   "sky": 30.3
+  },
+  "persistent-close": {
+   "all": 70.4,
+   "floor": 33.6,
+   "sky": 18.6
+  },
+  "persistent-default": {
+   "all": 64.1,
+   "floor": 32.5,
+   "sky": 30.3
+  },
+  "persistent-framed": {
+   "all": 84.7,
+   "floor": 33.7,
+   "sky": 29.9
+  },
+  "persistent-orbit-drag": {
+   "all": 70.7,
+   "floor": 31.4,
+   "sky": 44.2
+  },
+  "persistent-orbit-far": {
+   "all": 42.2,
+   "floor": 39.9,
+   "sky": 44.2
+  },
+  "persistent-orbit-zoom": {
+   "all": 118.4,
+   "floor": 201.7,
+   "sky": 47.3
+  },
+  "persistent-same-pose": {
+   "all": 64.0,
+   "floor": 32.5,
+   "sky": 30.3
+  },
+  "persistent-under": {
+   "all": 20.9,
+   "floor": 19.8,
+   "sky": 13.0
+  },
+  "persistent-wide": {
+   "all": 33.7,
+   "floor": 43.4,
+   "sky": 17.2
+  },
+  "reference-dark-lark": {
+   "all": 64.1,
+   "floor": 32.5,
+   "sky": 30.3
+  },
+  "reference-dark-lark-close": {
+   "all": 70.3,
+   "floor": 33.6,
+   "sky": 18.6
+  },
+  "reference-dark-lark-framed": {
+   "all": 84.7,
+   "floor": 33.7,
+   "sky": 29.9
+  },
+  "reference-dark-lark-wide": {
+   "all": 33.7,
+   "floor": 43.4,
+   "sky": 17.2
+  },
+  "reference-shipped-flip-2s": {
+   "all": 42.4,
+   "floor": 35.3,
+   "sky": 18.2
+  },
+  "reference-shipped-orbit-4s": {
+   "all": 40.9,
+   "floor": 46.4,
+   "sky": 18.2
+  },
+  "reference-shipped-swing-2s": {
+   "all": 41.6,
+   "floor": 46.4,
+   "sky": 18.2
+  },
+  "video-frame0": {
+   "all": 63.2,
+   "floor": 31.8,
+   "sky": 29.7
+  },
+  "video-frame4s": {
+   "all": 63.1,
+   "floor": 31.8,
+   "sky": 29.7
+  }
+ },
+ "model_pixels": {
+  "close": 57589,
+  "drag": 49679,
+  "framed": 72421,
+  "under": 34885,
+  "wide": 1253,
+  "zoom_in": 123323,
+  "zoom_out": 3924
+ },
+ "orbit": {
+  "after_drag": {
+   "distance": 1339.647422168589,
+   "pitch": 0.7999999999999998,
+   "target": [
+    0,
+    0,
+    103.03410581698574
+   ],
+   "yaw": 2.6000000000000005
+  },
+  "after_zoom_in": {
+   "distance": 780.6771940660656,
+   "pitch": 0.7999999999999998,
+   "target": [
+    0,
+    0,
+    103.03410581698574
+   ],
+   "yaw": 2.6000000000000005
+  },
+  "after_zoom_out": {
+   "distance": 4722.821807606787,
+   "pitch": 0.7999999999999998,
+   "target": [
+    0,
+    0,
+    103.03410581698574
+   ],
+   "yaw": 2.6000000000000005
+  },
+  "before": {
+   "distance": 1339.647422168589,
+   "pitch": 0.5,
+   "target": [
+    0,
+    0,
+    103.03410581698574
+   ],
+   "yaw": 0.8
+  }
+ },
+ "page_tokens": {
+  "bg": "#141414",
+  "body": "rgb(20, 20, 20)"
+ },
+ "persistent_identity": {
+  "error": null,
+  "relation": "current",
+  "revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+  "selected": "lark98-final",
+  "stale": false
+ },
+ "project": "ot5-lark-copy85",
+ "reference_commit": "31caeb28abb3bdab8d9030bfc91f0c3f48ffa63a",
+ "reference_shipped": {
+  "flip": {
+   "seconds": 2,
+   "video": "render-examples/flip_maneuver_policy.mp4",
+   "video_sha256": "3e26dae9155a5c039cd480c85fbad0aff8ce4c06583d4b0cb2e0b85bf5fd7a2d"
+  },
+  "orbit": {
+   "seconds": 4,
+   "video": "render-examples/orbit_maneuver_policy.mp4",
+   "video_sha256": "cbb4a98684bcc96ac9a85d4fa53e74522ac66684c94c62e401ef04a3b1bae26f"
+  },
+  "swing": {
+   "seconds": 2,
+   "video": "render-examples/swing_maneuver_policy.mp4",
+   "video_sha256": "b8042e7dea71e7524c57c9193ff8a68f12d56f85408fdeb0ec040fcf7a34f1b7"
+  }
+ },
+ "run": "lark98-final",
+ "screenshots": {
+  "capture-same-pose": "25455b636fcdb857bc64dcfe4e093d91f65a36bb89cf64639e1e1ee18c3b53ac",
+  "persistent-close": "15c2ef89895716e4701f074bd3cc8c79119558bbedee8daae6162f463a01e332",
+  "persistent-default": "bea38b1855bc2165084f46bdd669ab1c07ccd782a2e510340861a9e8576e938c",
+  "persistent-framed": "e4bb41ba0e08c572f353cac365572c5e5699b6924ac13aae9b112d2a801c2919",
+  "persistent-orbit-drag": "b3415deaba5f41a3cd12384ceac357379ba00e07eaa6cd83ccbc180b0b840477",
+  "persistent-orbit-far": "e9c448d7faa97aa8af70c3fd386926bd01cdf188e8442c701f01197a349f4ae8",
+  "persistent-orbit-zoom": "84f4b1cd19b4c84301767191fc4dc11e695a16d6c2d2ebd8a57519f321388f50",
+  "persistent-same-pose": "25455b636fcdb857bc64dcfe4e093d91f65a36bb89cf64639e1e1ee18c3b53ac",
+  "persistent-under": "59f2e600d605e4580534d7ef8ee97cab7d1e272bbe16d6e8d4fe7c527d62cf28",
+  "persistent-wide": "c1a400820a7fd00f4f7edeb41a3af64e504e7af575a8bfa1cc1a1eb90e0bab26",
+  "reference-dark-lark": "dbabf04cfe469283b5e33577a63262b048bc07f3769d4c11b5d5a32e1e22fe30",
+  "reference-dark-lark-close": "d33374e80cdd15e82fca652af20aaf5098712597da5a6581a5420c6c822ea95d",
+  "reference-dark-lark-framed": "74e8ca6c0aa0e886559703935820df9f706a69670d5053b353163e11de4dcbb9",
+  "reference-dark-lark-wide": "4cc85055d81d7891fe75ab60185f76df4f5f4c86572ed4b5582b237c22b0006c",
+  "reference-shipped-flip-2s": "020b277a21619ff0a3e2863a1ca2021d4162300809920ebae6441efd68d47ef7",
+  "reference-shipped-orbit-4s": "9a7eb3f0efe50cf4046a82c10e6b8db4c0d210c9aba292ddfa51934c047a83c9",
+  "reference-shipped-swing-2s": "259ac4502755f7d89a60abf8f2911f7bdf0a7785e18d0b42725407f700e13e4e",
+  "video-frame0": "1f36aab0346bbae3a7cd3371c8ede968492a8297a6e5465cf91bcaa62aef9578",
+  "video-frame4s": "fb2a3cdc582b17533f9192eb0e464b17104c9728ff95f00cd5d8505d7e124e51"
+ },
+ "stage": {
+  "persistent-close": {
+   "fog": {
+    "far": 13.12854473725217,
+    "near": 1.4066297932770182
+   },
+   "frameSpan": 0.9763268302725733,
+   "minor": 0.2,
+   "pitch": 1,
+   "roomSize": 52.51417894900868
+  },
+  "persistent-default": {
+   "fog": {
+    "far": 18.752470484652484,
+    "near": 2.0091932662127663
+   },
+   "frameSpan": 1.3945597501077456,
+   "minor": 0.5,
+   "pitch": 1,
+   "roomSize": 75.00988193860994
+  },
+  "persistent-framed": {
+   "fog": {
+    "far": 14.428998668474277,
+    "near": 1.5459641430508153
+   },
+   "frameSpan": 1.0730373256089611,
+   "minor": 0.5,
+   "pitch": 1,
+   "roomSize": 57.71599467389711
+  },
+  "persistent-orbit-drag": {
+   "fog": {
+    "far": 18.755063910360246,
+    "near": 2.0094711332528834
+   },
+   "frameSpan": 1.3947526146751048,
+   "minor": 0.5,
+   "pitch": 1,
+   "roomSize": 75.02025564144098
+  },
+  "persistent-orbit-far": {
+   "fog": {
+    "far": 66.11950530649501,
+    "near": 7.08423271141018
+   },
+   "frameSpan": 4.917090837334663,
+   "minor": 0,
+   "pitch": 1,
+   "roomSize": 264.47802122598006
+  },
+  "persistent-orbit-zoom": {
+   "fog": {
+    "far": 10.92948071692492,
+    "near": 1.1710157910990984
+   },
+   "frameSpan": 0.8127896486959699,
+   "minor": 0.2,
+   "pitch": 1,
+   "roomSize": 43.71792286769968
+  },
+  "persistent-same-pose": {
+   "fog": {
+    "far": 18.755063910360246,
+    "near": 2.0094711332528834
+   },
+   "frameSpan": 1.3947526146751048,
+   "minor": 0.5,
+   "pitch": 1,
+   "roomSize": 75.02025564144098
+  },
+  "persistent-under": {
+   "fog": {
+    "far": 18.755063910360246,
+    "near": 2.0094711332528834
+   },
+   "frameSpan": 1.3947526146751048,
+   "minor": 0.5,
+   "pitch": 1,
+   "roomSize": 75.02025564144098
+  },
+  "persistent-wide": {
+   "fog": {
+    "far": 56.26519173108073,
+    "near": 6.02841339975865
+   },
+   "frameSpan": 4.184257844025314,
+   "minor": 0,
+   "pitch": 1,
+   "roomSize": 225.06076692432293
+  }
+ },
+ "stats": {
+  "available": true,
+  "bounds": {
+   "center": [
+    0,
+    0,
+    103.03410581698574
+   ],
+   "max": [
+    450,
+    270,
+    221.0682116339715
+   ],
+   "min": [
+    -450,
+    -270,
+    -15
+   ],
+   "radius": 537.895947313247
+  },
+  "components": 8,
+  "stage": {
+   "fog": {
+    "far": 18.755063910360246,
+    "near": 2.0094711332528834
+   },
+   "frameSpan": 1.3947526146751048,
+   "minor": 0.5,
+   "pitch": 1,
+   "roomSize": 75.02025564144098
+  },
+  "style": "cadex-prototype-dark-v1",
+  "triangles": 96
+ },
+ "video": {
+  "accepted_revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+  "bounds": {
+   "center": [
+    0.0,
+    0.0,
+    103.03410581698574
+   ],
+   "max": [
+    450.0,
+    270.0,
+    221.0682116339715
+   ],
+   "min": [
+    -450.0,
+    -270.0,
+    -15.0
+   ],
+   "radius": 537.895947313247
+  },
+  "camera": {
+   "distance": 1339.647422168589,
+   "pitch": 0.5,
+   "target": [
+    0,
+    0,
+    103.03410581698574
+   ],
+   "yaw": 0.8
+  },
+  "duration_seconds": 8.1,
+  "fps": 10,
+  "frames": 81,
+  "height": 512,
+  "model_digest": "c039961cd41d9bcc26956c566a55e3ace0cf2665f99b7ebfd180af12d2bd4076",
+  "path": "rollout-7bde92c08fc4eae1397f1dc4e2cbb580f019e8c0608b4cc752887333f1f6c834.webm",
+  "policy_sha256": "fca598975089c259917cba5c9f7e067d6bb3a56b75eb8357c20e4151411413df",
+  "projection": "perspective 55 degrees",
+  "render_seconds": 13.314,
+  "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+  "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+  "seed": 0,
+  "sha256": "7bde92c08fc4eae1397f1dc4e2cbb580f019e8c0608b4cc752887333f1f6c834",
+  "sim_seconds": 8.0,
+  "style": "cadex-prototype-dark-v1",
+  "style_sha256": "ba8ce15cfc3470ce8a2fa58bfc1bd6336ca6e9b3ff058dc14aab25db0236ecdf",
+  "task_sha256": "cc96d21e52e6c322e2372e02532ad29fad643fc3a07a59ed4523e17c0e4ca807",
+  "trace_sha256": "1fadd43df7748d67f6b4020db871453424188726bc8b81e73599bb78aad7074f",
+  "width": 512
+ }
+}
