@@ -1,6 +1,10 @@
 # Goal: live headless project review
 
-Verified against source: 2026-09-12. Owner-directed charter revision (ADR-284).
+Verified against source: 2026-09-13. Owner-directed charter revision (ADR-284).
+D1-D11 ticked by the owner on 2026-09-13 after run ot5 (111 iterations): every
+criterion's state node under `crisp-sun-1239` carries its evidence, three fresh
+bipeds (Reed, Wren, Lark) went through the lifecycle, and the operator dashboard
+is live. See `.ouroboros/history/ot5.md`.
 The human owns this file; unattended roles do not edit it.
 
 ## Mission
@@ -63,54 +67,54 @@ Only these unchecked claims form this run's frontier. Each record names the
 criterion it advances, the evidence now present, and what remains. A record may
 say "ticks D1" when its evidence exists; the human owns the checkbox edit.
 
-- [ ] **D1. A live project dashboard is reachable.** One documented command
+- [x] **D1. A live project dashboard is reachable.** One documented command
   serves one selected project over the machine's Tailscale/private-network
   address. A browser can open it without a desktop session on the server.
   Evidence: a headless-browser smoke test against that address, with its command
   and result recorded; no claim of a second-device test unless one was run.
-- [ ] **D2. The browser shows the right model and specs.** Interactive 3D
+- [x] **D2. The browser shows the right model and specs.** Interactive 3D
   orbit/zoom, component identity, declared parameters, design specs and project
   decisions come from the selected accepted revision. Selecting an earlier run
   shows its model and specs, visibly identified as historical. Evidence: browser
   tests comparing displayed revision/run identities with recorded inputs and
   exercising model interaction on the fresh biped.
-- [ ] **D3. Training is visible while it runs.** The biped's real GPU training
+- [x] **D3. Training is visible while it runs.** The biped's real GPU training
   updates status, iteration, reward and loss histories, episode length and
   checkpoint availability without a page reload. Committed telemetry updates
   appear within five seconds under the measured test conditions. Missing or
   stale data is labelled. Evidence: a browser observation spanning multiple
   actual training updates, plus telemetry tests; synthetic data alone cannot
   tick this criterion.
-- [ ] **D4. Policy videos render, persist and play headlessly.** At least one
+- [x] **D4. Policy videos render, persist and play headlessly.** At least one
   verified intermediate checkpoint is rendered and appears in the dashboard
   while training remains active, and the final policy also has a saved video.
   Both play and download in the browser; each identifies the model revision,
   policy digest, rollout seed and simulation time. Evidence: real biped video
   files, a decoded frame/timing check and a browser playback/download test.
   A failed render leaves training running and reports its own failure.
-- [ ] **D5. Review history survives a design change.** Each run retains the
+- [x] **D5. Review history survives a design change.** Each run retains the
   model/script revision, specs, task/training configuration, metrics, policy
   identity and review/video references needed to interpret it. After a design
   edit and retraining, both runs remain selectable with their own curves, models
   and videos. Evidence: before/after identity and artifact checks, and browser
   assertions that old results have not silently switched to the new design.
-- [ ] **D6. Save, reopen and restart preserve the project.** Save/reopen and
+- [x] **D6. Save, reopen and restart preserve the project.** Save/reopen and
   restarting the dashboard and engine preserve accepted identity, specs, run
   history, curves and video access. Restarting the dashboard during training
   neither stops nor duplicates that training. Evidence: an automated lifecycle
   test and a recorded pass on the fresh biped with real artifacts.
-- [ ] **D7. Save-As/copy produces an independent project.** A documented
+- [x] **D7. Save-As/copy produces an independent project.** A documented
   headless operation copies the project and its retained review artifacts;
   another server can inspect the copy. Changing/retraining the copy leaves the
   original unchanged, and the copy remains usable with the original unavailable.
   Evidence: isolation, artifact resolution and browser reopen tests on the copy.
-- [ ] **D8. Interrupted and failed runs remain understandable.** Test a
+- [x] **D8. Interrupted and failed runs remain understandable.** Test a
   controlled training interruption, a failed run, and missing/partial review
   output. The dashboard distinguishes interrupted/failed/stale states from
   success, preserves prior completed results and explains the next CLI action.
   Evidence: fault-injection tests and one real interrupted biped training run
   followed by a successful new attempt. Checkpoint resume is not required.
-- [ ] **D9. The fresh biped completes the whole recorded lifecycle.** The
+- [x] **D9. The fresh biped completes the whole recorded lifecycle.** The
   product agent creates and documents a new biped, trains and reviews it through
   this system, uses that review to make a reasoned design change, and retrains.
   Both runs have saved playable videos and measured displacement, survival and
@@ -118,7 +122,7 @@ say "ticks D1" when its evidence exists; the human owns the checkbox edit.
   a lifecycle report linking D1-D8 evidence, and the comparative results. Poor
   gait is a valid measured result; skipped training or missing recording is not.
 
-- [ ] **D10. The persistent operator dashboard stays current.** The existing
+- [x] **D10. The persistent operator dashboard stays current.** The existing
   shared dashboard URL serves the actual working project, with the current run
   selected by default for a new visit (active training first, otherwise the
   latest attempt, including failed/interrupted attempts). It shows that run's
@@ -134,7 +138,7 @@ say "ticks D1" when its evidence exists; the human owns the checkbox edit.
   historical-view preservation. The immediate acceptance check is that the
   shared URL shows the active biped work rather than ot4-carriage.
 
-- [ ] **D11. Viewport and videos match the neural-whoop visual reference.**
+- [x] **D11. Viewport and videos match the neural-whoop visual reference.**
   The persistent biped dashboard and newly rendered checkpoint/final-policy
   videos use the shared reference-matching environment described in the mission.
   Evidence: identified neural-whoop reference screenshots/frames and matching
