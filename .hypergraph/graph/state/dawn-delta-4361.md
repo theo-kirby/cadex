@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**Wren's first GPU run retained 240 points in each reward, loss and episode-estimate history.** The persistent browser observed seven updates without reload, with measured commit-to-page delays of 0.40–1.43 seconds and retained model identity. Training completed 240 iterations in 697.035 seconds. The trainer's episode estimate can exceed the horizon and is not measured survival; these same-machine private-address observations establish no universal latency bound [rec: sage-tower-6445].
+
 **Real fresh-biped training telemetry passes the browser observation under the identity fix.** Probe2 showed seven actual iterations (20–29) over 12.03 seconds without reload; committed-to-page delays were 0.23–1.29 seconds, with reward, loss, episode-length histories and checkpoint availability visible. These are trainer-reported metrics, not independently measured rollout survival. The borrowed model was missing, a separate D2 issue. Full telemetry-containing CLI and engine suites passed [rec: merry-star-6951].
 
 ADR-287 supplies atomic progress snapshots, bounded histories, two-second dashboard polling, missing/stale labels and checkpoint integrity checks. Starting/training snapshots older than 30 seconds are stale; terminal snapshots do not expire. Fixture browser coverage exercises live updates, missing/partial output, stale and terminal states and run switching [rec: kind-fountain-5086]. ADR-289 records revision, digest and specs from the manifest before training; the original probe1 observation exposed the identity defect that prompted it [rec: lively-gate-6535] [rec: lucid-journey-6875].
@@ -40,3 +42,4 @@ Charter criterion: **D3. Training is visible while it runs** The biped's real GP
 - young-cedar-2719 — measured long-history verification cost and bounded cache with explicit first-read/eviction and synthetic-workload limits
 - neat-vine-2517 — ADR-297: one pending browser poll prevents overlapping cold verification
 - dusty-oak-7376 — ADR-298: shared cold verification across clients with explicit serialization limits
+- sage-tower-6445 — first Wren GPU run, live persistent-browser telemetry and three retained 240-point histories

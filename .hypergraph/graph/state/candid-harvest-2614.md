@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**Wren's checkpoint-20 video was verified, rendered, played and downloaded while training remained active; its final-policy video is also retained and browser-verified.** Engine witness errors were below 1e-4 for both. Checkpoint video has 81 decoded frames/8.1 encoded seconds for eight simulated seconds; final video has six frames/0.6 encoded seconds for a 0.46-second seed-0 fall. Identity labels, download digests, polling-preserved playback and historical/current selection passed. The shared delivered scene style is reused; this is not a new D11 reference comparison or a second-device check [rec: sage-tower-6445].
+
 **Probe3 has browser-verified intermediate playback/download while training is active and a retained verified final-policy video.** Checkpoint20 passes the engine witness check, runs eight simulated seconds and yields 81 decoded frames/8.1 encoded seconds. Both sequential checkpoint render collections pass playback, three refreshes, matching-byte download and revision/policy/seed/time labels while training remains active. The currently referenced repeated video and the original bytes/receipt remain retained [rec: light-brook-2640].
 
 The successful 240-iteration trainer produces a verified final policy and a seven-frame/0.7 encoded-second video of a seed-0 fall at 0.52 simulated seconds. Final decoding, playback across refreshes, download digest and labels pass after correcting a numeric-format assertion; collection reuses existing artifacts without further training or rendering [rec: light-brook-2640].
@@ -32,3 +34,4 @@ Charter criterion: **D4. Policy videos render, persist and play headlessly** At 
 - amber-gate-7498 — first real final-policy video, decoded and browser-played/downloaded
 - merry-star-6951 — active-training checkpoint render, later successful browser verification and explicit interruption limits
 - light-brook-2640 — active intermediate and final video verification; missing-trace refusal leaves trainer active
+- sage-tower-6445 — Wren active-training checkpoint and final-policy videos with engine witnesses, decoded timing and browser playback/download

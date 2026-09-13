@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**Wren's 85→105 mm foot edit preserves all 114 retained run files byte-for-byte.** Persistent-browser checks measure 85 mm historical meshes versus 105 mm ACCEPTED NOW, retain original specs and policy hashes, and verify unchanged playable/downloadable checkpoint/final videos through polling. The revised accepted model has policy disabled and no new policy/video yet; this extends design-edit preservation evidence, with Wren retraining still pending [rec: honest-path-3451].
+
 **Review history survives the real 70→90 mm foot edit and GPU retraining.** Both designs remain browser-selectable with distinct model/spec identities, 240-point reward/loss/episode-length curves and playable/downloadable videos. All 250 pre-existing run/asset files remain byte-identical. This supplies the physical design-change comparison previously missing, so status is `working`; actor-authored revision is a separate remaining D9 limitation [rec: candid-forest-9800].
 
 ADR-291 retains assembled placements, checked mesh bytes, parameter specs and project documents before training and preserves them through later status writes [rec: quiet-arbor-0259]. ADR-293's real-engine browser regression additionally preserves the prior swept run's mesh bytes, assembled components, revision/digest and specs after a later physical parameter edit while current geometry changes [rec: forest-ledge-2219].
@@ -35,3 +37,4 @@ Charter criterion: **D5. Review history survives a design change** Each run reta
 - light-brook-2640 — real retained snapshot, preserved prior records and policy-playback history; redesign still outstanding
 - candid-forest-9800 — real physical edit/retraining retains both designs, curves and videos with all old run/assets unchanged
 - forest-ledge-2219 — parameter-sweep history regression retains original assembly, meshes and specs without backfill
+- honest-path-3451 — Wren foot revision preserves 114 files and historical meshes, specs, policy/video identities and browser review

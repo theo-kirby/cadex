@@ -11,11 +11,9 @@ Status: working
 
 ## Current
 
-**Persistent port 8765 now serves fresh `ot5-wren`, accepted revision `5309bebc6597…`, with no runs and no active training; the service remains running.** Real private-address browser checks pass: eight solids, twelve declared defaults, orbit/zoom and accepted empty-run view preserved across polling. These are same-machine observations; no second-device visit is claimed [rec: mild-river-8224].
+**Persistent port 8765 remains on `ot5-wren`: latest attempt `wren1-final` is visibly historical relative to accepted revision `a90b84033ced…`; ACCEPTED NOW shows the untrained 105 mm feet with policy disabled.** Historical checkpoint/final models retain 85 mm feet, original policy/video hashes and playback/download through polling; return to current passes. Operator status explains pending retraining. Reconcile judgement: latest attempt and current accepted design are distinct, correctly labelled identities; the final attempt is not evidence of training the revised feet [rec: honest-path-3451].
 
-Earlier Reed evidence still establishes experiment-spanning operation: shin55 training, live telemetry and checkpoint video, completion defaulting to shin55-final, historical playback/download and a subsequent service restart [rec: fair-crow-5108]. Before the Wren switch, fresh visits without restart again selected shin55-final at accepted identity, preserved playback across polls and returned from historical probe3-final; the next repeat also exercised real pointer orbit and historical shin55-checkpoint20 playback/download with both revisions labelled [rec: lucky-bramble-8274] [rec: soft-aspen-5095].
-
-Reconcile judgement: keep `working` and replace the published current-project identity with Wren. Reed snapshots were taken after the switch and prove preservation during the successful Wren probe only, not isolation during the preceding creation turn [rec: mild-river-8224].
+The service stayed active through two in-place engine restores with eight solids, twelve defaults and accepted identity preserved [rec: late-walrus-6383]. During Wren's real GPU experiment, fresh visits selected active training even after a checkpoint playback entry appeared; after completion they selected the final attempt, preserving historical browsing and playback. The recorded private-address browser observations are on the same machine, not a second device [rec: sage-tower-6445].
 
 Charter criterion: fresh visits select active training first, otherwise the latest attempt including failed/interrupted work, with truthful identity, available curves/videos and explicit pending/stale/failed states; preserve historical browsing and playback with a route back; keep the stable URL serving between iterations; verify and publish identity at experiment start/completion and every working-project switch. Acceptance requires persistent-URL browser evidence across a real experiment and a working-copy switch plus current-selection and historical-preservation regressions. Declared target `gap-d10-persistent-operator-dashboard-stays` [rec: simple-raven-5405].
 
@@ -34,3 +32,6 @@ None yet.
 - lucky-bramble-8274 — persistent shin55-final revisit with identity, playback and history checks
 - soft-aspen-5095 — persistent current-design pointer interaction and historical checkpoint revisit
 - mild-river-8224 — deliberate switch to Wren and verified current accepted empty-run view
+- late-walrus-6383 — persistent Wren display survives two in-place restores
+- sage-tower-6445 — active-first selection and historical playback throughout first Wren GPU experiment
+- honest-path-3451 — accepted 105 mm feet and historical original-policy identities remain explicit at the stable URL
