@@ -171,3 +171,66 @@ not an assertion of zero overhead or renderer speedup. The render took 12.881 s
 wall clock. No second training run overlapped this experiment. Wren still needs
 multi-seed evaluation, a review-driven design change, retraining and the rest
 of its repeated lifecycle; the operator service stays running on its final run.
+
+
+## Review-driven foot revision (iteration 50)
+
+The retained checkpoint and final frames were inspected. The final policy pitches
+backward and crosses the torso-height threshold at 0.46 s, with −105.757 mm
+torso X displacement; checkpoint 20 survives eight seconds. This motivates one
+parametric hypothesis: grow `foot_len` from 85 to 105 mm for more support behind
+the ankle. With the existing length/8 centroid offset, heel reach grows from
+31.875 to 39.375 mm, toe reach from 53.125 to 65.625 mm. Each foot gains
+7.936 g. Extra mass/inertia and toe length may hurt control; this does not
+establish that geometry caused the learned policy's failure. No gait improvement
+or retraining is claimed. The final image records threshold crossing, not a
+completed ground impact.
+
+The public CLI accepted revision `a90b84033ced…`, digest `502fc7ad0409…`:
+
+```bash
+./cadex --project "$HOME/cadex-projects/ot5-wren" params \
+  --set policy_on=0 --set foot_len=105 \
+  --out "$HOME/cadex-projects/ot5-wren/evidence/revision50/export" --json
+./cadex --project "$HOME/cadex-projects/ot5-wren" render --json
+```
+
+The source script text stays unchanged: accepted parameter values author the
+revision through the product's parameter operation. `policy_on=0` disables the
+old model-bound policy. All other dimensions and task settings remain equal;
+the task bundle differs only in its model reference. Project DECISIONS.md and
+PROGRESS.md explain the hypothesis and comparison protocol.
+
+Before the edit, every file under `runs/` was hashed to the project-local
+`evidence/revision50/runs-before.json`, and the script/manifest were retained
+beside it. [revision.py](revision.py) checks that inventory after the edit and
+again after browser review. Re-run this read-only check with the same inputs:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/wren-fresh/revision.py \
+  "http://$(tailscale ip -4):8765/" "$HOME/cadex-projects/ot5-wren"
+```
+
+[revision-evidence.json](revision-evidence.json) records the pass. The actual
+served STL feet measure 85 mm for both historical playback runs and 105 mm for
+ACCEPTED NOW. Both old models load eight components, retain their revision,
+digest, curves, policy and video identities, play through three refreshes and
+download with matching hashes. All retained run files remain byte-identical.
+Accepted view shows 105 mm and disabled policy with no substituted old video.
+Screenshots and decoded frames remain in `evidence/revision50/`; the accepted
+viewport screenshot was inspected. This is a same-machine private-address
+check, not a second-device or new D11 similarity claim. The service was never
+stopped: fresh visits select latest attempt `wren1-final`, explicitly HISTORICAL
+relative to the new accepted design, and return-to-current works. Select
+ACCEPTED NOW for the untrained revision.
+
+**Declared before retraining:** evaluate the original checkpoint 20 and final
+policy, and their revised-design counterparts, on rollout seeds **[0,1,2,3,4]**,
+**eight seconds**, **50 Hz / 400 steps**, with the same reset distribution and
+fall threshold. Record per-seed torso X displacement, actual survival duration,
+fell/termination and total reward, then mean/min survival and fall count.
+Original seed 0 exists; seeds 1–4 remain unmeasured. Use the retained original
+model/task for old-policy evaluations. Train the revision from scratch with
+the same **240 iterations, 1024 environments, training seed 0, checkpoint interval
+20, 1800-second timeout and MemoryMax=20G** as wren1. Retraining and additional
+seed evaluations belong to the next experiment; no result is inferred here.

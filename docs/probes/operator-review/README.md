@@ -4,6 +4,13 @@ Verified against source: 2026-09-12. [Cadex-new]
 
 The shared private-network dashboard on port 8765 serves `ot5-wren`, with
 `wren1-final` selected by default at revision `a8073874ab76…`.
+The accepted design is now `a90b84033ced…`: foot length 105 mm, old policy
+disabled, retraining not started. The latest attempt remains `wren1-final`
+with its original 85 mm feet and is visibly HISTORICAL. Select ACCEPTED NOW
+to inspect the new design; no new-design video exists yet. Both historical
+videos still play/download with their original hashes after this revision,
+and all retained run bytes are unchanged. The persistent server was not stopped.
+See [the revision evidence and declared comparison](../wren-fresh/README.md#review-driven-foot-revision-iteration-50).
 Wren's first GPU run completed 240 iterations in 697.0 seconds; no experiment
 training remains active. Both its checkpoint-20 and final-policy videos are
 retained in the shared prototype-light style. The final policy falls at 0.46 s
