@@ -423,7 +423,10 @@ def policy_store(project_root: Path | str, record: Mapping[str, Any],
     starts a new attempt when it is not. Digests are verified on files up
     to ``POLICY_DIGEST_LIMIT_BYTES`` through a stamp-keyed cache of their
     own, so a polled page never re-hashes an unchanged file and never
-    waits behind a video verification. The store command names
+    waits behind a video verification. ``store_command`` is the one
+    command that puts the retained copy in the store — bare, for a caller
+    that needs the action without the alternatives — and is ``None`` when
+    the policy is stored or nothing is retained. The store command names
     the project directory twice, as ``<project-dir>``: ``--put`` resolves
     against the working directory and ``--project`` defaults to ``./.cadex``,
     so a bare ``cadex asset --put runs/…`` run from the project directory
@@ -437,7 +440,7 @@ def policy_store(project_root: Path | str, record: Mapping[str, Any],
     sha256 = str(policy.get("sha256") or "")
     result: dict[str, Any] = {"state": "none", "name": name or None, "asset": None,
                               "retained": None, "reason": "no policy recorded",
-                              "next_action": None}
+                              "next_action": None, "store_command": None}
     if not name:
         return result
     trained = (resolved.get("artifacts") or {}).get("policy") or {}
@@ -452,6 +455,7 @@ def policy_store(project_root: Path | str, record: Mapping[str, Any],
     keep = (f"store it: {put} · or {new_attempt}" if retained
             else f"the trainer's copy is not retained in this run; {new_attempt}")
     result["next_action"] = keep
+    result["store_command"] = put or None
     recorded = (resolved.get("project_artifacts") or {}).get("policy") or {}
     if recorded.get("path") is not None and recorded.get("error"):
         result.update(state="refused",
@@ -466,7 +470,7 @@ def policy_store(project_root: Path | str, record: Mapping[str, Any],
         except OSError:
             digest = None
         if digest is not None and (not sha256 or digest == sha256):
-            result.update(state="stored", asset=f"assets/{name}", next_action=None,
+            result.update(state="stored", asset=f"assets/{name}", next_action=None, store_command=None,
                           reason="the project store holds this policy"
                                  + (" with the recorded digest" if sha256
                                     else "'s name; no digest was recorded to check it against"))
@@ -475,7 +479,8 @@ def policy_store(project_root: Path | str, record: Mapping[str, Any],
                       reason=(f"assets/{name} holds different bytes than this run's policy"
                               if digest is not None else f"assets/{name} could not be verified"),
                       next_action=(f"store it under another name: {put} --name <other>.cxpolicy"
-                                   if retained else keep))
+                                   if retained else keep),
+                      store_command=f"{put} --name <other>.cxpolicy" if retained else None)
         return result
     result.update(state="unstored",
                   reason=(f"the record named {recorded['path']} but the project store does not hold it"
@@ -619,10 +624,14 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
     """One run, as recorded, with every reference resolved against the disk.
 
     Adds ``resolved`` (per artifact: path, exists, error) and ``problems``
-    (the references that are recorded but missing or escaping), and marks
-    a ``running`` record as ``interrupted``-looking without claiming it: the
-    reader cannot tell a live walk from one that died, so it says which
-    two it could be and leaves the CLI action to the caller.
+    (the references that are recorded but missing or escaping, and — for a
+    completed run — a policy the trainer retained that the project store
+    does not hold, with the command that stores it: an ``ok`` run whose
+    result lives only under its own ``train/`` is a retention gap, not a
+    finished run, ADR-327), and marks a ``running`` record as
+    ``interrupted``-looking without claiming it: the reader cannot tell a
+    live walk from one that died, so it says which two it could be and
+    leaves the CLI action to the caller.
     """
 
     directory = Path(run_dir).expanduser()
@@ -724,8 +733,13 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
         "unreadable": "record unreadable",
         "empty": "no record and no review",
     }.get(status, f"unknown status {status!r}")
+    store = policy_store(root, record, resolved)
+    if status == "ok" and store["store_command"]:
+        problems.append(f"policy_store: {store['state']} — this completed run's policy "
+                        f"{store['name']} is retained at {store['retained']} but the project "
+                        f"store does not hold it; store it: {store['store_command']}")
     return {**record, "outcome": outcome, "resolved": resolved, "problems": problems,
-            "policy_store": policy_store(root, record, resolved)}
+            "policy_store": store}
 
 
 def list_runs(project_root: Path | str) -> list[dict[str, Any]]:

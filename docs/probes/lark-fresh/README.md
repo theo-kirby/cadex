@@ -5,6 +5,21 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Lark lifecycle report](LIFECYCLE.md) links D1–D11 evidence, the common-seed
 comparison, current visual assessment and remaining acceptance limits.
 
+**Iteration 111 (D5/D8/D10, ADR-327):** a completed run whose policy is
+retained only under its own `train/` is a retention gap, listed on the page
+under problems with the one `cadex asset` command that closes it; the two
+bounded drivers now store through the CLI before they record. Live receipt on
+the persistent page: [policy_store111.py](policy_store111.py) and
+[its receipt](policy-store111-evidence.json) — `lark96-restart` and
+`lark109-engine2`, each stored by running exactly the command its problem
+line named, from `/`; each open page dropped the problem and read `stored`
+within 1.1 s with no navigation, both records byte-identical, 601 earlier run
+files and the accepted identity unchanged, a fresh visit still selecting
+`lark109-engine2`, and the service's MainPID identical before and after.
+The unit was restarted deliberately once before the probe, with no trainer
+active, so it served the new reader (`service111-restart.json` in the copy's
+evidence directory records the two PIDs), and once more on the committed code.
+
 **Iteration 109 (D6/D10, ADR-325):** the engine was killed and restarted
 during real GPU training on `ot5-lark-copy85`, through the public CLI alone:
 [ENGINE109.md](ENGINE109.md) and [its receipt](engine109-evidence.json),

@@ -1136,6 +1136,71 @@ def test_browser_explains_a_failed_observation_whose_training_finished(tmp_path,
 
 
 @needs_browser
+def test_browser_lists_a_completed_run_whose_policy_was_never_stored_as_a_problem(tmp_path, browser):
+    """The Lark runs ``lark96-restart`` and ``lark109-engine2`` on screen
+    (ADR-327): bounded drivers that trained to ``done`` and recorded ``ok``
+    with the policy under ``train/`` and nothing in the project store. A
+    completed run whose only policy copy is the trainer's is a retention
+    gap: the page lists it under problems with the one command that closes
+    it, beside the policy-store row's advice. When the operator runs that
+    command the problem disappears on the next poll — no reload, no record
+    rewrite — and the run stays ``completed``. A fresh visit still selects
+    the newest run."""
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_B)
+    _stage_accepted(root, REVISION_B)
+    payloads = {}
+    for name in ("bounded-a", "bounded-b"):
+        run = _training_run(root, name, revision=REVISION_B)
+        payloads[name] = f"fixture policy bytes of {name}".encode()
+        (run / "train" / f"{name}.cxpolicy").write_bytes(payloads[name])
+        _training_run(root, name, revision=REVISION_B, status="ok",
+                      policy_name=f"{name}.cxpolicy",
+                      policy_sha256=hashlib.sha256(payloads[name]).hexdigest())
+        assert json.loads((run / RUN_RECORD_FILENAME).read_text())["policy"]["asset"] is None
+    _telemetry(root, 99, run="bounded-b", state="done", total=100, out="bounded-b.cxpolicy")
+    command = "cadex asset --project <project-dir> --put <project-dir>/runs/bounded-b/train/bounded-b.cxpolicy"
+
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.wait_for("document.getElementById('view-kind').textContent === 'RUN bounded-b'")
+        assert page.text("#view-status") == "completed"
+        page.wait_for("document.getElementById('view-policy-store').dataset.state === 'unstored'")
+        assert ("next: store it: " + command) in page.text("#view-policy-store")
+        page.wait_for("document.querySelectorAll('#problems li').length === 1")
+        assert page.text("#problems li") == (
+            "policy_store: unstored — this completed run's policy bounded-b.cxpolicy is retained at "
+            "train/bounded-b.cxpolicy but the project store does not hold it; store it: " + command)
+        row = "#artifacts tr[data-group='artifacts'][data-key='policy']"
+        assert page.attribute(row + " td:nth-child(3)", "data-status") == "retained"
+        # The operator runs the command the page named: the gap closes on the
+        # next poll, the record is untouched, and the run is still completed.
+        record = root / "runs" / "bounded-b" / RUN_RECORD_FILENAME
+        before = record.read_bytes()
+        (root / "assets" / "bounded-b.cxpolicy").write_bytes(payloads["bounded-b"])
+        page.wait_for("document.getElementById('view-policy-store').dataset.state === 'stored'")
+        page.wait_for("document.querySelectorAll('#problems li').length === 0")
+        assert page.text("#view-status") == "completed"
+        assert "next:" not in page.text("#view-policy-store")
+        assert record.read_bytes() == before
+        assert page.evaluate("performance.getEntriesByType('navigation').length") == 1
+        # The other bounded run still carries its own gap, and only its own.
+        page.click("#views li[data-run='bounded-a']")
+        page.wait_for("document.getElementById('view-kind').textContent === 'RUN bounded-a'")
+        page.wait_for("document.querySelectorAll('#problems li').length === 1")
+        assert "bounded-a.cxpolicy" in page.text("#problems li") and "bounded-b" not in page.text("#problems li")
+        assert page.attribute("#view-policy-store", "data-state") == "unstored"
+        fresh = _open(browser, server.url)
+        fresh.wait_for("document.getElementById('view-kind').textContent === 'RUN bounded-b'")
+        assert fresh.attribute("#view-policy-store", "data-state") == "stored"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
 @pytest.mark.parametrize('failure_stage', ['header', 'validation', 'witness', 'save'])
 def test_browser_observes_final_policy_publication_failure(served, browser, monkeypatch, failure_stage):
     """Fault the real trainer's publication path after a retained checkpoint.

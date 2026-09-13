@@ -838,3 +838,51 @@ def test_policy_store110_receipt_shows_the_failed_observation_explained_and_its_
     assert receipt["assets_added"] == ["lark109-engine.cxpolicy"] and receipt["assets_prior_unchanged"]
     assert receipt["stored_asset_sha256_matches"] and receipt["accepted_identity_unchanged"]
     assert receipt["service_pid_after"] == receipt["service_pid"]
+
+
+def test_policy_store111_receipt_shows_both_completed_runs_listed_as_gaps_and_closed_by_their_own_command() -> None:
+    """Iteration 111 (ADR-327): on the persistent Lark copy, the two bounded
+    ``ok`` runs whose drivers never stored their policy — ``lark96-restart``
+    and ``lark109-engine2`` — are listed on the operator page under problems
+    with the one ``cadex asset`` command that closes the gap, beside the
+    policy-store row's advice; each command, run with the project directory
+    filled in from an unrelated working directory, drops the problem and
+    flips the already-open page to ``stored`` on its next poll with no
+    navigation, no record rewrite, the run still ``completed``, the 601
+    earlier run files, the accepted identity and the dashboard service
+    unchanged, and a fresh visit still selecting the newest run."""
+    receipt = json.loads((PROBE / "policy-store111-evidence.json").read_text())
+    assert receipt["schema"] == "cadex-policy-store-evidence-v2" and receipt["ok"] is True
+    assert receipt["project"] == "ot5-lark-copy85"
+    assert receipt["runs"] == ["lark96-restart", "lark109-engine2"]
+    assert receipt["url"].startswith("http://100.") and receipt["persistent_port"] == 8765
+    assert receipt["private_address_same_machine"] is True and receipt["trainers_seen"] == []
+    assert re.fullmatch(HEX64, receipt["accepted_revision"]) and re.fullmatch(HEX64, receipt["accepted_digest"])
+    assert receipt["fresh_visit_default_run"] == receipt["fresh_visit_after_default_run"] == "RUN lark109-engine2"
+    for name, row in receipt["per_run"].items():
+        policy = name + ".cxpolicy"
+        assert row["policy_name"] == policy and re.fullmatch(HEX64, row["policy_sha256"])
+        assert row["record_status"] == "ok" and row["record_asset_locator"] == "assets/" + policy   # pre-ADR-326 record
+        command = row["cli"]["command"]
+        assert command == f"cadex asset --project <project-dir> --put <project-dir>/runs/{name}/train/{policy}"
+        before, after = row["page_before"], row["page_after"]
+        assert before["status"] == after["status"] == "completed"
+        assert before["policy_store_state"] == "unstored" and before["trainer_copy_status"] == "retained"
+        assert before["trainer_copy_path"] == f"train/{policy}" and before["store_copy_status"] == "missing"
+        assert before["problems"] == [
+            "project_artifacts.policy: missing",
+            f"policy_store: unstored — this completed run's policy {policy} is retained at train/{policy} "
+            f"but the project store does not hold it; store it: {command}"]
+        assert ("next: store it: " + command) in before["policy_store"]
+        assert row["cli"]["exit"] == 0 and row["cli"]["ok"] is True and row["cli"]["stored_name"] == policy
+        assert 0 < row["page_flip_seconds"] < 5
+        assert after["policy_store_state"] == "stored" and "next:" not in after["policy_store"]
+        assert after["problems"] == [] and after["store_copy_status"].startswith("retained")
+        assert after["note"] == before["note"]
+        assert row["fresh_visit_after_policy_store"].startswith("stored") and row["fresh_visit_after_problems"] == []
+    assert receipt["no_navigation"] is True
+    assert receipt["record_bytes_unchanged"] and receipt["runs_files_unchanged"] and receipt["runs_files"] >= 601
+    assert receipt["assets_added"] == ["lark109-engine2.cxpolicy", "lark96-restart.cxpolicy"]
+    assert receipt["assets_prior_unchanged"] and receipt["stored_assets_sha256_match"]
+    assert receipt["accepted_identity_unchanged"]
+    assert receipt["service_pid_after"] == receipt["service_pid"]

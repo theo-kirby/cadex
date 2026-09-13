@@ -504,10 +504,16 @@ no engine, no rebuild, no re-acceptance. Each run carries `relation`
 `outcome` in words (a `running` record reads `started and never finished:
 still running, or interrupted`, because the reader cannot tell which), and
 `problems`: references that are recorded but missing, snapshot pages whose
-digest no longer matches, and references that **escape their base** by
+digest no longer matches, references that **escape their base** by
 `..`, by an absolute path or by a symlink — those are reported and never
 opened, which is what lets a review client serve a project's permitted
-artifacts and nothing else. A run from before records existed is read from
+artifacts and nothing else — and, for an `ok` run, a policy the trainer
+retained under the run's `train/` that the project store does not hold,
+with the one command that stores it (ADR-327): a completed run whose only
+policy copy is the trainer's is a retention gap, not a finished run, and it
+stays listed until `cadex asset --put` has run — with no record rewrite. A
+`failed` run in the same state is not listed; its policy-store row carries
+the advice and the failure is the problem. A run from before records existed is read from
 its `review.json` and labelled `unrecorded`, with its identity taken from
 the rollout leg's envelope fields and nothing inferred beyond that.
 
@@ -524,7 +530,10 @@ disk — for records older than ADR-326, which name no `artifacts.policy`, the
 reader resolves it at the trainer's one fixed place, `train/<name>`, only
 when it exists — and `next_action` is the command: `cadex asset --project
 <project-dir> --put <project-dir>/runs/<run>/train/<name>` to keep it, or a
-new `cadex walk --out runs/<new-name>` when nothing is retained. The command
+new `cadex walk --out runs/<new-name>` when nothing is retained;
+`store_command` is that store command alone (with `--name <other>.cxpolicy`
+on a digest mismatch), `null` once the policy is stored or when nothing is
+retained, and is what the `problems` entry above carries. The command
 names the project directory twice on purpose: `--put` resolves against the
 working directory and `--project` defaults to `./.cadex`, so a bare `cadex
 asset --put runs/…` run *inside* the project directory creates a nested
@@ -1620,7 +1629,10 @@ What the page shows, and where each thing comes from:
   `policy_store` for every selected run: its state, the reason, the
   retained trainer copy and the next CLI action; a store write the operator
   makes afterwards flips it to `stored` on the next poll, with the run's
-  status and history untouched.
+  status and history untouched. A `completed` run whose policy is retained
+  only under its own `train/` is also listed under the run's problems with
+  that store command (ADR-327), and the entry leaves on the poll after the
+  store write.
   Before a rollout, new walks show their retained assembled training view,
   including component identities and the recorded placement source (a trace's
   first frame or declared placements, explicitly labelled). Missing snapshot

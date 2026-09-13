@@ -187,7 +187,7 @@ def test_the_store_locator_is_named_only_when_the_store_holds_the_policy(tmp_pat
     (root / "assets" / "probe.cxpolicy").write_bytes(b"trained to the end")
     store = read_run_record(run, root)["policy_store"]
     assert store == {"state": "stored", "name": "probe.cxpolicy", "asset": "assets/probe.cxpolicy",
-                     "retained": "train/probe.cxpolicy", "next_action": None,
+                     "retained": "train/probe.cxpolicy", "next_action": None, "store_command": None,
                      "reason": "the project store holds this policy with the recorded digest"}
     # ...and a record written now names the store copy.
     assert record()["policy"]["asset"] == "assets/probe.cxpolicy"
@@ -234,7 +234,64 @@ def test_a_run_without_a_policy_has_no_store_state(tmp_path) -> None:
     write_run_record(run, project_root=root, status="running", mode="blocking")
     store = read_run_record(run, root)["policy_store"]
     assert store == {"state": "none", "name": None, "asset": None, "retained": None,
-                     "reason": "no policy recorded", "next_action": None}
+                     "reason": "no policy recorded", "next_action": None, "store_command": None}
+
+
+def test_a_completed_run_whose_policy_is_only_in_its_train_dir_is_a_problem_with_the_store_command(tmp_path) -> None:
+    """An ``ok`` run that trained and kept its policy under ``train/`` while
+    nothing put it in the project store is a retention gap (ADR-327): it is
+    listed under ``problems`` with the one command that closes it, and the
+    entry goes away when the store holds the policy — with no record rewrite.
+    A ``failed`` run in the same state is not listed: its next action is on
+    the policy-store row, and the failure is the problem (ADR-326)."""
+
+    root = _project(tmp_path)
+    run = root / "runs" / "bounded"
+    (run / "train").mkdir(parents=True)
+    (run / "train" / "bounded.cxpolicy").write_bytes(b"trained, never stored")
+    digest = hashlib.sha256(b"trained, never stored").hexdigest()
+    write_run_record(run, project_root=root, status="ok", mode="bounded-probe",
+                     policy_name="bounded.cxpolicy", policy_sha256=digest)
+    before = (run / RUN_RECORD_FILENAME).read_bytes()
+    command = "cadex asset --project <project-dir> --put <project-dir>/runs/bounded/train/bounded.cxpolicy"
+    read = read_run_record(run, root)
+    assert read["policy_store"]["state"] == "unstored"
+    assert read["policy_store"]["store_command"] == command
+    assert read["problems"] == [
+        "policy_store: unstored — this completed run's policy bounded.cxpolicy is retained at "
+        "train/bounded.cxpolicy but the project store does not hold it; store it: " + command]
+    # Other bytes under that name: still a gap, stored under another name.
+    (root / "assets" / "bounded.cxpolicy").write_bytes(b"another policy")
+    read = read_run_record(run, root)
+    assert read["policy_store"]["state"] == "digest mismatch"
+    assert read["policy_store"]["store_command"] == command + " --name <other>.cxpolicy"
+    assert read["problems"] == [
+        "policy_store: digest mismatch — this completed run's policy bounded.cxpolicy is retained at "
+        "train/bounded.cxpolicy but the project store does not hold it; store it: "
+        + command + " --name <other>.cxpolicy"]
+    # The operator stores it: the gap closes, the record is untouched.
+    (root / "assets" / "bounded.cxpolicy").write_bytes(b"trained, never stored")
+    read = read_run_record(run, root)
+    assert read["policy_store"]["state"] == "stored" and read["policy_store"]["store_command"] is None
+    assert read["problems"] == []
+    assert (run / RUN_RECORD_FILENAME).read_bytes() == before
+    # A failed run with the same retained copy: the row says what to do; no problem entry.
+    failed = root / "runs" / "aborted"
+    (failed / "train").mkdir(parents=True)
+    (failed / "train" / "aborted.cxpolicy").write_bytes(b"trained, observation lost")
+    write_run_record(failed, project_root=root, status="failed", mode="bounded-probe",
+                     error="observation aborted after training finished",
+                     policy_name="aborted.cxpolicy",
+                     policy_sha256=hashlib.sha256(b"trained, observation lost").hexdigest())
+    read = read_run_record(failed, root)
+    assert read["policy_store"]["state"] == "unstored" and read["policy_store"]["store_command"]
+    assert read["problems"] == []
+    # Nothing retained: no command, and nothing to list beyond what the record itself lost.
+    (run / "train" / "bounded.cxpolicy").unlink()
+    (root / "assets" / "bounded.cxpolicy").unlink()
+    read = read_run_record(run, root)
+    assert read["policy_store"]["state"] == "unstored" and read["policy_store"]["store_command"] is None
+    assert read["problems"] == ["artifacts.policy: missing"]
 
 
 def test_a_reference_outside_both_bases_is_null_not_absolute(tmp_path) -> None:

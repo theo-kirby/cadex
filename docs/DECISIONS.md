@@ -23782,3 +23782,32 @@ the probe's own exclusion guard. Regression: a headless-browser test in
 reader/writer tests in `cli/tests/test_review_record.py`. The existing record
 fixture's policy digest was corrected to the bytes it stores, which the old
 writer never checked. No engine, payload, shell or dependency change.
+
+## ADR-327 — A completed run whose policy is only in its own `train/` is a retention gap, listed under `problems` with the store command; the bounded drivers store through the CLI (2026-09-13)
+
+ADR-326 made a run record name a store copy only when the store holds it and
+gave the reader a `policy_store` row with the next command, and left one
+judgement open: an `ok` run whose policy was never stored showed the advice on
+its policy-store row and nothing under `problems`, as if a completed run with
+its result kept only by the trainer were finished. It is not: `runs/<run>/train/`
+is the trainer's working copy, the project store under `assets/` is what the
+walk plays, copies and the next design turn read, and the two bounded probe
+drivers (`restart_training.py`, `engine_restart.py`) had recorded `ok` for
+`lark96-restart` and `lark109-engine2` on the persistent Lark copy without ever
+running `cadex asset --put`. The reader now lists an `ok` run whose
+`policy_store` is `unstored` or `digest mismatch` with a retained trainer copy
+under `problems`, carrying the one command that closes the gap — `policy_store`
+gains `store_command`, the bare store command (`--name <other>.cxpolicy` on a
+mismatch), `null` once stored or when nothing is retained — and the entry
+leaves on the poll after the store write, with no record rewrite and the run
+still `completed`. A `failed` run in the same state is not listed: its row
+carries the advice and the failure is the problem (ADR-326). The two drivers
+now store the policy through the public CLI before they write the record, so
+the record names a store copy that exists, and a store failure after a
+finished training records `failed` with an error that says so rather than an
+`ok` with a gap. Regression: a headless-browser test in
+`cli/tests/test_review_server.py` on a fixture of the two Lark runs' shape and
+a reader test in `cli/tests/test_review_record.py`. Live receipt on the
+persistent operator URL: `docs/probes/lark-fresh/policy_store111.py`, which
+followed the page's own advice for both runs. No engine, payload, shell or
+dependency change.

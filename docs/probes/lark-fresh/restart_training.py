@@ -4,6 +4,8 @@
 
 PYTHONPATH=cli:cli/tests pixi run python docs/probes/lark-fresh/restart_training.py PROJECT URL RUN HISTORY
 Retains all evidence in PROJECT/evidence; requires the existing training venv.
+A finished training is stored as a project asset through the public CLI before
+the run record is written (ADR-327), so the record names a store copy that exists.
 """
 import json
 import os
@@ -86,10 +88,23 @@ def main(project, url, name, history):
         final = read(train / 'progress.json')
         policy = train / (name + '.cxpolicy')
         success = result['trainer_exit'] == 0 and final['state'] == 'done' and policy.is_file()
+        if success:
+            # Store the policy through the public CLI before the record is
+            # written, so the record names a store copy that exists and the
+            # run is never listed as a retention gap (ADR-327).
+            with (ev / (name + '-asset.stderr')).open('w') as err:
+                put = subprocess.run(['./cadex', '--project', str(p), 'asset', '--put', str(policy),
+                                      '--name', policy.name, '--json'],
+                                     stdout=subprocess.PIPE, stderr=err, text=True, timeout=300)
+            (ev / (name + '-asset.json')).write_text(put.stdout)
+            stored = json.loads(put.stdout) if put.returncode == 0 and put.stdout else {}
+            result['store'] = dict(exit=put.returncode, ok=stored.get('ok'), name=policy.name,
+                                   sha256_matches=any(row.get('sha256') == sha(policy) for row in stored.get('assets') or []))
+            success = put.returncode == 0 and stored.get('ok') is True and result['store']['sha256_matches']
         write_run_record(run, status='ok' if success else 'failed',
                          legs=[dict(leg='train', exit=result['trainer_exit'])],
                          **(dict(policy_name=policy.name, policy_sha256=sha(policy)) if success else
-                            dict(error='Bounded restart experiment training failed; inspect retained trainer log.')),
+                            dict(error='Bounded restart experiment training failed; inspect retained trainer log.' if result.get('store') is None else 'Training finished but the policy could not be stored as a project asset; inspect the retained asset stderr.')),
                          **base)
         result.update(peak_memory_bytes=peak, enforced_memory_max=bounds.get('MemoryMax'),
                       final_state=final['state'], final_iteration=final['iteration'], device=final['device'],
