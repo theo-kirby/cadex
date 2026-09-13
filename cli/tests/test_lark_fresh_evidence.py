@@ -213,3 +213,104 @@ def test_lark_checkpoint_was_played_during_real_bounded_training():
     assert policies["lark1-final"]["browser"]["historical_selection"] == "lark1-checkpoint20"
     assert policies["lark1-final"]["policy_sha256"] != policies["lark1-checkpoint20"]["policy_sha256"]
     assert "training-evidence.json" in (PROBE / "README.md").read_text()
+
+
+def test_lark_revision_retraining_played_its_checkpoint_during_real_training():
+    """``training84-evidence.json`` is the receipt of ``lark2``, the retraining
+    of the product agent's 45 mm-torso revision under the ``lark1`` bounds:
+    the agent's revision as the training identity, a different model and task
+    from ``lark1``, exit 0 on the GPU, live page updates within five seconds,
+    a checkpoint published while the trainer was active, and both policies
+    surviving the full seed-0 episode with decoded, downloaded videos."""
+    evidence = json.loads((PROBE / "training84-evidence.json").read_text())
+    first = json.loads((PROBE / "training-evidence.json").read_text())
+    assert evidence["schema"] == "lark-training-evidence-v1"
+    assert evidence["project"] == "ot5-lark" and evidence["run"] == "lark2"
+    assert evidence["accepted_revision"] != first["accepted_revision"]
+    assert evidence["digest"] != first["digest"]
+    assert set(evidence["geometry"]) == set(first["geometry"])
+    assert all(evidence["geometry"][k] != first["geometry"][k] for k in first["geometry"])
+    assert evidence["training_exit"] == evidence["observer_exit"] == 0
+    final = evidence["trainer_final"]
+    assert final["iteration"] + 1 == 240 and final["state"] == "done" and final["device"] == "gpu"
+    assert evidence["resource_bound"]["MemoryMax"] == str(20 * 1024**3)
+    assert evidence["memory"]["host_peak_bytes"] < 20 * 1024**3
+    assert evidence["training_wall_seconds"] < 1800
+    mid = evidence["intermediate"]
+    assert mid["run"] == "lark2-checkpoint20"
+    assert mid["trainer_active_after_browser"] and mid["browser_check_exit"] == 0
+    assert mid["before"] < 20 <= mid["render_before"] <= mid["render_after"] <= mid["after"]
+    assert mid["witness"]["witness_error"] < mid["witness"]["witness_tolerance"]
+    live = evidence["live_browser"]
+    assert live["ok"] and live["reload_count"] == 1 and live["default_view_kind"] == "RUN lark2"
+    assert len(live["page_iterations"]) >= 7
+    assert all(0 <= x["committed_to_page_s"] < 5 for x in live["first_seen"].values())
+    policies = evidence["policies"]
+    assert set(policies) == {"lark2-checkpoint20", "lark2-final"}
+    for policy in policies.values():
+        assert re.fullmatch(HEX64, policy["policy_sha256"])
+        assert policy["seed"] == 0 and policy["episode_limit_s"] == 8
+        assert policy["observed_s"] == 8 and not policy["fell"] and policy["time_limit_reached"]
+        browser = policy["browser"]
+        assert browser["browser_playback"] and browser["decoded_frames"] == policy["video"]["frames"]
+        assert browser["download_sha256"] == policy["video"]["sha256"]
+        assert browser["policy_sha256"] == policy["policy_sha256"]
+        assert browser["style"] == "cadex-prototype-light-v1"
+    assert policies["lark2-checkpoint20"]["browser"]["fresh_selection"] == "RUN lark2"
+    assert policies["lark2-final"]["browser"]["fresh_selection"] == "RUN lark2-final"
+    assert policies["lark2-final"]["browser"]["historical_selection"] == "lark2-checkpoint20"
+
+
+def test_lark_agent_revision_comparison_uses_the_declared_ten_seeds():
+    """``revision84-evidence.json``: all four retained Lark policies evaluated
+    on the project's declared seeds 0-9 from their own retained model, task
+    and policy, with the 125 pre-revision run/asset files preserved. The
+    report format is the one Wren's revision introduced, so its schema keeps
+    that name."""
+    evidence = json.loads((PROBE / "revision84-evidence.json").read_text())
+    assert evidence["schema"] == "wren-revision-comparison-v1"
+    assert evidence["project"] == "ot5-lark"
+    assert evidence["protocol"] == dict(seeds=list(range(10)), episode_seconds=8, control_hz=50,
+                                        training_iterations=240, environments=1024, training_seed=0)
+    assert evidence["before_inventory_preserved"] and evidence["before_inventory_files"] == 125
+    runs = evidence["runs"]
+    assert set(runs) == {"lark1-checkpoint20", "lark1-final", "lark2-checkpoint20", "lark2-final"}
+    torso = {"lark1-checkpoint20": 70, "lark1-final": 70, "lark2-checkpoint20": 45, "lark2-final": 45}
+    model_ids = {}
+    for name, item in runs.items():
+        evaluation = item["evaluation"]
+        assert evaluation["run"] == name
+        assert evaluation["source_run_unchanged"] and evaluation["seed_zero_trace_identical"]
+        rows = evaluation["rows"]
+        assert [row["seed"] for row in rows] == list(range(10))
+        for row in rows:
+            assert row["survival_s"] == pytest.approx(row["step_count"] / 50)
+            assert row["fell"] == (row["termination"] == "fell")
+            assert row["fell"] or row["survival_s"] == 8
+            assert row["policy_sha256"] == item["video"]["policy_sha256"]
+            assert row["task_sha256"] == item["video"]["task_sha256"]
+        assert item["params"]["values"]["torso_h"] == torso[name]
+        assert len({row["model_sha256"] for row in rows}) == 1
+        model_ids[name] = rows[0]["model_sha256"]
+        assert item["summary"]["falls"] == sum(row["fell"] for row in rows)
+        assert item["summary"]["mean_survival_s"] == pytest.approx(sum(row["survival_s"] for row in rows) / 10)
+        assert item["summary"]["min_displacement_x_mm"] == min(row["displacement_x_mm"] for row in rows)
+        assert item["video"]["sim_seconds"] == pytest.approx(rows[0]["survival_s"])
+        assert item["browser"]["browser_playback"]
+        assert item["browser"]["download_sha256"] == item["video"]["sha256"]
+        assert item["evidence_directory"].startswith("evidence/comparison84/")
+    assert model_ids["lark1-checkpoint20"] == model_ids["lark1-final"]
+    assert model_ids["lark2-checkpoint20"] == model_ids["lark2-final"] != model_ids["lark1-final"]
+    assert len({item["accepted_revision"] for item in runs.values()}) == 4
+    for name in ("lark2-checkpoint20", "lark2-final"):
+        assert "product-agent-authored revision: torso_h 70->45" in runs[name]["authored_by"]
+    for name in ("lark1-checkpoint20", "lark1-final"):
+        assert runs[name]["authored_by"].startswith("product-agent-authored Lark")
+    # The measured outcome the documents claim: the revision survives every
+    # declared seed; the first design's final policy fell on all of them.
+    assert runs["lark1-final"]["summary"]["falls"] == 10
+    assert runs["lark2-checkpoint20"]["summary"]["falls"] == runs["lark2-final"]["summary"]["falls"] == 0
+    assert runs["lark2-final"]["browser"]["fresh_selection"] == "RUN lark2-final"
+    assert runs["lark2-checkpoint20"]["browser"]["returned_to_current"] == "RUN lark2"
+    readme = (PROBE / "REVISION84.md").read_text()
+    assert "revision84-evidence.json" in readme and "training84-evidence.json" in readme

@@ -23275,3 +23275,30 @@ draws the model with no `review/` render present — it failed on the old
 bridge with `retained no tessellation`. Reading a project still rebuilds
 nothing; the review client is unchanged. No dependency, protocol, payload,
 engine or shell change.
+
+## ADR-313 — Lark's design change is the product agent's, measured on the project's own seed set (2026-09-13)
+
+[Cadex-new] The third fresh biped's review-driven revision was made the way
+the charter's D9 asks — by the product agent, from the recorded review, not
+by a caller editing a parameter. One bounded `cadex -p` turn on `ot5-lark`
+received `lark1`'s measured results (both policies falling within a second,
+the final policy's +194 mm lunge paid for by `forward_progress`) and
+accepted `torso_h` 70 → 45 mm with `policy_on=0`, returning the hypothesis
+(torso mass and height drive the toppling moment) and the tradeoff as the
+project's ADR-004. `lark2` retrained it under the unchanged bounds; the
+comparison of all four retained policies then ran on **Lark's declared seed
+set 0–9**, because the charter says "the same declared episode/seed set" and
+Lark's design specs declare ten seeds where Wren's declared five. That is
+the one tooling change: `compare.py` takes the seed count as an argument,
+sets the seed through the script's `rollout_seed` parameter when it declares
+one, and finds the torso as the one traced component named for it;
+`report_revision.py` takes the seed set from the evaluations. Wren's
+committed receipt regenerates byte-identically. Measured: both 45 mm
+policies survive all ten eight-second episodes (final mean +34.8 mm torso X),
+`lark1-final` falls on all ten after lunging, `lark1-checkpoint20` on two.
+This is honest survival on one training seed per design; it does not isolate
+geometry from training variance and it is not a gait. The persistent port
+8765 page was checked at the turn's start (`lark1-final`) and the
+experiment's completion (`lark2-final`) and kept serving throughout; the
+125 pre-revision run/asset files are byte-identical. No protocol, payload,
+engine, shell or dependency change.

@@ -5,10 +5,25 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Wren lifecycle report](../wren-fresh/LIFECYCLE.md) links D1–D11 evidence, the design
 comparisons and their limits, and the current persistent-browser check.
 
-The shared private-network dashboard on port 8765 now serves **`ot5-lark`**,
-the third fresh product-agent biped, with **`lark1-final` selected by
-default** (playback revision `44f8f6a113a3…`, accepted digest now
-`bfd2bdeb36a2…` with the final policy declared). Iteration 82 ran Lark's
+The shared private-network dashboard on port 8765 serves **`ot5-lark`**,
+the third fresh product-agent biped, with **`lark2-final` selected by
+default** (playback revision `ca88f223b54c…`) on the product agent's own
+45 mm-torso revision (design revision `62f4e2a0e2df…`, project ADR-004).
+Iteration 84 ran that revision's 240-update GPU retraining on this URL:
+a fresh visit selected the active `RUN lark2` during training,
+`lark2-checkpoint20` was published with a verified video while the trainer
+was active, the final policy has a verified, downloadable video, and both
+45 mm policies survive all ten declared seeds where `lark1-final` fell on
+every one. The start and completion checks are `evidence/lark1-final-start84-browser.json`
+and `evidence/lark2-final-completion84-browser.json` in the project. No
+trainer remains active; the service was not restarted and stays running.
+[Lark revision evidence](../lark-fresh/REVISION84.md),
+[training receipt](../lark-fresh/training84-evidence.json),
+[comparison receipt](../lark-fresh/revision84-evidence.json).
+
+Until iteration 84 it served Lark with **`lark1-final` selected by
+default** (playback revision `44f8f6a113a3…`, accepted digest
+`bfd2bdeb36a2…` with the first final policy declared). Iteration 82 ran Lark's
 first bounded 240-update GPU experiment on this URL: the live page tracked
 training, `lark1-checkpoint20` was published with a verified video while the
 trainer was active, and the final policy has a verified, downloadable video;

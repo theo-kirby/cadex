@@ -1030,6 +1030,18 @@ trainer was active, and a verified final video; the fresh visit now selects
 `lark1-final`. On seed 0 both policies fall within a second (checkpoint 20
 at 0.98 s, final at 0.50 s after lunging +194 mm forward): a measured poor
 result, not a gait. See [the `lark1` section](probes/lark-fresh/README.md#first-bounded-real-training-probe-lark1-iteration-82)
-and [its receipt](probes/lark-fresh/training-evidence.json). Lark's
-design revision, retraining, copy and interruption evidence remain for later
-units.
+and [its receipt](probes/lark-fresh/training-evidence.json).
+
+Iteration 84 completed Lark's review-driven revision: one product-agent turn
+read the `lark1` measurements and accepted `torso_h` 70 → 45 mm with
+`policy_on=0` (revision `62f4e2a0e2df…`, project ADR-004, its own hypothesis
+being the torso's mass and height); `lark2` retrained it under the same
+bounds on the persistent dashboard with a checkpoint video published during
+training and a final video; and all four retained policies were compared on
+Lark's declared seeds 0–9 from their own retained models and policies. Both
+45 mm policies survive every eight-second episode (final mean +34.8 mm),
+where `lark1-final` falls on all ten seeds after a +190 mm lunge and
+`lark1-checkpoint20` on two. One training seed per design and a shuffle, not a
+gait; the 125 pre-revision run/asset files are byte-identical. See
+[REVISION84.md](probes/lark-fresh/REVISION84.md) and ADR-313. Lark's copy
+and interruption evidence remain for later units.

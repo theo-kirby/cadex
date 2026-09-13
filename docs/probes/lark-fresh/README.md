@@ -2,6 +2,15 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
+**Current state (iteration 84):** the product agent revised Lark from
+`lark1`'s measured results (`torso_h` 70 → 45 mm, project ADR-004), `lark2`
+retrained it under the same bounds, and all four retained policies were
+compared on the declared seeds 0–9: both 45 mm policies survive every episode
+where `lark1-final` fell on all ten. The persistent port 8765 page selects
+`lark2-final`. See [REVISION84.md](REVISION84.md) and its receipts
+[`training84-evidence.json`](training84-evidence.json) and
+[`revision84-evidence.json`](revision84-evidence.json).
+
 The exhaustion-policy clean-project repeat (charter `docs/…/goal.md`,
 ADR-284): a **third** fresh biped project, `ot5-lark`, created by the product
 agent in one `cadex -p` turn from an empty directory, with no import, link,

@@ -2717,6 +2717,13 @@ field, and every client gets it through the surface it already reads.
 
 ## Live headless project review (ADR-284)
 
+- [x] Lark's review-driven revision, retraining and declared-seed comparison
+      (ADR-313): the product agent chose `torso_h` 70 → 45 mm from `lark1`'s
+      measurements, `lark2` retrained it on the persistent dashboard with
+      checkpoint and final videos, and all four retained policies were compared
+      on seeds 0–9 from their own retained models. Survival on every seed for
+      the revision; one training seed per design, not a gait claim.
+
 - [x] Current-attempt default and persistent Reed operator server (ADR-299):
       active training first, newest attempt otherwise; preserve deliberate history
       and playback, with a route back to current. Private-address browser check

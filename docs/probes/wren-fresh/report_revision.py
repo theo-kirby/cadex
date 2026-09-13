@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""Assemble a Wren revision comparison from retained project-local receipts.
+"""Assemble a revision comparison from retained project-local receipts.
 
 Usage: pixi run python report_revision.py PROJECT BEFORE_INVENTORY RETAINED...
 BEFORE_INVENTORY is the pre-revision SHA-256 inventory of runs/ and assets/;
@@ -31,7 +31,11 @@ for location in sys.argv[3:]:
     browser = read(p / 'evidence' / (name + '-check.json'))
     assert browser['download_sha256'] == video['sha256'] == sha(run / video['path'])
     rows = result['rows']
-    assert [row['seed'] for row in rows] == list(range(5))
+    # Every evaluation ran the project's own declared seed set (five on Wren, ten on Lark).
+    seeds = result['seeds']; assert seeds == list(range(len(seeds))) and len(seeds) >= 5
+    assert [row['seed'] for row in rows] == seeds
+    protocol_seeds = runs[next(iter(runs))]['evaluation']['seeds'] if runs else seeds
+    assert seeds == protocol_seeds, (name, seeds, protocol_seeds)
     assert all(row['policy_sha256'] == video['policy_sha256'] for row in rows)
     assert all(row['model_sha256'] == sha(run / record['artifacts']['model_xml']) for row in rows)
     assert len({row['task_sha256'] for row in rows}) == 1
@@ -49,7 +53,7 @@ for location in sys.argv[3:]:
                           falls=sum(r['fell'] for r in rows),
                           mean_total_reward=statistics.mean(r['total_reward'] for r in rows)))
 print(json.dumps(dict(schema='wren-revision-comparison-v1', project=p.name,
-                      protocol=dict(seeds=list(range(5)), episode_seconds=8, control_hz=50,
+                      protocol=dict(seeds=protocol_seeds, episode_seconds=8, control_hz=50,
                                     training_iterations=240, environments=1024, training_seed=0),
                       before_inventory_files=len(before), before_inventory_preserved=True,
                       runs=runs), indent=2))

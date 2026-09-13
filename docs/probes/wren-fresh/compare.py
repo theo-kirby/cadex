@@ -1,10 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""Evaluate a retained Wren policy in a fresh scratch project via the public CLI.
+"""Evaluate a retained policy in a fresh scratch project via the public CLI.
 
-Usage: pixi run python compare.py SOURCE SCRATCH RUN
+Usage: pixi run python compare.py SOURCE SCRATCH RUN [SEEDS]
 The operator's project is read-only. Only the named immutable run and its
 content-verified policy asset supply inputs; today's accepted values are unused.
+SEEDS (default 5) evaluates rollout seeds 0..SEEDS-1: Wren declared five, Lark
+declares ten. The rollout seed is set through the script's ``rollout_seed``
+parameter when it declares one (Lark), otherwise through the literal
+``seed=0)`` in its rollout call (Wren). The torso is the one traced component
+named for it (``c_torso`` on Wren, ``torso_link`` on Lark).
 """
 import hashlib
 import json
@@ -15,6 +20,7 @@ import sys
 
 source, scratch = map(lambda p: Path(p).resolve(), sys.argv[1:3])
 name = sys.argv[3]
+seeds = int(sys.argv[4]) if len(sys.argv) > 4 else 5
 assert Path(name).name == name and not scratch.exists()
 assert source != scratch and source not in scratch.parents
 run = source / 'runs' / name
@@ -53,10 +59,16 @@ def cli(label, *args):
 
 cli('asset', 'asset', '--put', asset_path, '--name', asset)
 rows = []
-assert script.count('seed=0)') == 1
-for seed in range(5):
+seeded_by_param = 'rollout_seed' in record['params']['values']
+assert seeded_by_param or script.count('seed=0)') == 1
+for seed in range(seeds):
     path = evidence / f'seed{seed}.py'
-    path.write_text(script.replace('seed=0)', f'seed={seed})'))
+    if seeded_by_param:
+        seeded, count = re.subn(r'\brollout_seed=num\([^,]+,', f'rollout_seed=num({float(seed)!r},', script)
+        assert count == 1
+    else:
+        seeded = script.replace('seed=0)', f'seed={seed})')
+    path.write_text(seeded)
     out = evidence / f'seed{seed}'
     envelope = cli(f'seed{seed}', 'script', '--set', path, '--out', out)
     trace_path = out / 'assembly-simulation-trace.json'
@@ -68,7 +80,8 @@ for seed in range(5):
     assert abs(trace['parameters']['end_time_s'] - pol['step_count'] / 50) < 1e-9
     if seed == 0:
         assert trace == reference, 'Seed zero must reproduce retained trace exactly'
-    first, last = [f['component_placements']['c_torso']['position_mm']
+    (torso,) = [k for k in trace['frames'][0]['component_placements'] if 'torso' in k]
+    first, last = [f['component_placements'][torso]['position_mm']
                    for f in (trace['frames'][0], trace['frames'][-1])]
     rows.append(dict(run=name, seed=seed, foot_len_mm=record['params']['values']['foot_len'],
                      displacement_x_mm=last[0]-first[0], survival_s=trace['parameters']['end_time_s'],
@@ -79,7 +92,7 @@ for seed in range(5):
     print(json.dumps(rows[-1]), flush=True)
 assert {str(p.relative_to(run)): sha(p) for p in run.rglob('*') if p.is_file()} == before
 assert sha(asset_path) == policy['policy_sha256']
-result = dict(schema='wren-common-seeds-v1', run=name, seeds=list(range(5)),
+result = dict(schema='wren-common-seeds-v1', run=name, seeds=list(range(seeds)),
               episode_seconds=8, control_hz=50, source_run_unchanged=True,
               seed_zero_trace_identical=True, rows=rows)
 (evidence / 'comparison.json').write_text(json.dumps(result, indent=2)+'\n')
