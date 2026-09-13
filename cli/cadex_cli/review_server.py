@@ -227,6 +227,15 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
         view="run", run=run_name, relation=record.get("relation"),
         revision=model_block.get("accepted_revision"), digest=model_block.get("digest"),
     )
+    run_ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run_name}")
+    if run_ref["error"] or not run_ref["exists"]:
+        # A runs/<name> that is itself a symlink out of the project passes
+        # every check anchored at that already-escaped directory (ADR-318):
+        # the reader lists it unreadable, and the model says the same
+        # before anything under it is read.
+        model["reason"] = ("run directory escapes the project directory" if run_ref["error"]
+                           else "run directory missing")
+        return model
     trace_item = ((record.get("resolved") or {}).get("artifacts") or {}).get("trace") or {}
     if trace_item.get("path") is None:
         snapshot_path = run_dir / "training-view.json"
@@ -821,11 +830,20 @@ class ReviewProject:
         if not any(entry.get("mesh") == wanted for entry in model["components"]):
             return None
         if model.get("source") == "assembled model retained before training":
-            return self.root / RUNS_DIRNAME / name / "training-view" / f"{output}.stl"
-        artifacts = record["resolved"]["artifacts"]
-        anchor = artifacts["trace"]["path"] or artifacts["model_xml"]["path"]
-        path = (self.root / RUNS_DIRNAME / name / anchor).parent / f"{output}.stl"
-        return path if path.is_file() and not path.is_symlink() else None
+            path = self.root / RUNS_DIRNAME / name / "training-view" / f"{output}.stl"
+        else:
+            artifacts = record["resolved"]["artifacts"]
+            anchor = artifacts["trace"]["path"] or artifacts["model_xml"]["path"]
+            path = (self.root / RUNS_DIRNAME / name / anchor).parent / f"{output}.stl"
+        if not path.is_file() or path.is_symlink():
+            return None
+        # Served bytes resolve inside the project root, whatever the run
+        # directory's own links say (ADR-318).
+        try:
+            path.resolve().relative_to(self.root.resolve())
+        except ValueError:
+            return None
+        return path
 
     def accepted_mesh(self, output: str) -> bytes | None:
         model = accepted_model(self.root)

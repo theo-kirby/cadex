@@ -23452,3 +23452,40 @@ visit selects `RUN lark86-retry-video` (origin `lark86-retry`, final,
 `evidence/lark86-retry-video-anchor89-check.json` in the copy. No protocol,
 payload, engine, shell, page or dependency change; `docs/CLI.md` says what
 the anchor refuses.
+
+## ADR-318 — The dashboard's model and mesh routes are anchored at the project root too (2026-09-13)
+
+**Context.** ADR-317 anchored the *reader* at the project root: a
+`runs/<name>` that is itself a symlink out of the project is listed
+`unreadable` with `run: directory escapes the project directory`. The
+dashboard's model route did not go through that refusal. `run_model` in
+`cli/cadex_cli/review_server.py` took `root / runs / <name>` as its base and,
+because an unreadable record resolves no trace, fell into the
+retained-training-view branch: `runs/escaped/training-view.json` was read
+from the external directory, every containment check inside it was
+anchored at the already-escaped run directory and passed, and `run_mesh`
+served the external STL bytes. A throwaway fixture reproduced it — the
+escaped run answered `available: true` with `/mesh/run/escaped/leaked.stl`
+resolving to a file outside the project — which is exactly the "never
+arbitrary filesystem paths" constraint of the ot5 charter (ADR-284) failing
+on the one route a browser draws from.
+
+**Decision.** `run_model` resolves `runs/<name>` against the project root
+before reading anything under it and answers `available: false` with reason
+`run directory escapes the project directory` (or `run directory missing`)
+when that fails; `run_mesh` additionally requires the file it is about to
+serve to resolve inside the project root, whatever the run directory's own
+links say. `/api/run/<name>` keeps returning the reader's `unreadable`
+record, so the page lists the run with a bad tone and says why rather than
+hiding it. No page, protocol, payload, engine or shell change.
+
+**Evidence.** `cli/tests/test_review_server.py`: an HTTP regression (fails
+on the old server with `available: true`) that an external run-directory
+symlink carrying a record, training view and STL is listed unreadable,
+has no model, and answers 404 for its mesh, artifact and video routes
+while the project's own runs are unaffected; and a headless-browser
+regression that the page lists the run as `unreadable`, selecting it shows
+`no model to show: run directory escapes the project directory` with no
+components drawn, and a project-owned historical run still loads
+afterwards. Full CLI suite result and the persistent operator-service
+restart are in the record node.

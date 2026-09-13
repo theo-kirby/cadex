@@ -399,6 +399,44 @@ def test_a_record_that_points_outside_its_run_is_reported_and_never_served(serve
     assert model["available"] is False and "not honoured" in model["reason"]
 
 
+def _escaped_run(root: Path, tmp_path: Path, name: str = "escaped") -> Path:
+    """``runs/<name>`` symlinked to a directory outside the project that
+    carries a record, a retained training view and an STL for it."""
+
+    outside = tmp_path / "elsewhere" / name
+    (outside / "training-view").mkdir(parents=True)
+    stl = outside / "training-view" / "leaked.stl"
+    stl.write_text(_cube_stl(9.0))
+    (outside / "training-view.json").write_text(json.dumps({
+        "schema": "cadex-training-view-v1",
+        "model": {"available": True, "placement_source": "fixture", "reason": None,
+                  "components": [{"name": "leaked", "output": "leaked",
+                                  "mesh": f"/mesh/run/{name}/leaked.stl",
+                                  "sha256": hashlib.sha256(stl.read_bytes()).hexdigest(),
+                                  "placement": None}]}}))
+    (outside / "run.json").write_text(json.dumps({"schema": "cadex-run-record-v1", "run": name}))
+    (root / "runs" / name).symlink_to(outside, target_is_directory=True)
+    return outside
+
+
+def test_a_run_directory_outside_the_project_has_no_model_and_serves_no_mesh(served, tmp_path) -> None:
+    root, server = served
+    _escaped_run(root, tmp_path)
+    record = _json(server.url + "api/run/escaped")
+    assert record["status"] == "unreadable"
+    assert "run: directory escapes the project directory" in record["problems"]
+    model = _json(server.url + "api/model/run/escaped")
+    assert model["available"] is False
+    assert model["reason"] == "run directory escapes the project directory"
+    assert model["components"] == []
+    assert _get(server.url + "mesh/run/escaped/leaked.stl")[0] == 404
+    assert _get(server.url + "artifact/run/escaped/trace")[0] == 404
+    assert _get(server.url + "video/run/escaped/0")[0] == 404
+    # The project's own runs are untouched by the listing.
+    listed = {run["run"]: run["status"] for run in _json(server.url + "api/project")["runs"]}
+    assert listed["escaped"] == "unreadable" and listed["second"] == "ok"
+
+
 def test_recorded_videos_are_served_whole_or_by_range(served) -> None:
     root, server = served
     run = root / "runs" / "first"
@@ -548,6 +586,26 @@ def test_browser_selecting_a_historical_run_shows_that_run_not_today(served, bro
     state = page.evaluate("window.cadexReview.state()")
     assert state["selected"] == "first" and state["revision"] == REVISION_A
     assert state["model"]["revision"] == REVISION_A
+
+
+@needs_browser
+def test_browser_lists_an_escaped_run_as_unreadable_and_draws_nothing_for_it(served, browser, tmp_path) -> None:
+    root, server = served
+    _escaped_run(root, tmp_path)
+    page = _open(browser, server.url)
+    assert page.attribute("#views li[data-run='escaped']", "data-status") == "unreadable"
+    page.click("#views li[data-run='escaped']")
+    assert page.wait_for("document.getElementById('view-kind').textContent === 'RUN escaped'")
+    assert _model_state(page) == "missing"
+    status = page.text("#model-status")
+    assert status.startswith("no model to show: run directory escapes the project directory")
+    assert page.evaluate("document.querySelectorAll('#model-components li').length") == 0
+    state = page.evaluate("window.cadexReview.state()")
+    assert state["selected"] == "escaped" and state["model"]["available"] is False
+    # The project's own historical run still draws afterwards.
+    page.click("#views li[data-run='first']")
+    assert page.wait_for("document.getElementById('view-kind').textContent === 'RUN first'")
+    assert _model_state(page) == "loaded"
 
 
 @needs_browser

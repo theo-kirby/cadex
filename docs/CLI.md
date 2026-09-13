@@ -527,7 +527,12 @@ project would pass a check anchored at that already-escaped directory, so
 it is listed as unreadable with `run: directory escapes the project
 directory`, contributes no bytes to the index and has no telemetry read —
 and the same anchor applies to every run record the reader lists or the
-dashboard serves. The video checker beside the fresh-project probes uses
+dashboard serves. The dashboard's model and mesh routes apply it too
+(ADR-318): a run whose directory escapes the project answers
+`/api/model/run/<name>` with `available: false` and reason `run directory
+escapes the project directory` before its retained training view or
+rollout is opened, and `/mesh/run/<name>/<part>.stl` serves only a file
+that resolves inside the project root. The video checker beside the fresh-project probes uses
 the lineage to find a video's training run and an older sibling without a
 naming convention.
 
