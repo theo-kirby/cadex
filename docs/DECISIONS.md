@@ -23124,3 +23124,19 @@ final run and return to the current target shown at click time, since a new
 checkpoint can legitimately appear while the check runs. This replaces the
 probe's frozen initial-target assumption, not dashboard selection behavior.
 No dependency, engine, trainer or renderer change is introduced.
+
+## ADR-305 — Exclude CPU test trainers from live interruption probes (2026-09-13)
+
+[Cadex-new] The Wren interruption probe previously allowed the CLI suite's
+CPU trainers to overlap its GPU experiment. Its replacement guard checks Linux
+process argv and systemd scope identity before each launch, then monitors in a
+background thread throughout browser waits and trainer exit. Python script and
+module trainer invocations count regardless of device; pytest runners also
+block the probe because tests can train inside the test process. Shell and
+timeout wrappers are not counted as trainers. Foreign trainers, duplicate own
+trainers or unreadable process scans fail the probe, retain the exclusion
+receipt and stop only its own experiment scope. Suites run separately before
+the new experiment. Sampling records its maximum observed interval; this is
+observed process exclusion, not a system-wide scheduling lock or a proof about
+processes shorter than that interval. Earlier attempts and receipts stay
+historical. No dependency or product training behavior changes.

@@ -1,10 +1,13 @@
 # Fresh Wren reopen and persistent review
 
-Verified against source: 2026-09-12. [Cadex-new]
+Verified against source: 2026-09-13. [Cadex-new]
 
 Current working project: [`ot5-wren-copy54`](COPY.md), with accepted 110 mm
 feet. Its [controlled interruption/retry experiment](INTERRUPTION.md) keeps
 port 8765 current and preserves the original Wren and historical videos.
+Current run: **`wren57-retry`**, completed after the guarded interruption.
+Both required suites finished before launch; both attempts recorded a maximum
+of one trainer and no exclusion violation (ADR-305).
 The parameter revision remains caller-authored; the product-agent revision
 authorship gap is still open.
 

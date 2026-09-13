@@ -14,6 +14,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 from cdp_browser import HeadlessBrowser, find_browser
@@ -38,6 +39,89 @@ def inventory(root):
 def save(path, value):
     path.write_text(json.dumps(value, indent=2) + '\n')
 
+
+
+def trainers(proc_root=Path('/proc')):
+    """Read Python trainers and pytest runners, regardless of GPU/CPU selection.
+
+    Pytest is excluded too: tests can invoke training inside their own process.
+    Match argv tokens, not shell/timeout wrappers mentioning the script.
+    Unreadable live processes fail closed; disappearing processes are normal.
+    """
+    found = []
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = [os.fsdecode(a) for a in (entry / 'cmdline').read_bytes().split(b'\0') if a]
+            if not argv or not Path(argv[0]).name.startswith('python'):
+                continue
+            if not (any(Path(a).name in ('cadex_train.py', 'pytest') for a in argv[1:]) or
+                    any(argv[i:i+2] == ['-m', 'training.cadex_train'] for i in range(len(argv)-1))):
+                continue
+            groups = (entry / 'cgroup').read_text().splitlines()
+            found.append(dict(pid=int(entry.name), scopes=[g.rsplit('/', 1)[-1] for g in groups]))
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+    return sorted(found, key=lambda row: row['pid'])
+
+
+class TrainerGuard:
+    """Sample throughout blocking browser calls; latch any overlap or read error."""
+    def __init__(self, receipt, unit, scan=trainers, stop_scope=None):
+        self.receipt, self.unit, self.scan = receipt, unit, scan
+        self.stop_scope = stop_scope
+        self.stop_event = threading.Event()
+        self.report = dict(interval_seconds=.05, scans=0, max_trainers=0,
+                           observed_pids=[], violation=None, max_scan_gap_seconds=0)
+        self.last_scan = None
+        self.thread = None
+
+    def sample(self, preflight=False):
+        now = time.monotonic()
+        if self.last_scan is not None:
+            self.report['max_scan_gap_seconds'] = max(self.report['max_scan_gap_seconds'], now-self.last_scan)
+        self.last_scan = now
+        rows = self.scan()
+        self.report['scans'] += 1
+        self.report['max_trainers'] = max(self.report['max_trainers'], len(rows))
+        self.report['observed_pids'] = sorted(set(self.report['observed_pids']) | {r['pid'] for r in rows})
+        foreign = [r for r in rows if self.unit + '.scope' not in r['scopes']]
+        if (preflight and rows) or foreign or len(rows) > 1:
+            raise RuntimeError('Trainer exclusion violated: ' + json.dumps(rows))
+
+    def start(self):
+        try:
+            self.sample(preflight=True)
+        except Exception as exc:
+            self.report['violation'] = str(exc)
+            save(self.receipt, self.report)
+            raise
+        save(self.receipt, self.report)
+        self.thread = threading.Thread(target=self.watch, daemon=True)
+        self.thread.start()
+
+    def watch(self):
+        while not self.stop_event.wait(self.report['interval_seconds']):
+            try:
+                self.sample()
+            except Exception as exc:
+                self.report['violation'] = str(exc)
+                save(self.receipt, self.report)
+                if self.stop_scope:
+                    self.stop_scope()
+                return
+
+    def check(self):
+        if self.report['violation']:
+            raise RuntimeError(self.report['violation'])
+
+    def close(self):
+        self.stop_event.set()
+        if self.thread:
+            self.thread.join()
+        save(self.receipt, self.report)
+        self.check()
 
 
 def check_terminal(page, interrupted):
@@ -92,18 +176,25 @@ def main():
                         task_bundle=train / 'wren_walk-task.json',
                         task_sha256=sha(train / 'wren_walk-task.json'),
                         model_xml=train / 'wren_model-model.xml', snapshot_docs=True)
-            write_run_record(run, status='running', **base)
             unit = 'cadex-' + name
+            def stop_scope():
+                subprocess.run(['systemctl', '--user', 'kill', '--signal=SIGTERM', unit + '.scope'],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+            guard = TrainerGuard(ev / (name + '-exclusion.json'), unit, stop_scope=stop_scope)
             command = ['systemd-run', '--user', '--scope', '--unit=' + unit, '-p', 'MemoryMax=20G',
                        'timeout', '--signal=TERM', '--kill-after=20s', '900',
                        str(Path.home() / 'cadex-train-venv/bin/python'), 'training/cadex_train.py',
                        str(train / 'wren_walk-task.json'), '--out', str(train / (name + '.cxpolicy')),
                        '--iterations', str(iterations), '--envs', '1024', '--seed', '0']
             log = (ev / (name + '-trainer.log')).open('w')
-            proc = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env)
+            proc = None
             start = time.monotonic()
             print(name + ' started', flush=True)
             try:
+                guard.start()
+                write_run_record(run, status='running', **base)
+                guard.check()
+                proc = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env)
                 page = browser.page(url)
                 page.evaluate('window.cadexReview.ready', await_promise=True)
                 assert page.text('#project-name') == p.name + ' — review'
@@ -116,6 +207,7 @@ def main():
                 samples = []
                 peak = 0
                 while True:
+                    guard.check()
                     assert time.monotonic() - start < 880, 'probe deadline'
                     q = read(train / 'progress.json') if (train / 'progress.json').exists() else {}
                     shown = page.text('[data-metric=iteration]')
@@ -143,6 +235,9 @@ def main():
                         break
                     time.sleep(.5)
                 code = proc.wait(timeout=60)
+                guard.close()
+                assert guard.report['max_trainers'] == 1
+                assert len(guard.report['observed_pids']) == 1
                 final = read(train / 'progress.json')
                 if interrupted:
                     assert code != 0 and final['state'] == 'failed' and 'KeyboardInterrupt' in final['error']
@@ -163,17 +258,22 @@ def main():
                 fresh = browser.page(url)
                 fresh.evaluate('window.cadexReview.ready', await_promise=True)
                 assert fresh.text('#view-kind') == 'RUN ' + name
-                result = dict(run=name, exit=code, final=final, samples=samples, host_peak_bytes=peak,
+                result = dict(exclusion=guard.report, run=name, exit=code, final=final, samples=samples, host_peak_bytes=peak,
                               elapsed_s=round(time.monotonic()-start, 3), fresh_selection=fresh.text('#view-kind'),
                               telemetry=page.text('#telemetry'), note=page.text('#view-note'),
                               accepted_revision=base['accepted_revision'], digest=base['digest'])
                 results.append(result)
                 save(ev / 'attempts.json', results)
                 print(name + ' finished: ' + str(code), flush=True)
+            except Exception as exc:
+                stop_scope()
+                if proc is not None:
+                    proc.wait(timeout=60)
+                write_run_record(run, status='failed', error='Probe failed: ' + str(exc), **base)
+                raise
             finally:
                 log.close()
-                if proc.poll() is None:
-                    print('Trainer remains under its independent 900-second timeout', flush=True)
+                guard.close()
             # Old videos remain deliberately selectable after either outcome.
             for old in ('wren1-checkpoint20', 'wren1-final', 'wren2-checkpoint20', 'wren2-final'):
                 subprocess.run(['pixi', 'run', 'python', str(Path(__file__).with_name('check_video.py')),

@@ -1,6 +1,6 @@
 # Wren working-copy interruption and retry
 
-Verified against source: 2026-09-12. [Cadex-new]
+Verified against source: 2026-09-13. [Cadex-new]
 
 This probe exercises D8 and D10 on the persistent private-network server,
 using the independent 110 mm-foot working copy. It runs two sequential GPU
@@ -15,7 +15,7 @@ lifecycle probes, not a trained-gait comparison or verified rollout claim.
 PYTHONPATH=cli:cli/tests OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
   pixi run python docs/probes/wren-fresh/interruption.py \
   "$HOME/cadex-projects/ot5-wren-copy54" \
-  "http://$(tailscale ip -4):8765/" wren56c
+  "http://$(tailscale ip -4):8765/" wren57
 ```
 
 Use a new prefix to repeat; existing evidence and run directories are refused.
@@ -36,7 +36,68 @@ selectable after recovery, and return-to-current selects the retry. All prior
 run files and the original Wren project are inventoried and compared afterward.
 The original inventory excludes `.git`; artifact retention includes all files
 under `runs/`. Keep the entire copy, including both new runs and
-`evidence/wren56c/`, which holds logs, screenshots, signal evidence and receipts.
+`evidence/<prefix>/`, which holds logs, screenshots, signal evidence and receipts.
+
+The guard (ADR-305) refuses an existing Python trainer or pytest process before
+launch. It scans `/proc` in a background thread with a requested 50 ms interval,
+including during browser calls and the final process wait. Trainer argv is
+matched regardless of CPU/GPU options; only the experiment's systemd scope may
+contain a trainer, and at most one. Pytest is conservatively excluded because
+some tests invoke training in-process. An overlap or scan error is latched,
+stops the experiment scope, marks the attempt failed and prevents retry. Each
+attempt retains scan count, observed PIDs, maximum trainer count, maximum scan
+gap and any violation in `<run>-exclusion.json`. Other processes are never
+signalled. Run the CLI and engine suites to completion **before** launching the
+probe; the guard is sampled observation, not a host-wide scheduler lock, and
+cannot rule out processes shorter than the recorded sampling gap.
+
+Guard regression command (fake processes, no training):
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python -m pytest \
+  docs/probes/wren-fresh/test_interruption.py -q
+```
+
+## Guarded repeat (iteration 57 — current evidence)
+
+[interruption57-evidence.json](interruption57-evidence.json) supersedes the
+previous experiment's exclusion evidence. Both suites finished before either
+new trainer started: CLI **397 passed, 1 skipped**, 373.40 s, finished
+01:36:24 UTC; engine **2110 passed, 53 skipped**, 253.73 s, finished
+01:40:38 UTC on September 13. Guard regressions: **5 passed**. Logs remain
+under `evidence/guard57/`; no suite ran during the experiment.
+
+| Attempt | Outcome | Curve samples each | Process scans | Maximum trainers | Maximum scan gap |
+|---|---|---:|---:|---:|---:|
+| `wren57-interrupt` | SIGINT, exit −2, failed at iteration 5 | 6 | 1,639 | 1 | 59.33 ms |
+| `wren57-retry` | exit 0, done at iteration 11 | 12 | 2,789 | 1 | 58.87 ms |
+
+Both preflight checks passed with no existing trainer/test runner; both monitors
+reported no violation and observed exactly their own trainer PID. The first
+trainer started at 01:41:24 UTC and exited before the retry started at
+01:43:02 UTC. Launch-to-browser completion took 88.740 / 150.793 s;
+sampled peak host memory was 4,998,832,128 / 5,483,139,072 bytes. Both used
+the enforced 20 GiB cap and 900-second timeout. The final policy is 49,095
+bytes, SHA-256 `a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814`.
+It passed the trainer-local witness check; no new engine verification, rollout,
+video or gait-quality claim is made. The known JAX cast warning remains.
+
+The persistent browser checked both starts and terminal outcomes, selected
+the failed interruption without substituting old output, then selected the
+completed retry. All eight old-video checks passed full decode, playback
+through polling and download hashes. Deliberate historical selection survived
+refresh and returned to current. Start/terminal screenshots were inspected.
+All **362 prior run files** (including every earlier attempt) and **963
+original Wren files excluding `.git`** remained byte-identical. New artifacts
+and raw receipts are retained in `runs/wren57-*` and `evidence/wren57/`.
+The previous compact receipt remains unchanged as historical evidence.
+
+Port 8765 remains running on **ot5-wren-copy54**, default **wren57-retry**,
+revision `5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6`.
+A fresh private-address browser check after completion confirmed this identity
+and done telemetry. This is a same-machine private-network test.
+
+## Historical iteration 56 (superseded exclusion evidence)
 
 Two first-draft probe failures are retained separately. `wren56-interrupt`
 stopped its supervisor at a PID-selection assertion because `/usr/bin/timeout`
@@ -56,7 +117,7 @@ live training. No throughput or isolation claim is based on those overlapping
 windows. No dependencies, product behavior or visual style changed.
 
 
-The final experiment passes; [interruption-evidence.json](interruption-evidence.json)
+The earlier browser experiment passed; [interruption-evidence.json](interruption-evidence.json)
 contains the compact receipt and screenshot hashes. `wren56c-interrupt` exits
 on SIGINT (supervisor return −2) at iteration 5, retaining six points in each
 of the three curves. Its measured launch-to-browser completion time is 96.717 s,
