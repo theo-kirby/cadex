@@ -276,3 +276,102 @@ def test_browser_shows_disk_use_for_the_selected_run_and_keeps_history_through_p
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_directory_references_share_one_lazy_traversal_budget(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    (root / "runs" / "one").mkdir(parents=True)
+    (root / "runs" / "one" / "file").write_bytes(b"run")
+    refs = {}
+    for name in ("a", "b", "c"):
+        directory = root / name
+        directory.mkdir()
+        for i in range(8):
+            (directory / str(i)).write_bytes(b"12345")
+        refs[name] = review_record.resolve_reference(root, name)
+    record = {"run": "one", "resolved": {"project_artifacts": refs}}
+    scandir = os.scandir
+    visited = []
+
+    class CountedScan:
+        def __init__(self, path):
+            self.scan = scandir(path)
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            self.scan.close()
+        def __iter__(self):
+            return self
+        def __next__(self):
+            entry = next(self.scan)
+            visited.append(entry.path)
+            return entry
+
+    monkeypatch.setattr(review_record, "DISK_USE_ENTRY_LIMIT", 12)
+    monkeypatch.setattr(review_record.os, "scandir", CountedScan)
+    disk = run_disk_use(root, record)
+    assert len(visited) == disk["entries_visited"] == 12
+    assert disk["state"] == "counted"  # The run itself was fully counted.
+    a, b, c = (disk["references"]["project_artifacts"][key] for key in refs)
+    assert a["status"] == "retained" and a["bytes"] == 40
+    assert b["status"] == "truncated" and b["lower_bound"] and b["bytes"] == 15
+    assert c["status"] == "truncated" and c["lower_bound"] and c["bytes"] == 0
+    assert disk["shared_bytes"] == 55 and disk["shared_lower_bound"]
+
+
+@needs_browser
+def test_browser_labels_truncated_reference_sizes_as_lower_bounds(tmp_path, monkeypatch, browser):
+    root = _review_project(tmp_path)
+    monkeypatch.setattr(review_record, "DISK_USE_ENTRY_LIMIT", 1)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.evaluate("window.cadexReview.select('first')", await_promise=True)
+        page.wait_for("document.getElementById('disk').dataset.state === 'truncated'")
+        disk = _json(server.url + "api/run/first")["disk"]
+        render = disk["references"]["project_artifacts"]["render"]
+        assert render["status"] == "truncated" and render["lower_bound"]
+        cell = '#artifacts tr[data-group=project_artifacts][data-key=render] td:nth-child(4)'
+        assert page.attribute(cell, "data-lower-bound") == "true"
+        assert page.text(cell) == "at least 0 B · truncated"
+        assert "at least 0 B · truncated" in page.text('#disk-shared li[data-key=render]')
+        assert "at least" in page.text('#disk-shared li[data-shared-total]')
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_arriving_disk_detail_adds_video_size_without_replacing_playback(tmp_path, monkeypatch, browser):
+    import threading
+    from cadex_cli.video import render as render_video
+    from test_video import _video_run
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("FFmpeg not available")
+    root = _review_project(tmp_path)
+    _video_run(root, "movie")
+    render_video(root, "movie")
+    _rewrite_record(root / "runs" / "movie", recorded_at="2032-01-01T00:00:00Z")
+    release = threading.Event()
+    original = ReviewProject.detail
+
+    def delayed(self, name):
+        assert release.wait(15), "test must release the detail response"
+        return original(self, name)
+
+    monkeypatch.setattr(ReviewProject, "detail", delayed)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = browser.page(server.url)
+        page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+        page.evaluate("window.kept=document.querySelector('#videos video'); kept.muted=true; kept.loop=true; kept.play()", await_promise=True)
+        page.wait_for("kept.currentTime > 0.1")
+        assert page.text('[data-video-size="0"]') == ''
+        release.set()
+        page.wait_for("document.querySelector('[data-video-size]')?.textContent.length > 0")
+        assert page.evaluate("kept === document.querySelector('#videos video') && !kept.paused")
+    finally:
+        release.set()
+        server.shutdown()
+        server.server_close()

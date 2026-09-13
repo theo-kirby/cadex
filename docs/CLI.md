@@ -1492,20 +1492,31 @@ are listed under `skipped` with the reason), split by the run's top-level
 subdirectories in `by_dir`, as apparent sizes from `stat` with no bytes read
 and nothing hashed. `references` sizes each reference the record names with
 the reader's own status words: `retained` with its bytes, `missing` with
-none, `refused` and never opened, `not recorded`. A project-level reference
+none, `refused` and never opened, `not recorded`. Directory references that
+exhaust the traversal budget have `status: truncated` and `lower_bound: true`;
+their byte/file counts are partial, including zero when no allowance remains.
+Skipped entries also make a directory reference a lower bound. The browser
+labels these sizes **at least**, and labels truncated references explicitly.
+One 20,000-entry budget covers the run walk and **all** directory references
+combined; scans consume entries lazily without sorting whole directories.
+`entries_visited` reports the aggregate consumption. Reaching the limit exactly
+is conservatively reported as truncated. Direct file references use a stat,
+not a directory traversal. A project-level reference
 (`project_artifacts`) that resolves outside the run — the policy asset a
 training run and its playback run both cite, a render directory two runs
 at one revision share — is **not** in the run's total: it is sized under
-`shared_bytes` and `shared_with` names the other runs whose records cite
+`shared_bytes` (`shared_lower_bound` flags a partial sum) and `shared_with` names the other runs whose records cite
 the same path, so one file is counted once however many runs share it.
 `state` is `counted`, `truncated` (the walk stopped at
 `DISK_USE_ENTRY_LIMIT` entries and the totals are a floor) or `unreadable`
 (the run directory is missing or escapes the project, and nothing under it
-was stat'ed). The Artifacts card shows the total, the per-directory split,
+was stat'ed). This state describes the run walk; a complete run total can
+coexist with truncated directory-reference sizes. The Artifacts card shows the total, the per-directory split,
 the skipped links, the shared references with the runs that share them,
 and a size column on the artifact table that says `missing — nothing on
 disk` and `refused — not read` where the reader did; the accepted view has
-no run to count and says so.
+no run to count and says so. Video size labels update in place when the
+selected detail arrives; receiving a size never replaces or pauses the player.
 
 A playback run — a rollout of a checkpoint or final policy whose record names
 the training run it came from as `training.requested.source_run` — copies the

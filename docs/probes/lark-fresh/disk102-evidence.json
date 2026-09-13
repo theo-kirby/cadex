@@ -1,0 +1,176 @@
+{
+  "checked_at": "2026-09-13T11:47:41.699146+00:00",
+  "url": "http://100.104.232.88:8765/",
+  "project": "ot5-lark-copy85",
+  "restart_preserved_run_names": true,
+  "current": {
+    "view": "RUN lark98-final",
+    "relation": "CURRENT \u2014 this run's revision is the accepted revision now",
+    "disk": {
+      "by_dir": {
+        ".": {
+          "bytes": 40842,
+          "files": 5
+        },
+        "project-docs": {
+          "bytes": 22107,
+          "files": 6
+        },
+        "render": {
+          "bytes": 23992,
+          "files": 5
+        },
+        "rollout": {
+          "bytes": 792728,
+          "files": 20
+        },
+        "train": {
+          "bytes": 37636,
+          "files": 1
+        }
+      },
+      "bytes": 917305,
+      "entries_visited": 61,
+      "entry_limit": 20000,
+      "files": 37,
+      "hardlinked_entries": 0,
+      "reason": null,
+      "references": {
+        "artifacts": {
+          "model_xml": {
+            "bytes": 5112,
+            "files": 1,
+            "in_run": true,
+            "path": "rollout/lark_model-model.xml",
+            "status": "retained"
+          },
+          "progress": {
+            "bytes": 37636,
+            "files": 1,
+            "in_run": true,
+            "path": "train/progress.json",
+            "status": "retained"
+          },
+          "project_docs": {
+            "bytes": 22107,
+            "files": 6,
+            "in_run": true,
+            "lower_bound": false,
+            "path": "project-docs",
+            "status": "retained"
+          },
+          "receipt": {
+            "bytes": null,
+            "files": 0,
+            "in_run": true,
+            "path": null,
+            "status": "not recorded"
+          },
+          "review": {
+            "bytes": 3905,
+            "files": 1,
+            "in_run": true,
+            "path": "review.json",
+            "status": "retained"
+          },
+          "script": {
+            "bytes": 13342,
+            "files": 1,
+            "in_run": true,
+            "path": "script.py",
+            "status": "retained"
+          },
+          "task_bundle": {
+            "bytes": 8209,
+            "files": 1,
+            "in_run": true,
+            "path": "rollout/walk_task-task.json",
+            "status": "retained"
+          },
+          "trace": {
+            "bytes": 645688,
+            "files": 1,
+            "in_run": true,
+            "path": "rollout/assembly-simulation-trace.json",
+            "status": "retained"
+          }
+        },
+        "project_artifacts": {
+          "clearance": {
+            "bytes": null,
+            "files": 0,
+            "in_run": false,
+            "path": null,
+            "shared_with": [],
+            "status": "not recorded"
+          },
+          "inventory": {
+            "bytes": null,
+            "files": 0,
+            "in_run": false,
+            "path": null,
+            "shared_with": [],
+            "status": "not recorded"
+          },
+          "policy": {
+            "bytes": 84571,
+            "files": 1,
+            "in_run": false,
+            "path": "assets/lark98.cxpolicy",
+            "shared_with": [
+              "lark98"
+            ],
+            "status": "retained"
+          },
+          "render": {
+            "bytes": 23992,
+            "files": 5,
+            "in_run": true,
+            "lower_bound": false,
+            "path": "runs/lark98-final/render",
+            "shared_with": [],
+            "status": "retained"
+          },
+          "section": {
+            "bytes": null,
+            "files": 0,
+            "in_run": false,
+            "path": null,
+            "shared_with": [],
+            "status": "not recorded"
+          }
+        },
+        "project_docs": {
+          "bytes": 22107,
+          "files": 6,
+          "in_run": true,
+          "lower_bound": false,
+          "path": "project-docs",
+          "status": "retained"
+        },
+        "videos": [
+          {
+            "bytes": 14003,
+            "files": 1,
+            "in_run": true,
+            "index": 0,
+            "path": "rollout-6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9.webm",
+            "status": "retained"
+          }
+        ]
+      },
+      "run": "lark98-final",
+      "schema": "cadex-run-disk-use-v1",
+      "shared_bytes": 84571,
+      "shared_lower_bound": false,
+      "skipped": [],
+      "skipped_count": 0,
+      "state": "counted"
+    },
+    "model": "model of run lark98-final at revision 6f826037044a \u00b7 8 component(s), 96 triangles \u00b7 from runs/lark98-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame"
+  },
+  "historical_playback_preserved": true,
+  "route_back_to_current": true,
+  "initial_restart_checked_at": "2026-09-13T11:36:58.773107+00:00",
+  "final_check_scope": "Browser recheck after the static playback fix; no second server restart. Run-name preservation was measured across the initial restart."
+}

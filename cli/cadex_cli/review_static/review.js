@@ -323,10 +323,9 @@
 
   var diskKey = null;
   function sizeCell(sized) {
-    // One status word per reference, the reader's own: retained (with its
-    // size), missing (nothing on disk), refused (never opened), not recorded.
+    // Partial directory sizes remain visibly lower bounds, including zero.
     if (!sized) return el('td', { className: 'muted', 'data-size': 'pending', text: '…' });
-    if (sized.status === 'retained') return el('td', { 'data-size': String(sized.bytes), text: bytes(sized.bytes) + (sized.files > 1 ? ' · ' + sized.files + ' files' : '') });
+    if (sized.status === 'retained' || sized.status === 'truncated') return el('td', { 'data-size': String(sized.bytes), 'data-lower-bound': String(!!sized.lower_bound), text: (sized.lower_bound ? 'at least ' : '') + bytes(sized.bytes) + (sized.status === 'truncated' ? ' · truncated' : '') + (sized.files > 1 ? ' · ' + sized.files + ' files' : '') });
     if (sized.status === 'missing') return el('td', { className: 'status-missing', 'data-size': 'missing', text: 'missing — nothing on disk' });
     if (sized.status === 'refused') return el('td', { className: 'status-error', 'data-size': 'refused', text: 'refused — not read' });
     return el('td', { className: 'status-none', 'data-size': 'none', text: '—' });
@@ -359,13 +358,13 @@
     var references = (disk.references || {}).project_artifacts || {};
     Object.keys(references).sort().forEach(function (key) {
       var item = references[key];
-      if (item.status !== 'retained' || item.in_run) return;
+      if (!['retained', 'truncated'].includes(item.status) || item.in_run) return;
       var who = item.shared_with || [];
       shared.appendChild(el('li', { 'data-key': key, 'data-shared': String(who.length > 0), 'data-bytes': String(item.bytes),
-        text: 'project ' + key + ' ' + item.path + ' · ' + bytes(item.bytes) + ' · outside this run, not in its total' +
+        text: 'project ' + key + ' ' + item.path + ' · ' + (item.lower_bound ? 'at least ' : '') + bytes(item.bytes) + (item.status === 'truncated' ? ' · truncated' : '') + ' · outside this run, not in its total' +
               (who.length ? ' · shared with ' + who.join(', ') + ' (counted once for the project)' : ' · cited by this run only') }));
     });
-    if (disk.shared_bytes) shared.appendChild(el('li', { className: 'muted', 'data-shared-total': String(disk.shared_bytes), text: 'project references outside this run: ' + bytes(disk.shared_bytes) + ' (each file counted once however many runs cite it)' }));
+    if (disk.shared_bytes || disk.shared_lower_bound) shared.appendChild(el('li', { className: 'muted', 'data-shared-total': String(disk.shared_bytes), text: 'project references outside this run: ' + (disk.shared_lower_bound ? 'at least ' : '') + bytes(disk.shared_bytes) + ' (each file counted once however many runs cite it)' }));
   }
 
   function renderArtifacts() {
@@ -395,8 +394,14 @@
     rows('artifacts', '/artifact/run/');
     rows('project_artifacts', '/artifact/project/');
     var videoSizes = sizes ? sizes.videos || [] : [];
-    var videoKey = JSON.stringify([run.run, run.videos, resolved.videos, run.video_render, videoSizes]);
-    if (videos.dataset.key === videoKey) return;
+    function updateVideoSizes() {
+      videos.querySelectorAll('[data-video-size]').forEach(function (node) {
+        var sized = videoSizes[Number(node.dataset.videoSize)];
+        node.textContent = sized && sized.status === 'retained' ? ' · ' + bytes(sized.bytes) : '';
+      });
+    }
+    var videoKey = JSON.stringify([run.run, run.videos, resolved.videos, run.video_render]);
+    if (videos.dataset.key === videoKey) { updateVideoSizes(); return; }
     videos.dataset.key = videoKey;
     clearChildren(videos);
     var recorded = run.videos || [];
@@ -416,11 +421,9 @@
       var item = (resolved.videos || [])[index] || {};
       var line = el('li', { 'data-video': String(index) });
       var label = 'video ' + index + ' · ' + (video.path || '?') + ' · revision ' + short(video.accepted_revision || (run.model || {}).accepted_revision) + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s · ' + (video.style || 'historical legacy style');
-      var sizedVideo = videoSizes[index];
-      if (sizedVideo && sizedVideo.status === 'retained') label += ' · ' + bytes(sizedVideo.bytes);
       if (item.exists && !item.error) {
         var url = '/video/run/' + encodeURIComponent(run.run) + '/' + index;
-        line.appendChild(el('div', { text: label }));
+        line.appendChild(el('div', {}, [el('span', { text: label }), el('span', { 'data-video-size': String(index) })]));
         line.appendChild(el('video', { controls: true, preload: 'metadata', src: url, width: 480 }));
         line.appendChild(el('a', { href: url + '?download=1', text: 'download' }));
       } else {
@@ -428,6 +431,7 @@
       }
       videos.appendChild(line);
     });
+    updateVideoSizes();
   }
 
   function showDoc(url, title) {

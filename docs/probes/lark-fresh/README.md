@@ -5,6 +5,23 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Lark lifecycle report](LIFECYCLE.md) links D1–D11 evidence, the common-seed
 comparison, current visual assessment and remaining acceptance limits.
 
+**Iteration 102 (D10, ADR-322 correction):** the persistent private-network
+URL continues serving `ot5-lark-copy85`, with `lark98-final` selected for a
+fresh visit. After restarting only the review server onto the corrected disk
+reader, the headless browser checked the 917,305-byte run total against the API
+(61 aggregate directory entries visited), historical checkpoint video playback
+through a refresh, and the route back to current. All passed; the server remains
+running. [Receipt](disk102-evidence.json). Regression coverage additionally
+exhausts a shared traversal allowance across multiple directory references and
+checks the browser's “at least 0 B · truncated” presentation. A delayed-detail
+regression also verifies that arriving disk sizes preserve an already-playing
+video; the full suite exposed this player-replacement defect and it is fixed. The iteration-100
+receipt does **not** establish the traversal bound; iteration 102 corrects it.
+This is a browser on the server using its private address, not a second-device
+test. CLI verification: `pixi run python -m pytest cli/tests` — **461 passed,
+1 skipped** in 462.47s on the final implementation; the focused checks passed
+9/9.
+
 **Iteration 98 (D4 encoder failure on Lark, ADR-320):** a third real GPU
 run on the working copy, `lark98`, published its checkpoint-20 video during
 training, had that checkpoint deliberately re-rendered through a temporary

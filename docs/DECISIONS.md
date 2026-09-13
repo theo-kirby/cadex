@@ -23622,3 +23622,27 @@ persistent Lark dashboard was restarted onto it with no trainer active and
 verified over the private address (the operator README and
 `docs/probes/lark-fresh/disk100-evidence.json`). No protocol op, payload or
 `shell/` change; `docs/CLI.md` describes the block.
+
+
+**Iteration 102 correction (2026-09-13).** The initial implementation did
+not establish bounded disk accounting: it sorted entire directories before
+applying the limit, renewed the budget for each directory reference, and
+reported truncated reference counts as retained complete sizes. Replace the
+sorted recursive scan with lazy iterative traversal and share one entry
+allowance across the run and all directory references. The API exposes
+`entries_visited`, per-reference `truncated`/`lower_bound`, and
+`shared_lower_bound`; the browser says “at least” for partial reference and
+shared sizes, including zero. Exhaustion exactly at the limit is conservatively
+partial. Direct file stats are outside the directory-entry allowance. Aggregate
+scan instrumentation and browser assertions in `test_review_disk_use.py` pin
+the correction. The run total's state describes its own walk; later reference
+exhaustion does not retroactively make a complete run count partial. No new
+dependency or protocol/payload change. The original iteration-100 receipt is
+historical evidence, not proof of this bound.
+
+The full CLI suite exposed a related ADR-322 playback defect: disk video
+sizes participated in the player rebuild key, so a delayed detail response
+could detach an already-playing historical video. Sizes now update separate
+text spans in place, outside the media identity key. A browser regression holds
+the detail response until playback starts, then verifies that releasing it
+adds the size while preserving the same playing element.
