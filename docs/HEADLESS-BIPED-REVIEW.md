@@ -1054,4 +1054,16 @@ server and the persistent one both showed all six retained runs with their
 own revisions, curves, meshes and playable, downloadable videos; the
 original's 1,852 files are byte-identical. The copy is now the working
 project on the shared URL. See [COPY85.md](probes/lark-fresh/COPY85.md).
-Lark's controlled-interruption (D8) evidence remains for a later unit.
+Iteration 86 completed Lark's D8 evidence on the working copy (ADR-315):
+with both gate suites finished first and the trainer-exclusion guard
+observing one trainer per attempt, `lark86-interrupt` was sent SIGINT at
+iteration 5 and the persistent page showed it failed with the
+controlled-interruption note, retry guidance, six-sample curves and no
+substituted video; `lark86-retry` completed 40 updates with a saved policy,
+and `lark86-retry-video` is that policy's engine-verified rollout, rendered
+and played, polled and downloaded hash-equal on the persistent URL. The
+historical interruption stays selectable with a route back to current, the
+246 prior run files are byte-identical, and the original `ot5-lark` (1,419
+files excluding `.git`) is unchanged after the copy's retraining, which
+finishes D7's retraining-isolation half. One seed and 40 updates: no gait
+claim. See [INTERRUPTION86.md](probes/lark-fresh/INTERRUPTION86.md).

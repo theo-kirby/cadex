@@ -6,8 +6,25 @@ The [Wren lifecycle report](../wren-fresh/LIFECYCLE.md) links D1–D11 evidence,
 comparisons and their limits, and the current persistent-browser check.
 
 The shared private-network dashboard on port 8765 serves
-**`ot5-lark-copy85`**, the whole-project copy of the third fresh biped
-(iteration 85, ADR-314), with **`lark2-final` selected by default** as
+**`ot5-lark-copy85`**, the working copy of the third fresh biped, with
+**`lark86-retry-video` selected by default** (playback revision
+`7f6c23913d55…`, digest `7f0d98163e84…`, `policy_on` 1 on the copy's 90 mm
+feet). Iteration 86 ran Lark's D8 experiment on this URL without restarting
+the service (ADR-315): `lark86-interrupt`, a real GPU attempt sent SIGINT at
+iteration 5, is shown `failed` with the controlled-interruption note, retry
+guidance, six-sample curves and no video; `lark86-retry` completed 40 updates
+with a saved policy; and that policy's verified rollout video plays and
+downloads as `lark86-retry-video`. All six earlier runs and four earlier
+videos remain selectable, the historical interruption survives a refresh with
+a route back to current, and the original `ot5-lark` is byte-identical after
+the copy's retraining (D7). No trainer remains active. Evidence:
+[INTERRUPTION86.md](../lark-fresh/INTERRUPTION86.md),
+[`interruption86-evidence.json`](../lark-fresh/interruption86-evidence.json),
+and in the copy `evidence/lark86/`, `evidence/guard86/` and
+`evidence/lark86-retry-video-completion86-browser.json`.
+
+Until iteration 86 it served the copy with **`lark2-final` selected by
+default** (iteration 85, ADR-314) as
 HISTORICAL (playback revision `ca88f223b54c…`) against the copy's own
 accepted revision `083d086ad980…` (`foot_len` 80 → 90 mm, `policy_on` 0, a
 copy-only CLI edit; no retraining). The service was deliberately stopped and

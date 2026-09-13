@@ -23326,3 +23326,35 @@ now the working project on the shared URL, identified as such in the
 operator status; `ot5-lark` is retained, unchanged and unserved. Same-machine
 private-address checks; no retraining, no agent authorship, no new D11
 claim. No protocol, payload, engine, shell or dependency change.
+
+## ADR-315 — Lark's interruption, retry and retry video on the working copy (2026-09-13)
+
+[Cadex-new] D8 on the third fresh biped, and the retraining half of its D7.
+On `ot5-lark-copy85`, served throughout on the persistent port 8765 with no
+restart, two sequential real GPU attempts ran under the declared bounds
+(seed 0, 1,024 environments, 900 s timeout, `MemoryMax=20G`) after both
+gate suites had finished (CLI 437 passed/1 skipped, engine 2110 passed/53
+skipped) and with the ADR-305 trainer-exclusion guard observing exactly one
+trainer per attempt. `lark86-interrupt` received SIGINT after iteration 5
+and three page-observed updates: the trainer's own failure publisher left
+six samples per curve and no policy, the supervisor recorded the deliberate
+interruption, and without a reload the page showed `failed`, the note,
+`start a new cadex walk` guidance and no video; the four retained videos
+still played and downloaded hash-equal, none substituted. `lark86-retry`
+completed 40 updates (exit 0, policy `074e22f1070c…`, witness 8.4e-8) and
+its policy was declared through the public CLI (revision `7f6c23913d55…`),
+rolled out on seed 0 and rendered: `lark86-retry-video` decodes to 81
+frames, plays through polls and downloads hash-equal on the persistent URL,
+naming revision, policy digest, seed and 8.0 s of simulation. The historical
+interruption stays selectable after a refresh with return-to-current
+selecting the video run. The copy's 246 prior run files and 4 assets and the
+original `ot5-lark` (1,419 files excluding `.git`) are byte-identical after
+the retraining, checked by the driver and once more independently. The
+tooling change: `docs/probes/lark-fresh/interruption.py` is the Wren driver
+made project-agnostic (bundle by envelope kind, all manifest parameters,
+component count from the training view, retained videos by presence, the
+original as an argument) plus the final-policy playback branch of `train.py`.
+The compact receipt is `interruption86-evidence.json`, guarded in
+`cli/tests/test_lark_fresh_evidence.py`. One seed and 40 updates: no gait
+claim; same-machine private-address checks; no product-agent authorship; no
+new D11 comparison. No protocol, payload, engine, shell or dependency change.

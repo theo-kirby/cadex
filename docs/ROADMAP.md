@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-12
+Verified against source: 2026-09-13
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -2717,6 +2717,13 @@ field, and every client gets it through the surface it already reads.
 
 ## Live headless project review (ADR-284)
 
+- [x] Lark interruption, retry and retry video on the working copy (ADR-315):
+      a real GPU attempt interrupted by SIGINT and shown failed with retry
+      guidance and no substituted video on the persistent dashboard, a
+      successful 40-update new attempt, its verified playable/downloadable
+      video, earlier results preserved and the original byte-identical after
+      the copy's retraining. D8 and D7's retraining half now have Lark evidence.
+
 - [x] Lark copy isolation on the persistent dashboard (ADR-314): whole-project
       copy `ot5-lark-copy85` served on port 8765, edited through the CLI and
       restored with the original path unavailable; six retained runs and four
@@ -2749,7 +2756,8 @@ field, and every client gets it through the surface it already reads.
 
 - [x] Final policy publication failures publish failed telemetry (ADR-288),
       retaining metrics/checkpoints with headless browser fault-injection evidence.
-      D8's real interrupted biped run and successful new attempt remain open.
+      The real interrupted runs and new attempts are Wren's `wren57-*` (ADR-305)
+      and Lark's `lark86-*` (ADR-315).
 
 - [x] Dashboard restart lifecycle test (D6, fixture half): the real `cadex review`
       command stopped and restarted on its port under an independent telemetry

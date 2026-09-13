@@ -361,3 +361,82 @@ def test_lark_copy_is_independent_with_the_original_unavailable():
     for text in ((PROBE / "COPY85.md").read_text(),
                  (REPO_ROOT / "docs" / "probes" / "operator-review" / "README.md").read_text()):
         assert "ot5-lark-copy85" in text and receipt["copy_revision"][:12] in text
+
+
+def test_lark_copy_interruption_retry_and_video_on_the_persistent_url():
+    """``interruption86-evidence.json`` is Lark's D8 receipt on the working
+    copy: a real GPU attempt interrupted by SIGINT after committed updates,
+    shown failed with retry guidance and no substituted video; a successful
+    new attempt with a saved policy; that policy's verified, playable,
+    downloadable video; older results and the historical interruption still
+    selectable; and the original project byte-identical after the copy's
+    retraining (D7). Both gate suites finished before either trainer started
+    and the trainer-exclusion guard observed exactly one trainer per attempt."""
+    receipt = json.loads((PROBE / "interruption86-evidence.json").read_text())
+    assert receipt["schema"] == "lark-interruption-evidence-v1"
+    assert receipt["project"] == "ot5-lark-copy85" and receipt["original"] == "ot5-lark"
+    assert receipt["persistent_url_host"].endswith(":8765")
+    assert not receipt["persistent_url_host"].startswith(("127.", "localhost", "[::1]"))
+    assert receipt["persistent_private_address_same_machine"] and receipt["persistent_server"]
+    assert receipt["server_restarted"] is False
+    gates = receipt["gates_before_launch"]
+    assert gates["cli-suite"]["exit"] == gates["engine-suite"]["exit"] == gates["experiment"]["exit"] == 0
+    assert gates["cli-suite"]["finished"] <= gates["engine-suite"]["started"]
+    assert gates["engine-suite"]["finished"] <= gates["experiment"]["started"]
+    attempts = receipt["attempts"]
+    assert set(attempts) == {"lark86-interrupt", "lark86-retry"}
+    interrupt, retry = attempts["lark86-interrupt"], attempts["lark86-retry"]
+    assert receipt["signal"]["signal"] == "SIGINT" and receipt["signal"]["iteration"] >= 5
+    assert interrupt["exit"] != 0 and interrupt["state"] == "failed"
+    assert interrupt["error"].startswith("KeyboardInterrupt")
+    assert interrupt["final_iteration"] == receipt["signal"]["iteration"] < interrupt["requested_iterations"]
+    assert all(n == interrupt["final_iteration"] + 1 for n in interrupt["curve_samples"].values())
+    assert "Controlled interruption" in interrupt["note"] and "start a new cadex walk" in interrupt["note"]
+    assert interrupt["terminal_browser"] == {"telemetry_state": "failed", "status": "failed",
+                                             "retry_guidance_shown": True, "videos_shown": 0, "reload_count": 1}
+    assert retry["exit"] == 0 and retry["state"] == "done" and retry["error"] is None
+    assert retry["final_iteration"] + 1 == retry["requested_iterations"]
+    assert all(n == retry["requested_iterations"] for n in retry["curve_samples"].values())
+    assert retry["terminal_browser"]["telemetry_state"] == "done" and retry["terminal_browser"]["status"] == "completed"
+    for name, attempt in attempts.items():
+        assert attempt["device"] == "gpu" and attempt["components"] == 8
+        assert attempt["fresh_selection"] == "RUN " + name
+        assert len(attempt["page_samples"]) >= 3
+        assert 0 < attempt["host_peak_bytes"] < attempt["memory_max_bytes"] == 20 * 1024**3
+        assert attempt["elapsed_s"] < attempt["timeout_seconds"] == 900
+        assert attempt["accepted_revision"] == receipt["copy_accepted_before"]["revision"]
+        assert attempt["model_sha256"] == interrupt["model_sha256"] and attempt["task_sha256"] == interrupt["task_sha256"]
+        guard = attempt["exclusion"]
+        assert guard["violation"] is None and guard["max_trainers"] == 1 and len(guard["observed_pids"]) == 1
+        assert guard["scans"] > 1000 and guard["max_scan_gap_seconds"] < 0.5
+        assert len(attempt["screenshots"]) == 2
+    assert interrupt["exclusion"]["observed_pids"] != retry["exclusion"]["observed_pids"]
+    video = receipt["retry_video"]
+    assert video["run"] == "lark86-retry-video" and video["source_run"] == "lark86-retry"
+    assert video["mode"] == "final-policy-playback"
+    assert re.fullmatch(HEX64, video["policy_sha256"]) and video["witness_error"] < video["witness_tolerance"]
+    assert video["accepted_revision"] != receipt["copy_accepted_before"]["revision"]
+    assert video["accepted_revision"] == receipt["copy_accepted_after"]["revision"]
+    assert receipt["copy_accepted_before"]["policy_on"] == 0 and receipt["copy_accepted_after"]["policy_on"] == 1
+    assert receipt["copy_accepted_before"]["foot_len"] == receipt["copy_accepted_after"]["foot_len"] == 90
+    movie, browser, trace = video["video"], video["browser"], video["trace"]
+    assert re.fullmatch(HEX64, movie["sha256"]) and movie["style"] == "cadex-prototype-light-v1"
+    assert movie["seed"] == 0 and 0 < movie["sim_seconds"] <= 8 and movie["accepted_revision"] == video["accepted_revision"]
+    assert browser["decoded_frames"] == movie["frames"] and browser["download_sha256"] == movie["sha256"]
+    assert browser["fresh_selection"] == browser["returned_to_current"] == "RUN lark86-retry-video"
+    assert abs(browser["simulation_seconds"] - trace["observed_s"]) < 1e-9
+    assert trace["fell"] == (trace["termination"] == "fell") and trace["fell"] != trace["time_limit_reached"]
+    assert trace["seed"] == 0
+    assert receipt["old_videos_checked_after_each"] == ["lark1-checkpoint20", "lark1-final",
+                                                        "lark2-checkpoint20", "lark2-final"]
+    historical = receipt["historical_interruption"]
+    assert historical["selectable"] and historical["status"] == "failed" and historical["videos_shown"] == 0
+    assert historical["survived_refresh"] and re.fullmatch(HEX64, historical["screenshot"])
+    assert receipt["returned_to_current"] == receipt["fresh_visit_after_completion"]["view_kind"] == "RUN lark86-retry-video"
+    assert receipt["prior_run_files_preserved"] >= 246 and receipt["prior_asset_files_preserved"] >= 4
+    assert receipt["original_unchanged_after_copy_retraining"] and receipt["original_checked_independently"]
+    assert 0 < receipt["original_files_excluding_git"] < receipt["original_files_including_git"]
+    assert receipt["gait_claim"] is False and receipt["product_agent_authorship"] is False
+    for text in ((PROBE / "INTERRUPTION86.md").read_text(),
+                 (REPO_ROOT / "docs" / "probes" / "operator-review" / "README.md").read_text()):
+        assert "lark86-retry-video" in text and video["accepted_revision"][:12] in text

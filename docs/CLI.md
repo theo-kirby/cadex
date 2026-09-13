@@ -541,6 +541,10 @@ persistent operator URL and a second server.
 The [Lark copy lifecycle](probes/lark-fresh/COPY85.md) repeats it on the third
 fresh project with the same driver made project-agnostic: the default run and
 the parameter changes are arguments (`docs/probes/lark-fresh/copy_lifecycle.py`).
+The [Lark interruption probe](probes/lark-fresh/INTERRUPTION86.md) then retrains
+the copy (an interrupted attempt, a completed one and its video) with the same
+project-agnostic treatment (`docs/probes/lark-fresh/interruption.py`) and checks
+the original's inventory again afterwards.
 
 The copy test in `cli/tests/test_review_lifecycle.py` exercises this command,
 opens both projects in headless Chromium, changes the copy's accepted fixture,

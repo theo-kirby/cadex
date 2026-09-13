@@ -2,10 +2,20 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
-**Current state (iteration 85):** the working project is the whole-project
-copy **`ot5-lark-copy85`**, which the persistent port 8765 now serves with
-`lark2-final` selected by default as HISTORICAL against the copy's own
-accepted 90 mm-foot, policy-off edit (revision `083d086ad980…`). The copy
+**Current state (iteration 86):** the working project is the whole-project
+copy **`ot5-lark-copy85`**, served on the persistent port 8765 with
+`lark86-retry-video` selected by default. Iteration 86 completed Lark's D8
+evidence on it ([INTERRUPTION86.md](INTERRUPTION86.md),
+[`interruption86-evidence.json`](interruption86-evidence.json), ADR-315): a
+real GPU attempt interrupted by SIGINT at iteration 5 and shown failed with
+retry guidance, a successful 40-update new attempt, and that policy's
+verified, playable, downloadable video, with every earlier result preserved
+and the original `ot5-lark` byte-identical after the copy's retraining. The
+driver, `interruption.py`, is the Wren one made project-agnostic.
+
+**Iteration 85:** the copy was made and the persistent port 8765 switched
+to it, with `lark2-final` selected by default as HISTORICAL against the
+copy's own accepted 90 mm-foot, policy-off edit (revision `083d086ad980…`). The copy
 proved D7 on Lark with the original path unavailable throughout the edit,
 two engine restores and both browser checks, and `ot5-lark` (1,852 files)
 is byte-identical to its pre-copy inventory. See [COPY85.md](COPY85.md) and
