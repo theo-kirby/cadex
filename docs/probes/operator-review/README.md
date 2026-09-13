@@ -3,10 +3,15 @@
 Verified against source: 2026-09-13. [Cadex-new]
 
 The shared private-network dashboard on port 8765 serves **`ot5-wren-copy54`**,
-with **`wren57-retry` selected by default**, accepted revision **`5b61ef31ff13…`**
-and 110 mm feet. Its guarded GPU retry completed 12 updates and saved a policy;
-no experiment training remains active. It has no new rollout/video. All four
-older videos remain selectable, playable and downloadable as historical results.
+with **`wren57-retry` selected by default**, accepted playback revision
+**`79f86c69bfc3…`** and 110 mm feet. Its guarded GPU retry completed 12 updates;
+no experiment training remains active. Iteration 60 engine-verified its saved
+policy and published an 8-second seed-0 rollout video on this current attempt.
+All four older videos remain selectable, playable and downloadable. Historical
+playback survived the new video arriving; the current video fully decoded,
+played through polling and downloaded with a matching hash. The original
+training revision `5b61ef31ff13…` and inputs are explicitly retained.
+[Publication evidence and commands](../wren-fresh/RETRY-VIDEO.md).
 
 The preceding **`wren57-interrupt`** retains its six real updates, failed status,
 `KeyboardInterrupt` and controlled-interruption/retry guidance. Both attempts
@@ -15,8 +20,8 @@ exclusion violation. [Experiment and limitations](../wren-fresh/INTERRUPTION.md)
 
 Iteration 58's product-agent revision turn on this copy was refused by the
 provider session limit before authoring. Accepted identity/specs and all 434
-run/asset files remain unchanged. Persistent-browser checks verified the
-current default, accepted view, all four historical video playbacks/downloads
+run/asset files remained unchanged during that attempt. Persistent-browser
+checks verified the current default, accepted view, all four historical video playbacks/downloads
 and return-to-current. The service remains running. The foot revision is still
 caller-authored; Wren's D9 authorship gap remains open.
 [Attempt and evidence](../wren-fresh/AGENT-REVISION.md#current-attempt-working-copy-iteration-58).

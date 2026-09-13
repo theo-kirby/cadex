@@ -97,6 +97,14 @@ revision `5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6`.
 A fresh private-address browser check after completion confirmed this identity
 and done telemetry. This is a same-machine private-network test.
 
+## Subsequent retry video publication (iteration 60)
+
+The saved `wren57-retry` policy now has an engine-verified rollout and playable
+video on the same persistent URL. [RETRY-VIDEO.md](RETRY-VIDEO.md) records the
+new playback revision, preserved original training identity, decoded timing
+and historical-playback preservation. The earlier no-rollout statements above
+describe the interruption experiment at its completion.
+
 ## Historical iteration 56 (superseded exclusion evidence)
 
 Two first-draft probe failures are retained separately. `wren56-interrupt`

@@ -1,0 +1,120 @@
+{
+  "check": {
+    "accepted_revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+    "browser_playback": true,
+    "components": 8,
+    "curves_present": true,
+    "decoded_frames": 81,
+    "decoded_frames_differ": true,
+    "download_sha256": "4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e",
+    "encoded_seconds": 8.1,
+    "foot_len_mm": 110.0,
+    "fresh_selection": "RUN wren57-retry",
+    "historical_selection": null,
+    "persistent_server": true,
+    "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+    "private_address_same_machine": true,
+    "returned_to_current": "RUN wren57-retry",
+    "seed": 0,
+    "simulation_seconds": 8.0,
+    "style": "cadex-prototype-light-v1"
+  },
+  "historical": "wren2-final",
+  "historical_player_preserved": true,
+  "historical_revision": "26332a5955e3a044b968e3ec14eec809d2090dfe10922c4f242c1a5a12bdc477",
+  "model_and_task_bytes_match_training": true,
+  "persistent_server": true,
+  "playback_model": {
+    "accepted_revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+    "digest": "dc1e707ae72120b92d6cfb6fb79d81f515db7b5fa20f96bf0c877f73b47bcb35",
+    "identity_source": "verified rollout envelope; training identity retained in training-run.json"
+  },
+  "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+  "private_address_same_machine": true,
+  "protected_historical_files": 395,
+  "retained_training_files": 35,
+  "run": "wren57-retry",
+  "training_model": {
+    "accepted_revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+    "digest": "b04439061b0278903fca11079ff0937dac12425a5a8b767e675e24542c7a4ea4",
+    "identity_source": "accepted manifest and public export"
+  },
+  "video": {
+    "accepted_revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+    "bounds": {
+      "center": [
+        0.0,
+        0.0,
+        127.8813289859041
+      ],
+      "max": [
+        300.0,
+        300.0,
+        265.7626579718082
+      ],
+      "min": [
+        -300.0,
+        -300.0,
+        -10.0
+      ],
+      "radius": 446.1067819288551
+    },
+    "camera": {
+      "distance": 1111.0435083365383,
+      "pitch": 0.5,
+      "target": [
+        0,
+        0,
+        127.8813289859041
+      ],
+      "yaw": 0.8
+    },
+    "duration_seconds": 8.1,
+    "fps": 10,
+    "frames": 81,
+    "height": 512,
+    "model_digest": "dc1e707ae72120b92d6cfb6fb79d81f515db7b5fa20f96bf0c877f73b47bcb35",
+    "path": "rollout-4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e.webm",
+    "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+    "projection": "perspective 55 degrees",
+    "render_seconds": 12.629,
+    "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+    "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+    "seed": 0,
+    "sha256": "4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e",
+    "sim_seconds": 8.0,
+    "style": "cadex-prototype-light-v1",
+    "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+    "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+    "trace_sha256": "18a332e423694d8fae334b7b4dbb084dedc232e67dac02b644e3f9ea2332bef4",
+    "width": 512
+  },
+  "witness": {
+    "witness_error": 8.677468489214458e-09,
+    "witness_samples": 32,
+    "witness_tolerance": 0.0001,
+    "model_sha256": "2529d882f9a340f1e3f96f18d0b0fd628d35e6cf274d3809dbd1816a9f8c679e",
+    "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+    "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814"
+  },
+  "screenshots": {
+    "historical-preserved.png": "8342be3c731420f5388358bf24426ac1b1d275a958f9689193ac34b2892642bf",
+    "current-video.png": "93d82160ea5c03bfce449ec1837fb3155fdb87e804ac8c5da0bd31400a8add24",
+    "decoded-middle.png": "3025a55426112f5056d0de2dfebd07c254994a12ecfd6339260a4d0426d348b9"
+  },
+  "video_bytes": 17024,
+  "verification": {
+    "cli-suite-retry.log": {
+      "sha256": "28152b6c9798d702db5d91fedc9f48239d1a8ff7910ee2b1395b2f07013e7390",
+      "summary": "398 passed, 1 skipped in 378.43s (0:06:18)"
+    },
+    "engine-suite.log": {
+      "sha256": "9b2ff31995fae4a42b2c1440521265ea47290dd3270d71ea36cae580a3127e81",
+      "summary": "================= 2110 passed, 53 skipped in 253.11s (0:04:13) ================="
+    },
+    "final-regression.log": {
+      "sha256": "cbc8c61774fdc97a37696740683d5135380f2effe1946c0ed229be843a526477",
+      "summary": "1 passed, 33 deselected in 6.43s"
+    }
+  }
+}

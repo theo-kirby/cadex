@@ -1313,6 +1313,51 @@ def test_browser_playing_video_survives_new_current_attempt(served, browser):
     assert page.text('#view-kind') == 'RUN second'
 
 
+@needs_browser
+def test_browser_current_run_gains_video_preserving_historical_playback(served, browser):
+    from test_video import _video_run
+    from cadex_cli.video import render as render_video
+
+    if not shutil.which('ffmpeg'):
+        pytest.skip('FFmpeg not available')
+    root, server = served
+    old = _video_run(root, 'old-video')
+    old_video = render_video(root, 'old-video')
+    current = _video_run(root, 'current-video')
+    trace_path = current / 'rollout/assembly-simulation-trace.json'
+    trace = json.loads(trace_path.read_text())
+    trace['frames'][-1]['component_placements']['body']['position_mm'][2] += 20
+    trace_path.write_text(json.dumps(trace))
+    _rewrite_record(old, recorded_at='2099-01-01T00:00:00Z')
+    _rewrite_record(current, recorded_at='2099-01-02T00:00:00Z')
+    page = _open(browser, server.url)
+    assert page.text('#view-kind') == 'RUN current-video'
+    assert not page.evaluate("!!document.querySelector('#videos video')")
+    page.click("#views li[data-run='old-video']")
+    page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+    old_revision = page.text('#view-revision')
+    page.evaluate("window.playing=document.querySelector('#videos video'); playing.muted=true; playing.loop=true; playing.play()", await_promise=True)
+    page.wait_for('playing.currentTime > 0.1')
+    # Publish through the actual renderer/status writer while history is playing.
+    published = render_video(root, 'current-video')
+    assert published['sha256'] != old_video['sha256']
+    page.evaluate('window.cadexReview.refresh()', await_promise=True)
+    assert page.text('#view-kind') == 'RUN old-video'
+    assert page.text('#view-revision') == old_revision
+    assert page.evaluate("playing===document.querySelector('#videos video') && !playing.paused")
+    assert 'current-video' in page.text('#current-run')
+    page.click('#current-run')
+    page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+    assert page.text('#view-kind') == 'RUN current-video'
+    page.evaluate("window.newVideo=document.querySelector('#videos video'); newVideo.muted=true; newVideo.play()", await_promise=True)
+    page.wait_for('newVideo.currentTime > 0.1')
+    download = page.download('#videos a')
+    assert hashlib.sha256(download.path.read_bytes()).hexdigest() == published['sha256']
+    fresh = _open(browser, server.url)
+    assert fresh.text('#view-kind') == 'RUN current-video'
+    fresh.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+
+
 def test_byte_identical_outputs_each_keep_their_accepted_mesh(served, tmp_path) -> None:
     """A mirrored pair of legs is two outputs with one BREP digest; the
     accepted model and the retained training view show both, not one."""
