@@ -13,6 +13,14 @@ played through polling and downloaded with a matching hash. The original
 training revision `5b61ef31ff13…` and inputs are explicitly retained.
 [Publication evidence and commands](../wren-fresh/RETRY-VIDEO.md).
 
+Iteration 62 verified this same persistent URL after fixing accepted-model
+refresh (ADR-307): a changed accepted revision now reloads geometry during
+polling, including first acceptance in an empty view. Current/accepted/historical
+document checks and retry playback/download passed. No authoring attempt or
+training was launched; the unit was selected before the provider's reported
+22:40 reset. Wren's product-agent revision remains outstanding.
+[Refresh regression and persistent evidence](../wren-fresh/MODEL-REFRESH.md).
+
 The preceding **`wren57-interrupt`** retains its six real updates, failed status,
 `KeyboardInterrupt` and controlled-interruption/retry guidance. Both attempts
 ran after the required suites, with at most one trainer observed and no

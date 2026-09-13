@@ -382,17 +382,23 @@
     return loadModel();
   }
 
+  function modelIdentity() {
+    if (!state.review) return null;
+    var run = selectedRun(), model = run ? (run.model || {}) : state.review.accepted;
+    return JSON.stringify([state.selected, run ? model.accepted_revision : model.revision, model.digest]);
+  }
+
   function poll() {
     if (pendingPoll) return pendingPoll;
     pendingPoll = fetchJson('/api/project').then(function (review) {
-      var first = !state.review, previous = state.selected;
+      var previousModel = modelIdentity();
       if (Array.from($('videos').querySelectorAll('video')).some(function (video) {
         return !video.paused && !video.ended;
       })) state.following = false;
       state.review = review; state.lastOk = new Date(); state.stale = false; state.error = null;
       if (state.following) state.selected = currentView();
       render();
-      if (first || previous !== state.selected) return loadModel();
+      if (previousModel !== modelIdentity()) return loadModel();
     }).catch(function (error) {
       state.stale = true; state.error = error.message;
       renderFreshness();

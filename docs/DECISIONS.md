@@ -23152,3 +23152,14 @@ refresh. Clear it on view/revision change and ignore superseded fetch results,
 so delayed responses cannot replace another document or leak an earlier view's
 text into the new one. Live telemetry and document-link lists still poll.
 No dependency or authoring surface is added.
+
+## ADR-307 — Refresh geometry when the selected review identity changes (2026-09-13)
+
+[Cadex-new] Polling updated accepted revision labels and parameters while leaving
+the old viewport mesh in place, because only a selection change loaded a model.
+Compare the selected view, revision and digest across each project refresh and
+load geometry when that identity changes. The first accepted model also appears
+in an already-open empty accepted view. Unchanged identity does not reset orbit
+or zoom; a selected historical run continues using its retained model. Browser
+regressions reproduce stale and empty geometry on the old source and check the
+new mesh bounds, camera preservation and historical identity. No new dependency.

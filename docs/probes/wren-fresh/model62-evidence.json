@@ -1,0 +1,82 @@
+{
+  "persistent_server": true,
+  "private_address_same_machine": true,
+  "views": [
+    {
+      "view": "wren57-retry",
+      "revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+      "document_sha256": "21abfa5dcd21b51a2502f42f822d0477c8121cf582552c74c44dc51dfcad23e1",
+      "visible_after_seconds": 6.5
+    },
+    {
+      "view": "accepted",
+      "revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+      "document_sha256": "9ba6ae5c9ce3a35f274c0a462b368340184773de720d6677dd728474914168f1",
+      "visible_after_seconds": 6.5
+    },
+    {
+      "view": "wren2-final",
+      "revision": "26332a5955e3a044b968e3ec14eec809d2090dfe10922c4f242c1a5a12bdc477",
+      "document_sha256": "d429be55a02c5a22569ed01410f1b6b7a684690b58584d4cd68586f1b32caee5",
+      "visible_after_seconds": 6.5
+    }
+  ],
+  "default_run": "wren57-retry",
+  "return_current": true,
+  "project": "ot5-wren-copy54",
+  "advances": [
+    "D2",
+    "D10"
+  ],
+  "acceptance_transition_evidence": "two browser fixtures; no Wren acceptance change",
+  "provider_attempted": false,
+  "current_video_recheck": {
+    "persistent_server": true,
+    "private_address_same_machine": true,
+    "browser_playback": true,
+    "foot_len_mm": 110.0,
+    "components": 8,
+    "curves_present": true,
+    "fresh_selection": "RUN wren57-retry",
+    "historical_selection": null,
+    "download_sha256": "4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e",
+    "decoded_frames": 81,
+    "decoded_frames_differ": true,
+    "encoded_seconds": 8.1,
+    "simulation_seconds": 8.0,
+    "accepted_revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+    "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+    "seed": 0,
+    "style": "cadex-prototype-light-v1",
+    "returned_to_current": "RUN wren57-retry"
+  },
+  "verification": {
+    "cli": {
+      "passed": 403,
+      "skipped": 1,
+      "seconds": 387.61
+    },
+    "red_regression": {
+      "failed": 2,
+      "deselected": 37,
+      "seconds": 2.81
+    },
+    "targeted_green": {
+      "passed": 2,
+      "deselected": 37,
+      "seconds": 3.66
+    },
+    "engine": {
+      "passed": 2110,
+      "skipped": 53,
+      "seconds": 254.05
+    },
+    "service_active": true,
+    "logs": {
+      "cli-tests.log": "e88b4c7f76fc43d78399ebfe70c6f0a44fc92f31c95b4b6a63c5f9b4c95e9f23",
+      "engine-tests.log": "ed4045d4acd2d885f1259245bca548a6b8c32e1bc49e82b06d7d77f00c7f9339",
+      "red.log": "6292cd3145316f2348f24a2dc1ce7d85a94e823c45b7bc7558deda72499dbd72",
+      "green.log": "95fcd02d0dc0203706b78fb04f1c2e8db801e2f74bdc8afb34cc8e5d2bb0f49f"
+    }
+  }
+}

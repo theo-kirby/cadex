@@ -1395,6 +1395,10 @@ Opening a document also preserves the selected view. Its loaded text stays open
 across polls; click its link again to refresh it. Changing the selected view or
 its recorded revision clears the document, so another model cannot inherit the
 previous view's specs or decisions (ADR-306).
+When the selected model revision or digest changes, polling reloads its geometry
+as well as its identity and parameters (ADR-307). This includes the first
+acceptance in an already-open empty view. Unchanged polls preserve the camera;
+selecting a historical run keeps its retained geometry.
 The **Current run** button names the current attempt and returns to following it.
 Missing/stale output stays labelled; an older success is never substituted for
 a newer failure. The [persistent operator command and status](probes/operator-review/README.md)

@@ -1448,3 +1448,42 @@ def test_browser_document_reading_pins_current_and_ignores_late_response(served,
     page.evaluate('window.delayedDoc()')
     page.evaluate('new Promise(resolve => setTimeout(resolve, 50))', await_promise=True)
     assert page.text('#doc-view') == body
+
+
+@needs_browser
+@pytest.mark.parametrize('initially_accepted', [True, False])
+def test_browser_accepted_geometry_tracks_live_identity(tmp_path, browser, initially_accepted):
+    root = _review_project(tmp_path)
+    if initially_accepted:
+        _stage_accepted(root, REVISION_B)
+    else:
+        (root / 'script.json').unlink()
+    server, _thread = serve(root, '127.0.0.1', 0)
+    try:
+        page = _open(browser, server.url)
+        page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
+        assert _model_state(page) == ('loaded' if initially_accepted else 'missing')
+        # Publish a new accepted attempt while this browser keeps inspecting.
+        _manifest(root, REVISION_A)
+        staging = _stage_accepted(root, REVISION_A)
+        sidecar, data = _cube_tessellation(40.0)
+        old = json.loads((staging / 'display/display-000.tess.json').read_text())
+        sidecar.update({key: old[key] for key in ['artifact_path', 'source_sha256']})
+        (staging / 'display/display-000.tess.json').write_text(json.dumps(sidecar))
+        (staging / 'display/display-000.tess.bin').write_bytes(data)
+        page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        assert page.text('#view-revision') == REVISION_A
+        assert page.evaluate('window.cadexReview.state().model.revision') == REVISION_A
+        assert _model_state(page) == 'loaded'
+        assert page.evaluate('window.cadexReview.viewer().stats().bounds.max[0]') == 45.0
+        # Identical polls must preserve deliberate orbit/zoom.
+        page.evaluate('const viewer = window.cadexReview.viewer(); const camera = viewer.camera(); camera.yaw += .3; camera.distance *= 1.2; viewer.setCamera(camera); window.cameraBefore = viewer.camera()')
+        page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        assert page.evaluate('JSON.stringify(cameraBefore) === JSON.stringify(window.cadexReview.viewer().camera())')
+        # A later acceptance must not replace a selected retained historical mesh.
+        page.evaluate("window.cadexReview.select('second')", await_promise=True)
+        page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        assert page.evaluate('window.cadexReview.state().model.revision') == REVISION_B
+    finally:
+        server.shutdown()
+        server.server_close()
