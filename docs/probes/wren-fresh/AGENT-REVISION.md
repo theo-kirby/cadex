@@ -2,7 +2,43 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
-## Current attempt: working copy, iteration 58
+## Current attempt and review fix: iteration 61
+
+One bounded product-agent turn again returned the provider session-limit error
+before authoring. Wren's product-agent revision gap remains open. Following the
+critic's fallback, this iteration fixes a demonstrated review defect instead:
+live polls closed an open design document every two seconds (ADR-306).
+
+Headless-browser regressions fail on the old code for both accepted and
+historical documents. Loaded documents now remain visible across polls, identify
+their explicit refresh behavior, and clear when the selected view/revision
+changes. Opening one preserves deliberate reading when a newer run arrives;
+return-to-current resumes following. Superseded document fetches cannot replace
+a newer document. Live telemetry continues polling.
+
+The persistent private-network server on port 8765 remains on
+**ot5-wren-copy54**, default **wren57-retry**, accepted/playback revision
+`79f86c69bfc3…`. Browser checks read current, accepted and historical
+`wren2-final` decisions through 6.5 seconds of automatic polling each, then
+returned to current. The retry video also played across three polls, downloaded
+with its recorded hash, and decoded to 81 frames at 10 fps (8.1 encoded seconds,
+eight simulation seconds). All 465 prior run/asset files remain byte-identical.
+No new geometry, training or gait claim accompanies the provider refusal.
+These are same-machine private-address checks, not a second-device test.
+
+[document61-evidence.json](document61-evidence.json) retains compact evidence.
+The full prompt, refusal envelope, original file inventory, browser probe,
+screenshots and suite logs remain project-local in `evidence/agentrev61/`.
+Retain them with the whole project. No new dependency or build was needed;
+this unit changes the CLI dashboard only.
+
+Verification: `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 pixi run python -m
+pytest cli/tests` passed **400 tests, one skipped** in 381.31 s. The final
+three document regressions passed in 4.12 s after adding the delayed-response
+case. The sequential `pixi run test-engine` with the same thread bounds passed
+**2110 tests, 53 skipped** in 253.28 s. No experiment training overlapped them.
+
+## Historical attempt: working copy, iteration 58
 
 The product-agent revision remains blocked by provider capacity. One real
 `cadex -p` turn on **`ot5-wren-copy54`**, using its stored `claude-sonnet-5`

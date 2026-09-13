@@ -1394,3 +1394,57 @@ def test_byte_identical_outputs_each_keep_their_accepted_mesh(served, tmp_path) 
     assert sorted(p.name for p in (run / "training-view").iterdir()) == ["thigh_l.stl", "thigh_r.stl", "torso.stl"]
     retained = json.loads((run / "training-view.json").read_text())["model"]["components"]
     assert all(entry["mesh"] for entry in retained), retained
+
+
+@needs_browser
+@pytest.mark.parametrize('view', ['accepted', 'first'])
+def test_browser_keeps_open_document_across_polls_until_view_changes(served, browser, view):
+    _root, server = served
+    page = _open(browser, server.url)
+    page.evaluate('window.cadexReview.select(' + json.dumps(view) + ')', await_promise=True)
+    page.click("#docs li[data-doc='DECISIONS.md'] a")
+    page.wait_for("document.getElementById('doc-view').textContent.includes('ADR-')")
+    body = page.text('#doc-view')
+    for _ in range(3):
+        page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        assert not page.evaluate("document.getElementById('doc-view').classList.contains('hidden')")
+        assert page.text('#doc-view') == body
+    other = 'second' if view == 'first' else 'first'
+    page.evaluate('window.cadexReview.select(' + json.dumps(other) + ')', await_promise=True)
+    assert page.evaluate("document.getElementById('doc-view').classList.contains('hidden')")
+
+
+@needs_browser
+def test_browser_document_reading_pins_current_and_ignores_late_response(served, browser):
+    root, server = served
+    page = _open(browser, server.url)
+    selected = page.evaluate('window.cadexReview.state().selected')
+    page.click("#docs li[data-doc='DECISIONS.md'] a")
+    page.wait_for("document.getElementById('doc-view').textContent.includes('Loaded on open;')")
+    _mesh_run(root, 'new-attempt', revision=REVISION_B)
+    _rewrite_record(root / 'runs' / 'new-attempt', recorded_at='2099-01-01T00:00:00Z')
+    page.evaluate('window.cadexReview.refresh()', await_promise=True)
+    assert page.text('#current-run') == 'Current run: new-attempt'
+    assert page.evaluate('window.cadexReview.state().selected') == selected
+    assert not page.evaluate("document.getElementById('doc-view').classList.contains('hidden')")
+    # Delay a document response across a view change and a newer document load.
+    page.evaluate("""(() => {
+      const original = window.fetch;
+      window.fetch = function(url, options) {
+        if (url.startsWith('/doc/') && !window.delayedDoc) {
+          return new Promise(resolve => { window.delayedDoc = () => resolve(new Response('obsolete response')); });
+        }
+        return original(url, options);
+      };
+    })()""")
+    page.click("#docs li[data-doc='DECISIONS.md'] a")
+    page.wait_for('!!window.delayedDoc')
+    page.click('#current-run')
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN new-attempt'")
+    assert page.evaluate("document.getElementById('doc-view').classList.contains('hidden')")
+    page.click("#docs li[data-doc='DECISIONS.md'] a")
+    page.wait_for("document.getElementById('doc-view').textContent.includes('Loaded on open;')")
+    body = page.text('#doc-view')
+    page.evaluate('window.delayedDoc()')
+    page.evaluate('new Promise(resolve => setTimeout(resolve, 50))', await_promise=True)
+    assert page.text('#doc-view') == body

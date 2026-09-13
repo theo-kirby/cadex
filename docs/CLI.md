@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-12. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-13. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -1391,6 +1391,10 @@ fresh starting/training telemetry first, otherwise the latest recorded attempt,
 including failed or interrupted work. Record time orders runs, with run name
 breaking ties. With no runs, the accepted view opens. An untouched page follows
 current work on polls; selecting a view or playing a video preserves that view.
+Opening a document also preserves the selected view. Its loaded text stays open
+across polls; click its link again to refresh it. Changing the selected view or
+its recorded revision clears the document, so another model cannot inherit the
+previous view's specs or decisions (ADR-306).
 The **Current run** button names the current attempt and returns to following it.
 Missing/stale output stays labelled; an older success is never substituted for
 a newer failure. The [persistent operator command and status](probes/operator-review/README.md)

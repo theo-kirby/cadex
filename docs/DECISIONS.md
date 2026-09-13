@@ -23140,3 +23140,15 @@ the new experiment. Sampling records its maximum observed interval; this is
 observed process exclusion, not a system-wide scheduling lock or a proof about
 processes shorter than that interval. Earlier attempts and receipts stay
 historical. No dependency or product training behavior changes.
+
+## ADR-306 — Keep review documents open during live polling (2026-09-13)
+
+[Cadex-new] Every dashboard poll previously hid the document panel, interrupting
+reading after at most two seconds. Keep the loaded text visible while the view
+and revision are unchanged. Opening a document suspends automatic current-run
+following, like deliberate historical browsing; the current-run button resumes
+it. Label the text as loaded on open, with its link providing an explicit
+refresh. Clear it on view/revision change and ignore superseded fetch results,
+so delayed responses cannot replace another document or leak an earlier view's
+text into the new one. Live telemetry and document-link lists still poll.
+No dependency or authoring surface is added.

@@ -10,7 +10,7 @@
 
   var POLL_MS = 2000;
   var state = { review: null, selected: 'accepted', lastOk: null, stale: false, model: null, viewer: null,
-                error: null, following: true };
+                error: null, following: true, docKey: null, docRequest: 0 };
   var pendingPoll = null;
   var readyResolve;
   var ready = new Promise(function (resolve) { readyResolve = resolve; });
@@ -272,20 +272,30 @@
   }
 
   function showDoc(url, title) {
-    var view = $('doc-view');
+    var view = $('doc-view'), request = ++state.docRequest;
+    state.following = false;
     view.classList.remove('hidden');
     view.textContent = 'loading ' + title + '…';
     fetch(url, { cache: 'no-store' }).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.text();
-    }).then(function (body) { view.textContent = '# ' + title + '\n\n' + body; })
-      .catch(function (error) { view.textContent = title + ': ' + error.message; });
+    }).then(function (body) {
+      if (request === state.docRequest) view.textContent = '# ' + title + '\nLoaded on open; click the document again to refresh.\n\n' + body;
+    }).catch(function (error) {
+      if (request === state.docRequest) view.textContent = title + ': ' + error.message;
+    });
   }
 
   function renderDocs() {
     var run = selectedRun(), docs = $('docs'), decisions = $('decisions');
     clearChildren(docs); clearChildren(decisions);
-    $('doc-view').classList.add('hidden');
+    var key = JSON.stringify([state.selected, run ? (run.model || {}).accepted_revision : state.review.accepted.revision]);
+    if (key !== state.docKey) {
+      state.docKey = key;
+      state.docRequest++;
+      $('doc-view').classList.add('hidden');
+      $('doc-view').textContent = '';
+    }
     if (!run) {
       var review = state.review;
       var names = ['ARCHITECTURE.md', 'DECISIONS.md', 'PROGRESS.md'].filter(function (name) { return review.docs[name]; }).concat(review.docs.domain || []);
