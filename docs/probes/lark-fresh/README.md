@@ -5,6 +5,16 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Lark lifecycle report](LIFECYCLE.md) links D1–D11 evidence, the common-seed
 comparison, current visual assessment and remaining acceptance limits.
 
+**Iteration 103 (D4, ADR-323):** the persistent dashboard still serves
+`ot5-lark-copy85` and opens `lark98-final`. After restarting the server onto
+the filename fix, the real final video decoded, played and downloaded
+hash-equal; historical selection and return to current also passed.
+[Receipt](download103-evidence.json). Separately, a Chromium regression
+reproduced a Unicode filename crashing the download response and now verifies
+both original filename and bytes. That synthetic download is not new rollout
+or training evidence. The private-address check ran on this machine; the
+server remains running. No project or run switch occurred.
+
 **Iteration 102 (D10, ADR-322 correction):** the persistent private-network
 URL continues serving `ot5-lark-copy85`, with `lark98-final` selected for a
 fresh visit. After restarting only the review server onto the corrected disk

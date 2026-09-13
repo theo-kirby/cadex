@@ -1612,6 +1612,8 @@ What the page shows, and where each thing comes from:
   recovers playback on the next poll. Videos are the D4 slot: a recorded video plays inline
   (byte ranges are served, so seeking works) and downloads, identified by
   policy digest, seed and simulated seconds; none recorded says so.
+  Downloads preserve Unicode filenames through an encoded UTF-8 name and an
+  ASCII fallback in the response header (ADR-323).
 
 Video verification retains at most 256 digests in process memory (ADR-296).
 Each read still checks containment and file identity, size, and nanosecond

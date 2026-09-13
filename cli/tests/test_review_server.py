@@ -1948,3 +1948,38 @@ def test_browser_policy_origin_uses_bytes_and_exposes_conflicting_source(served,
     page.click('#check-policy-origin')
     page.wait_for("document.getElementById('policy-origin').dataset.state === 'resolved'")
     assert page.attribute('#policy-origin', 'data-run') == 'second'
+
+
+@needs_browser
+def test_browser_downloads_unicode_video_filename(served, browser):
+    root, server = served
+    run = root / 'runs' / 'second'
+    name = '歩行 résumé.webm'
+    payload = b'retained video bytes'
+    (run / name).write_bytes(payload)
+    _rewrite_record(run, videos=[{
+        'path': name, 'sha256': hashlib.sha256(payload).hexdigest(),
+        'policy_sha256': 'p' * 64, 'seed': 7, 'sim_seconds': 4.0,
+    }])
+    page = _open(browser, server.url)
+    assert page.text('#view-kind') == 'RUN second'
+    download = page.download('#videos a')
+    assert download.path.read_bytes() == payload
+    assert download.path.name == name
+
+
+@pytest.mark.parametrize('name', ['résumé.webm', 'clip"quoted.webm', 'clip\r\nX-Injected: yes.webm'])
+def test_download_filename_cannot_break_response_headers(served, name):
+    from urllib.parse import quote
+
+    root, server = served
+    run = root / 'runs' / 'second'
+    (run / name).write_bytes(b'retained')
+    _rewrite_record(run, videos=[{'path': name}])
+    status, headers, body = _get(server.url + 'video/run/second/0?download=1')
+    assert status == 200 and body == b'retained'
+    assert 'x-injected' not in headers
+    disposition = headers['content-disposition']
+    assert disposition.isascii()
+    assert '\r' not in disposition and '\n' not in disposition
+    assert disposition.endswith("filename*=UTF-8''" + quote(name, safe=''))

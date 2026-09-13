@@ -23646,3 +23646,16 @@ could detach an already-playing historical video. Sizes now update separate
 text spans in place, outside the media identity key. A browser regression holds
 the detail response until playback starts, then verifies that releasing it
 adds the size while preserving the same playing element.
+
+## ADR-323 — Review downloads encode retained filenames (2026-09-13)
+
+A permitted video named `歩行 résumé.webm` appeared in the dashboard but its
+download raised `UnicodeEncodeError` when Python wrote the response header.
+Use an ASCII fallback filename and a percent-encoded UTF-8 `filename*` when
+the retained name contains non-ASCII characters, quotes, backslashes, percent
+signs or control characters. Ordinary ASCII names keep their existing header.
+This also keeps filename punctuation and line breaks out of header syntax.
+The file on disk and its recorded identity stay authoritative and unchanged.
+A Chromium regression verifies the downloaded bytes and Unicode filename;
+HTTP regressions cover accented names, quotes and CR/LF. No dependency,
+engine, payload or shell change.

@@ -42,7 +42,7 @@ import struct
 import sys
 import threading
 from typing import Any, Callable, Mapping
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from .review_record import (
     policy_lineage,
@@ -979,7 +979,13 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return
         extra = {"Accept-Ranges": "bytes"}
         if download:
-            extra["Content-Disposition"] = f'attachment; filename="{path.name}"'
+            # HTTP headers must stay ASCII; retain Unicode in the encoded name.
+            fallback = "".join(c if 32 <= ord(c) < 127 and c not in '\\"%'
+                               else "_" for c in path.name)
+            disposition = f'attachment; filename="{fallback}"'
+            if fallback != path.name:
+                disposition += "; filename*=UTF-8''" + quote(path.name, safe="")
+            extra["Content-Disposition"] = disposition
         start, end = 0, size - 1
         status = HTTPStatus.OK
         range_header = self.headers.get("Range", "")
