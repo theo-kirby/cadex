@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**Historical policy origins expose conflicting declarations (ADR-319).** The panel preserves the retained-byte-resolved origin while separately showing the declared training source and highlighting disagreement. A browser regression covers unrelated names, a conflicting source, missing retained bytes and explicit recheck, a final origin with no declaration, stale request isolation and retry after failure. This is inspection of retained history; project records are not rewritten [rec: stormy-shade-6266].
+
 **The agent's 70→45 mm Lark torso revision and `lark2` retraining preserve all 125 pre-revision run/asset files byte-identically.** `lark1` and `lark2` remain selectable on the persistent dashboard with their own revisions, curves and videos, and all four retained policies were compared on seeds 0–9 from their own retained models, tasks and hash-verified policies (ADR-313) [rec: brave-water-4060]. This is the third fresh project on which a product-agent revision and retraining left the prior design's history intact.
 
 **The agent's 110→90 mm Wren revision and retraining preserve all 465 pre-revision run/asset files.** `wren57-retry`, `wren66-checkpoint20` and `wren66-final` evaluate from their own retained script/model/task/policy on seeds 0–4; seed-zero traces reproduce exactly. Persistent browser selection distinguishes historical retry/checkpoint from the current final, with retained videos and identities [rec: red-jasper-1884]. Wren's earlier 85→105 mm foot revision preserved all 114 original run files and four distinct model/policy/video histories, with twenty common-seed rollouts verifying identities [rec: frosty-birch-2464]; the provider-refused design turns between preserved 228 and then 434 retained files and the accepted design, authoring nothing [rec: smooth-pine-9795] [rec: dawn-bell-5364].
@@ -47,3 +49,4 @@ Charter criterion: **D5. Review history survives a design change** Each run reta
 - dawn-bell-5364 — refused copy design turn preserves 434 run/assets and accepted/historical review identities
 - red-jasper-1884 — agent revision/retraining preserves 465 prior files and separately retained baseline/checkpoint/final identities
 - brave-water-4060 — Lark agent revision and lark2 retraining preserve 125 prior files; both runs selectable with their own revisions, curves and videos
+- stormy-shade-6266 — ADR-319 historical origin display and conflict/missing-byte/stale-request/retry browser coverage
