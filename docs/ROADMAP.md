@@ -2773,6 +2773,14 @@ field, and every client gets it through the surface it already reads.
       nor duplicated, and no project file changes. D6's fresh-biped pass with real
       artifacts and its engine restart remain open.
 
+- [x] Engine restart during real training (D6, ADR-325): on the persistent Lark
+      copy, a public `cadex export` had its engine SIGKILLed mid-work and the next
+      `cadex export` started a fresh engine while a bounded GPU run trained; the
+      killed call exited 1 naming the closed stream, no engine or worker outlived
+      it, the trainer kept its PID and start ticks, the open page kept receiving
+      committed telemetry, and accepted identity and earlier run files were
+      unchanged (`docs/probes/lark-fresh/ENGINE109.md`). Same-machine browser only.
+
 - [x] The fresh biped exists and trained once on the GPU: `ot5-biped` was
       authored by the product agent on the default model after three quota
       refusals (no model override needed); a 40 × 1024 PPO probe stored its

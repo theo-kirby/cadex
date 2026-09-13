@@ -23694,3 +23694,45 @@ polling and playback continuing and the next download hash-equal; the server
 had written the whole file first, as before, so that receipt establishes
 browser-side recovery and the synthetic regression the server-side case
 (`docs/probes/lark-fresh/download106-evidence.json`).
+
+## ADR-325 — The engine is per-invocation, so "restart the engine during training" is a killed CLI call and the next one; the operator service runs supervised (2026-09-13)
+
+D6 asks that restarting the engine during training neither stops nor
+duplicates that training. Cadex has no engine daemon to restart: `cadexd` is
+one process per `./cadex` invocation, started, driven over stdio and stopped
+by the CLI, and the dashboard opens none (ADR-286). The trainer is offboard
+(ADR-084) and reads an exported task bundle; nothing it does touches an
+engine. So the honest form of the criterion, driven through the public CLI
+alone, is: during a real bounded GPU run, one `cadex export` has its engine
+SIGKILLed while it is working, and the next `cadex export` starts a fresh
+engine. `docs/probes/lark-fresh/engine_restart.py` does that on the
+persistent Lark copy and records what has to hold — the killed call exits 1
+with the envelope's `error` naming the closed protocol stream, no engine or
+resident worker outlives it, the next engine has a different PID and reproduces
+the accepted revision, digest, model and task bytes, the one trainer keeps its
+PID and start ticks throughout, the already-open page keeps receiving
+committed telemetry without a reload, a fresh visit still selects the active
+run, and every earlier run file and the accepted identity are unchanged. The
+receipt is `docs/probes/lark-fresh/engine109-evidence.json`, pinned by
+`cli/tests/test_lark_fresh_evidence.py`; `ENGINE109.md` narrates it. The
+same-machine limit applies: headless Chromium over the private address, no
+second device.
+
+Two facts the probe surfaced are recorded rather than changed. A killed
+engine's CLI call reports `exit status -9` and stages nothing; the manifest's
+`latest_candidate` and `updated_at` move on every successful engine open
+(the normal restore, as `docs/probes/wren-fresh/RESTART.md` already noted; ADR-303 is the retention pin) while the
+accepted revision and digest do not — so "byte-identical" is claimed for the
+retained run files and the accepted identity, not for `script.json`.
+
+Separately, the persistent operator dashboard on port 8765 was found running
+as a bare tmux-launched process (iteration 104 restarted it outside the unit
+after the `cadex-operator-review` service had been stopped), so the documented
+`systemctl --user restart cadex-operator-review` had nothing to act on and no
+`Restart=on-failure` supervision applied. With no trainer active it was
+stopped and started again under the documented `systemd-run` unit on the same
+address, port and project (`service109-restore.json` in the copy's evidence
+directory). The rule this makes explicit: **the operator URL is served by the
+user unit, never by a bare process**, because the restart command every probe
+and document relies on is the unit's. No dependency, engine, payload or shell
+change.

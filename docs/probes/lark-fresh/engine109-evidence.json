@@ -1,0 +1,216 @@
+{
+  "schema": "cadex-engine-restart-evidence-v1",
+  "project": "ot5-lark-copy85",
+  "run": "lark109-engine2",
+  "url": "http://100.104.232.88:8765/",
+  "persistent_port": 8765,
+  "private_address_same_machine": true,
+  "iterations": 100,
+  "timeout_seconds": 900,
+  "memory_max_bytes": 21474836480,
+  "accepted_revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+  "accepted_digest": "c039961cd41d9bcc26956c566a55e3ace0cf2665f99b7ebfd180af12d2bd4076",
+  "service": {
+    "unit": "cadex-operator-review",
+    "state_before": "active",
+    "main_pid_before": "428532",
+    "state_after": "active",
+    "main_pid_after": "428532"
+  },
+  "trainer": {
+    "pid": 439475,
+    "start_ticks": "103546924"
+  },
+  "page_before": {
+    "iteration": 4,
+    "freshness": "live"
+  },
+  "manifest_after_kill": {
+    "sha256": "b58be97bed1cc17f011c313c14b6a0853939ba3c1e00b49bb4811ecfa18af02a",
+    "bytes_equal_to_after_export": false
+  },
+  "engine": {
+    "killed": {
+      "label": "lark109-engine2-engine-killed",
+      "cli_pid": 444245,
+      "engine_pid": 444248,
+      "engine_start_ticks": "103555265",
+      "engine_seen_seconds": 0.047,
+      "engine_workers_at_kill": [
+        {
+          "pid": 444251,
+          "ppid": 444248,
+          "executable": "FreeCADCmd"
+        }
+      ],
+      "killed_seconds": 0.455,
+      "exit": 1,
+      "wall_seconds": 0.463,
+      "ok": false,
+      "error": "The engine closed its protocol stream. (exit status -9)",
+      "accepted_revision": "",
+      "digest": "",
+      "outputs": 0,
+      "out_files": null,
+      "engine_processes_after": []
+    },
+    "restarted": {
+      "label": "lark109-engine2-engine-restarted",
+      "cli_pid": 444339,
+      "engine_pid": 444342,
+      "engine_start_ticks": "103555512",
+      "engine_seen_seconds": 0.055,
+      "exit": 0,
+      "wall_seconds": 1.518,
+      "ok": true,
+      "error": null,
+      "accepted_revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+      "digest": "c039961cd41d9bcc26956c566a55e3ace0cf2665f99b7ebfd180af12d2bd4076",
+      "outputs": 28,
+      "out_files": [
+        "assembly-simulation-trace.json",
+        "foot_l.step",
+        "foot_l.stl",
+        "foot_r.step",
+        "foot_r.stl",
+        "ground_plate.step",
+        "ground_plate.stl",
+        "lark_model-model.xml",
+        "shin_l.step",
+        "shin_l.stl",
+        "shin_r.step",
+        "shin_r.stl",
+        "thigh_l.step",
+        "thigh_l.stl",
+        "thigh_r.step",
+        "thigh_r.stl",
+        "torso.step",
+        "torso.stl",
+        "walk_policy-policy.json",
+        "walk_task-task.json"
+      ],
+      "engine_processes_after": []
+    },
+    "re_export_bytes_identical": true,
+    "trainer_after_restart": {
+      "pid": 439475,
+      "start_ticks": "103546924"
+    }
+  },
+  "samples": [
+    {
+      "iteration": 8,
+      "commit_to_page_seconds": 1.039,
+      "reward": "reward_per_step: 0.069689",
+      "loss": "loss: 4.6206",
+      "episode_steps": "episode_steps: 82.915",
+      "points": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "iteration": 9,
+      "commit_to_page_seconds": 0.896,
+      "reward": "reward_per_step: 0.11916",
+      "loss": "loss: 4.4279",
+      "episode_steps": "episode_steps: 105.57",
+      "points": [
+        10,
+        10,
+        10
+      ]
+    },
+    {
+      "iteration": 10,
+      "commit_to_page_seconds": 1.388,
+      "reward": "reward_per_step: 0.10739",
+      "loss": "loss: 4.9707",
+      "episode_steps": "episode_steps: 103.96",
+      "points": [
+        11,
+        11,
+        11
+      ]
+    },
+    {
+      "iteration": 12,
+      "commit_to_page_seconds": 0.22,
+      "reward": "reward_per_step: 0.22981",
+      "loss": "loss: 5.5235",
+      "episode_steps": "episode_steps: 123.37",
+      "points": [
+        13,
+        13,
+        13
+      ]
+    },
+    {
+      "iteration": 13,
+      "commit_to_page_seconds": 0.724,
+      "reward": "reward_per_step: 0.30350",
+      "loss": "loss: 5.8790",
+      "episode_steps": "episode_steps: 157.54",
+      "points": [
+        14,
+        14,
+        14
+      ]
+    },
+    {
+      "iteration": 14,
+      "commit_to_page_seconds": 1.193,
+      "reward": "reward_per_step: 0.36045",
+      "loss": "loss: 6.3832",
+      "episode_steps": "episode_steps: 170.67",
+      "points": [
+        15,
+        15,
+        15
+      ]
+    },
+    {
+      "iteration": 16,
+      "commit_to_page_seconds": 0.197,
+      "reward": "reward_per_step: 0.48706",
+      "loss": "loss: 7.2392",
+      "episode_steps": "episode_steps: 347.12",
+      "points": [
+        17,
+        17,
+        17
+      ]
+    }
+  ],
+  "iteration_after": 16,
+  "no_navigation": true,
+  "fresh_default": "RUN lark109-engine2",
+  "trainer_exit": 0,
+  "peak_memory_bytes": 5489143808,
+  "enforced_memory_max": "21474836480",
+  "final_state": "done",
+  "final_iteration": 99,
+  "device": "gpu",
+  "policy_sha256": "9c166417c633749c77fa3d7d011e11042b0c74070dd0cbe9095a3a1d02b85f3e",
+  "prior_run_files_unchanged": 561,
+  "manifest": {
+    "accepted_identity_unchanged": true,
+    "bytes_changed_keys": [
+      "latest_candidate",
+      "updated_at"
+    ]
+  },
+  "completion_default": "RUN lark109-engine2",
+  "ok": true,
+  "exclusion": {
+    "interval_seconds": 0.05,
+    "scans": 4959,
+    "max_trainers": 1,
+    "observed_pids": [
+      439475
+    ],
+    "violation": null,
+    "max_scan_gap_seconds": 0.06673071603290737
+  }
+}

@@ -48,7 +48,7 @@ not a second-device claim. This unit renders no new video; it tests continuity
 of a previously verified recording. The newest training attempt remains the
 fresh default, with video absence visible, rather than selecting an older video.
 The existing creation/copy engine-restore receipts supply D6's save/reopen half;
-this experiment does not restart the engine during training.
+this experiment does not restart the engine during training; [ENGINE109.md](ENGINE109.md) does.
 
 ## Observed restart and the failed first observation
 

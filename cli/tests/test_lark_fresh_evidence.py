@@ -720,3 +720,73 @@ def test_download106_receipt_shows_a_browser_cancelled_download_recovering_on_th
         assert name.split("::")[1] in tests, name
     assert "download106-evidence.json" in (PROBE / "README.md").read_text()
     assert "download106-evidence.json" in (PROBE / "LIFECYCLE.md").read_text()
+
+
+def test_engine109_receipt_shows_the_engine_killed_and_restarted_during_real_training() -> None:
+    """Iteration 109 (ADR-325): on the persistent Lark copy, one bounded GPU
+    run trained while a public ``cadex export`` had its engine SIGKILLed
+    mid-work and the next ``cadex export`` started a fresh engine. The one
+    trainer kept its PID and start ticks, the open page kept receiving
+    committed telemetry with no reload, a fresh visit still selected the
+    active run, the accepted identity and every earlier run file were
+    unchanged, and the dashboard service was neither restarted nor replaced."""
+    receipt = json.loads((PROBE / "engine109-evidence.json").read_text())
+    assert receipt["schema"] == "cadex-engine-restart-evidence-v1" and receipt["ok"] is True
+    assert receipt["project"] == "ot5-lark-copy85" and receipt["run"] == "lark109-engine2"
+    assert receipt["url"].startswith("http://100.") and receipt["persistent_port"] == 8765
+    assert receipt["private_address_same_machine"] is True
+    assert (receipt["iterations"], receipt["timeout_seconds"], receipt["memory_max_bytes"]) == (100, 900, 20 * 1024**3)
+    revision, digest = receipt["accepted_revision"], receipt["accepted_digest"]
+    assert re.fullmatch(HEX64, revision) and re.fullmatch(HEX64, digest)
+
+    killed, restarted = receipt["engine"]["killed"], receipt["engine"]["restarted"]
+    # The killed CLI call failed loudly and cleanly: exit 1, a readable error,
+    # no engine or worker process left behind, nothing accepted.
+    assert killed["exit"] == 1 and killed["ok"] is False
+    assert "closed its protocol stream" in killed["error"] and "exit status -9" in killed["error"]
+    assert 0 < killed["engine_seen_seconds"] < killed["killed_seconds"] <= killed["wall_seconds"]
+    assert killed["engine_processes_after"] == [] and killed["outputs"] == 0
+    # The next CLI call was a different engine and reproduced the same identity and bytes.
+    assert restarted["exit"] == 0 and restarted["ok"] is True
+    assert restarted["engine_pid"] != killed["engine_pid"]
+    assert restarted["engine_start_ticks"] != killed["engine_start_ticks"]
+    assert (restarted["accepted_revision"], restarted["digest"]) == (revision, digest)
+    assert restarted["engine_processes_after"] == [] and restarted["outputs"] > 0
+    assert receipt["engine"]["re_export_bytes_identical"] is True
+    # The killed engine had already rewritten the manifest's candidate stamp on
+    # open (the normal restore); the accepted identity is what must not move.
+    assert re.fullmatch(HEX64, receipt["manifest_after_kill"]["sha256"])
+    assert receipt["manifest_after_kill"]["bytes_equal_to_after_export"] is False
+
+    # One trainer, same PID and start ticks before, across and after the engine restart.
+    trainer = receipt["trainer"]
+    assert trainer == receipt["engine"]["trainer_after_restart"]
+    exclusion = receipt["exclusion"]
+    assert exclusion["violation"] is None and exclusion["max_trainers"] == 1
+    assert exclusion["observed_pids"] == [trainer["pid"]] and exclusion["scans"] > 100
+
+    # The open page kept receiving committed updates without navigating.
+    samples = receipt["samples"]
+    assert len(samples) == 7 and receipt["no_navigation"] is True
+    iterations = [s["iteration"] for s in samples]
+    assert iterations == sorted(set(iterations)) and iterations[0] > receipt["page_before"]["iteration"]
+    assert all(0 <= s["commit_to_page_seconds"] < 5 for s in samples)
+    for earlier, later in zip(samples, samples[1:]):
+        assert all(a <= b for a, b in zip(earlier["points"], later["points"]))
+    assert receipt["iteration_after"] >= iterations[-1]
+    assert receipt["fresh_default"] == receipt["completion_default"] == "RUN lark109-engine2"
+
+    # Bounded, completed on the GPU, and nothing earlier or accepted changed.
+    assert receipt["final_state"] == "done" and receipt["final_iteration"] == 99 and receipt["device"] == "gpu"
+    assert receipt["enforced_memory_max"] == str(20 * 1024**3)
+    assert 0 < receipt["peak_memory_bytes"] < 20 * 1024**3
+    assert re.fullmatch(HEX64, receipt["policy_sha256"])
+    assert receipt["prior_run_files_unchanged"] > 0
+    assert receipt["manifest"]["accepted_identity_unchanged"] is True
+    assert set(receipt["manifest"]["bytes_changed_keys"]) <= {"latest_candidate", "updated_at"}
+    service = receipt["service"]
+    assert service["unit"] == "cadex-operator-review"
+    assert service["state_before"] == service["state_after"] == "active"
+    assert service["main_pid_before"] == service["main_pid_after"] != "0"
+    for doc in ("ENGINE109.md", "LIFECYCLE.md"):
+        assert "engine109-evidence.json" in (PROBE / doc).read_text()

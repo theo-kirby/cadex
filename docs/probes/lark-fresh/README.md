@@ -5,6 +5,23 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Lark lifecycle report](LIFECYCLE.md) links D1–D11 evidence, the common-seed
 comparison, current visual assessment and remaining acceptance limits.
 
+**Iteration 109 (D6/D10, ADR-325):** the engine was killed and restarted
+during real GPU training on `ot5-lark-copy85`, through the public CLI alone:
+[ENGINE109.md](ENGINE109.md) and [its receipt](engine109-evidence.json),
+pinned by `cli/tests/test_lark_fresh_evidence.py`. Before the experiment the
+persistent dashboard was found running as a bare tmux-launched process (the
+`cadex-operator-review` unit had been stopped and not restarted in
+iteration 104), so with no trainer active it was stopped and started again
+under the documented `systemd-run` unit on the same address, port and
+project; `service109-restore.json` in the copy's evidence directory records
+the bare PID, the new MainPID and the 0.6 s until `/api/project` answered.
+The first attempt, `lark109-engine`, trained to completion but lost its
+receipt: a pytest subset run on this machine during the completion wait
+tripped the probe's own trainer-exclusion guard, and the driver re-raised
+before saving. Its run record says so and is kept as `failed`; the repeat,
+`lark109-engine2`, is the receipt. Same-machine browser over the private
+address; the dashboard service was not restarted during either run.
+
 **Iteration 107 (D4/D10 record, ADR-324):** no code change. Iterations 104
 and 106 landed unrecorded; their record now exists and carries the result
 those iterations owed: `pixi run python -m pytest cli/tests -q` at head —

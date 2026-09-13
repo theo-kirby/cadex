@@ -153,9 +153,16 @@ class CadexdClient:
         while time.monotonic() <= deadline:
             line = process.stdout.readline()
             if not line:
+                # EOF arrives before the child is reaped; wait briefly so the
+                # error names the real exit status (-9 for a killed engine)
+                # rather than None.
+                try:
+                    status: int | None = process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    status = None
                 raise CadexdError(
                     "The engine closed its protocol stream. "
-                    f"(exit status {process.poll()!r})"
+                    f"(exit status {status!r})"
                 )
             line = line.strip()
             if not line:

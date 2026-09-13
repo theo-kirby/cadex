@@ -2,6 +2,20 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
+Iteration 109 (ADR-325) found the operator URL served by a bare
+`python -m cadex_cli review` process launched from tmux in iteration 104,
+after the `cadex-operator-review` unit had been stopped: the same project,
+address and port, but no unit for the restart command below to act on and no
+`Restart=on-failure`. With no trainer active the bare process was stopped
+with SIGINT and the documented `systemd-run` unit started in its place;
+`/api/project` answered 0.6 s after the stop began, naming `ot5-lark-copy85`
+with 13 runs and the accepted revision `6f826037044a…`
+(`evidence/service109-restore.json` in the copy). The service then stayed up,
+same MainPID, through the [engine kill/restart experiment](../lark-fresh/ENGINE109.md)
+on a real bounded GPU run, and a fresh visit now selects that run,
+`lark109-engine2`. The rule is in ADR-325: the operator URL is served by the
+user unit, never by a bare process.
+
 Iteration 100 (ADR-322) restarted the service once, with no trainer active,
 so the operator URL runs the server whose run detail carries **per-run disk
 use**: what the selected run keeps under `runs/<name>/`, counted from its
