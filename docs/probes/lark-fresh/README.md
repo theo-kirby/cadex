@@ -2,6 +2,9 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
+The [Lark lifecycle report](LIFECYCLE.md) links D1–D11 evidence, the common-seed
+comparison, current visual assessment and remaining acceptance limits.
+
 **Iteration 88 (recording reliability, ADR-316):** the video checker's
 run-name dependency is gone. `check_video.py` had hard-coded the
 `-final`/`-checkpoint20` pairing, eight components and "a `-final` run is the

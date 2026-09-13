@@ -2,8 +2,13 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
-The [Wren lifecycle report](../wren-fresh/LIFECYCLE.md) links D1–D11 evidence, the design
-comparisons and their limits, and the current persistent-browser check.
+The [Lark lifecycle report](../lark-fresh/LIFECYCLE.md) links D1–D11 evidence,
+the design comparison and remaining Lark-specific acceptance gaps. Iteration 94
+verified the current default, full video decode/playback/download and historical
+browsing, and compared the current Lark viewport/video to the visual reference.
+The service stayed running on the same project and run; no training or restart.
+[Current receipt](../lark-fresh/current94-evidence.json),
+[visual comparison](../lark-fresh/style94-evidence.json).
 
 The shared private-network dashboard on port 8765 serves
 **`ot5-lark-copy85`**, the working copy of the third fresh biped, with
