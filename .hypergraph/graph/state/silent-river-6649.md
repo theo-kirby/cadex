@@ -21,6 +21,8 @@ The report at `docs/probes/reed-lifecycle/` indexes D1–D8 evidence, twelve ret
 
 The 85→105 mm revision was a public CLI parameter edit, not product-agent authorship. Subsequent comparison-informed Fable and Sonnet design turns both exited 1 at their session limit without a revision or rationale; retry instructions are retained, and the explicit Sonnet fallback persists in agent.json. Reconcile judgement: retain `working` for Reed's demonstrated lifecycle, while Wren's product-agent revision remains unproven; its retraining must not receive retrospective authorship credit. The retraining experiment itself did not establish Wren copy or controlled-interruption coverage [rec: frosty-birch-2464] [rec: smooth-pine-9795].
 
+A further comparison-informed public CLI revision attempt on the 110 mm Wren copy exits 1 at the provider session limit before authoring, returning no accepted revision or outputs. No caller edit or training was substituted. Judgement: retain `working` for Reed's demonstrated lifecycle while Wren's product-agent revision gap remains open; a future attempt needs fresh evidence and actual provider capacity, not the reported reset time [rec: dawn-bell-5364].
+
 Charter criterion: **D9. The fresh biped completes the whole recorded lifecycle** The product agent creates and documents a new biped, trains and reviews it through this system, uses that review to make a reasoned design change, and retrains; both runs have saved playable videos and measured displacement, survival and falls over the same declared episode/seed set. Evidence: the project history, a lifecycle report linking D1–D8 evidence, and the comparative results; poor gait is a valid measured result, skipped training or missing recording is not. Declared target `gap-d9-fresh-biped-completes-whole` [rec: lucky-comet-0031].
 
 ## Negative knowledge
@@ -55,3 +57,4 @@ Charter criterion: **D9. The fresh biped completes the whole recorded lifecycle*
 
 - frosty-birch-2464 — Wren revised-foot retraining and common-seed comparison, with authorship and lifecycle limits
 - smooth-pine-9795 — both product-agent revision attempts quota-refused; no geometry change or authorship
+- dawn-bell-5364 — Wren copy revision retry refused before authorship; Wren-specific gap remains open
