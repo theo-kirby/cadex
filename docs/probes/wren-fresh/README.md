@@ -239,3 +239,12 @@ model/task for old-policy evaluations. Train the revision from scratch with
 the same **240 iterations, 1024 environments, training seed 0, checkpoint interval
 20, 1800-second timeout and MemoryMax=20G** as wren1. Retraining and additional
 seed evaluations belong to the next experiment; no result is inferred here.
+
+## Product-agent revision attempt (iteration 53)
+
+Both product-agent model attempts were refused at their provider session limit.
+No new design was authored; all 228 retained run files, accepted identity and
+four playable reviews remain intact on the persistent dashboard. See
+[the attempt report and retry instructions](AGENT-REVISION.md) and
+[compact receipts](agent-attempt-evidence.json). The authorship gap remains
+open; the earlier caller parameter edit is not retroactively credited.

@@ -9,6 +9,13 @@ The verified checkpoint and final videos both play/download, as do the original
 85 mm recordings. Historical playback survives polling and returns to current.
 The service was not restarted and stays running.
 
+Iteration 53's requested product-agent design turn was refused by both Fable
+and Sonnet at their provider session limit. No geometry revision or training
+attempt was created. The accepted/current identity above is unchanged; all
+228 retained run files and all four browser-playable/downloadable reviews
+were verified intact. [Attempt, retry instructions and browser evidence](../wren-fresh/AGENT-REVISION.md).
+The explicit fallback leaves Sonnet as the project's stored model preference.
+
 At experiment start, the browser selected active `wren2` at revision
 `a90b84033ced…`. Seven real training updates reached the page within
 0.50–1.53 seconds, and the checkpoint video was played while training remained
