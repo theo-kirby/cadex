@@ -23811,3 +23811,36 @@ a reader test in `cli/tests/test_review_record.py`. Live receipt on the
 persistent operator URL: `docs/probes/lark-fresh/policy_store111.py`, which
 followed the page's own advice for both runs. No engine, payload, shell or
 dependency change.
+
+## ADR-328 — Real models and reference-grade review become the run's focus (2026-09-13)
+
+The owner closed the ot5 charter (ADR-284) by ticking D1-D11 after 111
+iterations: the review dashboard exists, three fresh bipeds went through the
+recorded lifecycle, and the operator page is live. What the owner then saw was
+not worth showing: the dashboard is a stack of cards in dark chrome around a
+light viewport and collapses at phone width; the videos are a light scene with
+the subject small and the camera far, unlike the `neural-whoop` reference the
+charter named; and the biped is boxes standing on a cyan slab that is itself a
+part of the design, with no servo, horn or fastener anywhere in it.
+
+Run ot6's charter (`.ouroboros/goal.md`) therefore takes no new north-star leg.
+In order: the dashboard becomes one designed, phone-usable page under a written
+spec; the viewport and capture share one dark, reference-matched environment
+and the light palette is removed; every model this run designs is built from
+catalog hardware (MG90S from `lib.servo` as the standard actuator, catalog
+horns, bearings and fasteners) plus modelled printable mounts, with a per-solid
+inventory and a fit check, and nothing of the world in the design; collision
+proxies are shown only under a labelled toggle; and the product agent designs a
+two-wheeled balancer and a single servo arm through the same lifecycle. The
+exhaustion policy is `report_done`: an evidenced frontier ends the run with a
+closing report rather than repeating a lifecycle, which is what ot5 spent its
+last sixty iterations doing.
+
+Two operational rules come from ot5's digest: committed evidence receipts are
+capped at 16 KB (screenshots 200 KB) with dumps left in the project directory,
+and no private-network address or hostname is committed. The Codex critic's
+sandbox is repaired outside the repo (`features.use_legacy_landlock` in
+`~/.codex/config.toml`), since bubblewrap cannot start under this host's
+AppArmor user-namespace restriction and the critic graded ot5 with no tools.
+
+This is a charter decision, not a claim that any of it exists.
