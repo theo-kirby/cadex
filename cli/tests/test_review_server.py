@@ -1655,6 +1655,40 @@ def test_browser_current_run_gains_video_preserving_historical_playback(served, 
     assert fresh.text('#view-kind') == 'RUN current-video'
     fresh.wait_for("document.querySelector('#videos video')?.readyState >= 2")
 
+    # Recover current output while a historical video remains playing. Real
+    # encoded bytes exercise playback as well as the retained-file hash gate.
+    video_path = current / published['path']
+    retained = video_path.read_bytes()
+    for fault in ('missing', 'partial'):
+        if fault == 'missing':
+            video_path.unlink()
+        else:
+            video_path.write_bytes(retained[:64])
+        message = 'missing' if fault == 'missing' else 'digest mismatch'
+        fresh.wait_for("document.querySelector('#videos [data-video]').textContent.includes(" +
+                       json.dumps(message) + ")")
+        assert fresh.text('#videos > li') == 'Video files: unavailable (0/1 retained)'
+        assert 'Retry the CLI video command' in fresh.text('#videos')
+        assert not fresh.evaluate("!!document.querySelector('#videos video, #videos a')")
+        assert _get(server.url + 'video/run/current-video/0')[0] == 404
+        assert _get(server.url + 'video/run/current-video/0', {'Range': 'bytes=0-63'})[0] == 404
+        page.send('Page.bringToFront')
+        page.click("#views li[data-run='old-video']")
+        page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+        page.evaluate("window.playing=document.querySelector('#videos video'); playing.muted=true; playing.loop=true; playing.play()", await_promise=True)
+        page.wait_for('playing.currentTime > 0.1')
+        assert hashlib.sha256(page.download('#videos a').path.read_bytes()).hexdigest() == old_video['sha256']
+        video_path.write_bytes(retained)
+        fresh.wait_for("!!document.querySelector('#videos video')")
+        page.evaluate('window.cadexReview.refresh()', await_promise=True)
+        assert page.text('#view-kind') == 'RUN old-video'
+        assert page.text('#view-revision') == old_revision
+        assert page.evaluate("playing===document.querySelector('#videos video') && !playing.paused")
+        page.click('#current-run')
+        page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+        assert hashlib.sha256(page.download('#videos a').path.read_bytes()).hexdigest() == published['sha256']
+        assert page.evaluate("performance.getEntriesByType('navigation').length") == 1
+
 
 def test_byte_identical_outputs_each_keep_their_accepted_mesh(served, tmp_path) -> None:
     """A mirrored pair of legs is two outputs with one BREP digest; the

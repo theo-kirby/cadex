@@ -363,3 +363,11 @@ seconds for 8.0 simulated seconds. Project-local receipts:
 not a second-device claim. The service stays running; no new experiment or
 project switch occurred. Browser fixtures separately prove conflicting source
 names are visibly flagged rather than substituted for the resolved origin.
+
+
+Iteration 95: the persistent URL still serves `ot5-lark-copy85` with
+`lark86-retry-video` selected. A [disposable Lark copy fault probe](../lark-fresh/VIDEO95.md)
+verified missing/partial/failed video guidance, historical playback and recovery.
+The operator page played/downloaded its current video afterward; all 2,517
+project files stayed byte-identical. The service was not restarted and remains
+running.

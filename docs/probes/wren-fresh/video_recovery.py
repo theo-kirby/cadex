@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""D8 browser lifecycle using a disposable full copy of retained Wren artifacts.
+"""D8 browser lifecycle using a disposable full copy of retained project artifacts.
 
-PYTHONPATH=cli:cli/tests pixi run python video_recovery.py URL PROJECT OUTPUT
+PYTHONPATH=cli:cli/tests pixi run python video_recovery.py URL PROJECT OUTPUT [CURRENT PRIOR]
 OUTPUT must be a new directory outside PROJECT. Never changes the operator server.
 """
 import hashlib
@@ -45,12 +45,12 @@ def play(page, expected):
 
 
 def main():
-    url, project, output = sys.argv[1:]
+    url, project, output = sys.argv[1:4]
+    current, prior = sys.argv[4:] or ('wren71-final', 'wren66-final')
     root, out = Path(project).resolve(), Path(output).resolve()
     assert not out.is_relative_to(root)
     out.mkdir(parents=True, exist_ok=False)
     before = inventory(root)
-    current, prior = 'wren71-final', 'wren66-final'
     result = {'schema': 'wren-video-recovery-v1', 'project': root.name,
               'current': current, 'prior': prior, 'faults': [], 'same_machine_private_address': True}
     with HeadlessBrowser(find_browser()) as browser:
@@ -58,8 +58,8 @@ def main():
         operator.evaluate('cadexReview.ready', await_promise=True)
         assert operator.text('#project-name') == root.name + ' — review'
         assert operator.text('#view-kind') == 'RUN ' + current
-        with tempfile.TemporaryDirectory(prefix='wren-video-fault-', dir=root.parent) as temp:
-            copy = Path(temp) / 'wren-fault-copy'
+        with tempfile.TemporaryDirectory(prefix='review-video-fault-', dir=root.parent) as temp:
+            copy = Path(temp) / 'review-fault-copy'
             shutil.copytree(root, copy)
             assert inventory(copy) == before
             run = copy / 'runs' / current
