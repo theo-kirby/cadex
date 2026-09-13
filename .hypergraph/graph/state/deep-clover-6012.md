@@ -11,13 +11,11 @@ Status: working
 
 ## Current
 
-**Persistent private port 8765 serves `ot5-wren-copy54`, default completed `wren57-retry`; the service remains active at the latest recorded check.** The accepted design remains revision `5b61ef31ff13…`, digest `b04439061b02…`, eight components and 110 mm feet with policy disabled. After a refused product-agent turn, fresh current/accepted identity checks, four historical model/video identities, polling playback and hash-verified downloads pass; published operator status now names the actual retry [rec: dawn-bell-5364].
+**Persistent private port 8765 serves `ot5-wren-copy54`, default completed `wren57-retry`, now at accepted/playback revision `79f86c69bfc3…` with its own engine-verified video; the service remains active at the latest recorded check.** Eight components and 110 mm feet remain visible; historical `wren2-final` remains `26332a5955e3…`. The retry video's arrival preserved historical playback in the real browser and in a distinct-video regression [rec: tender-vine-9199]. Two review defects the live page exposed are fixed without restarting the service: open documents no longer close on every poll (ADR-306) and the accepted viewport now reloads geometry when the selected revision or digest changes (ADR-307). After each fix, private-address checks read current/accepted/historical decisions through 6.5 s of polling, returned to current, verified project/run/model identities and replayed/downloaded the retry video with its recorded hash; all 465 prior run/asset files stayed byte-identical [rec: calm-grove-2647] [rec: violet-wave-6524].
 
-The stable URL followed `wren56c-interrupt` to `wren56c-retry`, then the guarded clean `wren57-interrupt` to `wren57-retry`, with private-address start/terminal checks, historical interruption selection and return to current. No new video is substituted for these attempts [rec: small-wind-0172] [rec: fair-garden-6418]. The earlier working-copy switch verified review with the original path unavailable [rec: crimson-bell-5375]. Before that switch, revised Wren training and two provider refusals retained accepted/current/historical identities. These are same-machine private-address checks, not second-device evidence [rec: frosty-birch-2464] [rec: smooth-pine-9795].
+The stable URL followed `wren56c-interrupt` to `wren56c-retry`, then the guarded clean `wren57-interrupt` to `wren57-retry`, with private-address start/terminal checks, historical interruption selection and return to current; after a refused product-agent turn, published operator status was corrected to name the actual retry [rec: small-wind-0172] [rec: fair-garden-6418] [rec: dawn-bell-5364]. The earlier working-copy switch verified review with the original path unavailable [rec: crimson-bell-5375]. Before that switch, revised Wren training and two provider refusals retained accepted/current/historical identities [rec: frosty-birch-2464] [rec: smooth-pine-9795]. All of these are same-machine private-address checks, not second-device evidence.
 
 Charter criterion: fresh visits select active training first, otherwise the latest attempt including failed/interrupted work, with truthful identity, available curves/videos and explicit pending/stale/failed states; preserve historical browsing and playback with a route back; keep the stable URL serving between iterations; verify and publish identity at experiment start/completion and every working-project switch. Acceptance requires persistent-URL browser evidence across a real experiment and a working-copy switch plus current-selection and historical-preservation regressions. Declared target `gap-d10-persistent-operator-dashboard-stays` [rec: simple-raven-5405].
-
-
 
 ## Negative knowledge
 
@@ -35,10 +33,12 @@ None yet.
 - late-walrus-6383 — persistent Wren display survives two in-place restores
 - sage-tower-6445 — active-first selection and historical playback throughout first Wren GPU experiment
 - honest-path-3451 — accepted 105 mm feet and historical original-policy identities remain explicit at the stable URL
-
 - frosty-birch-2464 — persistent revised-training start, active checkpoint and final selection verified
 - smooth-pine-9795 — unchanged current and historical reviews verified after provider refusals
 - crimson-bell-5375 — stable operator URL switched to independently reviewed Wren copy; latest policy correctly historical
 - small-wind-0172 — persistent copy dashboard follows interruption and successful retry
 - fair-garden-6418 — clean repeat updates persistent current selection to wren57-retry
 - dawn-bell-5364 — corrected published status and preserved current/accepted/history review after refusal
+- tender-vine-9199 — retry video published to the persistent page; historical playback survives its arrival
+- calm-grove-2647 — document reading stays selected across live polls while current navigation updates (ADR-306)
+- violet-wave-6524 — accepted geometry reloads on live identity change; persistent Wren read-only checks pass (ADR-307)
