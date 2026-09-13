@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**Wren independently repeats the copy/edit/reopen/review portion of D7.** With the original path unavailable, the whole-project copy accepts an isolation-only public-CLI 105→110 mm foot edit with policy disabled, restores through two fresh engine processes and passes review on a second server and the persistent private URL. Six retained models/curves and four videos retain identity, polling playback and hash-matching downloads. All 1,566 original files and 232 copied run/asset files remain byte-identical. The original path is restored; no copy retraining or product-agent authorship is claimed. Reconcile judgement: this extends Reed's existing D7 evidence, and temporary path unavailability does not imply OS-wide denial of access to the renamed source [rec: crimson-bell-5375].
+
 **Real Reed copy/edit/GPU retraining and source-unavailable reopen now prove D7.** A stopped-writer whole-directory copy initially matched all 1,206 source files. The copy alone received a disclosed actor-applied 90→100 mm foot revision through public `cadex walk --set`, fresh 240-iteration GPU training and a verified final video. With the original directory temporarily unavailable, real engine reopen preserved accepted identity and a new private-address dashboard passed three-design (70/90/100 mm) browser checks for model bytes, exact specs, parameters, curves, orbit/zoom, historical labels, playback and hash-matching downloads [rec: clever-fern-7568].
 
 All 1,206 original files and 322 inherited run/asset files remained unchanged. Judgement: mark `working` because this real lifecycle closes the synthetic fixture's remaining evidence gap; it does not change the owner's checkbox or satisfy D9's product-agent revision authorship requirement. Full CLI validation passed 363 tests with one skip [rec: clever-fern-7568]. The earlier fixture established copied historical review and original isolation [rec: careful-gate-4868].
@@ -26,3 +28,5 @@ The copy procedure requires authoring, training and rendering to stop first; it 
 - careful-gate-4868 — browser copy-isolation fixture and documented procedure; real biped copy/edit/retraining remains open
 
 - clever-fern-7568 — real independent copy revision, GPU retraining, verified video and source-unavailable engine/browser reopen close D7
+
+- crimson-bell-5375 — Wren isolated copy edit, two restores and independent browser reviews with original path unavailable

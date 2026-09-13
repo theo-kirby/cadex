@@ -11,7 +11,7 @@ Status: working
 
 ## Current
 
-**Wren's 85→105 mm foot edit preserves all 114 retained run files byte-for-byte.** Persistent-browser checks measure 85 mm historical meshes versus 105 mm ACCEPTED NOW, retain original specs and policy hashes, and verify unchanged playable/downloadable checkpoint/final videos through polling. The revised accepted model has policy disabled and no new policy/video yet; this extends design-edit preservation evidence, with Wren retraining still pending [rec: honest-path-3451].
+**Wren's 85→105 mm foot revision and retraining preserve all 114 original run files and four distinct model/policy/video histories.** Twenty common-seed rollouts verify retained identities and seed-zero trace reproduction. Both designs' checkpoint/final videos remain playable/downloadable with their original model, parameters and curves [rec: frosty-birch-2464]. Two subsequent provider-refused design turns preserve all 228 run files byte-for-byte, accepted script/digest/parameters and decisions; neither turn authored a geometry change [rec: smooth-pine-9795].
 
 **Review history survives the real 70→90 mm foot edit and GPU retraining.** Both designs remain browser-selectable with distinct model/spec identities, 240-point reward/loss/episode-length curves and playable/downloadable videos. All 250 pre-existing run/asset files remain byte-identical. This supplies the physical design-change comparison previously missing, so status is `working`; actor-authored revision is a separate remaining D9 limitation [rec: candid-forest-9800].
 
@@ -38,3 +38,6 @@ Charter criterion: **D5. Review history survives a design change** Each run reta
 - candid-forest-9800 — real physical edit/retraining retains both designs, curves and videos with all old run/assets unchanged
 - forest-ledge-2219 — parameter-sweep history regression retains original assembly, meshes and specs without backfill
 - honest-path-3451 — Wren foot revision preserves 114 files and historical meshes, specs, policy/video identities and browser review
+
+- frosty-birch-2464 — revised-foot retraining and twenty identity-checked rollouts preserve original history
+- smooth-pine-9795 — refused design turns preserve all 228 run files and accepted design

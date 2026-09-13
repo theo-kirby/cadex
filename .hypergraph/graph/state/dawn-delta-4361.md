@@ -11,7 +11,7 @@ Status: working
 
 ## Current
 
-**Wren's first GPU run retained 240 points in each reward, loss and episode-estimate history.** The persistent browser observed seven updates without reload, with measured commit-to-page delays of 0.40–1.43 seconds and retained model identity. Training completed 240 iterations in 697.035 seconds. The trainer's episode estimate can exceed the horizon and is not measured survival; these same-machine private-address observations establish no universal latency bound [rec: sage-tower-6445].
+**Wren's revised GPU run completed 240 updates with 240 points in each reward, loss and episode-estimate history.** The persistent browser observed seven updates across iterations 3–11 without reload at measured committed-to-page delays of 0.50–1.53 s; initial compilation was correctly labelled stale. Trainer time was 681.823 s, harness wall 750.302 s. These same-machine observations establish neither a universal latency bound nor controlled renderer overhead, and trainer episode estimates are not measured rollout survival [rec: frosty-birch-2464].
 
 **Real fresh-biped training telemetry passes the browser observation under the identity fix.** Probe2 showed seven actual iterations (20–29) over 12.03 seconds without reload; committed-to-page delays were 0.23–1.29 seconds, with reward, loss, episode-length histories and checkpoint availability visible. These are trainer-reported metrics, not independently measured rollout survival. The borrowed model was missing, a separate D2 issue. Full telemetry-containing CLI and engine suites passed [rec: merry-star-6951].
 
@@ -43,3 +43,5 @@ Charter criterion: **D3. Training is visible while it runs** The biped's real GP
 - neat-vine-2517 — ADR-297: one pending browser poll prevents overlapping cold verification
 - dusty-oak-7376 — ADR-298: shared cold verification across clients with explicit serialization limits
 - sage-tower-6445 — first Wren GPU run, live persistent-browser telemetry and three retained 240-point histories
+
+- frosty-birch-2464 — revised Wren GPU completion and seven real persistent-browser telemetry updates

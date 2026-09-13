@@ -11,9 +11,9 @@ Status: working
 
 ## Current
 
-**Persistent port 8765 remains on `ot5-wren`: latest attempt `wren1-final` is visibly historical relative to accepted revision `a90b84033ced…`; ACCEPTED NOW shows the untrained 105 mm feet with policy disabled.** Historical checkpoint/final models retain 85 mm feet, original policy/video hashes and playback/download through polling; return to current passes. Operator status explains pending retraining. Reconcile judgement: latest attempt and current accepted design are distinct, correctly labelled identities; the final attempt is not evidence of training the revised feet [rec: honest-path-3451].
+**Persistent private port 8765 now serves `ot5-wren-copy54`, verified at the project switch and completion; the server remains running.** Fresh visits select retained `wren2-final`, visibly HISTORICAL relative to accepted untrained revision `5b61ef31ff13…` with 110 mm feet and policy disabled. Accepted view substitutes no old video. Six retained models/curves and four videos pass browser review, polling and matching-hash downloads with the original path unavailable. This copy edit tests isolation only; no copy retraining or product-agent revision is claimed [rec: crimson-bell-5375].
 
-The service stayed active through two in-place engine restores with eight solids, twelve defaults and accepted identity preserved [rec: late-walrus-6383]. During Wren's real GPU experiment, fresh visits selected active training even after a checkpoint playback entry appeared; after completion they selected the final attempt, preserving historical browsing and playback. The recorded private-address browser observations are on the same machine, not a second device [rec: sage-tower-6445].
+Before the switch, the persistent Wren page was verified at revised-training start, live checkpoint publication and `wren2-final` completion, then again after two provider-refused design turns with accepted/current/historical identities intact. Evidence throughout is same-machine private-address access, not a second-device claim [rec: frosty-birch-2464] [rec: smooth-pine-9795].
 
 Charter criterion: fresh visits select active training first, otherwise the latest attempt including failed/interrupted work, with truthful identity, available curves/videos and explicit pending/stale/failed states; preserve historical browsing and playback with a route back; keep the stable URL serving between iterations; verify and publish identity at experiment start/completion and every working-project switch. Acceptance requires persistent-URL browser evidence across a real experiment and a working-copy switch plus current-selection and historical-preservation regressions. Declared target `gap-d10-persistent-operator-dashboard-stays` [rec: simple-raven-5405].
 
@@ -35,3 +35,7 @@ None yet.
 - late-walrus-6383 — persistent Wren display survives two in-place restores
 - sage-tower-6445 — active-first selection and historical playback throughout first Wren GPU experiment
 - honest-path-3451 — accepted 105 mm feet and historical original-policy identities remain explicit at the stable URL
+
+- frosty-birch-2464 — persistent revised-training start, active checkpoint and final selection verified
+- smooth-pine-9795 — unchanged current and historical reviews verified after provider refusals
+- crimson-bell-5375 — stable operator URL switched to independently reviewed Wren copy; latest policy correctly historical

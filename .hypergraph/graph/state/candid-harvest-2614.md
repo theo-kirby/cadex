@@ -11,7 +11,7 @@ Status: working
 
 ## Current
 
-**Wren's checkpoint-20 video was verified, rendered, played and downloaded while training remained active; its final-policy video is also retained and browser-verified.** Engine witness errors were below 1e-4 for both. Checkpoint video has 81 decoded frames/8.1 encoded seconds for eight simulated seconds; final video has six frames/0.6 encoded seconds for a 0.46-second seed-0 fall. Identity labels, download digests, polling-preserved playback and historical/current selection passed. The shared delivered scene style is reused; this is not a new D11 reference comparison or a second-device check [rec: sage-tower-6445].
+**Revised Wren checkpoint20 and final videos are witness-verified, decoded, browser-played and downloaded with matching hashes; the intermediate was published while GPU training remained active.** Checkpoint rendering spanned iterations 23–32 and took 12.731 s; final rendering took 12.18 s. Both revised videos and the original checkpoint encode eight simulated seconds as 81 frames/8.1 seconds; the original final retains its six-frame/0.6-second video of a 0.46-second fall. All four retain model/policy identity and historical playback through polling. Revised seven-second frames show standing poses. The shared `cadex-prototype-light-v1` style is retained, without a new full D11 comparison; timing is descriptive, not controlled rendering-overhead evidence [rec: frosty-birch-2464].
 
 **Probe3 has browser-verified intermediate playback/download while training is active and a retained verified final-policy video.** Checkpoint20 passes the engine witness check, runs eight simulated seconds and yields 81 decoded frames/8.1 encoded seconds. Both sequential checkpoint render collections pass playback, three refreshes, matching-byte download and revision/policy/seed/time labels while training remains active. The currently referenced repeated video and the original bytes/receipt remain retained [rec: light-brook-2640].
 
@@ -35,3 +35,5 @@ Charter criterion: **D4. Policy videos render, persist and play headlessly** At 
 - merry-star-6951 — active-training checkpoint render, later successful browser verification and explicit interruption limits
 - light-brook-2640 — active intermediate and final video verification; missing-trace refusal leaves trainer active
 - sage-tower-6445 — Wren active-training checkpoint and final-policy videos with engine witnesses, decoded timing and browser playback/download
+
+- frosty-birch-2464 — revised intermediate/final videos and all four retained reviews verified
