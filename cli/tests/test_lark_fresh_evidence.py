@@ -440,3 +440,54 @@ def test_lark_copy_interruption_retry_and_video_on_the_persistent_url():
     for text in ((PROBE / "INTERRUPTION86.md").read_text(),
                  (REPO_ROOT / "docs" / "probes" / "operator-review" / "README.md").read_text()):
         assert "lark86-retry-video" in text and video["accepted_revision"][:12] in text
+
+
+def test_lark_video_checks_resolve_training_runs_and_siblings_by_identity_not_name():
+    """``lineage88-evidence.json`` is the checker's receipt on the persistent
+    working-copy URL after its run-name dependency was removed (ADR-316):
+    the fresh visit's expected selection is the reader's own rule, the
+    training run behind each video is the run retaining the policy bytes,
+    the historical run selected afterwards is a sibling by policy identity
+    when one exists and the latest other historical video otherwise, and
+    the component count comes from the run's own trace. Both videos decoded
+    whole, played through polls and downloaded hash-equal; the server was
+    not restarted and no trainer was active."""
+
+    receipt = json.loads((PROBE / "lineage88-evidence.json").read_text())
+    assert receipt["project"] == "ot5-lark-copy85" and receipt["persistent_server_restarted"] is False
+    assert receipt["trainer_active"] is False and receipt["run_names_consulted_by_checker"] is False
+    assert receipt["checker"] == "docs/probes/wren-fresh/check_video.py"
+    assert "--not-default" in receipt["commands"][1] and "--label lineage88" in receipt["commands"][0]
+    checks = receipt["checks"]
+    assert set(checks) == {"lark86-retry-video", "lark1-final"}
+    for run, check in checks.items():
+        assert check["persistent_server"] and check["browser_playback"] and check["url"] == receipt["url"]
+        assert check["url"].endswith(":8765/") and check["private_address_same_machine"]
+        assert check["expected_default"] == "lark86-retry-video"
+        assert check["fresh_selection"] == check["returned_to_current"] == "RUN lark86-retry-video"
+        assert check["is_default"] is (run == "lark86-retry-video")
+        assert check["components"] == 8 and check["components_source"].startswith("first frame")
+        assert len(check["params_checked"]) == 20 and "foot_len" in check["params_checked"]
+        assert re.fullmatch(HEX64, check["download_sha256"]) and re.fullmatch(HEX64, check["policy_sha256"])
+        assert check["decoded_frames"] > 0 and check["decoded_frames_differ"]
+        assert abs(check["encoded_seconds"] - (check["decoded_frames"] / 10)) < 0.01
+        assert check["lineage"]["source_agrees"] is True
+        assert check["lineage"]["origin"]["kind"] == "final"
+        assert check["lineage"]["origin"]["run"] == check["lineage"]["recorded_source_run"]
+        assert check["lineage"]["origin"]["also_retained_by"] == []
+    video = checks["lark86-retry-video"]
+    assert video["lineage"]["origin"]["run"] == "lark86-retry" and video["lineage"]["playbacks"] == []
+    assert video["historical_selection"] == "lark2-final"
+    assert video["historical_source"] == "latest other historical video run"
+    assert video["foot_len_mm"] == 90.0 and video["decoded_frames"] == 81 and video["simulation_seconds"] == 8.0
+    final = checks["lark1-final"]
+    assert final["lineage"]["origin"]["run"] == "lark1"
+    assert [(s["run"], s["kind"], s["iteration"], s["videos"], s["relation"]) for s in final["lineage"]["playbacks"]] == [
+        ("lark1-checkpoint20", "checkpoint", 19, 1, "historical")]
+    assert final["historical_selection"] == "lark1-checkpoint20"
+    assert final["historical_source"] == "same training run by policy identity"
+    assert final["foot_len_mm"] == 80.0
+    # The receipt cites the videos iteration 86's receipt recorded, unchanged.
+    earlier = json.loads((PROBE / "interruption86-evidence.json").read_text())
+    assert video["download_sha256"] == earlier["retry_video"]["video"]["sha256"]
+    assert video["policy_sha256"] == earlier["retry_video"]["policy_sha256"]

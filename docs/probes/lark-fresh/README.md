@@ -2,6 +2,30 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
+**Iteration 88 (recording reliability, ADR-316):** the video checker's
+run-name dependency is gone. `check_video.py` had hard-coded the
+`-final`/`-checkpoint20` pairing, eight components and "a `-final` run is the
+fresh visit's selection", which is why iteration 86's playback had to be
+named `lark86-retry-video`. It now resolves the training run behind a video
+and the older sibling to select from retained identities
+(`cadex_cli.review_record.policy_lineage`: the run whose own `train/` retains
+the policy bytes, with the record's `source_run` checked against it), the
+expected fresh-visit selection from the reader's rule
+(`cadex_cli.review_server.default_run`), every declared parameter from the
+record, and the component count from the run's own trace. Regressions with
+unrelated run names (`kestrel`, `pear`, `quince`, `zebra`, `aardvark`) are in
+`cli/tests/test_review_record.py` and `cli/tests/test_review_server.py`. Both
+Lark videos re-checked on the persistent working-copy URL without a restart:
+`lark86-retry-video` (default; origin `lark86-retry`, final policy, no
+sibling, so `lark2-final` is the historical run selected) and `lark1-final`
+(not default; origin `lark1`, sibling `lark1-checkpoint20` at checkpoint
+iteration 19 by identity), each decoded whole, played through three polls and
+downloaded hash-equal. Receipt:
+[`lineage88-evidence.json`](lineage88-evidence.json), guarded in
+`cli/tests/test_lark_fresh_evidence.py`; the images and per-run receipts are
+`evidence/*-lineage88-*` in the copy. No training, no new video, no server
+restart.
+
 **Current state (iteration 86):** the working project is the whole-project
 copy **`ot5-lark-copy85`**, served on the persistent port 8765 with
 `lark86-retry-video` selected by default. Iteration 86 completed Lark's D8

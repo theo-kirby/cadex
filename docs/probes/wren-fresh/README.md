@@ -130,7 +130,15 @@ GPU memory is sampled separately. The existing offboard venv is used; no
 new dependency is installed. `observe.py` checks fresh-visit current selection,
 retained model identity, orbit/zoom and multiple real telemetry updates on the
 persistent private URL. `check_video.py` decodes all frames and checks browser
-playback, playback preservation across polling and downloaded bytes.
+playback, playback preservation across polling and downloaded bytes. Since
+ADR-316 it consults no run name: the fresh visit's expected selection is the
+reader's own `default_run`, the training run behind a video and the historical
+sibling it selects afterwards come from `policy_lineage` (the run whose own
+`train/` retains the policy bytes, else the latest other historical video
+run), every declared parameter is checked, and the component count comes from
+the run's own trace. `--not-default` marks a run that is not the fresh visit's
+selection (`--historical` is its old spelling) and `--label` names the
+evidence files so a re-check never overwrites an earlier receipt.
 Neither browser probe starts or stops the persistent server. Render failures
 are recorded separately and leave training under its own timeout.
 

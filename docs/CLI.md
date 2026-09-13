@@ -505,6 +505,25 @@ artifacts and nothing else. A run from before records existed is read from
 its `review.json` and labelled `unrecorded`, with its identity taken from
 the rollout leg's envelope fields and nothing inferred beyond that.
 
+**Policy lineage** is `cadex_cli.review_record.policy_lineage(root, run)`
+(ADR-316): where a run's policy came from and which other runs play it, from
+retained identities and never from run names. A run's recorded
+`policy.sha256` is matched against the bytes every run keeps under its own
+`train/` (files up to 4 MiB inside `runs/<run>/train`, symlinks out of the
+project refused); the run holding them is the `origin`, `final` when its own
+record carries that digest as its policy, `checkpoint` with the iteration
+when its telemetry lists it, `retained` when neither says so, and the
+earliest recorded holder wins with the others under `also_retained_by`. The
+record's `training.requested.source_run` is reported beside it with
+`source_agrees` (`None` when no source was recorded, `False` when the record
+names one run and carries another's policy — shown, not reconciled), and
+`playbacks` lists every other run whose policy the same origin retains, with
+its kind, relation, status and video count in record order. It hashes
+`runs/*/train` once per call: a reader for checkers and reports, not a
+server route. The video checker beside the fresh-project probes uses it to
+find a video's training run and an older sibling without a naming
+convention.
+
 A refused first design prompt can leave scaffold documents with no accepted
 manifest or run record. The dashboard shows missing geometry and a next CLI
 action, but does not display that provider error; retain the CLI envelope.
@@ -1396,7 +1415,10 @@ training stay on the CLI.
 New visits open the current run (ADR-299): newest running/pending record with
 fresh starting/training telemetry first, otherwise the latest recorded attempt,
 including failed or interrupted work. Record time orders runs, with run name
-breaking ties. With no runs, the accepted view opens. An untouched page follows
+breaking ties. With no runs, the accepted view opens.
+`cadex_cli.review_server.default_run(review)` is that rule in Python
+(ADR-316), so a checker asks it what a fresh visit will select rather than
+reading a run's name. An untouched page follows
 current work on polls; selecting a view or playing a video preserves that view.
 Opening a document also preserves the selected view. Its loaded text stays open
 across polls; click its link again to refresh it. Changing the selected view or

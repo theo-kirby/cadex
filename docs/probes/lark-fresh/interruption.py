@@ -379,7 +379,7 @@ def main():
             # Old videos remain deliberately selectable after either outcome.
             for old in old_videos:
                 with (ev / (name + '-' + old + '-video.log')).open('w') as vlog:
-                    subprocess.run(['pixi', 'run', 'python', str(GENERIC / 'check_video.py'), str(p), old, url, '--historical'],
+                    subprocess.run(['pixi', 'run', 'python', str(GENERIC / 'check_video.py'), str(p), old, url, '--not-default'],
                                    check=True, timeout=180, env=dict(os.environ, PYTHONPATH='cli:cli/tests'),
                                    stdout=vlog, stderr=subprocess.STDOUT)
         retry = prefix + '-retry'

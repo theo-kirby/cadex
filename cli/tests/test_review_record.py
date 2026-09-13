@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 
 import pytest
 
@@ -26,6 +27,7 @@ from cadex_cli.review_record import (
     RUN_RECORD_SCHEMA,
     list_runs,
     manifest_identity,
+    policy_lineage,
     read_accepted_identity,
     read_project_review,
     read_run_record,
@@ -540,3 +542,98 @@ def test_video_digest_cache_evicts_oldest_file(tmp_path, monkeypatch):
     assert review_record._video_sha256(tmp_path / '0.webm') == hashlib.sha256(b'0').hexdigest()
     assert len(reads) == 258
     assert review_record._cached_video_sha256.cache_info().currsize == 256
+
+
+# -- policy lineage -----------------------------------------------------------
+
+
+def _set(run: Path, **changes) -> None:
+    path = run / RUN_RECORD_FILENAME
+    record = json.loads(path.read_text())
+    record.update(changes)
+    path.write_text(json.dumps(record, indent=2))
+
+
+def _retain(run: Path, name: str, payload: bytes) -> str:
+    (run / "train" / name).write_bytes(payload)
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _video(run: Path) -> None:
+    (run / "clip.webm").write_bytes(b"not a real video")
+    (run / "video.json").write_text(json.dumps({
+        "schema": "cadex-run-video-v1", "state": "ready", "error": None,
+        "videos": [{"path": "clip.webm", "sha256": hashlib.sha256(b"not a real video").hexdigest()}]}))
+
+
+def test_policy_lineage_comes_from_retained_bytes_not_from_run_names(tmp_path) -> None:
+    """No run here is called ``-final`` or ``-checkpoint20``. The training run
+    is the one whose own ``train/`` holds the policy bytes; a playback names
+    the run its record kept and the bytes either agree or visibly do not;
+    siblings are the other runs carrying policies from the same origin, in
+    record order; a symlink out of the project is never followed."""
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_A)
+    stamps = {"apple": "2026-09-01T00:00:00Z", "kestrel": "2026-09-02T00:00:00Z",
+              "pear": "2026-09-03T00:00:00Z", "quince": "2026-09-04T00:00:00Z",
+              "fig": "2026-09-05T00:00:00Z", "plum": "2026-09-06T00:00:00Z",
+              "zebra": "2026-09-07T00:00:00Z", "mango": "2026-09-08T00:00:00Z"}
+    runs = {}
+    for name, stamp in stamps.items():
+        shutil.rmtree(root / "review" / "render" / REVISION_A, ignore_errors=True)   # one revision, many runs
+        runs[name] = _walked_run(root, name, revision=REVISION_A)
+        _set(runs[name], recorded_at=stamp)
+    final = _retain(runs["kestrel"], "weights.bin", b"kestrel final policy")
+    checkpoint = _retain(runs["kestrel"], "snap-2.bin", b"kestrel checkpoint two")
+    (runs["kestrel"] / "train/progress.json").write_text(json.dumps({
+        "schema": "cadex-training-progress-v1", "state": "done",
+        "checkpoints": [{"path": "snap-2.bin", "iteration": 2, "sha256": checkpoint}]}))
+    _set(runs["kestrel"], policy={"name": "weights.bin", "sha256": final, "asset": None})
+    other = _retain(runs["apple"], "own.bin", b"apple policy")
+    _set(runs["apple"], policy={"name": "own.bin", "sha256": other, "asset": None})
+    _retain(runs["fig"], "copied.bin", b"kestrel final policy")   # the same bytes, retained later
+    _set(runs["fig"], policy={"name": "copied.bin", "sha256": final, "asset": None})
+    _set(runs["pear"], policy={"name": "snap-2.bin", "sha256": checkpoint, "asset": None},
+         training={"requested": {"source_run": "kestrel"}, "receipt": {}})
+    _set(runs["quince"], policy={"name": "weights.bin", "sha256": final, "asset": None},
+         training={"requested": {"source_run": "kestrel"}, "receipt": {}})
+    _set(runs["plum"], policy={"name": "weights.bin", "sha256": final, "asset": None},
+         training={"requested": {"source_run": "apple"}, "receipt": {}})
+    _set(runs["zebra"], policy={"name": "", "sha256": "", "asset": None})
+    outside = hashlib.sha256((root / "script.py").read_bytes()).hexdigest()
+    os.symlink(root / "script.py", runs["apple"] / "train" / "link.bin")
+    _set(runs["mango"], policy={"name": "link.bin", "sha256": outside, "asset": None},
+         training={"requested": {"source_run": "apple"}, "receipt": {}})
+    _video(runs["pear"])
+    _video(runs["quince"])
+
+    quince = policy_lineage(root, "quince")
+    assert quince["schema"] == "cadex-policy-lineage-v1"
+    assert quince["origin"] == {"run": "kestrel", "path": "weights.bin", "kind": "final", "iteration": None,
+                                "recorded_at": stamps["kestrel"], "also_retained_by": ["fig"]}
+    assert quince["recorded_source_run"] == "kestrel" and quince["source_agrees"] is True
+    assert [(s["run"], s["kind"], s["iteration"], s["videos"], s["relation"]) for s in quince["playbacks"]] == [
+        ("pear", "checkpoint", 2, 1, "current"), ("fig", "final", None, 0, "current"),
+        ("plum", "final", None, 0, "current")]
+    pear = policy_lineage(root, "pear")
+    assert pear["origin"]["run"] == "kestrel" and pear["origin"]["kind"] == "checkpoint"
+    assert pear["origin"]["iteration"] == 2 and pear["origin"]["path"] == "snap-2.bin"
+    assert [s["run"] for s in pear["playbacks"]] == ["quince", "fig", "plum"]
+    kestrel = policy_lineage(root, "kestrel")
+    assert kestrel["origin"]["run"] == "kestrel" and kestrel["origin"]["kind"] == "final"
+    assert kestrel["recorded_source_run"] is None and kestrel["source_agrees"] is None
+    assert [s["run"] for s in kestrel["playbacks"]] == ["pear", "quince", "fig", "plum"]
+    plum = policy_lineage(root, "plum")
+    assert plum["origin"]["run"] == "kestrel" and plum["recorded_source_run"] == "apple"
+    assert plum["source_agrees"] is False
+    apple = policy_lineage(root, "apple")
+    assert apple["origin"]["run"] == "apple" and apple["playbacks"] == []
+    zebra = policy_lineage(root, "zebra")
+    assert zebra["policy_sha256"] is None and zebra["origin"] is None
+    assert zebra["reason"] == "no policy recorded for this run" and zebra["playbacks"] == []
+    mango = policy_lineage(root, "mango")
+    assert mango["origin"] is None and mango["source_agrees"] is None
+    assert mango["reason"].startswith("no run in this project retains")
+    missing = policy_lineage(root, "nonesuch")
+    assert missing["origin"] is None and "not in this project" in missing["reason"]

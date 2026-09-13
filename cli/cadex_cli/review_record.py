@@ -630,3 +630,131 @@ def read_project_review(project_root: Path | str) -> dict[str, Any]:
         "decisions": decision_headings(root),
         "runs": runs,
     }
+
+
+# -- policy lineage, from retained identities and never from run names ------
+
+POLICY_LINEAGE_SCHEMA = "cadex-policy-lineage-v1"
+POLICY_FILE_LIMIT_BYTES = 4 * 1024 * 1024
+
+
+def _retained_policies(root: Path) -> dict[str, list[dict[str, Any]]]:
+    """Every policy digest some run retains as bytes under its own ``train/``.
+
+    A training run keeps what it produced — its final policy and the
+    checkpoints its telemetry lists — beside its telemetry; a playback run
+    copies the telemetry snapshot but not the bytes. So the run whose
+    ``train/`` holds a file with a policy's digest is the run that made it,
+    whatever either run is called. Files over ``POLICY_FILE_LIMIT_BYTES``
+    and anything that is not a regular file inside ``runs/<run>/train`` are
+    skipped: this is an identity index, not a directory listing.
+    """
+
+    index: dict[str, list[dict[str, Any]]] = {}
+    runs_dir = root / RUNS_DIRNAME
+    if not runs_dir.is_dir():
+        return index
+    for run_dir in sorted(child for child in runs_dir.iterdir() if child.is_dir()):
+        train = resolve_reference(run_dir, "train")
+        if train["error"] or not train["exists"] or not (run_dir / "train").is_dir():
+            continue
+        for path in sorted((run_dir / "train").iterdir()):
+            ref = resolve_reference(run_dir / "train", path.name)
+            if ref["error"] or not path.is_file() or path.name == "progress.json":
+                continue
+            try:
+                if path.stat().st_size > POLICY_FILE_LIMIT_BYTES:
+                    continue
+                digest = _sha256(path)
+            except OSError:
+                continue
+            index.setdefault(digest, []).append({"run": run_dir.name, "path": path.name})
+    return index
+
+
+def _origin(root: Path, records: Mapping[str, Mapping[str, Any]], index: Mapping[str, list[dict[str, Any]]],
+            digest: str | None) -> tuple[dict[str, Any] | None, str]:
+    """The run that retains ``digest``'s bytes, and how it names them.
+
+    ``kind`` is ``final`` when that run's own record carries the digest as
+    its policy, ``checkpoint`` (with the iteration) when its telemetry lists
+    it, and ``retained`` when the bytes are there but neither says so. Two
+    runs retaining the same bytes is reported, with the earliest recorded
+    taken as the origin: a later copy of the bytes is derivative.
+    """
+
+    if not digest:
+        return None, "no policy recorded for this run"
+    holders = index.get(digest) or []
+    if not holders:
+        return None, "no run in this project retains a policy with this digest under its train/"
+    candidates = []
+    for holder in holders:
+        record = records.get(holder["run"]) or {}
+        kind, iteration = "retained", None
+        if ((record.get("policy") or {}).get("sha256")) == digest:
+            kind = "final"
+        progress, _ = _load_json(root / RUNS_DIRNAME / holder["run"] / "train" / "progress.json")
+        for item in (progress or {}).get("checkpoints") or []:
+            if isinstance(item, Mapping) and item.get("sha256") == digest and item.get("path") == holder["path"]:
+                kind, iteration = "checkpoint", item.get("iteration")
+        candidates.append({"run": holder["run"], "path": holder["path"], "kind": kind, "iteration": iteration,
+                           "recorded_at": record.get("recorded_at")})
+    candidates.sort(key=lambda item: (str(item["recorded_at"] or ""), item["run"]))
+    origin = dict(candidates[0])
+    origin["also_retained_by"] = [item["run"] for item in candidates[1:]]
+    reason = f"{origin['kind']} policy retained by run {origin['run']} as train/{origin['path']}"
+    return origin, reason
+
+
+def policy_lineage(project_root: Path | str, run_name: str) -> dict[str, Any]:
+    """Where a run's policy came from, and which other runs play it — from
+    retained identities, never from how anyone named the runs.
+
+    A run's ``policy.sha256`` is matched against the bytes every run keeps
+    under its own ``train/`` (``_retained_policies``). The run's recorded
+    ``training.requested.source_run`` is reported beside that match, and
+    ``source_agrees`` says whether the name the record kept and the bytes
+    agree: ``None`` when no source was recorded (a walk that trained and
+    rolled out in one run names none), ``False`` when the record names one
+    run and carries another's policy — a fact to show, not to reconcile.
+    ``playbacks`` is every *other* run whose policy the same origin run
+    retains, each with its own kind, relation and video count, so a checker
+    can pick an older sibling of this run without a naming convention.
+    This walks and hashes ``runs/*/train`` once per call; it is a reader
+    for checkers and reports, not a per-request server route.
+    """
+
+    root = Path(project_root).expanduser()
+    review = read_project_review(root)
+    records = {record["run"]: record for record in review["runs"]}
+    result: dict[str, Any] = {"schema": POLICY_LINEAGE_SCHEMA, "run": run_name, "policy_sha256": None,
+                              "origin": None, "reason": None, "recorded_source_run": None,
+                              "source_agrees": None, "playbacks": []}
+    record = records.get(run_name)
+    if record is None:
+        result["reason"] = f"run {run_name!r} is not in this project"
+        return result
+    digest = (record.get("policy") or {}).get("sha256")
+    result["policy_sha256"] = digest if isinstance(digest, str) and digest else None
+    requested = (record.get("training") or {}).get("requested") or {}
+    source = requested.get("source_run") if isinstance(requested, Mapping) else None
+    result["recorded_source_run"] = source if isinstance(source, str) and source else None
+    index = _retained_policies(root)
+    origin, reason = _origin(root, records, index, result["policy_sha256"])
+    result["origin"], result["reason"] = origin, reason
+    if origin is not None and result["recorded_source_run"] is not None:
+        result["source_agrees"] = origin["run"] == result["recorded_source_run"]
+    if origin is None:
+        return result
+    for other in review["runs"]:
+        if other["run"] == run_name:
+            continue
+        other_origin, _ = _origin(root, records, index, (other.get("policy") or {}).get("sha256"))
+        if other_origin is None or other_origin["run"] != origin["run"] or other["run"] == origin["run"]:
+            continue
+        result["playbacks"].append({"run": other["run"], "kind": other_origin["kind"],
+                                    "iteration": other_origin["iteration"], "path": other_origin["path"],
+                                    "recorded_at": other.get("recorded_at"), "relation": other.get("relation"),
+                                    "status": other.get("status"), "videos": len(other.get("videos") or [])})
+    return result

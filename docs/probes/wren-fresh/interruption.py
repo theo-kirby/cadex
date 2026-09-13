@@ -277,7 +277,7 @@ def main():
             # Old videos remain deliberately selectable after either outcome.
             for old in ('wren1-checkpoint20', 'wren1-final', 'wren2-checkpoint20', 'wren2-final'):
                 subprocess.run(['pixi', 'run', 'python', str(Path(__file__).with_name('check_video.py')),
-                                str(p), old, url, '--historical'], check=True, timeout=180,
+                                str(p), old, url, '--not-default'], check=True, timeout=180,
                                stdout=(ev / (name + '-' + old + '-video.log')).open('w'))
         page.evaluate('cadexReview.select(' + json.dumps(prefix + '-interrupt') + ')', await_promise=True)
         assert 'Controlled interruption' in page.text('#view-note')

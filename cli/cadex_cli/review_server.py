@@ -696,6 +696,24 @@ def _checkpoint_source(root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
             "reason": f"checkpoints resolved through recorded training run {name}"}
 
 
+def default_run(review: Mapping[str, Any]) -> str:
+    """The view a fresh visit opens, as ``review.js``'s ``currentView`` does.
+
+    The newest ``running``/``pending`` record whose telemetry is ``starting``
+    or ``training`` comes first; otherwise the newest record, failed or
+    interrupted included; ``accepted`` when there are no runs. ``review`` is
+    ``ReviewProject.review()`` (records oldest first, telemetry attached).
+    Names play no part: a checker that wants to know what the page will
+    select asks this, not the run's suffix.
+    """
+
+    runs = list(review.get("runs") or [])
+    active = [run for run in runs if run.get("status") in ("running", "pending")
+              and (run.get("telemetry") or {}).get("state") in ("starting", "training")]
+    candidates = active or runs
+    return str(candidates[-1]["run"]) if candidates else "accepted"
+
+
 class ReviewProject:
     """What the server knows how to serve for one project, resolved per request.
 

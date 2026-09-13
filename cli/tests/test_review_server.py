@@ -37,7 +37,9 @@ from cadex_cli.report import EXIT_OK, EXIT_USAGE
 from cadex_cli.review_record import RUN_RECORD_FILENAME, read_run_record, write_run_record
 from cadex_cli.review_server import (
     REVIEW_MODEL_SCHEMA,
+    ReviewProject,
     accepted_model,
+    default_run,
     run_model,
     serve,
     tessellation_to_stl,
@@ -712,6 +714,29 @@ def test_telemetry_refuses_escape_mismatch_and_invalid_histories(served):
     path.symlink_to(root / 'script.json')
     assert read()['state'] == 'missing'
     assert 'refused' in read()['reason']
+
+
+def test_default_run_prefers_active_training_then_the_newest_record_whatever_the_names(tmp_path):
+    """The reader's rule for a fresh visit, the one the page applies, with
+    run names that say nothing: record time and telemetry decide."""
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_B)
+    for name, stamp in (("zebra", "2026-01-01T00:00:00Z"), ("aardvark", "2026-01-03T00:00:00Z"),
+                        ("mango", "2026-01-02T00:00:00Z")):
+        _rewrite_record(_mesh_run(root, name, revision=REVISION_B), recorded_at=stamp)
+    project = ReviewProject(root)
+    assert default_run(project.review()) == "aardvark"          # newest by record time, not by name
+    _rewrite_record(root / "runs/aardvark", status="failed")
+    assert default_run(project.review()) == "aardvark"          # a newer failure is never hidden
+    _rewrite_record(root / "runs/zebra", status="running")
+    _telemetry(root, run="zebra")
+    assert default_run(project.review()) == "zebra"             # active training first
+    _telemetry(root, run="zebra", updated_at=time.time() - 60)
+    assert default_run(project.review()) == "aardvark"          # stale is not active
+    _telemetry(root, run="zebra", state="done")
+    assert default_run(project.review()) == "aardvark"
+    assert default_run({"runs": []}) == "accepted"
 
 
 def _checkpoint(root, run, name="iter-2.cxpolicy", payload=b"fixture checkpoint, not a verified policy"):

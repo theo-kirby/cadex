@@ -124,7 +124,7 @@ if __name__ == '__main__':
     subprocess.run([sys.executable, '-m', 'cadex_cli.video', '--project', str(project),
                     '--run', checkpoint_run], check=True, timeout=600)
     subprocess.run([sys.executable, str(Path(__file__).with_name('check_video.py')),
-                    str(project), checkpoint_run, url], check=True, timeout=180)
+                    str(project), checkpoint_run, url, '--not-default'], check=True, timeout=180)
     assert Trainer().poll() is None, 'training ended before recovery'
     receipt = project / 'evidence' / (checkpoint_run + '-render-failure.json')
     result = json.loads(receipt.read_text())

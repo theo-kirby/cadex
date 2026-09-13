@@ -146,7 +146,7 @@ def playback(policy, pname, active):
     subprocess.run(['pixi', 'run', 'python', '-m', 'cadex_cli.video', '--project', str(p), '--run', pname], check=True, env=dict(os.environ, PYTHONPATH='cli'), timeout=600)
     render_end = time.time(); render_after = read(train / 'progress.json')
     video = read(r / 'video.json')['videos'][0]
-    check = subprocess.run(['pixi', 'run', 'python', str(generic / 'check_video.py'), str(p), pname, url], env=obsenv, timeout=180)
+    check = subprocess.run(['pixi', 'run', 'python', str(generic / 'check_video.py'), str(p), pname, url] + (['--not-default'] if active else []), env=obsenv, timeout=180)
     after = read(train / 'progress.json')
     if active: assert proc.poll() is None and after['state'] == 'training'
     result = {'run': pname, 'start': started, 'end': time.time(), 'before': before['iteration'], 'after': after['iteration'], 'trainer_active_after_browser': proc.poll() is None, 'browser_check_exit': check.returncode,

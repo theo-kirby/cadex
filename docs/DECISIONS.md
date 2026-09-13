@@ -23358,3 +23358,50 @@ The compact receipt is `interruption86-evidence.json`, guarded in
 `cli/tests/test_lark_fresh_evidence.py`. One seed and 40 updates: no gait
 claim; same-machine private-address checks; no product-agent authorship; no
 new D11 comparison. No protocol, payload, engine, shell or dependency change.
+
+## ADR-316 — The video checker resolves training runs and siblings from retained identities, not run names (2026-09-13)
+
+**Context.** `docs/probes/wren-fresh/check_video.py`, the browser check
+every fresh-project driver runs on a retained video, hard-coded three
+naming conventions: a run ending `-final` was the one a fresh visit must
+select, its historical sibling was the same stem plus `-checkpoint20`, and
+the model had eight components. Iteration 86 had to name the retry's
+playback `lark86-retry-video` to dodge the first two, which is a driver
+bending to a checker rather than a checker reading the project.
+
+**Decision.** The checker consults no run name. The expected fresh-visit
+selection is the reader's rule, now also in Python as
+`cadex_cli.review_server.default_run(review)` (the newest active training
+record, else the newest record, else the accepted view — identical to
+`review.js`'s `currentView`). The training run behind a video and the older
+sibling to select afterwards come from
+`cadex_cli.review_record.policy_lineage(root, run)`: a run's recorded policy
+digest is matched against the bytes every run retains under its own
+`train/`, the holder is the origin (`final`, `checkpoint` with iteration, or
+`retained`), the record's `source_run` is checked against it as
+`source_agrees`, and `playbacks` are the other runs whose policy the same
+origin retains. The sibling is the latest historical playback of the same
+origin, else the latest other historical video run, else none. Every declared
+parameter is checked and the component count is the run's own trace's.
+`--not-default` (with `--historical` kept as its old spelling) marks a run
+the fresh visit is not expected to select; `--label` names evidence files so
+a re-check never overwrites an earlier receipt. Callers in both probe trees
+pass `--not-default` for checkpoint checks during active training and for
+older videos.
+
+**Evidence.** Regressions with unrelated run names: `policy_lineage` over
+`kestrel`/`pear`/`quince`/`fig`/`plum`/`apple`/`zebra`/`mango` (origin by
+bytes, checkpoint iteration from telemetry, a later copy under
+`also_retained_by`, a record naming the wrong run flagged, no policy and an
+unretained digest each with a reason, a symlink out of the project refused)
+in `cli/tests/test_review_record.py`; `default_run` over
+`zebra`/`aardvark`/`mango` (record time not name, a newer failure never
+hidden, active first, stale not active) in `cli/tests/test_review_server.py`.
+On the persistent working-copy URL, not restarted and with no trainer:
+`lark86-retry-video` resolved to origin `lark86-retry` (final) with
+`lark2-final` as the historical selection, and `lark1-final` to origin
+`lark1` with sibling `lark1-checkpoint20` at checkpoint iteration 19 by
+identity; both decoded whole, played through polls and downloaded
+hash-equal. Receipt `docs/probes/lark-fresh/lineage88-evidence.json`, guarded
+in `cli/tests/test_lark_fresh_evidence.py`. No protocol, payload, engine,
+shell, page or dependency change; no training and no new video.

@@ -23,6 +23,14 @@ the copy's retraining (D7). No trainer remains active. Evidence:
 and in the copy `evidence/lark86/`, `evidence/guard86/` and
 `evidence/lark86-retry-video-completion86-browser.json`.
 
+Iteration 88 (ADR-316) re-verified this URL without restarting it and with no
+trainer active: a fresh visit still selects `RUN lark86-retry-video`, which
+is what the reader's own `default_run` rule expects; that video and
+`lark1-final` decoded whole, played through polls and downloaded hash-equal;
+and each video's training run was resolved from the policy bytes it retains
+(`lark86-retry`, `lark1`) rather than from its name. Receipt:
+[`lineage88-evidence.json`](../lark-fresh/lineage88-evidence.json).
+
 Until iteration 86 it served the copy with **`lark2-final` selected by
 default** (iteration 85, ADR-314) as
 HISTORICAL (playback revision `ca88f223b54c…`) against the copy's own
