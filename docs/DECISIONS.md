@@ -23683,3 +23683,14 @@ persistent server the visible change is the absence of tracebacks; the real
 14 KB Lark video is written whole before a reset can arrive, so the
 mid-transfer case is established by the synthetic regression, not by that
 file. No dependency, engine, payload or shell change.
+
+*Addendum (iteration 106).* The cancellation now also comes from a browser
+rather than a raw socket: a Chromium regression throttles the page's network,
+cancels the 48 MiB download through `Browser.cancelDownload` while the server
+still has bytes to write, and asserts the one log line, no traceback and a
+byte-identical fresh download. On the persistent Lark dashboard the same
+browser cancel stopped the real 14 KB video at 1500 bytes received, with
+polling and playback continuing and the next download hash-equal; the server
+had written the whole file first, as before, so that receipt establishes
+browser-side recovery and the synthetic regression the server-side case
+(`docs/probes/lark-fresh/download106-evidence.json`).

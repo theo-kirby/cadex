@@ -5,6 +5,24 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Lark lifecycle report](LIFECYCLE.md) links D1–D11 evidence, the common-seed
 comparison, current visual assessment and remaining acceptance limits.
 
+**Iteration 106 (D4, ADR-324):** the persistent dashboard still serves
+`ot5-lark-copy85` and opens `lark98-final`; the server was not restarted. The
+cancellation that iteration 104 could only make with a raw socket now comes
+from the browser itself: with the page's network throttled to 1024 B/s, the
+real 14 KB final video was still arriving when `Browser.cancelDownload`
+stopped it at 1500 of 14003 bytes; the page kept polling (one poll before,
+three after), the video kept playing through the cancel and the fresh
+unthrottled download, that download was hash-equal to the retained file with
+no partial file left behind, and the server log gained no line and no
+traceback. The server had written the whole file before the cancel could
+reach it, so the server-side mid-transfer case is now pinned by a browser-
+cancel regression on the 48 MiB synthetic video as well as the raw-socket
+one. The full identity, decode, playback, download, historical-selection and
+route-back check passed in the same session.
+[Receipt](download106-evidence.json), [probe](browser_abort_download.py).
+Same-machine browser over the private address; no training, recording,
+project change or restart.
+
 **Iteration 104 (D4, ADR-324):** the persistent dashboard still serves
 `ot5-lark-copy85` and opens `lark98-final`; the server was restarted onto the
 interrupted-download fix. A synthetic 48 MiB retained video reproduced the

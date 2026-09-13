@@ -2103,3 +2103,65 @@ def test_browser_interrupted_download_leaves_polling_and_a_fresh_download_workin
     finally:
         server.shutdown()
         server.server_close()
+
+
+@needs_browser
+def test_browser_cancelled_download_is_logged_once_and_the_next_download_completes(
+        tmp_path, browser, capsys) -> None:
+    """The cancellation comes from the browser's own download manager this
+    time, not a raw socket: with the page's network throttled so the 48 MiB
+    video is still arriving, ``Browser.cancelDownload`` stops it part-way.
+    The server logs the bytes it had sent in one line and no traceback, the
+    page keeps polling, and a fresh unthrottled download of the same video
+    completes byte-identical (ADR-324)."""
+
+    root, payload = _large_video_project(tmp_path)
+    lines: list[str] = []
+    server, _thread = serve(root, '127.0.0.1', 0, log=lines.append)
+    try:
+        page = _open(browser, server.url)
+        assert page.text('#view-kind') == 'RUN second'
+        page.evaluate("window.polls=0; window.originalFetch=window.fetch;"
+                      "window.fetch=async (...args) => { const response=await originalFetch(...args);"
+                      "if(String(args[0]).includes('api/project')) polls++; return response; }")
+        directory = browser.download_dir()
+        page.send('Browser.setDownloadBehavior', {
+            'behavior': 'allow', 'downloadPath': str(directory), 'eventsEnabled': True})
+        page.send('Network.enable')
+        page.send('Network.emulateNetworkConditions', {
+            'offline': False, 'latency': 0, 'downloadThroughput': 4 << 20, 'uploadThroughput': -1})
+        page.click('#videos a')
+        guid = browser.wait_event('Browser.downloadWillBegin', page.session, timeout=30)['guid']
+        partial = browser.wait_event(
+            'Browser.downloadProgress', page.session, timeout=60,
+            predicate=lambda params: params.get('guid') == guid
+            and (params.get('state') != 'inProgress' or params.get('receivedBytes', 0) > 0))
+        assert partial['state'] == 'inProgress', partial
+        assert 0 < partial['receivedBytes'] < len(payload) == partial['totalBytes']
+        page.send('Browser.cancelDownload', {'guid': guid})
+        final = browser.wait_event(
+            'Browser.downloadProgress', page.session, timeout=30,
+            predicate=lambda params: params.get('guid') == guid
+            and params.get('state') in ('completed', 'canceled'))
+        assert final['state'] == 'canceled', final
+        assert final['receivedBytes'] < len(payload)
+        page.send('Network.emulateNetworkConditions', {
+            'offline': False, 'latency': 0, 'downloadThroughput': -1, 'uploadThroughput': -1})
+        polls_at_cancel = page.evaluate('polls')
+        line = _wait_for_line(lines, 'client closed the connection')
+        sent, total = map(int, re.search(r'after (\d+) of (\d+) bytes of big\.webm$', line).groups())
+        assert total == len(payload) and sent < total
+        page.wait_for(f'polls >= {polls_at_cancel + 2}', timeout=15)
+        assert page.attribute('#freshness', 'data-state') == 'live'
+
+        download = page.download('#videos a', timeout=60)
+        assert download.received_bytes == download.total_bytes == len(payload)
+        assert hashlib.sha256(download.path.read_bytes()).hexdigest() == hashlib.sha256(payload).hexdigest()
+        err = capsys.readouterr().err
+        assert 'Traceback' not in err and 'Exception occurred' not in err, err
+        closed = [entry for entry in lines if 'client closed' in entry]
+        assert line in closed
+        assert all(re.search(r'after \d+ of 50331648 bytes of big\.webm$', entry) for entry in closed)
+    finally:
+        server.shutdown()
+        server.server_close()

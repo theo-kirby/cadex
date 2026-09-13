@@ -681,3 +681,42 @@ def test_download104_receipt_shows_interrupted_downloads_recover_on_the_persiste
         assert name.split("::")[1] in tests, name
     assert "download104-evidence.json" in (PROBE / "README.md").read_text()
     assert "download104-evidence.json" in (PROBE / "LIFECYCLE.md").read_text()
+
+
+def test_download106_receipt_shows_a_browser_cancelled_download_recovering_on_the_persistent_dashboard() -> None:
+    """Iteration 106 (ADR-324): the cancellation came from the browser's own
+    download manager on the persistent dashboard, part-way through the real
+    Lark video under a throttled page network; the page kept polling, the
+    video kept playing, the fresh download matched the retained bytes and the
+    server log gained no traceback. The full identity, playback, download,
+    historical-selection and route-back check passed in the same session."""
+    receipt = json.loads((PROBE / "download106-evidence.json").read_text())
+    assert receipt["adr"] == "ADR-324" and receipt["project"] == "ot5-lark-copy85"
+    assert receipt["persistent_server"] is True and receipt["server_restarted"] is False
+    assert "PRIVATE_IP" in receipt["server_command"] and "100." not in json.dumps(receipt)
+    cancel = receipt["browser_cancel"]
+    assert cancel["run"] == "lark98-final" and re.fullmatch(HEX64, cancel["sha256"])
+    assert cancel["fresh_selection"] == "RUN lark98-final" == cancel["view_after"]
+    event = cancel["cancel"]
+    assert event["final_state"] == "canceled" and event["throttle_bytes_per_second"] > 0
+    assert 0 < event["browser_received_bytes_at_cancel"] < event["total_bytes"] == cancel["bytes"]
+    assert event["seconds_from_click_to_cancel"] > 0 and event["suggested_filename"] == cancel["video"]
+    assert cancel["polls_after_cancel"] >= cancel["polls_before_cancel"] + 2
+    assert cancel["freshness_after_cancel"] == "live"
+    assert cancel["browser_playback_before_cancel"] is True
+    assert cancel["playback_kept_through_cancel_and_fresh_download"] is True
+    assert cancel["partial_files_left_in_download_dir"] == []
+    fresh = cancel["fresh_download"]
+    assert fresh["matches_retained"] is True and fresh["sha256"] == cancel["sha256"]
+    assert fresh["bytes"] == cancel["bytes"] and fresh["filename"] == cancel["video"]
+    assert cancel["server_log_has_traceback"] is False and cancel["server_log_lines_added"] == 0
+    check = receipt["identity_playback_download_history"]
+    assert "url" not in check and check["browser_playback"] is True
+    assert check["download_sha256"] == cancel["sha256"] and check["decoded_frames"] > 1
+    assert check["fresh_selection"] == "RUN lark98-final" == check["returned_to_current"]
+    assert check["historical_selection"] == "lark98-checkpoint20" and check["components"] == 8
+    tests = (REPO_ROOT / "cli" / "tests" / "test_review_server.py").read_text()
+    for name in receipt["regression"]:
+        assert name.split("::")[1] in tests, name
+    assert "download106-evidence.json" in (PROBE / "README.md").read_text()
+    assert "download106-evidence.json" in (PROBE / "LIFECYCLE.md").read_text()
