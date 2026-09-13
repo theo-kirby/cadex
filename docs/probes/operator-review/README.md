@@ -23,6 +23,19 @@ the copy's retraining (D7). No trainer remains active. Evidence:
 and in the copy `evidence/lark86/`, `evidence/guard86/` and
 `evidence/lark86-retry-video-completion86-browser.json`.
 
+Iteration 91 restarted the service a second time, with no trainer active,
+so the operator URL also runs the server whose model and mesh routes are
+anchored at the project root (ADR-318): a `runs/<name>` symlinked out of
+the project now answers `available: false` with `run directory escapes the
+project directory` and serves no mesh bytes from it. Iterations 89 and 90
+landed that reader and server without record nodes; iteration 91 recorded
+both. After the restart the same URL still serves `ot5-lark-copy85` with
+all nine runs; a fresh visit selects `RUN lark86-retry-video` (origin
+`lark86-retry`, final, `source_agrees` true), which played through polls
+and downloaded hash-equal (`1f53d43d1c18…`, 81 decoded frames), and its
+eight rollout meshes are served from the run's own `rollout/` exports.
+Receipt in the copy: `evidence/lark86-retry-video-anchor91-check.json`.
+
 Iteration 89 (ADR-317) restarted the service once, with no trainer active,
 so the operator URL runs the reader that anchors run, policy and telemetry
 resolution at the project root (a `runs/<name>` symlinked out of the project

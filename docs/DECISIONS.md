@@ -23443,8 +23443,8 @@ names that digest resolves to no origin; an external `progress.json` symlink
 inside an in-project run is never read (its checkpoint is reported
 `retained`, not `checkpoint`) and an external policy-file symlink is not
 hashed. `test_review_record.py` + `test_video.py`: 35 passed, 5 skipped;
-`test_review_server.py`: 40 passed, 4 skipped; full CLI suite result in the
-record node. The persistent port 8765 unit was restarted onto the fixed
+`test_review_server.py`: 40 passed, 4 skipped; the full CLI suite ran under the record node
+`easy-field-3407` (iteration 91): 445 passed, 1 skipped. The persistent port 8765 unit was restarted onto the fixed
 reader with no trainer active and still serves `ot5-lark-copy85`: a fresh
 visit selects `RUN lark86-retry-video` (origin `lark86-retry`, final,
 `source_agrees` true), which played through polls and downloaded hash-equal
@@ -23487,5 +23487,7 @@ while the project's own runs are unaffected; and a headless-browser
 regression that the page lists the run as `unreadable`, selecting it shows
 `no model to show: run directory escapes the project directory` with no
 components drawn, and a project-owned historical run still loads
-afterwards. Full CLI suite result and the persistent operator-service
-restart are in the record node.
+afterwards. Full CLI suite result (445 passed, 1 skipped) and the
+persistent operator-service restart onto this server are in the record
+node `easy-field-3407` (iteration 91; iterations 89 and 90 landed ADR-317
+and this ADR without record nodes).
