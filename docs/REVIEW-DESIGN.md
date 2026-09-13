@@ -15,7 +15,8 @@ Written under the ot6 charter (ADR-328), whose first criterion is that the
 dashboard becomes one designed page: academic but modern, one type scale and
 one palette across chrome and viewport, a clear hierarchy, readable on a phone
 and orbitable by touch. §7 records what the page looked like before the spec,
-measured, so the after can be compared against it.
+measured, and §8 what it looks like following it (ADR-329), measured the same
+way on the same operator URL.
 
 ## 1. Purpose
 
@@ -49,12 +50,12 @@ Top to bottom, in reading order, on every width. The order *is* the charter's
 | # | Region | Element hooks (stable) | What it is for |
 |---|---|---|---|
 | 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. |
-| 1 | **Run selection** | `#sidebar`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). |
+| 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). |
 | 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. |
-| 3 | **Model** | `#model-status`, `#viewer`, `#model-fit`, `#model-components` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and — once D4 lands — the labelled collision-proxy toggle, off by default. |
-| 4 | **Curves** | `#telemetry`, `[data-metric]`, `[data-history]`, `#checkpoint-source`, `#checkpoints` | Training telemetry: the five metrics as a stat row, the three histories (reward per step, loss, episode length) as curves side by side on desk and stacked on phone, then checkpoint provenance. |
-| 5 | **Videos** | `#videos`, `#videos li[data-video]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed) and — once D4 lands — what it shows. |
-| 6 | **Record** | `#training`, `#params`, `#params-note`, `#artifacts`, `#problems`, `#disk`, `#docs`, `#decisions`, `#doc-view` | The appendix: training request and receipt, parameters and specs, retained artifacts and disk use, document snapshots and decisions. Full tables at desk width; on phone each table scrolls inside its own card, never the page. |
+| 3 | **Model** | `#model`, `#model-status`, `#viewer`, `#model-fit`, `#model-components` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and — once D4 lands — the labelled collision-proxy toggle, off by default. |
+| 4 | **Curves** | `#curves`, `#telemetry`, `[data-metric]`, `[data-history]`, `#checkpoint-source`, `#checkpoints` | Training telemetry: the five metrics as a stat row, the three histories (reward per step, loss, episode length) as curves side by side on desk and stacked on phone, then checkpoint provenance. |
+| 5 | **Videos** | `#videos-region`, `#videos`, `#videos li[data-video]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed) and — once D4 lands — what it shows. |
+| 6 | **Record** | `#record`, `#training`, `#params`, `#params-note`, `#artifacts`, `#problems`, `#disk`, `#docs`, `#decisions`, `#doc-view` | The appendix: training request and receipt, parameters and specs, retained artifacts and disk use, document snapshots and decisions. Full tables at desk width; on phone each table scrolls inside its own card, never the page. |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
 (`cli/tests/test_review_server.py`, `test_review_lifecycle.py`,
@@ -132,11 +133,15 @@ Contrast: `--ink` on `--bg` is 15.7:1, `--ink-2` on `--surface` is 6.1:1,
 and every status colour on `--surface-2` is at least 7.8:1, so each text
 token clears WCAG AA at `--fs-0`.
 
-The stylesheet declares exactly these tokens on `:root`. Today the design
-test pins the table above to the environment module's dark scene background;
-when the page follows the spec it also reads the tokens back from the
-rendered page (`getComputedStyle`), so a palette drift is a failing test
-rather than a slow surprise.
+The stylesheet declares exactly these tokens on `:root`, and the design test
+pins the table above to the environment module's dark scene background *and*
+reads every token back from the rendered page (`getComputedStyle`) at both
+charter sizes, so a palette drift is a failing test rather than a slow
+surprise. The chrome is at these values now (§8). The viewport is not yet:
+`review_scene.js` still builds the environment in its `light` palette, and
+the videos are captured in the same scene, so the viewport switches when D3
+removes the light theme from the module — a change that ships with decoded
+frames beside the reference, not with a stylesheet.
 
 ## 5. Spacing and shape
 
@@ -152,8 +157,12 @@ A 4 px base: `--s1` 4, `--s2` 8, `--s3` 12, `--s4` 16, `--s5` 24, `--s6` 32.
   on hover, `--rule-strong` on focus. No native chrome on buttons or selects.
 - **Curves**: each history is an SVG with `viewBox 0 0 400 100`, `--accent`
   stroke of 1.5 px on a `--surface-2` field with a `--rule` frame, its range
-  and iteration span as an `--fs-0` caption. Three abreast at desk width
-  (each `minmax(240px, 1fr)`), stacked on phone.
+  and iteration span as an `--fs-0` caption. The three sit in a
+  `repeat(auto-fit, minmax(240px, 1fr))` grid: abreast at the 1400 px
+  reference width, two then one as the column narrows (a 1000 px window has
+  a 616 px column, where three 240 px minima would overflow), stacked on
+  phone. The five metrics above them are a stat row of tiles whose text
+  stays `key: value`, which is what the other suites read.
 - **The viewport** keeps a 16:9 box at desk (`aspect-ratio: 16 / 9`, up to
   620 px tall) and 4:3 on phone, always the full width of its column, with
   `touch-action: none` so a one-finger drag orbits instead of scrolling the
@@ -173,9 +182,9 @@ between where a sidebar stops paying for itself.
 | **600–999 px** (tablet, a half-width desk window) | One column. Run selection becomes a horizontal strip of run chips under the masthead, scrolling within itself. Curves two abreast, then one. |
 | **< 600 px** (phone; 400 × 850 is the reference size) | One column with `--s3` gutters. Run selection is a `<details>` disclosure showing "Runs · current: *name* · *n* recorded", closed by default, opening to the same list. Identity key/value pairs stack (key above value). The viewport, the curves and the videos are the full width. Tables in region 6 scroll horizontally inside their card. |
 
-Invariants at every width, and the ones the design test asserts at 1400 × 900
-and at 400 × 850 with touch emulation once the page follows the spec (until
-then §7 is the measured record of the page that does not):
+Invariants at every width, and the ones the design test asserts on the
+rendered page at 1400 × 900 and at 400 × 850 with touch emulation (§7 is the
+measured record of the page before it followed the spec, §8 after):
 
 1. **No horizontal page overflow**: `document.documentElement.scrollWidth <=
    innerWidth`. Achieved by `min-width: 0` on grid children and per-table
@@ -192,7 +201,7 @@ then §7 is the measured record of the page that does not):
 
 Measured on the persistent operator dashboard on 2026-09-13, serving
 `ot5-lark-copy85` with `lark109-engine2` selected, live, model loaded, by
-`docs/probes/ot6/design/capture_before.py` (receipt:
+`docs/probes/ot6/design/capture_page.py` with the label `before` (receipt:
 `docs/probes/ot6/design/before.json`). The screenshots beside this document
 are the quantised copies (256 colours, under the 200 KB receipt cap); the
 originals stay in the operator's `cadex-projects/ot6-design/` with the
@@ -226,13 +235,53 @@ What the pictures show:
   The videos, curves and every table are off the right edge. That is the
   "collapses into a sliver" the charter names.
 
-## 8. Evidence for D1 and D2
+## 8. After: the page under the spec
 
-D1's evidence is this document, the before screenshots above, the after
-screenshots at the same two sizes committed beside them when the page follows
-the spec, the design test asserting §6's invariants and §4's tokens on the
-rendered page, and the operator URL showing the new design on the active
-project. D2's evidence is the same test's phone half: touch emulation at
+Measured the same way, on the same persistent operator dashboard, on
+2026-09-13 after the stylesheet, markup and rendering script were brought to
+§2–§6 (ADR-329), still serving `ot5-lark-copy85` with `lark109-engine2`
+selected, live, model loaded (receipt: `docs/probes/ot6/design/after.json`;
+originals in the operator's `cadex-projects/ot6-design/`).
+
+| | 1400 × 900 | 400 × 850, mobile emulation | 400 × 850, plain window |
+|---|---|---|---|
+| Screenshot | [after-1400.png](review-design/after-1400.png) | [after-400x850.png](review-design/after-400x850.png) | not committed |
+| Layout viewport | 1400 px | **400 px** | 400 px |
+| Horizontal overflow | 0 | **0** | **0** |
+| Sidebar | 280 px, beside the detail | 376 px wide, a closed disclosure above it | 361 px (a scrollbar takes the rest) |
+| Model canvas | 999 × 562 (16:9) | **350 × 263** (4:3) | 335 × 251 |
+| Page height | 3 829 px | 6 463 px | 6 790 px |
+| Type | 14 / 22 / 17 / 12 (body / h1 / h2 / chip) | same | same |
+
+What changed, against §7:
+
+- **At 1400 px** the chrome is one greyscale: `--bg` page, `--surface` masthead,
+  sidebar and cards, `--rule` hairlines under numbered sentence-case headings
+  (*1 Runs* … *6 Record*), status as coloured ink on tinted chips. The
+  sidebar is sticky beside the detail; the identity block leads, the model
+  is the largest region, the curves are a stat row over three histories
+  abreast, the videos have a region of their own, and the record — training,
+  parameters, artifacts, documents — is the appendix. The viewport inside
+  that chrome is still the light scene (§4): that is the one thing on the
+  page the spec does not yet describe, and it is D3's.
+- **At 400 × 850** the layout viewport is the device width. The runs are a
+  one-line disclosure — *Runs · current: lark109-engine2 · 15 recorded* —
+  closed until tapped; the identity pairs stack key over value; the canvas is
+  the full width inside 12 px gutters; the curves stack; the parameter and
+  artifact tables scroll inside their card. Page height fell from 28 772 px
+  to 6 463 px because nothing wraps one word per line any more.
+
+The rendered-page half of `cli/tests/test_review_design.py` asserts §6's five
+invariants at both sizes on a fixture project, and pins the receipt above to
+this table.
+
+## 9. Evidence for D1 and D2
+
+D1's evidence is this document, the before and after screenshots at the two
+sizes committed beside it, the design test asserting §6's invariants and §4's
+tokens on the rendered page, and the operator URL showing the new design on
+the active project (§8). What D1 still lacks is the viewport's half of "one
+palette": the light scene stays until D3 removes it. D2's evidence is the same test's phone half: touch emulation at
 400 × 850, a touch orbit that changes the camera, curves legible, a video
 that plays and downloads. Each ships as a receipt under `docs/probes/ot6/`
 within the charter's caps (16 KB per receipt, 200 KB per image), which

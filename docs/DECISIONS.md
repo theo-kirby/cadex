@@ -23844,3 +23844,32 @@ sandbox is repaired outside the repo (`features.use_legacy_landlock` in
 AppArmor user-namespace restriction and the critic graded ot5 with no tools.
 
 This is a charter decision, not a claim that any of it exists.
+
+## ADR-329 — The review page follows its design spec (2026-09-13)
+
+The dashboard's stylesheet, markup and rendering script now follow
+`docs/REVIEW-DESIGN.md`, the ot6 charter's first criterion (ADR-328). One
+dark greyscale palette on `:root` whose page background is the environment
+module's dark scene background; one type scale (12/14/17/22 px); six
+regions in the charter's reading order under numbered sentence-case
+headings — the videos leave the artifacts card for a region of their own,
+the training table, parameters, artifacts and documents become the record
+appendix; the run list is a sticky sidebar at desk width and a closed
+`<details>` disclosure below 600 px, folded by the media query alone; the
+curves are a stat row over an `auto-fit` history grid; every table scrolls
+inside its card. The pre-spec tokens (`--panel`, `--line`, `--fg`, `--muted`,
+`--hist`), the uppercase grey headings, the fixed 520 px canvas, the fixed
+480 px video and the blue curve stroke are removed. No element id or
+`data-*` hook changed, so every ot5 browser test keeps its meaning, and the
+metric tiles keep their `key: value` text. Evidence: the after screenshots
+and receipt beside the before ones (§8 of the spec), and the rendered-page
+half of `cli/tests/test_review_design.py` — at 1400×900 and at 400×850 with
+touch emulation the layout viewport is the device width, nothing overflows
+it, the tokens and type compute to the spec, the canvas fills its column,
+and the disclosure is closed on the phone and opens on a tap.
+
+Deliberately not in this change: the viewport still renders the environment
+module's `light` palette, because the videos are captured in the same scene
+and switching or deleting that palette is D3's unit, which ships with
+decoded frames beside the reference and its own ADR. No engine, protocol,
+payload, shell or dependency change.

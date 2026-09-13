@@ -2,13 +2,15 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """Capture the operator dashboard at desktop and phone width and measure it.
 
-    PYTHONPATH=cli:cli/tests pixi run python docs/probes/ot6/design/capture_before.py URL OUT_DIR LABEL
+    PYTHONPATH=cli:cli/tests pixi run python docs/probes/ot6/design/capture_page.py URL OUT_DIR LABEL
 
 Writes ``<label>-1400.png`` (1400x900) and ``<label>-400x850.png`` (400x850,
 mobile emulation) into OUT_DIR, plus ``<label>.json`` with what the page
 reported: the selected project and run, horizontal overflow at each width,
 the computed type sizes of the headings and body, and the palette tokens the
-stylesheet declares. Inspects only; it never starts or stops a server, and
+stylesheet declares (the spec's names, plus the pre-spec names so the same
+script measured the "before"; a name the stylesheet no longer declares is
+simply absent). Inspects only; it never starts or stops a server, and
 the URL is an argument so no private address enters a committed file.
 """
 import json
@@ -20,8 +22,8 @@ from cdp_browser import HeadlessBrowser, find_browser
 MEASURE = """(function () {
   var cs = getComputedStyle(document.documentElement);
   var tokens = {};
-  ['--bg','--panel','--line','--fg','--muted','--ok','--warn','--bad','--info','--hist',
-   '--surface','--surface-2','--rule','--ink','--ink-2','--accent'].forEach(function (name) {
+  ['--bg','--surface','--surface-2','--surface-3','--rule','--rule-strong','--ink','--ink-2','--accent',
+   '--ok','--warn','--bad','--info','--panel','--line','--fg','--muted','--hist'].forEach(function (name) {
     var v = cs.getPropertyValue(name).trim(); if (v) tokens[name] = v; });
   function size(sel) { var n = document.querySelector(sel); return n ? getComputedStyle(n).fontSize : null; }
   var canvas = document.getElementById('viewer').getBoundingClientRect();

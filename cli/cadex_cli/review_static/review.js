@@ -98,11 +98,15 @@
   }
 
   function renderSidebar() {
-    text('current-run', 'Current run: ' + currentView());
+    var current = currentView();
+    text('current-run', 'Current run: ' + current);
+    // The phone's disclosure line (REVIEW-DESIGN.md §6): what is current and
+    // how many runs there are, readable while the list is closed.
+    text('runs-summary', 'Runs · current: ' + current + ' · ' + state.review.runs.length + ' recorded');
     var accepted = state.review.accepted;
     // Rebuilt only when what it shows changes: a poll over an unchanged
     // history adds no nodes here however many runs there are.
-    var key = JSON.stringify([state.selected, accepted.available && accepted.revision, state.review.runs.map(function (run) {
+    var key = JSON.stringify([state.selected, current, accepted.available && accepted.revision, state.review.runs.map(function (run) {
       return [run.run, run.relation, run.status, run.recorded_at, (run.model || {}).accepted_revision];
     })]);
     if (key === sidebarKey) return;
@@ -115,7 +119,8 @@
     ]));
     state.review.runs.forEach(function (run) {
       list.appendChild(el('li', { 'data-view': 'run', 'data-run': run.run, 'data-relation': run.relation, 'data-status': run.status,
-                                  'data-selected': String(state.selected === run.run), onclick: function () { select(run.run); } }, [
+                                  'data-selected': String(state.selected === run.run), 'data-current': String(run.run === current),
+                                  onclick: function () { select(run.run); } }, [
         el('div', { className: 'name', text: run.run }),
         el('div', { className: 'badges' }, [
           el('span', { className: 'badge', 'data-tone': run.relation, text: run.relation }),
@@ -262,9 +267,14 @@
     if (['missing', 'invalid', 'stale', 'failed', 'unknown'].includes(data.state)) {
       panel.appendChild(el('p', {text: 'Inspect the CLI training output; if the run stopped, start a new cadex walk --out runs/<new-name>. Stale data does not prove interruption.'}));
     }
+    // The stat row: each metric's text stays "key: value" (the suites read
+    // it whole); the two spans only let the stylesheet set the value large.
+    var stats = el('div', {className: 'stats'});
     ['iteration', 'total', 'reward_per_step', 'loss', 'episode_steps'].forEach(function (key) {
-      panel.appendChild(el('div', {'data-metric': key, text: key + ': ' + fmt(data[key])}));
+      stats.appendChild(el('div', {'data-metric': key}, [el('span', {className: 'k', text: key + ': '}), el('span', {className: 'v', text: fmt(data[key])})]));
     });
+    panel.appendChild(stats);
+    var histories = el('div', {className: 'histories'});
     [['curve', 'Reward per step'], ['loss_curve', 'Loss'], ['episode_steps_curve', 'Episode length (steps)']].forEach(function (item) {
       var points = data[item[0]] || [], count = data.summary ? ((data.samples || {})[item[0]] || 0) : points.length;
       var block = el('div', {'data-history': item[0], 'data-points': String(count)});
@@ -273,16 +283,16 @@
         var xs = points.map(function (p) {return p[0];}), ys = points.map(function (p) {return p[1];});
         var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
         var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('viewBox', '0 0 400 100'); svg.style.width = '100%'; svg.style.maxWidth = '600px';
+        svg.setAttribute('viewBox', '0 0 400 100');
         svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', item[1] + ' by iteration');
         var line = document.createElementNS(svg.namespaceURI, 'polyline');
         line.setAttribute('points', points.map(function (p) {return (5 + 390 * (p[0]-x0)/(x1-x0 || 1)) + ',' + (95 - 90 * (p[1]-y0)/(y1-y0 || 1));}).join(' '));
-        line.setAttribute('fill', 'none'); line.setAttribute('stroke', '#4da6ff'); line.setAttribute('stroke-width', '2');
         svg.appendChild(line); block.appendChild(svg);
         block.appendChild(el('small', {text: 'iterations ' + x0 + '–' + x1 + ' · range ' + fmt(y0) + '–' + fmt(y1)}));
       }
-      panel.appendChild(block);
+      histories.appendChild(block);
     });
+    panel.appendChild(histories);
     if (data.summary) {
       // Same shape as the detail below, so a reader (or a test) waiting on
       // the provenance line sees "pending", never a missing element.
@@ -436,9 +446,9 @@
       var label = 'video ' + index + ' · ' + (video.path || '?') + ' · revision ' + short(video.accepted_revision || (run.model || {}).accepted_revision) + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s · ' + (video.style || 'historical legacy style');
       if (item.exists && !item.error) {
         var url = '/video/run/' + encodeURIComponent(run.run) + '/' + index;
-        line.appendChild(el('div', {}, [el('span', { text: label }), el('span', { 'data-video-size': String(index) })]));
-        line.appendChild(el('video', { controls: true, preload: 'metadata', src: url, width: 480 }));
-        line.appendChild(el('a', { href: url + '?download=1', text: 'download' }));
+        line.appendChild(el('video', { controls: true, preload: 'metadata', src: url }));
+        line.appendChild(el('div', { className: 'caption' }, [el('span', { text: label }), el('span', { 'data-video-size': String(index) }),
+                                                            document.createTextNode(' · '), el('a', { href: url + '?download=1', text: 'download' })]));
       } else {
         line.appendChild(el('span', { className: 'status-missing', text: label + ' — ' + (item.error ? 'refused: ' + item.error : 'missing') + '. Retry the CLI video command after restoring the retained inputs.' }));
       }
@@ -611,6 +621,13 @@
       state.following = true;
     });
     $('model-fit').addEventListener('click', function () { state.viewer.fit(); });
+    // The run list is a sidebar at desk and a closed disclosure on a phone
+    // (REVIEW-DESIGN.md §6); crossing the breakpoint resets it, a tap on the
+    // summary toggles it. Only the media query decides, never the run count.
+    var phone = window.matchMedia('(max-width: 599px)');
+    function foldRuns() { $('runs').open = !phone.matches; }
+    foldRuns();
+    phone.addEventListener('change', foldRuns);
     poll().then(function () { readyResolve(true); });
     setInterval(poll, POLL_MS);
   }

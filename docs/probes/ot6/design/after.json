@@ -1,0 +1,152 @@
+{
+  "url_host": "8765",
+  "shots": {
+    "1400": {
+      "innerWidth": 1400,
+      "innerHeight": 900,
+      "visual_viewport": {
+        "width": 1385,
+        "scale": 1
+      },
+      "scrollWidth": 1385,
+      "horizontal_overflow_px": 0,
+      "page_height": 3829,
+      "fonts": {
+        "body": "14px",
+        "h1": "22px",
+        "h2": "17px",
+        "badge": "12px",
+        "mono": "12px",
+        "small": "12px",
+        "button": "14px"
+      },
+      "canvas": {
+        "width": 999,
+        "height": 561.9375,
+        "left": 345
+      },
+      "sidebar": {
+        "width": 280,
+        "top": 109.1875
+      },
+      "tokens": {
+        "--bg": "#141414",
+        "--surface": "#1b1b1b",
+        "--surface-2": "#242424",
+        "--surface-3": "#2c2c2c",
+        "--rule": "#3a3a3a",
+        "--rule-strong": "#4a4a4a",
+        "--ink": "#ededed",
+        "--ink-2": "#9a9a9a",
+        "--accent": "#dcdcdc",
+        "--ok": "#8be0b0",
+        "--warn": "#ffe08a",
+        "--bad": "#ff9d9d",
+        "--info": "#6ff0f0"
+      },
+      "project": "ot5-lark-copy85 \u2014 review",
+      "view": "RUN lark109-engine2",
+      "freshness": "live",
+      "model": "loaded",
+      "png_bytes": 239202
+    },
+    "400x850": {
+      "innerWidth": 400,
+      "innerHeight": 850,
+      "visual_viewport": {
+        "width": 400,
+        "scale": 1
+      },
+      "scrollWidth": 400,
+      "horizontal_overflow_px": 0,
+      "page_height": 6463,
+      "fonts": {
+        "body": "14px",
+        "h1": "22px",
+        "h2": "17px",
+        "badge": "12px",
+        "mono": "12px",
+        "small": "12px",
+        "button": "14px"
+      },
+      "canvas": {
+        "width": 350,
+        "height": 262.5,
+        "left": 25
+      },
+      "sidebar": {
+        "width": 376,
+        "top": 163.171875
+      },
+      "tokens": {
+        "--bg": "#141414",
+        "--surface": "#1b1b1b",
+        "--surface-2": "#242424",
+        "--surface-3": "#2c2c2c",
+        "--rule": "#3a3a3a",
+        "--rule-strong": "#4a4a4a",
+        "--ink": "#ededed",
+        "--ink-2": "#9a9a9a",
+        "--accent": "#dcdcdc",
+        "--ok": "#8be0b0",
+        "--warn": "#ffe08a",
+        "--bad": "#ff9d9d",
+        "--info": "#6ff0f0"
+      },
+      "project": "ot5-lark-copy85 \u2014 review",
+      "view": "RUN lark109-engine2",
+      "freshness": "live",
+      "model": "loaded",
+      "png_bytes": 73376
+    },
+    "400-desktop": {
+      "innerWidth": 400,
+      "innerHeight": 850,
+      "visual_viewport": {
+        "width": 385,
+        "scale": 1
+      },
+      "scrollWidth": 385,
+      "horizontal_overflow_px": 0,
+      "page_height": 6790,
+      "fonts": {
+        "body": "14px",
+        "h1": "22px",
+        "h2": "17px",
+        "badge": "12px",
+        "mono": "12px",
+        "small": "12px",
+        "button": "14px"
+      },
+      "canvas": {
+        "width": 335,
+        "height": 251.25,
+        "left": 25
+      },
+      "sidebar": {
+        "width": 361,
+        "top": 163.171875
+      },
+      "tokens": {
+        "--bg": "#141414",
+        "--surface": "#1b1b1b",
+        "--surface-2": "#242424",
+        "--surface-3": "#2c2c2c",
+        "--rule": "#3a3a3a",
+        "--rule-strong": "#4a4a4a",
+        "--ink": "#ededed",
+        "--ink-2": "#9a9a9a",
+        "--accent": "#dcdcdc",
+        "--ok": "#8be0b0",
+        "--warn": "#ffe08a",
+        "--bad": "#ff9d9d",
+        "--info": "#6ff0f0"
+      },
+      "project": "ot5-lark-copy85 \u2014 review",
+      "view": "RUN lark109-engine2",
+      "freshness": "live",
+      "model": "loaded",
+      "png_bytes": 73826
+    }
+  }
+}

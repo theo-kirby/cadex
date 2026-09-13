@@ -1455,6 +1455,13 @@ other command keeps the restore.
 # review: serving biped at http://100.x.y.z:8765/ (read-only; Ctrl-C to stop)
 ```
 
+The page's layout, type and colour follow `docs/REVIEW-DESIGN.md`
+(ADR-329): one dark palette, one type scale, six regions in reading order —
+masthead, run selection, identity, model, curves, videos, record — a sidebar
+at desk width and a closed run disclosure on a phone, with no horizontal
+overflow at either. `cli/tests/test_review_design.py` reads the spec back
+from the rendered page at 1400×900 and 400×850.
+
 One project per server, inspection only. The page is for a person, on
 another device, with no display session on the machine that serves it:
 `--host` defaults to `127.0.0.1` (this machine only); give it the
