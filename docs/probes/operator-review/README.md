@@ -11,6 +11,12 @@ completed with exit 0; no experiment training remains active. Its checkpoint
 engine-verified 8-second seed-0 video; `wren57-retry` (110 mm) is the
 historical baseline the seed 0–4 comparison uses.
 
+Iteration 69 verified two engine reopens and restarted the persistent service
+with the saved working project intact: all 15 run views matched, the open
+page kept playing, and fresh visits still selected `wren66-final`. Current
+and historical video downloads matched their recorded hashes. No trainer
+was running; the service remains up. [D6 proof](../wren-fresh/RESTART.md).
+
 Iteration 67 restarted this same service once, with no trainer running, to
 load ADR-309: a playback run's checkpoints now resolve through the training
 run its record names. On the persistent URL, `wren66-final` (default, CURRENT)

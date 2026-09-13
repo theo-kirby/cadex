@@ -170,6 +170,17 @@ def _server_video(url: str) -> bytes:
     return body
 
 
+def _run_identities(url: str) -> dict[str, tuple]:
+    """What identifies each run to a reader, from the server's own review."""
+
+    status, _headers, body = _get(url + "api/project")
+    assert status == 200
+    review = json.loads(body)
+    return {run["run"]: (run["model"]["accepted_revision"], run["model"]["digest"], run["relation"],
+                         run["outcome"], [video["sha256"] for video in run["videos"]])
+            for run in review["runs"]}
+
+
 @needs_browser
 def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp_path, browser: HeadlessBrowser) -> None:
     root, video = _lifecycle_project(tmp_path)
@@ -181,6 +192,12 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
     try:
         producer.snapshot()
         page = _open(browser, first.url)
+        # A fresh visit lands on the current run without a click; the same
+        # visit after the restart must land on the same one.
+        default_before = page.text("#view-kind")
+        assert default_before == "RUN second", default_before
+        identities_before = _run_identities(first.url)
+        assert sorted(identities_before) == ["broken", "first", "sample", "second"]
         page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
         assert page.text("#view-revision") == REVISION_B
         runs_before = page.evaluate("window.cadexReview.state().runs")
@@ -227,6 +244,8 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
 
         # Reopen: a fresh page against the restarted server reads the same project.
         reopened = _open(browser, second.url)
+        assert reopened.text("#view-kind") == default_before
+        assert _run_identities(second.url) == identities_before
         reopened.evaluate("window.cadexReview.select('accepted')", await_promise=True)
         assert reopened.text("#view-revision") == REVISION_B
         assert REVISION_B[:12] in reopened.text("#accepted-line")

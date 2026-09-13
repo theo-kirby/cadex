@@ -1564,6 +1564,11 @@ No engine runs anywhere in this test — the reader opens none, which is why
 restarting an engine cannot change what the dashboard shows — but this is
 fixture evidence: D6's required pass on the fresh biped with real training
 artifacts, and save/reopen of a project a real walk wrote, remain separate.
+The [Wren working-copy restart proof](probes/wren-fresh/RESTART.md) supplies
+that retained-artifact check on the persistent private URL: two engine
+reopens, all 15 run views compared, current/historical video downloads and
+an open playing page preserved across a service restart. No trainer was
+running during that real-project check.
 
 ### Exit codes
 

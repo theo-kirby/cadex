@@ -236,3 +236,56 @@ def test_checkpoint_provenance_receipt_matches_the_declared_runs():
     assert retry['relation'].startswith('HISTORICAL') and retry['checkpoint_source'] == {'state': 'none', 'run': ''}
     assert retry['checkpoint_statuses'] == [['retained', 'run']]
     assert all(run['returned_to'] == 'RUN wren66-final' for run in runs.values())
+
+
+def test_restart_receipt_preserves_every_run_across_engine_reopen_and_service_restart():
+    """The D6 receipt on the served working copy: two in-place engine reopens
+    and one real restart of the persistent user service changed nothing a
+    reader sees — the same fresh-visit default, every run's identity, curves
+    and videos, the open page's selection and playing video — and the trainer
+    process list was empty before and after."""
+
+    receipt = json.loads((PROBE / 'restart69-evidence.json').read_text())
+    assert receipt['schema'] == 'cadex-restart-evidence-v1' and receipt['project'] == 'ot5-wren-copy54'
+    assert receipt['unit'] == 'cadex-operator-review' and receipt['url_host'].endswith(':8765')
+    assert re.fullmatch(r'[0-9a-f]{64}', receipt['accepted_revision'])
+    assert receipt['fresh_default_before'] == receipt['fresh_default_after'] == 'RUN wren66-final'
+    assert receipt['walk_after_equals_before'] is True and receipt['api_unchanged_across_restart'] is True
+    assert receipt['open_page'] == {'recovered_without_navigation': True, 'selected': 'wren66-final', 'video_kept_playing': True}
+    assert receipt['trainers_before'] == receipt['trainers_after'] == []
+
+    opens = receipt['engine_opens']
+    assert len(opens) == 2 and opens[0]['pid'] != opens[1]['pid']
+    assert all(o['restore'] == {'digest': receipt['accepted_digest'], 'matches_accepted': True, 'performed': True} for o in opens)
+    reopen = receipt['engine_reopen']
+    assert reopen['accepted_attempt_files_unchanged'] and reopen['other_files_unchanged'] and reopen['manifest_changed']
+    accepted_dir = receipt['accepted_attempt']['staging'].rsplit('/', 1)[1]
+    assert accepted_dir in reopen['candidate_attempts_after']
+    assert len(reopen['candidate_attempts_after']) <= 4  # the pinned accepted attempt plus ATTEMPT_KEEP (ADR-045)
+    assert reopen['candidate_files_added'] == reopen['candidate_files_pruned'] > 0
+
+    restart = receipt['restart']
+    assert restart['old_pid'] != restart['new_pid'] and restart['systemctl_exit'] == 0
+    assert 0 < restart['answered_after_s'] < 5 and restart['stale_seen_after_s'] is not None
+
+    current, historical = receipt['download_after']
+    assert current == receipt['download_before'] and current['run'] == 'wren66-final'
+    assert historical['run'] == receipt['historical_run'] != current['run']
+    assert historical['accepted_revision'] != current['accepted_revision']
+    assert all(re.fullmatch(r'[0-9a-f]{64}', d['sha256']) for d in (current, historical))
+
+    runs = receipt['run_identities']
+    assert len(runs) == receipt['runs'] == 15
+    assert [r for r, s in runs.items() if s['relation'] == 'current'] == ['wren66-final']
+    assert all(s['relation'] == 'historical' for r, s in runs.items() if r != 'wren66-final')
+    assert {r for r, s in runs.items() if s['telemetry'] == 'failed'} == {'wren56-interrupt', 'wren56b-interrupt', 'wren56c-interrupt', 'wren57-interrupt'}
+    assert all(len(s['points']) == 3 and min(s['points']) > 0 for s in runs.values())
+    assert runs['wren66-final']['videos'] == [current['sha256']] and runs[historical['run']]['videos'] == [historical['sha256']]
+    walk = receipt['page_walk']
+    assert walk['accepted']['kind'] == 'ACCEPTED NOW' and set(walk) == {'accepted', *runs}
+    for run, summary in runs.items():
+        assert walk[run]['kind'] == 'RUN ' + run and walk[run]['telemetry'] == summary['telemetry']
+        assert walk[run]['points'] == [str(n) for n in summary['points']] and walk[run]['videos'] == len(summary['videos'])
+    for doc in ('RESTART.md', 'README.md'):
+        assert 'restart69-evidence.json' in (PROBE / doc).read_text() or 'RESTART.md' in (PROBE / doc).read_text()
+    assert 'restart69-evidence.json' in (PROBE / 'RESTART.md').read_text()

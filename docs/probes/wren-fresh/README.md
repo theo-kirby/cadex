@@ -15,6 +15,10 @@ its rationale in iteration 66 as the project's ADR-002; the earlier
 inventoried before the agent's change remain byte-identical. The interruption
 experiment's `wren57-retry` is now the 110 mm baseline that comparison uses.
 
+The [save/reopen and persistent-service restart proof](RESTART.md) checks all
+15 retained runs and current/historical video downloads on this working copy
+([receipt](restart69-evidence.json)); port 8765 remains serving it afterward.
+
 Previous experiment: [the completed revised-foot comparison](COMPARISON.md)
 retains both training runs and their four videos; the persistent dashboard
 then selected `wren2-final`, revision `26332a5955e3…`. The sections below are
