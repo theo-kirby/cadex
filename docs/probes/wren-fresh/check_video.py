@@ -67,6 +67,13 @@ with HeadlessBrowser(find_browser()) as browser:
     assert page.evaluate('window.cadexReview.viewer().stats().components') == components
     assert int(page.attribute('[data-history=curve]', 'data-points')) > 0
     origin = lineage['origin']
+    page.wait_for("document.getElementById('policy-origin').dataset.state === 'resolved'")
+    assert page.attribute('#policy-origin', 'data-run') == origin['run']
+    assert page.attribute('#policy-origin', 'data-source-agrees') == json.dumps(lineage['source_agrees'])
+    origin_text = page.text('#policy-origin')
+    assert origin['kind'] in origin_text
+    if origin['iteration'] is not None:
+        assert 'iteration ' + str(origin['iteration']) in origin_text
     if origin['run'] != run:   # a playback: the page names the training run its record kept, which the bytes confirm
         assert page.attribute('#checkpoint-source', 'data-run') == origin['run'], page.text('#checkpoint-source')
         assert page.attribute('#checkpoint-source', 'data-state') == 'resolved'
@@ -103,6 +110,7 @@ with HeadlessBrowser(find_browser()) as browser:
               'components': components, 'components_source': 'first frame of the run\'s own retained trace',
               'curves_present': True, 'expected_default': expected_default, 'is_default': expected_default == run,
               'fresh_selection': fresh_selection, 'historical_selection': historical, 'historical_source': historical_source,
+              'policy_origin_panel': origin_text,
               'lineage': {k: lineage[k] for k in ('origin', 'recorded_source_run', 'source_agrees', 'playbacks')},
               'download_sha256': v['sha256'], 'decoded_frames': len(raw) // size, 'decoded_frames_differ': True,
               'encoded_seconds': float(probe['format']['duration']), 'simulation_seconds': v['sim_seconds'],

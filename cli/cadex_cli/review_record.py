@@ -761,7 +761,7 @@ def policy_lineage(project_root: Path | str, run_name: str) -> dict[str, Any]:
     retains, each with its own kind, relation and video count, so a checker
     can pick an older sibling of this run without a naming convention.
     This walks and hashes ``runs/*/train`` once per call; it is a reader
-    for checkers and reports, not a per-request server route.
+    for checkers, reports and explicit dashboard origin checks, never polling.
     """
 
     root = Path(project_root).expanduser()

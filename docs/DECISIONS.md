@@ -23491,3 +23491,26 @@ afterwards. Full CLI suite result (445 passed, 1 skipped) and the
 persistent operator-service restart onto this server are in the record
 node `easy-field-3407` (iteration 91; iterations 89 and 90 landed ADR-317
 and this ADR without record nodes).
+
+## ADR-319 — Show byte-resolved policy origin beside declared provenance (2026-09-13)
+
+A playback's declared `source_run` can disagree with its retained policy
+identity. The run panel now exposes ADR-316's `policy_lineage` result through
+`GET /api/policy-origin/<run>`: origin run, final/checkpoint/retained kind,
+checkpoint iteration, and explicit source-name disagreement. The existing
+checkpoint-source line continues to describe telemetry reference resolution.
+Origin hashing happens on selection, policy/training/status change or explicit
+Check again, not each telemetry poll. Results are labelled snapshots; missing
+bytes and request failures have distinct states. Selection changes invalidate
+late responses. No dependency, engine protocol or payload change.
+
+Evidence: the headless-browser regression in `test_review_server.py` uses
+unrelated playback/training names, changes the declared source to conflict,
+removes retained bytes and rechecks, then selects a final policy without a
+declared source and the accepted view. The persistent video checker also
+asserts the displayed origin against the identity reader and retains its text.
+
+Validation: full CLI suite **446 passed, 1 skipped** in 427.30 s; the final
+request-race/retry browser assertions also passed in the targeted run. The
+persistent private-address video check passed with `lark86-retry-video`
+selected and `lark86-retry` identified as its final-policy origin.

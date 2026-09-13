@@ -330,3 +330,31 @@ Iteration 46 first put the run-less `ot5-wren` project on this URL at revision
 historical evidence of that switch. Iteration 48 then verified in-place restore
 preservation at that revision. For current Wren training/video checks, use the
 [Wren experiment probes](../wren-fresh/README.md#first-bounded-wren-gpu-experiment-iteration-49).
+
+### Iteration 92 — policy identity visible in the run panel (D4/D5)
+
+The persistent port 8765 service was restarted onto ADR-319, still serving
+`ot5-lark-copy85`. A fresh headless-browser visit selected
+`lark86-retry-video`; its policy-origin panel resolved `lark86-retry`, kind
+`final`, with declared source agreement. The new line is a labelled snapshot
+of retained-byte lookup, with **Check again** for changes to retained files.
+It is separate from the checkpoint list's declared telemetry source.
+
+Reproduction, against the persistent private address:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/wren-fresh/check_video.py \
+  "$HOME/cadex-projects/ot5-lark-copy85" lark86-retry-video \
+  "http://$(tailscale ip -4):8765/" --label origin92
+```
+
+Passed: eight components, recorded parameters and curves, displayed origin
+cross-checked against retained policy bytes, playback through three refreshes,
+hash-equal download (`1f53d43d1c18…`), historical `lark2-final` selection and
+return to current. The video decoded to 81 differing frames, 8.1 encoded
+seconds for 8.0 simulated seconds. Project-local receipts:
+`evidence/lark86-retry-video-origin92-check.json`, its `-browser.png`, and
+`evidence/origin92-panel.png`. This is a same-machine private-address check,
+not a second-device claim. The service stays running; no new experiment or
+project switch occurred. Browser fixtures separately prove conflicting source
+names are visibly flagged rather than substituted for the resolved origin.

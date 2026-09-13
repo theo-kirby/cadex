@@ -45,6 +45,7 @@ from typing import Any, Callable, Mapping
 from urllib.parse import unquote, urlsplit
 
 from .review_record import (
+    policy_lineage,
     PROJECT_ARTIFACT_KEYS,
     PROJECT_SCRIPT_FILENAME,
     PROJECT_SCRIPT_SCHEMA,
@@ -997,6 +998,12 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     self._not_found(f"run {rest[1]!r}")
                     return
                 self._send_json(record)
+                return
+            if rest[:1] == ["policy-origin"] and len(rest) == 2:
+                if project.run(rest[1]) is None:
+                    self._not_found(f"run {rest[1]!r}")
+                    return
+                self._send_json(policy_lineage(project.root, rest[1]))
                 return
             if rest == ["model", "accepted"]:
                 self._send_json(accepted_model(project.root))

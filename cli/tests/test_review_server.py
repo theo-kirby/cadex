@@ -1848,3 +1848,68 @@ def test_browser_draws_a_first_accepted_script_written_through_the_bridge_withou
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_browser_policy_origin_uses_bytes_and_exposes_conflicting_source(served, browser):
+    root, server = served
+    item = _checkpoint(root, 'first')
+    _telemetry(root, 2, state='done', checkpoints=[item])
+    playback = _playback_run(root, 'quince', source='first', revision=REVISION_A)
+    _rewrite_record(playback, policy={'sha256': item['sha256']})
+    page = browser.page(server.url)
+    page.evaluate('window.cadexReview.ready', await_promise=True)
+    page.click("#views li[data-run='quince']")
+    page.wait_for("document.getElementById('policy-origin').dataset.state === 'resolved'")
+    assert page.attribute('#policy-origin', 'data-run') == 'first'
+    assert page.attribute('#policy-origin', 'data-source-agrees') == 'true'
+    assert 'first · checkpoint · iteration 2' in page.text('#policy-origin')
+    # A changed declaration must not replace the byte-resolved origin.
+    _rewrite_record(playback, training={'requested': {'source_run': 'second'}, 'receipt': {}})
+    page.evaluate('window.cadexReview.refresh()', await_promise=True)
+    page.wait_for("document.getElementById('policy-origin').dataset.sourceAgrees === 'false'")
+    assert page.attribute('#policy-origin', 'data-run') == 'first'
+    assert page.attribute('#policy-origin', 'data-tone') == 'bad'
+    assert 'SOURCE-NAME DISAGREEMENT' in page.text('#policy-origin')
+    assert 'declared source: second' in page.text('#policy-origin')
+    assert page.text('#view-relation').startswith('HISTORICAL')
+    # Ordinary polls do not hash the files again; the labelled snapshot has
+    # an explicit refresh for a changed/missing retained file.
+    (root / 'runs/first/train' / item['path']).unlink()
+    page.evaluate('window.cadexReview.refresh()', await_promise=True)
+    assert page.attribute('#policy-origin', 'data-state') == 'resolved'
+    page.click('#check-policy-origin')
+    page.wait_for("document.getElementById('policy-origin').dataset.state === 'unresolved'")
+    assert 'no run in this project retains' in page.text('#policy-origin')
+    assert 'SOURCE-NAME DISAGREEMENT' not in page.text('#policy-origin')
+    # Final-policy identification needs no declared source or naming convention.
+    policy = _checkpoint(root, 'second', name='weights.bin', payload=b'other final bytes')
+    _rewrite_record(root / 'runs/second', policy={'sha256': policy['sha256']})
+    page.evaluate('window.cadexReview.refresh()', await_promise=True)
+    page.click("#views li[data-run='second']")
+    page.wait_for("document.getElementById('policy-origin').dataset.run === 'second'")
+    assert 'second · final' in page.text('#policy-origin')
+    assert page.attribute('#policy-origin', 'data-source-agrees') == 'null'
+    page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
+    assert page.attribute('#policy-origin', 'data-state') == 'unselected'
+    # An origin request finishing after selection changes cannot overwrite
+    # the accepted view; a visible request failure can be retried.
+    page.evaluate("""window.originFetch = window.fetch;
+      window.fetch = function(url, options) {
+        if (url.startsWith('/api/policy-origin/')) return new Promise(function(resolve, reject) {
+          window.rejectOrigin = reject;
+        });
+        return originFetch(url, options);
+      };""")
+    page.evaluate("window.cadexReview.select('second')", await_promise=True)
+    assert page.attribute('#policy-origin', 'data-state') == 'pending'
+    page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
+    page.evaluate("rejectOrigin(new Error('late failure'))")
+    assert page.attribute('#policy-origin', 'data-state') == 'unselected'
+    page.evaluate("window.cadexReview.select('second')", await_promise=True)
+    page.evaluate("rejectOrigin(new Error('injected unavailable'))")
+    page.wait_for("document.getElementById('policy-origin').dataset.state === 'failed'")
+    assert 'injected unavailable' in page.text('#policy-origin')
+    page.evaluate('window.fetch = originFetch')
+    page.click('#check-policy-origin')
+    page.wait_for("document.getElementById('policy-origin').dataset.state === 'resolved'")
+    assert page.attribute('#policy-origin', 'data-run') == 'second'

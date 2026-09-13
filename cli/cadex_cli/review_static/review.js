@@ -105,6 +105,37 @@
     return state.review.runs.filter(function (run) { return run.run === state.selected; })[0] || null;
   }
 
+  var originKey = null, originRequest = 0;
+  function renderPolicyOrigin(force) {
+    var run = selectedRun();
+    var key = JSON.stringify([state.selected, run && run.policy, run && run.training, run && run.status]);
+    if (!force && key === originKey) return;
+    originKey = key;
+    var request = ++originRequest, line = $('policy-origin');
+    line.dataset.run = ''; line.dataset.tone = ''; line.dataset.sourceAgrees = '';
+    $('check-policy-origin').hidden = !run;
+    if (!run) { line.dataset.state = 'unselected'; line.textContent = 'select a run'; return; }
+    line.dataset.state = 'pending'; line.textContent = 'checking retained policy bytes…';
+    fetchJson('/api/policy-origin/' + encodeURIComponent(run.run)).then(function (data) {
+      if (request !== originRequest) return;
+      var origin = data.origin;
+      line.dataset.state = origin ? 'resolved' : 'unresolved';
+      line.dataset.run = origin ? origin.run : '';
+      line.dataset.sourceAgrees = String(data.source_agrees);
+      line.dataset.tone = data.source_agrees === false ? 'bad' : '';
+      line.textContent = 'Checked on selection/request: ' + (origin
+        ? origin.run + ' · ' + origin.kind + (origin.iteration != null ? ' · iteration ' + origin.iteration : '')
+        : data.reason);
+      if (data.recorded_source_run) line.textContent += ' · declared source: ' + data.recorded_source_run;
+      if (data.source_agrees === false) line.textContent += ' · SOURCE-NAME DISAGREEMENT: retained bytes identify ' + origin.run;
+      line.textContent += ' · snapshot; Check again to re-read retained files';
+    }).catch(function (error) {
+      if (request !== originRequest) return;
+      line.dataset.state = 'failed'; line.dataset.tone = 'bad';
+      line.textContent = 'policy origin check failed: ' + error.message + ' · Check again to retry';
+    });
+  }
+
   function renderIdentity() {
     var accepted = state.review.accepted, run = selectedRun();
     var kind = $('view-kind'), relation = $('view-relation'), status = $('view-status');
@@ -391,12 +422,13 @@
     renderFreshness();
     if (!state.review) return;
     if (state.selected !== 'accepted' && !selectedRun()) state.selected = 'accepted';
-    renderHeader(); renderSidebar(); renderIdentity(); renderParams(); renderTraining(); renderArtifacts(); renderDocs();
+    renderHeader(); renderSidebar(); renderIdentity(); renderPolicyOrigin(); renderParams(); renderTraining(); renderArtifacts(); renderDocs();
   }
 
   function select(view) {
     state.following = false;
     state.selected = view;
+    originKey = null;
     render();
     return loadModel();
   }
@@ -426,6 +458,7 @@
   }
 
   function initialize() {
+    $('check-policy-origin').addEventListener('click', function () { renderPolicyOrigin(true); });
     state.viewer = window.CadexViewer.create($('viewer'));
     $('current-run').addEventListener('click', function () {
       if (!state.review) return;

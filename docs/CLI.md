@@ -519,8 +519,15 @@ record's `training.requested.source_run` is reported beside it with
 names one run and carries another's policy — shown, not reconciled), and
 `playbacks` lists every other run whose policy the same origin retains, with
 its kind, relation, status and video count in record order. It hashes
-`runs/*/train` once per call: a reader for checkers and reports, not a
-server route. Every run directory, `train/`, policy file and `progress.json`
+`runs/*/train` once per call. The dashboard's `GET /api/policy-origin/<run>`
+uses this reader on selection, recorded policy/training/status changes, or
+**Check again**, never on ordinary telemetry polls (ADR-319). Its run-panel
+snapshot shows the byte-resolved run, kind and checkpoint iteration, the
+declared source, and a highlighted **SOURCE-NAME DISAGREEMENT** when they
+conflict. Unresolved and failed checks are labelled; Check again retries or
+re-reads changed retained files. Selecting another view discards late replies.
+The checkpoint list still describes where its declared telemetry references
+resolve, separately from this policy identity check. Every run directory, `train/`, policy file and `progress.json`
 it touches is resolved against the **project root** before it is read or
 hashed (ADR-317): a `runs/<name>` that is itself a symlink out of the
 project would pass a check anchored at that already-escaped directory, so
