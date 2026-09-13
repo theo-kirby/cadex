@@ -393,9 +393,33 @@ def _accepted_staging(root: Path) -> tuple[Path | None, dict[str, Any] | None, s
     if not item["exists"]:
         return None, manifest, "accepted attempt's staging directory is not on disk"
     parts = Path(item["path"]).parts
-    if len(parts) < 2 or parts[0] != "script_artifacts" or parts[1] != revision:
+    if len(parts) < 2 or parts[0] != "script_artifacts":
+        return None, manifest, "accepted attempt's staging is not under script_artifacts"
+    if parts[1] != revision and not _attempt_is_the_accepted_one(root / item["path"], manifest):
         return None, manifest, "accepted attempt's staging does not belong to the accepted revision"
     return root / item["path"], manifest, None
+
+
+def _attempt_is_the_accepted_one(staging: Path, manifest: Mapping[str, Any]) -> bool:
+    """Whether a staging directory named for another revision still holds
+    the accepted attempt (ADR-311).
+
+    The engine stages every attempt under the revision it can compute
+    *before* the worker runs — over the stored parameter-spec cache — and
+    records the revision recomputed with the worker-collected specs as the
+    accepted one. On a project's first accepted script those differ, so the
+    directory name alone cannot say whether the attempt is the accepted one.
+    The manifest's own pin and the attempt's content digest can: the pin
+    must name the accepted revision, and the attempt's ``result.json`` must
+    carry the accepted digest. Anything less is still refused.
+    """
+
+    attempt = manifest.get("accepted_attempt") or {}
+    digest = manifest.get("accepted_digest")
+    if not digest or attempt.get("revision") != manifest.get("accepted_revision"):
+        return False
+    result = _load_json(staging / "result.json")
+    return bool(result) and result.get("digest") == digest
 
 
 def _sha256(path: Path) -> str:

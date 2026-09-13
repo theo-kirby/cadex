@@ -1002,3 +1002,20 @@ reward 214.9, 213.6 and 144.9. One training seed per design and standing or
 shuffling poses: not a gait or causal claim. All 465 files inventoried before
 the agent's change remain byte-identical. See
 [REVISION66.md](probes/wren-fresh/REVISION66.md) and ADR-308.
+
+
+## Third fresh project: Lark (iteration 80)
+
+The exhaustion-policy clean-project repeat began with `ot5-lark`, created and
+accepted by the product agent in one fresh `cadex -p` turn (revision
+`753cf0cc4600…`, twenty declared parameters, eight solids, one training task)
+with no Reed or Wren history, and put on the persistent port 8765 by a
+deliberate service switch. The repeat exposed the hidden dependency it was
+meant to find: a first accepted script is staged under the engine's pre-run
+revision, which the review client refused (fixed, ADR-311), and the agent's
+`write_script` retains no tessellation, so the fresh model needed the public
+`cadex render` before the dashboard could draw it (recorded, not yet fixed).
+The create/save/reopen probe then passed with identical components, meshes,
+placements, specs and viewport pixels before and after two in-place engine
+reopens. See [the Lark evidence](probes/lark-fresh/README.md). Training,
+recording and revision of Lark remain for later units.

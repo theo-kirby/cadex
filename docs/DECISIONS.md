@@ -23221,3 +23221,28 @@ Use the reader's existing existence/digest checks, preserving its recovery
 instructions and playback across unchanged polls. Browser regressions cover
 missing, truncated, restored and mixed files plus historical playback/download.
 No new dependency or retained-record format change.
+
+## ADR-311 — The review client trusts the accepted pin and digest over the staging directory's name (2026-09-13)
+
+[Cadex-new] The exhaustion-policy clean-project repeat (ADR-284) created a
+third fresh biped, `ot5-lark`, in one `cadex -p` turn and put it on the
+persistent operator dashboard. The page showed its identity and twenty
+specs but `no model to show: accepted attempt's staging does not belong to
+the accepted revision`. The attempt was genuine: the engine stages every
+attempt under the revision it computes *before* the worker runs, over the
+stored parameter-spec cache, and records the revision recomputed with the
+worker-collected specs as the accepted one (`CadexScriptedRuntime`). On a
+project's first accepted script those differ, so the directory name is not
+evidence of anything; the store's own pin (`accepted_attempt`, never
+garbage-collected) already tolerates it. Wren had the same shape at
+creation and a later public rebuild hid it — the hidden dependency on the
+first fixture the repeat was meant to expose. The reader now accepts a
+staging directory named for another revision only when the manifest's pin
+names the accepted revision **and** the attempt's `result.json` carries the
+accepted digest; anything less is still refused, with a regression that
+failed on the old reader. A second defect is recorded, not fixed here: the
+agent's `write_script` omits `display`, so a freshly created project has no
+tessellation until a public rebuild republishes the accepted attempt.
+`ot5-lark` received that through `cadex render` at unchanged revision and
+digest, and the receipt records all three states. No dependency, protocol,
+payload or engine change.

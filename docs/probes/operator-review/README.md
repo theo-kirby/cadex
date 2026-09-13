@@ -5,7 +5,21 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Wren lifecycle report](../wren-fresh/LIFECYCLE.md) links D1–D11 evidence, the design
 comparisons and their limits, and the current persistent-browser check.
 
-The shared private-network dashboard on port 8765 serves **`ot5-wren-copy54`**,
+The shared private-network dashboard on port 8765 now serves **`ot5-lark`**,
+the third fresh product-agent biped, at accepted revision **`753cf0cc4600…`**,
+digest `3b704a3fc1c4…`, with **no runs yet** (ACCEPTED NOW is the default
+view). Iteration 80 created it in one `cadex -p` turn, switched the service
+from `ot5-wren-copy54` deliberately, fixed the reader's refusal of a first
+accepted attempt (ADR-311, one service restart with no trainer running),
+gave the design its tessellation through the public `cadex render`, and
+proved save/reopen on the persistent URL:
+[Lark creation and reopen evidence](../lark-fresh/README.md),
+[compact receipt](../lark-fresh/evidence.json). Training, videos and the
+design revision follow in later units. The Wren copy is preserved unchanged
+(2,392 files byte-identical across this iteration) and can be served again
+with the switch command below.
+
+Until iteration 80 the same service served **`ot5-wren-copy54`**,
 with **`wren79-final` selected by default**, playback revision **`0d78fae96c22…`**,
 on the product agent's 90 mm design. Iteration 79 completed its 240-update GPU
 repeat and verified checkpoint and final videos, including full decode and
@@ -152,7 +166,7 @@ checkout, the detached command is:
 ```bash
 systemd-run --user --unit=cadex-operator-review --property=Restart=on-failure \
   --working-directory="$PWD" "$PWD/cadex" review \
-  --project "$HOME/cadex-projects/ot5-wren-copy54" \
+  --project "$HOME/cadex-projects/ot5-lark" \
   --host "$(tailscale ip -4)" --port 8765
 ```
 

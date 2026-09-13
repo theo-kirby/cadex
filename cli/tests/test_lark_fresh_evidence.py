@@ -1,0 +1,157 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""The committed third-fresh-project create/save/reopen receipt stays
+consistent with its claims.
+
+``docs/probes/lark-fresh/create_reopen.py`` takes a project that one
+``cadex -p`` turn created and accepted, records what the persistent operator
+server and a headless browser show for it, reopens it in place through two
+fresh engine processes, and checks the open page after a poll and a fresh
+visit against that record. ``evidence.json`` is that receipt for
+``ot5-lark``, committed without its images. The project lives outside this
+checkout, so these tests hold the receipt to itself and to the documents that
+cite it: a fresh accepted design with no runs and no reference to an earlier
+project, every declared parameter and component on the page, identical
+served meshes, placements and viewer statistics before and after the reopen,
+and the earlier projects untouched. Nothing here needs a browser, an engine
+or the project.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+from conftest import REPO_ROOT
+
+PROBE = REPO_ROOT / "docs" / "probes" / "lark-fresh"
+HEX64 = r"[0-9a-f]{64}"
+DECLARED = ("torso_w", "torso_d", "torso_h", "thigh_len", "shin_len", "limb_w",
+            "foot_len", "foot_w", "foot_t", "hip_spacing", "printed_density", "policy_on")
+
+
+@pytest.fixture(scope="module")
+def receipt() -> dict:
+    return json.loads((PROBE / "evidence.json").read_text())
+
+
+def test_one_fresh_agent_turn_created_and_accepted_the_project(receipt):
+    assert receipt["project"] == "ot5-lark"
+    assert re.fullmatch(HEX64, receipt["accepted_revision"])
+    assert re.fullmatch(HEX64, receipt["accepted_digest"])
+    creation = receipt["creation"]
+    assert creation["exit"] == 0 and creation["session_id"]
+    assert creation["finished"] > creation["started"]
+    assert creation["foreign_references_in_script"] is False
+    assert creation["runs"] == 0 and creation["policies"] == 0
+    assert re.fullmatch(HEX64, creation["prompt_sha256"])
+    state = receipt["page_state"]
+    assert state["selected"] == "accepted" and state["runs"] == []
+    assert not state["stale"] and state["error"] is None
+
+
+def test_every_declared_parameter_reached_the_page(receipt):
+    values = receipt["param_values"]
+    assert set(receipt["declared_params"]) >= set(DECLARED)
+    assert values["policy_on"] == 0
+    for view in ("before_reopen", "after_reopen_poll", "after_reopen_fresh_visit"):
+        assert receipt[view]["params_shown"] == len(values) >= 12
+
+
+def test_components_and_meshes_are_the_same_before_and_after_the_reopen(receipt):
+    before = receipt["before_reopen"]
+    served = receipt["served_model"]
+    assert served["revision"] == receipt["accepted_revision"]
+    assert served["digest"] == receipt["accepted_digest"]
+    assert sorted(before["components"]) == sorted(served["components"])
+    assert len(served["components"]) >= 7
+    for component in served["components"].values():
+        assert re.fullmatch(HEX64, component["mesh_sha256"])
+        assert len(component["placement"]["position_mm"]) == 3
+        assert len(component["placement"]["rotation_xyzw"]) == 4
+    assert before["stats"]["components"] == len(served["components"])
+    assert before["stats"]["triangles"] > 0 and before["drawn_pixels"] > 1000
+    assert before["stats"]["style"] == "cadex-prototype-light-v1"
+    for view in ("after_reopen_poll", "after_reopen_fresh_visit"):
+        after = receipt[view]
+        assert after["components"] == before["components"]
+        assert after["stats"] == before["stats"]
+        assert after["decisions"] == before["decisions"]
+        assert after["documents"] == before["documents"]
+        assert after["drawn_pixels"] > 1000
+    assert receipt["served_model_unchanged_after_reopen"] is True
+    assert receipt["viewport_png_identical"] is True
+
+
+def test_two_in_place_engine_reopens_kept_the_accepted_identity(receipt):
+    assert receipt["engine_reopen_scope"] == "in place; retained accepted artifacts byte-checked"
+    opens = receipt["engine_opens"]
+    assert len(opens) == 2 and opens[0]["pid"] != opens[1]["pid"]
+    assert all(item["matches_accepted"] is True for item in opens)
+    assert receipt["retained_attempt_files"] > 0
+    changed = receipt["files_changed_by_reopen"]
+    assert changed["accepted_attempt_files"] == 0 and changed["source_history_document_files"] == 0
+    assert receipt["staging_dir_is_accepted_revision"] is True
+    assert receipt["retained_files"] > receipt["retained_attempt_files"]
+
+
+def test_the_model_was_orbited_over_the_private_address(receipt):
+    assert receipt["url_host"].endswith(":8765")
+    assert not receipt["url_host"].startswith(("127.", "localhost", "[::1]"))
+    assert receipt["private_address_same_machine"] is True
+    orbit = receipt["orbit"]
+    assert orbit["after_drag"]["yaw"] != orbit["default"]["yaw"]
+    assert orbit["after_drag"]["distance"] == orbit["default"]["distance"]
+    assert orbit["after_zoom"]["distance"] < orbit["after_drag"]["distance"]
+    assert set(receipt["screenshots"]) == {"before-reopen-accepted.png", "before-reopen-page.png",
+                                           "after-reopen-accepted.png", "after-reopen-page.png", "pre-fix-page.png"}
+    assert receipt["screenshots"]["before-reopen-accepted.png"] == receipt["screenshots"]["after-reopen-accepted.png"]
+
+
+def test_the_dashboard_defects_after_creation_are_recorded_with_their_remedy(receipt):
+    after = receipt["after_creation"]
+    pre = after["pre-fix"]
+    assert pre["api_model"]["available"] is False
+    assert pre["api_model"]["reason"] == "accepted attempt's staging does not belong to the accepted revision"
+    assert pre["staging_dir_revision"] != receipt["accepted_revision"]
+    assert pre["attempt_result_digest"] == receipt["accepted_digest"]
+    assert pre["staging_has_display"] is False
+    assert pre["page"]["model_state"] == "missing" and pre["page"]["components_listed"] == 0
+    assert pre["page"]["params_shown"] == len(receipt["param_values"])
+    fixed = after["post-fix-pre-render"]
+    assert fixed["available"] is False and fixed["reason"] == "accepted attempt retained no tessellation"
+    render = after["render"]
+    assert render["ok"] and render["exit"] == 0
+    assert render["accepted_revision_unchanged"] and render["digest_unchanged"]
+
+
+def test_the_earlier_projects_were_intact(receipt):
+    intact = receipt["intact"]
+    assert set(intact) >= {"ot5-wren-copy54", "ot5-wren", "ot5-biped"}
+    assert all(item["unchanged"] is True and item["files"] > 0 for item in intact.values())
+
+
+def test_documents_cite_the_receipt(receipt):
+    readme = (PROBE / "README.md").read_text()
+    operator = (REPO_ROOT / "docs" / "probes" / "operator-review" / "README.md").read_text()
+    review = (REPO_ROOT / "docs" / "HEADLESS-BIPED-REVIEW.md").read_text()
+    short = receipt["accepted_revision"][:12]
+    for text in (readme, operator, review):
+        assert "ot5-lark" in text and short in text
+
+
+def test_the_probe_rejects_scripts_that_name_an_earlier_project():
+    import ast
+
+    tree = ast.parse((PROBE / "create_reopen.py").read_text())
+    node = next(n for n in tree.body if isinstance(n, ast.Assign) and n.targets[0].id == "FOREIGN")
+    foreign = re.compile(ast.literal_eval(node.value.args[0]), re.IGNORECASE)
+    assert foreign.search("link('ot5-wren', ...)")
+    assert foreign.search("# ported from Reed")
+    assert foreign.search("mg_legs") and foreign.search("cdx-rl/checkpoints")
+    assert not foreign.search("lark = assembly.assemble(...)  # torso, thigh, shin, foot")
+    assert not foreign.search('assembly.policy(walk_task, weights="walk.cxpolicy")')

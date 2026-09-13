@@ -312,12 +312,31 @@ def test_the_accepted_model_comes_from_the_accepted_attempt_only(served) -> None
     assert status == 200 and headers["content-type"] == "model/stl"
     assert struct.unpack("<I", body[80:84])[0] == 12 and len(body) == 84 + 12 * 50
     assert _get(server.url + "mesh/accepted/leg.stl")[0] == 404
-    # A staging directory under another revision is never shown as the accepted model.
-    _stage_accepted(root, REVISION_B, staging_revision=REVISION_A)
+    # A staging directory under another revision is shown as the accepted model
+    # only when the manifest's pin names the accepted revision AND the attempt's
+    # own result carries the accepted digest (ADR-311): a first accepted script
+    # is staged under the engine's pre-run revision, which lacks the specs the
+    # worker later collected. Without that proof it is still refused.
+    staging = _stage_accepted(root, REVISION_B, staging_revision=REVISION_A)
     model = _json(server.url + "api/model/accepted")
     assert model["available"] is False
     assert "does not belong to the accepted revision" in model["reason"]
     assert _get(server.url + "mesh/accepted/torso.stl")[0] == 404
+    result = json.loads((staging / "result.json").read_text())
+    result["digest"] = "e" * 64
+    (staging / "result.json").write_text(json.dumps(result))
+    assert _json(server.url + "api/model/accepted")["available"] is False
+    result["digest"] = "d" * 64  # the manifest's accepted_digest
+    (staging / "result.json").write_text(json.dumps(result))
+    model = _json(server.url + "api/model/accepted")
+    assert model["available"] is True and model["revision"] == REVISION_B
+    assert [c["name"] for c in model["components"]] == ["body"]
+    assert _get(server.url + "mesh/accepted/torso.stl")[0] == 200
+    manifest = json.loads((root / "script.json").read_text())
+    manifest["accepted_attempt"]["revision"] = REVISION_A  # a pin naming another revision
+    (root / "script.json").write_text(json.dumps(manifest))
+    model = _json(server.url + "api/model/accepted")
+    assert model["available"] is False and "does not belong" in model["reason"]
 
 
 def test_tessellation_to_stl_writes_every_triangle_with_a_unit_normal() -> None:

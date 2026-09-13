@@ -1457,7 +1457,18 @@ What the page shows, and where each thing comes from:
   This is the second and last read the review client makes of the
   project store's layout (ADR-285 documented the first, `script.json`);
   a staging directory that does not lie under the accepted revision is
-  refused rather than shown as the accepted model.
+  refused rather than shown as the accepted model — **unless** the
+  manifest's `accepted_attempt` pin names the accepted revision *and* the
+  attempt's own `result.json` carries the accepted digest (ADR-311). That
+  is the shape of every project's **first** accepted script: the engine
+  stages an attempt under the revision it can compute before the worker
+  runs, over an empty parameter-spec cache, and records the revision
+  recomputed with the collected specs as the accepted one. Note that the
+  agent's `write_script` never asks for tessellation (`display` is not in
+  its tool schemas), so a project straight out of `cadex -p` reports
+  `accepted attempt retained no tessellation` until a public rebuild with
+  display — `cadex render`, `cadex params` — republishes the accepted
+  attempt; the review client never rebuilds anything itself.
 - **A run**: everything from its `run.json` (ADR-285) — identity, params
   and specs *as recorded*, training request and receipt, rollout seed and
   reward, artifacts with each one's status, the document snapshot — and
