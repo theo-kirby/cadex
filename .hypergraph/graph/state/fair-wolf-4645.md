@@ -19,7 +19,7 @@ Status: working
 
 Charter criterion: match the read-only sibling `neural-whoop` reference (fogged grey prototype-grid floor, seamless fade, sky gradient, lighting/materials, grounded soft shadows, antialiasing, camera quality), scaled with subject and framing; truthful CAD dimensions, placements and motion; licensing honoured and the renderer self-contained. Generic grid or pixel coverage alone cannot establish similarity. Declared target `gap-d11-viewport-videos-match-neural` [rec: modest-dawn-3706].
 
-Reconcile judgement: `working`. The comparison has now been repeated on the current design of each fresh biped (Reed, Wren, Lark) with byte-identical viewport/capture images and decoded-video error under 1.7/255 each time. Only the checkbox edit is owner-reserved [rec: lucky-bramble-8274]. Remaining limits: all observations are same-machine private-address; no light-themed reference clip ships, so comparison uses the reference renderer on Cadex geometry; shadow frustum/bias differ deliberately [rec: soft-aspen-5095] [rec: windy-walrus-6950].
+Reconcile judgement: `working`. The comparison has now been repeated on the current design of each fresh biped (Reed, Wren, Lark) with byte-identical viewport/capture images and decoded-video error under 1.7/255 each time. Only the checkbox edit is owner-reserved [rec: lucky-bramble-8274]. Remaining limits: all observations are same-machine private-address; no light-themed reference clip ships, so comparison uses the reference renderer on Cadex geometry; shadow frustum/bias differ deliberately [rec: soft-aspen-5095] [rec: windy-walrus-6950]. **The owner ticked D11 in the charter on 2026-09-13 after run ot5 stopped at iteration 111; the criterion is closed for ot5 with its evidence unchanged, and ot6's charter (ADR-328) supersedes it [rec: patient-pond-3886].**
 
 ## Negative knowledge
 
@@ -37,3 +37,4 @@ Reconcile judgement: `working`. The comparison has now been repeated on the curr
 - kind-oak-1484 — backfilled persistent Wren D11 comparison, reference camera restaging and shipped reference frame, with verification limits
 - terse-walrus-5414 — current 90 mm matched-camera parity, identified reference comparison and orbit/zoom assessment close the current-design evidence gap
 - windy-walrus-6950 — current Lark `lark86-retry-video` comparison on the persistent URL: byte-identical PNGs, decoded RGB MAE 1.428984/255, close/wide/orbit inspection, playback/download verified
+- patient-pond-3886 — the owner ticked D11 on 2026-09-13 after run ot5 stopped at iteration 111; evidence unchanged
