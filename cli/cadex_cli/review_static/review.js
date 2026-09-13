@@ -199,9 +199,18 @@
       }
       panel.appendChild(block);
     });
+    var source = data.checkpoint_source || {state: 'none', run: null, reason: ''};
+    var sourceLine = el('p', {id: 'checkpoint-source', 'data-state': source.state, 'data-run': source.run || ''});
+    if (source.state === 'none') sourceLine.textContent = 'Checkpoints: this run\'s own train/ directory';
+    else if (source.state === 'resolved') sourceLine.textContent = 'Checkpoints: this run\'s train/, then recorded training run ' + source.run;
+    else sourceLine.textContent = 'Checkpoints: recorded training run ' + source.run + ' ' + source.state + ' — ' + source.reason;
+    panel.appendChild(sourceLine);
     var checkpoints = el('ul', {id: 'checkpoints'});
     (data.checkpoints || []).forEach(function (item) {
-      checkpoints.appendChild(el('li', {'data-status': item.status, text: item.path + ' · iteration ' + fmt(item.iteration) + ' · ' + item.status + ' · sha256 ' + item.sha256}));
+      var where = item.source == null ? (item.status === 'refused' ? '' : ' · not found in this project')
+        : (item.source === 'run' ? '' : ' · from training run ' + item.source);
+      checkpoints.appendChild(el('li', {'data-status': item.status, 'data-source': item.source == null ? '' : item.source,
+        text: item.path + ' · iteration ' + fmt(item.iteration) + ' · ' + item.status + where + ' · sha256 ' + item.sha256}));
     });
     if (!(data.checkpoints || []).length) checkpoints.appendChild(el('li', {text: 'checkpoints: none reported'}));
     panel.appendChild(checkpoints);

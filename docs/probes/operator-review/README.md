@@ -11,6 +11,18 @@ completed with exit 0; no experiment training remains active. Its checkpoint
 engine-verified 8-second seed-0 video; `wren57-retry` (110 mm) is the
 historical baseline the seed 0–4 comparison uses.
 
+Iteration 67 restarted this same service once, with no trainer running, to
+load ADR-309: a playback run's checkpoints now resolve through the training
+run its record names. On the persistent URL, `wren66-final` (default, CURRENT)
+lists twelve checkpoints `retained · from training run wren66` where the
+previous page said `missing`; `wren66-checkpoint20` (HISTORICAL) resolves the
+same provenance but its frozen snapshot, copied at iteration 18, lists no
+checkpoints and is labelled `stale` rather than invented; `wren57-retry`
+(HISTORICAL, trained in place) keeps its own-run checkpoint. Each check
+returned to the current run. Project, default run and identity above are
+unchanged; no experiment started and no project switch occurred.
+[Probe and evidence](../wren-fresh/CHECKPOINT-PROVENANCE.md).
+
 Before iteration 66 the page selected **`wren57-retry`**, accepted playback
 revision **`79f86c69bfc3…`** and 110 mm feet. Its guarded GPU retry completed
 12 updates. Iteration 60 engine-verified its saved

@@ -23190,3 +23190,22 @@ retry keeps two, and `report_revision.py` reads authorship from the run's traini
 provenance. Results are survival and displacement on one training seed per
 design, not a gait or causal claim. `docs/probes/wren-fresh/REVISION66.md`;
 receipt `revision66-evidence.json`, test-guarded. No new dependency.
+
+## ADR-309 — Playback checkpoints resolve through recorded training-run provenance (2026-09-13)
+
+[Cadex-new] A checkpoint or final-policy playback run copies the trainer's
+progress snapshot beside its rollout, so its telemetry listed every checkpoint
+as `missing`: the bytes live under the training run's `train/`, which the
+playback record already names as `training.requested.source_run`. The review
+server now resolves each checkpoint in the run's own `train/` first, then
+through that recorded training run's `train/` inside the same project, and
+reports where it was found. Provenance is an explicit state — `none`,
+`resolved`, `missing` (the named training run is not in this project) or
+`refused` (not a bare run name, or `runs/<name>` escapes the project, by `..`
+or by symlink) — with the next CLI action in the reason. A copy that left its
+training run behind says so rather than reaching the original; the digest
+check applies wherever the bytes are found. API and browser regressions cover
+current and historical playbacks, the four states and copy isolation. The
+persistent Wren dashboard was restarted once, with no trainer running, to load
+this: `wren66-final` shows twelve checkpoints retained through `wren66`. No
+new dependency; no CLI exit semantics changed.

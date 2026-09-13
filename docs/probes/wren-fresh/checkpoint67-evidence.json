@@ -1,0 +1,63 @@
+{
+  "schema": "cadex-checkpoint-provenance-evidence-v1",
+  "project": "ot5-wren-copy54",
+  "adr": "ADR-309",
+  "persistent_url": "http://<tailscale ip>:8765/ (same machine, private address)",
+  "runs": {
+    "wren66-final": {
+      "default_view": "RUN wren66-final",
+      "relation": "CURRENT \u2014 this run's revision is the accepted revision now",
+      "revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+      "telemetry_state": "done",
+      "checkpoint_source": {
+        "state": "resolved",
+        "run": "wren66"
+      },
+      "checkpoints_reported": true,
+      "snapshot_iteration": "iteration: 239",
+      "returned_to": "RUN wren66-final",
+      "checkpoint_statuses": [
+        [
+          "retained",
+          "wren66"
+        ]
+      ],
+      "checkpoint_count": 12
+    },
+    "wren66-checkpoint20": {
+      "default_view": "RUN wren66-final",
+      "relation": "HISTORICAL \u2014 recorded at d4a0e73df567, accepted now is de9692bd4ee5",
+      "revision": "d4a0e73df5676b1703ab66ea71e163406e7613677d9d12fe934b8779ab303777",
+      "telemetry_state": "stale",
+      "checkpoint_source": {
+        "state": "resolved",
+        "run": "wren66"
+      },
+      "checkpoints_reported": false,
+      "snapshot_iteration": "iteration: 18",
+      "returned_to": "RUN wren66-final",
+      "checkpoint_statuses": [],
+      "checkpoint_count": 0
+    },
+    "wren57-retry": {
+      "default_view": "RUN wren66-final",
+      "relation": "HISTORICAL \u2014 recorded at 79f86c69bfc3, accepted now is de9692bd4ee5",
+      "revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+      "telemetry_state": "done",
+      "checkpoint_source": {
+        "state": "none",
+        "run": ""
+      },
+      "checkpoints_reported": true,
+      "snapshot_iteration": "iteration: 11",
+      "returned_to": "RUN wren66-final",
+      "checkpoint_statuses": [
+        [
+          "retained",
+          "run"
+        ]
+      ],
+      "checkpoint_count": 1
+    }
+  }
+}

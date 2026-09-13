@@ -604,22 +604,72 @@ def training_telemetry(root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(checkpoints, list):
         result.update(state="invalid", reason="invalid checkpoint list")
         return result
+    # Where the checkpoint bytes may be: this run's own train/ first, then the
+    # training run its record names (a playback run copies the snapshot but
+    # not the checkpoints). Both stay inside this project's runs/.
+    bases: list[tuple[str, Path]] = [("run", run_dir / "train")]
+    source = _checkpoint_source(root, record)
+    result["checkpoint_source"] = source
+    if source["state"] == "resolved":
+        bases.append((source["run"], root / source["path"]))
     for item in checkpoints[:512]:
         if not isinstance(item, dict):
             continue
         name = item.get("path")
-        ref = resolve_reference(run_dir, "train/" + name) if isinstance(name, str) and Path(name).name == name else {"error": "invalid checkpoint path", "exists": False}
-        status = "refused" if ref["error"] else "missing"
-        if ref["exists"] and not ref["error"]:
-            checkpoint = run_dir / ref["path"]
-            try:
-                status = ("retained" if checkpoint.is_file() and checkpoint.stat().st_size <= 4 * 1024 * 1024
-                          and _sha256(checkpoint) == item.get("sha256") else "digest mismatch")
-            except OSError:
-                status = "missing"
+        status, found = "missing", None
+        if not (isinstance(name, str) and name and Path(name).name == name):
+            status = "refused"
+        else:
+            for label, base in bases:
+                ref = resolve_reference(base, name)
+                if ref["error"]:
+                    status = "refused"
+                    continue
+                if not ref["exists"]:
+                    continue
+                checkpoint = base / ref["path"]
+                try:
+                    status = ("retained" if checkpoint.is_file() and checkpoint.stat().st_size <= 4 * 1024 * 1024
+                              and _sha256(checkpoint) == item.get("sha256") else "digest mismatch")
+                except OSError:
+                    status = "missing"
+                found = label
+                break
         result["checkpoints"].append({"path": name, "iteration": item.get("iteration"),
-                                      "sha256": item.get("sha256"), "status": status})
+                                      "sha256": item.get("sha256"), "status": status,
+                                      "source": found})
     return result
+
+
+def _checkpoint_source(root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
+    """The training run a playback record names, resolved inside this project.
+
+    ``state`` is ``none`` when the record names no source run (the run's own
+    ``train/`` is the only place), ``resolved`` when ``runs/<source>/train``
+    exists here, ``missing`` when the named run is not in this project, and
+    ``refused`` when the name is not a bare run name or escapes ``runs/``.
+    A copy that left its training run behind says so instead of borrowing
+    from wherever the original lives.
+    """
+
+    requested = (record.get("training") or {}).get("requested") or {}
+    name = requested.get("source_run") if isinstance(requested, Mapping) else None
+    if not name:
+        return {"state": "none", "run": None, "path": None,
+                "reason": "no training run recorded; checkpoints resolve in this run only"}
+    if not isinstance(name, str) or Path(name).name != name or name in (".", ".."):
+        return {"state": "refused", "run": str(name)[:128], "path": None,
+                "reason": "recorded training run name is not a bare run name"}
+    ref = resolve_reference(root, f"{RUNS_DIRNAME}/{name}/train")
+    if ref["error"]:
+        return {"state": "refused", "run": name, "path": None, "reason": ref["error"]}
+    if not ref["exists"] or not (root / ref["path"]).is_dir():
+        return {"state": "missing", "run": name, "path": None,
+                "reason": f"training run {name} is not in this project; its checkpoints "
+                          "cannot be shown here. Copy the project with runs/" + name +
+                          "/train, or start a new cadex walk --out runs/<new-name>"}
+    return {"state": "resolved", "run": name, "path": ref["path"],
+            "reason": f"checkpoints resolved through recorded training run {name}"}
 
 
 class ReviewProject:

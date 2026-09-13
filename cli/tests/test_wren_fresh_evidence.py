@@ -216,3 +216,23 @@ def test_agent_revision_comparison_retains_both_designs_on_the_declared_seeds():
     assert runs['wren66-final']['browser']['fresh_selection'] == 'RUN wren66-final'
     # ...and while training was active, return-to-current went to the live run.
     assert runs['wren66-checkpoint20']['browser']['returned_to_current'] == 'RUN wren66'
+
+
+def test_checkpoint_provenance_receipt_matches_the_declared_runs():
+    """ADR-309's persistent-URL receipt: the final playback resolves every
+    checkpoint through its recorded training run, the checkpoint playback's
+    frozen snapshot lists none, and the in-place retry keeps its own."""
+
+    receipt = json.loads((PROBE / 'checkpoint67-evidence.json').read_text())
+    assert receipt['schema'] == 'cadex-checkpoint-provenance-evidence-v1' and receipt['project'] == 'ot5-wren-copy54'
+    runs = receipt['runs']
+    final, checkpoint, retry = runs['wren66-final'], runs['wren66-checkpoint20'], runs['wren57-retry']
+    assert final['default_view'] == 'RUN wren66-final' and final['relation'].startswith('CURRENT')
+    assert final['checkpoint_source'] == {'state': 'resolved', 'run': 'wren66'}
+    assert final['checkpoint_statuses'] == [['retained', 'wren66']] and final['checkpoint_count'] == 12
+    assert checkpoint['relation'].startswith('HISTORICAL') and checkpoint['telemetry_state'] == 'stale'
+    assert checkpoint['checkpoint_source'] == {'state': 'resolved', 'run': 'wren66'}
+    assert checkpoint['checkpoints_reported'] is False and checkpoint['checkpoint_count'] == 0
+    assert retry['relation'].startswith('HISTORICAL') and retry['checkpoint_source'] == {'state': 'none', 'run': ''}
+    assert retry['checkpoint_statuses'] == [['retained', 'run']]
+    assert all(run['returned_to'] == 'RUN wren66-final' for run in runs.values())

@@ -1416,6 +1416,18 @@ The snapshots and checkpoints belong to the run: retain and copy its whole
 them. Older trainers may lack loss/episode histories; the page labels these
 missing rather than inferring them from final metrics.
 
+A playback run — a rollout of a checkpoint or final policy whose record names
+the training run it came from as `training.requested.source_run` — copies the
+training snapshot beside its own rollout but not the checkpoint files. Its
+checkpoints resolve in its own `train/` first, then through that recorded
+training run's `train/` inside the same project (ADR-309); each entry says
+where it was found. The page's checkpoint line names the provenance state:
+`none` (no training run recorded), `resolved`, `missing` (the named training
+run is not in this project, as after a copy that left it behind) or `refused`
+(the recorded name is not a bare run name, or `runs/<name>` escapes the
+project, including by symlink). A copy never reaches the original project's
+checkpoints; it says the training run is missing and names the next command.
+
 Missing, invalid, failed and stale telemetry are explicit. A starting/training
 snapshot older than 30 seconds is stale even when the server is reachable;
 this includes slow compilation and does not establish that the process died.

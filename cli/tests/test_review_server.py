@@ -660,7 +660,7 @@ def test_browser_unaccepted_project_reports_missing_model_and_next_cli_action(tm
     assert {p.name: p.read_bytes() for p in root.iterdir()} == before
 
 
-def _telemetry(root, iteration=0, **changes):
+def _telemetry(root, iteration=0, run="first", **changes):
     data = {"schema": "cadex-training-progress-v1", "state": "training",
             "updated_at": time.time(), "task_sha256": "t" * 64,
             "iteration": iteration, "total": 10, "reward_per_step": iteration + 0.5,
@@ -670,7 +670,7 @@ def _telemetry(root, iteration=0, **changes):
             "episode_steps_curve": [[i, 12+i] for i in range(iteration + 1)],
             "checkpoints": []}
     data.update(changes)
-    path = root / "runs/first/train/progress.json"
+    path = root / "runs" / run / "train/progress.json"
     temporary = path.with_suffix('.partial')
     temporary.write_text(json.dumps(data))
     temporary.replace(path)
@@ -693,6 +693,145 @@ def test_telemetry_refuses_escape_mismatch_and_invalid_histories(served):
     path.symlink_to(root / 'script.json')
     assert read()['state'] == 'missing'
     assert 'refused' in read()['reason']
+
+
+def _checkpoint(root, run, name="iter-2.cxpolicy", payload=b"fixture checkpoint, not a verified policy"):
+    """A checkpoint file in ``runs/<run>/train`` and its telemetry entry."""
+
+    path = root / "runs" / run / "train" / name
+    path.write_bytes(payload)
+    return {"path": name, "iteration": 2, "sha256": hashlib.sha256(payload).hexdigest()}
+
+
+def _playback_run(root, name, *, source, revision):
+    """A playback run of ``source``'s policy: it copies the training snapshot
+    beside its own rollout and records the training run it came from, the
+    way the fresh biped's checkpoint/final playbacks do. The checkpoint bytes
+    stay with the training run."""
+
+    run = _mesh_run(root, name, revision=revision)
+    shutil.copyfile(root / "runs" / source / "train/progress.json", run / "train/progress.json")
+    _rewrite_record(run, training={"requested": {"source_run": source, "checkpoint": "iter-2.cxpolicy"},
+                                   "receipt": {}})
+    return run
+
+
+def test_playback_checkpoints_resolve_through_the_recorded_training_run(served, tmp_path):
+    """A playback run shows its training run's checkpoints, through the
+    provenance its own record names and only inside this project; every way
+    that fails is a distinct, explicit state rather than a bare ``missing``."""
+
+    root, server = served
+    item = _checkpoint(root, "first")
+    _telemetry(root, 2, state="done", checkpoints=[item])
+    _playback_run(root, "first-final", source="first", revision=REVISION_A)
+
+    def telemetry(url=server.url, run="first-final"):
+        return next(r for r in _json(url + "api/project")["runs"] if r["run"] == run)["telemetry"]
+
+    # The training run itself: its own train/, no provenance needed.
+    own = telemetry(run="first")
+    assert own["checkpoint_source"]["state"] == "none"
+    assert [(c["status"], c["source"]) for c in own["checkpoints"]] == [("retained", "run")]
+    # The playback: resolved through runs/first/train, named as such.
+    data = telemetry()
+    assert data["state"] == "done"
+    assert data["checkpoint_source"] == {"state": "resolved", "run": "first", "path": "runs/first/train",
+                                         "reason": "checkpoints resolved through recorded training run first"}
+    assert [(c["status"], c["source"]) for c in data["checkpoints"]] == [("retained", "first")]
+    # A copy of the bytes beside the playback wins, and says it is the run's own.
+    shutil.copyfile(root / "runs/first/train/iter-2.cxpolicy", root / "runs/first-final/train/iter-2.cxpolicy")
+    assert [(c["status"], c["source"]) for c in telemetry()["checkpoints"]] == [("retained", "run")]
+    (root / "runs/first-final/train/iter-2.cxpolicy").unlink()
+    # Integrity is checked wherever the bytes were found.
+    (root / "runs/first/train/iter-2.cxpolicy").write_bytes(b"changed")
+    assert [(c["status"], c["source"]) for c in telemetry()["checkpoints"]] == [("digest mismatch", "first")]
+    (root / "runs/first/train/iter-2.cxpolicy").unlink()
+    assert [(c["status"], c["source"]) for c in telemetry()["checkpoints"]] == [("missing", None)]
+    assert telemetry()["checkpoint_source"]["state"] == "resolved"
+    # A provenance that is not a bare run name is refused, never followed.
+    playback = root / "runs/first-final"
+    for bad in ("../../first", "first/train", "/", "."):
+        _rewrite_record(playback, training={"requested": {"source_run": bad}, "receipt": {}})
+        data = telemetry()
+        assert data["checkpoint_source"]["state"] == "refused", bad
+        assert [(c["status"], c["source"]) for c in data["checkpoints"]] == [("missing", None)]
+    # A training run that is not in this project is a named, explained absence.
+    _rewrite_record(playback, training={"requested": {"source_run": "gone"}, "receipt": {}})
+    data = telemetry()
+    assert data["checkpoint_source"]["state"] == "missing" and data["checkpoint_source"]["run"] == "gone"
+    assert "not in this project" in data["checkpoint_source"]["reason"]
+    assert "cadex walk" in data["checkpoint_source"]["reason"]
+    assert [(c["status"], c["source"]) for c in data["checkpoints"]] == [("missing", None)]
+    # Copy isolation: a copy that left runs/first behind cannot reach the
+    # original's checkpoints, by name or by symlink, and the original is unmoved.
+    _rewrite_record(playback, training={"requested": {"source_run": "first"}, "receipt": {}})
+    _checkpoint(root, "first")
+    copy = tmp_path / "copy"
+    shutil.copytree(root, copy, ignore=lambda d, names: ["first"] if Path(d) == root / "runs" else [])
+    other, _thread = serve(copy, "127.0.0.1", 0)
+    try:
+        data = telemetry(other.url)
+        assert data["checkpoint_source"]["state"] == "missing"
+        assert [(c["status"], c["source"]) for c in data["checkpoints"]] == [("missing", None)]
+        (copy / "runs/first").symlink_to(root / "runs/first", target_is_directory=True)
+        data = telemetry(other.url)
+        assert data["checkpoint_source"]["state"] == "refused"
+        assert [(c["status"], c["source"]) for c in data["checkpoints"]] == [("missing", None)]
+    finally:
+        other.shutdown()
+        other.server_close()
+    assert [(c["status"], c["source"]) for c in telemetry()["checkpoints"]] == [("retained", "first")]
+
+
+@needs_browser
+def test_browser_shows_checkpoint_provenance_for_current_and_historical_playback(served, browser):
+    """The page names where a playback's checkpoints come from — its own
+    train/, the recorded training run, or nowhere in this project — for the
+    current playback and for a historical one, and a historical view keeps
+    its own revision while its training run's files go missing."""
+
+    root, server = served
+    for source in ("first", "second"):
+        _telemetry(root, 2, run=source, state="done", checkpoints=[_checkpoint(root, source)])
+    _playback_run(root, "first-final", source="first", revision=REVISION_A)
+    _playback_run(root, "second-final", source="second", revision=REVISION_B)
+    page = _open(browser, server.url)
+    page.click("#views li[data-run='second-final']")
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN second-final'")
+    page.wait_for("document.getElementById('checkpoint-source').dataset.state === 'resolved'")
+    assert page.text("#view-relation").startswith("CURRENT")
+    assert page.attribute("#checkpoint-source", "data-run") == "second"
+    assert "recorded training run second" in page.text("#checkpoint-source")
+    assert page.attribute("#checkpoints li", "data-status") == "retained"
+    assert page.attribute("#checkpoints li", "data-source") == "second"
+    assert "from training run second" in page.text("#checkpoints li")
+    page.click("#views li[data-run='first-final']")
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN first-final'")
+    page.wait_for("document.getElementById('checkpoint-source').dataset.run === 'first'")
+    assert page.text("#view-relation").startswith("HISTORICAL")
+    assert page.text("#view-revision") == REVISION_A
+    assert page.attribute("#checkpoints li", "data-status") == "retained"
+    assert page.attribute("#checkpoints li", "data-source") == "first"
+    # The training run's own view says its checkpoints are its own.
+    page.click("#views li[data-run='first']")
+    page.wait_for("document.getElementById('checkpoint-source').dataset.state === 'none'")
+    assert page.attribute("#checkpoints li", "data-source") == "run"
+    assert "from training run" not in page.text("#checkpoints li")
+    # Back on the historical playback: the checkpoint file goes, then the whole training run.
+    page.click("#views li[data-run='first-final']")
+    page.wait_for("document.getElementById('checkpoint-source').dataset.run === 'first'")
+    (root / "runs/first/train/iter-2.cxpolicy").unlink()
+    page.wait_for("document.querySelector('#checkpoints li').dataset.status === 'missing'")
+    assert "not found in this project" in page.text("#checkpoints li")
+    assert page.attribute("#checkpoint-source", "data-state") == "resolved"
+    shutil.rmtree(root / "runs/first/train")
+    page.wait_for("document.getElementById('checkpoint-source').dataset.state === 'missing'")
+    assert "training run first missing" in page.text("#checkpoint-source")
+    assert "not in this project" in page.text("#checkpoint-source")
+    assert page.text("#view-kind") == "RUN first-final"
+    assert page.text("#view-revision") == REVISION_A
+    assert page.attribute("#telemetry", "data-state") == "done"
 
 
 @needs_browser
