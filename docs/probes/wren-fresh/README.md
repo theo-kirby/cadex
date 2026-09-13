@@ -77,3 +77,97 @@ in place twice, checks its stored mesh/sidecar and every retained byte, and
 fails on the previous code's changed accepted_attempt. The source unit cases
 also verify replacement on explicit display, changed revision/digest or absent
 retained result, and verify that pruning keeps the preserved attempt.
+
+
+## First bounded Wren GPU experiment (iteration 49)
+
+The experiment uses the accepted Wren design with `policy_on=0`, without
+changing its dimensions or using another project's policy. The public CLI
+exports Wren's model/task and retains the training model before starting the
+existing offboard GPU environment. Intermediate and final policies pass the
+engine witness check before rollout. Their model XML and task bundle must
+match the original training input byte-for-byte.
+
+Run once with a new run name (an existing output directory is refused):
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/wren-fresh/train.py \
+  "$HOME/cadex-projects/ot5-wren" wren1 "http://$(tailscale ip -4):8765/"
+```
+
+This runs 240 PPO iterations with 1024 environments, seed 0 and checkpoints
+every 20 iterations, under `timeout --signal=TERM --kill-after=20s 1800`
+and a systemd scope with `MemoryMax=20G` (21,474,836,480 bytes of host memory).
+GPU memory is sampled separately. The existing offboard venv is used; no
+new dependency is installed. `observe.py` checks fresh-visit current selection,
+retained model identity, orbit/zoom and multiple real telemetry updates on the
+persistent private URL. `check_video.py` decodes all frames and checks browser
+playback, playback preservation across polling and downloaded bytes.
+Neither browser probe starts or stops the persistent server. Render failures
+are recorded separately and leave training under its own timeout.
+
+Keep the entire project, including `runs/wren1*`, assets and evidence files.
+The training script and configuration, task/model bytes, telemetry, checkpoints,
+policy receipts, rollout traces, videos and browser receipts remain project-local.
+The experiment imports its verified checkpoint/final policy via the public CLI
+and enables Wren's existing policy declaration; this changes accepted script
+identity, while the run retains its original training identity and model.
+
+
+For the compact receipt, after successful collection:
+
+```bash
+python3 docs/probes/wren-fresh/summarize_training.py \
+  "$HOME/cadex-projects/ot5-wren" wren1 > docs/probes/wren-fresh/training-evidence.json
+```
+
+The dashboard's `episode_steps` is the trainer's batch estimate
+(`unroll * envs / max(endings, 1)`), which can exceed the 400-step episode
+limit when few episodes end in a batch. It is not measured survival time.
+The policy comparison uses the engine's verified rollout termination and
+trace duration instead, on seed 0 with the declared eight-second limit.
+
+
+The completed [training receipt](training-evidence.json) records exit 0,
+240 GPU iterations (last index 239), 697.035 s training wall time,
+sampled host peak 7,412,912,128 bytes and sampled total GPU peak 15,130 MiB.
+The enforced host cap was 21,474,836,480 bytes. Final batch reward/step was
+0.319398, loss 0.408266 and reported episode-length estimate 325.079 steps.
+All 240 telemetry points are retained. The offboard JAX process emitted an
+overflow-cast RuntimeWarning at initialization, but completed; both policies
+passed independent engine witness verification. No new dependency or product
+behavior change was needed.
+
+| Seed 0, episode limit 8 s | Checkpoint 20 | Final policy |
+|---|---:|---:|
+| Observed simulation time | 8.00 s | 0.46 s |
+| Fell | no | yes |
+| Forward torso displacement | +49.451 mm | −105.757 mm |
+| Control steps | 400 | 23 |
+| Total rollout reward | 216.297 | −36.266 |
+| Video frames at 10 fps | 81 | 6 |
+| Encoded video duration | 8.1 s | 0.6 s |
+
+The final policy is worse on this seed. This is one seed, not a gait-quality
+or multi-seed reliability claim. The short final video faithfully records the
+fall; its extra encoded time follows the renderer's final-pose sampling rule.
+The checkpoint video was published while training advanced from iteration 23
+to 32 during rendering; playback/download completed with training at 34.
+Both videos use `cadex-prototype-light-v1`, style digest `27893221b3c6…`,
+and were fully decoded and browser-tested. Saved screenshots were inspected.
+This reuses the delivered common style; no new D11 visual similarity claim.
+
+A fresh browser selected `wren1-final`, played/downloaded it, preserved playback
+across three refreshes, selected checkpoint 20 as HISTORICAL with its own
+revision, and returned to current. Both recorded model XML/task bundles match
+the original training inputs. Training revision is `c2e89b36b1e2…` (explicit
+`policy_on=0`, unchanged geometry digest); checkpoint playback is `ce541019cce8…`
+and final playback is `a8073874ab76…`. Full identities are in the receipt.
+
+The single-render throughput observation is 1.440 / 1.342 / 1.282 seconds
+median per ordinary iteration before / during / after rendering, excluding
+checkpoint boundaries. This uncontrolled observation shows continued progress,
+not an assertion of zero overhead or renderer speedup. The render took 12.881 s
+wall clock. No second training run overlapped this experiment. Wren still needs
+multi-seed evaluation, a review-driven design change, retraining and the rest
+of its repeated lifecycle; the operator service stays running on its final run.

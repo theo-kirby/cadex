@@ -941,3 +941,15 @@ videos yet; this is the opening slice of the repeated lifecycle, not another
 completed D9 lifecycle. In-place restore was found to replace retained
 attempt artifacts without tessellation; the successful receipt deliberately
 checks copy reopens and read-only browsing separately.
+
+
+Iteration 48 fixed in-place restore preservation (ADR-303), with Wren's
+retained display bytes unchanged across two engine restores. Iteration 49
+then completed Wren's first bounded real GPU experiment, `wren1`, on the same
+persistent private-network dashboard. See the [experiment command and evidence](probes/wren-fresh/README.md).
+The observer has verified real telemetry updates without reload, and checkpoint
+20 has a witness-verified rollout and browser-verified video published while
+training was active. The final policy also has a verified video and is selected
+by default: it fell at 0.46 s on seed 0, whereas checkpoint 20 survived 8 s.
+Both remain reviewable. This extends the repeated lifecycle; it does not yet establish Wren's
+design-change/retraining comparison or independent-copy lifecycle.

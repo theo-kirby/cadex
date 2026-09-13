@@ -1,17 +1,24 @@
-# Persistent Reed operator review
+# Persistent operator review
 
 Verified against source: 2026-09-12. [Cadex-new]
 
-The shared private-network dashboard on port 8765 now serves `ot5-wren`,
-the second fresh agent-authored biped, at accepted revision `5309bebc6597…`.
-It has no runs: a fresh visit selects ACCEPTED NOW, with twelve declared
-parameter defaults and eight drawn components (seven biped solids plus ground). No training is active.
-[Iteration 46 receipt](../wren-fresh/README.md) verifies this working-project
-switch; Reed's retained results remain in their original project directories.
-[Iteration 48 restore evidence](../wren-fresh/restore-evidence.json) now verifies
-two in-place engine restores with the original 28 artifact files unchanged,
-followed by eight drawn solids at the same persistent URL. No Wren training
-has started; the service remains running.
+The shared private-network dashboard on port 8765 serves `ot5-wren`, with
+`wren1-final` selected by default at revision `a8073874ab76…`.
+Wren's first GPU run completed 240 iterations in 697.0 seconds; no experiment
+training remains active. Both its checkpoint-20 and final-policy videos are
+retained in the shared prototype-light style. The final policy falls at 0.46 s
+on seed 0; the earlier checkpoint survives eight seconds. The page shows the
+latest result and keeps the better earlier result available as historical.
+
+Fresh-visit selection, video playback/download, preserved playback across
+polling, historical checkpoint selection and return to current all pass on the
+persistent private URL. During training, the browser observed seven real
+updates with 0.40–1.43 s measured commit-to-page delay. A fresh visit after
+checkpoint-video publication still selected the active training run.
+These are same-machine private-network checks, not second-device evidence.
+See [Wren's experiment and compact receipt](../wren-fresh/README.md).
+Reed's results remain in their original projects; the operator service remains
+running on Wren.
 
 Keep the server running between iterations. On this Linux host, from the
 checkout, the detached command is:
@@ -89,4 +96,8 @@ labelled HISTORICAL, and return to current. No training was active, no
 experiment started and no project switch occurred; published status stays
 `ot5-biped-copy29 / shin55-final` and the service keeps running.
 
-For the current run-less Wren page, use the [Wren probe](../wren-fresh/README.md), not the historical run/video probe above.
+Iteration 46 first put the run-less `ot5-wren` project on this URL at revision
+`5309bebc6597…`; [its retained receipt](../wren-fresh/evidence.json) remains
+historical evidence of that switch. Iteration 48 then verified in-place restore
+preservation at that revision. For current Wren training/video checks, use the
+[Wren experiment probes](../wren-fresh/README.md#first-bounded-wren-gpu-experiment-iteration-49).

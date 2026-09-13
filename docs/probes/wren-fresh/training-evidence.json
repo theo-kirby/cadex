@@ -1,0 +1,513 @@
+{
+  "run": "wren1",
+  "geometry": {
+    "wren_model-model.xml": "c9a61bbc94570fefdfafd817bd2e8b2903ecc7d471e636439fa8be340e92a839",
+    "wren_walk-task.json": "e618c7b4031054998dc30d24097cd2d0658d500cffa4879cab75102fd21c296d"
+  },
+  "accepted_revision": "c2e89b36b1e27cacc6afab5210a3cc627ec2d91f1f0e95ca37093ed4b7f6cd13",
+  "digest": "dbd02d7c12a0553b9ffadb3466e73da4055521264dd52e0bea40b2cc16588714",
+  "intermediate": {
+    "run": "wren1-checkpoint20",
+    "start": 1789256898.0801017,
+    "end": 1789256943.0969744,
+    "before": 18,
+    "after": 34,
+    "trainer_active_after_browser": true,
+    "browser_check_exit": 0,
+    "render_start": 1789256928.5490623,
+    "render_end": 1789256941.4305334,
+    "render_seconds": 12.881,
+    "render_before": 23,
+    "render_after": 32,
+    "video": {
+      "path": "rollout-b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc.webm",
+      "sha256": "b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc",
+      "frames": 81,
+      "duration_seconds": 8.1,
+      "sim_seconds": 8.0,
+      "style": "cadex-prototype-light-v1",
+      "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+      "render_seconds": 12.723
+    },
+    "witness": {
+      "witness_error": 3.9560795060047195e-08,
+      "witness_tolerance": 0.0001,
+      "model_sha256": "c9a61bbc94570fefdfafd817bd2e8b2903ecc7d471e636439fa8be340e92a839",
+      "task_sha256": "e618c7b4031054998dc30d24097cd2d0658d500cffa4879cab75102fd21c296d"
+    },
+    "policy_sha256": "111961e5c8c3352d1d3bf7751657ed1117ac86e8c6bfb26ee6916423d0465dc0",
+    "overhead": {
+      "note": "trainer-committed iteration intervals; the render window is wall clock around the video render only",
+      "before_window": {
+        "count": 22,
+        "median_s": 1.424,
+        "median_excluding_checkpoint_boundaries_s": 1.44,
+        "max_s": 53.747
+      },
+      "during_window": {
+        "count": 8,
+        "median_s": 1.342,
+        "median_excluding_checkpoint_boundaries_s": 1.342,
+        "max_s": 1.429
+      },
+      "after_window": {
+        "count": 30,
+        "median_s": 1.256,
+        "median_excluding_checkpoint_boundaries_s": 1.282,
+        "max_s": 27.381
+      },
+      "during_rows": [
+        {
+          "iteration": 25,
+          "seconds": 1.119,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 26,
+          "seconds": 1.235,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 27,
+          "seconds": 1.322,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 28,
+          "seconds": 1.323,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 29,
+          "seconds": 1.377,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 30,
+          "seconds": 1.361,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 31,
+          "seconds": 1.429,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 32,
+          "seconds": 1.406,
+          "checkpoint_boundary": false
+        }
+      ]
+    }
+  },
+  "final": {
+    "run": "wren1-final",
+    "start": 1789257466.3148615,
+    "end": 1789257474.3251905,
+    "before": 239,
+    "after": 239,
+    "trainer_active_after_browser": false,
+    "browser_check_exit": 0,
+    "render_start": 1789257470.4409912,
+    "render_end": 1789257472.558396,
+    "render_seconds": 2.117,
+    "render_before": 239,
+    "render_after": 239,
+    "video": {
+      "path": "rollout-ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd.webm",
+      "sha256": "ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd",
+      "frames": 6,
+      "duration_seconds": 0.6,
+      "sim_seconds": 0.46,
+      "style": "cadex-prototype-light-v1",
+      "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+      "render_seconds": 1.984
+    },
+    "witness": {
+      "witness_error": 8.251036792795606e-08,
+      "witness_tolerance": 0.0001,
+      "model_sha256": "c9a61bbc94570fefdfafd817bd2e8b2903ecc7d471e636439fa8be340e92a839",
+      "task_sha256": "e618c7b4031054998dc30d24097cd2d0658d500cffa4879cab75102fd21c296d"
+    },
+    "policy_sha256": "133bf5ac6fa8747305d86264554c4ed58b5a8b4c792ab32cf19422ba0613b235"
+  },
+  "preserved_records": {},
+  "training_exit": 0,
+  "training_wall_seconds": 697.035,
+  "trainer_final": {
+    "iteration": 239,
+    "state": "done",
+    "reward_per_step": 0.3193979859352112,
+    "loss": 0.4082659184932709,
+    "episode_steps": 325.0793762207031,
+    "seconds": null,
+    "device": "gpu"
+  },
+  "memory": {
+    "host_peak_bytes": 7412912128,
+    "gpu_peak_mib": 15130,
+    "samples": 140
+  },
+  "observer_exit": 0,
+  "schema": "wren-training-evidence-v1",
+  "project": "ot5-wren",
+  "resource_bound": {
+    "MemoryCurrent": "5668028416",
+    "MemoryPeak": "5862658048",
+    "MemoryMax": "21474836480",
+    "ActiveState": "active"
+  },
+  "start_browser": {
+    "project-name": "ot5-wren \u2014 review",
+    "view-kind": "RUN wren1",
+    "view-revision": "c2e89b36b1e27cacc6afab5210a3cc627ec2d91f1f0e95ca37093ed4b7f6cd13",
+    "current-run": "Current run: wren1",
+    "telemetry": "Training telemetry: startingiteration: -1total: 240reward_per_step: \u2014loss: \u2014episode_steps: \u2014Reward per step \u2014 history missingLoss \u2014 history missingEpisode length (steps) \u2014 history missingcheckpoints: none reported",
+    "model-components": "c_ground \u2190 ground \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_torso \u2190 torso \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_thigh_l \u2190 thigh_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_thigh_r \u2190 thigh_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_shin_l \u2190 shin_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_shin_r \u2190 shin_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_foot_l \u2190 foot_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_foot_r \u2190 foot_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)",
+    "private_address_same_machine": true
+  },
+  "active_after_video": {
+    "project": "ot5-wren \u2014 review",
+    "selected": "RUN wren1",
+    "revision": "c2e89b36b1e27cacc6afab5210a3cc627ec2d91f1f0e95ca37093ed4b7f6cd13",
+    "iteration": "iteration: 178",
+    "checkpoint_video_exists": true,
+    "private_address_same_machine": true
+  },
+  "live_browser": {
+    "run": "wren1",
+    "persistent_server": true,
+    "samples": [
+      {
+        "t": 0.0,
+        "file_state": "training",
+        "file_iteration": 4,
+        "page_iteration": 3,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.46488",
+        "loss": "loss: 28.406",
+        "episode_steps": "episode_steps: 45.011",
+        "curve_points": "4",
+        "loss_points": "4",
+        "checkpoints": 1
+      },
+      {
+        "t": 1.25,
+        "file_state": "training",
+        "file_iteration": 4,
+        "page_iteration": 4,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.043970",
+        "loss": "loss: 13.963",
+        "episode_steps": "episode_steps: 93.091",
+        "curve_points": "5",
+        "loss_points": "5",
+        "checkpoints": 1
+      },
+      {
+        "t": 3.26,
+        "file_state": "training",
+        "file_iteration": 6,
+        "page_iteration": 6,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.26667",
+        "loss": "loss: 19.990",
+        "episode_steps": "episode_steps: 85.333",
+        "curve_points": "7",
+        "loss_points": "7",
+        "checkpoints": 1
+      },
+      {
+        "t": 5.26,
+        "file_state": "training",
+        "file_iteration": 7,
+        "page_iteration": 7,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.23083",
+        "loss": "loss: 21.152",
+        "episode_steps": "episode_steps: 64",
+        "curve_points": "8",
+        "loss_points": "8",
+        "checkpoints": 1
+      },
+      {
+        "t": 7.27,
+        "file_state": "training",
+        "file_iteration": 8,
+        "page_iteration": 8,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.019117",
+        "loss": "loss: 14.326",
+        "episode_steps": "episode_steps: 101.89",
+        "curve_points": "9",
+        "loss_points": "9",
+        "checkpoints": 1
+      },
+      {
+        "t": 9.27,
+        "file_state": "training",
+        "file_iteration": 10,
+        "page_iteration": 10,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.025655",
+        "loss": "loss: 15.471",
+        "episode_steps": "episode_steps: 110.11",
+        "curve_points": "11",
+        "loss_points": "11",
+        "checkpoints": 1
+      },
+      {
+        "t": 11.28,
+        "file_state": "training",
+        "file_iteration": 11,
+        "page_iteration": 11,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: 0.059477",
+        "loss": "loss: 14.274",
+        "episode_steps": "episode_steps: 106.67",
+        "curve_points": "12",
+        "loss_points": "12",
+        "checkpoints": 1
+      }
+    ],
+    "first_seen": {
+      "4": {
+        "committed_to_page_s": 1.31,
+        "polled_to_page_s": 1.25
+      },
+      "6": {
+        "committed_to_page_s": 0.4,
+        "polled_to_page_s": 0.25
+      },
+      "7": {
+        "committed_to_page_s": 0.93,
+        "polled_to_page_s": 0.75
+      },
+      "8": {
+        "committed_to_page_s": 1.43,
+        "polled_to_page_s": 1.25
+      },
+      "10": {
+        "committed_to_page_s": 0.49,
+        "polled_to_page_s": 0.25
+      },
+      "11": {
+        "committed_to_page_s": 1.05,
+        "polled_to_page_s": 1.0
+      }
+    },
+    "project_name": "ot5-wren \u2014 review",
+    "accepted": "accepted now: revision c2e89b36b1e2 \u00b7 digest dbd02d7c12a0 \u00b7 updated 2026-09-12T23:46:08Z \u00b7 1 run(s)",
+    "runs": [
+      "wren1"
+    ],
+    "default_view_kind": "RUN wren1",
+    "current_run_label": "Current run: wren1",
+    "view_revision": "c2e89b36b1e27cacc6afab5210a3cc627ec2d91f1f0e95ca37093ed4b7f6cd13",
+    "view_relation": "CURRENT \u2014 this run's revision is the accepted revision now",
+    "model_state": "loaded",
+    "model_components": "c_ground \u2190 ground \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_torso \u2190 torso \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_thigh_l \u2190 thigh_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_thigh_r \u2190 thigh_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_shin_l \u2190 shin_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_shin_r \u2190 shin_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_foot_l \u2190 foot_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)c_foot_r \u2190 foot_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)",
+    "params": "namevaluedefaultminmaxunitlabelfoot_len\u20148560120mmFoot length (X)foot_t\u20148515mmFoot thicknessfoot_w\u2014402560mmFoot width (Y)hip_spacing\u20146040100mmLateral distance between leg centerlineslimb_w\u2014161025mmLeg member width/depthpolicy_on0001\u20141 = declare trained policy + rolloutprinted_density\u201412404002000kg/m3Printed material densityshin_len\u20148560130mmKnee-to-ankle lengththigh_len\u20148560130mmHip-to-knee lengthtorso_d\u20146040100mmTorso depth (forward X)torso_h\u20147550120mmTorso heighttorso_w\u201410060160mmTorso width (lateral Y)",
+    "orbit_zoom": true,
+    "page_iterations": [
+      3,
+      4,
+      6,
+      7,
+      8,
+      10,
+      11
+    ],
+    "file_iterations": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ],
+    "reload_count": 1,
+    "ok": true
+  },
+  "policies": {
+    "wren1-checkpoint20": {
+      "browser": {
+        "persistent_server": true,
+        "private_address_same_machine": true,
+        "browser_playback": true,
+        "download_sha256": "b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc",
+        "decoded_frames": 81,
+        "decoded_frames_differ": true,
+        "encoded_seconds": 8.1,
+        "simulation_seconds": 8.0,
+        "accepted_revision": "ce541019cce8f148df291e138c88fb3fb28b7125cd6145c0098d0c3ae2d6c1bf",
+        "policy_sha256": "111961e5c8c3352d1d3bf7751657ed1117ac86e8c6bfb26ee6916423d0465dc0",
+        "seed": 0,
+        "style": "cadex-prototype-light-v1",
+        "returned_to_current": "RUN wren1"
+      },
+      "video": {
+        "accepted_revision": "ce541019cce8f148df291e138c88fb3fb28b7125cd6145c0098d0c3ae2d6c1bf",
+        "bounds": {
+          "center": [
+            0.0,
+            0.0,
+            127.8813289859041
+          ],
+          "max": [
+            300.0,
+            300.0,
+            265.7626579718082
+          ],
+          "min": [
+            -300.0,
+            -300.0,
+            -10.0
+          ],
+          "radius": 446.1067819288551
+        },
+        "camera": {
+          "distance": 1111.0435083365383,
+          "pitch": 0.5,
+          "target": [
+            0,
+            0,
+            127.8813289859041
+          ],
+          "yaw": 0.8
+        },
+        "duration_seconds": 8.1,
+        "fps": 10,
+        "frames": 81,
+        "height": 512,
+        "model_digest": "7a9356516ebe020b75136254875353f35b6ed4d45de70cbe225731a82df41e78",
+        "path": "rollout-b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc.webm",
+        "policy_sha256": "111961e5c8c3352d1d3bf7751657ed1117ac86e8c6bfb26ee6916423d0465dc0",
+        "projection": "perspective 55 degrees",
+        "render_seconds": 12.723,
+        "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+        "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+        "seed": 0,
+        "sha256": "b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc",
+        "sim_seconds": 8.0,
+        "style": "cadex-prototype-light-v1",
+        "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+        "task_sha256": "e618c7b4031054998dc30d24097cd2d0658d500cffa4879cab75102fd21c296d",
+        "trace_sha256": "7b160c8b1c96432f052439ff26b2254d951fbf8dfc7eef33033ff8f700ef2a3b",
+        "width": 512
+      },
+      "episode_limit_s": 8,
+      "seed": 0,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        49.451032659700296,
+        2.202203290447124,
+        -33.60795479269137
+      ],
+      "total_reward": 216.29667915127882,
+      "policy_sha256": "111961e5c8c3352d1d3bf7751657ed1117ac86e8c6bfb26ee6916423d0465dc0",
+      "model_sha256": "c9a61bbc94570fefdfafd817bd2e8b2903ecc7d471e636439fa8be340e92a839",
+      "task_sha256": "e618c7b4031054998dc30d24097cd2d0658d500cffa4879cab75102fd21c296d",
+      "trace_sha256": "7b160c8b1c96432f052439ff26b2254d951fbf8dfc7eef33033ff8f700ef2a3b"
+    },
+    "wren1-final": {
+      "browser": {
+        "persistent_server": true,
+        "private_address_same_machine": true,
+        "browser_playback": true,
+        "fresh_selection": "RUN wren1-final",
+        "historical_selection": "wren1-checkpoint20",
+        "download_sha256": "ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd",
+        "decoded_frames": 6,
+        "decoded_frames_differ": true,
+        "encoded_seconds": 0.6,
+        "simulation_seconds": 0.46,
+        "accepted_revision": "a8073874ab76e4cc10cd09f4746138feec8b8fcb9f7c45540c1046d40b620849",
+        "policy_sha256": "133bf5ac6fa8747305d86264554c4ed58b5a8b4c792ab32cf19422ba0613b235",
+        "seed": 0,
+        "style": "cadex-prototype-light-v1",
+        "returned_to_current": "RUN wren1-final"
+      },
+      "video": {
+        "accepted_revision": "a8073874ab76e4cc10cd09f4746138feec8b8fcb9f7c45540c1046d40b620849",
+        "bounds": {
+          "center": [
+            0.0,
+            0.0,
+            127.8813289859041
+          ],
+          "max": [
+            300.0,
+            300.0,
+            265.7626579718082
+          ],
+          "min": [
+            -300.0,
+            -300.0,
+            -10.0
+          ],
+          "radius": 446.1067819288551
+        },
+        "camera": {
+          "distance": 1111.0435083365383,
+          "pitch": 0.5,
+          "target": [
+            0,
+            0,
+            127.8813289859041
+          ],
+          "yaw": 0.8
+        },
+        "duration_seconds": 0.6,
+        "fps": 10,
+        "frames": 6,
+        "height": 512,
+        "model_digest": "b6712b35562328ff8eb77192b5314e2d2820baa0ac7b11255078683336acc280",
+        "path": "rollout-ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd.webm",
+        "policy_sha256": "133bf5ac6fa8747305d86264554c4ed58b5a8b4c792ab32cf19422ba0613b235",
+        "projection": "perspective 55 degrees",
+        "render_seconds": 1.984,
+        "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+        "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+        "seed": 0,
+        "sha256": "ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd",
+        "sim_seconds": 0.46,
+        "style": "cadex-prototype-light-v1",
+        "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+        "task_sha256": "e618c7b4031054998dc30d24097cd2d0658d500cffa4879cab75102fd21c296d",
+        "trace_sha256": "8c18152f66ed1f568edbbc5ff73f3f00904746ec745af0c6299d5be469335aa4",
+        "width": 512
+      },
+      "episode_limit_s": 8,
+      "seed": 0,
+      "observed_s": 0.46,
+      "fell": true,
+      "termination": "fell",
+      "time_limit_reached": false,
+      "step_count": 23,
+      "displacement_mm": [
+        -105.75744794904578,
+        1.8410451438414024,
+        -68.84423153499367
+      ],
+      "total_reward": -36.26634517864171,
+      "policy_sha256": "133bf5ac6fa8747305d86264554c4ed58b5a8b4c792ab32cf19422ba0613b235",
+      "model_sha256": "c9a61bbc94570fefdfafd817bd2e8b2903ecc7d471e636439fa8be340e92a839",
+      "task_sha256": "e618c7b4031054998dc30d24097cd2d0658d500cffa4879cab75102fd21c296d",
+      "trace_sha256": "8c18152f66ed1f568edbbc5ff73f3f00904746ec745af0c6299d5be469335aa4"
+    }
+  }
+}
