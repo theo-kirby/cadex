@@ -5,6 +5,18 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Lark lifecycle report](LIFECYCLE.md) links D1–D11 evidence, the common-seed
 comparison, current visual assessment and remaining acceptance limits.
 
+**Iteration 98 (D4 encoder failure on Lark, ADR-320):** a third real GPU
+run on the working copy, `lark98`, published its checkpoint-20 video during
+training, had that checkpoint deliberately re-rendered through a temporary
+`ffmpeg` exiting 73, showed **Recorded video render: failed** with the CLI
+retry action beside **Video files: available (1/1 retained)**, kept `lark2-final`
+playable, kept its sole trainer PID, recovered with the real encoder and
+finished 240 updates with a final video; the persistent URL now selects
+`lark98-final` by default. See [RENDER98.md](RENDER98.md) and
+[`render98-evidence.json`](render98-evidence.json). The shared observer lost
+its one Wren name (the prior run is an argument) and gained its own recovery
+evidence label after a bookkeeping crash that is recorded there.
+
 **Iteration 88 (recording reliability, ADR-316):** the video checker's
 run-name dependency is gone. `check_video.py` had hard-coded the
 `-final`/`-checkpoint20` pairing, eight components and "a `-final` run is the

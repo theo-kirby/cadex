@@ -2,6 +2,15 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
+Iteration 98 ran the [Lark encoder-failure experiment](../lark-fresh/RENDER98.md)
+on `ot5-lark-copy85` without restarting the service: `lark98` trained 240 GPU
+updates while its checkpoint-20 re-render was made to fail and then recovered.
+The fresh default is now **`lark98-final`** (policy `fca598975089…`), with
+`lark98-checkpoint20` (two retained WebM files, the failed re-render's receipt
+overwritten by the recovery) and `lark98` selectable as history. The service
+kept PID 4173669 and lists 13 runs; no trainer remains active.
+[Measured receipt](../lark-fresh/render98-evidence.json).
+
 Iteration 96 completed the [bounded D6 restart experiment](../lark-fresh/RESTART96.md)
 on `ot5-lark-copy85`. The fresh default is **`lark96-restart`**, completed after
 100 GPU updates with its policy retained and explicit “videos: none recorded

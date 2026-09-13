@@ -23514,3 +23514,29 @@ Validation: full CLI suite **446 passed, 1 skipped** in 427.30 s; the final
 request-race/retry browser assertions also passed in the targeted run. The
 persistent private-address video check passed with `lark86-retry-video`
 selected and `lark86-retry` identified as its final-policy origin.
+
+## ADR-320 — The render-failure observer names no fixture run; Lark carries its own D4 encoder-failure receipt (2026-09-13)
+
+**Context.** `docs/probes/lark-fresh/LIFECYCLE.md` named one D4 acceptance
+receipt that still rested on Wren: real encoder-failure isolation while a
+GPU trainer keeps running (ADR-284's D4, `docs/probes/wren-fresh/RENDER-FAILURE.md`).
+The shared observer `docs/probes/wren-fresh/render_failure.py` was otherwise
+project-agnostic but hard-coded `wren71-final` as the earlier run that must
+stay playable during the fault, and its post-recovery bookkeeping read an
+evidence filename that iteration 88's `check_video.py` no longer writes.
+
+**Decision.** The prior run is the observer's fourth argument, asserted to
+exist before anything starts, and the recovery check runs under its own
+`render-recovery` label so it neither overwrites the driver's publication-time
+check nor is read under a stale name. Iteration 98 ran the experiment on the
+persistent port 8765 project `ot5-lark-copy85` as `lark98` (240 updates,
+seed 0, `MemoryMax=20G`, 1,800 s timeout) with `lark2-final` as the prior run.
+The receipt is `docs/probes/lark-fresh/render98-evidence.json`, narrated in
+`RENDER98.md` and guarded by two tests in `cli/tests/test_lark_fresh_evidence.py`.
+
+**Consequences.** Every D1–D11 receipt the Lark lifecycle report links now
+comes from Lark or its working copy. The bookkeeping crash that followed the
+passed assertions is recorded in the receipt, with the publication-time check
+identity retained from the driver's own receipt and the post-recovery trainer
+sample taken from the committed timeline. The Wren command line gains the
+argument; nothing in product code, the protocol or the payload changed.

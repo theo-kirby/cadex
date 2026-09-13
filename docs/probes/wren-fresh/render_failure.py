@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """Controlled encoder failure during train.py's real GPU experiment.
 
+usage: render_failure.py PROJECT TRAINING_RUN URL PRIOR_RUN
+PRIOR_RUN is an earlier run with a retained video that must stay playable
+while the checkpoint re-render is failed; the project decides which, so the
+same observer serves any fresh project (Wren, Lark, ...).
+
 Only the render subprocess sees a temporary ffmpeg that exits 73. No project
 artifact or trainer telemetry is edited to simulate failure. The ordinary
 renderer publishes its own failure receipt; this observer then retries normally.
@@ -19,7 +24,7 @@ from video_recovery import play
 from restart_training import trainers
 
 
-def exercise(project, training_run, checkpoint_run, url, trainer):
+def exercise(project, training_run, checkpoint_run, url, trainer, prior):
     project = Path(project)
     progress = project / 'runs' / training_run / 'train/progress.json'
     receipt = project / 'runs' / checkpoint_run / 'video.json'
@@ -28,12 +33,12 @@ def exercise(project, training_run, checkpoint_run, url, trainer):
     original_trainers = trainers()
     assert len(original_trainers) == 1, original_trainers
     result = {'trainers_before': original_trainers, 'project': project.name, 'training_run': training_run,
-              'checkpoint_run': checkpoint_run, 'persistent_server': True,
+              'checkpoint_run': checkpoint_run, 'prior_run': prior, 'persistent_server': True,
               'private_address_same_machine': True, 'fault': 'encoder exits 73',
               'before': read(progress), 'observations': []}
     try:
         assert trainer.poll() is None and result['before']['state'] == 'training'
-        with tempfile.TemporaryDirectory(prefix='wren-encoder-fault-') as temp:
+        with tempfile.TemporaryDirectory(prefix='cadex-encoder-fault-') as temp:
             encoder = Path(temp) / 'ffmpeg'
             encoder.write_text('#!/bin/sh\nexit 73\n')
             encoder.chmod(0o700)
@@ -88,7 +93,8 @@ def exercise(project, training_run, checkpoint_run, url, trainer):
             assert live.evaluate("performance.getEntriesByType('navigation').length") == 1
             assert checkpoint.text('#view-kind') == 'RUN ' + checkpoint_run
             assert 'FFmpeg encoding failed' in checkpoint.text('#videos')
-            prior = 'wren71-final'
+            # An earlier run's retained recording, named by the caller rather
+            # than by fixture: history must stay playable during the fault.
             checkpoint.click("#views li[data-run='" + prior + "']")
             result['prior_playback'] = play(checkpoint, read(project / 'runs' / prior / 'video.json')['videos'][0])
             result['after'] = read(progress)
@@ -106,8 +112,9 @@ if __name__ == '__main__':
     # Standalone observer waits for train.py's first verified publication. It
     # deliberately fails a re-render of that checkpoint, then retries the same
     # retained inputs. Renderer locking keeps publication serialized.
-    project, training_run, url = sys.argv[1:]
+    project, training_run, url, prior = sys.argv[1:]
     project = Path(project).resolve()
+    assert (project / 'runs' / prior / 'video.json').is_file(), prior
     checkpoint_run = training_run + '-checkpoint20'
 
     class Trainer:
@@ -120,14 +127,18 @@ if __name__ == '__main__':
     while not publication.exists():
         assert time.monotonic() < deadline, 'checkpoint publication timeout'
         time.sleep(.5)
-    exercise(project, training_run, checkpoint_run, url, Trainer())
+    exercise(project, training_run, checkpoint_run, url, Trainer(), prior)
     subprocess.run([sys.executable, '-m', 'cadex_cli.video', '--project', str(project),
                     '--run', checkpoint_run], check=True, timeout=600)
+    # The recovery check keeps its own evidence label so it neither overwrites
+    # train.py's publication-time check (the ``-recheck`` files) nor is read
+    # under a name check_video.py does not write.
     subprocess.run([sys.executable, str(Path(__file__).with_name('check_video.py')),
-                    str(project), checkpoint_run, url, '--not-default'], check=True, timeout=180)
+                    str(project), checkpoint_run, url, '--not-default', '--label', 'render-recovery'],
+                   check=True, timeout=180)
     assert Trainer().poll() is None, 'training ended before recovery'
     receipt = project / 'evidence' / (checkpoint_run + '-render-failure.json')
     result = json.loads(receipt.read_text())
-    result['recovered'] = json.loads((project / 'evidence' / (checkpoint_run + '-check.json')).read_text())
+    result['recovered'] = json.loads((project / 'evidence' / (checkpoint_run + '-render-recovery-check.json')).read_text())
     result['training_after_recovery'] = json.loads((project / 'runs' / training_run / 'train/progress.json').read_text())
     receipt.write_text(json.dumps(result, indent=2) + '\n')

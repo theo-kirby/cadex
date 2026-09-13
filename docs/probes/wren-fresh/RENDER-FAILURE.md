@@ -26,8 +26,12 @@ While that experiment is running, launch the failure observer:
 PYTHONPATH=cli:cli/tests OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
   pixi run python docs/probes/wren-fresh/render_failure.py \
   "$HOME/cadex-projects/ot5-wren-copy54" wren79 \
-  "http://$(tailscale ip -4):8765/"
+  "http://$(tailscale ip -4):8765/" wren71-final
 ```
+
+The last argument names the earlier run whose retained recording must stay
+playable during the fault; it was fixed to `wren71-final` until iteration 98
+made the observer project-agnostic for the Lark repeat.
 
 The observer waits for the experiment's verified checkpoint20 publication.
 It then runs the ordinary CLI renderer with a temporary `ffmpeg` executable

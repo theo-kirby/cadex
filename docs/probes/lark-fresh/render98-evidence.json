@@ -1,0 +1,439 @@
+{
+  "schema": "lark-render-failure-evidence-v1",
+  "iteration": 98,
+  "project": "ot5-lark-copy85",
+  "original": "ot5-lark",
+  "persistent_url_host": "<tailscale-ipv4>:8765",
+  "persistent_server": true,
+  "server_restarted": false,
+  "private_address_same_machine": true,
+  "second_device_test": false,
+  "gait_claim": false,
+  "product_agent_authorship": false,
+  "training_run": "lark98",
+  "checkpoint_run": "lark98-checkpoint20",
+  "final_run": "lark98-final",
+  "prior_run": "lark2-final",
+  "requested": {
+    "iterations": 240,
+    "envs": 1024,
+    "seed": 0,
+    "checkpoint_every": 20,
+    "timeout_seconds": 1800,
+    "memory_max_bytes": 21474836480
+  },
+  "fault": "encoder exits 73",
+  "failure_seconds": 3.553,
+  "render_exit": 1,
+  "render_stderr_tail": "video: FFmpeg encoding failed",
+  "failure_receipt": {
+    "state": "failed",
+    "error": "ValueError: FFmpeg encoding failed",
+    "retained_videos": 1,
+    "video_sha256": "5c68796a96d9b4817df2b119bb976e0134e2ab7a8b81db970c04bdc6ed7d9363"
+  },
+  "failure_label": "Video files: available (1/1 retained)Recorded video render: failed \u2014 ValueError: FFmpeg encoding failed. Retry the CLI video command after fixing the retained inputs or encoder.video 0 \u00b7 rollout-5c68796a96d9b4817df2b119bb976e0134e2ab7a8b81db970c04bdc6ed7d9363.webm \u00b7 revision be429f2e567c \u00b7 policy d69bfd51750b \u00b7 seed 0 \u00b7 8 s \u00b7 cadex-prototype-light-v1download",
+  "trainer": {
+    "before": [
+      {
+        "pid": 19886,
+        "start_ticks": "102341947"
+      }
+    ],
+    "after_fault_and_history": [
+      {
+        "pid": 19886,
+        "start_ticks": "102341947"
+      }
+    ],
+    "pid_unchanged": true,
+    "count": 1
+  },
+  "iterations": {
+    "checkpoint_published_at": 23,
+    "before_fault": 34,
+    "after_fault_checks": 41,
+    "after_recovery": 53,
+    "after_recovery_source": "trainer-committed timeline sample at the recovery check receipt mtime; the observer crashed before sampling it",
+    "final": 239
+  },
+  "page_observations": [
+    {
+      "page_iteration": 37,
+      "committed_iteration": 38,
+      "telemetry_state": "training",
+      "reward_points": 38,
+      "loss_points": 38
+    },
+    {
+      "page_iteration": 38,
+      "committed_iteration": 38,
+      "telemetry_state": "training",
+      "reward_points": 39,
+      "loss_points": 39
+    },
+    {
+      "page_iteration": 39,
+      "committed_iteration": 39,
+      "telemetry_state": "training",
+      "reward_points": 40,
+      "loss_points": 40
+    },
+    {
+      "page_iteration": 40,
+      "committed_iteration": 41,
+      "telemetry_state": "training",
+      "reward_points": 41,
+      "loss_points": 41
+    }
+  ],
+  "retained_checkpoint_during_fault": {
+    "revision": "be429f2e567cabe10ec667acbed26774d7727676b80ea38c98bac911ede3c2d5",
+    "policy_sha256": "d69bfd51750b9c59faecc59703b8ad0761c33f5778f9d9d81b369a3c06308e9c",
+    "download_sha256": "5c68796a96d9b4817df2b119bb976e0134e2ab7a8b81db970c04bdc6ed7d9363",
+    "playback_poll_preserved": true
+  },
+  "prior_playback_during_fault": {
+    "revision": "ca88f223b54c060ea67f5531e89f07e25fcf061d934c5357c0fe6582df25289d",
+    "policy_sha256": "b79a63908e9418d2c7347ed7a6fb432f540c429e15c8112b4bc7cb2bc43763a3",
+    "download_sha256": "af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826",
+    "playback_poll_preserved": true
+  },
+  "prior_video_sha256": "af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826",
+  "first_publication": {
+    "browser_check_exit": 0,
+    "render_seconds": 12.881,
+    "video_sha256": "5c68796a96d9b4817df2b119bb976e0134e2ab7a8b81db970c04bdc6ed7d9363",
+    "frames": 81,
+    "overhead": {
+      "before_window": {
+        "count": 22,
+        "median_s": 1.531,
+        "median_excluding_checkpoint_boundaries_s": 1.534,
+        "max_s": 55.271
+      },
+      "during_window": {
+        "count": 8,
+        "median_s": 1.41,
+        "median_excluding_checkpoint_boundaries_s": 1.41,
+        "max_s": 1.538
+      },
+      "after_window": {
+        "count": 27,
+        "median_s": 1.384,
+        "median_excluding_checkpoint_boundaries_s": 1.405,
+        "max_s": 28.02
+      }
+    }
+  },
+  "recovered": {
+    "fresh_selection": "RUN lark98",
+    "is_default": false,
+    "expected_default": "lark98",
+    "historical_selection": "lark86-retry-video",
+    "download_sha256": "a2e40b55c0a1edcafa6bee6f7153237e735e3a872b012a2745c2908a9ef28062",
+    "decoded_frames": 81,
+    "decoded_frames_differ": true,
+    "encoded_seconds": 8.1,
+    "simulation_seconds": 8.0,
+    "accepted_revision": "be429f2e567cabe10ec667acbed26774d7727676b80ea38c98bac911ede3c2d5",
+    "policy_sha256": "d69bfd51750b9c59faecc59703b8ad0761c33f5778f9d9d81b369a3c06308e9c",
+    "seed": 0,
+    "style": "cadex-prototype-light-v1",
+    "returned_to_current": "RUN lark98",
+    "lineage": {
+      "origin": {
+        "run": "lark98",
+        "path": "lark98.000020.cxpolicy",
+        "kind": "checkpoint",
+        "iteration": 19,
+        "recorded_at": "2026-09-13T10:05:16Z",
+        "also_retained_by": []
+      },
+      "recorded_source_run": "lark98",
+      "source_agrees": true,
+      "playbacks": []
+    },
+    "components": 8
+  },
+  "recovered_receipt": {
+    "state": "ready",
+    "video_sha256": "a2e40b55c0a1edcafa6bee6f7153237e735e3a872b012a2745c2908a9ef28062",
+    "retained_files": [
+      "rollout-5c68796a96d9b4817df2b119bb976e0134e2ab7a8b81db970c04bdc6ed7d9363.webm",
+      "rollout-a2e40b55c0a1edcafa6bee6f7153237e735e3a872b012a2745c2908a9ef28062.webm"
+    ]
+  },
+  "recovery_check_note": "The observer ran the recovery check under the -recheck label, overwriting the publication-time check files; the publication-time browser check exit and video identity are retained in first_publication. Its final enrichment step then read a filename check_video.py does not write and raised FileNotFoundError after every assertion had passed; the observer now labels the recovery check render-recovery.",
+  "observer_final_step_exit": 1,
+  "training_result": {
+    "training_exit": 0,
+    "training_wall_seconds": 729.568,
+    "trainer_final": {
+      "iteration": 239,
+      "state": "done",
+      "reward_per_step": 0.34886524081230164,
+      "loss": 0.040124956518411636,
+      "episode_steps": 1280.0,
+      "seconds": null,
+      "device": "gpu"
+    },
+    "memory": {
+      "host_peak_bytes": 7406166016,
+      "gpu_peak_mib": 15122,
+      "samples": 149
+    },
+    "geometry": {
+      "lark_model-model.xml": "ff77fff92a4ba08db4e472b652356f8ec52ce8f296ed180b6f5500f04d1d1b25",
+      "walk_task-task.json": "cc96d21e52e6c322e2372e02532ad29fad643fc3a07a59ed4523e17c0e4ca807"
+    },
+    "accepted_revision": "24f15b103833b29134eb17ea0b81a05f8e10dc44f23afb25f5dcd3fb46af79a3",
+    "digest": "4c4171abfa4f97cdf4585e2fd7421de91cb1e03c6ca553cc4cac5fc9ec515835",
+    "observer_exit": 0
+  },
+  "resource_bound": {
+    "MemoryCurrent": "4820979712",
+    "MemoryPeak": "5019856896",
+    "MemoryMax": "21474836480",
+    "ActiveState": "active"
+  },
+  "start_browser": {
+    "default_view_kind": "RUN lark98",
+    "view_revision": "24f15b103833b29134eb17ea0b81a05f8e10dc44f23afb25f5dcd3fb46af79a3",
+    "page_iterations": [
+      3,
+      4,
+      6,
+      7,
+      8,
+      9,
+      11
+    ],
+    "first_seen": {
+      "4": {
+        "committed_to_page_s": 1.32,
+        "polled_to_page_s": 1.0
+      },
+      "6": {
+        "committed_to_page_s": 0.23,
+        "polled_to_page_s": 0.0
+      },
+      "7": {
+        "committed_to_page_s": 0.69,
+        "polled_to_page_s": 0.5
+      },
+      "8": {
+        "committed_to_page_s": 1.15,
+        "polled_to_page_s": 1.0
+      },
+      "9": {
+        "committed_to_page_s": 1.62,
+        "polled_to_page_s": 1.5
+      },
+      "11": {
+        "committed_to_page_s": 0.54,
+        "polled_to_page_s": 0.5
+      }
+    },
+    "reload_count": 1,
+    "ok": true,
+    "project_name": "ot5-lark-copy85 \u2014 review"
+  },
+  "final_browser": {
+    "persistent_server": true,
+    "private_address_same_machine": true,
+    "browser_playback": true,
+    "params_checked": [
+      "control_hz",
+      "episode_steps",
+      "fall_frac",
+      "foot_len",
+      "foot_t",
+      "foot_w",
+      "hip_spacing",
+      "joint_armature",
+      "joint_damping",
+      "joint_friction",
+      "limb_w",
+      "policy_on",
+      "printed_density",
+      "rollout_seed",
+      "servo_torque_nmm",
+      "shin_len",
+      "thigh_len",
+      "torso_d",
+      "torso_h",
+      "torso_w"
+    ],
+    "foot_len_mm": 90.0,
+    "components": 8,
+    "components_source": "first frame of the run's own retained trace",
+    "curves_present": true,
+    "expected_default": "lark98-final",
+    "is_default": true,
+    "fresh_selection": "RUN lark98-final",
+    "historical_selection": "lark98-checkpoint20",
+    "historical_source": "same training run by policy identity",
+    "policy_origin_panel": "Checked on selection/request: lark98 \u00b7 final \u00b7 declared source: lark98 \u00b7 snapshot; Check again to re-read retained files",
+    "lineage": {
+      "origin": {
+        "run": "lark98",
+        "path": "lark98.cxpolicy",
+        "kind": "final",
+        "iteration": null,
+        "recorded_at": "2026-09-13T10:17:26Z",
+        "also_retained_by": []
+      },
+      "recorded_source_run": "lark98",
+      "source_agrees": true,
+      "playbacks": [
+        {
+          "run": "lark98-checkpoint20",
+          "kind": "checkpoint",
+          "iteration": 19,
+          "path": "lark98.000020.cxpolicy",
+          "recorded_at": "2026-09-13T10:07:33Z",
+          "relation": "historical",
+          "status": "ok",
+          "videos": 2
+        }
+      ]
+    },
+    "download_sha256": "6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9",
+    "decoded_frames": 81,
+    "decoded_frames_differ": true,
+    "encoded_seconds": 8.1,
+    "simulation_seconds": 8.0,
+    "accepted_revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+    "policy_sha256": "fca598975089c259917cba5c9f7e067d6bb3a56b75eb8357c20e4151411413df",
+    "seed": 0,
+    "style": "cadex-prototype-light-v1",
+    "returned_to_current": "RUN lark98-final"
+  },
+  "witnesses": {
+    "intermediate": {
+      "witness_error": 3.380629978622096e-08,
+      "witness_tolerance": 0.0001
+    },
+    "final": {
+      "witness_error": 8.85152274321399e-08,
+      "witness_tolerance": 0.0001
+    }
+  },
+  "policies": {
+    "checkpoint": "d69bfd51750b9c59faecc59703b8ad0761c33f5778f9d9d81b369a3c06308e9c",
+    "final": "fca598975089c259917cba5c9f7e067d6bb3a56b75eb8357c20e4151411413df"
+  },
+  "preserved_records": {
+    "count": 10,
+    "unchanged": true
+  },
+  "files_changed_outside_lark98": [
+    ".cadex-cli.lock",
+    "PROGRESS.md",
+    "review/render/front.svg",
+    "review/render/iso.svg",
+    "review/render/right.svg",
+    "review/render/summary.json",
+    "review/render/top.svg",
+    "script.json",
+    "script.py",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-000.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-000.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-001.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-001.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-002.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-002.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-003.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-003.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-004.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-004.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-005.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-005.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-006.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-006.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-007.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/display/display-007.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/assembly-simulation-trace.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/lark_model-model.xml",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/output-000.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/output-001.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/output-002.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/output-003.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/output-004.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/output-005.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/output-006.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/output-007.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/walk_policy-policy.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/outputs/walk_task-task.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/request.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294649460-28e6c4e81fca/result.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/assembly-simulation-trace.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/lark_model-model.xml",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/output-000.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/output-001.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/output-002.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/output-003.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/output-004.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/output-005.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/output-006.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/output-007.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/walk_policy-policy.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/outputs/walk_task-task.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/request.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650278-71caa1f6496a/result.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-000.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-000.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-001.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-001.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-002.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-002.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-003.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-003.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-004.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-004.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-005.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-005.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-006.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-006.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-007.tess.bin",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/display/display-007.tess.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/assembly-simulation-trace.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/lark_model-model.xml",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/output-000.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/output-001.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/output-002.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/output-003.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/output-004.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/output-005.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/output-006.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/output-007.brep",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/walk_policy-policy.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/outputs/walk_task-task.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/request.json",
+    "script_artifacts/6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b/attempt-1789294650999-9aa5c16d54aa/result.json",
+    "script_history/0013-24f15b103833.py",
+    "script_history/0014-a278a9c33fc8.py",
+    "script_history/0015-be429f2e567c.py",
+    "script_history/0016-6f826037044a.py",
+    "script_history/history.json"
+  ],
+  "prior_runs_assets_evidence_changed": [],
+  "project_files": 1887,
+  "run_count": 13,
+  "fresh_visit_after_completion": "RUN lark98-final",
+  "project_local_evidence": {
+    "evidence/lark98-checkpoint20-render-failure.json": "a5d5219f9a12daec4b8030e4bbf7a68f8b656f833d3b0e0aa5aa82435c73f6ee",
+    "evidence/lark98-checkpoint20-render-failure.png": "1be07a316e957a8f5cdc255c1e888cd7c7be948951cb71a2784b5d873e6a5fbb",
+    "evidence/lark98-checkpoint20-recheck-check.json": "74cddd27e858a21908ee0f89e607ab21870246212425211c66ac1007517682d6",
+    "evidence/lark98-checkpoint20-recheck-browser.png": "e4506ab503571c5f673df76e2848b57ea12167e78f11d1e0abad89ae83479d92",
+    "evidence/lark98-checkpoint20-publication.json": "bc256f17dfa572eb2d323a8efb96424693d6d18be8807d8e6af35466b87da66e",
+    "evidence/lark98-experiment-result.json": "04ad8d4929e91dc43b1ef491fd5cfa13dacc4334056615b67a24adecec0d15e8",
+    "evidence/lark98-final-check.json": "b4708e013ce0fb881e30a12e446414e10c456777feb43babfc4651aac8b6fcc4",
+    "evidence/lark98-final-browser.png": "6ea44ff1a5fbf1fc3bfde1996454fece43499dabe1b48847aac015d190d74b79",
+    "evidence/lark98-observe.json": "af04a84f98643b5ce46d9cc1794987a96152ae19b3cde888f63a93362e815b8f",
+    "evidence/lark98-observe.png": "df6c274f5bdcd3434fdeda6da9f7b2e3bdc41c2065756456797e31ce253235a6",
+    "evidence/lark98-observer.log": "889a57b41a9d5a93ff44d04e394abde3dc841f2174b571387fa8ae259aac3c5b",
+    "evidence/lark98-trainer.log": "df15f40a92e125f553003046903ae6a637fafbfe01cd50569f0d1b9548090d05"
+  }
+}

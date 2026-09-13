@@ -85,7 +85,7 @@ not part of this equal-budget comparison and has only a seed-0 review.
 | D1 reachable | [Creation browser receipt](evidence.json), [current receipt](current94-evidence.json), command above | Headless Chromium on the same machine through its private address; no second-device test. |
 | D2 model/specs | [Creation/reopen](evidence.json), [six historical models and curves on the copy](copy85-evidence.json), [current parameters/revision](current94-evidence.json) | Own retained identities, eight components, declared specs, real orbit/zoom; no historical rebuild using today's script. |
 | D3 live training | [lark1](training-evidence.json), [lark2](training84-evidence.json) | Seven actual page updates each; commit-to-page latency 0.39–1.52 s and 0.24–1.62 s, respectively, under recorded conditions. |
-| D4 videos | Same two training receipts; [retry](interruption86-evidence.json); [current full decode/playback/download](current94-evidence.json) | Intermediate recordings played while training remained active and finals persisted. Real encoder-failure isolation is [Wren evidence](../wren-fresh/RENDER-FAILURE.md), not a Lark repeat. |
+| D4 videos | Same two training receipts; [retry](interruption86-evidence.json); [current full decode/playback/download](current94-evidence.json); [encoder failure during real training](render98-evidence.json) | Intermediate recordings played while training remained active and finals persisted. [RENDER98.md](RENDER98.md) repeats real encoder-failure isolation on Lark: the failed re-render was shown with retry guidance beside the still-available recording, `lark2-final` kept playing, and the sole trainer kept its PID through recovery to completion. |
 | D5 history after revision | [Agent revision/comparison](revision84-evidence.json), [copy browser history](copy85-evidence.json), [current historical selection](current94-evidence.json) | Both designs retain their own documents, configurations, curves, policy identities and videos; earlier bytes preserved. |
 | D6 reopen/restart | [Two in-place creation restores](evidence.json), [two copy restores](copy85-evidence.json), [service restarts with retained Lark video](../operator-review/README.md) | Lark save/reopen and [restart during real GPU training](RESTART96.md) now have receipts: same trainer PID/start identity, increasing telemetry, preserved historical playback and completion on the persistent URL. |
 | D7 copy independence | [Original-unavailable edit, restore and two-server review](copy85-evidence.json), [copy retraining isolation](interruption86-evidence.json) | Complete copy, four inherited playable videos, original inventory unchanged. Original path renamed, not made inaccessible by every filesystem route. |
@@ -153,18 +153,21 @@ alone cannot recreate retained policy bytes or historical review outputs.
 
 D9 now has a user-facing report; the current Lark D11 comparison gap is closed.
 The owner retains checkbox authority. The complete charter has evidence across
-Lark and earlier fresh bipeds, but a claim that **Lark alone** repeats every
-D1–D11 acceptance check would overstate the receipts: D4 real render-failure
-isolation still relies on Wren. [D6 restart during real Lark training](RESTART96.md)
+Lark and earlier fresh bipeds, and since iteration 98 every D1–D11 receipt
+this report links was produced on Lark or its working copy: D4 real
+render-failure isolation no longer relies on Wren ([RENDER98.md](RENDER98.md)).
+[D6 restart during real Lark training](RESTART96.md)
 was repeated in iteration 96. D8 missing/partial-video
 faults now have a [Lark copy recovery pass](VIDEO95.md), including preserved
 historical playback and restored artifact access. No new training was justified for this reporting unit.
 
 The D8 missing/partial-video bet was exercised in iteration 95; see
 [VIDEO95.md](VIDEO95.md). The D6 real-training restart bet was exercised in iteration 96; see
-[RESTART96.md](RESTART96.md). The next distinct acceptance gap is D4 real
-render-failure isolation on Lark while training stays active. No further
-provenance or D8 audit is needed.
+[RESTART96.md](RESTART96.md). The D4 render-failure bet was exercised in
+iteration 98 on a third real GPU run, `lark98`; see [RENDER98.md](RENDER98.md).
+No Lark-only acceptance gap remains named in this report; what remains is the
+owner's checkbox authority and the standing limits above (same-machine browser,
+measured rather than good gait). No further provenance or D8 audit is needed.
 
 Verification for this documentation/evidence unit: both headless browser probes
 above passed; `pixi run python -m pytest cli/tests/test_lark_fresh_evidence.py -q`

@@ -491,3 +491,100 @@ def test_lark_video_checks_resolve_training_runs_and_siblings_by_identity_not_na
     earlier = json.loads((PROBE / "interruption86-evidence.json").read_text())
     assert video["download_sha256"] == earlier["retry_video"]["video"]["sha256"]
     assert video["policy_sha256"] == earlier["retry_video"]["policy_sha256"]
+
+
+def test_lark_encoder_failure_during_real_training_kept_the_trainer_and_the_earlier_video():
+    """``render98-evidence.json`` is Lark's D4 render-failure isolation receipt
+    on the working copy: a real GPU run published its checkpoint video, an
+    ordinary re-render then failed at encoding (a temporary ffmpeg exiting 73
+    on that subprocess's PATH only), the page showed the failure with retry
+    guidance while the verified recording stayed available, live updates kept
+    arriving without reload, an earlier design's video still played, the
+    retry with the real encoder recovered, and the sole trainer kept its PID
+    and finished. The observer's bookkeeping defect is recorded, not hidden."""
+    receipt = json.loads((PROBE / "render98-evidence.json").read_text())
+    assert receipt["schema"] == "lark-render-failure-evidence-v1"
+    assert receipt["project"] == "ot5-lark-copy85" and receipt["original"] == "ot5-lark"
+    assert receipt["persistent_server"] and receipt["private_address_same_machine"]
+    assert receipt["server_restarted"] is False and receipt["second_device_test"] is False
+    assert receipt["persistent_url_host"].endswith(":8765")
+    assert not receipt["persistent_url_host"].startswith(("127.", "localhost", "[::1]"))
+    runs = receipt["training_run"], receipt["checkpoint_run"], receipt["final_run"]
+    assert runs == ("lark98", "lark98-checkpoint20", "lark98-final")
+    assert receipt["prior_run"] == "lark2-final" and receipt["prior_run"] not in runs
+    # One trainer, unchanged across the fault and the history checks.
+    trainer = receipt["trainer"]
+    assert trainer["count"] == 1 and trainer["pid_unchanged"]
+    assert trainer["before"] == trainer["after_fault_and_history"]
+    assert trainer["before"][0]["pid"] > 0 and trainer["before"][0]["start_ticks"].isdigit()
+    # The ordinary renderer failed at encoding and published its own failure.
+    assert receipt["fault"] == "encoder exits 73" and receipt["render_exit"] == 1
+    assert 0 < receipt["failure_seconds"] < 60
+    assert "FFmpeg encoding failed" in receipt["render_stderr_tail"]
+    failure = receipt["failure_receipt"]
+    assert failure["state"] == "failed" and failure["retained_videos"] == 1
+    assert failure["video_sha256"] == receipt["first_publication"]["video_sha256"]
+    label = receipt["failure_label"]
+    assert "Recorded video render: failed" in label and "FFmpeg encoding failed" in label
+    assert "Retry the CLI video command" in label and "Video files: available (1/1 retained)" in label
+    # The verified recording and an earlier design's video stayed playable.
+    retained = receipt["retained_checkpoint_during_fault"]
+    assert retained["download_sha256"] == failure["video_sha256"] and retained["playback_poll_preserved"]
+    assert retained["policy_sha256"] == receipt["policies"]["checkpoint"]
+    prior = receipt["prior_playback_during_fault"]
+    assert prior["download_sha256"] == receipt["prior_video_sha256"] and prior["playback_poll_preserved"]
+    assert prior["revision"] != retained["revision"] and prior["policy_sha256"] != retained["policy_sha256"]
+    # Training advanced on the page without a reload, then through recovery to completion.
+    observations = receipt["page_observations"]
+    assert len(observations) == 4 and all(o["telemetry_state"] == "training" for o in observations)
+    shown = [o["page_iteration"] for o in observations]
+    assert shown == sorted(shown) and len(set(shown)) == 4
+    assert all(o["reward_points"] == o["loss_points"] == o["page_iteration"] + 1 for o in observations)
+    its = receipt["iterations"]
+    assert its["checkpoint_published_at"] < its["before_fault"] < its["after_fault_checks"] < its["after_recovery"] < its["final"] == 239
+    assert len([i for i in shown if i > its["before_fault"]]) >= 3
+    # Recovery: the real encoder produced a second retained file, decoded whole.
+    recovered, recovered_receipt = receipt["recovered"], receipt["recovered_receipt"]
+    assert recovered_receipt["state"] == "ready" and len(recovered_receipt["retained_files"]) == 2
+    assert recovered["download_sha256"] == recovered_receipt["video_sha256"] != failure["video_sha256"]
+    assert recovered["decoded_frames"] == receipt["first_publication"]["frames"] == 81
+    assert recovered["decoded_frames_differ"] and recovered["seed"] == 0
+    assert recovered["style"] == "cadex-prototype-light-v1" and recovered["components"] == 8
+    assert recovered["fresh_selection"] == recovered["returned_to_current"] == "RUN lark98"
+    assert recovered["is_default"] is False and recovered["expected_default"] == "lark98"
+    assert recovered["lineage"]["origin"]["kind"] == "checkpoint" and recovered["lineage"]["source_agrees"]
+    assert receipt["first_publication"]["browser_check_exit"] == 0
+    # The bounded trainer completed on its own.
+    result = receipt["training_result"]
+    assert result["training_exit"] == 0 and result["observer_exit"] == 0
+    assert result["trainer_final"]["state"] == "done" and result["trainer_final"]["device"] == "gpu"
+    assert result["training_wall_seconds"] < receipt["requested"]["timeout_seconds"] == 1800
+    assert 0 < result["memory"]["host_peak_bytes"] < receipt["requested"]["memory_max_bytes"] == 20 * 1024**3
+    assert int(receipt["resource_bound"]["MemoryMax"]) == 20 * 1024**3
+    for witness in receipt["witnesses"].values():
+        assert witness["witness_error"] < witness["witness_tolerance"]
+    assert re.fullmatch(HEX64, receipt["policies"]["final"]) and receipt["policies"]["final"] != receipt["policies"]["checkpoint"]
+    final = receipt["final_browser"]
+    assert final["fresh_selection"] == final["returned_to_current"] == "RUN lark98-final" and final["is_default"]
+    assert final["historical_selection"] == "lark98-checkpoint20" and final["policy_sha256"] == receipt["policies"]["final"]
+    assert final["decoded_frames"] == 81 and final["browser_playback"] and re.fullmatch(HEX64, final["download_sha256"])
+    assert receipt["fresh_visit_after_completion"] == "RUN lark98-final"
+    # Nothing earlier changed, and the defect is on the record.
+    assert receipt["preserved_records"] == {"count": 10, "unchanged": True}
+    assert receipt["prior_runs_assets_evidence_changed"] == []
+    assert all(not path.startswith(("runs/", "assets/", "evidence/")) for path in receipt["files_changed_outside_lark98"])
+    assert receipt["observer_final_step_exit"] == 1 and "FileNotFoundError" in receipt["recovery_check_note"]
+    assert receipt["gait_claim"] is False and receipt["product_agent_authorship"] is False
+    assert all(re.fullmatch(HEX64, digest) for digest in receipt["project_local_evidence"].values())
+    for text in ((PROBE / "RENDER98.md").read_text(), (PROBE / "LIFECYCLE.md").read_text()):
+        assert "render98-evidence.json" in text
+    assert "lark98" in (REPO_ROOT / "docs" / "probes" / "operator-review" / "README.md").read_text()
+
+
+def test_render_failure_observer_takes_the_prior_run_as_an_argument():
+    """The shared observer names no fixture run: the earlier run whose video
+    must stay playable during the fault is its fourth argument."""
+    source = (REPO_ROOT / "docs" / "probes" / "wren-fresh" / "render_failure.py").read_text()
+    assert "wren71" not in source and "lark2" not in source
+    assert "project, training_run, url, prior = sys.argv[1:]" in source
+    assert "'--label', 'render-recovery'" in source and "-render-recovery-check.json" in source
