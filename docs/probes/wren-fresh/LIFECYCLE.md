@@ -1,6 +1,6 @@
 # Wren: the recorded headless lifecycle
 
-Verified against source: 2026-09-13. [Cadex-new] Iteration 75 (D8 repeat; other evidence dated below).
+Verified against source: 2026-09-13. [Cadex-new] Iteration 79 (D4 render failure; other evidence dated below).
 
 Wren has completed a fresh-project lifecycle through creation, reopen, GPU
 training, recorded review, independent copy, interruption/retry, product-agent
@@ -9,11 +9,13 @@ and its limits; it does not change the owner's D1–D11 checkboxes. Reed's earli
 [lifecycle report](../reed-lifecycle/README.md) remains separate historical evidence.
 
 The persistent private-network dashboard serves **ot5-wren-copy54**, with
-**wren71-final** selected for a new visit: 90 mm feet, playback revision
-`e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb`.
+**wren79-final** selected for a new visit: 90 mm feet, playback revision
+`0d78fae96c2279e94b734225605b3fa6261c8e755794b9c1368fd639f747c0f7`.
 It is an inspection client; authoring and training remain CLI operations.
-The server is still running, with 18 retained runs and no experiment trainer.
-The current run is a restart-reliability repeat, not the common-seed comparison.
+The server is still running, with 21 retained runs and no experiment trainer.
+The current run is a render-failure isolation repeat, not the common-seed comparison.
+[Its report](RENDER-FAILURE.md) retains failure/retry, live browser and final video
+evidence, including the earlier test-trainer overlap that limits this experiment.
 
 ## Open the saved work
 
@@ -114,7 +116,7 @@ show standing/shuffling. Poor gait does not invalidate the file lifecycle.
 | **D1 — reachable dashboard** | [Fresh browser/reopen receipt](evidence.json), [one-project command](../../CLI.md), and the [current persistent review](lifecycle72-evidence.json). Headless Chromium on this machine through its private address; no second-device test. |
 | **D2 — model/spec identity** | [Model refresh proof](MODEL-REFRESH.md), [copy model/spec isolation](COPY.md), and the current receipt: six selected playback models, eight components each, exact revision/digest, foot parameters, retained document text/hash checks and real pointer orbit/zoom. |
 | **D3 — live training** | [wren66 observation](REVISION66.md) saw seven real updates within 1.25 s; [wren71 restart receipt](restart71-evidence.json) saw seven within 0.240–1.423 s after commit. Reward/loss/episode histories matched; this is measured polling latency, not a universal guarantee. |
-| **D4 — headless policy video** | [wren66](REVISION66.md) and [wren71](RESTART-TRAINING.md) retain engine witness checks, full frame decode/timing, policy/revision/seed/time labels, intermediate playback/download while training remained active, and final recordings. [Video fault tests](../../../cli/tests/test_video.py) inject policy/time/pose/path/encoder failures while an independent heartbeat process continues; this is synthetic concurrency evidence, not a new real-GPU render failure. |
+| **D4 — headless policy video** | [wren66](REVISION66.md) and [wren71](RESTART-TRAINING.md) retain engine witness checks, full frame decode/timing, policy/revision/seed/time labels, intermediate playback/download while training remained active, and final recordings. [Real GPU encoder-failure probe](RENDER-FAILURE.md) records a failed checkpoint re-render, continued training updates on the persistent dashboard, retained playback and successful verified retry; [compact receipt](render79-evidence.json). Its earlier test-trainer overlap and corrected probe assertion are disclosed. [Video fault tests](../../../cli/tests/test_video.py) retain synthetic policy/time/pose/path/encoder coverage. |
 | **D5 — retained design history** | [Common-seed comparison](revision66-evidence.json): 465 old run/asset files unchanged through revision/retraining. The current receipt plays/downloads 85, 105, 110 and 90 mm recordings, compares their own document snapshots and history lengths, and preserves selection through polls. |
 | **D6 — save/reopen/restart** | [restart69-evidence.json](restart69-evidence.json): two fresh engine restores, 2,004-file inventory, all 15 then-existing runs and videos. [restart71-evidence.json](restart71-evidence.json): same real trainer PID/start tick, updates 4→14, first newer page update 0.957 s after restart, uninterrupted historical playback. Engine reopen was not tested during training. |
 | **D7 — independent copy** | [copy-evidence.json](copy-evidence.json): original unavailable during copy edit/reopen/two-server browser review, complete original inventory unchanged. [interruption57-evidence.json](interruption57-evidence.json) adds copy training/retry with original preservation. Keep the entire project, not just its script. |

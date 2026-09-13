@@ -6,14 +6,17 @@ The [Wren lifecycle report](../wren-fresh/LIFECYCLE.md) links D1–D11 evidence,
 comparisons and their limits, and the current persistent-browser check.
 
 The shared private-network dashboard on port 8765 serves **`ot5-wren-copy54`**,
-with **`wren71-final` selected by default**, playback revision **`e9dee22bc90c…`**
-and the product agent's 90 mm feet. Iteration 71 completed a 240-update GPU
-repeat and restarted this persistent service during training: one unchanged
-trainer, telemetry recovery in 0.957 s, and historical `wren66-final` playback
-and download preserved. Checkpoint and final videos are verified, saved,
-playable and downloadable; a fresh completion visit confirmed the final default.
-No experiment trainer remains active. The service stays running.
-[Real-training restart proof and receipts](../wren-fresh/RESTART-TRAINING.md).
+with **`wren79-final` selected by default**, playback revision **`0d78fae96c22…`**,
+on the product agent's 90 mm design. Iteration 79 completed its 240-update GPU
+repeat and verified checkpoint and final videos, including full decode and
+persistent-browser playback/download. A deliberately failed checkpoint re-render
+showed encoder failure and CLI recovery guidance while the same trainer continued
+updating; its retry video played at update 96. All 703 prior run/asset files are
+unchanged. No experiment trainer remains active; the service stays running.
+[Failure-isolation evidence and disclosed probe errors](../wren-fresh/RENDER-FAILURE.md),
+[compact receipt](../wren-fresh/render79-evidence.json).
+The earlier [real-training restart proof](../wren-fresh/RESTART-TRAINING.md)
+remains historical evidence for `wren71`.
 The earlier [seed 0–4 comparison](../wren-fresh/REVISION66.md) remains historical.
 
 Iteration 72 rechecked this persistent URL without restarting it or training:
