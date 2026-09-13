@@ -1489,7 +1489,12 @@ What the page shows, and where each thing comes from:
   left on screen. Retained videos with a recorded SHA-256 are verified before
   playback or download; a mismatch is refused and labelled with a CLI retry
   action. Restoring the matching artifact recovers on the next poll. Older
-  entries without a digest retain existence-only checks. Videos are the D4 slot: a recorded video plays inline
+  entries without a digest retain existence-only checks. The video list leads with current file
+  availability and a retained/recorded count; missing or refused files show
+  unavailable (or partly available when other recordings remain). The separately
+  labelled recorded render outcome is historical: `ready` does not mean its
+  output still exists or passes verification. Restoring the original bytes
+  recovers playback on the next poll. Videos are the D4 slot: a recorded video plays inline
   (byte ranges are served, so seeking works) and downloads, identified by
   policy digest, seed and simulated seconds; none recorded says so.
 

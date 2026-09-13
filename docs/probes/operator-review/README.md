@@ -37,6 +37,15 @@ URL still serves `wren71-final` and its verified video. All 3,769 source-project
 files remained byte-identical. No service restart or training occurred.
 [Wren fault evidence](../wren-fresh/LIFECYCLE.md#wren-video-faults--iteration-75).
 
+Iteration 76 fixed the video list's misleading ready headline (ADR-310).
+The persistent page now leads with **Video files: available (1/1 retained)**,
+separately from **Recorded video render: ready**. Missing and truncated output
+on a disposable full Wren copy leads with **unavailable (0/1 retained)** while
+preserving the recorded ready outcome. Restoration and historical playback/
+download passed; the persistent current project/run and all 3,769 source files
+remain unchanged. No restart or training; service stays running.
+[Availability and recovery receipt](../wren-fresh/video76-evidence.json).
+
 Iteration 69 verified two engine reopens and restarted the persistent service
 with the saved working project intact: all 15 run views matched, the open
 page kept playing, and fresh visits still selected `wren66-final`. Current

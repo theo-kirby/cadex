@@ -29,6 +29,7 @@ def inventory(root):
 def play(page, expected):
     page.send("Page.bringToFront")
     page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+    assert page.text('#videos > li') == 'Video files: available (1/1 retained)'
     assert page.text('#view-revision') == expected['accepted_revision']
     assert expected['policy_sha256'][:12] in page.text('#videos')
     page.evaluate("window.testVideo=document.querySelector('#videos video');"
@@ -76,7 +77,7 @@ def main():
                 assert page.text('#view-kind') == 'RUN ' + current
                 result['baseline'] = play(page, status['videos'][0])
                 for fault, message in [('missing', 'missing'), ('partial', 'digest mismatch'),
-                                       ('failed', 'Video render: failed')]:
+                                       ('failed', 'Recorded video render: failed')]:
                     if fault == 'missing':
                         video.unlink()
                     elif fault == 'partial':
@@ -86,6 +87,8 @@ def main():
                         receipt.write_text(json.dumps(status))
                     # Observe automatic polling on the already-open page.
                     page.wait_for("document.getElementById('videos').textContent.includes(" + json.dumps(message) + ")")
+                    assert page.text('#videos > li') == 'Video files: unavailable (0/1 retained)'
+                    assert ('Recorded video render: ' + ('failed' if fault == 'failed' else 'ready')) in page.text('#videos')
                     assert page.text('#view-kind') == 'RUN ' + current
                     assert not page.evaluate("!!document.querySelector('#videos video, #videos a')")
                     assert 'Retry the CLI video command' in page.text('#videos')

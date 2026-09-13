@@ -300,7 +300,7 @@ def test_browser_plays_downloads_and_keeps_playback_across_polls(rendered, brows
         with pytest.raises(ValueError, match='policy digest'):
             render(root, 'sample')
         page.evaluate('window.cadexReview.refresh()', await_promise=True)
-        assert 'Video render: failed' in page.text('#videos') and 'Retry the CLI' in page.text('#videos')
+        assert 'Recorded video render: failed' in page.text('#videos') and 'Retry the CLI' in page.text('#videos')
         assert page.evaluate("!!document.querySelector('#videos video')")
         page.click("#views li[data-view='accepted']")
         assert page.evaluate("!document.querySelector('#videos video')")
@@ -360,3 +360,62 @@ def test_shared_scene_matches_decoded_video_and_keeps_older_recording(rendered, 
             assert hashlib.sha256(download.path.read_bytes()).hexdigest() == record['videos'][index]['sha256']
     finally:
         server.shutdown();server.server_close()
+
+
+@needs_browser
+def test_video_availability_tracks_missing_partial_restored_and_history(rendered, browser):
+    root, video = rendered
+    current = root / 'runs/sample'
+    shutil.copytree(current, root / 'runs/history')
+    history_record = root / 'runs/history/run.json'
+    history_record.write_text(json.dumps({**json.loads(history_record.read_text()), 'run': 'history'}))
+    path = current / video['path']
+    original = path.read_bytes()
+    server, _ = serve(root, '127.0.0.1', 0)
+    try:
+        page = _open(browser, server.url)
+        page.click("#views li[data-run='sample']")
+
+        def availability(expected):
+            page.wait_for("document.querySelector('#videos > li')?.textContent === " + json.dumps(expected))
+            assert 'Recorded video render: ready' in page.text('#videos')
+
+        availability('Video files: available (1/1 retained)')
+        for fault in ('missing', 'partial'):
+            if fault == 'missing':
+                path.unlink()
+            else:
+                path.write_bytes(original[:64])
+            # Automatic polling in the same page must override the saved ready receipt.
+            availability('Video files: unavailable (0/1 retained)')
+            assert ('missing' if fault == 'missing' else 'digest mismatch') in page.text('#videos')
+            assert not page.evaluate("!!document.querySelector('#videos video, #videos a')")
+            assert 'Retry the CLI video command' in page.text('#videos')
+            page.click("#views li[data-run='history']")
+            availability('Video files: available (1/1 retained)')
+            page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+            page.evaluate("window.keptVideo=document.querySelector('#videos video'); keptVideo.muted=true; keptVideo.loop=true; keptVideo.play()", await_promise=True)
+            page.wait_for('keptVideo.currentTime > 0.1')
+            page.evaluate('cadexReview.refresh()', await_promise=True)
+            assert page.text('#view-kind') == 'RUN history'
+            assert page.evaluate("keptVideo === document.querySelector('#videos video') && !keptVideo.paused")
+            download = page.download('#videos a')
+            assert hashlib.sha256(download.path.read_bytes()).hexdigest() == video['sha256']
+            page.click("#views li[data-run='sample']")
+            availability('Video files: unavailable (0/1 retained)')
+            path.write_bytes(original)
+            availability('Video files: available (1/1 retained)')
+            page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+            download = page.download('#videos a')
+            assert hashlib.sha256(download.path.read_bytes()).hexdigest() == video['sha256']
+        # A run can retain one usable recording while a second is missing.
+        receipt_path = current / 'video.json'
+        receipt = json.loads(receipt_path.read_text())
+        receipt['videos'].append({**video, 'path': 'missing.webm'})
+        receipt_path.write_text(json.dumps(receipt))
+        availability('Video files: partly available (1/2 retained)')
+        assert page.evaluate("document.querySelectorAll('#videos video').length") == 1
+        assert page.evaluate("performance.getEntriesByType('navigation').length") == 1
+    finally:
+        server.shutdown()
+        server.server_close()

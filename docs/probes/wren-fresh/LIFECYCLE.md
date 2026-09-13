@@ -223,3 +223,18 @@ claiming Wren fault injection had not been repeated. A fresh invocation of
 `pixi run python -m pytest cli/tests/test_wren_lifecycle_report.py` passed all
 four updated tests; the whole CLI suite was not repeated after that edit.
 Logs are retained beside the raw receipt. No product regression was observed.
+
+
+### Video availability wording — iteration 76
+
+ADR-310 separates the saved encoder outcome from file availability today.
+The list now leads with **Video files: unavailable (0/1 retained)** for missing
+or truncated output, even when **Recorded video render: ready** remains true
+of the saved receipt. With several recordings, a mixture is **partly available**.
+The same `video_recovery.py` command above, using a fresh external output
+folder, passed with explicit headline assertions; [the new receipt](video76-evidence.json)
+retains the missing/partial/failed labels, historical playback/download and
+restoration evidence. The original 3,769 files are unchanged, and the persistent
+URL still defaults to `ot5-wren-copy54 / wren71-final`, with its verified video
+available. No training or service restart was needed. This is a product wording
+fix and browser regression, not a new training or visual-style result.

@@ -261,8 +261,18 @@
     if (videos.dataset.key === videoKey) return;
     videos.dataset.key = videoKey;
     clearChildren(videos);
-    if (run.video_render) videos.appendChild(el('li', {text: 'Video render: ' + run.video_render.state + (run.video_render.error ? ' — ' + run.video_render.error + '. Retry the CLI video command after fixing the retained inputs or encoder.' : '')}));
     var recorded = run.videos || [];
+    if (recorded.length) {
+      var available = recorded.filter(function (_, index) {
+        var item = (resolved.videos || [])[index] || {};
+        return item.exists && !item.error;
+      }).length;
+      var availability = available === recorded.length ? 'available' : available ? 'partly available' : 'unavailable';
+      videos.appendChild(el('li', { 'data-video-availability': availability,
+        className: available === recorded.length ? 'status-retained' : 'status-missing',
+        text: 'Video files: ' + availability + ' (' + available + '/' + recorded.length + ' retained)' }));
+    }
+    if (run.video_render) videos.appendChild(el('li', {text: 'Recorded video render: ' + run.video_render.state + (run.video_render.error ? ' — ' + run.video_render.error + '. Retry the CLI video command after fixing the retained inputs or encoder.' : '')}));
     if (!recorded.length) videos.appendChild(el('li', { className: 'muted', text: 'videos: none recorded for this run' }));
     recorded.forEach(function (video, index) {
       var item = (resolved.videos || [])[index] || {};

@@ -23209,3 +23209,15 @@ current and historical playbacks, the four states and copy isolation. The
 persistent Wren dashboard was restarted once, with no trainer running, to load
 this: `wren66-final` shows twelve checkpoints retained through `wren66`. No
 new dependency; no CLI exit semantics changed.
+
+## ADR-310 — Separate video availability from recorded render outcome (2026-09-13)
+
+[Cadex-new] A missing or truncated video still led with `Video render: ready`,
+which described the saved encoder receipt while implying the output was usable.
+Lead the video list with current availability and the retained/recorded count;
+label the saved receipt `Recorded video render`. A mixed collection is partly
+available, and a successful old render can coexist with unavailable output.
+Use the reader's existing existence/digest checks, preserving its recovery
+instructions and playback across unchanged polls. Browser regressions cover
+missing, truncated, restored and mixed files plus historical playback/download.
+No new dependency or retained-record format change.
