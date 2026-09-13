@@ -19,11 +19,15 @@ const CLOCK = {panel:'rgba(20,22,26,0.72)', line:'rgba(244,245,247,0.22)', ink:'
 // is a Hann-smoothed track with half-window `smooth_frames`; the subject may lead the anchor by at
 // most `max_drift` of the half-frame before the soft limiter pulls the anchor after it.
 export const FOLLOW = {fraction:.22, subject_y:-.06, max_drift:.26, smooth_frames:4};
+// Collision proxies (REVIEW-DESIGN.md §11): the simulation's contact shapes, drawn as outlines in
+// the page's `--warn` through the solids, and only while the labelled toggle is on. Never in a
+// recording, never by default: what the viewer shows is the tessellated solid.
+const PROXY = {color:0xffe08a, opacity:.9};
 
 export function create(canvas) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0};}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -43,6 +47,34 @@ export function create(canvas) {
   let bounds=null, triangleCount=0, staged='', stage=null;
   let c={yaw:.8,pitch:.5,distance:100,target:[0,0,0]}, floorZ=0;
   const meshes = new Map();
+  // The proxies: outline children of the solid they belong to, so setPoses moves both.
+  const proxyLines=[]; let proxyGeoms=[], proxiesShown=false, proxiesDrawn=0;
+  function proxyGeometry(g) {
+    const s=(g.size_mm||[]).map(v=>v*.001);
+    switch (g.type) {
+      case 'box': return new THREE.BoxGeometry(2*s[0],2*s[1],2*s[2]);
+      case 'sphere': return new THREE.SphereGeometry(s[0],16,12);
+      case 'capsule': {const geo=new THREE.CapsuleGeometry(s[0],2*s[1],4,16); geo.rotateX(Math.PI/2); return geo;}
+      case 'cylinder': {const geo=new THREE.CylinderGeometry(s[0],s[0],2*s[1],24,1); geo.rotateX(Math.PI/2); return geo;}
+      case 'mesh': {const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(g.vertices_mm.map(v=>v*.001),3)); geo.setIndex(g.faces); return geo;}
+      default: return null;
+    }
+  }
+  function disposeProxies() {
+    proxyLines.forEach(l=>{l.parent&&l.parent.remove(l);l.geometry.dispose();l.material.dispose();});
+    proxyLines.length=0; proxiesDrawn=0;
+  }
+  function buildProxies() {
+    disposeProxies();
+    proxyGeoms.forEach(g=> {
+      const owner=meshes.get(g.component); if (!owner||!g.drawn||!g.pos_mm||!g.rotation_xyzw) return;
+      const geo=proxyGeometry(g); if (!geo) return;
+      const line=new THREE.LineSegments(new THREE.EdgesGeometry(geo,1),new THREE.LineBasicMaterial({color:PROXY.color,transparent:true,opacity:PROXY.opacity,depthTest:false,toneMapped:false}));
+      geo.dispose(); line.renderOrder=1; line.visible=proxiesShown;
+      line.position.fromArray(g.pos_mm).multiplyScalar(.001); line.quaternion.fromArray(g.rotation_xyzw);
+      owner.add(line); proxyLines.push(line); proxiesDrawn++;
+    });
+  }
   // The timer: one textured quad in an orthographic overlay scene, painted after the stage.
   const hud=new THREE.Scene(), hudCamera=new THREE.OrthographicCamera(0,1,1,0,-1,1);
   const clockCanvas=document.createElement('canvas'), clockTexture=new THREE.CanvasTexture(clockCanvas);
@@ -116,9 +148,15 @@ export function create(canvas) {
     draw();
   }
   function clear() {
+    disposeProxies(); proxyGeoms=[];
     meshes.forEach(m=> {model.remove(m); m.geometry.dispose();m.material.dispose();});
     meshes.clear(); bounds=null;triangleCount=0;draw();
   }
+  // The proxies to offer: the manifest's `collision.geoms`, each in its component's frame.
+  // They are built against the installed solids and stay hidden until showProxies(true).
+  function setProxies(geoms) {proxyGeoms=Array.isArray(geoms)?geoms.map(g=>JSON.parse(JSON.stringify(g))):[]; buildProxies(); draw();}
+  function showProxies(flag) {proxiesShown=!!flag; proxyLines.forEach(l=>{l.visible=proxiesShown;}); draw(); return proxiesShown;}
+  function showing() {return proxiesShown&&proxiesDrawn?'tessellated solids with collision proxies':'tessellated solids';}
   function install(entries) {
     clear();
     entries.forEach((entry,i)=> {
@@ -215,7 +253,8 @@ export function create(canvas) {
   canvas.addEventListener('pointerup',lift);canvas.addEventListener('pointercancel',lift);
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0015));draw();},{passive:false});
   window.addEventListener('resize',draw);
-  return {available:true,load,install,clear,fit,draw,setPoses,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,
-    camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,style:STYLE,stage}),
+  return {available:true,load,install,clear,fit,draw,setPoses,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
+    camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,style:STYLE,stage,showing:showing(),
+      proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}}),
     png:()=>{draw();return canvas.toDataURL('image/png').split(',')[1];}};
 }

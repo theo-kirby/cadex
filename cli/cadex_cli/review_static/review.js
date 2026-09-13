@@ -16,7 +16,7 @@
 
   var POLL_MS = 2000;
   var state = { review: null, selected: 'accepted', lastOk: null, stale: false, model: null, viewer: null,
-                error: null, following: true, docKey: null, docRequest: 0, detail: null };
+                error: null, following: true, docKey: null, docRequest: 0, detail: null, showProxies: false };
   var pendingPoll = null;
   // The last poll's measured cost, for the operator and the regression suite:
   // bytes of the run list, bytes of the selected run's detail, wall time.
@@ -443,7 +443,8 @@
     recorded.forEach(function (video, index) {
       var item = (resolved.videos || [])[index] || {};
       var line = el('li', { 'data-video': String(index) });
-      var label = 'video ' + index + ' · ' + (video.path || '?') + ' · revision ' + short(video.accepted_revision || (run.model || {}).accepted_revision) + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s · ' + (video.style || 'historical legacy style');
+      var label = 'video ' + index + ' · ' + (video.path || '?') + ' · revision ' + short(video.accepted_revision || (run.model || {}).accepted_revision) + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s · ' + (video.style || 'historical legacy style') + ' · showing ' + (video.showing || 'not recorded (recorded before videos named what they show)');
+      line.setAttribute('data-showing', video.showing ? 'solids' : 'unrecorded');
       if (item.exists && !item.error) {
         var url = '/video/run/' + encodeURIComponent(run.run) + '/' + index;
         var player = el('video', { controls: true, preload: 'metadata', src: url });
@@ -519,9 +520,38 @@
       var line = el('li', { 'data-component': component.name, 'data-mesh': component.mesh_status });
       if (mesh) { var swatch = el('span', { className: 'swatch' }); swatch.style.background = 'rgb(' + mesh.color.join(',') + ')'; line.appendChild(swatch); }
       line.appendChild(document.createTextNode(component.name + (component.output && component.output !== component.name ? ' ← ' + component.output : '') +
-        ' · mesh ' + component.mesh_status + (mesh ? ' (' + mesh.triangles + ' triangles)' : '') + ' · placement: ' + component.placement_source));
+        ' · mesh ' + component.mesh_status + (mesh ? ' (' + mesh.triangles + ' triangles)' : '') + ' · placement: ' + component.placement_source +
+        ' · collision: ' + proxySummary(manifest, component.name)));
       list.appendChild(line);
     });
+  }
+
+  // What the simulation collides with, per component, from the manifest's collision block
+  // (the run's own retained MJCF): a summary for the list and the geoms for the viewer.
+  function proxySummary(manifest, name) {
+    var collision = manifest.collision || {};
+    if (!collision.available) return 'not retained';
+    var kinds = {};
+    (collision.geoms || []).forEach(function (geom) { if (geom.component === name) kinds[geom.type] = (kinds[geom.type] || 0) + 1; });
+    var parts = Object.keys(kinds).sort().map(function (kind) { return kinds[kind] + ' ' + kind; });
+    return parts.length ? parts.join(', ') : 'none declared';
+  }
+
+  function renderShowing() {
+    var status = $('model-status'), toggle = $('show-collision'), note = $('collision-note');
+    var manifest = state.model, collision = (manifest && manifest.collision) || {};
+    var stats = state.viewer.available ? state.viewer.stats() : null;
+    var drawable = !!(manifest && manifest.available && collision.available && stats && stats.proxies.drawn > 0);
+    toggle.disabled = !drawable;
+    toggle.checked = state.showProxies;
+    if (!manifest || !manifest.available) { note.textContent = ''; status.removeAttribute('data-showing'); return; }
+    if (!collision.available) note.textContent = '(none retained: ' + collision.reason + ')';
+    else if (!drawable) note.textContent = '(' + collision.geoms.length + ' listed, none drawable)';
+    else note.textContent = '(' + stats.proxies.drawn + ' proxies from ' + collision.source + ')';
+    var showing = stats ? stats.showing : 'nothing drawn';
+    status.dataset.showing = state.showProxies && drawable ? 'solids+proxies' : 'solids';
+    status.textContent = status.textContent.replace(/ · showing: .*$/, '') + ' · showing: ' + showing +
+      (state.showProxies && drawable ? ' (' + stats.proxies.drawn + ' outlines from ' + collision.source + ')' : '');
   }
 
   function loadModel() {
@@ -539,6 +569,7 @@
         status.dataset.state = 'missing';
         status.textContent = 'no model to show: ' + manifest.reason + ' (revision ' + short(manifest.revision) + ')';
         renderModelComponents(manifest, []);
+        renderShowing();
         return;
       }
       if (!state.viewer.available) {
@@ -549,12 +580,16 @@
       }
       return state.viewer.load(manifest).then(function (loaded) {
         if (token !== state.selected) return;
+        // The proxies ride along, hidden unless the toggle is on: the solids are what is shown.
+        state.viewer.setProxies(manifest.collision && manifest.collision.available ? manifest.collision.geoms : []);
+        state.viewer.showProxies(state.showProxies);
         var stats = state.viewer.stats();
         status.dataset.state = 'loaded';
         status.textContent = (run ? (run.relation === 'historical' ? 'HISTORICAL model ' : 'model ') + 'of run ' + run.run : 'accepted model') +
           ' at revision ' + short(manifest.revision) + ' · ' + stats.components + ' component(s), ' + stats.triangles + ' triangles · from ' + manifest.source +
           ' · placements: ' + manifest.placement_source;
         renderModelComponents(manifest, loaded);
+        renderShowing();
       });
     }).catch(function (error) {
       status.dataset.state = 'error';
@@ -629,6 +664,11 @@
       state.following = true;
     });
     $('model-fit').addEventListener('click', function () { state.viewer.fit(); });
+    $('show-collision').addEventListener('change', function (event) {
+      state.showProxies = !!event.target.checked;
+      state.viewer.showProxies(state.showProxies);
+      renderShowing();
+    });
     // The run list is a sidebar at desk and a closed disclosure on a phone
     // (REVIEW-DESIGN.md §6); crossing the breakpoint resets it, a tap on the
     // summary toggles it. Only the media query decides, never the run count.

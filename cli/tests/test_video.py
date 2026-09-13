@@ -436,6 +436,68 @@ def test_capture_follows_the_subject_at_the_declared_framing_and_stamps_the_time
 
 
 @needs_browser
+def test_video_shows_the_solids_never_the_proxies_and_says_so(rendered, browser):
+    """D4 (ADR-333): a recording is the tessellated solids; the run's proxies
+    differ from them, and the decoded first frame matches the shared scene
+    with the proxies hidden and not with them shown; the page's identity
+    strip names what the video shows, and an older video says it did not."""
+    root, video = rendered
+    assert video['showing'] == 'tessellated solids of the accepted revision; collision proxies not drawn'
+    assert video['proxies'] == {'drawn': False, 'retained': 2}
+    run = root / 'runs/sample'
+    record = read_run_record(run, root)
+    manifest = run_model(root, record)
+    assert manifest['collision']['available'] and len(manifest['collision']['geoms']) == 2
+    trace = json.loads((run / 'rollout/assembly-simulation-trace.json').read_text())
+    frame = next(f for f in trace['frames'] if f.get('frame_kind') == 'solver_output')
+    entries = [{'name': e['name'], 'placement': frame['component_placements'][e['name']],
+                'positions': [v for t in stl(run / 'rollout' / (e['output'] + '.stl')) for pt in t for v in pt]}
+               for e in manifest['components'] if e['name'] in frame['component_placements']]
+    def rgb(path):
+        return subprocess.check_output(['ffmpeg', '-v', 'error', '-i', str(path), '-frames:v', '1',
+                                        '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'])
+    decoded = rgb(run / video['path'])
+    server, _ = serve(root, '127.0.0.1', 0)
+    try:
+        page = browser.page(server.url + 'capture.html')
+        page.wait_for('window.cadexCapture?.available')
+        page.evaluate('cadexCapture.install(' + json.dumps(entries) + '); cadexCapture.frameBounds(' + json.dumps(video['bounds']) + ');'
+                      'cadexCapture.setCamera(' + json.dumps(video['camera']) + '); cadexCapture.setClock(0);'
+                      'cadexCapture.setProxies(' + json.dumps(manifest['collision']['geoms']) + ')')
+        import base64
+        def shot(shown):
+            path = run / f'proxies-{shown}.png'
+            page.evaluate(f'cadexCapture.showProxies({json.dumps(shown)})')
+            path.write_bytes(base64.b64decode(page.evaluate('cadexCapture.png()')))
+            return rgb(path)
+        hidden, shown = shot(False), shot(True)
+        assert len(hidden) == len(shown) == len(decoded) == 512 * 512 * 3
+        outline = sum(1 for i in range(0, len(hidden), 3)
+                      if sum(abs(a - b) for a, b in zip(hidden[i:i+3], shown[i:i+3])) > 40)
+        assert outline > 1000, 'the proxies draw as outlines the solids do not cover'
+        error_hidden = sum(abs(x - y) for x, y in zip(hidden, decoded)) / len(decoded)
+        error_shown = sum(abs(x - y) for x, y in zip(shown, decoded)) / len(decoded)
+        assert error_hidden < 3, 'the decoded frame is the solids, inside the codec tolerance'
+        assert error_shown > 1.5 * error_hidden, 'the decoded frame is not the proxies'
+        assert page.evaluate('cadexCapture.stats().showing') == 'tessellated solids with collision proxies'
+        assert page.evaluate('cadexCapture.modelPixels().count') > page.evaluate('cadexCapture.showProxies(false); cadexCapture.modelPixels().count')
+        # An older recording that never said what it showed is labelled as such on the page.
+        legacy = {**video, 'path': 'older.webm', 'sha256': '1' * 64}
+        legacy.pop('showing'); legacy.pop('proxies')
+        status = json.loads((run / 'video.json').read_text())
+        status['videos'] = [video, legacy]
+        (run / 'video.json').write_text(json.dumps(status))
+        page = _open(browser, server.url)
+        page.wait_for("document.querySelectorAll('#videos li[data-video]').length === 2")
+        assert page.attribute('#videos li[data-video="0"]', 'data-showing') == 'solids'
+        assert '· showing tessellated solids of the accepted revision; collision proxies not drawn' in page.text('#videos li[data-video="0"]')
+        assert page.attribute('#videos li[data-video="1"]', 'data-showing') == 'unrecorded'
+        assert 'showing not recorded' in page.text('#videos li[data-video="1"]')
+    finally:
+        server.shutdown(); server.server_close()
+
+
+@needs_browser
 def test_video_availability_tracks_missing_partial_restored_and_history(rendered, browser):
     root, video = rendered
     current = root / 'runs/sample'

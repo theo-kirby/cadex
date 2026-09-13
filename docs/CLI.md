@@ -581,6 +581,22 @@ that resolves inside the project root. The video checker beside the fresh-projec
 the lineage to find a video's training run and an older sibling without a
 naming convention.
 
+**Collision proxies (ADR-333).** Every model manifest carries a `collision`
+block: the proxies the simulation collides with, parsed from the MJCF the
+view already retains at its own identity — a run's recorded `model_xml`
+export (refused with `digest mismatch` when the rollout trace's policy
+receipt names another model), the accepted attempt's `assembly.mjcf` output,
+or nothing with the reason. Each geom is listed in its component's frame in
+mm and xyzw with MuJoCo's size meaning (half-sizes for a box, radius and
+half-length for a capsule or cylinder), inline mesh assets as vertices and
+faces, planes and unknown types listed but not drawn, and contact-free geoms
+counted as `skipped`. The page draws them only while **show collision
+geometry** is on (`#show-collision`, disabled with the reason when none are
+retained), as outlines over the solids that follow the solids' poses; the
+model status line ends `· showing: tessellated solids` or `… with collision
+proxies` (`data-showing`), and each component's line says what it has
+(`collision: 1 box`). A recording never contains them.
+
 A refused first design prompt can leave scaffold documents with no accepted
 manifest or run record. The dashboard shows missing geometry and a next CLI
 action, but does not display that provider error; retain the CLI envelope.
@@ -2187,8 +2203,12 @@ and preserve prior videos without touching training.
 Each new video records style version/digest, Three.js and Chromium versions,
 resolution, projection, the first frame's camera, the rig's declared and
 measured framing (`framing`: fraction, standing height, standoff, drift and
-apparent-size extremes), the overlay, and trajectory bounds alongside revision,
-policy, seed, trace digest and simulation time. New recordings appear first;
+apparent-size extremes), the overlay, **what it shows** (`showing`: the
+tessellated solids of the accepted revision, collision proxies not drawn;
+`proxies.retained` counts the run's proxies that were *not* drawn — the
+renderer never hands them to the capture and refuses to publish if the
+capture reports anything else, ADR-333), and trajectory bounds alongside
+revision, policy, seed, trace digest and simulation time. New recordings appear first;
 earlier entries and content-addressed files remain retained and downloadable.
 Identical video bytes are deduplicated. Old entries lacking a style are labelled
 “historical legacy style”. Copy the full project directory to retain all of them.

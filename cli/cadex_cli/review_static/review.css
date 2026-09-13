@@ -90,6 +90,9 @@ button:hover { background: var(--surface-3); }
 button:focus-visible { border-color: var(--rule-strong); }
 #current-run { width: 100%; margin-bottom: var(--s3); text-align: left; overflow-wrap: anywhere; }
 .controls { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; color: var(--ink-2); font-size: var(--fs-0); margin: var(--s2) 0; }
+.controls label.toggle { display: inline-flex; align-items: center; gap: var(--s1); min-height: var(--control); color: var(--ink); cursor: pointer; }
+.controls label.toggle input { width: 18px; height: 18px; margin: 0 var(--s1) 0 0; accent-color: var(--warn); }
+.controls label.toggle input:disabled + span { color: var(--ink-2); }
 
 /* 3 · Model: the viewport is a window onto the same place the videos are captured in. */
 #model-status { margin-bottom: var(--s2); overflow-wrap: anywhere; }

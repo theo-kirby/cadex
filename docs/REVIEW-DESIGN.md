@@ -52,9 +52,9 @@ Top to bottom, in reading order, on every width. The order *is* the charter's
 | 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. |
 | 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). |
 | 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. |
-| 3 | **Model** | `#model`, `#model-status`, `#viewer`, `#model-fit`, `#model-components` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and — once D4 lands — the labelled collision-proxy toggle, off by default. |
+| 3 | **Model** | `#model`, `#model-status[data-showing]`, `#viewer`, `#model-fit`, `#show-collision`, `#collision-note`, `#model-components` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and the labelled **show collision geometry** toggle, off by default (§11). The status line ends with what is showing. |
 | 4 | **Curves** | `#curves`, `#telemetry`, `[data-metric]`, `[data-history]`, `#checkpoint-source`, `#checkpoints` | Training telemetry: the five metrics as a stat row, the three histories (reward per step, loss, episode length) as curves side by side on desk and stacked on phone, then checkpoint provenance. |
-| 5 | **Videos** | `#videos-region`, `#videos`, `#videos li[data-video]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed) and — once D4 lands — what it shows. |
+| 5 | **Videos** | `#videos-region`, `#videos`, `#videos li[data-video][data-showing]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed, and what it shows — recordings made before that was recorded say so). |
 | 6 | **Record** | `#record`, `#training`, `#params`, `#params-note`, `#artifacts`, `#problems`, `#disk`, `#docs`, `#decisions`, `#doc-view` | The appendix: training request and receipt, parameters and specs, retained artifacts and disk use, document snapshots and decisions. Full tables at desk width; on phone each table scrolls inside its own card, never the page. |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
@@ -394,3 +394,38 @@ page; the rig's apparent size is 0.2198–0.2201 across the clip; the frames
 and the assessment are the second half of
 [docs/probes/ot6/look/README.md](probes/ot6/look/README.md), composite
 [follow-side-by-side.png](probes/ot6/look/follow-side-by-side.png).
+
+## 11. What the viewport shows, and the collision toggle
+
+The viewport draws the **tessellated solids** of the view's identity and
+nothing else by default, and the model status line says so: it ends
+`· showing: tessellated solids` (`#model-status[data-showing="solids"]`).
+The simulation's **collision proxies** — the boxes, capsules, spheres,
+cylinders and hulls the dynamics actually collide with — are offered by the
+manifest's `collision` block, read from the MJCF the view already retains
+at its own identity (ADR-333), and drawn only while the checkbox labelled
+**show collision geometry** in the model controls is on. They are drawn as
+outlines in `--warn` (§4), with the depth test off so they read through the
+solid they belong to, parented to that solid so a pose moves both; the
+status line then ends `… with collision proxies (n outlines from <source>)`
+(`data-showing="solids+proxies"`), and each component's line in the list
+says what it has (`collision: 1 box`, `none declared`, `not retained`).
+When no export is retained the toggle is disabled and the note beside it
+says why. The reader's choice survives selecting another run; a reload
+starts with it off. The checkbox is 18 px inside a `--control`-high label,
+so it is a finger target on a phone (§5).
+
+A **recording** never contains proxies: the renderer hands the capture the
+solids alone and refuses to publish if the capture reports anything else.
+Each new video records `showing` and how many proxies were *not* drawn, and
+the identity strip under the clip (§2, region 5) ends `· showing …`; a
+recording made before that was recorded says `showing not recorded`.
+
+Measured on the fixture project whose proxies differ from its solids
+(`test_browser_shows_solids_by_default_and_proxies_only_under_the_labelled_toggle`,
+`test_video_shows_the_solids_never_the_proxies_and_says_so`): off by
+default; on, the drawn pixel box grows on every side; the decoded first
+frame of the video is within the codec tolerance of the shared scene with
+the proxies hidden and not with them shown. The real biped's screenshot with
+the toggle on waits for D5's project, whose proxies will differ from its
+printable parts; Lark's are boxes the size of its box parts.

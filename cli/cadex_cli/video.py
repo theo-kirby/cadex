@@ -209,7 +209,12 @@ def _render(root, directory):
                                              json.dumps(frame['component_placements']) + '); cadexCapture.setClock(' +
                                              json.dumps(clock) + '); cadexCapture.png()')
                         (work / f'{i:04d}.png').write_bytes(base64.b64decode(data))
-                    style = page.evaluate('cadexCapture.stats().style')
+                    stats = page.evaluate('cadexCapture.stats()')
+                    style = stats['style']
+                    # A recording shows the tessellated solids and nothing else: the capture
+                    # was never handed the proxies, and it says so itself.
+                    require(stats['showing'] == 'tessellated solids' and not stats['proxies']['shown']
+                            and stats['proxies']['listed'] == 0, 'capture drew something other than the solids')
                     browser_version = browser.send('Browser.getVersion')['product']
             finally:
                 server.shutdown()
@@ -239,6 +244,9 @@ def _render(root, directory):
                  'renderer': 'Three.js r160 / ' + browser_version, 'width': 512, 'height': 512,
                  'projection': 'perspective 55 degrees', 'camera': cameras[0], 'bounds': bounds,
                  'framing': rig, 'overlay': 'timer: simulation seconds, bottom left',
+                 'showing': 'tessellated solids of the accepted revision; collision proxies not drawn',
+                 'proxies': {'drawn': False,
+                             'retained': len(manifest['collision']['geoms']) if manifest['collision']['available'] else None},
                  'sampling': '10 fps, latest solved pose plus final pose, follow camera at the declared framing; tessellation preview'}
         status.update(state='ready', videos=[video] + [v for v in old.get('videos', []) if v.get('sha256') != sha])
         atomic_json(status_path, status)

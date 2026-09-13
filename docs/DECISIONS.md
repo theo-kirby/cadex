@@ -24002,3 +24002,60 @@ The per-frame capture now sets the camera as well as the poses and the clock
 (16.4 s for 81 frames of Lark, from 13.3). Lark barely moves, so the
 smoothing and the drift limiter are proven on the fixture rather than on this
 clip; a travelling mechanism (D6–D8) will be the first real exercise.
+
+## ADR-333 — The viewer shows the tessellated solids and says so; collision proxies only under a labelled toggle (2026-09-13)
+
+**Context.** The charter's D4 (ADR-328): the dashboard viewport and the
+videos render the accepted revision's tessellated solids, never the
+collision proxies, unless a visible toggle labelled as collision geometry is
+on, and the video's identity strip names what is shown. Both clients already
+drew the solids and nothing else, but nothing said so, and the proxies the
+simulation actually collides with — boxes and capsules on Lark, declared per
+part by the design turn (ADR-281) — were nowhere on the page.
+
+**Decision.** The proxies come from the **MJCF the view already retains at
+its own identity**, never from a rebuild: for a run, its recorded
+`model_xml` export (refused when the rollout trace's policy receipt names a
+different model digest, so a historical run's proxies are the ones it rolled
+out against); for the accepted view, the accepted attempt's `assembly.mjcf`
+output; for a run that borrows the accepted model, the accepted attempt's.
+`review_server.collision_proxies` parses bodies and geoms with the standard
+library, keeps only geoms that take part in contact, expresses each in its
+component's frame (bodies are named as the trace's components are) in mm and
+xyzw, carries inline mesh assets as vertices and faces, and lists a plane or
+an unsupported type without drawing it. The manifest's `collision` block
+says where the proxies came from, their digest, or why there are none.
+
+The shared scene module (`review_scene.js`) gains `setProxies` and
+`showProxies`: outlines (`EdgesGeometry`, the page's `--warn`, depth test
+off so they read through the solid) parented to the solid they belong to,
+so `setPoses` moves both; hidden until shown; `stats()` reports `showing`
+and the proxy counts. The page adds the checkbox **show collision
+geometry** to the model controls, disabled with the reason when no export is
+retained, keeps the reader's choice across run selection, appends
+`· showing: …` to the model status line with a `data-showing` hook, and
+lists each component's proxies (`collision: 1 box`). The video renderer
+never hands the capture any proxies and refuses to publish if the capture
+reports anything but `tessellated solids`; each new video records
+`showing` and `proxies: {drawn: false, retained: n}`, and the page's
+identity strip appends `· showing …`, labelling older recordings as not
+having said.
+
+**Evidence.** `test_collision_proxies_come_from_the_retained_mjcf_at_the_same_identity`
+(both views, units, `fromto`, inline mesh, plane, bad size, digest
+mismatch, missing export); `test_browser_shows_solids_by_default_and_proxies_only_under_the_labelled_toggle`
+on a fixture whose proxies differ from its solids (the box three times the
+torso cube, the capsule five times the leg cube): off by default, the drawn
+pixel box grows on every side when on, proxies follow poses, each run's are
+its own, a run without its export disables the toggle and says why;
+`test_video_shows_the_solids_never_the_proxies_and_says_so`: the decoded
+first frame is inside the codec tolerance of the shared scene with proxies
+hidden and not with them shown, and the identity strip names it. The real
+biped's operator-URL evidence waits for D5's project: Lark's proxies are
+boxes the size of its box parts, so it cannot show the difference.
+
+**Consequences.** No engine, protocol, payload, shell or dependency change;
+`xml.etree` is the standard library. A model manifest is one block larger;
+an inline mesh proxy is carried in full, bounded by the 8 MiB MJCF read
+limit. The style digest is unchanged in meaning: proxies are never in a
+recording.
