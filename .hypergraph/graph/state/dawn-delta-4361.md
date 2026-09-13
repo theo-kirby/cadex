@@ -11,7 +11,7 @@ Status: working
 
 ## Current
 
-**D3 is repeated on the third fresh project, Lark.** During `lark1`'s real GPU run a fresh visit to the persistent URL selected the active run without a click and showed seven trainer iterations without reload, each 0.39–1.52 s after the trainer's commit, with reward, loss, episode-estimate and curve updates (evidence in `docs/probes/lark-fresh/training-evidence.json`, test-guarded). The run's 1,052 s wall clock was two thirds checkpoint export (eleven exports at 54–58 s each), a cost worth measuring rather than assuming [rec: upright-tide-4795].
+**D3 is repeated on the third fresh project, Lark, in both of its real GPU runs.** During `lark1` a fresh visit to the persistent URL selected the active run without a click and showed seven trainer iterations without reload, each 0.39–1.52 s after the trainer's commit, with reward, loss, episode-estimate and curve updates (evidence in `docs/probes/lark-fresh/training-evidence.json`, test-guarded). The run's 1,052 s wall clock was two thirds checkpoint export (eleven exports at 54–58 s each), a cost worth measuring rather than assuming [rec: upright-tide-4795]. During `lark2`, after the agent's revision, a fresh visit again selected the active run and moved through seven page iterations on its own poll, each 0.24–1.62 s after the trainer's commit (`training84-evidence.json`, test-guarded) [rec: brave-water-4060].
 
 **Wren's revised GPU run completed 240 updates with 240 points in each reward, loss and episode-estimate history.** The persistent browser observed seven updates across iterations 3–11 without reload at committed-to-page delays of 0.50–1.53 s; initial compilation was correctly labelled stale [rec: frosty-birch-2464]. Reed's probe2 showed seven iterations over 12.03 s at 0.23–1.29 s delays under the identity fix [rec: merry-star-6951]. Trainer-reported metrics are not independently measured rollout survival.
 
@@ -19,7 +19,7 @@ ADR-287 supplies atomic progress snapshots, bounded histories, two-second dashbo
 
 **Retained-video verification has measured steady-state bounds (ADR-296).** For 64 synthetic sparse 256 MiB files, uncached project polling took 6.59–7.00 s; a process-local cache of at most 256 digest entries reduces unchanged requests to 12–13 ms [rec: young-cedar-2719]. Browser polling permits one pending request per page [rec: neat-vine-2517]; a process-local verification lock lets concurrent clients hash shared unchanged video once, but separate processes do not share coordination and no universal five-second bound follows [rec: dusty-oak-7376].
 
-Judgement: `working`, supported by real multi-update observations on three fresh projects plus telemetry tests. Histories remain sampled, remote progress mirrors are outside this path and checkpoint-hashing overhead is unmeasured; no owner checkbox edit [rec: merry-star-6951] [rec: upright-tide-4795].
+Judgement: `working`, supported by real multi-update observations on three fresh projects (four Lark and Wren runs plus Reed) and telemetry tests. Histories remain sampled, remote progress mirrors are outside this path and checkpoint-hashing overhead is unmeasured; no owner checkbox edit [rec: merry-star-6951] [rec: brave-water-4060].
 
 Charter criterion: **D3. Training is visible while it runs** The biped's real GPU training updates status, iteration, reward and loss histories, episode length and checkpoint availability without a page reload; committed telemetry appears within five seconds under the measured test conditions; missing or stale data is labelled. Evidence: a browser observation spanning multiple actual training updates plus telemetry tests — synthetic data alone cannot tick it. Declared target `gap-d3-training-visible-while-runs` [rec: lucky-comet-0031], introduced with no implementation claimed [rec: dusty-peak-9330].
 
@@ -42,3 +42,4 @@ Charter criterion: **D3. Training is visible while it runs** The biped's real GP
 - sage-tower-6445 — first Wren GPU run, live persistent-browser telemetry and three retained 240-point histories
 - frosty-birch-2464 — revised Wren GPU completion and seven real persistent-browser telemetry updates
 - upright-tide-4795 — D3 repeated on Lark: seven live iterations on the persistent URL at 0.39–1.52 s
+- brave-water-4060 — D3 repeated on lark2: seven live iterations on the persistent URL at 0.24–1.62 s

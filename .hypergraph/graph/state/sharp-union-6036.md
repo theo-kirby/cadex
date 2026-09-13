@@ -11,17 +11,17 @@ Status: working
 
 ## Current
 
-**The agent's 110→90 mm Wren revision and retraining preserve all 465 pre-revision run/asset files.** `wren57-retry`, `wren66-checkpoint20` and `wren66-final` evaluate from their own retained script/model/task/policy on seeds 0–4; seed-zero traces reproduce exactly. Persistent browser selection distinguishes historical retry/checkpoint from the current final, with retained videos and identities [rec: red-jasper-1884].
+**The agent's 70→45 mm Lark torso revision and `lark2` retraining preserve all 125 pre-revision run/asset files byte-identically.** `lark1` and `lark2` remain selectable on the persistent dashboard with their own revisions, curves and videos, and all four retained policies were compared on seeds 0–9 from their own retained models, tasks and hash-verified policies (ADR-313) [rec: brave-water-4060]. This is the third fresh project on which a product-agent revision and retraining left the prior design's history intact.
 
-**Wren's 85→105 mm foot revision and retraining preserve all 114 original run files and four distinct model/policy/video histories.** Twenty common-seed rollouts verify retained identities and seed-zero trace reproduction. Both designs' checkpoint/final videos remain playable/downloadable with their original model, parameters and curves [rec: frosty-birch-2464]. Two subsequent provider-refused design turns preserve all 228 run files byte-for-byte, accepted script/digest/parameters and decisions; neither turn authored a geometry change [rec: smooth-pine-9795].
+**The agent's 110→90 mm Wren revision and retraining preserve all 465 pre-revision run/asset files.** `wren57-retry`, `wren66-checkpoint20` and `wren66-final` evaluate from their own retained script/model/task/policy on seeds 0–4; seed-zero traces reproduce exactly. Persistent browser selection distinguishes historical retry/checkpoint from the current final, with retained videos and identities [rec: red-jasper-1884]. Wren's earlier 85→105 mm foot revision preserved all 114 original run files and four distinct model/policy/video histories, with twenty common-seed rollouts verifying identities [rec: frosty-birch-2464]; the provider-refused design turns between preserved 228 and then 434 retained files and the accepted design, authoring nothing [rec: smooth-pine-9795] [rec: dawn-bell-5364].
 
-The latest refused product-agent turn on Wren's working copy preserves all 434 retained run/asset files and accepted script/spec identity. Four historical model/video identities pass browser playback, polling and hash-verified downloads; the accepted 110 mm design remains unchanged. Reopen metadata is not claimed byte-identical, and this refusal establishes no new design change [rec: dawn-bell-5364].
-
-**Review history survives the real 70→90 mm foot edit and GPU retraining.** Both designs remain browser-selectable with distinct model/spec identities, 240-point reward/loss/episode-length curves and playable/downloadable videos. All 250 pre-existing run/asset files remain byte-identical. This supplies the physical design-change comparison previously missing, so status is `working`; that edit was actor-authored and did not itself establish D9 product-agent authorship [rec: candid-forest-9800].
+**Review history survives the real 70→90 mm Reed foot edit and GPU retraining.** Both designs remain browser-selectable with distinct model/spec identities, 240-point reward/loss/episode-length curves and playable/downloadable videos; all 250 pre-existing run/asset files remain byte-identical. That edit was actor-authored and did not itself establish D9 product-agent authorship [rec: candid-forest-9800].
 
 ADR-291 retains assembled placements, checked mesh bytes, parameter specs and project documents before training and preserves them through later status writes [rec: quiet-arbor-0259]. ADR-293's real-engine browser regression additionally preserves the prior swept run's mesh bytes, assembled components, revision/digest and specs after a later physical parameter edit while current geometry changes [rec: forest-ledge-2219].
 
 Historical gaps remain explicit: foot90's original unavailable training snapshot is not rewritten from its later working rollout geometry, and the fix is verified on a real-engine fixture rather than another biped GPU run [rec: candid-forest-9800] [rec: forest-ledge-2219]. Complete project copies must include run directories and ignored policies, traces and videos; Git alone is insufficient [rec: light-brook-2640].
+
+Judgement: `working`. Reed, Wren and Lark each show a real design change and retraining with the prior run's identity, curves and videos intact and its files byte-identical; the owner's checkbox is not edited [rec: brave-water-4060].
 
 Charter criterion: **D5. Review history survives a design change** Each run retains the model/script revision, specs, task/training configuration, metrics, policy identity and review/video references needed to interpret it; after a design edit and retraining, both runs remain selectable with their own curves, models and videos. Evidence: before/after identity and artifact checks, and browser assertions that old results have not silently switched to the new design. Declared target `gap-d5-review-history-survives-design` [rec: lucky-comet-0031].
 
@@ -42,8 +42,8 @@ Charter criterion: **D5. Review history survives a design change** Each run reta
 - candid-forest-9800 — real physical edit/retraining retains both designs, curves and videos with all old run/assets unchanged
 - forest-ledge-2219 — parameter-sweep history regression retains original assembly, meshes and specs without backfill
 - honest-path-3451 — Wren foot revision preserves 114 files and historical meshes, specs, policy/video identities and browser review
-
 - frosty-birch-2464 — revised-foot retraining and twenty identity-checked rollouts preserve original history
 - smooth-pine-9795 — refused design turns preserve all 228 run files and accepted design
 - dawn-bell-5364 — refused copy design turn preserves 434 run/assets and accepted/historical review identities
 - red-jasper-1884 — agent revision/retraining preserves 465 prior files and separately retained baseline/checkpoint/final identities
+- brave-water-4060 — Lark agent revision and lark2 retraining preserve 125 prior files; both runs selectable with their own revisions, curves and videos
