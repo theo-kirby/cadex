@@ -8,6 +8,9 @@ comparison, current visual assessment and remaining acceptance limits.
 **Iteration 109 (D6/D10, ADR-325):** the engine was killed and restarted
 during real GPU training on `ot5-lark-copy85`, through the public CLI alone:
 [ENGINE109.md](ENGINE109.md) and [its receipt](engine109-evidence.json),
+the failed-observation explanation and store command followed on the
+persistent page ([policy_store110.py](policy_store110.py) and
+[its receipt](policy-store110-evidence.json), ADR-326),
 pinned by `cli/tests/test_lark_fresh_evidence.py`. Before the experiment the
 persistent dashboard was found running as a bare tmux-launched process (the
 `cadex-operator-review` unit had been stopped and not restarted in

@@ -66,9 +66,16 @@ PROJECT_SCRIPT_SCHEMA = "cadex-project-script-v1"
 RUN_STATES = ("running", "ok", "failed", "pending")
 
 #: The retained artifacts a record names, and the base each resolves against.
+#: ``artifacts.policy`` is the trainer's own output under the run's
+#: ``train/``; ``project_artifacts.policy`` is the project-store copy, and is
+#: named only when the store held it, with the recorded digest, at record
+#: time (ADR-326). A named locator is a fact, never an intention.
 RUN_ARTIFACT_KEYS = ("script", "review", "trace", "task_bundle", "model_xml",
-                     "progress", "receipt", "project_docs")
+                     "progress", "receipt", "project_docs", "policy")
 PROJECT_ARTIFACT_KEYS = ("policy", "render", "section", "inventory", "clearance")
+#: The largest policy file whose digest the reader will verify against the
+#: store, the same bound the lineage check uses on retained training bytes.
+POLICY_DIGEST_LIMIT_BYTES = 4 * 1024 * 1024
 
 
 def _now() -> str:
@@ -116,6 +123,28 @@ def _video_sha256(path: Path) -> str:
         digest = _cached_video_sha256(path, stamp)
     if _video_stamp(path) != stamp:
         raise OSError("video changed during verification")
+    return digest
+
+
+_policy_verification_lock = threading.Lock()
+
+
+@lru_cache(maxsize=256)
+def _cached_policy_sha256(path: Path, stamp: tuple[int, ...]) -> str:
+    return _sha256(path)
+
+
+def _policy_sha256(path: Path) -> str:
+    """The video check's stamp-keyed cache, for policy files, on a lock of
+    its own: the store check runs on every poll of every run, and a cold
+    hash of one large video must not stall it (ADR-326)."""
+
+    path = path.resolve()
+    with _policy_verification_lock:
+        stamp = _video_stamp(path)
+        digest = _cached_policy_sha256(path, stamp)
+    if _video_stamp(path) != stamp:
+        raise OSError("policy changed during verification")
     return digest
 
 
@@ -282,8 +311,10 @@ def write_run_record(
         "receipt": "train/training-receipt.json" if receipt.is_file() else None,
         "project_docs": docs["dir"],
     }
-    policy_asset = (
-        relative_under(root, root / "assets" / policy_name) if policy_name else None
+    policy_asset = stored_policy_asset(root, policy_name, policy_sha256)
+    artifacts["policy"] = (
+        relative_under(run_dir, train_dir / policy_name)
+        if policy_name and (train_dir / policy_name).is_file() else None
     )
     project_artifacts = {
         "policy": policy_asset,
@@ -352,6 +383,105 @@ def write_run_record(
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8")
     return path
+
+
+def stored_policy_asset(project_root: Path | str, policy_name: str,
+                        policy_sha256: str = "") -> str | None:
+    """``assets/<name>`` when the project store holds it now, else ``None``.
+
+    The store copy is a ``cadex asset --put`` (or a train leg's ``--put``)
+    the walk makes before it records; a bounded driver, or a walk that
+    failed between training and storing, has no such copy, and its record
+    must not name one (ADR-326). With ``policy_sha256`` given, a stored
+    file holding different bytes is not the policy either.
+    """
+
+    if not policy_name:
+        return None
+    root = Path(project_root).expanduser()
+    stored = root / "assets" / policy_name
+    relative = relative_under(root, stored)
+    if relative is None or not stored.is_file():
+        return None
+    if policy_sha256 and _sha256(stored) != policy_sha256:
+        return None
+    return relative
+
+
+def policy_store(project_root: Path | str, record: Mapping[str, Any],
+                 resolved: Mapping[str, Any]) -> dict[str, Any]:
+    """Where a run's policy bytes are **now**, and the CLI action that follows.
+
+    ``state`` is ``stored`` (the project store holds ``assets/<name>`` with
+    the recorded digest, whether or not the record named it — a later
+    ``cadex asset --put`` counts), ``digest mismatch`` (the store holds
+    other bytes under that name), ``unstored`` (no store copy; the record
+    may have named one that is gone, and ``problems`` says so), ``refused``
+    (the recorded locator escapes the project) or ``none`` (no policy
+    recorded). ``retained`` is the run-relative path of the trainer's own
+    copy when it is on disk; ``next_action`` stores it when it is, and
+    starts a new attempt when it is not. Digests are verified on files up
+    to ``POLICY_DIGEST_LIMIT_BYTES`` through a stamp-keyed cache of their
+    own, so a polled page never re-hashes an unchanged file and never
+    waits behind a video verification. The store command names
+    the project directory twice, as ``<project-dir>``: ``--put`` resolves
+    against the working directory and ``--project`` defaults to ``./.cadex``,
+    so a bare ``cadex asset --put runs/…`` run from the project directory
+    creates a nested project instead of storing into this one.
+    """
+
+    root = Path(project_root).expanduser()
+    run = str(record.get("run") or "")
+    policy = record.get("policy") or {}
+    name = str(policy.get("name") or "")
+    sha256 = str(policy.get("sha256") or "")
+    result: dict[str, Any] = {"state": "none", "name": name or None, "asset": None,
+                              "retained": None, "reason": "no policy recorded",
+                              "next_action": None}
+    if not name:
+        return result
+    trained = (resolved.get("artifacts") or {}).get("policy") or {}
+    retained = trained.get("path") if trained.get("exists") and not trained.get("error") else None
+    result["retained"] = retained
+    new_attempt = "start a new attempt: cadex walk --out runs/<new-name>"
+    # ``--put`` resolves against the working directory and ``--project``
+    # defaults to ``./.cadex``, so both name the project directory
+    # explicitly: run from anywhere, and never a nested project by accident.
+    put = (f"cadex asset --project <project-dir> --put <project-dir>/runs/{run}/{retained}"
+           if retained else "")
+    keep = (f"store it: {put} · or {new_attempt}" if retained
+            else f"the trainer's copy is not retained in this run; {new_attempt}")
+    result["next_action"] = keep
+    recorded = (resolved.get("project_artifacts") or {}).get("policy") or {}
+    if recorded.get("path") is not None and recorded.get("error"):
+        result.update(state="refused",
+                      reason="recorded store locator " + str(recorded["error"]))
+        return result
+    stored = root / "assets" / name
+    if Path(name).name == name and relative_under(root, stored) and stored.is_file():
+        digest = None
+        try:
+            if stored.stat().st_size <= POLICY_DIGEST_LIMIT_BYTES:
+                digest = _policy_sha256(stored)
+        except OSError:
+            digest = None
+        if digest is not None and (not sha256 or digest == sha256):
+            result.update(state="stored", asset=f"assets/{name}", next_action=None,
+                          reason="the project store holds this policy"
+                                 + (" with the recorded digest" if sha256
+                                    else "'s name; no digest was recorded to check it against"))
+            return result
+        result.update(state="digest mismatch",
+                      reason=(f"assets/{name} holds different bytes than this run's policy"
+                              if digest is not None else f"assets/{name} could not be verified"),
+                      next_action=(f"store it under another name: {put} --name <other>.cxpolicy"
+                                   if retained else keep))
+        return result
+    result.update(state="unstored",
+                  reason=(f"the record named {recorded['path']} but the project store does not hold it"
+                          if recorded.get("path") else
+                          "never stored as a project asset (no cadex asset --put ran for it)"))
+    return result
 
 
 def _load_json(path: Path) -> tuple[dict[str, Any] | None, str | None]:
@@ -537,8 +667,18 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
             record["videos"] = payload.get("videos") or []
         else:
             record["video_render"] = {"state": "invalid", "error": error or "unsupported video status"}
+    artifacts = dict(record.get("artifacts") or {})
+    policy_name = str((record.get("policy") or {}).get("name") or "")
+    if "policy" not in artifacts and policy_name and Path(policy_name).name == policy_name:
+        # A record from before ADR-326 named no run-local policy; the
+        # trainer's output has one fixed location, the same one
+        # ``train/progress.json`` is read from, so it is resolved there
+        # when — and only when — it exists.
+        trained = resolve_reference(directory, f"train/{policy_name}")
+        if trained["exists"] and not trained["error"]:
+            artifacts["policy"] = trained["path"]
     resolved = {
-        "artifacts": _resolved(directory, record.get("artifacts") or {}, RUN_ARTIFACT_KEYS),
+        "artifacts": _resolved(directory, artifacts, RUN_ARTIFACT_KEYS),
         "project_artifacts": _resolved(root, record.get("project_artifacts") or {},
                                        PROJECT_ARTIFACT_KEYS),
         "videos": [resolve_reference(directory, (video or {}).get("path"))
@@ -584,7 +724,8 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
         "unreadable": "record unreadable",
         "empty": "no record and no review",
     }.get(status, f"unknown status {status!r}")
-    return {**record, "outcome": outcome, "resolved": resolved, "problems": problems}
+    return {**record, "outcome": outcome, "resolved": resolved, "problems": problems,
+            "policy_store": policy_store(root, record, resolved)}
 
 
 def list_runs(project_root: Path | str) -> list[dict[str, Any]]:

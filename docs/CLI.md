@@ -471,10 +471,16 @@ nothing re-derived:
   run is never re-run to learn what its parameters meant.
 - `task` (bundle, sha256, model XML), `training` (`requested`: the flags
   the walk was given; `receipt`: the trainer's named figures), `policy`
-  (name, sha256, stored asset), `rollout` (trace, seed, total reward),
+  (name, sha256, `asset`), `rollout` (trace, seed, total reward),
   `legs` (as `review.json`, without argv), and `videos` — an empty list
   until a policy video is recorded; empty means *none recorded*, not
-  missing.
+  missing. **`policy.asset` (and `project_artifacts.policy`) is
+  `assets/<name>` only when the project store held that file, with the
+  recorded digest, when the record was written** (ADR-326); a walk that
+  failed between training and its `--put`, or a bounded driver that never
+  ran `cadex asset --put`, records `null` there. The trainer's own copy is
+  `artifacts.policy` (`train/<name>`, run-relative) when it is on disk. A
+  named locator is a fact about the disk at record time, never an intention.
 - `artifacts` (run-relative) and `project_artifacts` (project-relative):
   every retained file the run refers to. **Every path is relative** to the
   run directory or the project root; a file outside both is recorded as
@@ -504,6 +510,29 @@ opened, which is what lets a review client serve a project's permitted
 artifacts and nothing else. A run from before records existed is read from
 its `review.json` and labelled `unrecorded`, with its identity taken from
 the rollout leg's envelope fields and nothing inferred beyond that.
+
+Each run also carries **`policy_store`** (ADR-326): where its policy bytes
+are *now*, read on every poll rather than from the record's locator.
+`state` is `stored` (the store holds `assets/<name>` with the recorded
+digest — a `cadex asset --put` run after the record counts, with no record
+rewrite), `digest mismatch` (the store holds other bytes under that name),
+`unstored` (no store copy; when the record named one that is gone,
+`problems` also says `project_artifacts.policy: missing`), `refused` (the
+recorded locator escapes the project) or `none` (no policy recorded).
+`retained` is the run-relative path of the trainer's copy when it is on
+disk — for records older than ADR-326, which name no `artifacts.policy`, the
+reader resolves it at the trainer's one fixed place, `train/<name>`, only
+when it exists — and `next_action` is the command: `cadex asset --project
+<project-dir> --put <project-dir>/runs/<run>/train/<name>` to keep it, or a
+new `cadex walk --out runs/<new-name>` when nothing is retained. The command
+names the project directory twice on purpose: `--put` resolves against the
+working directory and `--project` defaults to `./.cadex`, so a bare `cadex
+asset --put runs/…` run *inside* the project directory creates a nested
+project there instead of storing into it (the first live probe of ADR-326
+did exactly that). Store digests
+are verified on files up to 4 MiB through a stamp-keyed cache of their own,
+so a polled page never re-hashes an unchanged file and never waits behind a
+cold video verification.
 
 **Policy lineage** is `cadex_cli.review_record.policy_lineage(root, run)`
 (ADR-316): where a run's policy came from and which other runs play it, from
@@ -1582,7 +1611,16 @@ What the page shows, and where each thing comes from:
   recorded at <its revision>, accepted now is <today's>` and drawn from its
   own files only; nothing is rebuilt from today's script. A `running`
   record is labelled as started and never finished, with the next CLI
-  action; a legacy run reads `unrecorded`.
+  action; a legacy run reads `unrecorded`. A `failed` record whose
+  telemetry reads `done` is explained rather than left as a contradiction
+  (ADR-326): the note says training itself finished, at which iteration of
+  how many and which policy the trainer saved, and that the failure came
+  after it — in the run's observation or recording, not in the trainer —
+  above the run's own error. The identity card's **policy store** row shows
+  `policy_store` for every selected run: its state, the reason, the
+  retained trainer copy and the next CLI action; a store write the operator
+  makes afterwards flips it to `stored` on the next poll, with the run's
+  status and history untouched.
   Before a rollout, new walks show their retained assembled training view,
   including component identities and the recorded placement source (a trace's
   first frame or declared placements, explicitly labelled). Missing snapshot

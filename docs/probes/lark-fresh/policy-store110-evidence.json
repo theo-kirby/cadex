@@ -1,0 +1,73 @@
+{
+  "schema": "cadex-policy-store-evidence-v1",
+  "ok": true,
+  "project": "ot5-lark-copy85",
+  "run": "lark109-engine",
+  "url": "http://100.104.232.88:8765/",
+  "persistent_port": 8765,
+  "private_address_same_machine": true,
+  "policy_name": "lark109-engine.cxpolicy",
+  "policy_sha256": "1368081b90dd78ae403c357c2175c20300e2a242b7028640f3fb579420dd2553",
+  "accepted_revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+  "accepted_digest": "c039961cd41d9bcc26956c566a55e3ace0cf2665f99b7ebfd180af12d2bd4076",
+  "service_pid": 517541,
+  "record_status": "failed",
+  "record_error": "Observation aborted: the probe driver ran a pytest subset on this machine during the completion wait, its own trainer-exclusion guard tripped, and the receipt was not written (driver log lark109-engine-driver.log). The engine kill/restart phases had passed and training itself finished: progress state done at iteration 99, policy saved. Repeated cleanly as lark109-engine2.",
+  "record_asset_locator": "assets/lark109-engine.cxpolicy",
+  "fresh_visit_default_run": "RUN lark109-engine2",
+  "page_before": {
+    "kind": "RUN lark109-engine",
+    "status": "failed",
+    "note": "error: Observation aborted: the probe driver ran a pytest subset on this machine during the completion wait, its own trainer-exclusion guard tripped, and the receipt was not written (driver log lark109-engine-driver.log). The engine kill/restart phases had passed and training itself finished: progress state done at iteration 99, policy saved. Repeated cleanly as lark109-engine2. \u00b7 training itself finished (iteration 99 of 100, policy lark109-engine.cxpolicy saved by the trainer): this run failed after that, in its observation or recording, not in the trainer",
+    "policy_store": "unstored \u2014 the record named assets/lark109-engine.cxpolicy but the project store does not hold it \u00b7 trainer copy retained at train/lark109-engine.cxpolicy \u00b7 next: store it: cadex asset --project <project-dir> --put <project-dir>/runs/lark109-engine/train/lark109-engine.cxpolicy \u00b7 or start a new attempt: cadex walk --out runs/<new-name>",
+    "policy_store_state": "unstored",
+    "telemetry_state": "done",
+    "iteration": "iteration: 99",
+    "total": "total: 100",
+    "problems": "project_artifacts.policy: missing",
+    "trainer_copy_path": "train/lark109-engine.cxpolicy",
+    "trainer_copy_status": "retained",
+    "store_copy_status": "missing"
+  },
+  "page_download": {
+    "url": "http://100.104.232.88:8765/artifact/run/lark109-engine/policy?download=1",
+    "bytes": 64384,
+    "sha256_matches_record": true
+  },
+  "cli": {
+    "command": "cadex asset --project <project-dir> --put <project-dir>/runs/lark109-engine/train/lark109-engine.cxpolicy",
+    "exit": 0,
+    "ok": true,
+    "wall_seconds": 0.839,
+    "stored_name": "lark109-engine.cxpolicy"
+  },
+  "page_flip_seconds": 0.202,
+  "page_after": {
+    "kind": "RUN lark109-engine",
+    "status": "failed",
+    "note": "error: Observation aborted: the probe driver ran a pytest subset on this machine during the completion wait, its own trainer-exclusion guard tripped, and the receipt was not written (driver log lark109-engine-driver.log). The engine kill/restart phases had passed and training itself finished: progress state done at iteration 99, policy saved. Repeated cleanly as lark109-engine2. \u00b7 training itself finished (iteration 99 of 100, policy lark109-engine.cxpolicy saved by the trainer): this run failed after that, in its observation or recording, not in the trainer",
+    "policy_store": "stored \u2014 the project store holds this policy with the recorded digest \u00b7 trainer copy retained at train/lark109-engine.cxpolicy",
+    "policy_store_state": "stored",
+    "telemetry_state": "done",
+    "iteration": "iteration: 99",
+    "total": "total: 100",
+    "problems": "",
+    "trainer_copy_path": "train/lark109-engine.cxpolicy",
+    "trainer_copy_status": "retained",
+    "store_copy_status": "retained \u00b7 download"
+  },
+  "no_navigation": true,
+  "fresh_visit_after_default_run": "RUN lark109-engine2",
+  "fresh_visit_after_policy_store": "stored \u2014 the project store holds this policy with the recorded digest \u00b7 trainer copy retained at train/lark109-engine.cxpolicy",
+  "record_bytes_unchanged": true,
+  "runs_files_unchanged": true,
+  "runs_files": 601,
+  "assets_added": [
+    "lark109-engine.cxpolicy"
+  ],
+  "assets_prior_unchanged": true,
+  "stored_asset_sha256_matches": true,
+  "accepted_identity_unchanged": true,
+  "service_pid_after": 517541,
+  "trainers_seen": []
+}

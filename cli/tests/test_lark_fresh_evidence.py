@@ -790,3 +790,51 @@ def test_engine109_receipt_shows_the_engine_killed_and_restarted_during_real_tra
     assert service["main_pid_before"] == service["main_pid_after"] != "0"
     for doc in ("ENGINE109.md", "LIFECYCLE.md"):
         assert "engine109-evidence.json" in (PROBE / doc).read_text()
+
+
+def test_policy_store110_receipt_shows_the_failed_observation_explained_and_its_advice_followed() -> None:
+    """Iteration 110 (ADR-326): on the persistent Lark copy, the failed
+    observation ``lark109-engine`` — trainer ``done`` at iteration 99 of
+    100, policy saved, receipt lost — is explained on the operator page as
+    training that finished with a failure after it; the page names the
+    store state and the exact ``cadex asset`` command; the trainer's copy
+    downloads through the page with the recorded digest; the command, run
+    with the project directory filled in from an unrelated working
+    directory, flips the already-open page to ``stored`` on its next poll
+    with no navigation, no record rewrite, no change to the 601 earlier run
+    files, the accepted identity or the dashboard service, and the run
+    stays ``failed``."""
+    receipt = json.loads((PROBE / "policy-store110-evidence.json").read_text())
+    assert receipt["schema"] == "cadex-policy-store-evidence-v1" and receipt["ok"] is True
+    assert receipt["project"] == "ot5-lark-copy85" and receipt["run"] == "lark109-engine"
+    assert receipt["url"].startswith("http://100.") and receipt["persistent_port"] == 8765
+    assert receipt["private_address_same_machine"] is True and receipt["trainers_seen"] == []
+    assert re.fullmatch(HEX64, receipt["accepted_revision"]) and re.fullmatch(HEX64, receipt["policy_sha256"])
+    assert receipt["record_status"] == "failed" and "training itself finished" in receipt["record_error"]
+    assert receipt["record_asset_locator"] == "assets/lark109-engine.cxpolicy"   # the pre-ADR-326 dangling locator
+    # The current-run rule is untouched: a fresh visit selects the newest attempt.
+    assert receipt["fresh_visit_default_run"] == receipt["fresh_visit_after_default_run"] == "RUN lark109-engine2"
+    before, after = receipt["page_before"], receipt["page_after"]
+    assert before["status"] == after["status"] == "failed"
+    assert before["telemetry_state"] == "done" and before["iteration"] == "iteration: 99" and before["total"] == "total: 100"
+    assert "training itself finished (iteration 99 of 100, policy lark109-engine.cxpolicy saved by the trainer)" in before["note"]
+    assert "not in the trainer" in before["note"] and before["note"].startswith("error: Observation aborted")
+    assert before["policy_store_state"] == "unstored" and before["problems"] == "project_artifacts.policy: missing"
+    assert before["store_copy_status"] == "missing" and before["trainer_copy_status"] == "retained"
+    assert before["trainer_copy_path"] == "train/lark109-engine.cxpolicy"
+    command = receipt["cli"]["command"]
+    assert command == ("cadex asset --project <project-dir> --put "
+                       "<project-dir>/runs/lark109-engine/train/lark109-engine.cxpolicy")
+    assert ("next: store it: " + command) in before["policy_store"]
+    assert receipt["page_download"]["sha256_matches_record"] is True and receipt["page_download"]["bytes"] > 0
+    assert receipt["cli"]["exit"] == 0 and receipt["cli"]["ok"] is True
+    assert receipt["cli"]["stored_name"] == "lark109-engine.cxpolicy"
+    assert 0 < receipt["page_flip_seconds"] < 5 and receipt["no_navigation"] is True
+    assert after["policy_store_state"] == "stored" and "next:" not in after["policy_store"]
+    assert after["problems"] == "" and after["store_copy_status"].startswith("retained")
+    assert after["note"] == before["note"]
+    assert receipt["fresh_visit_after_policy_store"].startswith("stored")
+    assert receipt["record_bytes_unchanged"] and receipt["runs_files_unchanged"] and receipt["runs_files"] >= 561
+    assert receipt["assets_added"] == ["lark109-engine.cxpolicy"] and receipt["assets_prior_unchanged"]
+    assert receipt["stored_asset_sha256_matches"] and receipt["accepted_identity_unchanged"]
+    assert receipt["service_pid_after"] == receipt["service_pid"]

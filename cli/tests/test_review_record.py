@@ -69,6 +69,11 @@ def _project(tmp_path: Path) -> Path:
     return root
 
 
+#: The digest of the fixture store's ``assets/gait.cxpolicy`` (``b"policy"``):
+#: a record names the store copy only when its bytes are the run's (ADR-326).
+POLICY_SHA256 = hashlib.sha256(b"policy").hexdigest()
+
+
 def _walked_run(root: Path, name: str, *, revision: str, status: str = "ok",
                 policy: str = "gait.cxpolicy") -> Path:
     """A run directory with the files a walk leaves, then its record."""
@@ -93,9 +98,9 @@ def _walked_run(root: Path, name: str, *, revision: str, status: str = "ok",
         accepted_revision=revision, digest="d" * 64,
         params={"leg_len": 90.0}, param_specs=[{"name": "leg_len", "default": 80.0}],
         specs_source="test", training={"reward_per_step": 0.3, "device": "gpu",
-                                        "sha256": "p" * 64, "ignored": "no"},
+                                        "sha256": POLICY_SHA256, "ignored": "no"},
         requested={"iterations": 10, "seed": 3}, policy_name=policy,
-        policy_sha256="p" * 64, task_bundle=run / "train" / "gait-task.json",
+        policy_sha256=POLICY_SHA256, task_bundle=run / "train" / "gait-task.json",
         task_sha256="t" * 64, model_xml=run / "train" / "rig-model.xml",
         trace=run / "rollout" / "assembly-simulation-trace.json",
         review={"render": {"path": f"review/render/{revision}"},
@@ -126,9 +131,11 @@ def test_the_record_carries_identities_and_only_relative_paths(tmp_path) -> None
     assert record["training"]["requested"] == {"iterations": 10, "seed": 3}
     # The receipt is the trainer's named figures, not everything it said.
     assert record["training"]["receipt"] == {"reward_per_step": 0.3, "device": "gpu",
-                                             "sha256": "p" * 64}
-    assert record["policy"] == {"name": "gait.cxpolicy", "sha256": "p" * 64,
+                                             "sha256": POLICY_SHA256}
+    assert record["policy"] == {"name": "gait.cxpolicy", "sha256": POLICY_SHA256,
                                 "asset": "assets/gait.cxpolicy"}
+    # The walk fixture retains no trainer copy under train/: not recorded.
+    assert record["artifacts"]["policy"] is None
     assert record["rollout"] == {"trace": "rollout/assembly-simulation-trace.json",
                                  "seed": 7, "total_reward": 12.5}
     assert record["artifacts"]["progress"] == "train/progress.json"
@@ -138,6 +145,96 @@ def test_the_record_carries_identities_and_only_relative_paths(tmp_path) -> None
     assert record["videos"] == []
     assert record["legs"] == [{"leg": "rollout", "exit": 0, "seconds": 1.0,
                                "accepted_revision": REVISION_A, "digest": "d" * 64}]
+
+
+def test_the_store_locator_is_named_only_when_the_store_holds_the_policy(tmp_path) -> None:
+    """A bounded driver, or a walk that failed between training and storing,
+    has a trained policy under its own ``train/`` and nothing under
+    ``assets/``: its record names the trainer's copy and no store copy, and
+    the reader says what to run. Once the operator runs it, the reader sees
+    the store copy without any record rewrite (ADR-326)."""
+
+    root = _project(tmp_path)
+    run = root / "runs" / "probe"
+    (run / "train").mkdir(parents=True)
+    (run / "train" / "probe.cxpolicy").write_bytes(b"trained to the end")
+    digest = hashlib.sha256(b"trained to the end").hexdigest()
+
+    def record() -> dict:
+        write_run_record(run, project_root=root, status="failed", mode="bounded-probe",
+                         error="observation aborted after training finished",
+                         policy_name="probe.cxpolicy", policy_sha256=digest)
+        return json.loads((run / RUN_RECORD_FILENAME).read_text())
+
+    written = record()
+    assert written["policy"] == {"name": "probe.cxpolicy", "sha256": digest, "asset": None}
+    assert written["project_artifacts"]["policy"] is None
+    assert written["artifacts"]["policy"] == "train/probe.cxpolicy"
+    read = read_run_record(run, root)
+    assert read["problems"] == []          # nothing recorded is missing
+    store = read["policy_store"]
+    assert store["state"] == "unstored" and store["retained"] == "train/probe.cxpolicy"
+    assert store["asset"] is None and "never stored" in store["reason"]
+    assert ("cadex asset --project <project-dir> --put <project-dir>/runs/probe/train/probe.cxpolicy"
+            in store["next_action"])
+    assert "cadex walk --out runs/<new-name>" in store["next_action"]
+    # The store holds other bytes under that name: still not this policy.
+    (root / "assets" / "probe.cxpolicy").write_bytes(b"another policy")
+    assert record()["policy"]["asset"] is None
+    store = read_run_record(run, root)["policy_store"]
+    assert store["state"] == "digest mismatch" and "--name <other>.cxpolicy" in store["next_action"]
+    # The operator follows the advice; the record is not rewritten.
+    (root / "assets" / "probe.cxpolicy").write_bytes(b"trained to the end")
+    store = read_run_record(run, root)["policy_store"]
+    assert store == {"state": "stored", "name": "probe.cxpolicy", "asset": "assets/probe.cxpolicy",
+                     "retained": "train/probe.cxpolicy", "next_action": None,
+                     "reason": "the project store holds this policy with the recorded digest"}
+    # ...and a record written now names the store copy.
+    assert record()["policy"]["asset"] == "assets/probe.cxpolicy"
+
+
+def test_a_recorded_store_copy_that_is_gone_is_unstored_and_a_problem(tmp_path) -> None:
+    root = _project(tmp_path)
+    run = _walked_run(root, "run-1", revision=REVISION_A)
+    assert read_run_record(run, root)["policy_store"]["state"] == "stored"
+    (root / "assets" / "gait.cxpolicy").unlink()
+    read = read_run_record(run, root)
+    assert "project_artifacts.policy: missing" in read["problems"]
+    store = read["policy_store"]
+    assert store["state"] == "unstored" and store["retained"] is None
+    assert "named assets/gait.cxpolicy but the project store does not hold it" in store["reason"]
+    assert store["next_action"] == ("the trainer's copy is not retained in this run; "
+                                    "start a new attempt: cadex walk --out runs/<new-name>")
+
+
+def test_a_record_without_the_run_local_locator_finds_the_trainer_copy_at_its_fixed_place(tmp_path) -> None:
+    """Records from before ADR-326 name no ``artifacts.policy``; the trainer
+    writes to one place, and the reader resolves it there only when it exists."""
+
+    root = _project(tmp_path)
+    run = _walked_run(root, "run-1", revision=REVISION_A)
+    path = run / RUN_RECORD_FILENAME
+    record = json.loads(path.read_text())
+    del record["artifacts"]["policy"]
+    path.write_text(json.dumps(record))
+    read = read_run_record(run, root)
+    assert read["resolved"]["artifacts"]["policy"] == {"path": None, "exists": False,
+                                                       "error": "not recorded"}
+    assert read["policy_store"]["retained"] is None
+    (run / "train" / "gait.cxpolicy").write_bytes(b"policy")
+    read = read_run_record(run, root)
+    assert read["resolved"]["artifacts"]["policy"] == {"path": "train/gait.cxpolicy", "exists": True,
+                                                       "error": None}
+    assert read["policy_store"]["retained"] == "train/gait.cxpolicy"
+
+
+def test_a_run_without_a_policy_has_no_store_state(tmp_path) -> None:
+    root = _project(tmp_path)
+    run = root / "runs" / "started"
+    write_run_record(run, project_root=root, status="running", mode="blocking")
+    store = read_run_record(run, root)["policy_store"]
+    assert store == {"state": "none", "name": None, "asset": None, "retained": None,
+                     "reason": "no policy recorded", "next_action": None}
 
 
 def test_a_reference_outside_both_bases_is_null_not_absolute(tmp_path) -> None:

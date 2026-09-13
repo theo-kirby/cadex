@@ -23736,3 +23736,49 @@ directory). The rule this makes explicit: **the operator URL is served by the
 user unit, never by a bare process**, because the restart command every probe
 and document relies on is the unit's. No dependency, engine, payload or shell
 change.
+
+## ADR-326 — A run record names a stored policy only when the store holds it; the dashboard explains a failed run whose training finished (2026-09-13)
+
+`write_run_record(policy_name=…)` derived `assets/<name>` as the policy's
+project-store locator whether or not anything had put it there. The blocking
+and detached walks always put before they record, so their locators were true;
+the bounded probe drivers (`restart_training.py`, `engine_restart.py`) never
+run `cadex asset --put`, so `lark96-restart`, `lark109-engine` and
+`lark109-engine2` on the persistent Lark copy each named an asset that did not
+exist, and the page showed `project_artifacts.policy: missing` for a file
+nobody had lost. The writer now names the store copy only when
+`assets/<name>` is a file whose digest is the recorded one at record time,
+and records the trainer's own copy as `artifacts.policy` (`train/<name>`,
+run-relative) when it is on disk. A named locator is a fact about the disk,
+never an intention.
+
+The reader adds `policy_store`, read on every poll from the disk rather than
+from the locator: `stored` (verified by digest through a stamp-keyed cache of its own,
+bounded at 4 MiB — sharing the video check's lock stalled every poll behind a
+cold video hash, which the two-client verification test caught), `digest mismatch`,
+`unstored`, `refused` or `none`, with the retained trainer copy and the next
+CLI action — `cadex asset --project <project-dir> --put
+<project-dir>/runs/<run>/train/<name>` to keep it, or a new walk when nothing
+is retained. The command names the project directory twice because `--put`
+resolves against the working directory and `--project` defaults to
+`./.cadex`: the first live probe advised the bare form "from the project
+directory", ran it, and created a nested `.cadex` project inside the Lark
+copy rather than storing into it — deleted, and the advice corrected before
+the probe was repeated. Records older than this ADR name no
+`artifacts.policy`; the reader resolves the trainer's copy at its one fixed
+place, `train/<name>`, only when it exists, the way `train/progress.json` is
+already read. A store write made after the record is seen without a record
+rewrite: storing a policy does not rewrite history, and the run's status does
+not change.
+
+The dashboard's identity card gains a **policy store** row, and its note
+explains a `failed` record whose telemetry reads `done` — the trainer
+finished and saved its policy; the failure came after it, in the run's
+observation or recording — instead of showing the two facts side by side as a
+contradiction. This is what `lark109-engine` (ADR-325's first attempt) looked
+like: training done at iteration 99 of 100, policy saved, the receipt lost to
+the probe's own exclusion guard. Regression: a headless-browser test in
+`cli/tests/test_review_server.py` on a fixture with that exact shape, and
+reader/writer tests in `cli/tests/test_review_record.py`. The existing record
+fixture's policy digest was corrected to the bytes it stores, which the old
+writer never checked. No engine, payload, shell or dependency change.

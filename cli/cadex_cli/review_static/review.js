@@ -174,6 +174,7 @@
       text('view-recorded', accepted.available ? (accepted.updated_at || '—') : '—');
       text('view-note', accepted.available ? 'the project as it stands; selecting a run shows that run\'s recorded revision instead'
                                             : 'no accepted revision: run `cadex -p` or `cadex script --set` to accept one');
+      $('view-policy-store').dataset.state = ''; text('view-policy-store', '—');
       return;
     }
     var model = run.model || {};
@@ -193,9 +194,21 @@
     text('view-recorded', (run.recorded_at || 'no record time') + (run.mode ? ' · mode ' + run.mode : '') +
                           (run.walk_seconds != null ? ' · ' + run.walk_seconds + ' s' : ''));
     var note = run.error ? 'error: ' + run.error : '';
+    var telemetry = telemetryFor(run), store = run.policy_store || { state: 'none', reason: 'no policy recorded' };
     if (run.status === 'running') note += (note ? ' · ' : '') + 'if no walk is running, this run was interrupted: start a new `cadex walk --out runs/<new-name>`';
+    if (run.status === 'failed' && telemetry.state === 'done') {
+      // The trainer reached its terminal state and saved its policy; what
+      // failed came after it (an observation, a rollout, a store write).
+      note += (note ? ' · ' : '') + 'training itself finished (iteration ' + fmt(telemetry.iteration) + ' of ' + fmt(telemetry.total) +
+        (store.name ? ', policy ' + store.name + ' saved by the trainer' : '') + '): this run failed after that, in its observation or recording, not in the trainer';
+    }
     if (run.status === 'unrecorded') note += (note ? ' · ' : '') + 'recorded before run records existed: identity from review.json only';
     text('view-note', note || '—');
+    var storeLine = $('view-policy-store');
+    storeLine.dataset.state = store.state;
+    storeLine.textContent = store.state + ' — ' + store.reason +
+      (store.retained ? ' · trainer copy retained at ' + store.retained : '') +
+      (store.next_action ? ' · next: ' + store.next_action : '');
   }
 
   function renderParams() {

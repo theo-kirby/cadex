@@ -254,7 +254,7 @@ def test_a_run_without_its_trace_has_no_model_and_says_why(served) -> None:
 
 
 def _training_run(root: Path, name: str, *, revision: str, digest: str = "d" * 64,
-                  status: str = "running", error: str | None = None) -> Path:
+                  status: str = "running", error: str | None = None, **extra) -> Path:
     """A walk that has trained (or is training) and never rolled out: no
     meshes of its own, identity from the manifest at walk start."""
 
@@ -268,6 +268,7 @@ def _training_run(root: Path, name: str, *, revision: str, digest: str = "d" * 6
         specs_source="project manifest (script.json) at walk start",
         requested={"iterations": 40, "envs": 1024, "seed": 0},
         legs=[{"leg": "train", "exit": 3, "seconds": 1.0, "argv": ["never"]}] if error else [],
+        **extra,
     )
     return run
 
@@ -1056,6 +1057,79 @@ def test_browser_identifies_a_training_run_s_model_and_keeps_it_through_failure(
         page.wait_for("document.getElementById('view-kind').textContent === 'ACCEPTED NOW'")
         assert page.text("#view-revision") == REVISION_B
         assert _model_state(page) == "loaded" and "borrowed" not in page.text("#model-status")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_browser_explains_a_failed_observation_whose_training_finished(tmp_path, browser):
+    """The Lark run ``lark109-engine`` on screen (ADR-326): the trainer
+    reached ``done`` and saved its policy, then the run's observation
+    failed and nothing put the policy in the store. A fresh visit selects
+    that failed attempt over the older completed one; the page says the
+    training finished and the failure came after it, names the store state
+    and the CLI command that stores the retained policy, and serves the
+    trainer's copy. When the operator runs that command the page notices
+    on its next poll — no reload, no record rewrite — and the run stays
+    ``failed``: storing a policy does not rewrite history."""
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_B)
+    _stage_accepted(root, REVISION_B)
+    _training_run(root, "earlier", revision=REVISION_B, status="ok")
+    run = _training_run(root, "probe", revision=REVISION_B)
+    payload = b"fixture policy bytes, trained to the last update"
+    (run / "train" / "probe.cxpolicy").write_bytes(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+    _telemetry(root, 99, run="probe", state="done", total=100, out="probe.cxpolicy")
+    error = ("Observation aborted: the probe's exclusion guard tripped during the "
+             "completion wait; the engine kill/restart phases had passed.")
+    _training_run(root, "probe", revision=REVISION_B, status="failed", error=error,
+                  policy_name="probe.cxpolicy", policy_sha256=digest)
+    assert json.loads((run / RUN_RECORD_FILENAME).read_text())["policy"]["asset"] is None
+
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.wait_for("document.getElementById('view-kind').textContent === 'RUN probe'")
+        assert page.text("#view-status") == "failed"
+        page.wait_for("document.getElementById('telemetry').dataset.state === 'done'")
+        page.wait_for("document.getElementById('view-note').textContent.includes('training itself finished')")
+        note = page.text("#view-note")
+        assert "error: Observation aborted" in note
+        assert "training itself finished (iteration 99 of 100, policy probe.cxpolicy saved by the trainer)" in note
+        assert "failed after that, in its observation or recording, not in the trainer" in note
+        assert page.attribute("#view-policy-store", "data-state") == "unstored"
+        store = page.text("#view-policy-store")
+        assert "never stored as a project asset" in store
+        assert "trainer copy retained at train/probe.cxpolicy" in store
+        assert ("next: store it: cadex asset --project <project-dir> --put "
+                "<project-dir>/runs/probe/train/probe.cxpolicy") in store
+        assert "or start a new attempt: cadex walk --out runs/<new-name>" in store
+        assert page.text("#problems").strip() == ""      # nothing recorded is missing
+        row = "#artifacts tr[data-group='artifacts'][data-key='policy']"
+        assert page.text(row + " td:nth-child(2)") == "train/probe.cxpolicy"
+        assert page.attribute(row + " td:nth-child(3)", "data-status") == "retained"
+        assert page.text("#artifacts tr[data-group='project_artifacts'][data-key='policy'] td:nth-child(3)") == "not recorded"
+        download = page.download(row + " a[href$='download=1']")
+        assert download.path.read_bytes() == payload
+        # The operator runs the command the page named (its effect: the store
+        # copy appears). The page notices on its own; the record is untouched.
+        before = (run / RUN_RECORD_FILENAME).read_bytes()
+        (root / "assets" / "probe.cxpolicy").write_bytes(payload)
+        page.wait_for("document.getElementById('view-policy-store').dataset.state === 'stored'")
+        store = page.text("#view-policy-store")
+        assert "holds this policy with the recorded digest" in store and "next:" not in store
+        assert page.text("#view-status") == "failed"
+        assert "training itself finished" in page.text("#view-note")
+        assert (run / RUN_RECORD_FILENAME).read_bytes() == before
+        # The earlier completed run is untouched: no policy, no store state.
+        page.click("#views li[data-run='earlier']")
+        page.wait_for("document.getElementById('view-kind').textContent === 'RUN earlier'")
+        assert page.text("#view-status") == "completed"
+        assert page.attribute("#view-policy-store", "data-state") == "none"
+        assert "training itself finished" not in page.text("#view-note")
     finally:
         server.shutdown()
         server.server_close()
