@@ -87,7 +87,7 @@ not part of this equal-budget comparison and has only a seed-0 review.
 | D3 live training | [lark1](training-evidence.json), [lark2](training84-evidence.json) | Seven actual page updates each; commit-to-page latency 0.39–1.52 s and 0.24–1.62 s, respectively, under recorded conditions. |
 | D4 videos | Same two training receipts; [retry](interruption86-evidence.json); [current full decode/playback/download](current94-evidence.json) | Intermediate recordings played while training remained active and finals persisted. Real encoder-failure isolation is [Wren evidence](../wren-fresh/RENDER-FAILURE.md), not a Lark repeat. |
 | D5 history after revision | [Agent revision/comparison](revision84-evidence.json), [copy browser history](copy85-evidence.json), [current historical selection](current94-evidence.json) | Both designs retain their own documents, configurations, curves, policy identities and videos; earlier bytes preserved. |
-| D6 reopen/restart | [Two in-place creation restores](evidence.json), [two copy restores](copy85-evidence.json), [service restarts with retained Lark video](../operator-review/README.md) | Lark save/reopen and stopped-training dashboard restarts exist. Restart **during training** is proven on [Wren](../wren-fresh/RESTART-TRAINING.md); no Lark-specific receipt. |
+| D6 reopen/restart | [Two in-place creation restores](evidence.json), [two copy restores](copy85-evidence.json), [service restarts with retained Lark video](../operator-review/README.md) | Lark save/reopen and [restart during real GPU training](RESTART96.md) now have receipts: same trainer PID/start identity, increasing telemetry, preserved historical playback and completion on the persistent URL. |
 | D7 copy independence | [Original-unavailable edit, restore and two-server review](copy85-evidence.json), [copy retraining isolation](interruption86-evidence.json) | Complete copy, four inherited playable videos, original inventory unchanged. Original path renamed, not made inaccessible by every filesystem route. |
 | D8 interruptions/failures | [Real Lark interruption and successful retry](interruption86-evidence.json) | Failed status, explanation, new-attempt guidance and prior results preserved. [Lark missing/partial-video injection](VIDEO95.md) now verifies explicit guidance, preserved historical playback/download and recovery after restoring artifacts. |
 | D9 whole lifecycle | Ordered history and same-seed table above; [agent authorship](REVISION84.md) | Fresh creation, agent revision, both GPU runs, saved videos, copy/retry and comparative results linked in one report. Poor gait is measured. |
@@ -154,15 +154,17 @@ alone cannot recreate retained policy bytes or historical review outputs.
 D9 now has a user-facing report; the current Lark D11 comparison gap is closed.
 The owner retains checkbox authority. The complete charter has evidence across
 Lark and earlier fresh bipeds, but a claim that **Lark alone** repeats every
-D1–D11 acceptance check would overstate the receipts: D6 restart-during-training,
-D4 real render-failure isolation still rely on Wren. D8 missing/partial-video
+D1–D11 acceptance check would overstate the receipts: D4 real render-failure
+isolation still relies on Wren. [D6 restart during real Lark training](RESTART96.md)
+was repeated in iteration 96. D8 missing/partial-video
 faults now have a [Lark copy recovery pass](VIDEO95.md), including preserved
 historical playback and restored artifact access. No new training was justified for this reporting unit.
 
 The D8 missing/partial-video bet was exercised in iteration 95; see
-[VIDEO95.md](VIDEO95.md). The next distinct bet is D6's real-training restart:
-retain evidence that the same trainer continues while the dashboard restarts,
-using a bounded Lark run. No further provenance audit is needed.
+[VIDEO95.md](VIDEO95.md). The D6 real-training restart bet was exercised in iteration 96; see
+[RESTART96.md](RESTART96.md). The next distinct acceptance gap is D4 real
+render-failure isolation on Lark while training stays active. No further
+provenance or D8 audit is needed.
 
 Verification for this documentation/evidence unit: both headless browser probes
 above passed; `pixi run python -m pytest cli/tests/test_lark_fresh_evidence.py -q`

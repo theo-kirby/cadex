@@ -2,6 +2,14 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
+Iteration 96 completed the [bounded D6 restart experiment](../lark-fresh/RESTART96.md)
+on `ot5-lark-copy85`. The fresh default is **`lark96-restart`**, completed after
+100 GPU updates with its policy retained and explicit “videos: none recorded
+for this run.” The persistent service restarted during that training; the
+same trainer PID/start identity continued, live polling recovered, and historical
+`lark2-final` kept playing. The service remains active. Limits were 900 seconds
+and 20 GiB; no trainer remains active. [Measured receipt](../lark-fresh/restart96-evidence.json).
+
 The [Lark lifecycle report](../lark-fresh/LIFECYCLE.md) links D1–D11 evidence,
 the design comparison and remaining Lark-specific acceptance gaps. Iteration 94
 verified the current default, full video decode/playback/download and historical
@@ -12,7 +20,8 @@ The service stayed running on the same project and run; no training or restart.
 
 The shared private-network dashboard on port 8765 serves
 **`ot5-lark-copy85`**, the working copy of the third fresh biped, with
-**`lark86-retry-video` selected by default** (playback revision
+**`lark96-restart` selected by default**. The preceding video run was
+`lark86-retry-video` (playback revision
 `7f6c23913d55…`, digest `7f0d98163e84…`, `policy_on` 1 on the copy's 90 mm
 feet). Iteration 86 ran Lark's D8 experiment on this URL without restarting
 the service (ADR-315): `lark86-interrupt`, a real GPU attempt sent SIGINT at
@@ -22,7 +31,7 @@ with a saved policy; and that policy's verified rollout video plays and
 downloads as `lark86-retry-video`. All six earlier runs and four earlier
 videos remain selectable, the historical interruption survives a refresh with
 a route back to current, and the original `ot5-lark` is byte-identical after
-the copy's retraining (D7). No trainer remains active. Evidence:
+the copy's retraining (D7). At iteration 86 completion no trainer remained active. Evidence:
 [INTERRUPTION86.md](../lark-fresh/INTERRUPTION86.md),
 [`interruption86-evidence.json`](../lark-fresh/interruption86-evidence.json),
 and in the copy `evidence/lark86/`, `evidence/guard86/` and
