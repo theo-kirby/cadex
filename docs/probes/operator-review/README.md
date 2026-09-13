@@ -46,6 +46,25 @@ download passed; the persistent current project/run and all 3,769 source files
 remain unchanged. No restart or training; service stays running.
 [Availability and recovery receipt](../wren-fresh/video76-evidence.json).
 
+Iteration 77 adds a D10 browser regression that deliberately selects a historical
+video before publishing a new failed attempt. Across two subsequent automatic
+polls, the selected revision and video element stay unchanged and decoded playback
+time advances. A fresh visit selects the new failure, as does the existing page's
+**Current run** button; its failed status and revision agree. The historical
+download matches the rendered digest. Run it with:
+
+```bash
+pixi run python -m pytest cli/tests/test_review_server.py -k historical_playback_survives_published
+```
+
+That publication is a test fixture, not a new Wren experiment. Afterward the
+persistent private URL was checked headlessly: `ot5-wren-copy54`, default
+`wren71-final`, current and historical `wren66-final` playback across refresh,
+hash-checked downloads, and return to current all passed. No service restart,
+project switch or training occurred; the service stays running. This is
+same-machine private-address evidence, not a second-device test.
+[Persistent browser receipt](../wren-fresh/current77-evidence.json).
+
 Iteration 69 verified two engine reopens and restarted the persistent service
 with the saved working project intact: all 15 run views matched, the open
 page kept playing, and fresh visits still selected `wren66-final`. Current

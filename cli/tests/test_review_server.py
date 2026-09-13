@@ -1453,6 +1453,63 @@ def test_browser_playing_video_survives_new_current_attempt(served, browser):
 
 
 @needs_browser
+def test_browser_historical_playback_survives_published_failed_attempt(served, browser):
+    from test_video import _video_run
+    from cadex_cli.video import render as render_video
+
+    if not shutil.which('ffmpeg'):
+        pytest.skip('FFmpeg not available')
+    root, server = served
+    old = _video_run(root, 'historical-video')
+    video = render_video(root, 'historical-video')
+    _rewrite_record(old, recorded_at='2099-01-01T00:00:00Z')
+    _rewrite_record(root / 'runs/second', recorded_at='2099-01-02T00:00:00Z')
+    page = _open(browser, server.url)
+    assert page.text('#view-kind') == 'RUN second'
+    page.click("#views li[data-run='historical-video']")
+    assert page.text('#view-relation').startswith('HISTORICAL')
+    revision = page.text('#view-revision')
+    page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+    page.evaluate("window.playing=document.querySelector('#videos video');"
+                  "window.playedSeconds=0; window.lastVideoTime=0;"
+                  "playing.addEventListener('timeupdate', () => {"
+                  "playedSeconds += Math.max(0, playing.currentTime-lastVideoTime);"
+                  "lastVideoTime=playing.currentTime; });"
+                  "playing.muted=true; playing.loop=true; playing.play()", await_promise=True)
+    page.wait_for('playedSeconds > 0.1')
+
+    # Publish a new attempt, rather than relabelling a run already in the list.
+    failed = _mesh_run(root, 'new-failure', revision=REVISION_B)
+    _rewrite_record(failed, recorded_at='2099-01-03T00:00:00Z', status='failed')
+    page.wait_for("document.getElementById('current-run').textContent === 'Current run: new-failure'")
+    elapsed = page.evaluate('playedSeconds')
+    # Count two subsequent automatic polls; never call refresh from the test.
+    page.evaluate("window.polls=0; window.originalFetch=window.fetch;"
+                  "window.fetch=async (...args) => { const response=await originalFetch(...args);"
+                  "if(String(args[0]).includes('api/project')) polls++; return response; }")
+    page.wait_for('polls >= 2 && playedSeconds > ' + str(elapsed + 0.25))
+    assert page.text('#view-kind') == 'RUN historical-video'
+    assert page.text('#view-revision') == revision
+    assert page.text('#view-relation').startswith('HISTORICAL')
+    assert page.evaluate("playing===document.querySelector('#videos video') && !playing.paused")
+    assert hashlib.sha256(page.download('#videos a').path.read_bytes()).hexdigest() == video['sha256']
+
+    fresh = _open(browser, server.url)
+    assert fresh.text('#view-kind') == 'RUN new-failure'
+    assert fresh.text('#view-status') == 'failed'
+    assert fresh.text('#view-revision') == REVISION_B
+    assert not fresh.evaluate("!!document.querySelector('#videos video')")
+    page.send('Page.bringToFront')
+    assert page.text('#view-kind') == 'RUN historical-video'
+    assert page.evaluate("playing===document.querySelector('#videos video') && !playing.paused")
+    page.click('#current-run')
+    assert page.text('#view-kind') == 'RUN new-failure'
+    assert page.text('#view-status') == 'failed'
+    assert page.text('#view-revision') == REVISION_B
+    assert page.evaluate("performance.getEntriesByType('navigation').length") == 1
+
+
+@needs_browser
 def test_browser_current_run_gains_video_preserving_historical_playback(served, browser):
     from test_video import _video_run
     from cadex_cli.video import render as render_video
