@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-09-06. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-09-12. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -328,3 +328,18 @@ against a theoretical maximum of 2.5, in about four seconds.
 The GPU is a speed difference, not a semantic one, and it is the same
 trainer file. A remote GPU run is exercised manually and its numbers are
 recorded in ADR-084. **The gate does not prove the GPU path.**
+
+## Retained review telemetry (ADR-287)
+
+The atomic `progress.json` snapshot now includes `updated_at` (Unix seconds),
+`task_sha256`, `model_sha256`, `loss_curve` and `episode_steps_curve`, additively
+under `cadex-training-progress-v1`. Like `curve`, each history is capped at 512
+uniformly selected samples including the first and last. These are retained
+sampled histories, not full-resolution logs. Checkpoint names and digests stay
+in `checkpoints`; files are written before their progress snapshot is committed.
+A caught training or final policy packaging/saving failure preserves the last
+reported histories, iteration and checkpoint references and publishes `failed`
+with the error (ADR-288). `done` is published only after the final policy is
+validated and saved. Hard kills or an unwritable progress file may instead leave
+a stale training snapshot; the dashboard does not call it success. Keep `progress.json`
+and its policy files together when retaining or copying a run. No new dependency.

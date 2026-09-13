@@ -1,0 +1,73 @@
+{
+  "adr": "ADR-322",
+  "url": "http://100.104.232.88:8765/",
+  "project": "ot5-lark-copy85",
+  "checked_at": "2026-09-13T11:20:31Z",
+  "runs": 13,
+  "list_has_disk": false,
+  "default_run_rule": "lark98-final",
+  "default_disk": {
+    "bytes": 917305,
+    "files": 37,
+    "by_dir": {
+      ".": {
+        "bytes": 40842,
+        "files": 5
+      },
+      "project-docs": {
+        "bytes": 22107,
+        "files": 6
+      },
+      "render": {
+        "bytes": 23992,
+        "files": 5
+      },
+      "rollout": {
+        "bytes": 792728,
+        "files": 20
+      },
+      "train": {
+        "bytes": 37636,
+        "files": 1
+      }
+    },
+    "hardlinked_entries": 0,
+    "skipped_count": 0,
+    "independent_walk": {
+      "bytes": 917305,
+      "files": 37
+    },
+    "shared": {
+      "policy": {
+        "path": "assets/lark98.cxpolicy",
+        "bytes": 84571,
+        "shared_with": [
+          "lark98"
+        ]
+      }
+    },
+    "shared_bytes": 84571
+  },
+  "runs_total_bytes": 9576634,
+  "ready_seconds": 1.13,
+  "default_view": {
+    "run": "lark98-final",
+    "revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+    "relation": "CURRENT \u2014 this run's revision is the acc",
+    "summary": "Disk use: 895.8 KB in 37 file(s) under runs/lark98-final/ \u00b7 apparent sizes, counted from this run's permitted files only",
+    "size_cells": 13,
+    "video_label_has_size": true
+  },
+  "historical_view": {
+    "run": "lark98-checkpoint20",
+    "relation": "HISTORICAL \u2014 recorded at be429f2e567c, a",
+    "bytes": 860282,
+    "files": 38,
+    "shared_with": {
+      "policy": []
+    },
+    "playback_kept_through_two_polls": true,
+    "count_kept": true
+  },
+  "route_back_to_current": true
+}

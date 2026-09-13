@@ -41,6 +41,7 @@ from cadex_cli.walk import (
     train_leg_timeout,
 )
 
+from cadex_cli.review_record import RUN_RECORD_FILENAME, read_project_review
 from test_train import ITERATE_SCRIPT, REAL_TRAINER_PYTHON, _run
 
 PLACEHOLDER = "0" * 64
@@ -288,8 +289,13 @@ FAKE_CADEX = textwrap.dedent(
         refuse("design")
         envelope(session_id="s1", notes=["fake turn"])
     elif "train" in argv:
+        out = after("--out")
+        # What the record said when training started -- before the trainer
+        # writes its first telemetry sample beside it -- kept for the test.
+        if (out.parent / "run.json").exists():
+            shutil.copy(out.parent / "run.json", out.parent / "run.json.at-train")
         refuse("train")
-        out = after("--out"); out.mkdir(parents=True, exist_ok=True)
+        out.mkdir(parents=True, exist_ok=True)
         blob = b"policy for " + script.read_bytes()
         name = (after("--name") or Path("job.cxpolicy")).name
         bundle = out / "job-task.json"
@@ -309,6 +315,9 @@ FAKE_CADEX = textwrap.dedent(
             envelope(training=receipt)
         else:
             (out / name).write_bytes(blob)
+            # --put stores it, as the real leg does (ADR-191).
+            store = project / "assets"; store.mkdir(parents=True, exist_ok=True)
+            (store / name).write_bytes(blob)
             sha = hashlib.sha256(blob).hexdigest()
             envelope(training={"sha256": sha, "out": str(out / name), "reward_per_step": 0.5,
                                "wall_time_s": 0.1, "device": "fake", "task_sha256": task_sha},
@@ -393,6 +402,17 @@ def fake_cadex(tmp_path, monkeypatch, request) -> Path:
                     reply["digest"] = "z" * 64
                 return reply
             assert op == "inspect"
+            if args["scope"] == "script":
+                # The script block the run record reads its specs from
+                # (ADR-285): one page each, in the engine's paging shape.
+                value = {
+                    "/source": TOY,
+                    "/params/specs": [{"name": POLICY_SWITCH, "default": 0.0,
+                                       "min": 0.0, "max": 1.0}],
+                    "/params/values": {POLICY_SWITCH: 1.0},
+                    "/revisions": {"working_revision": "r" * 64},
+                }[args["path"]]
+                return {"ok": True, "value": value, "page": {"next_offset": None}}
             if args["scope"] == "clearance":
                 outcome = os.environ.get("FAKE_CLEARANCE", "")
                 if outcome == "failure":
@@ -503,6 +523,53 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
         toy_root / "PROGRESS.md").read_text()
     assert "(Δ " not in (toy_root / "PROGRESS.md").read_text().splitlines()[-1]
 
+    # The run record (ADR-285): the identities a later reader needs, all
+    # from what the legs reported, every path relative, the specs read at
+    # the accepted revision, and the project documents snapshotted.
+    assert envelope["walk"]["run_record"] == str(out / RUN_RECORD_FILENAME)
+    record = json.loads((out / RUN_RECORD_FILENAME).read_text())
+    assert record["schema"] == "cadex-run-record-v1" and record["run"] == "walk-1"
+    assert record["status"] == "ok" and record["error"] is None
+    assert record["model"] == {"accepted_revision": "r" * 64, "digest": "d" * 64,
+                               "identity_source": "rollout leg envelope"}
+    assert record["params"]["values"] == {"policy_on": 1.0}
+    assert record["params"]["specs"] == [{"name": "policy_on", "default": 0.0,
+                                          "min": 0.0, "max": 1.0}]
+    assert record["params"]["specs_source"] == "inspect scope=script at the accepted revision"
+    assert record["policy"] == {"name": "job.cxpolicy", "sha256": sha,
+                                "asset": "assets/job.cxpolicy"}
+    assert record["task"]["bundle"] == "train/job-task.json"
+    assert record["task"]["sha256"] == hashlib.sha256(
+        (out / "train" / "job-task.json").read_bytes()).hexdigest()
+    assert record["training"]["requested"]["iterations"] == 2
+    assert record["training"]["requested"]["seed"] == 5
+    assert record["training"]["receipt"]["reward_per_step"] == 0.5
+    assert record["rollout"]["trace"] == "rollout/assembly-simulation-trace.json"
+    assert record["rollout"]["total_reward"] == -12.5
+    assert record["artifacts"]["script"] == "script.py"
+    assert record["artifacts"]["review"] == "review.json"
+    assert record["artifacts"]["progress"] is None  # the fake trainer writes none
+    assert record["project_artifacts"]["render"].startswith("review/render/" + "r" * 64)
+    assert record["project_artifacts"]["inventory"] == "docs/inventory.md"
+    assert record["videos"] == []
+    assert [leg["leg"] for leg in record["legs"]] == ["train", "declare", "rollout"]
+    # No documents existed before training. Reports produced by the review
+    # must not be presented as documents that informed its training input.
+    docs = record["project_docs"]
+    assert docs["dir"] is None and docs["files"] == {}
+    for absolute in (str(out), str(toy_root)):
+        assert absolute not in (out / RUN_RECORD_FILENAME).read_text()
+    # ...and it reads back through the reader with nothing missing, as the
+    # project's current run: the toy project has no manifest, so the
+    # relation is unknown rather than guessed.
+    reviewed = read_project_review(toy_root)
+    assert [run["run"] for run in reviewed["runs"]] == ["walk-1"]
+    run = reviewed["runs"][0]
+    assert run["outcome"] == "completed" and run["problems"] == []
+    assert run["resolved"]["artifacts"]["trace"]["exists"] is True
+    assert run["resolved"]["project_artifacts"]["policy"]["exists"] is True
+    assert run["relation"] == "unknown" and reviewed["accepted"]["available"] is False
+
 
 def test_the_iterate_walk_sweeps_first_and_carries_the_warm_start(
     fake_cadex, toy_root, capsys
@@ -588,6 +655,101 @@ def test_a_leg_that_refuses_stops_the_walk_there_with_its_name(
     assert not (out / REVIEW_FILENAME).exists()
     assert PLACEHOLDER in (toy_root / "script.py").read_text()  # nothing declared
     assert len(_legs(fake_cadex)) == 1  # nothing ran after the refusal
+    # The run record says the walk failed, at which leg, and claims no
+    # identity, policy or artifact it never reached (ADR-285).
+    record = json.loads((out / RUN_RECORD_FILENAME).read_text())
+    assert record["status"] == "failed"
+    assert "leg train" in record["error"]
+    assert [leg["leg"] for leg in record["legs"]] == ["train"]
+    assert record["model"] == {"accepted_revision": None, "digest": None,
+                               "identity_source": "not reached"}
+    assert record["policy"] == {"name": None, "sha256": None, "asset": None}
+    assert record["artifacts"]["script"] is None and record["artifacts"]["review"] is None
+    assert record["project_docs"]["dir"] is None
+    reviewed = read_project_review(toy_root)
+    assert [run["run"] for run in reviewed["runs"]] == ["walk-3"]
+    assert reviewed["runs"][0]["outcome"] == "failed"
+    assert reviewed["runs"][0]["relation"] == "unknown"
+    assert reviewed["runs"][0]["problems"] == []
+
+
+def _toy_manifest(root: Path, revision: str, digest: str = "m" * 64) -> None:
+    (root / "script.json").write_text(json.dumps({
+        "schema": "cadex-project-script-v1",
+        "accepted_revision": revision, "accepted_digest": digest,
+        "working_revision": revision, "updated_at": "2026-09-12T00:00:00Z",
+        "param_specs": [{"name": "arm_len", "default": 40.0, "unit": "mm"}],
+        "param_values": {},
+    }))
+    (root / "DECISIONS.md").write_text("# toy — Decisions\n\n## ADR-001 — Built\n")
+
+
+def test_a_walk_names_its_training_input_before_training_and_keeps_it_on_failure(
+    fake_cadex, toy_root, capsys, monkeypatch
+) -> None:
+    """The defect the fresh biped's first walk showed: ``run.json`` said
+    ``not reached`` while training ran and after it failed, although the
+    manifest knew the revision all along. Now the record names the manifest's
+    revision, digest and specs before the train leg starts, and a refused
+    train leg keeps them."""
+
+    _toy_manifest(toy_root, "t" * 64)
+    out = toy_root / "runs" / "walk-4"
+    monkeypatch.setenv("FAKE_CADEX_FAIL", "train")
+    code, envelope = _run(capsys, "--project", str(toy_root), "walk", "--out", str(out))
+    assert code == EXIT_REJECTED and "leg train" in envelope["error"]
+    at_train = json.loads((out / "run.json.at-train").read_text())
+    assert at_train["status"] == "running"
+    assert at_train["model"] == {"accepted_revision": "t" * 64, "digest": "m" * 64,
+                                "identity_source": "project manifest (script.json) at walk start"}
+    assert at_train["params"]["specs"] == [{"name": "arm_len", "default": 40.0, "unit": "mm"}]
+    assert at_train["params"]["specs_source"] == "project manifest before training"
+    assert at_train["project_docs"]["dir"] == "project-docs"
+    assert list(at_train["project_docs"]["files"]) == ["DECISIONS.md"]
+    record = json.loads((out / RUN_RECORD_FILENAME).read_text())
+    assert record["status"] == "failed" and [leg["leg"] for leg in record["legs"]] == ["train"]
+    assert record["model"] == at_train["model"]
+    assert record["params"]["specs"] == at_train["params"]["specs"]
+    assert record["policy"] == {"name": None, "sha256": None, "asset": None}
+    assert (out / "project-docs" / "DECISIONS.md").read_text().startswith("# toy")
+    reviewed = read_project_review(toy_root)
+    assert reviewed["runs"][0]["relation"] == "current"
+    assert reviewed["runs"][0]["outcome"] == "failed"
+    assert reviewed["runs"][0]["problems"] == []
+
+
+def test_a_walk_that_fails_after_training_keeps_the_train_leg_s_identity(
+    fake_cadex, toy_root, capsys, monkeypatch
+) -> None:
+    """The train leg reports the revision it trained at; a later refusal
+    must not throw that away. The fake's legs answer at ``r…``/``d…`` while
+    the manifest says ``t…``, so the two sources are told apart."""
+
+    _toy_manifest(toy_root, "t" * 64)
+    out = toy_root / "runs" / "walk-5"
+    monkeypatch.setenv("FAKE_CADEX_FAIL", "declare")
+    code, envelope = _run(capsys, "--project", str(toy_root), "walk", "--out", str(out))
+    assert code == EXIT_REJECTED and "leg declare" in envelope["error"]
+    record = json.loads((out / RUN_RECORD_FILENAME).read_text())
+    assert record["status"] == "failed"
+    assert [leg["leg"] for leg in record["legs"]] == ["train", "declare"]
+    assert record["model"] == {"accepted_revision": "r" * 64, "digest": "d" * 64,
+                               "identity_source": "train leg envelope"}
+    assert record["params"]["specs_source"] == "project manifest before training"
+    assert record["policy"]["sha256"] and record["policy"]["name"] == "job.cxpolicy"
+    # A design turn moves the revision before training: the record is
+    # re-landed as `running` with the moved identity before the train leg.
+    out = toy_root / "runs" / "walk-6"
+    monkeypatch.setenv("FAKE_CADEX_FAIL", "train")
+    code, _ = _run(capsys, "--project", str(toy_root), "walk", "--out", str(out),
+                   "--prompt", "longer arm")
+    assert code == EXIT_REJECTED
+    at_train = json.loads((out / "run.json.at-train").read_text())
+    assert at_train["status"] == "running"
+    assert at_train["model"]["identity_source"] == "design leg envelope"
+    assert at_train["model"]["accepted_revision"] == "r" * 64
+    assert at_train["params"]["specs_source"] == "project manifest before training"
+    assert [leg["leg"] for leg in at_train["legs"]] == ["design"]
 
 
 # -- the walk's own wall clock (ADR-261) --------------------------------------
@@ -1196,6 +1358,21 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
         row = next(line for line in added.splitlines() if label in line)
         assert f"vs {prior[3]} at {value})" in row
     assert _git(root, "status", "--porcelain") == ""
+
+
+    # D4: render the original verified rollout after subsequent design changes.
+    # Historical geometry comes from its exports, never a rebuild of today's script.
+    from cadex_cli.video import render as render_video
+    from cadex_cli.browser import find_browser
+    from cadex_cli.review_record import read_run_record
+    import shutil
+    if shutil.which("ffmpeg") and find_browser():
+        video = render_video(root, "walk-1")
+        assert video["policy_sha256"] == sha1
+        assert video["seed"] == 3
+        assert video["frames"] > 1
+        assert read_run_record(out1, root)["videos"] == [video]
+        assert (out1 / video["path"]).is_file()
 
 
 @pytest.mark.skipif(

@@ -37,6 +37,7 @@ import os
 from pathlib import Path
 import signal
 import sys
+import threading
 import time
 from typing import Any, Iterator, Mapping, Sequence
 
@@ -107,6 +108,9 @@ from .train import (
     run_trainer,
     trainer_command,
 )
+from .review_record import manifest_identity, write_run_record
+from .review_server import serve as serve_review
+from .tools import STANDARD_DISPLAY
 from .walk import (
     DEFAULT_LEG_TIMEOUT_S,
     POLICY_SWITCH,
@@ -514,6 +518,26 @@ def build_parser() -> argparse.ArgumentParser:
         "turn and no trainer.",
     )
     _remote_flags(walk_parser)
+
+    review_parser = subparsers.add_parser(
+        "review",
+        help="Serve this project's review dashboard, read-only, to a browser "
+        "on the private network (ADR-286). No engine, no tokens.",
+    )
+    _common(review_parser, inherit=True)
+    review_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Address to bind. Default 127.0.0.1 (this machine only); give "
+        "the machine's Tailscale or LAN address to reach it from another "
+        "device, or 0.0.0.0 for every interface.",
+    )
+    review_parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="TCP port. Default 8765; 0 takes a free port and reports it.",
+    )
     return parser
 
 
@@ -926,8 +950,11 @@ def command_params(args: argparse.Namespace, report: RunReport) -> int:
     with _engine_session(args, report) as (engine, client):
         revision = read_working_revision(client)
         _progress(f" · set_params  {', '.join(sorted(values))}")
+        # Retain triangles in this accepted attempt so a following walk can
+        # freeze its assembled training view without rebuilding the revision.
         reply = client.request(
-            "set_params", {"values": values, "expected_revision": revision}
+            "set_params", {"values": values, "expected_revision": revision,
+                           "display": {"quality": "standard", "edges": False}}
         )
         apply_modeling_reply(report, reply)
         if reply.get("ok") is not True:
@@ -1077,7 +1104,13 @@ def command_script(args: argparse.Namespace, report: RunReport) -> int:
 
         revision = read_working_revision(client)
         _progress(" · write_script")
-        request: dict[str, Any] = {"source": source, "expected_revision": revision}
+        # The same tessellation request the agent's writes carry (ADR-312):
+        # the accepted attempt is what the review dashboard draws.
+        request: dict[str, Any] = {
+            "source": source,
+            "expected_revision": revision,
+            "display": dict(STANDARD_DISPLAY),
+        }
         if args.replace:
             request["replace"] = True
         reply = client.request("write_script", request)
@@ -1312,6 +1345,17 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
             return EXIT_REJECTED
         _finish(args, report, engine, reply.get("display"))
         _refresh_script_state(client, report)
+        # A walk froze this input before launching the train leg. A design
+        # accepted in between must not train under the earlier run's identity.
+        retained_view = Path(args.out).expanduser().parent / "training-view.json"
+        if retained_view.is_file():
+            retained = json.loads(retained_view.read_text())["identity"]
+            if retained.get("available") and (
+                retained["revision"] != report.accepted_revision
+                or retained["digest"] != report.digest
+            ):
+                report.error = "design changed after review inputs were retained; start a new walk"
+                return EXIT_REJECTED
     try:
         task = find_task(report.outputs, args.task_name)
     except TrainError as exc:
@@ -1460,6 +1504,47 @@ def _walk_common(args: argparse.Namespace) -> list[str]:
     return common
 
 
+def command_review(args: argparse.Namespace, report: RunReport) -> int:
+    """Serve one project's review dashboard until interrupted (ADR-286).
+
+    Inspection only: the server reads the project's manifest, records and
+    retained artifacts on every request and writes nothing, so stopping it
+    — Ctrl-C, SIGTERM — changes nothing about the project, and a walk or a
+    training run in progress is neither stopped nor duplicated by starting
+    or restarting it. The URL is printed on stderr as soon as the socket is
+    bound, which is what a pipeline (or a test) waits for.
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"review: project directory not found: {root}")
+    port = int(args.port)
+    if port < 0 or port > 65535:
+        raise ValueError(f"review: --port must be 0..65535, not {port}")
+    try:
+        server, thread = serve_review(root, str(args.host), port)
+    except OSError as exc:
+        raise ValueError(f"review: cannot bind {args.host}:{port}: {exc}") from exc
+    stop = threading.Event()
+
+    def _stop(_signum: int, _frame: Any) -> None:
+        stop.set()
+
+    previous = {sig: signal.signal(sig, _stop) for sig in (signal.SIGINT, signal.SIGTERM)}
+    _progress(f"review: serving {root.name} at {server.url} (read-only; Ctrl-C to stop)")
+    try:
+        while not stop.is_set() and thread.is_alive():
+            stop.wait(0.5)
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+        server.shutdown()
+        server.server_close()
+    report.ok = True
+    report.notes.append(f"review: served {server.url}; stopped")
+    return EXIT_OK
+
+
 def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     """The lifecycle walk as one command (ADR-199).
 
@@ -1553,11 +1638,64 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         "complete" if args.complete else "detach" if args.detach else "blocking"
     )
 
+    # The run record (ADR-285): written as `running` now, so a walk that is
+    # killed leaves a file saying it never finished, and rewritten whole
+    # when the walk ends. `known` collects what later legs learn. It starts
+    # with what the manifest says the training input is — revision, digest
+    # and specs — so the record names the model being trained before the
+    # first telemetry sample lands, and keeps naming it if the walk fails.
+    known: dict[str, Any] = manifest_identity(report.project_root, "at walk start")
+    requested = {
+        "iterations": int(args.iterations), "envs": int(args.envs),
+        "seed": int(args.seed), "timeout_s": float(args.timeout),
+        "remote": bool(args.remote), "allow_cpu": bool(args.allow_cpu),
+        "label": args.label or None, "task": args.task_name or None,
+        "init_from": args.init_from or None,
+        "init_from_parent_task": args.init_from_parent_task or None,
+        "init_from_task_change": args.init_from_task_change or None,
+        "prompts": len(args.prompts or []), "assignments": dict(assignments),
+    }
+
+    def land_record(status: str, **extra: Any) -> None:
+        try:
+            path = write_run_record(
+                out_dir, project_root=report.project_root, status=status,
+                mode=report.walk["mode"], legs=legs, error=report.error or None,
+                params=report.params, training=report.training, requested=requested,
+                walk_seconds=time.monotonic() - walk_started,
+                **{"snapshot_docs": True, **known, **extra},
+            )
+        except OSError as exc:
+            report.notes.append(f"run record not written: {exc}")
+            return
+        report.walk["run_record"] = str(path)
+
+    def learned(leg: Any) -> None:
+        """A finished leg's envelope identity is the record's, from here on.
+
+        Each leg reports the accepted revision it left the project at, so
+        the last one to speak is the revision the next leg runs against —
+        the train leg's is what the trainer was given, the rollout leg's
+        is what the review measures.
+        """
+
+        legs.append(leg.to_json())
+        revision = str(leg.envelope.get("accepted_revision") or "")
+        if revision:
+            known.update(
+                accepted_revision=revision,
+                digest=str(leg.envelope.get("digest") or ""),
+                identity_source=f"{leg.name} leg envelope",
+            )
+
+    land_record("running")
+
     def failed(leg: Any, what: str) -> int:
         legs.append(leg.to_json())
         report.error = "{:s} (leg {:s}, exit {:d}): {:s}".format(
             what, leg.name, leg.code, str(leg.envelope.get("error") or "no envelope")
         )
+        land_record("failed")
         return leg.code if leg.code in (EXIT_USAGE, EXIT_REJECTED) else EXIT_FAILURE
 
     if not args.complete:
@@ -1574,7 +1712,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             leg = run_leg("design", argv, timeout=leg_timeout)
             if leg.code != EXIT_OK:
                 return failed(leg, "the design turn was not accepted")
-            legs.append(leg.to_json())
+            learned(leg)
 
         # Iterate: blank the switch and apply the change; the bundle is exported
         # at its new digest (ADR-192).
@@ -1587,7 +1725,21 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             leg = run_leg("sweep", argv, timeout=leg_timeout)
             if leg.code != EXIT_OK:
                 return failed(leg, "the change was refused")
-            legs.append(leg.to_json())
+            learned(leg)
+        if legs:
+            # A design turn or sweep moved the accepted revision: the specs
+            # the record carries must be the moved manifest's, and the
+            # `running` record on disk must name the training input before
+            # the train leg starts writing telemetry beside it.
+            specs = manifest_identity(report.project_root, "before the train leg")
+            known.update(param_specs=specs["param_specs"],
+                         specs_source=specs["specs_source"])
+            land_record("running")
+
+        from .review_server import retain_training_view
+        with project_lock(Path(report.project_root), wait=bool(args.wait)):
+            retain_training_view(report.project_root, out_dir)
+            land_record("running")
 
         # Train, and bring the policy home.
         argv = [
@@ -1613,7 +1765,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         leg = run_leg("train", argv, timeout=train_timeout)
         if leg.code != EXIT_OK:
             return failed(leg, "training did not produce a policy")
-        legs.append(leg.to_json())
+        learned(leg)
         training = leg.envelope.get("training") or {}
         if args.detach:
             # Pending is not success, and the difference is what this
@@ -1627,6 +1779,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                 return EXIT_FAILURE
             report.training = dict(training)
             bundle, task_sha256 = task_bundle(out_dir / TRAIN_DIRNAME)
+            known.update(task_bundle=bundle, task_sha256=task_sha256)
             pending_path = write_pending(
                 out_dir, training=training, legs=legs, project=args.project,
                 bundle=bundle, task_sha256=task_sha256, seed=int(args.seed),
@@ -1644,17 +1797,22 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                     str(Path(args.project).expanduser()), str(out_dir),
                 )
             )
+            land_record("pending")
             report.ok = True
             return EXIT_OK
         stored = [row for row in leg.envelope.get("assets") or []
                   if row.get("sha256") == training.get("sha256")]
+        report.training = dict(training)
         if not training.get("sha256") or not stored:
             report.error = "train reported no stored policy sha256; nothing to declare."
+            land_record("failed")
             return EXIT_FAILURE
-        report.training = dict(training)
         report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
         weights = str(stored[0].get("name") or Path(str(training.get("out"))).name)
         sha256 = str(training["sha256"])
+        bundle, task_sha256 = task_bundle(out_dir / TRAIN_DIRNAME)
+        known.update(policy_name=weights, policy_sha256=sha256,
+                     task_bundle=bundle, task_sha256=task_sha256)
     else:
         # Completion: the policy the dispatcher brought home, stored through
         # the same `cadex asset --put` leg the blocking train leg's --put
@@ -1666,11 +1824,13 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             )
         except WalkError as exc:
             report.error = str(exc)
+            land_record("failed")
             return EXIT_REJECTED
         # The comparison block the blocking train leg puts in its receipt,
         # off the same bundle, so a completed detached walk lands the same
         # PROGRESS.md comparison an in-line one does (ADR-263).
-        bundle, _digest = task_bundle(out_dir / TRAIN_DIRNAME)
+        bundle, bundle_digest = task_bundle(out_dir / TRAIN_DIRNAME)
+        known.update(task_bundle=bundle, task_sha256=bundle_digest)
         if bundle is not None:
             training["comparison"] = {
                 **task_comparison(bundle),
@@ -1684,7 +1844,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                                   "--json"], timeout=leg_timeout)
         if leg.code != EXIT_OK:
             return failed(leg, "the returned policy could not be stored")
-        legs.append(leg.to_json())
+        learned(leg)
         report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
         stored = [row for row in report.assets
                   if row.get("sha256") == training.get("sha256")]
@@ -1693,9 +1853,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                 "the collected policy was stored under a different digest "
                 "than the trainer reported; nothing to declare."
             )
+            land_record("failed")
             return EXIT_FAILURE
         weights = str(stored[0].get("name") or policy_path.name)
         sha256 = str(training["sha256"])
+        known.update(policy_name=weights, policy_sha256=sha256)
 
     # Declare: the digest edit, then the script write.
     _progress(" · walk  declare")
@@ -1707,6 +1869,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     except WalkError as exc:
         legs.append(leg.to_json())
         report.error = str(exc)
+        land_record("failed")
         return EXIT_REJECTED
     script_path = out_dir / SCRIPT_FILENAME
     script_path.write_text(source, encoding="utf-8")
@@ -1714,7 +1877,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                   timeout=leg_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "the re-declared script was refused")
-    legs.append(leg.to_json())
+    learned(leg)
 
     # Verify and roll out: the switch on, the trace exported.
     _progress(" · walk  rollout")
@@ -1724,7 +1887,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     ], timeout=leg_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "the policy did not verify")
-    legs.append(leg.to_json())
+    learned(leg)
     report.params = dict(leg.envelope.get("params") or {})
     report.accepted_revision = str(leg.envelope.get("accepted_revision") or "")
     report.digest = str(leg.envelope.get("digest") or "")
@@ -1746,6 +1909,16 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         accepted_snapshot = acquire_snapshot(client)
         if accepted_snapshot[1]["digest"] != report.digest:
             raise InventoryError("review: accepted digest differs from rollout")
+        # The parameter specs at the accepted revision, for the run record
+        # (ADR-285): read now, while the engine holds that revision, because
+        # a historical run must never be re-run to learn what its
+        # parameters meant. A read that fails is recorded as unavailable.
+        try:
+            known["param_specs"] = list(read_script_state(client)["params"]["specs"])
+            known["specs_source"] = "inspect scope=script at the accepted revision"
+        except RuntimeError as exc:
+            known["param_specs"] = None
+            known["specs_source"] = f"unavailable: {exc}"
         render_path, rendering = write_render(
             client, report.project_root, expected_revision=report.accepted_revision,
             accepted_snapshot=accepted_snapshot,
@@ -1773,6 +1946,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     # docs/sensors.md (ADR-245's convention, ADR-256's check). The notes
     # are the design turn's to write, so a gap is reported, never filled.
     subjects, model_path = declared_note_subjects(out_dir / TRAIN_DIRNAME)
+    known["model_xml"] = model_path
     documentation = documentation_status(report.project_root, subjects)
     if model_path is not None:
         documentation["model"] = str(model_path)
@@ -1842,6 +2016,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         params=report.params,
     )
     report.walk["review_file"] = str(review_path)
+    land_record("ok", review=review, trace=review.get("trace"))
     if review.get("total_reward") is None:
         report.notes.append(
             "the rollout exported no trace with a policy block; the walk "
@@ -1893,6 +2068,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_train(args, report)
         elif command == "walk":
             code = command_walk(args, report)
+        elif command == "review":
+            code = command_review(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
     except (ValueError, ExportError, InventoryError, TrainError, WalkError) as exc:
@@ -2089,6 +2266,8 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
+    if command == "review":  # inspection only: no row, no commit (ADR-286)
+        return
     # Read once, before the row is appended: both branches compare against
     # the last row that carried each number, and the walk branch is why
     # travel figures are comparable at all (ADR-260).
@@ -2130,6 +2309,8 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
     """
 
     if command == "asset" and not getattr(args, "put_files", None):
+        return
+    if command == "review":
         return
     # A walk's legs each committed; what is left is its review.json, when
     # --out lies under the project, plus generated project review artifacts.

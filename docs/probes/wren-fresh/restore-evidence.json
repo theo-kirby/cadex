@@ -1,0 +1,81 @@
+{
+  "project": "ot5-wren",
+  "accepted_revision": "5309bebc6597f7f792edea73265591480228f0ffb7e0b756b8fb755d9aa28f46",
+  "accepted_digest": "dbd02d7c12a0553b9ffadb3466e73da4055521264dd52e0bea40b2cc16588714",
+  "accepted_attempt": {
+    "attempt_id": "1789254438027-35f0b9dfa4e1",
+    "revision": "5309bebc6597f7f792edea73265591480228f0ffb7e0b756b8fb755d9aa28f46",
+    "staging": "script_artifacts/5309bebc6597f7f792edea73265591480228f0ffb7e0b756b8fb755d9aa28f46/attempt-1789254438027-35f0b9dfa4e1"
+  },
+  "retained_attempt_files": 28,
+  "opens": [
+    {
+      "pid": 2463564,
+      "restore": {
+        "digest": "dbd02d7c12a0553b9ffadb3466e73da4055521264dd52e0bea40b2cc16588714",
+        "matches_accepted": true,
+        "performed": true
+      },
+      "retained_bytes_unchanged": true
+    },
+    {
+      "pid": 2463625,
+      "restore": {
+        "digest": "dbd02d7c12a0553b9ffadb3466e73da4055521264dd52e0bea40b2cc16588714",
+        "matches_accepted": true,
+        "performed": true
+      },
+      "retained_bytes_unchanged": true
+    }
+  ],
+  "browser": {
+    "project": "ot5-wren",
+    "accepted_revision": "5309bebc6597f7f792edea73265591480228f0ffb7e0b756b8fb755d9aa28f46",
+    "accepted_digest": "dbd02d7c12a0553b9ffadb3466e73da4055521264dd52e0bea40b2cc16588714",
+    "ready_seconds": 1.19,
+    "model": {
+      "components": 8,
+      "triangles": 96,
+      "bounds": {
+        "min": [
+          -300,
+          -300,
+          -10
+        ],
+        "max": [
+          300,
+          300,
+          253
+        ],
+        "center": [
+          0,
+          0,
+          121.5
+        ],
+        "radius": 444.17592235509574
+      },
+      "style": "cadex-prototype-light-v1",
+      "drawn_pixels": 44620,
+      "status": "accepted model at revision 5309bebc6597 \u00b7 8 component(s), 96 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements"
+    },
+    "params_shown": 12,
+    "screenshots": {
+      "persistent-accepted.png": "f295199dc6e92d658d13e41d5b1d01ac840a629e934f7655368b3b0da5fc2b12",
+      "persistent-page.png": "bcfe83cd147ae0809ea75d1450daff99a777987898af9600980b392ce23043c1"
+    },
+    "private_address_same_machine": true,
+    "page_state": {
+      "selected": "accepted",
+      "stale": false,
+      "error": null,
+      "revision": "5309bebc6597f7f792edea73265591480228f0ffb7e0b756b8fb755d9aa28f46",
+      "relation": "accepted",
+      "model": {
+        "available": true,
+        "reason": null,
+        "revision": "5309bebc6597f7f792edea73265591480228f0ffb7e0b756b8fb755d9aa28f46"
+      },
+      "runs": []
+    }
+  }
+}

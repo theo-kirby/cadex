@@ -1,0 +1,303 @@
+{
+  "trainers_before": [
+    {
+      "pid": 3559899,
+      "start_ticks": "100682276"
+    }
+  ],
+  "project": "ot5-wren-copy54",
+  "training_run": "wren79",
+  "checkpoint_run": "wren79-checkpoint20",
+  "persistent_server": true,
+  "private_address_same_machine": true,
+  "fault": "encoder exits 73",
+  "before": {
+    "iteration": 74,
+    "state": "training",
+    "device": "gpu",
+    "reward_per_step": 0.47330817580223083,
+    "loss": 4.516148090362549,
+    "episode_steps": 193.20755004882812,
+    "updated_at": 1789277613.2547119
+  },
+  "observations": [
+    {
+      "page_iteration": 78,
+      "committed_iteration": 78,
+      "telemetry_state": "training",
+      "reward_points": "79",
+      "loss_points": "79"
+    },
+    {
+      "page_iteration": 80,
+      "committed_iteration": 80,
+      "telemetry_state": "training",
+      "reward_points": "81",
+      "loss_points": "81"
+    },
+    {
+      "page_iteration": 82,
+      "committed_iteration": 82,
+      "telemetry_state": "training",
+      "reward_points": "83",
+      "loss_points": "83"
+    },
+    {
+      "page_iteration": 84,
+      "committed_iteration": 84,
+      "telemetry_state": "training",
+      "reward_points": "85",
+      "loss_points": "85"
+    }
+  ],
+  "failure_seconds": 4.056,
+  "render_exit": 1,
+  "render_stderr": "video: FFmpeg encoding failed\n",
+  "failure_receipt": {
+    "error": "ValueError: FFmpeg encoding failed",
+    "schema": "cadex-run-video-v1",
+    "state": "failed",
+    "videos": [
+      {
+        "accepted_revision": "a81937e7391b28c294a377819bf5d686589469a7d07eedbb5b87d1ee6e56bc4b",
+        "bounds": {
+          "center": [
+            0.0,
+            0.0,
+            127.8813289859041
+          ],
+          "max": [
+            300.0,
+            300.0,
+            265.7626579718082
+          ],
+          "min": [
+            -300.0,
+            -300.0,
+            -10.0
+          ],
+          "radius": 446.1067819288551
+        },
+        "camera": {
+          "distance": 1111.0435083365383,
+          "pitch": 0.5,
+          "target": [
+            0,
+            0,
+            127.8813289859041
+          ],
+          "yaw": 0.8
+        },
+        "duration_seconds": 8.1,
+        "fps": 10,
+        "frames": 81,
+        "height": 512,
+        "model_digest": "737959d0919e5fd5dec59c79411afd5d389bb52137d91f39d32f23716080fa54",
+        "path": "rollout-e535bf85126fff5f1e9107dc802be8b2116860f57123f708e8518e279cda428e.webm",
+        "policy_sha256": "fdf59bb967773ce39fae259855cd9e7292edc491ebff862eff09dbda97eb334f",
+        "projection": "perspective 55 degrees",
+        "render_seconds": 12.937,
+        "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+        "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+        "seed": 0,
+        "sha256": "e535bf85126fff5f1e9107dc802be8b2116860f57123f708e8518e279cda428e",
+        "sim_seconds": 8.0,
+        "style": "cadex-prototype-light-v1",
+        "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+        "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+        "trace_sha256": "43d18de48404165c65a010c33c1a2bd7f08255275234dbb981edd299a1d96786",
+        "width": 512
+      }
+    ]
+  },
+  "failure_label": "Video files: available (1/1 retained)Recorded video render: failed \u2014 ValueError: FFmpeg encoding failed. Retry the CLI video command after fixing the retained inputs or encoder.video 0 \u00b7 rollout-e535bf85126fff5f1e9107dc802be8b2116860f57123f708e8518e279cda428e.webm \u00b7 revision a81937e7391b \u00b7 policy fdf59bb96777 \u00b7 seed 0 \u00b7 8 s \u00b7 cadex-prototype-light-v1download",
+  "retained_checkpoint": {
+    "revision": "a81937e7391b28c294a377819bf5d686589469a7d07eedbb5b87d1ee6e56bc4b",
+    "policy_sha256": "fdf59bb967773ce39fae259855cd9e7292edc491ebff862eff09dbda97eb334f",
+    "download_sha256": "e535bf85126fff5f1e9107dc802be8b2116860f57123f708e8518e279cda428e",
+    "playback_poll_preserved": true
+  },
+  "prior_playback": {
+    "revision": "e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb",
+    "policy_sha256": "fa7b28b8732a6a5d7b86f3157ecfa81ab531d374c5c53a38415edde0da71b343",
+    "download_sha256": "a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5",
+    "playback_poll_preserved": true
+  },
+  "after": {
+    "iteration": 85,
+    "state": "training",
+    "device": "gpu",
+    "reward_per_step": 0.35850292444229126,
+    "loss": 0.9975394010543823,
+    "episode_steps": 2275.5556640625,
+    "updated_at": 1789277652.0763016
+  },
+  "trainers_after": [
+    {
+      "pid": 3559899,
+      "start_ticks": "100682276"
+    }
+  ],
+  "trainer_active_after_browser": true,
+  "ok": true,
+  "recovered": {
+    "persistent_server": true,
+    "private_address_same_machine": true,
+    "browser_playback": true,
+    "foot_len_mm": 90.0,
+    "components": 8,
+    "curves_present": true,
+    "fresh_selection": "RUN wren79",
+    "historical_selection": null,
+    "download_sha256": "c981147c51b859f76fb536996a2f7516077e82e95fe83e6a86e86db77b2accdb",
+    "decoded_frames": 81,
+    "decoded_frames_differ": true,
+    "encoded_seconds": 8.1,
+    "simulation_seconds": 8.0,
+    "accepted_revision": "a81937e7391b28c294a377819bf5d686589469a7d07eedbb5b87d1ee6e56bc4b",
+    "policy_sha256": "fdf59bb967773ce39fae259855cd9e7292edc491ebff862eff09dbda97eb334f",
+    "seed": 0,
+    "style": "cadex-prototype-light-v1",
+    "returned_to_current": "RUN wren79"
+  },
+  "training_after_recovery": {
+    "iteration": 96,
+    "state": "training",
+    "device": "gpu",
+    "reward_per_step": 0.4237935245037079,
+    "loss": 2.406548500061035,
+    "episode_steps": 379.25927734375,
+    "updated_at": 1789277666.1973538
+  },
+  "initial_probe_failures": [
+    {
+      "reason": "concurrent live test trainer detected; suites stopped before repeat",
+      "receipt": "evidence/wren79-checkpoint20-render-failure-overlap.json"
+    },
+    {
+      "reason": "first sample may equal pre-render iteration; corrected to require three subsequent updates",
+      "receipt": "evidence/wren79-checkpoint20-render-failure-initial-sample.json"
+    }
+  ],
+  "training_result": {
+    "training_exit": 0,
+    "training_wall_seconds": 718.999,
+    "trainer_final": {
+      "iteration": 239,
+      "state": "done",
+      "reward_per_step": 0.31607669591903687,
+      "loss": 0.14747729897499084,
+      "episode_steps": 359.2982482910156,
+      "seconds": null,
+      "device": "gpu"
+    },
+    "memory": {
+      "host_peak_bytes": 7413522432,
+      "gpu_peak_mib": 15120,
+      "samples": 147
+    },
+    "geometry": {
+      "wren_model-model.xml": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+      "wren_walk-task.json": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276"
+    },
+    "accepted_revision": "fda5d531f58f199dc51766e2061a99c4f572141fddf820e6ccdd186b63693d5f",
+    "digest": "4d327bf8081a94e8fb4e407332a89607488650d82cbaff9bf07cd996a777d66f",
+    "observer_exit": 0
+  },
+  "resource_bound": {
+    "MemoryCurrent": "4831563776",
+    "MemoryPeak": "5027901440",
+    "MemoryMax": "21474836480",
+    "ActiveState": "active"
+  },
+  "start_browser": {
+    "default_view_kind": "RUN wren79",
+    "view_revision": "fda5d531f58f199dc51766e2061a99c4f572141fddf820e6ccdd186b63693d5f",
+    "page_iterations": [
+      3,
+      4,
+      6,
+      7,
+      9,
+      10,
+      11
+    ],
+    "first_seen": {
+      "4": {
+        "committed_to_page_s": 1.51,
+        "polled_to_page_s": 0.75
+      },
+      "6": {
+        "committed_to_page_s": 0.62,
+        "polled_to_page_s": 0.5
+      },
+      "7": {
+        "committed_to_page_s": 1.13,
+        "polled_to_page_s": 1.0
+      },
+      "9": {
+        "committed_to_page_s": 0.25,
+        "polled_to_page_s": 0.25
+      },
+      "10": {
+        "committed_to_page_s": 0.79,
+        "polled_to_page_s": 0.75
+      },
+      "11": {
+        "committed_to_page_s": 1.33,
+        "polled_to_page_s": 1.25
+      }
+    },
+    "reload_count": 1,
+    "ok": true,
+    "project_name": "ot5-wren-copy54 \u2014 review"
+  },
+  "final_browser": {
+    "persistent_server": true,
+    "private_address_same_machine": true,
+    "browser_playback": true,
+    "foot_len_mm": 90.0,
+    "components": 8,
+    "curves_present": true,
+    "fresh_selection": "RUN wren79-final",
+    "historical_selection": "wren79-checkpoint20",
+    "download_sha256": "9c74f4cba35f6ef350550052ab717435e429d162b93604efa213237a944cc9b8",
+    "decoded_frames": 81,
+    "decoded_frames_differ": true,
+    "encoded_seconds": 8.1,
+    "simulation_seconds": 8.0,
+    "accepted_revision": "0d78fae96c2279e94b734225605b3fa6261c8e755794b9c1368fd639f747c0f7",
+    "policy_sha256": "d170b78ab1a360c2e6e2e0f6529542841315f615a8b5d66b435898abccd767f2",
+    "seed": 0,
+    "style": "cadex-prototype-light-v1",
+    "returned_to_current": "RUN wren79-final"
+  },
+  "witnesses": {
+    "intermediate": {
+      "witness_error": 3.3307285818295895e-08,
+      "witness_tolerance": 0.0001,
+      "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+      "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276"
+    },
+    "final": {
+      "witness_error": 8.715851100243361e-08,
+      "witness_tolerance": 0.0001,
+      "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+      "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276"
+    }
+  },
+  "preserved_prior_files": {
+    "count": 703,
+    "changed": [],
+    "inventory_sha256": "0ea500587df74deb80e9a8b6eaf03e6cb1d065ec1ebe8e2409e20f0461012167"
+  },
+  "run_count": 21,
+  "project_local_evidence": {
+    "evidence/wren79-checkpoint20-render-failure.json": "8d9948b7ddf05158778831b5d1dd98ebaf52ce2aa89e8533310c378635f51914",
+    "evidence/wren79-checkpoint20-render-failure.png": "5e70ab3cd23fb9dab4d7a8794a274c43551d2c60571bced1958f582e8aa1ec09",
+    "evidence/wren79-checkpoint20-render-failure-overlap.json": "e79097c748fdce06a2ca3a6d1f7e0657565fa0854e20b8e17865ad92654261da",
+    "evidence/wren79-checkpoint20-render-failure-initial-sample.json": "e8b366fc4bdcf0dba9da92fe0b05c9153d7f31fc633cb0ce9d322ebb48397a04",
+    "evidence/wren79-final-browser.png": "51b075182093f5b4d4ac44d799be1f876fdea912b1cc3679a0e52feb052d74ce",
+    "evidence/wren79-experiment-result.json": "5cfea018c61973d76c1a11c2ca80afbbcb50244bba48371ae8f56d703cf50cae"
+  }
+}

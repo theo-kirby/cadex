@@ -1,0 +1,496 @@
+{
+  "project": "ot5-lark",
+  "url_host": "100.104.232.88:8765",
+  "evidence": "create80",
+  "accepted_revision": "753cf0cc460098ac606ef8e1946e7cf7eed1ea9b79e63e2709690955c7fc9aa7",
+  "accepted_digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254",
+  "creation": {
+    "session_id": "8357686c-ee1b-4f6b-88cd-907d5becacfc",
+    "model": "claude-fable-5",
+    "exit": 0,
+    "started": "2026-09-13T05:56:53Z",
+    "finished": "2026-09-13T06:02:03Z",
+    "prompt_sha256": "97443a2df493c94491597aa681b7805ebdf77dffcf822e47b8c0021f3a58c4a5",
+    "outputs": [],
+    "foreign_references_in_script": false,
+    "runs": 0,
+    "policies": 0
+  },
+  "param_values": {
+    "torso_w": 90.0,
+    "torso_d": 55.0,
+    "torso_h": 70.0,
+    "thigh_len": 80.0,
+    "shin_len": 80.0,
+    "limb_w": 16.0,
+    "foot_len": 80.0,
+    "foot_w": 38.0,
+    "foot_t": 8.0,
+    "hip_spacing": 56.0,
+    "printed_density": 1250.0,
+    "servo_torque_nmm": 200.0,
+    "joint_damping": 1.0,
+    "joint_armature": 10.0,
+    "joint_friction": 5.0,
+    "fall_frac": 0.7,
+    "episode_steps": 400.0,
+    "control_hz": 50.0,
+    "rollout_seed": 0.0,
+    "policy_on": 0.0
+  },
+  "declared_params": [
+    "torso_w",
+    "torso_d",
+    "torso_h",
+    "thigh_len",
+    "shin_len",
+    "limb_w",
+    "foot_len",
+    "foot_w",
+    "foot_t",
+    "hip_spacing",
+    "printed_density",
+    "servo_torque_nmm",
+    "joint_damping",
+    "joint_armature",
+    "joint_friction",
+    "fall_frac",
+    "episode_steps",
+    "control_hz",
+    "rollout_seed",
+    "policy_on"
+  ],
+  "engine_opens": [
+    {
+      "pid": 3654714,
+      "matches_accepted": true,
+      "restore": {
+        "digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254",
+        "matches_accepted": true,
+        "performed": true
+      }
+    },
+    {
+      "pid": 3654760,
+      "matches_accepted": true,
+      "restore": {
+        "digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254",
+        "matches_accepted": true,
+        "performed": true
+      }
+    }
+  ],
+  "intact": {
+    "ot5-wren-copy54": {
+      "files": 2392,
+      "unchanged": true
+    },
+    "ot5-wren": {
+      "files": 963,
+      "unchanged": true
+    },
+    "ot5-biped": {
+      "files": 582,
+      "unchanged": true
+    }
+  },
+  "after_creation": {
+    "pre-fix": {
+      "stage": "after creation, before any fix or rebuild",
+      "api_model": {
+        "available": false,
+        "reason": "accepted attempt's staging does not belong to the accepted revision",
+        "revision": "753cf0cc460098ac606ef8e1946e7cf7eed1ea9b79e63e2709690955c7fc9aa7",
+        "digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254"
+      },
+      "staging_dir_revision": "91b312a2e73d6a6d49574ec676c2e968b63c7f5161015716ced1a13279adc1a3",
+      "staging_has_display": false,
+      "attempt_result_digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254",
+      "page": {
+        "project": "ot5-lark \u2014 review",
+        "view_kind": "ACCEPTED NOW",
+        "revision": "753cf0cc460098ac606ef8e1946e7cf7eed1ea9b79e63e2709690955c7fc9aa7",
+        "model_status": "no model to show: accepted attempt's staging does not belong to the accepted revision (revision 753cf0cc4600)",
+        "model_state": "missing",
+        "components_listed": 0,
+        "params_shown": 20
+      }
+    },
+    "post-fix-pre-render": {
+      "available": false,
+      "reason": "accepted attempt retained no tessellation",
+      "revision": "753cf0cc460098ac606ef8e1946e7cf7eed1ea9b79e63e2709690955c7fc9aa7",
+      "digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254",
+      "stage": "after reader fix (service restarted), before rebuild"
+    },
+    "render": {
+      "command": "cadex --project PROJECT render --json",
+      "ok": true,
+      "accepted_revision_unchanged": true,
+      "digest_unchanged": true,
+      "exit": 0
+    }
+  },
+  "accepted_attempt_staging": "script_artifacts/753cf0cc460098ac606ef8e1946e7cf7eed1ea9b79e63e2709690955c7fc9aa7/attempt-1789279766130-ab7fa8901855",
+  "staging_dir_is_accepted_revision": true,
+  "served_model": {
+    "revision": "753cf0cc460098ac606ef8e1946e7cf7eed1ea9b79e63e2709690955c7fc9aa7",
+    "digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254",
+    "components": {
+      "torso_link": {
+        "output": "torso",
+        "placement": {
+          "position_mm": [
+            0.0,
+            0.0,
+            203.0
+          ],
+          "rotation_xyzw": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "mesh_sha256": "7d7dee467cb9bab29d0c77f7a9bf7e8fcfd88034ca0dc1a10d2a2e9c01f5596f"
+      },
+      "thigh_l_link": {
+        "output": "thigh_l",
+        "placement": {
+          "position_mm": [
+            0.0,
+            28.0,
+            128.0
+          ],
+          "rotation_xyzw": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "mesh_sha256": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8"
+      },
+      "thigh_r_link": {
+        "output": "thigh_r",
+        "placement": {
+          "position_mm": [
+            0.0,
+            -28.0,
+            128.0
+          ],
+          "rotation_xyzw": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "mesh_sha256": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8"
+      },
+      "shin_l_link": {
+        "output": "shin_l",
+        "placement": {
+          "position_mm": [
+            0.0,
+            28.0,
+            48.0
+          ],
+          "rotation_xyzw": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "mesh_sha256": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8"
+      },
+      "shin_r_link": {
+        "output": "shin_r",
+        "placement": {
+          "position_mm": [
+            0.0,
+            -28.0,
+            48.0
+          ],
+          "rotation_xyzw": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "mesh_sha256": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8"
+      },
+      "foot_l_link": {
+        "output": "foot_l",
+        "placement": {
+          "position_mm": [
+            0.0,
+            28.0,
+            4.0
+          ],
+          "rotation_xyzw": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "mesh_sha256": "82e0b0040decb5dac6aa1c2e5296fb3af1e4acba83c3a343e87a01d5516611d4"
+      },
+      "foot_r_link": {
+        "output": "foot_r",
+        "placement": {
+          "position_mm": [
+            0.0,
+            -28.0,
+            4.0
+          ],
+          "rotation_xyzw": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "mesh_sha256": "82e0b0040decb5dac6aa1c2e5296fb3af1e4acba83c3a343e87a01d5516611d4"
+      },
+      "ground_link": {
+        "output": "ground_plate",
+        "placement": {
+          "position_mm": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation_xyzw": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "mesh_sha256": "a8d1c77093771ccdcb832c6d743af2248656fa96fcccfcacea76f574d82c5793"
+      }
+    }
+  },
+  "ready_seconds": 0.84,
+  "orbit": {
+    "default": {
+      "yaw": 0.8,
+      "pitch": 0.5,
+      "distance": 1242.5293378059648,
+      "target": [
+        0,
+        0,
+        111.5
+      ]
+    },
+    "after_drag": {
+      "yaw": -0.7,
+      "pitch": 0.10000000000000007,
+      "distance": 1242.5293378059648,
+      "target": [
+        0,
+        0,
+        111.5
+      ]
+    },
+    "after_zoom": {
+      "yaw": -0.7,
+      "pitch": 0.10000000000000007,
+      "distance": 866.8833034359366,
+      "target": [
+        0,
+        0,
+        111.5
+      ]
+    }
+  },
+  "before_reopen": {
+    "components": [
+      "torso_link",
+      "thigh_l_link",
+      "thigh_r_link",
+      "shin_l_link",
+      "shin_r_link",
+      "foot_l_link",
+      "foot_r_link",
+      "ground_link"
+    ],
+    "stats": {
+      "components": 8,
+      "triangles": 96,
+      "bounds": {
+        "min": [
+          -400,
+          -270,
+          -15
+        ],
+        "max": [
+          400,
+          270,
+          238
+        ],
+        "center": [
+          0,
+          0,
+          111.5
+        ],
+        "radius": 498.90104229195595
+      },
+      "style": "cadex-prototype-light-v1"
+    },
+    "drawn_pixels": 41840,
+    "params_shown": 20,
+    "model_status": "accepted model at revision 753cf0cc4600 \u00b7 8 component(s), 96 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements",
+    "decisions": [
+      "ADR-001 \u2014 Project scaffolded (2026-09-13)",
+      "ADR-002 \u2014 Lark's joint layout is 2 DoF per leg \u2014 revolute pitch hips (\u00b160\u00b0) and one-way revolute pitch kn\u2026 (2026-09-13)",
+      "ADR-003 \u2014 Actuators are raw torque motors at 200 N\u00b7mm per joint (param `servo_torque_nmm`), an honest sma\u2026 (2026-09-13)"
+    ],
+    "documents": [
+      "ARCHITECTURE.md",
+      "DECISIONS.md",
+      "PROGRESS.md",
+      "docs/actuators.md",
+      "docs/design-specs.md",
+      "docs/sensors.md"
+    ]
+  },
+  "engine_reopen_scope": "in place; retained accepted artifacts byte-checked",
+  "retained_attempt_files": 28,
+  "after_reopen_poll": {
+    "components": [
+      "torso_link",
+      "thigh_l_link",
+      "thigh_r_link",
+      "shin_l_link",
+      "shin_r_link",
+      "foot_l_link",
+      "foot_r_link",
+      "ground_link"
+    ],
+    "stats": {
+      "components": 8,
+      "triangles": 96,
+      "bounds": {
+        "min": [
+          -400,
+          -270,
+          -15
+        ],
+        "max": [
+          400,
+          270,
+          238
+        ],
+        "center": [
+          0,
+          0,
+          111.5
+        ],
+        "radius": 498.90104229195595
+      },
+      "style": "cadex-prototype-light-v1"
+    },
+    "drawn_pixels": 41840,
+    "params_shown": 20,
+    "model_status": "accepted model at revision 753cf0cc4600 \u00b7 8 component(s), 96 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements",
+    "decisions": [
+      "ADR-001 \u2014 Project scaffolded (2026-09-13)",
+      "ADR-002 \u2014 Lark's joint layout is 2 DoF per leg \u2014 revolute pitch hips (\u00b160\u00b0) and one-way revolute pitch kn\u2026 (2026-09-13)",
+      "ADR-003 \u2014 Actuators are raw torque motors at 200 N\u00b7mm per joint (param `servo_torque_nmm`), an honest sma\u2026 (2026-09-13)"
+    ],
+    "documents": [
+      "ARCHITECTURE.md",
+      "DECISIONS.md",
+      "PROGRESS.md",
+      "docs/actuators.md",
+      "docs/design-specs.md",
+      "docs/sensors.md"
+    ]
+  },
+  "page_state": {
+    "selected": "accepted",
+    "stale": false,
+    "error": null,
+    "revision": "753cf0cc460098ac606ef8e1946e7cf7eed1ea9b79e63e2709690955c7fc9aa7",
+    "relation": "accepted",
+    "model": {
+      "available": true,
+      "reason": null,
+      "revision": "753cf0cc460098ac606ef8e1946e7cf7eed1ea9b79e63e2709690955c7fc9aa7"
+    },
+    "runs": []
+  },
+  "after_reopen_fresh_visit": {
+    "components": [
+      "torso_link",
+      "thigh_l_link",
+      "thigh_r_link",
+      "shin_l_link",
+      "shin_r_link",
+      "foot_l_link",
+      "foot_r_link",
+      "ground_link"
+    ],
+    "stats": {
+      "components": 8,
+      "triangles": 96,
+      "bounds": {
+        "min": [
+          -400,
+          -270,
+          -15
+        ],
+        "max": [
+          400,
+          270,
+          238
+        ],
+        "center": [
+          0,
+          0,
+          111.5
+        ],
+        "radius": 498.90104229195595
+      },
+      "style": "cadex-prototype-light-v1"
+    },
+    "drawn_pixels": 41840,
+    "params_shown": 20,
+    "model_status": "accepted model at revision 753cf0cc4600 \u00b7 8 component(s), 96 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements",
+    "decisions": [
+      "ADR-001 \u2014 Project scaffolded (2026-09-13)",
+      "ADR-002 \u2014 Lark's joint layout is 2 DoF per leg \u2014 revolute pitch hips (\u00b160\u00b0) and one-way revolute pitch kn\u2026 (2026-09-13)",
+      "ADR-003 \u2014 Actuators are raw torque motors at 200 N\u00b7mm per joint (param `servo_torque_nmm`), an honest sma\u2026 (2026-09-13)"
+    ],
+    "documents": [
+      "ARCHITECTURE.md",
+      "DECISIONS.md",
+      "PROGRESS.md",
+      "docs/actuators.md",
+      "docs/design-specs.md",
+      "docs/sensors.md"
+    ]
+  },
+  "served_model_unchanged_after_reopen": true,
+  "viewport_png_identical": true,
+  "screenshots": {
+    "after-reopen-accepted.png": "4ab7045fb6466775c0237244e1a1cfa31a63b73b22f87161807e7bb3c09e63c5",
+    "after-reopen-page.png": "adb3b2ab6ecf4c6ad016150ec3315e3811eceddd6668ad05bdc7352ee801f9e3",
+    "before-reopen-accepted.png": "4ab7045fb6466775c0237244e1a1cfa31a63b73b22f87161807e7bb3c09e63c5",
+    "before-reopen-page.png": "77a56a12972dd1b2898e3d283b2c456e8c1973f2690ac0bbc3d288b9a34bf0da",
+    "pre-fix-page.png": "a75eaa277c8b4ba694eda31973a9622e143f48dc196c3bc91dba175be1ff971a"
+  },
+  "files_changed_by_reopen": {
+    "script.json": true,
+    "unpinned_attempt_files": 36,
+    "accepted_attempt_files": 0,
+    "source_history_document_files": 0
+  },
+  "retained_files": 76,
+  "private_address_same_machine": true
+}

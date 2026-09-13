@@ -1,0 +1,79 @@
+{
+  "persistent_server": true,
+  "private_address_same_machine": true,
+  "views": [
+    {
+      "view": "wren57-retry",
+      "revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+      "document_sha256": "21abfa5dcd21b51a2502f42f822d0477c8121cf582552c74c44dc51dfcad23e1",
+      "visible_after_seconds": 6.5
+    },
+    {
+      "view": "accepted",
+      "revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+      "document_sha256": "9ba6ae5c9ce3a35f274c0a462b368340184773de720d6677dd728474914168f1",
+      "visible_after_seconds": 6.5
+    },
+    {
+      "view": "wren2-final",
+      "revision": "26332a5955e3a044b968e3ec14eec809d2090dfe10922c4f242c1a5a12bdc477",
+      "document_sha256": "d429be55a02c5a22569ed01410f1b6b7a684690b58584d4cd68586f1b32caee5",
+      "visible_after_seconds": 6.5
+    }
+  ],
+  "default_run": "wren57-retry",
+  "return_current": true,
+  "preserved_files": 465,
+  "provider": "You've hit your session limit \u00b7 resets 10:40pm (America/New_York)",
+  "project": "ot5-wren-copy54",
+  "prompt_sha256": "e9ac072088295996709d4d5a22900542df1e43c555cefd7ad1711529ab1069fc",
+  "provider_exit_code": 1,
+  "advances": [
+    "D2",
+    "D10"
+  ],
+  "agent_revision_authored": false,
+  "current_video_recheck": {
+    "persistent_server": true,
+    "private_address_same_machine": true,
+    "browser_playback": true,
+    "foot_len_mm": 110.0,
+    "components": 8,
+    "curves_present": true,
+    "fresh_selection": "RUN wren57-retry",
+    "historical_selection": null,
+    "download_sha256": "4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e",
+    "decoded_frames": 81,
+    "decoded_frames_differ": true,
+    "encoded_seconds": 8.1,
+    "simulation_seconds": 8.0,
+    "accepted_revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+    "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+    "seed": 0,
+    "style": "cadex-prototype-light-v1",
+    "returned_to_current": "RUN wren57-retry"
+  },
+  "verification": {
+    "cli": {
+      "passed": 400,
+      "skipped": 1,
+      "seconds": 381.31
+    },
+    "final_document_regressions": {
+      "passed": 3,
+      "deselected": 34,
+      "seconds": 4.12
+    },
+    "engine": {
+      "passed": 2110,
+      "skipped": 53,
+      "seconds": 253.28
+    },
+    "logs": {
+      "cli-tests.log": "f288ff60b7572d01e5e9be0763634b563f03497404840b692885b1edcdcdd71e",
+      "document-tests.log": "2fe7fc60d36349cb0be082b9d2baa0f447452b4c63cb6c59a88f0dc74cc8b3c3",
+      "engine-tests.log": "ce92b96aaac99ca626cc37eea7f090d004fd4ceb363498f748efe3e61909c636"
+    },
+    "service_active": true
+  }
+}

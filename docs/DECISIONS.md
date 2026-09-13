@@ -22596,3 +22596,1218 @@ fleet setup and unrelated removals are outside this run's frontier.
 This is a charter decision, not a claim that the dashboard or lifecycle tests
 exist. `.ouroboros/goal.md` carries D1-D9 and the evidence required to close
 them. The existing run configuration and per-training-run limits are retained.
+
+## ADR-285 — A run record beside every walk, and a reader that only reads (2026-09-12)
+
+`review.json` carried a walk's numbers and, by accident of its `legs`
+block, the accepted revision the rollout ran at; nothing carried the
+parameter specs at that revision, the task and policy identities as one
+unit, the documents the run was designed under, or a state a killed walk
+leaves behind. The ot5 charter (ADR-284) needs all four before a browser
+can show "the right model and specs" for a historical run (D2) or keep two
+runs apart across a design change (D5).
+
+Decision: `cadex walk` lands `runs/<name>/run.json` (`cadex-run-record-v1`)
+— `running` at start, then `ok`, `failed` or `pending` — carrying the
+rollout leg's accepted revision and digest, the parameter values and the
+specs read with `inspect scope=script` while the engine held that
+revision, the task bundle and its sha256, the trainer's receipt figures and
+the flags requested, the policy name, digest and stored asset, the trace,
+the review references, the legs, and an empty `videos` list for the
+policy videos still to come. Beside it, `runs/<name>/project-docs/` holds
+`ARCHITECTURE.md`, `DECISIONS.md`, `PROGRESS.md` and `docs/*.md` as they
+stood, with sha256s, bounded at 32 files of 256 KB. Every path is relative
+to the run or the project; a file outside both is `null`, never absolute.
+
+The reader, `cadex_cli.review_record.read_project_review`, reads the
+project's accepted identity from its manifest (read-only, schema-checked,
+`available: false` with a reason otherwise), lists every run oldest first,
+labels each `current`, `historical` or `unknown` against the accepted
+revision now, and resolves every reference with a containment check: a
+reference that escapes its base by `..`, an absolute path or a symlink is
+a named problem and is never opened, as is a missing file or a snapshot
+page whose digest moved. Runs from before this ADR are read from their
+`review.json`, labelled `unrecorded`, with only what the legs reported. The
+reader opens no engine, rebuilds nothing and re-accepts nothing — a
+historical run is shown from its own record and snapshot, never from
+today's script.
+
+Three things this deliberately is not: not a second copy of `review.json`'s
+numbers (they stay there; the record references it), not a project-wide
+index (each run is its own file, so copying a run copies its record and
+losing one loses one), and not a subcommand — the reader is a module for
+the review client to import; a CLI door can follow if a pipeline needs
+one. `docs/CLI.md` documents the contract, retention and copying;
+`cli/tests/test_review_record.py` pins the writer, the snapshot bounds,
+path isolation and the reader's labels; `cli/tests/test_walk.py` pins the
+walk writing it on success and on a refused leg.
+
+## ADR-286 — A one-project review dashboard that only reads (2026-09-12)
+
+**Context.** The ot5 charter (ADR-284) asks for a headless project to be
+observable while work happens and reviewable afterward, from a browser on
+another device, with no display session on the machine that serves it.
+ADR-285 put the identities on disk — `runs/<name>/run.json` and a reader
+that resolves every reference under a containment check — and left the
+browser for the next unit. The engine has no HTTP surface and must not
+grow one for a UI (AGENTS.md: no UI in the engine); the shell is a
+desktop application; the CLI is the third protocol client and already
+the walk's home.
+
+**Decision.** `cadex review --project DIR [--host ADDR] [--port N]`
+serves **one** project to a browser, **inspection only**, from
+`cli/cadex_cli/review_server.py` on the standard library alone:
+`ThreadingHTTPServer`, one request per connection, no framework, no
+template engine, no CDN — the page under `review_static/` is plain HTML
+and a few hundred lines of JavaScript with a hand-written WebGL viewer
+(orbit, zoom, flat shading), because a review client on a private network
+with no internet cannot fetch a library and there is nothing to add one
+for. The server holds no state and caches nothing: every request reads
+the manifest, the records and the retained files as they stand, so a
+landing walk appears on the next poll and stopping or restarting the
+server changes nothing about the project. It writes nothing, adds no
+`PROGRESS.md` row and makes no commit; `--host` defaults to loopback and
+the private-network address is an explicit choice.
+
+**Where the model comes from.** A run's model is the meshes its rollout
+leg exported beside its trace, placed where that trace's first frame put
+each component and linked to components through the run's render summary
+— that run's geometry at that run's revision, never today's. The accepted
+model now is the accepted attempt's own tessellation (`display/*.tess`
+under the staging directory the manifest names), each buffer linked to its
+output by the BREP's sha256 rather than by file order, placed by the
+attempt's own simulation trace; a staging directory that does not lie
+under the accepted revision is refused. That is the second read the review
+client makes of the store's layout (ADR-285 documented the first), and it
+is written down in `docs/CLI.md` for the same reason: if the layout moves,
+this is what moves with it. Reading a project cannot re-accept anything;
+the viewer draws what was retained or says what is missing.
+
+**What it refuses.** Every route is an allowlist — a run by its directory
+name, an artifact by its record key, a document by the name its record
+lists, a mesh by its output, a video by its index — resolved through the
+reader's containment check. Nothing in a request is ever joined onto the
+project root; a path with `..`, a record reference that escapes its base,
+the project's own `script.json`, the server's source, all answer `404`.
+
+**How it is tested.** Dashboard behaviour needs a browser, and adding
+Playwright would have been a new dependency for one suite. Chromium
+started with `--remote-debugging-pipe` speaks the DevTools protocol as
+NUL-separated JSON on file descriptors 3 and 4; `cli/tests/cdp_browser.py`
+is a hundred lines over that pipe — evaluate, real mouse events, a
+screenshot — using whatever Chromium the machine has, and the browser
+tests skip without one the way engine tests skip without an engine.
+`cli/tests/test_review_server.py` pins the API, the refusals, the command,
+and in the browser: displayed identities against the records they came
+from, a historical run labelled and drawn from its own mesh with its own
+parameters, orbit and zoom moving the camera over a drawn model (pixels
+counted), missing data labelled, the stale label when the server goes
+away, and reachability over a private address when `CADEX_REVIEW_HOST`
+names one.
+
+**What this is not.** Not a second shell, not a training control, not a
+multi-project catalog, not a public host: one project, one address,
+read-only, on the private network the operator already has. Training
+telemetry while it runs and policy videos are the D3 and D4 slots the
+page already has cells for — the freshness poll and the video route are
+in place, the trainer's progress file and the renders are not yet wired.
+
+**Verification follow-up (2026-09-12).** The headless browser now also
+narrows a loaded model from 1280 to 1000 pixels before orbit and zoom.
+The original grid and unbroken artifact paths overflowed the viewport;
+the model column may now shrink below its content's intrinsic width and
+artifact tables wrap long paths. The test asserts stable canvas width
+across eight redraws and no page-wide horizontal overflow. Private-address
+smoke reproduction is documented in `docs/CLI.md`; it exercises a fixture
+on the serving machine, not a second device or the fresh biped lifecycle.
+
+**Download evidence follow-up (2026-09-12).** The D4 browser test's
+download step failed on this machine while the server was blameless: a
+plain HTTP fetch of the `?download=1` route returned the retained file
+byte for byte with its attachment disposition. The failure was collection.
+Ubuntu's Chromium is a snap, and under confinement its `/tmp` is a private
+namespace — Chromium reported the download into pytest's `tmp_path` as
+*completed* into a directory the test could never read — while a hidden
+directory under `$HOME` is refused, reported as *canceled* after every
+byte arrived. `cdp_browser.py` now owns the download: `Page.download`
+saves into a directory chosen for the browser at hand (visible under
+`$HOME` for a snap, the system temporary directory otherwise, removed with
+the browser), waits on the browser's own `Browser.downloadProgress` events
+rather than polling for a file, and raises naming the state and the bytes
+received when the browser cancels. The test asserts the browser's received
+and total byte counts against the file it wrote and the file's digest
+against the record. This is fixture coverage of the download path, not
+real biped evidence; D4 still needs the fresh biped's videos.
+
+
+## ADR-287 — Retain training histories and observe them in project review (2026-09-12)
+
+The trainer already atomically published reward history but discarded past loss
+and episode length from its progress file. Extend that existing artifact with
+bounded loss/episode histories, task/model identities and an update timestamp;
+remove the failure path's clearing of the last metrics. No new telemetry store,
+trainer dependency or engine/protocol change.
+
+The inspection dashboard reads the fixed run-local train/progress.json location,
+even before a running record observes the first write, and polls every two
+seconds. It distinguishes missing/invalid data, failed training and a snapshot
+older than 30 seconds; stale means process state unknown, including a slow JIT.
+Checkpoint availability checks containment and sha256, without claiming engine
+verification. Browser tests observe multiple atomic fixture updates, historical
+selection and missing/stale/failure states. Real biped GPU observation remains
+open after the product agent again refused creation on its session quota.
+
+
+## ADR-288 — Report final policy publication failures in retained telemetry (2026-09-12)
+
+The trainer's failure handler covered PPO and intermediate checkpoints but ended
+before final policy header construction, witness validation and atomic saving.
+A failure there left `progress.json` reporting training until the dashboard
+labelled it stale, even though the trainer had already exited with an error.
+Extend the same handler through final policy publication and its done snapshot.
+Preserve the last metrics and checkpoint references and re-raise the failure.
+No new status, store, dependency, engine import or process contract is needed.
+
+Fault-injection browser tests run the actual trainer orchestration and atomic
+writer with fixture training/math, then fail header construction, policy
+validation, witness comparison or final saving. Each observes training followed
+by failed without reloading, retains checkpoint integrity and curves, reports
+the next CLI action and preserves another run's record. These tests advance
+D8's failure evidence; they do not claim real biped training or interruption.
+An unwritable progress file or hard process kill can still prevent a terminal
+snapshot. A saved checkpoint is retained evidence, not engine verification.
+
+## ADR-289 — A run is the run of a revision from its first record, not from its rollout (2026-09-12)
+
+The fresh biped's first walk (`docs/HEADLESS-BIPED-REVIEW.md`) trained on
+the GPU for ninety seconds and failed at its declare leg; throughout, and
+afterwards, its `run.json` said `identity_source: "not reached"` with null
+revision and digest, because ADR-285 took the run's identity from the
+rollout leg's envelope and from nowhere else. The dashboard therefore
+showed `RELATION UNKNOWN` and no model for the one run a reviewer most
+wanted to identify — the one in progress — and a failed run could not be
+tied to the design it failed on (D3, D5, D8 of ADR-284).
+
+Decision: the walk starts `known` from the project manifest — accepted
+revision, digest and parameter specs, `identity_source` and `specs_source`
+both `project manifest (script.json) at walk start` — so the `running`
+record names the training input before the trainer writes its first
+telemetry sample beside it; every leg that reports an identity (design,
+sweep, train, collect, declare, rollout) replaces it with `<leg> leg
+envelope`; a design turn or sweep re-reads the manifest's specs and
+re-lands `running` before the train leg; and a failed or pending record
+keeps whatever was last learned. `not reached` now means only that there
+was no manifest and no leg spoke. Every write snapshots the project
+documents, so a failed run keeps the specs and decisions it ran under.
+`write_run_record` gains an explicit `identity_source`; the derived default
+is unchanged for callers that pass none.
+
+On the reading side, `run_model` no longer answers "no rollout trace
+retained" for a run that has not rolled out yet. When the record names a
+revision **and** digest that are both the accepted ones now, the accepted
+attempt's tessellation is the geometry that run trained on and is shown,
+with `source` saying it is borrowed and why. A historical run with no
+rollout, a record with no identity, and an accepted digest that has moved
+all still show nothing, with the reason: the standing constraint that a
+historical view never presents today's script as the original is kept by
+requiring both halves of the identity to match rather than by refusing to
+draw anything. Nothing is rebuilt and nothing is re-accepted.
+
+Proven by `cli/tests/test_walk.py` (the fake `cadex` copies `run.json` as
+it stood when the train leg started; refusals at train and at declare keep
+the manifest's and the train leg's identity respectively; a design turn
+moves it before training), `cli/tests/test_review_record.py` (the manifest
+helper and the explicit source), and `cli/tests/test_review_server.py`: an
+HTTP test that borrows the accepted model for exactly one of four
+identities, and a headless-browser test that selects a training run, reads
+its revision, digest, specs and borrowed model, watches telemetry arrive,
+then watches the trainer and the walk fail and asserts every identity is
+still on screen with the state changed. `probe1`'s own record is left as it
+was written; records are not rewritten after the fact.
+
+## ADR-290 — Review retained training export parts before a rollout (2026-09-12)
+
+Probe2 retained eight STL outputs beside its recorded training `model_xml`,
+but the review reader considered only rollout meshes or the current accepted
+attempt. The old staging directory was pruned and no rollout was recorded
+for that training run. Read the run-local training export directory when
+no trace was recorded, require a recorded revision/digest, and use the same
+permitted-reference and mesh allowlist checks as the rollout route. This
+replaces the unconditional pre-rollout fallback. A missing/refused recorded
+export stays missing, and a missing recorded rollout never falls through.
+
+These are individual exported parts, shown at identity and visibly labelled
+as having no recorded assembly placements. Do not infer component mappings
+from names or rebuild historical geometry from the current script. This
+bounded fix makes retained parts inspectable; preserving the assembled pose
+before training remains an open D2 requirement. No dependency or engine
+change. Browser regression covers historical identity, actual orbit/zoom,
+mesh bytes, read-only behavior and missing/symlink/escaping references.
+
+
+## ADR-291 — Freeze a walk's review inputs before training (2026-09-12)
+
+Status updates used to replace document snapshots, while training exports
+retained parts without assembly mappings or placements. A walk now retains
+the accepted review model and mesh bytes, values/specs and documents before
+training dispatch, under the project lock. The run-local training-view marker
+is published last and never replaced by later status writes. The dashboard
+reads that view before falling back to legacy export parts, checks its revision
+and digest, and permits only its retained mesh references. Recorded placement
+sources remain explicit: declared placement is not a solved pose.
+
+A design accepted between retention and training is refused before trainer
+dispatch, rather than labelled with the old input. Retained mesh digests are
+checked before serving; missing or changed bytes are unavailable.
+
+No historical run is reconstructed or backfilled. Rollouts still use their
+own trace; the training input's specs and decisions remain frozen. The browser
+regression changes the accepted revision and documents, deletes the original
+staging directory, lands a failed status, and verifies the earlier assembly,
+mesh bytes, specs and decision snapshot; a symlinked mesh is refused. No new
+dependency or engine/protocol change.
+
+## ADR-292 — Measure a review-driven foot revision through the public walk (2026-09-12)
+
+[Cadex-new] The fresh Reed baseline's final policy fell on all ten declared
+seeds. Test a single 70 → 90 mm foot-length change with unchanged task and
+240-iteration/1024-environment/seed-0 training, retaining both histories and
+videos. Two product-agent quota refusals led to an explicitly actor-applied
+`walk --set foot_len=90`; this does not satisfy product-agent revision authorship.
+The completed GPU run and verified video show nine falls and one eight-second
+survivor, not repeatable gait. A real private-address dashboard restart leaves
+one identical trainer running. Browser checks distinguish both actual foot
+meshes and retained specs/videos; old artifacts remain unchanged.
+
+The ordinary walk also exposes a missing training-model snapshot after its
+parameter sweep. Keep that failure visible; do not fabricate a historical
+training pose from the later rollout. This experiment changes no product code.
+Commands, hashes, harness corrections, limits and comparative results are in
+`docs/HEADLESS-BIPED-REVIEW.md` and `docs/probes/reed-foot90/`.
+
+## ADR-293 — Tessellate parameter acceptance for live walk review (2026-09-12)
+
+[Cadex-new] `cadex params` now requests standard tessellation, without edges,
+inside its existing `set_params` transaction. The ordinary `walk --set` sweep
+therefore leaves meshes in its own accepted attempt for pre-training snapshot
+retention. This costs tessellation on parameter edits, with no additional
+rebuild, acceptance transaction, command leg, dependency or protocol change.
+The dashboard continues to read only retained artifacts.
+
+A real-engine browser regression changes an arm length from 80 to 100 mm,
+observes the current assembled model at the training-dispatch boundary, then
+accepts 140 mm and verifies that the old model becomes historical with unchanged
+identity, parameter values and mesh bytes. Training is deliberately intercepted;
+this test makes no real-training claim. The test fails on the prior code because
+the retained model is unavailable. Reed foot90's missing training snapshot is
+historical evidence and remains untouched.
+
+## ADR-294 — Exercise Reed's independent whole-project copy (2026-09-12)
+
+[Cadex-new] Keep the documented stopped-writer whole-directory copy contract.
+Test it on Reed with retained real policies, videos and history, then a single
+90→100 mm foot parameter edit and fresh bounded GPU retraining in the copy.
+The product agent again refuses on session quota; disclose the actor's public
+parameter fallback in the copied project's decisions and specs. It supplies
+no product-agent authorship evidence and establishes no gait improvement.
+
+Extend the existing browser history probe to accept explicit run/foot-length
+pairs and compare exact saved specs for each. The copy probe makes the original
+path unavailable during private-address browser review, verifies inherited
+run/asset hashes, and restores and checks every original file. This changes no
+product behavior, dependency, engine or shell code. Commands, outcomes and
+limits are recorded in `docs/HEADLESS-BIPED-REVIEW.md`.
+
+## ADR-295 — Refuse damaged retained dashboard videos (2026-09-12)
+
+Reed copy fault injection exposed that an existing but truncated video remained
+playable/downloadable in the dashboard. Verify entries carrying `sha256` using
+the reader's streaming hash helper, refuse mismatches through the existing
+artifact error path, and tell the reviewer to retry the CLI video command.
+Restored bytes recover on the next poll. Legacy entries without a hash retain
+their existence-only contract. This adds disk reads proportional to the selected
+run's recorded video bytes on each read; no digest cache or new dependency.
+The real-copy browser probe checks missing/truncated/restored video, playback
+and download; the regression also covers equal-length corruption and range
+requests. No accepted geometry, run status or policy identity is rewritten.
+
+## ADR-296 — Reuse retained-video digests while file identity is unchanged (2026-09-12)
+
+ADR-295's per-read verification takes 6.59–7.00 seconds per project HTTP poll
+with 64 synthetic 256 MiB video files (16 GiB logical bytes). Cache at most 256
+computed video digests per process, keyed by resolved path, device, inode,
+size, mtime_ns and ctime_ns. Resolve containment and stat on every read;
+compare the computed digest to the current record every time. Verify the
+stamp again after hashing, refusing changes during verification without caching
+the result. Store no file bytes, telemetry or accepted state. This replaces
+repeated byte reads for unchanged files; no dependency or durable cache.
+
+The same 64-file workload takes 12–13 ms on subsequent HTTP polls and three
+synthetic browser telemetry updates appear in 1.93–2.03 seconds. The first
+verification still takes 7.04 seconds; changes, restart and cache eviction pay
+that cost again. Measurements use sparse zero files as hashing workloads,
+not playable policies or real training; they supply no new D3/D4/D9 evidence.
+Tests cover metadata-preserving corruption, atomic replacement, changed
+recorded hashes, escaping symlinks, mutation during hashing and browser
+refusal/recovery without rehashing unchanged video bytes on each poll.
+
+## ADR-297 — Share a pending dashboard poll during slow verification (2026-09-12)
+
+The two-second browser timer started overlapping project requests while cold
+video verification could take seven seconds (ADR-296). The digest cache does
+not merge concurrent misses, so those requests could repeat the same disk
+reads before the first verification finished. Keep one pending poll promise
+per page, shared by timer ticks and explicit refreshes, and release it after
+success or failure. This replaces overlapping requests without caching project
+state or changing integrity checks. Initial loading still waits for verified
+data; this does not shorten the cold read or bound concurrent browser clients.
+A headless-browser regression holds initial video hashing across three timer
+intervals, asserts one byte read and loading without playback, then releases
+verification, checks corruption refusal and observes a subsequent status edit.
+No dependency, engine, protocol or training change.
+
+## ADR-298 — Serialize retained-video cache misses across clients (2026-09-12)
+
+Two headless browser pages reaching the same cold retained video caused two
+byte reads before either verification finished, despite ADR-297's per-page
+poll guard. Python's LRU cache protects its mapping but allows concurrent
+misses to compute twice. One process-local lock now covers the video stat,
+cache lookup and hash. Waiting clients reuse the resulting digest; exceptions
+release the lock, and file stamps and recorded digests remain checked. This
+replaces duplicate concurrent hashing without a growing per-file lock registry
+or a new dependency. The cache still holds at most 256 digests.
+
+The deliberate tradeoff is serialization: an unrelated cold video can wait
+behind another verification, including a cached lookup waiting for the lock.
+Separate processes have independent caches and locks. This is a duplicate-work
+bound, not a cold-storage latency or five-second telemetry guarantee. The
+browser regression reproduces two reads before the fix and one after, keeps
+both clients loading until verification ends, refuses corruption in both and
+rehashes changed bytes once. A 257-file test proves eviction and revalidation;
+existing mutation, replacement and containment tests remain required.
+
+## ADR-299 — Open review on current work and preserve deliberate browsing (2026-09-12)
+
+The persistent operator page previously opened accepted geometry and remained
+on the obsolete carriage project. Per the owner D10 directive, port 8765 now
+serves the Reed working copy. New visits select the newest running/pending
+record with fresh starting/training telemetry, otherwise the latest recorded
+attempt regardless of success. Record time orders attempts, with run name as
+tie-breaker; no runs falls back to accepted geometry. Stale telemetry does not
+establish active training. Existing status and missing-output labels remain.
+
+An untouched page follows current work on polls. Choosing any view or playing a
+video pins that view; a visible Current run button returns to following. This
+replaces the unconditional accepted-view default without changing project state,
+training or the protocol. Browser tests cover active precedence, newer failure,
+stale telemetry, deliberate history and video playback across a newer attempt.
+The persistent-server probe and operating command live in
+`docs/probes/operator-review/README.md`.
+
+## ADR-300 — Share the review scene with policy-video capture (2026-09-12)
+
+The D11 baseline finds separate visual systems: a perspective WebGL viewport
+and orthographic CPU video rasterizer, neither with the requested environment.
+Use one browser scene for viewport and explicit headless frame capture, retaining
+Python's verified-artifact checks, sampling, locking, time bounds and encoding.
+This decision is not an implemented renderer. The measured reference, light/dark
+distinction, truthful ground-slab constraint, portable style identity and retained
+video-history requirements are in `docs/probes/review-style/README.md`.
+
+The decoded neural-whoop examples use its dark theme; the owner explicitly chose
+the light-grey style, whose source palette therefore governs. Do not copy the
+reference drone's glyph enlargement into CAD. No dependency is added by this
+decision; any adopted renderer library needs its own pinned licence and written
+reason. Delivered assets must be self-contained. D11 stays open until real-biped
+viewport/video and light-reference comparisons prove the look and interactions.
+
+
+## ADR-301 — One local reference scene for inspection and recorded rollout frames
+
+2026-09-12. [Cadex-new] Implements ADR-300 for D11.
+
+The viewport's handwritten WebGL shader and the video's orthographic CPU
+rasterizer showed different places. Replace those review paths with one
+`review_scene.js`, called by both the interactive viewer and explicit headless
+capture. Keep the unrelated CLI still-image renderer. Python continues verifying
+retained identities, geometry, solved poses, timing, locking and complete decode;
+it never rebuilds historical geometry. The camera fits the whole trajectory once.
+
+Add a pinned, local Three.js r160 module (655 KiB, MIT) because shared ACES colour
+management, rough materials, antialiasing and fitted shadow maps need a rendering
+library; reimplementing those features in our shader is unnecessary surface.
+No npm, Python dependency, runtime CDN, engine payload or trainer change.
+Promote the existing DevTools pipe driver from tests to the CLI and keep a test
+import shim, instead of adding Playwright/Selenium or duplicating browser code.
+Headless video capture now requires Chromium as well as FFmpeg.
+
+Adapt the MIT neural-whoop environment and floor-only geometry, retaining full
+notices and source identity in PROVENANCE.md. Local imports remove sibling/CDN
+runtime dependencies. Cadex's finite ground slab and all poses stay truthful;
+the separate environment is just below model bounds and front-sided to permit
+underside inspection. Fitted shadows resolve the small model instead of spending
+the map on the huge environment. Camera APIs retain mm/Z-up/xyzw coordinates.
+
+Publish style/code digest, renderer versions, dimensions and explicit camera
+with each new video. Preserve prior video references and files; a failed render
+retains them too. Byte-identical outputs are deduplicated. Legacy recordings
+remain visibly labelled. Source-order colours now agree across both render paths.
+
+Evidence: `docs/probes/review-style/implementation.json` and README. Real Reed
+checkpoint/final recordings, actual reference-module light frame with the same
+Reed geometry, pixel-identical persistent viewport/capture PNGs and decoded
+codec comparison. The CLI browser regression covers both encodings' playback
+and downloads, while existing polling/history/orbit gates continue to run.
+This is a shared rendering unit, not a new training experiment; it cannot measure
+concurrent GPU overhead or close D10's experiment-spanning observation gap.
+
+Repeated on the current design (2026-09-12, iteration 44): `compare.py` now
+takes the run, the historical clip and the evidence directory, and drives a
+real pointer drag, wheel zoom-in and zoom-out on the persistent page. On
+`shin55-final` the viewport/capture PNGs are again byte-identical, the decoded
+frame is within 1.67/255, and close/wide/orbit views show no stage edge; no
+renderer change followed. Evidence: `docs/probes/review-style/shin55.json`.
+
+Repeated on the persistent Wren copy (2026-09-12, iteration 64): with port
+8765 serving `ot5-wren-copy54`, `compare.py` now also restages the unmodified
+reference renderer at the same close and wide cameras as the persistent
+viewport and decodes an actual shipped reference frame into the side-by-side.
+On `wren57-retry` the viewport/capture PNGs are byte-identical, the decoded
+frame is within 1.5044/255, the close and wide framings agree with the
+reference apart from the deliberate shadow frustum/bias, real drag and zoom
+orbit showed no stage edge, and `wren2-final` played, downloaded and polled as
+historical. No renderer change followed. Evidence:
+`docs/probes/review-style/wren.json`.
+
+## ADR-302 — Byte-identical outputs each keep their accepted tessellation (2026-09-12)
+
+[Cadex-new] Fixes a review defect the Reed shin55 experiment exposed on the
+persistent operator dashboard: while the run trained, its retained training
+view listed eight components but drew only five, with the left thigh, shin
+and foot "mesh missing". `copy100` and `probe3` had frozen four of eight the
+same way. Cause: `accepted_model` mapped each BREP digest to one output name,
+so a mirrored pair of identical solids — the same box on both sides — kept
+only the last-registered side's tessellation; the "Accepted now" view and
+`retain_training_view` both inherited the loss. Now every output whose BREP
+bytes match owns the tessellation made from those bytes, the run-mesh path
+is untouched, and a regression builds two identical thighs and asserts both
+appear in the accepted model and in a retained training view. Views that
+earlier runs already froze stay as recorded — a historical view is never
+rebuilt (charter constraint) — so `shin55`'s own training-time snapshot
+keeps its five meshes and its playback runs carry the full rollout model.
+
+
+## ADR-303 — Identical restore retains the accepted artifact attempt (2026-09-12)
+
+Wren's in-place reopen replaced its accepted artifact locator with a replay
+that had no display buffers. The dashboard consequently lost all tessellation
+although accepted revision and digest matched. At acceptance, an identical
+revision/digest with no display request now retains the previous attempt if
+its result.json exists. It remains the pruning pin. Live geometry still goes
+through execution, validation and publication; restore digest refusal remains
+unchanged. Explicit display requests, changed identities and absent retained
+results select the new attempt. No protocol fields or dependencies change.
+A real-engine regression restores a disposable accepted project twice in place
+and checks identity, the locator and every retained byte; unit cases cover the
+replacement paths and pruning. The CLI refused-turn regression now expects
+the retained accepted attempt and a distinct latest candidate from restore.
+This preserves existing meshes rather than
+repairing their loss through a subsequent rebuild.
+
+## ADR-304 — Compare Wren revisions using retained policy/model pairs (2026-09-12)
+
+[Cadex-new] The 85→105 mm foot hypothesis is evaluated on the declared seeds
+0–4, eight seconds at 50 Hz, with the original and revised checkpoint-20 and
+final policies. Fresh scratch projects replay each retained script with its
+recorded effective parameters and content-verified policy; every model/task/
+policy digest must match the retained run, and seed zero must reproduce the
+saved trace exactly. Actual survival comes from solved simulation time, not
+the trainer's batch episode estimate. Traces are retained inside Wren's
+`evidence/comparison52`, with compact results and reproduction commands in
+`docs/probes/wren-fresh/COMPARISON.md`.
+
+The design attribution stays explicit: the original Wren was product-agent
+authored; the foot revision was the public CLI parameter operation. This
+experiment is no substitute for a product-agent revision turn. Original run
+files and videos are preserved. The persistent server follows the new attempt
+through training and final review; historical playback checks allow an old
+final run and return to the current target shown at click time, since a new
+checkpoint can legitimately appear while the check runs. This replaces the
+probe's frozen initial-target assumption, not dashboard selection behavior.
+No dependency, engine, trainer or renderer change is introduced.
+
+## ADR-305 — Exclude CPU test trainers from live interruption probes (2026-09-13)
+
+[Cadex-new] The Wren interruption probe previously allowed the CLI suite's
+CPU trainers to overlap its GPU experiment. Its replacement guard checks Linux
+process argv and systemd scope identity before each launch, then monitors in a
+background thread throughout browser waits and trainer exit. Python script and
+module trainer invocations count regardless of device; pytest runners also
+block the probe because tests can train inside the test process. Shell and
+timeout wrappers are not counted as trainers. Foreign trainers, duplicate own
+trainers or unreadable process scans fail the probe, retain the exclusion
+receipt and stop only its own experiment scope. Suites run separately before
+the new experiment. Sampling records its maximum observed interval; this is
+observed process exclusion, not a system-wide scheduling lock or a proof about
+processes shorter than that interval. Earlier attempts and receipts stay
+historical. No dependency or product training behavior changes.
+
+## ADR-306 — Keep review documents open during live polling (2026-09-13)
+
+[Cadex-new] Every dashboard poll previously hid the document panel, interrupting
+reading after at most two seconds. Keep the loaded text visible while the view
+and revision are unchanged. Opening a document suspends automatic current-run
+following, like deliberate historical browsing; the current-run button resumes
+it. Label the text as loaded on open, with its link providing an explicit
+refresh. Clear it on view/revision change and ignore superseded fetch results,
+so delayed responses cannot replace another document or leak an earlier view's
+text into the new one. Live telemetry and document-link lists still poll.
+No dependency or authoring surface is added.
+
+## ADR-307 — Refresh geometry when the selected review identity changes (2026-09-13)
+
+[Cadex-new] Polling updated accepted revision labels and parameters while leaving
+the old viewport mesh in place, because only a selection change loaded a model.
+Compare the selected view, revision and digest across each project refresh and
+load geometry when that identity changes. The first accepted model also appears
+in an already-open empty accepted view. Unchanged identity does not reset orbit
+or zoom; a selected historical run continues using its retained model. Browser
+regressions reproduce stale and empty geometry on the old source and check the
+new mesh bounds, camera preservation and historical identity. No new dependency.
+
+## ADR-308 — Wren's product-agent revision is authored, retrained and compared (2026-09-13)
+
+[Cadex-new] Three iterations recorded provider refusals of Wren's review-driven
+design turn. Iteration 65's turn accepted `foot_len=90`, `policy_on=0` on the
+working copy through the agent's own tools and was cut off before it returned a
+decision; iteration 66 completed that turn rather than authoring a replacement,
+so the accepted change and its rationale (project ADR-002, `docs/design-specs.md`)
+are both the agent's. The unchanged bounded experiment retrained it as `wren66`
+(240 iterations, exit 0, checkpoint and final videos published on the persistent
+page) and the three retained policies of the copy were evaluated on seeds 0–4.
+`compare.py` reads the script the run record names, since an in-place published
+retry keeps two, and `report_revision.py` reads authorship from the run's training
+provenance. Results are survival and displacement on one training seed per
+design, not a gait or causal claim. `docs/probes/wren-fresh/REVISION66.md`;
+receipt `revision66-evidence.json`, test-guarded. No new dependency.
+
+## ADR-309 — Playback checkpoints resolve through recorded training-run provenance (2026-09-13)
+
+[Cadex-new] A checkpoint or final-policy playback run copies the trainer's
+progress snapshot beside its rollout, so its telemetry listed every checkpoint
+as `missing`: the bytes live under the training run's `train/`, which the
+playback record already names as `training.requested.source_run`. The review
+server now resolves each checkpoint in the run's own `train/` first, then
+through that recorded training run's `train/` inside the same project, and
+reports where it was found. Provenance is an explicit state — `none`,
+`resolved`, `missing` (the named training run is not in this project) or
+`refused` (not a bare run name, or `runs/<name>` escapes the project, by `..`
+or by symlink) — with the next CLI action in the reason. A copy that left its
+training run behind says so rather than reaching the original; the digest
+check applies wherever the bytes are found. API and browser regressions cover
+current and historical playbacks, the four states and copy isolation. The
+persistent Wren dashboard was restarted once, with no trainer running, to load
+this: `wren66-final` shows twelve checkpoints retained through `wren66`. No
+new dependency; no CLI exit semantics changed.
+
+## ADR-310 — Separate video availability from recorded render outcome (2026-09-13)
+
+[Cadex-new] A missing or truncated video still led with `Video render: ready`,
+which described the saved encoder receipt while implying the output was usable.
+Lead the video list with current availability and the retained/recorded count;
+label the saved receipt `Recorded video render`. A mixed collection is partly
+available, and a successful old render can coexist with unavailable output.
+Use the reader's existing existence/digest checks, preserving its recovery
+instructions and playback across unchanged polls. Browser regressions cover
+missing, truncated, restored and mixed files plus historical playback/download.
+No new dependency or retained-record format change.
+
+## ADR-311 — The review client trusts the accepted pin and digest over the staging directory's name (2026-09-13)
+
+[Cadex-new] The exhaustion-policy clean-project repeat (ADR-284) created a
+third fresh biped, `ot5-lark`, in one `cadex -p` turn and put it on the
+persistent operator dashboard. The page showed its identity and twenty
+specs but `no model to show: accepted attempt's staging does not belong to
+the accepted revision`. The attempt was genuine: the engine stages every
+attempt under the revision it computes *before* the worker runs, over the
+stored parameter-spec cache, and records the revision recomputed with the
+worker-collected specs as the accepted one (`CadexScriptedRuntime`). On a
+project's first accepted script those differ, so the directory name is not
+evidence of anything; the store's own pin (`accepted_attempt`, never
+garbage-collected) already tolerates it. Wren had the same shape at
+creation and a later public rebuild hid it — the hidden dependency on the
+first fixture the repeat was meant to expose. The reader now accepts a
+staging directory named for another revision only when the manifest's pin
+names the accepted revision **and** the attempt's `result.json` carries the
+accepted digest; anything less is still refused, with a regression that
+failed on the old reader. A second defect is recorded, not fixed here: the
+agent's `write_script` omits `display`, so a freshly created project has no
+tessellation until a public rebuild republishes the accepted attempt.
+`ot5-lark` received that through `cadex render` at unchanged revision and
+digest, and the receipt records all three states. No dependency, protocol,
+payload or engine change.
+
+## ADR-312 — Every CLI write carries the standard tessellation request (2026-09-13)
+
+[Cadex-new] ADR-311 recorded the defect it did not fix: the agent's
+`write_script` omitted `display`, so a project straight out of `cadex -p`
+had an accepted attempt with BREP outputs and no tessellation, and the
+review dashboard said `accepted attempt retained no tessellation` until a
+public rebuild — `cadex render`, `cadex params` — republished the attempt.
+Wren was created the same way and a later rebuild hid it; Lark exposed it.
+The omission was deliberate when the CLI had nothing to draw (ADR-061), and
+it stopped being right when the dashboard started drawing the accepted
+attempt (ADR-286). The bridge now injects `display: {quality: standard,
+edges: false}` — the request `cadex params` already makes (ADR-293) — on
+every op whose `OP_ARG_SPECS` takes it (`write_script`, `edit_script`,
+`set_params`, `rebuild`), overrules any value the model supplies the way
+it overrules `expected_revision`, and keeps dropping the reply's `display`
+block from what the model sees; `cadex script --set` asks for the same. The
+schemas still omit it: the list of ops comes from the protocol, not a
+second copy. Cost, measured on Lark's eight solids through the built
+engine on a scratch copy, three writes each way: 0.45–0.60 s without
+tessellation, 0.44–0.49 s with — within noise. Regressions: the bridge
+sends the constant on the four ops and never on `describe_api`/`inspect`;
+and an engine-backed headless-browser test writes a first script through
+the bridge on a fresh project, confirms the ADR-311 shape (staging under
+the pre-run revision, accepted revision different), and the dashboard
+draws the model with no `review/` render present — it failed on the old
+bridge with `retained no tessellation`. Reading a project still rebuilds
+nothing; the review client is unchanged. No dependency, protocol, payload,
+engine or shell change.
+
+## ADR-313 — Lark's design change is the product agent's, measured on the project's own seed set (2026-09-13)
+
+[Cadex-new] The third fresh biped's review-driven revision was made the way
+the charter's D9 asks — by the product agent, from the recorded review, not
+by a caller editing a parameter. One bounded `cadex -p` turn on `ot5-lark`
+received `lark1`'s measured results (both policies falling within a second,
+the final policy's +194 mm lunge paid for by `forward_progress`) and
+accepted `torso_h` 70 → 45 mm with `policy_on=0`, returning the hypothesis
+(torso mass and height drive the toppling moment) and the tradeoff as the
+project's ADR-004. `lark2` retrained it under the unchanged bounds; the
+comparison of all four retained policies then ran on **Lark's declared seed
+set 0–9**, because the charter says "the same declared episode/seed set" and
+Lark's design specs declare ten seeds where Wren's declared five. That is
+the one tooling change: `compare.py` takes the seed count as an argument,
+sets the seed through the script's `rollout_seed` parameter when it declares
+one, and finds the torso as the one traced component named for it;
+`report_revision.py` takes the seed set from the evaluations. Wren's
+committed receipt regenerates byte-identically. Measured: both 45 mm
+policies survive all ten eight-second episodes (final mean +34.8 mm torso X),
+`lark1-final` falls on all ten after lunging, `lark1-checkpoint20` on two.
+This is honest survival on one training seed per design; it does not isolate
+geometry from training variance and it is not a gait. The persistent port
+8765 page was checked at the turn's start (`lark1-final`) and the
+experiment's completion (`lark2-final`) and kept serving throughout; the
+125 pre-revision run/asset files are byte-identical. No protocol, payload,
+engine, shell or dependency change.
+
+## ADR-314 — Lark's copy is the working project, proved independent with the original unavailable (2026-09-13)
+
+[Cadex-new] D7 on the third fresh biped. `ot5-lark` (1,852 files) was copied
+whole to `ot5-lark-copy85` with no writer active, the persistent port 8765
+service was deliberately stopped and started on the copy, and the original
+directory was renamed away for the entire probe: a copy-only public-CLI edit
+(`foot_len` 80 → 90 mm, `policy_on` 1 → 0; accepted revision `083d086ad980…`,
+digest `4c4171abfa4f…`), two fresh engine restores, and headless-browser
+checks of a separately started server and the persistent one. Both servers
+showed all six retained runs with their own revisions, digests, 80 mm
+parameters, curve lengths, served mesh hashes and — for the four playback
+runs — videos that played, survived a poll and downloaded hash-equal; the
+accepted view showed the copy's new identity with no video substituted and
+return-to-current selected historical `lark2-final`. The 250 retained
+`runs/` and `assets/` files in the copy and all 1,852 original files are
+byte-identical to their pre-copy inventories. The one tooling change: the
+Wren copy driver became `docs/probes/lark-fresh/copy_lifecycle.py` with the
+default run and the parameter changes as arguments and the component count
+taken from each served model, so nothing in it names a project. The copy is
+now the working project on the shared URL, identified as such in the
+operator status; `ot5-lark` is retained, unchanged and unserved. Same-machine
+private-address checks; no retraining, no agent authorship, no new D11
+claim. No protocol, payload, engine, shell or dependency change.
+
+## ADR-315 — Lark's interruption, retry and retry video on the working copy (2026-09-13)
+
+[Cadex-new] D8 on the third fresh biped, and the retraining half of its D7.
+On `ot5-lark-copy85`, served throughout on the persistent port 8765 with no
+restart, two sequential real GPU attempts ran under the declared bounds
+(seed 0, 1,024 environments, 900 s timeout, `MemoryMax=20G`) after both
+gate suites had finished (CLI 437 passed/1 skipped, engine 2110 passed/53
+skipped) and with the ADR-305 trainer-exclusion guard observing exactly one
+trainer per attempt. `lark86-interrupt` received SIGINT after iteration 5
+and three page-observed updates: the trainer's own failure publisher left
+six samples per curve and no policy, the supervisor recorded the deliberate
+interruption, and without a reload the page showed `failed`, the note,
+`start a new cadex walk` guidance and no video; the four retained videos
+still played and downloaded hash-equal, none substituted. `lark86-retry`
+completed 40 updates (exit 0, policy `074e22f1070c…`, witness 8.4e-8) and
+its policy was declared through the public CLI (revision `7f6c23913d55…`),
+rolled out on seed 0 and rendered: `lark86-retry-video` decodes to 81
+frames, plays through polls and downloads hash-equal on the persistent URL,
+naming revision, policy digest, seed and 8.0 s of simulation. The historical
+interruption stays selectable after a refresh with return-to-current
+selecting the video run. The copy's 246 prior run files and 4 assets and the
+original `ot5-lark` (1,419 files excluding `.git`) are byte-identical after
+the retraining, checked by the driver and once more independently. The
+tooling change: `docs/probes/lark-fresh/interruption.py` is the Wren driver
+made project-agnostic (bundle by envelope kind, all manifest parameters,
+component count from the training view, retained videos by presence, the
+original as an argument) plus the final-policy playback branch of `train.py`.
+The compact receipt is `interruption86-evidence.json`, guarded in
+`cli/tests/test_lark_fresh_evidence.py`. One seed and 40 updates: no gait
+claim; same-machine private-address checks; no product-agent authorship; no
+new D11 comparison. No protocol, payload, engine, shell or dependency change.
+
+## ADR-316 — The video checker resolves training runs and siblings from retained identities, not run names (2026-09-13)
+
+**Context.** `docs/probes/wren-fresh/check_video.py`, the browser check
+every fresh-project driver runs on a retained video, hard-coded three
+naming conventions: a run ending `-final` was the one a fresh visit must
+select, its historical sibling was the same stem plus `-checkpoint20`, and
+the model had eight components. Iteration 86 had to name the retry's
+playback `lark86-retry-video` to dodge the first two, which is a driver
+bending to a checker rather than a checker reading the project.
+
+**Decision.** The checker consults no run name. The expected fresh-visit
+selection is the reader's rule, now also in Python as
+`cadex_cli.review_server.default_run(review)` (the newest active training
+record, else the newest record, else the accepted view — identical to
+`review.js`'s `currentView`). The training run behind a video and the older
+sibling to select afterwards come from
+`cadex_cli.review_record.policy_lineage(root, run)`: a run's recorded policy
+digest is matched against the bytes every run retains under its own
+`train/`, the holder is the origin (`final`, `checkpoint` with iteration, or
+`retained`), the record's `source_run` is checked against it as
+`source_agrees`, and `playbacks` are the other runs whose policy the same
+origin retains. The sibling is the latest historical playback of the same
+origin, else the latest other historical video run, else none. Every declared
+parameter is checked and the component count is the run's own trace's.
+`--not-default` (with `--historical` kept as its old spelling) marks a run
+the fresh visit is not expected to select; `--label` names evidence files so
+a re-check never overwrites an earlier receipt. Callers in both probe trees
+pass `--not-default` for checkpoint checks during active training and for
+older videos.
+
+**Evidence.** Regressions with unrelated run names: `policy_lineage` over
+`kestrel`/`pear`/`quince`/`fig`/`plum`/`apple`/`zebra`/`mango` (origin by
+bytes, checkpoint iteration from telemetry, a later copy under
+`also_retained_by`, a record naming the wrong run flagged, no policy and an
+unretained digest each with a reason, a symlink out of the project refused)
+in `cli/tests/test_review_record.py`; `default_run` over
+`zebra`/`aardvark`/`mango` (record time not name, a newer failure never
+hidden, active first, stale not active) in `cli/tests/test_review_server.py`.
+On the persistent working-copy URL, not restarted and with no trainer:
+`lark86-retry-video` resolved to origin `lark86-retry` (final) with
+`lark2-final` as the historical selection, and `lark1-final` to origin
+`lark1` with sibling `lark1-checkpoint20` at checkpoint iteration 19 by
+identity; both decoded whole, played through polls and downloaded
+hash-equal. Receipt `docs/probes/lark-fresh/lineage88-evidence.json`, guarded
+in `cli/tests/test_lark_fresh_evidence.py`. No protocol, payload, engine,
+shell, page or dependency change; no training and no new video.
+
+## ADR-317 — Run, policy and telemetry resolution is anchored at the project root, never at a run directory (2026-09-13)
+
+**Context.** The critic found that `_retained_policies` in
+`cli/cadex_cli/review_record.py` anchored its containment checks at the run
+directory it was walking: `resolve_reference(run_dir, "train")` and
+`resolve_reference(run_dir / "train", name)`. A `runs/<name>` that is itself
+a symlink out of the project passes both, because the check begins inside
+the escape, so an external directory's policy bytes were hashed into the
+lineage index and its `progress.json` was read by `_origin` with no check
+at all. A throwaway fixture confirmed it: `runs/escaped → /tmp/…/outside`
+contributed `w.bin`'s digest to the index. The same shape reached
+`read_run_record`: `list_runs` and the dashboard's single-run route (which
+only checks `run_dir.parent`, which a symlink also passes) read an escaped
+run's `run.json` as if it were the project's.
+
+**Decision.** Every path the lineage reader and the run reader touch is
+resolved against the **project root** before it is read or hashed.
+`_retained_policies` resolves `runs/<run>/train` and each file in it as
+`resolve_reference(root, …)`, and additionally requires a file to resolve
+inside that run's own `train/` — a symlink to bytes kept elsewhere in the
+project is not this run retaining them (the pre-existing regression's
+in-project symlink stays refused). `_origin` reads telemetry only through
+`_retained_progress`, which applies both checks to `progress.json`.
+`read_run_record` returns an `unreadable` record with error
+`run directory escapes the project directory` and problem
+`run: directory escapes the project directory` — opening nothing under it —
+when the run directory resolves outside the project, which covers
+`list_runs`, `read_project_review`, the dashboard's `/api/run/<name>` and the
+video writer alike.
+
+**Evidence.** Regressions in `cli/tests/test_review_record.py`: an external
+run-directory symlink carrying a record, telemetry and policy bytes is listed
+unreadable with nothing opened, contributes no digest, and a run whose record
+names that digest resolves to no origin; an external `progress.json` symlink
+inside an in-project run is never read (its checkpoint is reported
+`retained`, not `checkpoint`) and an external policy-file symlink is not
+hashed. `test_review_record.py` + `test_video.py`: 35 passed, 5 skipped;
+`test_review_server.py`: 40 passed, 4 skipped; the full CLI suite ran under the record node
+`easy-field-3407` (iteration 91): 445 passed, 1 skipped. The persistent port 8765 unit was restarted onto the fixed
+reader with no trainer active and still serves `ot5-lark-copy85`: a fresh
+visit selects `RUN lark86-retry-video` (origin `lark86-retry`, final,
+`source_agrees` true), which played through polls and downloaded hash-equal
+(`1f53d43d1c18…`, 81 decoded frames); receipt
+`evidence/lark86-retry-video-anchor89-check.json` in the copy. No protocol,
+payload, engine, shell, page or dependency change; `docs/CLI.md` says what
+the anchor refuses.
+
+## ADR-318 — The dashboard's model and mesh routes are anchored at the project root too (2026-09-13)
+
+**Context.** ADR-317 anchored the *reader* at the project root: a
+`runs/<name>` that is itself a symlink out of the project is listed
+`unreadable` with `run: directory escapes the project directory`. The
+dashboard's model route did not go through that refusal. `run_model` in
+`cli/cadex_cli/review_server.py` took `root / runs / <name>` as its base and,
+because an unreadable record resolves no trace, fell into the
+retained-training-view branch: `runs/escaped/training-view.json` was read
+from the external directory, every containment check inside it was
+anchored at the already-escaped run directory and passed, and `run_mesh`
+served the external STL bytes. A throwaway fixture reproduced it — the
+escaped run answered `available: true` with `/mesh/run/escaped/leaked.stl`
+resolving to a file outside the project — which is exactly the "never
+arbitrary filesystem paths" constraint of the ot5 charter (ADR-284) failing
+on the one route a browser draws from.
+
+**Decision.** `run_model` resolves `runs/<name>` against the project root
+before reading anything under it and answers `available: false` with reason
+`run directory escapes the project directory` (or `run directory missing`)
+when that fails; `run_mesh` additionally requires the file it is about to
+serve to resolve inside the project root, whatever the run directory's own
+links say. `/api/run/<name>` keeps returning the reader's `unreadable`
+record, so the page lists the run with a bad tone and says why rather than
+hiding it. No page, protocol, payload, engine or shell change.
+
+**Evidence.** `cli/tests/test_review_server.py`: an HTTP regression (fails
+on the old server with `available: true`) that an external run-directory
+symlink carrying a record, training view and STL is listed unreadable,
+has no model, and answers 404 for its mesh, artifact and video routes
+while the project's own runs are unaffected; and a headless-browser
+regression that the page lists the run as `unreadable`, selecting it shows
+`no model to show: run directory escapes the project directory` with no
+components drawn, and a project-owned historical run still loads
+afterwards. Full CLI suite result (445 passed, 1 skipped) and the
+persistent operator-service restart onto this server are in the record
+node `easy-field-3407` (iteration 91; iterations 89 and 90 landed ADR-317
+and this ADR without record nodes).
+
+## ADR-319 — Show byte-resolved policy origin beside declared provenance (2026-09-13)
+
+A playback's declared `source_run` can disagree with its retained policy
+identity. The run panel now exposes ADR-316's `policy_lineage` result through
+`GET /api/policy-origin/<run>`: origin run, final/checkpoint/retained kind,
+checkpoint iteration, and explicit source-name disagreement. The existing
+checkpoint-source line continues to describe telemetry reference resolution.
+Origin hashing happens on selection, policy/training/status change or explicit
+Check again, not each telemetry poll. Results are labelled snapshots; missing
+bytes and request failures have distinct states. Selection changes invalidate
+late responses. No dependency, engine protocol or payload change.
+
+Evidence: the headless-browser regression in `test_review_server.py` uses
+unrelated playback/training names, changes the declared source to conflict,
+removes retained bytes and rechecks, then selects a final policy without a
+declared source and the accepted view. The persistent video checker also
+asserts the displayed origin against the identity reader and retains its text.
+
+Validation: full CLI suite **446 passed, 1 skipped** in 427.30 s; the final
+request-race/retry browser assertions also passed in the targeted run. The
+persistent private-address video check passed with `lark86-retry-video`
+selected and `lark86-retry` identified as its final-policy origin.
+
+## ADR-320 — The render-failure observer names no fixture run; Lark carries its own D4 encoder-failure receipt (2026-09-13)
+
+**Context.** `docs/probes/lark-fresh/LIFECYCLE.md` named one D4 acceptance
+receipt that still rested on Wren: real encoder-failure isolation while a
+GPU trainer keeps running (ADR-284's D4, `docs/probes/wren-fresh/RENDER-FAILURE.md`).
+The shared observer `docs/probes/wren-fresh/render_failure.py` was otherwise
+project-agnostic but hard-coded `wren71-final` as the earlier run that must
+stay playable during the fault, and its post-recovery bookkeeping read an
+evidence filename that iteration 88's `check_video.py` no longer writes.
+
+**Decision.** The prior run is the observer's fourth argument, asserted to
+exist before anything starts, and the recovery check runs under its own
+`render-recovery` label so it neither overwrites the driver's publication-time
+check nor is read under a stale name. Iteration 98 ran the experiment on the
+persistent port 8765 project `ot5-lark-copy85` as `lark98` (240 updates,
+seed 0, `MemoryMax=20G`, 1,800 s timeout) with `lark2-final` as the prior run.
+The receipt is `docs/probes/lark-fresh/render98-evidence.json`, narrated in
+`RENDER98.md` and guarded by two tests in `cli/tests/test_lark_fresh_evidence.py`.
+
+**Consequences.** Every D1–D11 receipt the Lark lifecycle report links now
+comes from Lark or its working copy. The bookkeeping crash that followed the
+passed assertions is recorded in the receipt, with the publication-time check
+identity retained from the driver's own receipt and the post-recovery trainer
+sample taken from the committed timeline. The Wren command line gains the
+argument; nothing in product code, the protocol or the payload changed.
+
+## ADR-321 — The run list carries a telemetry summary; histories and verified checkpoints travel per run (2026-09-13)
+
+**Context.** The dashboard's `GET /api/project` attached every run's full
+telemetry — three histories of up to 512 samples and a checkpoint list whose
+every entry was hashed against its recorded digest — and the page fetched
+it every two seconds, then rebuilt the whole sidebar. On the persistent
+`ot5-lark-copy85` server that was 554 KB per poll for 13 runs and 97
+checkpoint files hashed per poll; a project with sixty runs would have
+carried about 2.5 MB and hashed every checkpoint it had ever kept, twice a
+minute, for as long as a browser was open. The charter's exhaustion policy
+names bounded operation over long histories as the work once D1–D11 have
+evidence, and the critic named it as this iteration's unit.
+
+**Decision.** `training_telemetry(root, record, detail=False)` returns the
+summary form: the same validation and `state`, the same reason and latest
+metrics, `samples` (each history's count), `checkpoints_reported` and the
+`checkpoint_source` state, with no histories and no checkpoint bytes read.
+`/api/project` serves that; `/api/run/<name>` now attaches the detail form
+(histories, digest-verified checkpoints) for the one run requested.
+`default_run` reads `state`, which both forms carry. `review.js` polls the
+list and then the selected run's detail and renders the telemetry panel
+from one response; the sidebar is keyed on what it shows and the panel on
+the telemetry it shows, so an idle poll adds a constant number of nodes.
+Until a selection's detail arrives the panel shows the summary's counts,
+`loading history…` and a `pending` checkpoint line of the same shape.
+`window.cadexReview.lastPoll()` exposes list bytes, detail bytes and wall
+time. `cli/tests/test_review_history_scale.py` pins it: sixty-three runs
+with 512-sample histories and three checkpoints each measured over HTTP,
+and in the browser a selected historical run with a playing video kept
+through a twenty-run growth of the list and a growing current-run history,
+with the idle-poll node count not rising after the growth.
+
+**Consequences.** The `telemetry` object in `/api/project` runs no longer
+has `curve`, `loss_curve`, `episode_steps_curve` or `checkpoints`; readers
+that want them ask `/api/run/<name>`. Two dashboard tests and the two Wren
+probe scripts that read history lengths from the list were moved to
+`samples`/the detail. On the Lark server the list poll went from 554 KB to
+the record bytes alone (measured after the restart, in the operator README).
+No protocol op, payload or `shell/` change; `docs/CLI.md` describes both forms.
+
+## ADR-322 — Per-run disk use travels with the run detail, counted from permitted files with shared references sized once (2026-09-13)
+
+**Context.** The charter's bounded-operation rung asks that review clarity
+hold over longer histories, "including bounded telemetry, disk use and
+visible missing artifacts". ADR-321 bounded the poll; nothing yet said what
+a run *keeps*. On the persistent `ot5-lark-copy85` server thirteen runs hold
+about 11 MB under `runs/`, and a training run and its playback run both cite
+one policy asset under `assets/` — a `du` over `runs/` would miss it and a
+sum over records would count it twice. The critic named this as the unit.
+
+**Decision.** `review_record.run_disk_use(root, record, others)` counts one
+run's permitted project-local files: every regular file that resolves inside
+`runs/<name>` (the same containment rule as every other reference), each
+inode once, no symlink followed — a linked file or directory is listed as
+skipped, because bytes kept elsewhere are not this run retaining them — split
+by top-level subdirectory, from `stat` alone with nothing read or hashed and
+a `DISK_USE_ENTRY_LIMIT` of 20 000 entries past which it reports
+`truncated` and a floor. Each reference the record names is sized with the
+reader's own status words (`retained`, `missing`, `refused` — never opened —
+and `not recorded`). A `project_artifacts` reference that resolves outside
+the run is sized under `shared_bytes` and `shared_with` names the other runs
+whose records cite the same path, so a shared file is counted once for the
+project rather than once per run. A run directory that escapes the project
+is `unreadable` and nothing under it is stat'ed. It is attached to
+`/api/run/<name>` by the new `ReviewProject.detail` — the detail form, the
+one place histories and verified checkpoints already travel — and never to
+the run list, so the two-second poll stays what ADR-321 made it. The page's
+Artifacts card shows the total, the per-directory split, the skipped links,
+the shared references and a size column that says `missing — nothing on
+disk` and `refused — not read`; the accepted view has no run to count.
+
+**Consequences.** `cli/tests/test_review_disk_use.py` pins the count against
+an independent walk (hard link counted once, two symlinks skipped, leaked
+bytes absent), the status words, the shared-reference accounting, the bound,
+the escaped-run refusal, the list's freedom from it, and in the browser a
+historical selection with its video playing through a poll under a growing
+project, missing and refused sizes, and the route back to current. The
+persistent Lark dashboard was restarted onto it with no trainer active and
+verified over the private address (the operator README and
+`docs/probes/lark-fresh/disk100-evidence.json`). No protocol op, payload or
+`shell/` change; `docs/CLI.md` describes the block.
+
+
+**Iteration 102 correction (2026-09-13).** The initial implementation did
+not establish bounded disk accounting: it sorted entire directories before
+applying the limit, renewed the budget for each directory reference, and
+reported truncated reference counts as retained complete sizes. Replace the
+sorted recursive scan with lazy iterative traversal and share one entry
+allowance across the run and all directory references. The API exposes
+`entries_visited`, per-reference `truncated`/`lower_bound`, and
+`shared_lower_bound`; the browser says “at least” for partial reference and
+shared sizes, including zero. Exhaustion exactly at the limit is conservatively
+partial. Direct file stats are outside the directory-entry allowance. Aggregate
+scan instrumentation and browser assertions in `test_review_disk_use.py` pin
+the correction. The run total's state describes its own walk; later reference
+exhaustion does not retroactively make a complete run count partial. No new
+dependency or protocol/payload change. The original iteration-100 receipt is
+historical evidence, not proof of this bound.
+
+The full CLI suite exposed a related ADR-322 playback defect: disk video
+sizes participated in the player rebuild key, so a delayed detail response
+could detach an already-playing historical video. Sizes now update separate
+text spans in place, outside the media identity key. A browser regression holds
+the detail response until playback starts, then verifies that releasing it
+adds the size while preserving the same playing element.
+
+## ADR-323 — Review downloads encode retained filenames (2026-09-13)
+
+A permitted video named `歩行 résumé.webm` appeared in the dashboard but its
+download raised `UnicodeEncodeError` when Python wrote the response header.
+Use an ASCII fallback filename and a percent-encoded UTF-8 `filename*` when
+the retained name contains non-ASCII characters, quotes, backslashes, percent
+signs or control characters. Ordinary ASCII names keep their existing header.
+This also keeps filename punctuation and line breaks out of header syntax.
+The file on disk and its recorded identity stay authoritative and unchanged.
+A Chromium regression verifies the downloaded bytes and Unicode filename;
+HTTP regressions cover accented names, quotes and CR/LF. No dependency,
+engine, payload or shell change.
+
+## ADR-324 — A client that closes mid-download is one log line, not a traceback (2026-09-13)
+
+A downloader that cancelled after the response head — a raw socket reset, the
+way a browser cancels — made the review server print socketserver's
+twenty-line `Exception occurred during processing of request` traceback for
+`ConnectionResetError`, while its request log had already recorded the
+transfer as a completed `200`. `do_GET` caught only `BrokenPipeError`, and on
+Linux a peer that closes with bytes unread reports `ECONNRESET` instead. A
+page's own `<video>` element abandons its request the same way once it has
+seen enough of a file, so a large retained video could fill the operator log
+with tracebacks on every visit. Treat both errors as the client's decision:
+`_send_file` logs one line naming the bytes sent of the bytes owed and the
+file, and `do_GET` swallows the pair for every other response. Recovery was
+already correct — polling continued and a fresh or byte-range download served
+the file — and now has regressions: an HTTP one that reproduces the reset on
+a 48 MiB retained video and asserts the single line, no traceback, a
+byte-identical whole download and a `206` resume, and a Chromium one that
+keeps the page polling through the interruption and downloads the same video
+fresh. The `cadex review` command still passes no request log, so on the
+persistent server the visible change is the absence of tracebacks; the real
+14 KB Lark video is written whole before a reset can arrive, so the
+mid-transfer case is established by the synthetic regression, not by that
+file. No dependency, engine, payload or shell change.
+
+*Addendum (iteration 106).* The cancellation now also comes from a browser
+rather than a raw socket: a Chromium regression throttles the page's network,
+cancels the 48 MiB download through `Browser.cancelDownload` while the server
+still has bytes to write, and asserts the one log line, no traceback and a
+byte-identical fresh download. On the persistent Lark dashboard the same
+browser cancel stopped the real 14 KB video at 1500 bytes received, with
+polling and playback continuing and the next download hash-equal; the server
+had written the whole file first, as before, so that receipt establishes
+browser-side recovery and the synthetic regression the server-side case
+(`docs/probes/lark-fresh/download106-evidence.json`).
+
+## ADR-325 — The engine is per-invocation, so "restart the engine during training" is a killed CLI call and the next one; the operator service runs supervised (2026-09-13)
+
+D6 asks that restarting the engine during training neither stops nor
+duplicates that training. Cadex has no engine daemon to restart: `cadexd` is
+one process per `./cadex` invocation, started, driven over stdio and stopped
+by the CLI, and the dashboard opens none (ADR-286). The trainer is offboard
+(ADR-084) and reads an exported task bundle; nothing it does touches an
+engine. So the honest form of the criterion, driven through the public CLI
+alone, is: during a real bounded GPU run, one `cadex export` has its engine
+SIGKILLed while it is working, and the next `cadex export` starts a fresh
+engine. `docs/probes/lark-fresh/engine_restart.py` does that on the
+persistent Lark copy and records what has to hold — the killed call exits 1
+with the envelope's `error` naming the closed protocol stream, no engine or
+resident worker outlives it, the next engine has a different PID and reproduces
+the accepted revision, digest, model and task bytes, the one trainer keeps its
+PID and start ticks throughout, the already-open page keeps receiving
+committed telemetry without a reload, a fresh visit still selects the active
+run, and every earlier run file and the accepted identity are unchanged. The
+receipt is `docs/probes/lark-fresh/engine109-evidence.json`, pinned by
+`cli/tests/test_lark_fresh_evidence.py`; `ENGINE109.md` narrates it. The
+same-machine limit applies: headless Chromium over the private address, no
+second device.
+
+Two facts the probe surfaced are recorded rather than changed. A killed
+engine's CLI call reports `exit status -9` and stages nothing; the manifest's
+`latest_candidate` and `updated_at` move on every successful engine open
+(the normal restore, as `docs/probes/wren-fresh/RESTART.md` already noted; ADR-303 is the retention pin) while the
+accepted revision and digest do not — so "byte-identical" is claimed for the
+retained run files and the accepted identity, not for `script.json`.
+
+Separately, the persistent operator dashboard on port 8765 was found running
+as a bare tmux-launched process (iteration 104 restarted it outside the unit
+after the `cadex-operator-review` service had been stopped), so the documented
+`systemctl --user restart cadex-operator-review` had nothing to act on and no
+`Restart=on-failure` supervision applied. With no trainer active it was
+stopped and started again under the documented `systemd-run` unit on the same
+address, port and project (`service109-restore.json` in the copy's evidence
+directory). The rule this makes explicit: **the operator URL is served by the
+user unit, never by a bare process**, because the restart command every probe
+and document relies on is the unit's. No dependency, engine, payload or shell
+change.
+
+## ADR-326 — A run record names a stored policy only when the store holds it; the dashboard explains a failed run whose training finished (2026-09-13)
+
+`write_run_record(policy_name=…)` derived `assets/<name>` as the policy's
+project-store locator whether or not anything had put it there. The blocking
+and detached walks always put before they record, so their locators were true;
+the bounded probe drivers (`restart_training.py`, `engine_restart.py`) never
+run `cadex asset --put`, so `lark96-restart`, `lark109-engine` and
+`lark109-engine2` on the persistent Lark copy each named an asset that did not
+exist, and the page showed `project_artifacts.policy: missing` for a file
+nobody had lost. The writer now names the store copy only when
+`assets/<name>` is a file whose digest is the recorded one at record time,
+and records the trainer's own copy as `artifacts.policy` (`train/<name>`,
+run-relative) when it is on disk. A named locator is a fact about the disk,
+never an intention.
+
+The reader adds `policy_store`, read on every poll from the disk rather than
+from the locator: `stored` (verified by digest through a stamp-keyed cache of its own,
+bounded at 4 MiB — sharing the video check's lock stalled every poll behind a
+cold video hash, which the two-client verification test caught), `digest mismatch`,
+`unstored`, `refused` or `none`, with the retained trainer copy and the next
+CLI action — `cadex asset --project <project-dir> --put
+<project-dir>/runs/<run>/train/<name>` to keep it, or a new walk when nothing
+is retained. The command names the project directory twice because `--put`
+resolves against the working directory and `--project` defaults to
+`./.cadex`: the first live probe advised the bare form "from the project
+directory", ran it, and created a nested `.cadex` project inside the Lark
+copy rather than storing into it — deleted, and the advice corrected before
+the probe was repeated. Records older than this ADR name no
+`artifacts.policy`; the reader resolves the trainer's copy at its one fixed
+place, `train/<name>`, only when it exists, the way `train/progress.json` is
+already read. A store write made after the record is seen without a record
+rewrite: storing a policy does not rewrite history, and the run's status does
+not change.
+
+The dashboard's identity card gains a **policy store** row, and its note
+explains a `failed` record whose telemetry reads `done` — the trainer
+finished and saved its policy; the failure came after it, in the run's
+observation or recording — instead of showing the two facts side by side as a
+contradiction. This is what `lark109-engine` (ADR-325's first attempt) looked
+like: training done at iteration 99 of 100, policy saved, the receipt lost to
+the probe's own exclusion guard. Regression: a headless-browser test in
+`cli/tests/test_review_server.py` on a fixture with that exact shape, and
+reader/writer tests in `cli/tests/test_review_record.py`. The existing record
+fixture's policy digest was corrected to the bytes it stores, which the old
+writer never checked. No engine, payload, shell or dependency change.
+
+## ADR-327 — A completed run whose policy is only in its own `train/` is a retention gap, listed under `problems` with the store command; the bounded drivers store through the CLI (2026-09-13)
+
+ADR-326 made a run record name a store copy only when the store holds it and
+gave the reader a `policy_store` row with the next command, and left one
+judgement open: an `ok` run whose policy was never stored showed the advice on
+its policy-store row and nothing under `problems`, as if a completed run with
+its result kept only by the trainer were finished. It is not: `runs/<run>/train/`
+is the trainer's working copy, the project store under `assets/` is what the
+walk plays, copies and the next design turn read, and the two bounded probe
+drivers (`restart_training.py`, `engine_restart.py`) had recorded `ok` for
+`lark96-restart` and `lark109-engine2` on the persistent Lark copy without ever
+running `cadex asset --put`. The reader now lists an `ok` run whose
+`policy_store` is `unstored` or `digest mismatch` with a retained trainer copy
+under `problems`, carrying the one command that closes the gap — `policy_store`
+gains `store_command`, the bare store command (`--name <other>.cxpolicy` on a
+mismatch), `null` once stored or when nothing is retained — and the entry
+leaves on the poll after the store write, with no record rewrite and the run
+still `completed`. A `failed` run in the same state is not listed: its row
+carries the advice and the failure is the problem (ADR-326). The two drivers
+now store the policy through the public CLI before they write the record, so
+the record names a store copy that exists, and a store failure after a
+finished training records `failed` with an error that says so rather than an
+`ok` with a gap. Regression: a headless-browser test in
+`cli/tests/test_review_server.py` on a fixture of the two Lark runs' shape and
+a reader test in `cli/tests/test_review_record.py`. Live receipt on the
+persistent operator URL: `docs/probes/lark-fresh/policy_store111.py`, which
+followed the page's own advice for both runs. No engine, payload, shell or
+dependency change.

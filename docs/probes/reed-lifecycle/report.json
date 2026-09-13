@@ -1,0 +1,813 @@
+{
+  "accepted": {
+    "components": 8,
+    "digest": "d9025761e4fefd59ffd8a08cc7cdcfc7e934f95445cd006b5454e8a0a1619108",
+    "meshes_retained": 8,
+    "revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274"
+  },
+  "common_seed_comparison": {
+    "designs": {
+      "foot90": {
+        "episode_limit_s": 8,
+        "falls": 9,
+        "forward_displacement_mm": [
+          178.883,
+          180.083,
+          169.259,
+          168.489,
+          174.898,
+          178.87,
+          177.345,
+          166.063,
+          171.156,
+          43.37
+        ],
+        "mean_forward_displacement_mm": 160.842,
+        "mean_observed_s": 1.338,
+        "observed_s": [
+          0.5,
+          0.56,
+          0.62,
+          0.58,
+          0.8,
+          0.5,
+          0.5,
+          0.68,
+          0.64,
+          8.0
+        ],
+        "policy_sha256": "4e573dd637af0f4cd35ce466bef5b42aec59fae63b5825622d7127666c1af1e5",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "source": "docs/probes/reed-foot90/results.json",
+        "survivors": 1
+      },
+      "probe3-checkpoint20": {
+        "episode_limit_s": 8,
+        "falls": 0,
+        "forward_displacement_mm": [
+          45.941,
+          38.427,
+          39.667,
+          37.891,
+          35.708,
+          43.857,
+          44.397,
+          34.295,
+          38.2,
+          35.14
+        ],
+        "mean_forward_displacement_mm": 39.352,
+        "mean_observed_s": 8.0,
+        "observed_s": [
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0,
+          8.0
+        ],
+        "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "source": "docs/probes/reed-baseline/results.json",
+        "survivors": 10
+      },
+      "probe3-final": {
+        "episode_limit_s": 8,
+        "falls": 10,
+        "forward_displacement_mm": [
+          210.536,
+          206.1,
+          204.44,
+          204.697,
+          189.535,
+          198.664,
+          201.034,
+          203.084,
+          191.707,
+          198.742
+        ],
+        "mean_forward_displacement_mm": 200.854,
+        "mean_observed_s": 0.498,
+        "observed_s": [
+          0.52,
+          0.5,
+          0.5,
+          0.5,
+          0.48,
+          0.5,
+          0.5,
+          0.5,
+          0.48,
+          0.5
+        ],
+        "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "source": "docs/probes/reed-baseline/results.json",
+        "survivors": 0
+      },
+      "shin55-final": {
+        "episode_limit_s": 8,
+        "falls": 4,
+        "forward_displacement_mm": [
+          133.693,
+          49.532,
+          123.705,
+          47.875,
+          46.215,
+          126.599,
+          127.445,
+          45.104,
+          46.424,
+          44.692
+        ],
+        "mean_forward_displacement_mm": 79.128,
+        "mean_observed_s": 5.034,
+        "observed_s": [
+          0.46,
+          8.0,
+          0.9,
+          8.0,
+          8.0,
+          0.44,
+          0.54,
+          8.0,
+          8.0,
+          8.0
+        ],
+        "policy_sha256": "609ef8e83c1852736a26fe041e1cd3ae315ee65eeb1ce0ef53bed830da0a5312",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "source": "docs/probes/reed-agentrev/evidence.json",
+        "survivors": 6
+      }
+    },
+    "episode_limit_s": 8,
+    "not_evaluated_on_common_seeds": {
+      "copy100": "seed 0 only (D7 copy evidence); no ten-seed evaluation was run",
+      "probe1-playback": "seed 0 only; the first probe's failed walk had no revision recorded",
+      "probe2-checkpoint20": "seed 0 only; probe2 was interrupted at iteration 38"
+    },
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ]
+  },
+  "evidence_index": {
+    "D1": {
+      "adrs": [
+        "ADR-286"
+      ],
+      "docs": [
+        "docs/CLI.md",
+        "docs/probes/operator-review/README.md"
+      ],
+      "probes": [
+        "docs/probes/operator-review/evidence.json"
+      ],
+      "records": [
+        "rapid-crest-8826"
+      ],
+      "tests": [
+        "cli/tests/test_review_server.py"
+      ],
+      "title": "A live project dashboard is reachable"
+    },
+    "D2": {
+      "adrs": [
+        "ADR-289",
+        "ADR-290",
+        "ADR-291",
+        "ADR-293",
+        "ADR-302"
+      ],
+      "docs": [
+        "docs/HEADLESS-BIPED-REVIEW.md"
+      ],
+      "probes": [
+        "docs/probes/reed-foot90/evidence.json",
+        "docs/probes/reed-copy/evidence.json"
+      ],
+      "records": [
+        "rapid-crest-8826",
+        "lively-gate-6535",
+        "misty-trail-1655",
+        "quiet-arbor-0259",
+        "light-brook-2640",
+        "candid-forest-9800",
+        "forest-ledge-2219",
+        "fair-crow-5108"
+      ],
+      "tests": [
+        "cli/tests/test_review_server.py",
+        "cli/tests/test_walk.py"
+      ],
+      "title": "The browser shows the right model and specs"
+    },
+    "D3": {
+      "adrs": [
+        "ADR-287",
+        "ADR-288",
+        "ADR-289",
+        "ADR-296",
+        "ADR-297",
+        "ADR-298"
+      ],
+      "docs": [
+        "docs/HEADLESS-BIPED-REVIEW.md"
+      ],
+      "probes": [
+        "docs/probes/reed-agentrev/evidence.json"
+      ],
+      "records": [
+        "kind-fountain-5086",
+        "merry-star-6951",
+        "young-cedar-2719",
+        "neat-vine-2517",
+        "dusty-oak-7376",
+        "fair-crow-5108"
+      ],
+      "tests": [
+        "cli/tests/test_review_server.py",
+        "cli/tests/test_train.py"
+      ],
+      "title": "Training is visible while it runs"
+    },
+    "D4": {
+      "adrs": [
+        "ADR-300",
+        "ADR-301"
+      ],
+      "docs": [
+        "docs/HEADLESS-BIPED-REVIEW.md",
+        "docs/probes/review-style/README.md"
+      ],
+      "probes": [
+        "docs/probes/reed-agentrev/evidence.json",
+        "docs/probes/review-style/implementation.json"
+      ],
+      "records": [
+        "amber-gate-7498",
+        "merry-star-6951",
+        "light-brook-2640",
+        "royal-arrow-2065",
+        "fair-crow-5108"
+      ],
+      "tests": [
+        "cli/tests/test_video.py",
+        "cli/tests/test_review_server.py"
+      ],
+      "title": "Policy videos render, persist and play headlessly"
+    },
+    "D5": {
+      "adrs": [
+        "ADR-285",
+        "ADR-291",
+        "ADR-292",
+        "ADR-293"
+      ],
+      "docs": [
+        "docs/HEADLESS-BIPED-REVIEW.md"
+      ],
+      "probes": [
+        "docs/probes/reed-foot90/evidence.json",
+        "docs/probes/reed-foot90/results.json",
+        "docs/probes/reed-agentrev/evidence.json"
+      ],
+      "records": [
+        "wild-cove-4437",
+        "quiet-arbor-0259",
+        "light-brook-2640",
+        "candid-forest-9800",
+        "forest-ledge-2219"
+      ],
+      "tests": [
+        "cli/tests/test_review_record.py",
+        "cli/tests/test_walk.py"
+      ],
+      "title": "Review history survives a design change"
+    },
+    "D6": {
+      "adrs": [
+        "ADR-291"
+      ],
+      "docs": [
+        "docs/HEADLESS-BIPED-REVIEW.md"
+      ],
+      "probes": [
+        "docs/probes/reed-foot90/evidence.json"
+      ],
+      "records": [
+        "shady-bay-0771",
+        "simple-quartz-9812",
+        "candid-forest-9800",
+        "weathered-sage-2750"
+      ],
+      "tests": [
+        "cli/tests/test_review_lifecycle.py"
+      ],
+      "title": "Save, reopen and restart preserve the project"
+    },
+    "D7": {
+      "adrs": [
+        "ADR-294"
+      ],
+      "docs": [
+        "docs/HEADLESS-BIPED-REVIEW.md",
+        "docs/CLI.md"
+      ],
+      "probes": [
+        "docs/probes/reed-copy/evidence.json"
+      ],
+      "records": [
+        "careful-gate-4868",
+        "clever-fern-7568"
+      ],
+      "tests": [
+        "cli/tests/test_review_lifecycle.py"
+      ],
+      "title": "Save-As/copy produces an independent project"
+    },
+    "D8": {
+      "adrs": [
+        "ADR-287",
+        "ADR-288",
+        "ADR-289",
+        "ADR-295",
+        "ADR-296"
+      ],
+      "docs": [
+        "docs/HEADLESS-BIPED-REVIEW.md"
+      ],
+      "probes": [
+        "docs/probes/reed-copy/video-recovery.json"
+      ],
+      "records": [
+        "merry-star-6951",
+        "light-brook-2640",
+        "icy-pond-7346",
+        "young-cedar-2719",
+        "neat-vine-2517",
+        "dusty-oak-7376",
+        "weathered-sage-2750"
+      ],
+      "tests": [
+        "cli/tests/test_review_server.py",
+        "cli/tests/test_review_lifecycle.py"
+      ],
+      "title": "Interrupted and failed runs remain understandable"
+    }
+  },
+  "persistent_operator_check": {
+    "current": {
+      "error": null,
+      "model": {
+        "available": true,
+        "reason": null,
+        "revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274"
+      },
+      "relation": "current",
+      "revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274",
+      "runs": [
+        "probe1",
+        "probe1-playback",
+        "probe2-checkpoint20",
+        "probe2",
+        "probe3-checkpoint20",
+        "probe3",
+        "probe3-final",
+        "foot90",
+        "copy100",
+        "shin55-checkpoint20",
+        "shin55",
+        "shin55-final"
+      ],
+      "selected": "shin55-final",
+      "stale": false
+    },
+    "foot_len_mm": 100.0,
+    "historical_run": "probe3-final",
+    "playback_preserved_on_poll": true,
+    "private_address_same_machine": true,
+    "project": "ot5-biped-copy29",
+    "return_to_current": true,
+    "run": "shin55-final",
+    "video_sha256": "c23508ad3e92e4742164ecdc6d7d97dd5dd83f32194f56944d8d459275f6ddb1"
+  },
+  "project": "ot5-biped-copy29",
+  "runs": [
+    {
+      "accepted_revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc",
+      "digest": "07bb7bc2baa3a1018d819552146d43a797f7032df9a0f58adcb076fc6055b44c",
+      "mode": "blocking",
+      "outcome": "completed",
+      "policy_sha256": "9e1674abf4dd70317dd6e3de32dd25164d09e2619fdde6c418c538e39a900903",
+      "problems": [],
+      "rollout_seed": 0,
+      "run": "copy100",
+      "status": "ok",
+      "videos": [
+        {
+          "accepted_revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc",
+          "frames": 8,
+          "index": 0,
+          "policy_sha256": "9e1674abf4dd70317dd6e3de32dd25164d09e2619fdde6c418c538e39a900903",
+          "seed": 0,
+          "sha256": "c0723e47c6c73c4662a7a6aef20fbdbab462c3fcee8e7428ba0ee5dc17a9f293",
+          "sim_seconds": 0.62,
+          "style": "cadex-prototype-light-v1"
+        },
+        {
+          "accepted_revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc",
+          "frames": 8,
+          "index": 1,
+          "policy_sha256": "9e1674abf4dd70317dd6e3de32dd25164d09e2619fdde6c418c538e39a900903",
+          "seed": 0,
+          "sha256": "59305a6c629781d416252409c382571241a6fea8cdc84da5a62479d698170073",
+          "sim_seconds": 0.62,
+          "style": "cadex-prototype-light-v1"
+        },
+        {
+          "accepted_revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc",
+          "frames": 8,
+          "index": 2,
+          "policy_sha256": "9e1674abf4dd70317dd6e3de32dd25164d09e2619fdde6c418c538e39a900903",
+          "seed": 0,
+          "sha256": "2308fe3baa4d0a5a2256a37deadfa798256ab6cca978ff8daeacc56c76a2ab24",
+          "sim_seconds": 0.62,
+          "style": null
+        }
+      ],
+      "view": {
+        "components": 8,
+        "kind": "rollout view",
+        "meshes_missing": 0,
+        "meshes_retained": 8,
+        "reason": null,
+        "source": "runs/copy100/rollout/*.stl (the rollout leg's exports at this run's revision)"
+      }
+    },
+    {
+      "accepted_revision": "0596013572c6ca53ac1a83f7ee8153ae4bb88fcefa87486818c93f6aaaecaa48",
+      "digest": "395faa6bd23ffbedc920bdfd6161aef1b7f2b144c2917b39794adc7c22b25cb4",
+      "mode": "blocking",
+      "outcome": "completed",
+      "policy_sha256": "4e573dd637af0f4cd35ce466bef5b42aec59fae63b5825622d7127666c1af1e5",
+      "problems": [],
+      "rollout_seed": 0,
+      "run": "foot90",
+      "status": "ok",
+      "videos": [
+        {
+          "accepted_revision": "0596013572c6ca53ac1a83f7ee8153ae4bb88fcefa87486818c93f6aaaecaa48",
+          "frames": 6,
+          "index": 0,
+          "policy_sha256": "4e573dd637af0f4cd35ce466bef5b42aec59fae63b5825622d7127666c1af1e5",
+          "seed": 0,
+          "sha256": "1e17ab439a024be0908764aa00a90c2bb9999816c8a2d412dfa3c9c0b36719b7",
+          "sim_seconds": 0.5,
+          "style": null
+        }
+      ],
+      "view": {
+        "components": 8,
+        "kind": "rollout view",
+        "meshes_missing": 0,
+        "meshes_retained": 8,
+        "reason": null,
+        "source": "runs/foot90/rollout/*.stl (the rollout leg's exports at this run's revision)"
+      }
+    },
+    {
+      "accepted_revision": null,
+      "digest": null,
+      "mode": "blocking",
+      "outcome": "failed",
+      "policy_sha256": "01865c8e06aa8a1f7884053099fa988a3ae0be1e91a3511d11a3574ac46b3abe",
+      "problems": [],
+      "rollout_seed": null,
+      "run": "probe1",
+      "status": "failed",
+      "videos": [],
+      "view": {
+        "components": 0,
+        "kind": "none",
+        "meshes_missing": 0,
+        "meshes_retained": 0,
+        "reason": "no rollout trace retained for this run, and no revision recorded to match the accepted model against",
+        "source": null
+      }
+    },
+    {
+      "accepted_revision": "ddf021a4d3c06a403b2b3b3c83d5de3b19ef0132aab22db23992fd35f6f06610",
+      "digest": "4213e25e49c6f11343c365cdf72123e2a9d2bb15aa89f5045fd684781eed324f",
+      "mode": "retained-policy-playback",
+      "outcome": "completed",
+      "policy_sha256": "01865c8e06aa8a1f7884053099fa988a3ae0be1e91a3511d11a3574ac46b3abe",
+      "problems": [],
+      "rollout_seed": 0,
+      "run": "probe1-playback",
+      "status": "ok",
+      "videos": [
+        {
+          "accepted_revision": "ddf021a4d3c06a403b2b3b3c83d5de3b19ef0132aab22db23992fd35f6f06610",
+          "frames": 8,
+          "index": 0,
+          "policy_sha256": "01865c8e06aa8a1f7884053099fa988a3ae0be1e91a3511d11a3574ac46b3abe",
+          "seed": 0,
+          "sha256": "d0222e198ca79ae6cdc120cea7fba685a41592502cc768142ab49a7a432ae722",
+          "sim_seconds": 0.66,
+          "style": null
+        }
+      ],
+      "view": {
+        "components": 8,
+        "kind": "rollout view",
+        "meshes_missing": 0,
+        "meshes_retained": 8,
+        "reason": null,
+        "source": "runs/probe1-playback/rollout/*.stl (the rollout leg's exports at this run's revision)"
+      }
+    },
+    {
+      "accepted_revision": "6ab8a1d090c812865d70d5d6c9300907dc1076cb19ec3f2d4885a44baeaa12c8",
+      "digest": "850acf23a05ade2fa76275a6484caaefc9e2d22230fb002ead681c533e530697",
+      "mode": "offboard-checkpoint-experiment",
+      "outcome": "failed",
+      "policy_sha256": null,
+      "problems": [],
+      "rollout_seed": null,
+      "run": "probe2",
+      "status": "failed",
+      "videos": [],
+      "view": {
+        "components": 8,
+        "kind": "training snapshot",
+        "meshes_missing": 0,
+        "meshes_retained": 8,
+        "reason": null,
+        "source": "retained training export parts at this run's revision; assembly placements not recorded (parts shown at identity, not a solved pose)"
+      }
+    },
+    {
+      "accepted_revision": "3d28c70c890f79ff6b98ef314dc8bf672746311aae5b3d23b845c89808c387f8",
+      "digest": "c77cc2784bd465d9dcf8dfa31ac0281f2da845afaaa07ec3fe4752855fc8494a",
+      "mode": "checkpoint-playback",
+      "outcome": "completed",
+      "policy_sha256": "fa37e8259a3a2846150e301d9aaf0bdc9971f33822f9c135bf112e5de182c9e6",
+      "problems": [],
+      "rollout_seed": 0,
+      "run": "probe2-checkpoint20",
+      "status": "ok",
+      "videos": [
+        {
+          "accepted_revision": "3d28c70c890f79ff6b98ef314dc8bf672746311aae5b3d23b845c89808c387f8",
+          "frames": 81,
+          "index": 0,
+          "policy_sha256": "fa37e8259a3a2846150e301d9aaf0bdc9971f33822f9c135bf112e5de182c9e6",
+          "seed": 0,
+          "sha256": "e9255cbcb3dfdf5f6c7914de945c434cf8c6d40ba2f5b619d8b53391fe6adf17",
+          "sim_seconds": 8.0,
+          "style": null
+        }
+      ],
+      "view": {
+        "components": 8,
+        "kind": "rollout view",
+        "meshes_missing": 0,
+        "meshes_retained": 8,
+        "reason": null,
+        "source": "runs/probe2-checkpoint20/rollout/*.stl (the rollout leg's exports at this run's revision)"
+      }
+    },
+    {
+      "accepted_revision": "c26c92b09dbb3142c973d9807024373cf8d7c5b0f080a5c21ba8f66d3badf49e",
+      "digest": "850acf23a05ade2fa76275a6484caaefc9e2d22230fb002ead681c533e530697",
+      "mode": "offboard-checkpoint-experiment",
+      "outcome": "completed",
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "problems": [],
+      "rollout_seed": null,
+      "run": "probe3",
+      "status": "ok",
+      "videos": [],
+      "view": {
+        "components": 8,
+        "kind": "training snapshot",
+        "meshes_missing": 4,
+        "meshes_retained": 4,
+        "reason": null,
+        "source": "assembled model retained before training"
+      }
+    },
+    {
+      "accepted_revision": "0fb4ffb59c69f646897d5c4464876b954ad3531e807313d6163244f648dcad15",
+      "digest": "9c6f79478f4d8acfce28bd33e9f56f622e891ef621a2cbe512839730d830872a",
+      "mode": "checkpoint-playback",
+      "outcome": "completed",
+      "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+      "problems": [],
+      "rollout_seed": 0,
+      "run": "probe3-checkpoint20",
+      "status": "ok",
+      "videos": [
+        {
+          "accepted_revision": "0fb4ffb59c69f646897d5c4464876b954ad3531e807313d6163244f648dcad15",
+          "frames": 81,
+          "index": 0,
+          "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+          "seed": 0,
+          "sha256": "3709db0d97f7c9771b4c4d004f98c59b872a904acfffce64b3bb19049f2f2998",
+          "sim_seconds": 8.0,
+          "style": "cadex-prototype-light-v1"
+        },
+        {
+          "accepted_revision": "0fb4ffb59c69f646897d5c4464876b954ad3531e807313d6163244f648dcad15",
+          "frames": 81,
+          "index": 1,
+          "policy_sha256": "74750cc6d8e7f9817481e08e94ee01978120bbafe3edca5b25f53cabfe1b3c78",
+          "seed": 0,
+          "sha256": "c479457f48ad7217cfa4d69f79925d8f4c35add98b0ed8fa17d9580020674f8f",
+          "sim_seconds": 8.0,
+          "style": null
+        }
+      ],
+      "view": {
+        "components": 8,
+        "kind": "rollout view",
+        "meshes_missing": 0,
+        "meshes_retained": 8,
+        "reason": null,
+        "source": "runs/probe3-checkpoint20/rollout/*.stl (the rollout leg's exports at this run's revision)"
+      }
+    },
+    {
+      "accepted_revision": "a7ee956cafc8de6b1732bc83cb3f59d832a6fe46b5406f3624e88267f479fa2d",
+      "digest": "14d56ed42ef87185db899cb2485180a81f8eb0959aaf2f8356c7031760a6ebb1",
+      "mode": "final-policy-playback",
+      "outcome": "completed",
+      "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+      "problems": [],
+      "rollout_seed": 0,
+      "run": "probe3-final",
+      "status": "ok",
+      "videos": [
+        {
+          "accepted_revision": "a7ee956cafc8de6b1732bc83cb3f59d832a6fe46b5406f3624e88267f479fa2d",
+          "frames": 7,
+          "index": 0,
+          "policy_sha256": "a06b4bf489529d6cd119576131b778a02789cf30e1bf3793ab5a5e5d4ea04911",
+          "seed": 0,
+          "sha256": "59724f619c5540468f8fd6e109aa319507be6a449eafcc8ef9f3259af6046853",
+          "sim_seconds": 0.52,
+          "style": null
+        }
+      ],
+      "view": {
+        "components": 8,
+        "kind": "rollout view",
+        "meshes_missing": 0,
+        "meshes_retained": 8,
+        "reason": null,
+        "source": "runs/probe3-final/rollout/*.stl (the rollout leg's exports at this run's revision)"
+      }
+    },
+    {
+      "accepted_revision": "fe266d4810620cbd7154202f4ad440822260455ebe2681d80509aa8aa4a77adb",
+      "digest": "a0dc163fde65b97fb70049eba6c83cb7ad7fb68f5ad2809e04deff8c06365ca5",
+      "mode": "offboard-checkpoint-experiment",
+      "outcome": "completed",
+      "policy_sha256": "609ef8e83c1852736a26fe041e1cd3ae315ee65eeb1ce0ef53bed830da0a5312",
+      "problems": [],
+      "rollout_seed": null,
+      "run": "shin55",
+      "status": "ok",
+      "videos": [],
+      "view": {
+        "components": 8,
+        "kind": "training snapshot",
+        "meshes_missing": 3,
+        "meshes_retained": 5,
+        "reason": null,
+        "source": "assembled model retained before training"
+      }
+    },
+    {
+      "accepted_revision": "a3591f651443fb00ee135b569bbef9df0ac84ea173e276c2299c0a83d3157477",
+      "digest": "fa9cc627b409a048edf8545ee37f3cbe3c7e73c395613fbee4e59446328faad8",
+      "mode": "checkpoint-playback",
+      "outcome": "completed",
+      "policy_sha256": "4745829c6f8032da76a7e6bfb58deb90498290090a9158dd8d104abcde11b5e7",
+      "problems": [],
+      "rollout_seed": 0,
+      "run": "shin55-checkpoint20",
+      "status": "ok",
+      "videos": [
+        {
+          "accepted_revision": "a3591f651443fb00ee135b569bbef9df0ac84ea173e276c2299c0a83d3157477",
+          "frames": 81,
+          "index": 0,
+          "policy_sha256": "4745829c6f8032da76a7e6bfb58deb90498290090a9158dd8d104abcde11b5e7",
+          "seed": 0,
+          "sha256": "89bfc9ecde0e6e1e36ee2f8d1bb208677c899c065cb13c29d7608edc87e4887d",
+          "sim_seconds": 8.0,
+          "style": "cadex-prototype-light-v1"
+        }
+      ],
+      "view": {
+        "components": 8,
+        "kind": "rollout view",
+        "meshes_missing": 0,
+        "meshes_retained": 8,
+        "reason": null,
+        "source": "runs/shin55-checkpoint20/rollout/*.stl (the rollout leg's exports at this run's revision)"
+      }
+    },
+    {
+      "accepted_revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274",
+      "digest": "d9025761e4fefd59ffd8a08cc7cdcfc7e934f95445cd006b5454e8a0a1619108",
+      "mode": "final-policy-playback",
+      "outcome": "completed",
+      "policy_sha256": "609ef8e83c1852736a26fe041e1cd3ae315ee65eeb1ce0ef53bed830da0a5312",
+      "problems": [],
+      "rollout_seed": 0,
+      "run": "shin55-final",
+      "status": "ok",
+      "videos": [
+        {
+          "accepted_revision": "67b5000f3de1b5a59cdec15acdb50f3535e010fbc24e2c5b1c1b19d3062e7274",
+          "frames": 6,
+          "index": 0,
+          "policy_sha256": "609ef8e83c1852736a26fe041e1cd3ae315ee65eeb1ce0ef53bed830da0a5312",
+          "seed": 0,
+          "sha256": "c23508ad3e92e4742164ecdc6d7d97dd5dd83f32194f56944d8d459275f6ddb1",
+          "sim_seconds": 0.46,
+          "style": "cadex-prototype-light-v1"
+        }
+      ],
+      "view": {
+        "components": 8,
+        "kind": "rollout view",
+        "meshes_missing": 0,
+        "meshes_retained": 8,
+        "reason": null,
+        "source": "runs/shin55-final/rollout/*.stl (the rollout leg's exports at this run's revision)"
+      }
+    }
+  ],
+  "schema": "reed-lifecycle-report-v1"
+}

@@ -1,0 +1,511 @@
+{
+  "run": "lark2",
+  "geometry": {
+    "lark_model-model.xml": "1e318f1844596675f569fd1329964269498f41b0c378f773ca54c153b69793d2",
+    "walk_task-task.json": "4615c6ddcaaaff6438432272c6442cb3e986d62ab1e360df545dd5e7c24edc60"
+  },
+  "accepted_revision": "62f4e2a0e2df414b00d27dd8644f59313507953129805e6c47b22a250db419cb",
+  "digest": "add12df51777f9ed9b8da7fd593a587e1ef4aaaf7078143048388b76ffb87aff",
+  "intermediate": {
+    "run": "lark2-checkpoint20",
+    "start": 1789284044.8836434,
+    "end": 1789284090.8017347,
+    "before": 18,
+    "after": 33,
+    "trainer_active_after_browser": true,
+    "browser_check_exit": 0,
+    "render_start": 1789284076.053011,
+    "render_end": 1789284089.0352542,
+    "render_seconds": 12.982,
+    "render_before": 23,
+    "render_after": 32,
+    "video": {
+      "path": "rollout-dfb45737df667051192453df68ab030e4689a25c91c95713ba82a26c6e8df115.webm",
+      "sha256": "dfb45737df667051192453df68ab030e4689a25c91c95713ba82a26c6e8df115",
+      "frames": 81,
+      "duration_seconds": 8.1,
+      "sim_seconds": 8.0,
+      "style": "cadex-prototype-light-v1",
+      "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+      "render_seconds": 12.826
+    },
+    "witness": {
+      "witness_error": 2.849451045783269e-08,
+      "witness_tolerance": 0.0001,
+      "model_sha256": "1e318f1844596675f569fd1329964269498f41b0c378f773ca54c153b69793d2",
+      "task_sha256": "4615c6ddcaaaff6438432272c6442cb3e986d62ab1e360df545dd5e7c24edc60"
+    },
+    "policy_sha256": "8eb15d8a7570438690b29f9d32b51cd6f706514f53f03ed0afcb4e624d6d14e1",
+    "overhead": {
+      "note": "trainer-committed iteration intervals; the render window is wall clock around the video render only",
+      "before_window": {
+        "count": 22,
+        "median_s": 1.523,
+        "median_excluding_checkpoint_boundaries_s": 1.528,
+        "max_s": 55.251
+      },
+      "during_window": {
+        "count": 8,
+        "median_s": 1.391,
+        "median_excluding_checkpoint_boundaries_s": 1.391,
+        "max_s": 1.534
+      },
+      "after_window": {
+        "count": 28,
+        "median_s": 1.301,
+        "median_excluding_checkpoint_boundaries_s": 1.368,
+        "max_s": 27.799
+      },
+      "during_rows": [
+        {
+          "iteration": 25,
+          "seconds": 1.141,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 26,
+          "seconds": 1.22,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 27,
+          "seconds": 1.26,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 28,
+          "seconds": 1.368,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 29,
+          "seconds": 1.414,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 30,
+          "seconds": 1.467,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 31,
+          "seconds": 1.496,
+          "checkpoint_boundary": false
+        },
+        {
+          "iteration": 32,
+          "seconds": 1.534,
+          "checkpoint_boundary": false
+        }
+      ]
+    }
+  },
+  "final": {
+    "run": "lark2-final",
+    "start": 1789284631.9381404,
+    "end": 1789284651.5495229,
+    "before": 239,
+    "after": 239,
+    "trainer_active_after_browser": false,
+    "browser_check_exit": 0,
+    "render_start": 1789284636.8500745,
+    "render_end": 1789284649.2311463,
+    "render_seconds": 12.381,
+    "render_before": 239,
+    "render_after": 239,
+    "video": {
+      "path": "rollout-af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826.webm",
+      "sha256": "af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826",
+      "frames": 81,
+      "duration_seconds": 8.1,
+      "sim_seconds": 8.0,
+      "style": "cadex-prototype-light-v1",
+      "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+      "render_seconds": 12.213
+    },
+    "witness": {
+      "witness_error": 8.706748992892699e-08,
+      "witness_tolerance": 0.0001,
+      "model_sha256": "1e318f1844596675f569fd1329964269498f41b0c378f773ca54c153b69793d2",
+      "task_sha256": "4615c6ddcaaaff6438432272c6442cb3e986d62ab1e360df545dd5e7c24edc60"
+    },
+    "policy_sha256": "b79a63908e9418d2c7347ed7a6fb432f540c429e15c8112b4bc7cb2bc43763a3"
+  },
+  "preserved_records": {
+    "lark1": "b2453161140b4f2c070fbcbb396bd516e558af0c33b7b47fdc6072ada74026aa",
+    "lark1-checkpoint20": "fbeec1b65583ae077978632dab5ba40e1dd0d089a9ad289be6e4f8aebadf44d9",
+    "lark1-final": "a26b12c91557d8fa11990958d2d706cd08055f9fead75bfd2443da75b4fc9a01"
+  },
+  "training_exit": 0,
+  "training_wall_seconds": 718.752,
+  "trainer_final": {
+    "iteration": 239,
+    "state": "done",
+    "reward_per_step": 0.3479115068912506,
+    "loss": 0.0876976028084755,
+    "episode_steps": 975.2380981445312,
+    "seconds": null,
+    "device": "gpu"
+  },
+  "memory": {
+    "host_peak_bytes": 7424741376,
+    "gpu_peak_mib": 15122,
+    "samples": 147
+  },
+  "observer_exit": 0,
+  "schema": "lark-training-evidence-v1",
+  "project": "ot5-lark",
+  "resource_bound": {
+    "MemoryCurrent": "4823085056",
+    "MemoryPeak": "5020983296",
+    "MemoryMax": "21474836480",
+    "ActiveState": "active"
+  },
+  "live_browser": {
+    "run": "lark2",
+    "persistent_server": true,
+    "samples": [
+      {
+        "t": 0.0,
+        "file_state": "training",
+        "file_iteration": 4,
+        "page_iteration": 3,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.14549",
+        "loss": "loss: 10.228",
+        "episode_steps": "episode_steps: 55.501",
+        "curve_points": "4",
+        "loss_points": "4",
+        "checkpoints": 1
+      },
+      {
+        "t": 1.25,
+        "file_state": "training",
+        "file_iteration": 4,
+        "page_iteration": 4,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: 0.030321",
+        "loss": "loss: 7.2909",
+        "episode_steps": "episode_steps: 78.467",
+        "curve_points": "5",
+        "loss_points": "5",
+        "checkpoints": 1
+      },
+      {
+        "t": 3.26,
+        "file_state": "training",
+        "file_iteration": 6,
+        "page_iteration": 6,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.024630",
+        "loss": "loss: 7.0833",
+        "episode_steps": "episode_steps: 102.91",
+        "curve_points": "7",
+        "loss_points": "7",
+        "checkpoints": 1
+      },
+      {
+        "t": 5.27,
+        "file_state": "training",
+        "file_iteration": 7,
+        "page_iteration": 7,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: -0.058530",
+        "loss": "loss: 8.2558",
+        "episode_steps": "episode_steps: 70.865",
+        "curve_points": "8",
+        "loss_points": "8",
+        "checkpoints": 1
+      },
+      {
+        "t": 7.27,
+        "file_state": "training",
+        "file_iteration": 8,
+        "page_iteration": 8,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: 0.022469",
+        "loss": "loss: 7.3071",
+        "episode_steps": "episode_steps: 89.043",
+        "curve_points": "9",
+        "loss_points": "9",
+        "checkpoints": 1
+      },
+      {
+        "t": 9.27,
+        "file_state": "training",
+        "file_iteration": 10,
+        "page_iteration": 9,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: 0.067919",
+        "loss": "loss: 6.5772",
+        "episode_steps": "episode_steps: 102.40",
+        "curve_points": "10",
+        "loss_points": "10",
+        "checkpoints": 1
+      },
+      {
+        "t": 11.28,
+        "file_state": "training",
+        "file_iteration": 11,
+        "page_iteration": 11,
+        "telemetry_state": "training",
+        "freshness": "live",
+        "reward": "reward_per_step: 0.11097",
+        "loss": "loss: 7.3836",
+        "episode_steps": "episode_steps: 88.658",
+        "curve_points": "12",
+        "loss_points": "12",
+        "checkpoints": 1
+      }
+    ],
+    "first_seen": {
+      "4": {
+        "committed_to_page_s": 1.31,
+        "polled_to_page_s": 1.25
+      },
+      "6": {
+        "committed_to_page_s": 0.24,
+        "polled_to_page_s": 0.0
+      },
+      "7": {
+        "committed_to_page_s": 0.72,
+        "polled_to_page_s": 0.5
+      },
+      "8": {
+        "committed_to_page_s": 1.13,
+        "polled_to_page_s": 1.0
+      },
+      "9": {
+        "committed_to_page_s": 1.62,
+        "polled_to_page_s": 1.5
+      },
+      "11": {
+        "committed_to_page_s": 0.53,
+        "polled_to_page_s": 0.5
+      }
+    },
+    "project_name": "ot5-lark \u2014 review",
+    "accepted": "accepted now: revision 62f4e2a0e2df \u00b7 digest add12df51777 \u00b7 updated 2026-09-13T07:18:32Z \u00b7 4 run(s)",
+    "runs": [
+      "lark1-checkpoint20",
+      "lark1",
+      "lark1-final",
+      "lark2"
+    ],
+    "default_view_kind": "RUN lark2",
+    "current_run_label": "Current run: lark2",
+    "view_revision": "62f4e2a0e2df414b00d27dd8644f59313507953129805e6c47b22a250db419cb",
+    "view_relation": "CURRENT \u2014 this run's revision is the accepted revision now",
+    "model_state": "loaded",
+    "model_components": "torso_link \u2190 torso \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)thigh_l_link \u2190 thigh_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)thigh_r_link \u2190 thigh_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)shin_l_link \u2190 shin_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)shin_r_link \u2190 shin_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)foot_l_link \u2190 foot_l \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)foot_r_link \u2190 foot_r \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)ground_link \u2190 ground_plate \u00b7 mesh retained (12 triangles) \u00b7 placement: declared component placement (no solved trace)",
+    "params": "namevaluedefaultminmaxunitlabelcontrol_hz\u20145020100HzPolicy control rateepisode_steps\u20144001001000\u2014Episode length in control stepsfall_frac\u20140.700000.300000.90000\u2014Fall threshold as fraction of standing torso heightfoot_len\u20148040120mmFoot length (X)foot_t\u20148415mmFoot thickness (Z)foot_w\u2014382048mmFoot width (Y)hip_spacing\u2014565090mmLateral distance between hip pivotsjoint_armature\u2014100100kg*mm2Reflected rotor inertiajoint_damping\u201410.1000010N*mm*s/degRevolute joint dampingjoint_friction\u20145050N*mmJoint dry friction losslimb_w\u201416824mmLeg member width and depthpolicy_on0001\u20141 = declare trained policy + rolloutprinted_density\u201412504003000kg/m3Printed material densityrollout_seed\u2014001000000\u2014Rollout episode seedservo_torque_nmm\u2014200501000N*mmActuator torque limit per jointshin_len\u20148040120mmShin length knee->anklethigh_len\u20148040120mmThigh length hip->kneetorso_d\u2014553590mmTorso depth (fore-aft, X)torso_h457040120mmTorso height (Z)torso_w\u20149060140mmTorso width (lateral, Y)",
+    "orbit_zoom": true,
+    "page_iterations": [
+      3,
+      4,
+      6,
+      7,
+      8,
+      9,
+      11
+    ],
+    "file_iterations": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ],
+    "reload_count": 1,
+    "ok": true
+  },
+  "policies": {
+    "lark2-checkpoint20": {
+      "browser": {
+        "persistent_server": true,
+        "private_address_same_machine": true,
+        "browser_playback": true,
+        "foot_len_mm": 80.0,
+        "components": 8,
+        "curves_present": true,
+        "fresh_selection": "RUN lark2",
+        "historical_selection": null,
+        "download_sha256": "dfb45737df667051192453df68ab030e4689a25c91c95713ba82a26c6e8df115",
+        "decoded_frames": 81,
+        "decoded_frames_differ": true,
+        "encoded_seconds": 8.1,
+        "simulation_seconds": 8.0,
+        "accepted_revision": "95a37e532daee7e55aaa1b9521a5122db760f5b355f2f15982f885770d889c79",
+        "policy_sha256": "8eb15d8a7570438690b29f9d32b51cd6f706514f53f03ed0afcb4e624d6d14e1",
+        "seed": 0,
+        "style": "cadex-prototype-light-v1",
+        "returned_to_current": "RUN lark2"
+      },
+      "video": {
+        "accepted_revision": "95a37e532daee7e55aaa1b9521a5122db760f5b355f2f15982f885770d889c79",
+        "bounds": {
+          "center": [
+            0.0,
+            0.0,
+            102.72531965831051
+          ],
+          "max": [
+            400.0,
+            270.0,
+            220.45063931662102
+          ],
+          "min": [
+            -400.0,
+            -270.0,
+            -15.0
+          ],
+          "radius": 496.74867980564517
+        },
+        "camera": {
+          "distance": 1237.1688087468392,
+          "pitch": 0.5,
+          "target": [
+            0,
+            0,
+            102.72531965831051
+          ],
+          "yaw": 0.8
+        },
+        "duration_seconds": 8.1,
+        "fps": 10,
+        "frames": 81,
+        "height": 512,
+        "model_digest": "36d6c451054132d75e8ee49651e7429c0dd7c5543a0ce7c3ae5fbc3b9c4db94c",
+        "path": "rollout-dfb45737df667051192453df68ab030e4689a25c91c95713ba82a26c6e8df115.webm",
+        "policy_sha256": "8eb15d8a7570438690b29f9d32b51cd6f706514f53f03ed0afcb4e624d6d14e1",
+        "projection": "perspective 55 degrees",
+        "render_seconds": 12.826,
+        "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+        "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+        "seed": 0,
+        "sha256": "dfb45737df667051192453df68ab030e4689a25c91c95713ba82a26c6e8df115",
+        "sim_seconds": 8.0,
+        "style": "cadex-prototype-light-v1",
+        "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+        "task_sha256": "4615c6ddcaaaff6438432272c6442cb3e986d62ab1e360df545dd5e7c24edc60",
+        "trace_sha256": "eb4f8b22bdb130a0600ff145ff1d7ebc1d60d5ff22b4485b8a685d989ff4bf7b",
+        "width": 512
+      },
+      "episode_limit_s": 8,
+      "seed": 0,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        27.74822131730004,
+        2.1525617614922608,
+        -18.939793436162546
+      ],
+      "total_reward": 207.13023768651556,
+      "policy_sha256": "8eb15d8a7570438690b29f9d32b51cd6f706514f53f03ed0afcb4e624d6d14e1",
+      "model_sha256": "1e318f1844596675f569fd1329964269498f41b0c378f773ca54c153b69793d2",
+      "task_sha256": "4615c6ddcaaaff6438432272c6442cb3e986d62ab1e360df545dd5e7c24edc60",
+      "trace_sha256": "eb4f8b22bdb130a0600ff145ff1d7ebc1d60d5ff22b4485b8a685d989ff4bf7b"
+    },
+    "lark2-final": {
+      "browser": {
+        "persistent_server": true,
+        "private_address_same_machine": true,
+        "browser_playback": true,
+        "foot_len_mm": 80.0,
+        "components": 8,
+        "curves_present": true,
+        "fresh_selection": "RUN lark2-final",
+        "historical_selection": "lark2-checkpoint20",
+        "download_sha256": "af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826",
+        "decoded_frames": 81,
+        "decoded_frames_differ": true,
+        "encoded_seconds": 8.1,
+        "simulation_seconds": 8.0,
+        "accepted_revision": "ca88f223b54c060ea67f5531e89f07e25fcf061d934c5357c0fe6582df25289d",
+        "policy_sha256": "b79a63908e9418d2c7347ed7a6fb432f540c429e15c8112b4bc7cb2bc43763a3",
+        "seed": 0,
+        "style": "cadex-prototype-light-v1",
+        "returned_to_current": "RUN lark2-final"
+      },
+      "video": {
+        "accepted_revision": "ca88f223b54c060ea67f5531e89f07e25fcf061d934c5357c0fe6582df25289d",
+        "bounds": {
+          "center": [
+            0.0,
+            0.0,
+            102.99899791090101
+          ],
+          "max": [
+            400.0,
+            270.0,
+            220.99799582180202
+          ],
+          "min": [
+            -400.0,
+            -270.0,
+            -15.0
+          ],
+          "radius": 496.81361042948174
+        },
+        "camera": {
+          "distance": 1237.3305205858612,
+          "pitch": 0.5,
+          "target": [
+            0,
+            0,
+            102.99899791090101
+          ],
+          "yaw": 0.8
+        },
+        "duration_seconds": 8.1,
+        "fps": 10,
+        "frames": 81,
+        "height": 512,
+        "model_digest": "a1232a4a8c26733fd71eb7aaba0094213d6df954136bee8b118a36713b75e576",
+        "path": "rollout-af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826.webm",
+        "policy_sha256": "b79a63908e9418d2c7347ed7a6fb432f540c429e15c8112b4bc7cb2bc43763a3",
+        "projection": "perspective 55 degrees",
+        "render_seconds": 12.213,
+        "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+        "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+        "seed": 0,
+        "sha256": "af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826",
+        "sim_seconds": 8.0,
+        "style": "cadex-prototype-light-v1",
+        "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+        "task_sha256": "4615c6ddcaaaff6438432272c6442cb3e986d62ab1e360df545dd5e7c24edc60",
+        "trace_sha256": "3831e68b6e0e5a787264b7fe1d671e130a1c545d7cdb455343bfdafe6133ed02",
+        "width": 512
+      },
+      "episode_limit_s": 8,
+      "seed": 0,
+      "observed_s": 8.0,
+      "fell": false,
+      "termination": "",
+      "time_limit_reached": true,
+      "step_count": 400,
+      "displacement_mm": [
+        38.49835826476246,
+        2.1410728638535494,
+        -21.42414839804377
+      ],
+      "total_reward": 150.87263159885705,
+      "policy_sha256": "b79a63908e9418d2c7347ed7a6fb432f540c429e15c8112b4bc7cb2bc43763a3",
+      "model_sha256": "1e318f1844596675f569fd1329964269498f41b0c378f773ca54c153b69793d2",
+      "task_sha256": "4615c6ddcaaaff6438432272c6442cb3e986d62ab1e360df545dd5e7c24edc60",
+      "trace_sha256": "3831e68b6e0e5a787264b7fe1d671e130a1c545d7cdb455343bfdafe6133ed02"
+    }
+  }
+}

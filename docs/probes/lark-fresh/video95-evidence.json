@@ -1,0 +1,74 @@
+{
+  "schema": "wren-video-recovery-v1",
+  "project": "ot5-lark-copy85",
+  "current": "lark86-retry-video",
+  "prior": "lark2-final",
+  "faults": [
+    {
+      "fault": "missing",
+      "label": "Video files: unavailable (0/1 retained)Recorded video render: readyvideo 0 \u00b7 rollout-1f53d43d1c187de363eadae51931e90d91e8a7928e25ce5ebdb70df46322ca01.webm \u00b7 revision 7f6c23913d55 \u00b7 policy 074e22f1070c \u00b7 seed 0 \u00b7 8 s \u00b7 cadex-prototype-light-v1 \u2014 missing. Retry the CLI video command after restoring the retained inputs.",
+      "http_status": 404,
+      "unavailable": true,
+      "cli_guidance": true,
+      "prior": {
+        "revision": "ca88f223b54c060ea67f5531e89f07e25fcf061d934c5357c0fe6582df25289d",
+        "policy_sha256": "b79a63908e9418d2c7347ed7a6fb432f540c429e15c8112b4bc7cb2bc43763a3",
+        "download_sha256": "af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826",
+        "playback_poll_preserved": true
+      }
+    },
+    {
+      "fault": "partial",
+      "label": "Video files: unavailable (0/1 retained)Recorded video render: readyvideo 0 \u00b7 rollout-1f53d43d1c187de363eadae51931e90d91e8a7928e25ce5ebdb70df46322ca01.webm \u00b7 revision 7f6c23913d55 \u00b7 policy 074e22f1070c \u00b7 seed 0 \u00b7 8 s \u00b7 cadex-prototype-light-v1 \u2014 refused: video digest mismatch. Retry the CLI video command after restoring the retained inputs.",
+      "http_status": 404,
+      "unavailable": true,
+      "cli_guidance": true,
+      "prior": {
+        "revision": "ca88f223b54c060ea67f5531e89f07e25fcf061d934c5357c0fe6582df25289d",
+        "policy_sha256": "b79a63908e9418d2c7347ed7a6fb432f540c429e15c8112b4bc7cb2bc43763a3",
+        "download_sha256": "af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826",
+        "playback_poll_preserved": true
+      }
+    },
+    {
+      "fault": "failed",
+      "label": "Video files: unavailable (0/1 retained)Recorded video render: failed \u2014 injected encoder failure. Retry the CLI video command after fixing the retained inputs or encoder.video 0 \u00b7 rollout-1f53d43d1c187de363eadae51931e90d91e8a7928e25ce5ebdb70df46322ca01.webm \u00b7 revision 7f6c23913d55 \u00b7 policy 074e22f1070c \u00b7 seed 0 \u00b7 8 s \u00b7 cadex-prototype-light-v1 \u2014 refused: video digest mismatch. Retry the CLI video command after restoring the retained inputs.",
+      "http_status": 404,
+      "unavailable": true,
+      "cli_guidance": true,
+      "prior": {
+        "revision": "ca88f223b54c060ea67f5531e89f07e25fcf061d934c5357c0fe6582df25289d",
+        "policy_sha256": "b79a63908e9418d2c7347ed7a6fb432f540c429e15c8112b4bc7cb2bc43763a3",
+        "download_sha256": "af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826",
+        "playback_poll_preserved": true
+      }
+    }
+  ],
+  "same_machine_private_address": true,
+  "baseline": {
+    "revision": "7f6c23913d55184241d0b31ca0fdfddf17d3c613d0c25e17d5943af57c75661b",
+    "policy_sha256": "074e22f1070c0162ac335394f7c39d0775ed6bd3a58018942d8bc79f1c59c688",
+    "download_sha256": "1f53d43d1c187de363eadae51931e90d91e8a7928e25ce5ebdb70df46322ca01",
+    "playback_poll_preserved": true
+  },
+  "restored": {
+    "revision": "7f6c23913d55184241d0b31ca0fdfddf17d3c613d0c25e17d5943af57c75661b",
+    "policy_sha256": "074e22f1070c0162ac335394f7c39d0775ed6bd3a58018942d8bc79f1c59c688",
+    "download_sha256": "1f53d43d1c187de363eadae51931e90d91e8a7928e25ce5ebdb70df46322ca01",
+    "playback_poll_preserved": true
+  },
+  "copy_restored_files": 2517,
+  "operator": {
+    "revision": "7f6c23913d55184241d0b31ca0fdfddf17d3c613d0c25e17d5943af57c75661b",
+    "policy_sha256": "074e22f1070c0162ac335394f7c39d0775ed6bd3a58018942d8bc79f1c59c688",
+    "download_sha256": "1f53d43d1c187de363eadae51931e90d91e8a7928e25ce5ebdb70df46322ca01",
+    "playback_poll_preserved": true
+  },
+  "operator_unchanged": true,
+  "original_files_unchanged": 2517,
+  "screenshots": {
+    "partial.png": "606644e0e069152f8a7c56fb364d95f0796d959afd1be3c5f74bb287005cc332",
+    "missing.png": "9b9c0acf41aa700884138e846fdf964e3bd95a71c8f548fb10d5b3607c854a55",
+    "failed.png": "d4c072fe42329120322a2bd202a5799e67614fabe51a02e113f37ad5dd62e1a8"
+  }
+}

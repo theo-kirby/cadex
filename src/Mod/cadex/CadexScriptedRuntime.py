@@ -2056,16 +2056,32 @@ def accept_project_candidate(
         .relative_to(Path(str(prepared["project_root"])))
         .as_posix()
     )
+    accepted_attempt = {
+        "attempt_id": str(prepared["attempt_id"]),
+        "staging": staging_relative,
+        "revision": revision,
+    }
+    previous = store.read_state()
+    retained = previous.get("accepted_attempt")
+    # Restore publishes fresh live geometry without requesting display buffers.
+    # An identical acceptance must not replace the durable, display-bearing
+    # attempt with that display-less replay. Keep it pinned against pruning.
+    # Explicit display requests and changed identities publish the new attempt.
+    if (
+        previous.get("accepted_revision") == revision
+        and previous.get("accepted_digest") == digest
+        and not dict(prepared.get("arguments") or {}).get("display")
+        and isinstance(retained, dict)
+        and retained.get("staging")
+        and (store.root / str(retained["staging"]) / "result.json").is_file()
+    ):
+        accepted_attempt = retained
     store.write(
         state_updates={
             "accepted_revision": revision,
             "accepted_contract": contract,
             "accepted_digest": digest,
-            "accepted_attempt": {
-                "attempt_id": str(prepared["attempt_id"]),
-                "staging": staging_relative,
-                "revision": revision,
-            },
+            "accepted_attempt": accepted_attempt,
             "latest_candidate": {
                 "status": "accepted",
                 "revision": revision,

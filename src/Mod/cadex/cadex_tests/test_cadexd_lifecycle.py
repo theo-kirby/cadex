@@ -464,6 +464,41 @@ def _stop(client: _CadexdClient | None) -> None:
             pass
 
 
+@pytest.mark.skipif(FREECADCMD is None, reason="No FreeCADCmd binary available.")
+def test_in_place_restore_preserves_retained_meshes_and_identity(tmp_path):
+    root = tmp_path / "restore.cadex"
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(root)})["ok"]
+        written = client.request("write_script", {
+            "source": 'result = {"plate": part.box(20, 10, 3)}',
+            "expected_revision": "", "display": {"quality": "standard"},
+        })
+        assert written["ok"], written
+        state = json.loads((root / "script.json").read_text())
+        staging = root / state["accepted_attempt"]["staging"]
+        retained = {p.relative_to(staging): p.read_bytes()
+                    for p in staging.rglob("*") if p.is_file()}
+        mesh = written["display"]["plate"]["tessellation"]
+        assert Path(mesh["artifact_path"]).stat().st_size > 0
+        for _ in range(2):
+            _stop(client)
+            client = _spawn_cadexd()
+            reopened = client.request("open_project", {"project_root": str(root)})
+            assert reopened["ok"], reopened
+            assert reopened["restore"]["matches_accepted"] is True
+            after = json.loads((root / "script.json").read_text())
+            for key in ("accepted_revision", "accepted_digest", "accepted_attempt"):
+                assert after[key] == state[key], key
+            assert {p.relative_to(staging): p.read_bytes()
+                    for p in staging.rglob("*") if p.is_file()} == retained
+            assert Path(mesh["artifact_path"]).is_file()
+            assert Path(mesh["sidecar_path"]).is_file()
+    finally:
+        _stop(client)
+
+
 @pytest.mark.skipif(
     FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
 )

@@ -1,0 +1,453 @@
+# Persistent operator review
+
+Verified against source: 2026-09-13. [Cadex-new]
+
+Iteration 109 (ADR-325) found the operator URL served by a bare
+`python -m cadex_cli review` process launched from tmux in iteration 104,
+after the `cadex-operator-review` unit had been stopped: the same project,
+address and port, but no unit for the restart command below to act on and no
+`Restart=on-failure`. With no trainer active the bare process was stopped
+with SIGINT and the documented `systemd-run` unit started in its place;
+`/api/project` answered 0.6 s after the stop began, naming `ot5-lark-copy85`
+with 13 runs and the accepted revision `6f826037044a…`
+(`evidence/service109-restore.json` in the copy). The service then stayed up,
+same MainPID, through the [engine kill/restart experiment](../lark-fresh/ENGINE109.md)
+on a real bounded GPU run, and a fresh visit now selects that run,
+`lark109-engine2`. The rule is in ADR-325: the operator URL is served by the
+user unit, never by a bare process.
+
+Iteration 100 (ADR-322) restarted the service once, with no trainer active,
+so the operator URL runs the server whose run detail carries **per-run disk
+use**: what the selected run keeps under `runs/<name>/`, counted from its
+permitted files only, each inode once and no symlink followed, split by
+subdirectory, with a size column on the artifact table and the project
+references it shares with other runs sized once and named. The run list
+still carries none of it. Over the private address a fresh visit selects
+**`lark98-final`** (revision `6f826037044a…`), whose panel reads 895.8 KB
+in 37 files, equal to an independent walk of the directory; its policy asset
+`assets/lark98.cxpolicy` (82.6 KB) is shown outside the run's total, shared
+with training run `lark98`; the thirteen runs together hold 9.1 MB under
+`runs/`. `lark98-checkpoint20` opened as history with its own count and its
+video playing through two polls, and the route back to current works.
+Restart:
+
+```bash
+systemctl --user restart cadex-operator-review.service
+```
+
+[Measured receipt](../lark-fresh/disk100-evidence.json), pinned by
+`cli/tests/test_lark_fresh_evidence.py`; reproduce against the persistent
+address with:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/operator-review/check_disk.py \
+  "$HOME/cadex-projects/ot5-lark-copy85" "http://$(tailscale ip -4):8765/" /tmp/disk-check.json
+```
+
+Iteration 99 (ADR-321) restarted the service once, with no trainer active,
+so the operator URL runs the server whose run list carries each run's
+telemetry as a bounded summary and serves histories and digest-verified
+checkpoints one run at a time through `/api/run/<name>`. The list poll on
+this 13-run project fell from 554 KB to 170 KB and reads no checkpoint bytes
+(97 files were hashed on every two-second poll before). Over the private
+address a fresh visit still selects **`lark98-final`** (revision
+`6f826037044a…`), with its 240-sample histories, twelve retained checkpoints
+and eight components loaded from the detail; its video played through a poll
+and downloaded hash-equal; `lark1-final` opened as history with its own
+revision and histories; and an idle poll added the same 62 nodes on either
+view. Restart:
+
+```bash
+systemctl --user restart cadex-operator-review.service
+```
+
+[Measured receipt](../lark-fresh/scale99-evidence.json), pinned by
+`cli/tests/test_lark_fresh_evidence.py`.
+
+Iteration 98 ran the [Lark encoder-failure experiment](../lark-fresh/RENDER98.md)
+on `ot5-lark-copy85` without restarting the service: `lark98` trained 240 GPU
+updates while its checkpoint-20 re-render was made to fail and then recovered.
+The fresh default is now **`lark98-final`** (policy `fca598975089…`), with
+`lark98-checkpoint20` (two retained WebM files, the failed re-render's receipt
+overwritten by the recovery) and `lark98` selectable as history. The service
+kept PID 4173669 and lists 13 runs; no trainer remains active.
+[Measured receipt](../lark-fresh/render98-evidence.json).
+
+Iteration 96 completed the [bounded D6 restart experiment](../lark-fresh/RESTART96.md)
+on `ot5-lark-copy85`. The fresh default is **`lark96-restart`**, completed after
+100 GPU updates with its policy retained and explicit “videos: none recorded
+for this run.” The persistent service restarted during that training; the
+same trainer PID/start identity continued, live polling recovered, and historical
+`lark2-final` kept playing. The service remains active. Limits were 900 seconds
+and 20 GiB; no trainer remains active. [Measured receipt](../lark-fresh/restart96-evidence.json).
+
+The [Lark lifecycle report](../lark-fresh/LIFECYCLE.md) links D1–D11 evidence,
+the design comparison and remaining Lark-specific acceptance gaps. Iteration 94
+verified the current default, full video decode/playback/download and historical
+browsing, and compared the current Lark viewport/video to the visual reference.
+The service stayed running on the same project and run; no training or restart.
+[Current receipt](../lark-fresh/current94-evidence.json),
+[visual comparison](../lark-fresh/style94-evidence.json).
+
+The shared private-network dashboard on port 8765 serves
+**`ot5-lark-copy85`**, the working copy of the third fresh biped, with
+**`lark96-restart` selected by default**. The preceding video run was
+`lark86-retry-video` (playback revision
+`7f6c23913d55…`, digest `7f0d98163e84…`, `policy_on` 1 on the copy's 90 mm
+feet). Iteration 86 ran Lark's D8 experiment on this URL without restarting
+the service (ADR-315): `lark86-interrupt`, a real GPU attempt sent SIGINT at
+iteration 5, is shown `failed` with the controlled-interruption note, retry
+guidance, six-sample curves and no video; `lark86-retry` completed 40 updates
+with a saved policy; and that policy's verified rollout video plays and
+downloads as `lark86-retry-video`. All six earlier runs and four earlier
+videos remain selectable, the historical interruption survives a refresh with
+a route back to current, and the original `ot5-lark` is byte-identical after
+the copy's retraining (D7). At iteration 86 completion no trainer remained active. Evidence:
+[INTERRUPTION86.md](../lark-fresh/INTERRUPTION86.md),
+[`interruption86-evidence.json`](../lark-fresh/interruption86-evidence.json),
+and in the copy `evidence/lark86/`, `evidence/guard86/` and
+`evidence/lark86-retry-video-completion86-browser.json`.
+
+Iteration 91 restarted the service a second time, with no trainer active,
+so the operator URL also runs the server whose model and mesh routes are
+anchored at the project root (ADR-318): a `runs/<name>` symlinked out of
+the project now answers `available: false` with `run directory escapes the
+project directory` and serves no mesh bytes from it. Iterations 89 and 90
+landed that reader and server without record nodes; iteration 91 recorded
+both. After the restart the same URL still serves `ot5-lark-copy85` with
+all nine runs; a fresh visit selects `RUN lark86-retry-video` (origin
+`lark86-retry`, final, `source_agrees` true), which played through polls
+and downloaded hash-equal (`1f53d43d1c18…`, 81 decoded frames), and its
+eight rollout meshes are served from the run's own `rollout/` exports.
+Receipt in the copy: `evidence/lark86-retry-video-anchor91-check.json`.
+
+Iteration 89 (ADR-317) restarted the service once, with no trainer active,
+so the operator URL runs the reader that anchors run, policy and telemetry
+resolution at the project root (a `runs/<name>` symlinked out of the project
+is now listed unreadable, never hashed or read). It still serves
+`ot5-lark-copy85` with all nine runs; a fresh visit selects
+`RUN lark86-retry-video` (origin `lark86-retry`, final, `source_agrees`
+true), which played through polls and downloaded hash-equal. Receipt in the
+copy: `evidence/lark86-retry-video-anchor89-check.json`.
+
+Iteration 88 (ADR-316) re-verified this URL without restarting it and with no
+trainer active: a fresh visit still selects `RUN lark86-retry-video`, which
+is what the reader's own `default_run` rule expects; that video and
+`lark1-final` decoded whole, played through polls and downloaded hash-equal;
+and each video's training run was resolved from the policy bytes it retains
+(`lark86-retry`, `lark1`) rather than from its name. Receipt:
+[`lineage88-evidence.json`](../lark-fresh/lineage88-evidence.json).
+
+Until iteration 86 it served the copy with **`lark2-final` selected by
+default** (iteration 85, ADR-314) as
+HISTORICAL (playback revision `ca88f223b54c…`) against the copy's own
+accepted revision `083d086ad980…` (`foot_len` 80 → 90 mm, `policy_on` 0, a
+copy-only CLI edit; no retraining). The service was deliberately stopped and
+started on the copy with no trainer running, checked over the private
+address before and after the D7 probe, and stays running. All six retained
+runs, their curves and all four videos play from the copy; the original
+`ot5-lark` is byte-identical to its pre-copy inventory and is no longer
+served. Evidence: [COPY85.md](../lark-fresh/COPY85.md),
+[`copy85-evidence.json`](../lark-fresh/copy85-evidence.json), and in the
+copy `evidence/copy85/` and `evidence/lark2-final-switch85-browser.json`.
+
+Until iteration 85 it served **`ot5-lark`**,
+the third fresh product-agent biped, with **`lark2-final` selected by
+default** (playback revision `ca88f223b54c…`) on the product agent's own
+45 mm-torso revision (design revision `62f4e2a0e2df…`, project ADR-004).
+Iteration 84 ran that revision's 240-update GPU retraining on this URL:
+a fresh visit selected the active `RUN lark2` during training,
+`lark2-checkpoint20` was published with a verified video while the trainer
+was active, the final policy has a verified, downloadable video, and both
+45 mm policies survive all ten declared seeds where `lark1-final` fell on
+every one. The start and completion checks are `evidence/lark1-final-start84-browser.json`
+and `evidence/lark2-final-completion84-browser.json` in the project. No
+trainer remains active; the service was not restarted and stays running.
+[Lark revision evidence](../lark-fresh/REVISION84.md),
+[training receipt](../lark-fresh/training84-evidence.json),
+[comparison receipt](../lark-fresh/revision84-evidence.json).
+
+Until iteration 84 it served Lark with **`lark1-final` selected by
+default** (playback revision `44f8f6a113a3…`, accepted digest
+`bfd2bdeb36a2…` with the first final policy declared). Iteration 82 ran Lark's
+first bounded 240-update GPU experiment on this URL: the live page tracked
+training, `lark1-checkpoint20` was published with a verified video while the
+trainer was active, and the final policy has a verified, downloadable video;
+both policies fall within a second on seed 0. No trainer remains active; the
+service was not restarted and stays running.
+[Lark training evidence](../lark-fresh/README.md#first-bounded-real-training-probe-lark1-iteration-82),
+[compact receipt](../lark-fresh/training-evidence.json).
+
+Until iteration 82 it served Lark at its creation revision **`753cf0cc4600…`**,
+digest `3b704a3fc1c4…`, with no runs (ACCEPTED NOW was the default
+view). Iteration 80 created it in one `cadex -p` turn, switched the service
+from `ot5-wren-copy54` deliberately, fixed the reader's refusal of a first
+accepted attempt (ADR-311, one service restart with no trainer running),
+gave the design its tessellation through the public `cadex render` (the
+cause — the agent's writes omitting `display` — is fixed by ADR-312 in
+iteration 81, which left Lark's accepted attempt untouched), and
+proved save/reopen on the persistent URL:
+[Lark creation and reopen evidence](../lark-fresh/README.md),
+[compact receipt](../lark-fresh/evidence.json). Training, videos and the
+design revision follow in later units. The Wren copy is preserved unchanged
+(2,392 files byte-identical across this iteration) and can be served again
+with the switch command below.
+
+Until iteration 80 the same service served **`ot5-wren-copy54`**,
+with **`wren79-final` selected by default**, playback revision **`0d78fae96c22…`**,
+on the product agent's 90 mm design. Iteration 79 completed its 240-update GPU
+repeat and verified checkpoint and final videos, including full decode and
+persistent-browser playback/download. A deliberately failed checkpoint re-render
+showed encoder failure and CLI recovery guidance while the same trainer continued
+updating; its retry video played at update 96. All 703 prior run/asset files are
+unchanged. No experiment trainer remains active; the service stays running.
+[Failure-isolation evidence and disclosed probe errors](../wren-fresh/RENDER-FAILURE.md),
+[compact receipt](../wren-fresh/render79-evidence.json).
+The earlier [real-training restart proof](../wren-fresh/RESTART-TRAINING.md)
+remains historical evidence for `wren71`.
+The earlier [seed 0–4 comparison](../wren-fresh/REVISION66.md) remains historical.
+
+Iteration 72 rechecked this persistent URL without restarting it or training:
+six current/historical playback views expose their own eight-component models,
+retained documents, curves and hash-matching video downloads. All 703 run/asset
+files stayed unchanged. Fresh default remains `wren71-final` among 18 runs;
+historical playback and return-to-current passed.
+[Current browser receipt](../wren-fresh/lifecycle72-evidence.json).
+
+Iteration 73 compared the current 90 mm viewport and decoded final video with
+identified neural-whoop references at matched pose/camera and close/wide
+framing. Lossless viewport/capture parity and RGB codec error 1.50058/255;
+pointer orbit, current and historical playback/download/polling passed.
+No renderer defect was demonstrated. Service, project and default remain
+unchanged; no training or restart occurred.
+[Current visual assessment](../review-style/README.md#current-90-mm-wren-comparison--iteration-73).
+
+Iteration 75 exercised missing, partial and failed video output on a disposable
+full Wren copy. Historical playback/download and restoration passed; the shared
+URL still serves `wren71-final` and its verified video. All 3,769 source-project
+files remained byte-identical. No service restart or training occurred.
+[Wren fault evidence](../wren-fresh/LIFECYCLE.md#wren-video-faults--iteration-75).
+
+Iteration 76 fixed the video list's misleading ready headline (ADR-310).
+The persistent page now leads with **Video files: available (1/1 retained)**,
+separately from **Recorded video render: ready**. Missing and truncated output
+on a disposable full Wren copy leads with **unavailable (0/1 retained)** while
+preserving the recorded ready outcome. Restoration and historical playback/
+download passed; the persistent current project/run and all 3,769 source files
+remain unchanged. No restart or training; service stays running.
+[Availability and recovery receipt](../wren-fresh/video76-evidence.json).
+
+Iteration 77 adds a D10 browser regression that deliberately selects a historical
+video before publishing a new failed attempt. Across two subsequent automatic
+polls, the selected revision and video element stay unchanged and decoded playback
+time advances. A fresh visit selects the new failure, as does the existing page's
+**Current run** button; its failed status and revision agree. The historical
+download matches the rendered digest. Run it with:
+
+```bash
+pixi run python -m pytest cli/tests/test_review_server.py -k historical_playback_survives_published
+```
+
+That publication is a test fixture, not a new Wren experiment. Afterward the
+persistent private URL was checked headlessly: `ot5-wren-copy54`, default
+`wren71-final`, current and historical `wren66-final` playback across refresh,
+hash-checked downloads, and return to current all passed. No service restart,
+project switch or training occurred; the service stays running. This is
+same-machine private-address evidence, not a second-device test.
+[Persistent browser receipt](../wren-fresh/current77-evidence.json).
+
+Iteration 69 verified two engine reopens and restarted the persistent service
+with the saved working project intact: all 15 run views matched, the open
+page kept playing, and fresh visits still selected `wren66-final`. Current
+and historical video downloads matched their recorded hashes. No trainer
+was running; the service remains up. [D6 proof](../wren-fresh/RESTART.md).
+
+Iteration 67 restarted this same service once, with no trainer running, to
+load ADR-309: a playback run's checkpoints now resolve through the training
+run its record names. On the persistent URL, `wren66-final` (default, CURRENT)
+lists twelve checkpoints `retained · from training run wren66` where the
+previous page said `missing`; `wren66-checkpoint20` (HISTORICAL) resolves the
+same provenance but its frozen snapshot, copied at iteration 18, lists no
+checkpoints and is labelled `stale` rather than invented; `wren57-retry`
+(HISTORICAL, trained in place) keeps its own-run checkpoint. Each check
+returned to the current run. Project, default run and identity above are
+unchanged; no experiment started and no project switch occurred.
+[Probe and evidence](../wren-fresh/CHECKPOINT-PROVENANCE.md).
+
+Before iteration 66 the page selected **`wren57-retry`**, accepted playback
+revision **`79f86c69bfc3…`** and 110 mm feet. Its guarded GPU retry completed
+12 updates. Iteration 60 engine-verified its saved
+policy and published an 8-second seed-0 rollout video on that attempt.
+All four older videos remain selectable, playable and downloadable. Historical
+playback survived the new video arriving; the current video fully decoded,
+played through polling and downloaded with a matching hash. The original
+training revision `5b61ef31ff13…` and inputs are explicitly retained.
+[Publication evidence and commands](../wren-fresh/RETRY-VIDEO.md).
+
+Iteration 62 verified this same persistent URL after fixing accepted-model
+refresh (ADR-307): a changed accepted revision now reloads geometry during
+polling, including first acceptance in an empty view. Current/accepted/historical
+document checks and retry playback/download passed. No authoring attempt or
+training was launched; the unit was selected before the provider's reported
+22:40 reset. Wren's product-agent revision remains outstanding.
+[Refresh regression and persistent evidence](../wren-fresh/MODEL-REFRESH.md).
+
+The preceding **`wren57-interrupt`** retains its six real updates, failed status,
+`KeyboardInterrupt` and controlled-interruption/retry guidance. Both attempts
+ran after the required suites, with at most one trainer observed and no
+exclusion violation. [Experiment and limitations](../wren-fresh/INTERRUPTION.md).
+
+Iteration 58's product-agent revision turn on this copy was refused by the
+provider session limit before authoring. Accepted identity/specs and all 434
+run/asset files remained unchanged during that attempt. Persistent-browser
+checks verified the current default, accepted view, all four historical video playbacks/downloads
+and return-to-current. The service remains running. The foot revision is still
+caller-authored; Wren's D9 authorship gap remains open.
+[Attempt and evidence](../wren-fresh/AGENT-REVISION.md#current-attempt-working-copy-iteration-58).
+
+Previous experiment status (before the copy switch):
+
+The shared private-network dashboard on port 8765 serves `ot5-wren`, with
+**`wren2-final` selected by default**, revision **`26332a5955e3…`**, 105 mm feet.
+Iteration 52 completed 240 GPU iterations; no training remains active.
+The verified checkpoint and final videos both play/download, as do the original
+85 mm recordings. Historical playback survives polling and returns to current.
+The service was not restarted and stays running.
+
+Iteration 53's requested product-agent design turn was refused by both Fable
+and Sonnet at their provider session limit. No geometry revision or training
+attempt was created. The accepted/current identity above is unchanged; all
+228 retained run files and all four browser-playable/downloadable reviews
+were verified intact. [Attempt, retry instructions and browser evidence](../wren-fresh/AGENT-REVISION.md).
+The explicit fallback leaves Sonnet as the project's stored model preference.
+
+At experiment start, the browser selected active `wren2` at revision
+`a90b84033ced…`. Seven real training updates reached the page within
+0.50–1.53 seconds, and the checkpoint video was played while training remained
+active. At completion, the browser verified the revised final identity and
+video. These are same-machine private-network checks, not second-device
+observations. The original Wren was product-agent authored; the foot revision
+was a public CLI parameter edit, not a product-agent design turn.
+
+The revised final policy survived five of five eight-second episodes, versus
+three of five for the original final policy. Small displacement and standing
+poses do not establish walking. See [the comparative lifecycle report](../wren-fresh/COMPARISON.md)
+and its compact training, playback/download and per-seed receipts.
+
+Keep the server running between iterations. On this Linux host, from the
+checkout, the detached command is:
+
+```bash
+systemd-run --user --unit=cadex-operator-review --property=Restart=on-failure \
+  --working-directory="$PWD" "$PWD/cadex" review \
+  --project "$HOME/cadex-projects/ot5-lark" \
+  --host "$(tailscale ip -4)" --port 8765
+```
+
+For a deliberate working-project switch, stop `cadex-operator-review` with
+`systemctl --user stop cadex-operator-review`, start the command with the new
+project, and verify the same URL. This transient user service survives actor
+exit and tests; it is not a reboot installation. Do not restart Ouroboros or
+training. Update this published status on experiment start/completion and
+project switches.
+
+The following historical Reed read-only probe uses the existing persistent server; it never launches or
+stops a test server:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/operator-review/verify.py \
+  "http://$(tailscale ip -4):8765/" "$HOME/cadex-projects/ot5-biped-copy29" copy100
+```
+
+The committed `evidence.json` records the observed project/run/model identity,
+real saved-video playback and matching download digest, preserved playback on
+poll, historical `probe3-final` selection and return to current. This was a
+headless Chromium observation through this machine's private-network address,
+not a second-device test or an observation during new GPU training. D10 still
+needs the persistent URL observed across a real experiment start/completion.
+
+Iteration 39 reverified this same persistent URL without restarting it. The
+[visual baseline](../review-style/README.md) records its current appearance;
+[operator results](../review-style/operator.json) again pass current identity,
+playback/download and polling/history preservation. The requested D11 environment
+is not yet implemented. No new experiment or working-project switch occurred.
+
+
+Iteration 40 restarted this same service to load the shared scene and kept its
+project/run unchanged. [D11 implementation evidence](../review-style/implementation.json)
+now records the persistent viewport, new final/checkpoint recordings, actual
+light reference and same-pose/camera parity. Playback/download, polling and
+historical selection pass at the private URL. Current published status remains
+`ot5-biped-copy29 / copy100`; there is no new training attempt. The service stays
+running. D10's real experiment-spanning observation is still open.
+
+Iteration 41 spanned a real experiment on this same URL: `shin55` appeared as
+`running` before its first iteration, a fresh visit selected it by default,
+seven live iterations showed within 0.26–1.69 s, the checkpoint 20 video was
+published and played here while training continued, and after the trainer
+exited a fresh visit selected `shin55-final` with its video, playback across a
+poll, historical `probe3-final` and return to current. The service was then
+restarted once, after training, to load ADR-302 (all eight accepted meshes now
+retained) and the same check passed again. Evidence:
+[reed-agentrev](../reed-agentrev/README.md). Published status is now
+`ot5-biped-copy29 / shin55-final`; the service stays running.
+
+Iteration 43 reverified this same URL without restarting it, while assembling
+the [lifecycle report](../reed-lifecycle/README.md): a fresh visit selected
+`shin55-final` by default at the accepted revision, played and downloaded its
+video with the recorded digest, kept playing across a poll, showed
+`probe3-final` as HISTORICAL and returned to current. No training was active,
+no experiment started and no project switch occurred; published status stays
+`ot5-biped-copy29 / shin55-final` and the service keeps running.
+
+Iteration 44 reverified this same URL without restarting it, through the
+[shin55-final visual comparison](../review-style/README.md#repeat-on-shin55-final--iteration-44):
+`shin55-final` selected by default at the accepted revision, its viewport
+byte-identical to the capture page at the video's camera and within 1.67/255 of
+the decoded clip, a real drag/zoom orbit on the canvas, `shin55-checkpoint20`
+played, downloaded with the recorded digest and preserved across a poll,
+labelled HISTORICAL, and return to current. No training was active, no
+experiment started and no project switch occurred; published status stays
+`ot5-biped-copy29 / shin55-final` and the service keeps running.
+
+Iteration 46 first put the run-less `ot5-wren` project on this URL at revision
+`5309bebc6597…`; [its retained receipt](../wren-fresh/evidence.json) remains
+historical evidence of that switch. Iteration 48 then verified in-place restore
+preservation at that revision. For current Wren training/video checks, use the
+[Wren experiment probes](../wren-fresh/README.md#first-bounded-wren-gpu-experiment-iteration-49).
+
+### Iteration 92 — policy identity visible in the run panel (D4/D5)
+
+The persistent port 8765 service was restarted onto ADR-319, still serving
+`ot5-lark-copy85`. A fresh headless-browser visit selected
+`lark86-retry-video`; its policy-origin panel resolved `lark86-retry`, kind
+`final`, with declared source agreement. The new line is a labelled snapshot
+of retained-byte lookup, with **Check again** for changes to retained files.
+It is separate from the checkpoint list's declared telemetry source.
+
+Reproduction, against the persistent private address:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/wren-fresh/check_video.py \
+  "$HOME/cadex-projects/ot5-lark-copy85" lark86-retry-video \
+  "http://$(tailscale ip -4):8765/" --label origin92
+```
+
+Passed: eight components, recorded parameters and curves, displayed origin
+cross-checked against retained policy bytes, playback through three refreshes,
+hash-equal download (`1f53d43d1c18…`), historical `lark2-final` selection and
+return to current. The video decoded to 81 differing frames, 8.1 encoded
+seconds for 8.0 simulated seconds. Project-local receipts:
+`evidence/lark86-retry-video-origin92-check.json`, its `-browser.png`, and
+`evidence/origin92-panel.png`. This is a same-machine private-address check,
+not a second-device claim. The service stays running; no new experiment or
+project switch occurred. Browser fixtures separately prove conflicting source
+names are visibly flagged rather than substituted for the resolved origin.
+
+
+Iteration 95: the persistent URL still serves `ot5-lark-copy85` with
+`lark86-retry-video` selected. A [disposable Lark copy fault probe](../lark-fresh/VIDEO95.md)
+verified missing/partial/failed video guidance, historical playback and recovery.
+The operator page played/downloaded its current video afterward; all 2,517
+project files stayed byte-identical. The service was not restarted and remains
+running.

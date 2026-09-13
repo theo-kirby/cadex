@@ -87,3 +87,12 @@ The scripted-modeling engine under src/Mod/cadex/ descends from our own
 VibeCAD predecessor's cadex-teardown branch. Same authorship, same
 license; listed here so the [VibeCAD-era] provenance tags in the docs
 resolve to a named project.
+
+--------------------------------------------------------------------------
+
+Headless review renderer (cli/cadex_cli/review_static/)
+Three.js r160 — Copyright 2010–2023 three.js authors, MIT.
+Full licence: THREE-LICENSE.txt in that directory.
+Prototype environment and floor adapted from neural-whoop,
+Copyright 2026 Theo, MIT; full licence: REFERENCE-LICENSE.txt.
+Cadex adaptations and source identities: docs/PROVENANCE.md, ADR-301.

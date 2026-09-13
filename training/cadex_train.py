@@ -89,8 +89,8 @@ PROGRESS_SCHEMA = "cadex-training-progress-v1"
 CURVE_POINTS_CAP = 512
 
 
-def decimated_curve(curve, cap=CURVE_POINTS_CAP):
-    """The reward curve as ``[[iteration, reward_per_step], ...]``, capped.
+def decimated_curve(curve, cap=CURVE_POINTS_CAP, key="reward_per_step"):
+    """A metric history as ``[[iteration, value], ...]``, capped.
 
     Uniform stride with the first and last points always kept, so the
     shape survives and the newest point is always the real newest point.
@@ -99,8 +99,8 @@ def decimated_curve(curve, cap=CURVE_POINTS_CAP):
     """
 
     points = [
-        [int(entry["iteration"]), float(entry["reward_per_step"])]
-        for entry in curve
+        [int(entry["iteration"]), float(entry[key])]
+        for entry in curve if entry.get(key) is not None
     ]
     if cap < 2 or len(points) <= cap:
         return points
@@ -2265,6 +2265,8 @@ def main(argv: Sequence[str]) -> int:
             print(f"checkpoint {path.name}  ({written[-1]['sha256'][:12]})",
                   file=sys.stderr)
 
+    last_report: dict[str, Any] = {}
+
     def report(**fields: Any) -> None:
         """``progress.json``, rewritten atomically.
 
@@ -2276,6 +2278,12 @@ def main(argv: Sequence[str]) -> int:
         write into.
         """
 
+        last_report.update(fields)
+        if "curve" in fields:
+            last_report["curve"] = list(fields["curve"])
+        if "best" in fields:
+            last_report["best"] = dict(fields["best"])
+        fields = dict(last_report)
         curve = list(fields.pop("curve", ()) or ())
         best = dict(fields.pop("best", ()) or {})
         iteration = int(fields.get("iteration", -1))
@@ -2296,6 +2304,9 @@ def main(argv: Sequence[str]) -> int:
                 else 0.0
             ),
             "started_at": started_at,
+            "updated_at": time.time(),
+            "task_sha256": bundle["task_sha256"],
+            "model_sha256": bundle["model_sha256"],
             "device": str(fields.get("device", "")),
             "reward_per_step": (
                 float(curve[-1]["reward_per_step"]) if curve else None
@@ -2322,6 +2333,8 @@ def main(argv: Sequence[str]) -> int:
             # shape rather than its last number. A reader written before
             # this field renders exactly what it always did.
             "curve": decimated_curve(curve),
+            "loss_curve": decimated_curve(curve, key="loss"),
+            "episode_steps_curve": decimated_curve(curve, key="episode_steps"),
             "best_reward_per_step": (
                 None if not best or best.get("iteration", -1) < 0
                 else float(best["reward_per_step"])
@@ -2341,54 +2354,54 @@ def main(argv: Sequence[str]) -> int:
            curve=[], best={}, wall=0.0, device="")
     try:
         trained = train(bundle, options, emit=emit, progress=report)
-    except BaseException as error:
-        # A run that died has to say so in the file, or a `watch` loop and a
-        # panel both sit on "training" for ever. The exception is re-raised
-        # unchanged: this adds a line to an artifact, it does not handle
-        # anything.
-        report(state="failed", iteration=-1, total=int(options.iterations),
-               curve=[], best={}, wall=time.time() - started_at, device="",
-               error=f"{type(error).__name__}: {error}")
-        raise
 
-    header = policy_header(bundle, options, trained,
-                           cadex_importable=cadex_importable)
-    blob = checked_policy(header, trained, what="This policy")
-    worst, _sample, _action = witness_disagreement(header, trained["parameters"])
-    margin = POLICY_WITNESS_TOLERANCE / max(worst, 1.0e-30)
-    if not options.quiet:
-        print(f"witness agrees to {worst:.3e} ({margin:,.0f}x inside the "
-              f"engine's tolerance)", file=sys.stderr)
-    # A short run cannot prove a long one will pass, and saying so is the
-    # whole point of printing the margin rather than a verdict. The witness
-    # error is a *relative* one, so it grows with the activations a policy
-    # learns: the run this check was written for measured a 14x margin after
-    # 2 iterations and failed outright after 2000. A margin this thin means
-    # the same run at length will not survive, and the time to know that is
-    # now.
-    if margin < 100.0:
-        print(
-            f"WARNING: {margin:,.0f}x is a thin margin. This error scales "
-            f"with the size of the activations a policy learns, so a longer "
-            f"run on this task will very likely be refused even though this "
-            f"one passed. Do not start one on the strength of this result.",
-            file=sys.stderr,
+        header = policy_header(bundle, options, trained,
+                               cadex_importable=cadex_importable)
+        blob = checked_policy(header, trained, what="This policy")
+        worst, _sample, _action = witness_disagreement(header, trained["parameters"])
+        margin = POLICY_WITNESS_TOLERANCE / max(worst, 1.0e-30)
+        if not options.quiet:
+            print(f"witness agrees to {worst:.3e} ({margin:,.0f}x inside the "
+                  f"engine's tolerance)", file=sys.stderr)
+        # A short run cannot prove a long one will pass, and saying so is the
+        # whole point of printing the margin rather than a verdict. The witness
+        # error is a *relative* one, so it grows with the activations a policy
+        # learns: the run this check was written for measured a 14x margin after
+        # 2 iterations and failed outright after 2000. A margin this thin means
+        # the same run at length will not survive, and the time to know that is
+        # now.
+        if margin < 100.0:
+            print(
+                f"WARNING: {margin:,.0f}x is a thin margin. This error scales "
+                f"with the size of the activations a policy learns, so a longer "
+                f"run on this task will very likely be refused even though this "
+                f"one passed. Do not start one on the strength of this result.",
+                file=sys.stderr,
+            )
+
+        write_atomically(target, blob)
+        curve = trained["reward_curve"]
+        best_row = max(curve, key=lambda row: row["reward_per_step"]) if curve else None
+        report(
+            state="done",
+            iteration=len(curve) - 1,
+            total=int(options.iterations),
+            curve=curve,
+            best=({"iteration": best_row["iteration"],
+                   "reward_per_step": best_row["reward_per_step"]}
+                  if best_row else {}),
+            wall=float(trained["wall_time_s"]),
+            device=trained["backend"],
         )
 
-    write_atomically(target, blob)
-    curve = trained["reward_curve"]
-    best_row = max(curve, key=lambda row: row["reward_per_step"]) if curve else None
-    report(
-        state="done",
-        iteration=len(curve) - 1,
-        total=int(options.iterations),
-        curve=curve,
-        best=({"iteration": best_row["iteration"],
-               "reward_per_step": best_row["reward_per_step"]}
-              if best_row else {}),
-        wall=float(trained["wall_time_s"]),
-        device=trained["backend"],
-    )
+    except BaseException as error:
+        # Training or final policy publication failed. Publish the failure
+        # so observers do not remain on "training". The exception is re-raised
+        # unchanged: this adds a line to an artifact, it does not handle
+        # anything.
+        report(state="failed", wall=time.time() - started_at,
+               error=f"{type(error).__name__}: {error}")
+        raise
 
     print(json.dumps({
         "out": str(target),

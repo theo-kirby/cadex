@@ -1,0 +1,120 @@
+{
+ "adr": "ADR-324",
+ "project": "ot5-lark-copy85",
+ "persistent_server": true,
+ "private_address_same_machine": true,
+ "server_restarted": false,
+ "server_command": "cadex review --project PROJECT --host PRIVATE_IP --port 8765",
+ "checked_at": "2026-09-13T12:26:09.108006+00:00",
+ "browser_cancel": {
+  "run": "lark98-final",
+  "video": "rollout-6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9.webm",
+  "bytes": 14003,
+  "sha256": "6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9",
+  "fresh_selection": "RUN lark98-final",
+  "expected_default": "lark98-final",
+  "browser_playback_before_cancel": true,
+  "cancel": {
+   "download_url_path": "/video/run/lark98-final/0?download=1",
+   "suggested_filename": "rollout-6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9.webm",
+   "browser_received_bytes_at_cancel": 1500,
+   "total_bytes": 14003,
+   "final_state": "canceled",
+   "seconds_from_click_to_cancel": 4.897,
+   "throttle_bytes_per_second": 1024
+  },
+  "polls_before_cancel": 1,
+  "polls_after_cancel": 3,
+  "freshness_after_cancel": "live",
+  "playback_kept_through_cancel_and_fresh_download": true,
+  "partial_files_left_in_download_dir": [],
+  "fresh_download": {
+   "filename": "rollout-6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9.webm",
+   "bytes": 14003,
+   "sha256": "6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9",
+   "matches_retained": true
+  },
+  "server_log": "review104-server.log",
+  "server_log_lines_before": 1,
+  "server_log_lines_added": 0,
+  "server_log_has_traceback": false,
+  "view_after": "RUN lark98-final"
+ },
+ "identity_playback_download_history": {
+  "persistent_server": true,
+  "private_address_same_machine": true,
+  "browser_playback": true,
+  "params_checked": [
+   "control_hz",
+   "episode_steps",
+   "fall_frac",
+   "foot_len",
+   "foot_t",
+   "foot_w",
+   "hip_spacing",
+   "joint_armature",
+   "joint_damping",
+   "joint_friction",
+   "limb_w",
+   "policy_on",
+   "printed_density",
+   "rollout_seed",
+   "servo_torque_nmm",
+   "shin_len",
+   "thigh_len",
+   "torso_d",
+   "torso_h",
+   "torso_w"
+  ],
+  "foot_len_mm": 90.0,
+  "components": 8,
+  "components_source": "first frame of the run's own retained trace",
+  "curves_present": true,
+  "expected_default": "lark98-final",
+  "is_default": true,
+  "fresh_selection": "RUN lark98-final",
+  "historical_selection": "lark98-checkpoint20",
+  "historical_source": "same training run by policy identity",
+  "policy_origin_panel": "Checked on selection/request: lark98 \u00b7 final \u00b7 declared source: lark98 \u00b7 snapshot; Check again to re-read retained files",
+  "lineage": {
+   "origin": {
+    "run": "lark98",
+    "path": "lark98.cxpolicy",
+    "kind": "final",
+    "iteration": null,
+    "recorded_at": "2026-09-13T10:17:26Z",
+    "also_retained_by": []
+   },
+   "recorded_source_run": "lark98",
+   "source_agrees": true,
+   "playbacks": [
+    {
+     "run": "lark98-checkpoint20",
+     "kind": "checkpoint",
+     "iteration": 19,
+     "path": "lark98.000020.cxpolicy",
+     "recorded_at": "2026-09-13T10:07:33Z",
+     "relation": "historical",
+     "status": "ok",
+     "videos": 2
+    }
+   ]
+  },
+  "download_sha256": "6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9",
+  "decoded_frames": 81,
+  "decoded_frames_differ": true,
+  "encoded_seconds": 8.1,
+  "simulation_seconds": 8.0,
+  "accepted_revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+  "policy_sha256": "fca598975089c259917cba5c9f7e067d6bb3a56b75eb8357c20e4151411413df",
+  "seed": 0,
+  "style": "cadex-prototype-light-v1",
+  "returned_to_current": "RUN lark98-final"
+ },
+ "regression": [
+  "cli/tests/test_review_server.py::test_browser_cancelled_download_is_logged_once_and_the_next_download_completes",
+  "cli/tests/test_review_server.py::test_an_interrupted_download_is_one_log_line_not_a_traceback",
+  "cli/tests/test_review_server.py::test_browser_interrupted_download_leaves_polling_and_a_fresh_download_working"
+ ],
+ "scope": "Real Lark video on the persistent dashboard, cancelled from the browser: with the page's network throttled to 1024 B/s the browser had 1500 of 14003 bytes when Browser.cancelDownload stopped it; the page kept polling and the video kept playing; the fresh unthrottled download is hash-equal; the server log gained no line and no traceback. The server had written the whole 14 KB before the cancel could reach it, so the server-side mid-transfer case is the browser-cancel regression on the 48 MiB synthetic video, not this file. No training, no new recording, no project mutation, no restart."
+}

@@ -1,0 +1,110 @@
+{
+  "project": "ot5-wren",
+  "accepted_revision": "a90b84033ced66e50409c25be6150d5042da2d5ea192e419cc31c04d09d20972",
+  "accepted_digest": "502fc7ad0409f8cadb6fb2e46d077fcb55fcfd9c0da2db2cb620e24c261535c1",
+  "changes": {
+    "foot_len": [
+      85.0,
+      105.0
+    ],
+    "policy_on": [
+      1.0,
+      0.0
+    ]
+  },
+  "script_text_unchanged": true,
+  "task_changed_fields": [
+    "model"
+  ],
+  "retained_files": 114,
+  "retained_inventory_sha256": "8217e1084b542dcb5776f11986b9cdf24fe1bda68867c09ac1edd046b8621285",
+  "comparison": {
+    "rollout_seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "episode_seconds": 8,
+    "control_hz": 50,
+    "training_seed": 0,
+    "iterations": 240,
+    "envs": 1024,
+    "checkpoint_every": 20,
+    "timeout_seconds": 1800,
+    "host_memory_max_bytes": 21474836480,
+    "before_runs": [
+      "wren1-checkpoint20",
+      "wren1-final"
+    ],
+    "after_policies": [
+      "checkpoint20",
+      "final"
+    ],
+    "status": "declared; retraining and additional-seed evaluation not started"
+  },
+  "historical": {
+    "wren1-checkpoint20": {
+      "revision": "ce541019cce8f148df291e138c88fb3fb28b7125cd6145c0098d0c3ae2d6c1bf",
+      "digest": "7a9356516ebe020b75136254875353f35b6ed4d45de70cbe225731a82df41e78",
+      "policy_sha256": "111961e5c8c3352d1d3bf7751657ed1117ac86e8c6bfb26ee6916423d0465dc0",
+      "download_sha256": "b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc",
+      "seed": 0,
+      "sim_seconds": 8.0,
+      "playback_and_polling": true,
+      "feet": {
+        "foot_l": {
+          "sha256": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25",
+          "length_mm": 85.0
+        },
+        "foot_r": {
+          "sha256": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25",
+          "length_mm": 85.0
+        }
+      }
+    },
+    "wren1-final": {
+      "revision": "a8073874ab76e4cc10cd09f4746138feec8b8fcb9f7c45540c1046d40b620849",
+      "digest": "b6712b35562328ff8eb77192b5314e2d2820baa0ac7b11255078683336acc280",
+      "policy_sha256": "133bf5ac6fa8747305d86264554c4ed58b5a8b4c792ab32cf19422ba0613b235",
+      "download_sha256": "ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd",
+      "seed": 0,
+      "sim_seconds": 0.46,
+      "playback_and_polling": true,
+      "feet": {
+        "foot_l": {
+          "sha256": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25",
+          "length_mm": 85.0
+        },
+        "foot_r": {
+          "sha256": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25",
+          "length_mm": 85.0
+        }
+      }
+    }
+  },
+  "persistent_server": true,
+  "private_address_same_machine": true,
+  "default_run": "wren1-final",
+  "accepted_feet": {
+    "foot_l": {
+      "sha256": "b648ca8010927c334d2376a53254191b791bae8296c3c9d09464e53b488b3e2c",
+      "length_mm": 105.0
+    },
+    "foot_r": {
+      "sha256": "b648ca8010927c334d2376a53254191b791bae8296c3c9d09464e53b488b3e2c",
+      "length_mm": 105.0
+    }
+  },
+  "return_to_current": true,
+  "screenshots": {
+    "accepted-model.png": "77957b4d884413e1332c846ccb35cb43a2ad87d77213bd9633e55a37c3dadf61",
+    "accepted-page.png": "f3420b214e4567fdbd6b947dc11e6db67a1de478fbe27072931001e5530ccbbc",
+    "checkpoint-decoded.png": "f98fa1f6a0ea1bea30411c593f1a503a3b4e81b00e82ff9db702782efaf595f7",
+    "final-decoded.png": "66400e727a72226a6735e5d2602b31f43ebe1ff3fc7659c552b855027ffbced4",
+    "wren1-checkpoint20.png": "dc8cdeb983a1346d9f89555cfb09a0f8f0f4fa7e414fdecbda01dfb09b788ddd",
+    "wren1-final.png": "3c42c7233f21c79f031958fe82615f10b24541ecc59a1399a33ad359c5b84b30"
+  },
+  "ok": true
+}

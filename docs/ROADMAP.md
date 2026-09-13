@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-09
+Verified against source: 2026-09-13
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -2713,3 +2713,112 @@ field, and every client gets it through the surface it already reads.
       and rack values exist (ADR-233) and the rack and pinion is composed
       with mesh and clearance evidence (ADR-234); the planetary gearbox is
       still its own slice.
+
+
+## Live headless project review (ADR-284)
+
+- [x] Lark interruption, retry and retry video on the working copy (ADR-315):
+      a real GPU attempt interrupted by SIGINT and shown failed with retry
+      guidance and no substituted video on the persistent dashboard, a
+      successful 40-update new attempt, its verified playable/downloadable
+      video, earlier results preserved and the original byte-identical after
+      the copy's retraining. D8 and D7's retraining half now have Lark evidence.
+
+- [x] Lark copy isolation on the persistent dashboard (ADR-314): whole-project
+      copy `ot5-lark-copy85` served on port 8765, edited through the CLI and
+      restored with the original path unavailable; six retained runs and four
+      videos review from the copy on two servers; the original is byte-identical.
+
+- [x] Lark's review-driven revision, retraining and declared-seed comparison
+      (ADR-313): the product agent chose `torso_h` 70 → 45 mm from `lark1`'s
+      measurements, `lark2` retrained it on the persistent dashboard with
+      checkpoint and final videos, and all four retained policies were compared
+      on seeds 0–9 from their own retained models. Survival on every seed for
+      the revision; one training seed per design, not a gait claim.
+
+- [x] Current-attempt default and persistent Reed operator server (ADR-299):
+      active training first, newest attempt otherwise; preserve deliberate history
+      and playback, with a route back to current. Private-address browser check
+      passes on the real working copy; D10 experiment-spanning evidence remains.
+
+- [x] Share cold retained-video verification across concurrent browser clients
+      (ADR-298), with two-client corruption refusal and bounded-cache eviction tests.
+
+- [x] Bound retained-video digest memory and reuse unchanged verification
+      (ADR-296): 64-file/16 GiB synthetic history measured through HTTP and
+      headless-browser telemetry, with corruption/refusal/recovery regression.
+      Cold reads and cache eviction retain their full hashing cost.
+
+- [x] Retained training telemetry and dashboard polling (ADR-287): bounded
+      reward/loss/episode histories, checkpoint integrity and missing/stale/failed
+      states, verified across atomic updates in a headless browser. D3's actual
+      fresh-biped GPU observation remains open; fixture evidence does not tick it.
+
+- [x] Bounded operation over long histories: the run list carries a telemetry
+      summary per run and histories/verified checkpoints travel per selected run
+      (ADR-321); the same detail carries per-run disk use counted from permitted
+      files, each inode once, no symlink followed, with shared project references
+      sized once and missing/refused references named (ADR-322). Both verified
+      on the persistent Lark dashboard and in headless-browser regressions.
+
+- [x] Final policy publication failures publish failed telemetry (ADR-288),
+      retaining metrics/checkpoints with headless browser fault-injection evidence.
+      The real interrupted runs and new attempts are Wren's `wren57-*` (ADR-305)
+      and Lark's `lark86-*` (ADR-315).
+
+- [x] Dashboard restart lifecycle test (D6, fixture half): the real `cadex review`
+      command stopped and restarted on its port under an independent telemetry
+      producer; the open page recovers without reload, a reopened page reads the
+      same identities, curves, history and video, the producer is neither stopped
+      nor duplicated, and no project file changes. D6's fresh-biped pass with real
+      artifacts and its engine restart remain open.
+
+- [x] Engine restart during real training (D6, ADR-325): on the persistent Lark
+      copy, a public `cadex export` had its engine SIGKILLed mid-work and the next
+      `cadex export` started a fresh engine while a bounded GPU run trained; the
+      killed call exited 1 naming the closed stream, no engine or worker outlived
+      it, the trainer kept its PID and start ticks, the open page kept receiving
+      committed telemetry, and accepted identity and earlier run files were
+      unchanged (`docs/probes/lark-fresh/ENGINE109.md`). Same-machine browser only.
+
+- [x] The fresh biped exists and trained once on the GPU: `ot5-biped` was
+      authored by the product agent on the default model after three quota
+      refusals (no model override needed); a 40 × 1024 PPO probe stored its
+      policy in 90 s under the memory bound, and the live dashboard was observed
+      against it (`docs/HEADLESS-BIPED-REVIEW.md`). The walk failed at declare
+      because the fresh script has no `policy_on` switch, and a running or failed
+      run shows no model identity; both are open defects, D2–D9 stay open.
+
+- [x] A run is identified from its first record (ADR-289): the walk records
+      the manifest's revision, digest and specs before training and each leg's
+      reported identity after it, a failed run keeps the last one, and a run
+      with no rollout is drawn from the accepted attempt only when both halves
+      of its identity are the accepted ones now. Browser-tested through failure
+      on fixtures; the `policy_on` defect and the real-artifact passes stay open.
+
+
+- [x] Freeze assembled review inputs before walk training (ADR-291): run-local
+      meshes, component mappings/placements, parameter specs and document snapshots
+      survive accepted-design changes and staging pruning, verified in a headless
+      browser. Older missing history is not reconstructed; the real D5/D9 design
+      change and retraining remain open.
+- [x] Retain tessellation on ordinary parameter sweeps (ADR-293): real-engine
+      `walk --set` browser regression checks the assembled model before trainer
+      dispatch and preserves its identity and mesh bytes across a later revision.
+
+- [x] Byte-identical outputs each keep their accepted tessellation (ADR-302):
+      a mirrored pair of limbs no longer loses one side in the accepted view or
+      the retained training view; regression on two identical thighs. Exposed
+      by the persistent dashboard during the Reed shin55 experiment.
+
+- [x] Shared reference environment for the live review viewport and headless
+      checkpoint/final videos (ADR-301): local attributed Three.js scene, exact
+      retained poses, fixed trajectory camera, portable style identity and
+      retained legacy recordings; real Reed same-camera/frame comparison.
+
+- [x] Lifecycle report for the fresh biped (D9): `docs/probes/reed-lifecycle/`
+      assembles the D1–D8 evidence index, twelve retained run identities with
+      the model view served for each (incomplete training snapshots named),
+      and the four-design common-seed comparison from the project's records;
+      a test holds the committed report to its evidence. Survival improved,
+      no design walks; the checkbox edit is the owner's.

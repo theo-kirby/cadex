@@ -1,0 +1,535 @@
+{
+  "project": "ot5-wren-copy54",
+  "url_host": "100.104.232.88:8765",
+  "evidence": "restart69-final",
+  "unit": "cadex-operator-review",
+  "accepted_revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+  "accepted_digest": "cd99e3be15558082959904398942bda2e7ee962ff1f39ee51f3658ea9bc9d46c",
+  "accepted_attempt": {
+    "attempt_id": "1789269890828-9f0840e98c36",
+    "revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+    "staging": "script_artifacts/de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47/attempt-1789269890828-9f0840e98c36"
+  },
+  "retained_files": 2004,
+  "runs": 15,
+  "current_run": "wren66-final",
+  "historical_run": "wren66-checkpoint20",
+  "api_sha256_before": "1f8684faec9e4d9c1786de781eb981e4dcdaf5ad2f99c39613c301ae08ee7e2f",
+  "trainers_before": [],
+  "engine_opens": [
+    {
+      "pid": 3255241,
+      "restore": {
+        "digest": "cd99e3be15558082959904398942bda2e7ee962ff1f39ee51f3658ea9bc9d46c",
+        "matches_accepted": true,
+        "performed": true
+      }
+    },
+    {
+      "pid": 3255319,
+      "restore": {
+        "digest": "cd99e3be15558082959904398942bda2e7ee962ff1f39ee51f3658ea9bc9d46c",
+        "matches_accepted": true,
+        "performed": true
+      }
+    }
+  ],
+  "restart": {
+    "old_pid": "3252132",
+    "new_pid": "3255404",
+    "answered_after_s": 1.05,
+    "stale_seen_after_s": 0.13,
+    "polls_during_restart": 14,
+    "systemctl_exit": 0,
+    "nrestarts": "0"
+  },
+  "fresh_default_before": "RUN wren66-final",
+  "download_before": {
+    "run": "wren66-final",
+    "sha256": "802baa759c98e52ba1067cab1f39e28dc72d3fee7c82b073b285bffe0a82470a",
+    "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+    "seed": 0,
+    "sim_seconds": 8.0,
+    "accepted_revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+    "duration_seconds": 8.1
+  },
+  "engine_reopen": {
+    "scope": "served project, in place",
+    "accepted_attempt_files_unchanged": true,
+    "manifest_changed": true,
+    "candidate_attempts_before": [
+      "attempt-1789269890828-9f0840e98c36",
+      "attempt-1789271986773-a994bbcfd9d2",
+      "attempt-1789272137634-6b4d90dd63ae",
+      "attempt-1789272138354-4c1d50ec6bd6"
+    ],
+    "candidate_attempts_after": [
+      "attempt-1789269890828-9f0840e98c36",
+      "attempt-1789272138354-4c1d50ec6bd6",
+      "attempt-1789272215583-0bc958e3cf9f",
+      "attempt-1789272216312-90cff2c25e36"
+    ],
+    "candidate_files_added": 42,
+    "candidate_files_pruned": 42,
+    "candidate_bytes_after": 5025187,
+    "other_files_unchanged": true,
+    "manifest_updated_at": [
+      "2026-09-13T04:02:19Z",
+      "2026-09-13T04:03:37Z"
+    ]
+  },
+  "open_page": {
+    "recovered_without_navigation": true,
+    "selected": "wren66-final",
+    "video_kept_playing": true
+  },
+  "api_sha256_after": "b8aff260a2ac2247c4957a3fe050048f87b6d5ad148dd0d7b5ad9b865d4657ed",
+  "api_unchanged_across_restart": true,
+  "fresh_default_after": "RUN wren66-final",
+  "walk_after_equals_before": true,
+  "download_after": [
+    {
+      "run": "wren66-final",
+      "sha256": "802baa759c98e52ba1067cab1f39e28dc72d3fee7c82b073b285bffe0a82470a",
+      "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+      "seed": 0,
+      "sim_seconds": 8.0,
+      "accepted_revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+      "duration_seconds": 8.1
+    },
+    {
+      "run": "wren66-checkpoint20",
+      "sha256": "682f41bf1ce4846686fba681512f04e3defee83ec12e930e7dc546498016e533",
+      "policy_sha256": "115261fa6eb240ddfb8c3e5ade951fbdd7f2e4fd759c43a9671ac23637961090",
+      "seed": 0,
+      "sim_seconds": 8.0,
+      "accepted_revision": "d4a0e73df5676b1703ab66ea71e163406e7613677d9d12fe934b8779ab303777",
+      "duration_seconds": 8.1
+    }
+  ],
+  "trainers_after": [],
+  "retained_files_unchanged_across_restart": true,
+  "private_address_same_machine": true,
+  "screenshots": {
+    "fresh-page-after-restart.png": "5802cd40d8448146d992ce4c941abc2b2bfdcdf1a4faa0916618960013ba84d5",
+    "open-page-after-restart.png": "a8bfd05f11337f363df632d38d898c55c46610c2ef98eaa73cc06639f0ea65ff"
+  },
+  "schema": "cadex-restart-evidence-v1",
+  "run_identities": {
+    "wren1-checkpoint20": {
+      "relation": "historical",
+      "outcome": "completed",
+      "telemetry": "stale",
+      "iteration": 18,
+      "revision": "ce541019cce8f148df291e138c88fb3fb28b7125cd6145c0098d0c3ae2d6c1bf",
+      "points": [
+        19,
+        19,
+        19
+      ],
+      "videos": [
+        "b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc"
+      ]
+    },
+    "wren1": {
+      "relation": "historical",
+      "outcome": "completed",
+      "telemetry": "done",
+      "iteration": 239,
+      "revision": "c2e89b36b1e27cacc6afab5210a3cc627ec2d91f1f0e95ca37093ed4b7f6cd13",
+      "points": [
+        240,
+        240,
+        240
+      ],
+      "videos": []
+    },
+    "wren1-final": {
+      "relation": "historical",
+      "outcome": "completed",
+      "telemetry": "done",
+      "iteration": 239,
+      "revision": "a8073874ab76e4cc10cd09f4746138feec8b8fcb9f7c45540c1046d40b620849",
+      "points": [
+        240,
+        240,
+        240
+      ],
+      "videos": [
+        "ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd"
+      ]
+    },
+    "wren2-checkpoint20": {
+      "relation": "historical",
+      "outcome": "completed",
+      "telemetry": "stale",
+      "iteration": 18,
+      "revision": "ab3f9a9f7a32c0e8b3aef92db3a5a2f88e0cce11fc2e26bc51d933d5308c53eb",
+      "points": [
+        19,
+        19,
+        19
+      ],
+      "videos": [
+        "250c0534a5deb7bedab0f547cb933ba2976943bbd410d8efe8618febbdde5529"
+      ]
+    },
+    "wren2": {
+      "relation": "historical",
+      "outcome": "completed",
+      "telemetry": "done",
+      "iteration": 239,
+      "revision": "a90b84033ced66e50409c25be6150d5042da2d5ea192e419cc31c04d09d20972",
+      "points": [
+        240,
+        240,
+        240
+      ],
+      "videos": []
+    },
+    "wren2-final": {
+      "relation": "historical",
+      "outcome": "completed",
+      "telemetry": "done",
+      "iteration": 239,
+      "revision": "26332a5955e3a044b968e3ec14eec809d2090dfe10922c4f242c1a5a12bdc477",
+      "points": [
+        240,
+        240,
+        240
+      ],
+      "videos": [
+        "59825c07950c377e1ff6f53139f20f25dfcdb5786e72eead861b52b5c2b41d1b"
+      ]
+    },
+    "wren56-interrupt": {
+      "relation": "historical",
+      "outcome": "failed",
+      "telemetry": "failed",
+      "iteration": 23,
+      "revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+      "points": [
+        24,
+        24,
+        24
+      ],
+      "videos": []
+    },
+    "wren56b-interrupt": {
+      "relation": "historical",
+      "outcome": "failed",
+      "telemetry": "failed",
+      "iteration": 5,
+      "revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+      "points": [
+        6,
+        6,
+        6
+      ],
+      "videos": []
+    },
+    "wren56c-interrupt": {
+      "relation": "historical",
+      "outcome": "failed",
+      "telemetry": "failed",
+      "iteration": 5,
+      "revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+      "points": [
+        6,
+        6,
+        6
+      ],
+      "videos": []
+    },
+    "wren56c-retry": {
+      "relation": "historical",
+      "outcome": "completed",
+      "telemetry": "done",
+      "iteration": 11,
+      "revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+      "points": [
+        12,
+        12,
+        12
+      ],
+      "videos": []
+    },
+    "wren57-interrupt": {
+      "relation": "historical",
+      "outcome": "failed",
+      "telemetry": "failed",
+      "iteration": 5,
+      "revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+      "points": [
+        6,
+        6,
+        6
+      ],
+      "videos": []
+    },
+    "wren57-retry": {
+      "relation": "historical",
+      "outcome": "completed",
+      "telemetry": "done",
+      "iteration": 11,
+      "revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+      "points": [
+        12,
+        12,
+        12
+      ],
+      "videos": [
+        "4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e"
+      ]
+    },
+    "wren66-checkpoint20": {
+      "relation": "historical",
+      "outcome": "completed",
+      "telemetry": "stale",
+      "iteration": 18,
+      "revision": "d4a0e73df5676b1703ab66ea71e163406e7613677d9d12fe934b8779ab303777",
+      "points": [
+        19,
+        19,
+        19
+      ],
+      "videos": [
+        "682f41bf1ce4846686fba681512f04e3defee83ec12e930e7dc546498016e533"
+      ]
+    },
+    "wren66": {
+      "relation": "historical",
+      "outcome": "completed",
+      "telemetry": "done",
+      "iteration": 239,
+      "revision": "03077ee9eb82e5849d6a9625b302694e2a1fcbfff94fa86e8f551eea0f59b7a9",
+      "points": [
+        240,
+        240,
+        240
+      ],
+      "videos": []
+    },
+    "wren66-final": {
+      "relation": "current",
+      "outcome": "completed",
+      "telemetry": "done",
+      "iteration": 239,
+      "revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+      "points": [
+        240,
+        240,
+        240
+      ],
+      "videos": [
+        "802baa759c98e52ba1067cab1f39e28dc72d3fee7c82b073b285bffe0a82470a"
+      ]
+    }
+  },
+  "page_walk": {
+    "accepted": {
+      "kind": "ACCEPTED NOW",
+      "relation": "",
+      "telemetry": "unselected",
+      "points": null,
+      "model": "loaded",
+      "foot_len": "90",
+      "videos": 0
+    },
+    "wren1-checkpoint20": {
+      "kind": "RUN wren1-checkpoint20",
+      "relation": "HISTORICAL \u2014 recorded at ce541019cce8, accepted now is de9692bd4ee5",
+      "telemetry": "stale",
+      "points": [
+        "19",
+        "19",
+        "19"
+      ],
+      "model": "loaded",
+      "foot_len": "85",
+      "videos": 1
+    },
+    "wren1": {
+      "kind": "RUN wren1",
+      "relation": "HISTORICAL \u2014 recorded at c2e89b36b1e2, accepted now is de9692bd4ee5",
+      "telemetry": "done",
+      "points": [
+        "240",
+        "240",
+        "240"
+      ],
+      "model": "loaded",
+      "foot_len": "\u2014",
+      "videos": 0
+    },
+    "wren1-final": {
+      "kind": "RUN wren1-final",
+      "relation": "HISTORICAL \u2014 recorded at a8073874ab76, accepted now is de9692bd4ee5",
+      "telemetry": "done",
+      "points": [
+        "240",
+        "240",
+        "240"
+      ],
+      "model": "loaded",
+      "foot_len": "85",
+      "videos": 1
+    },
+    "wren2-checkpoint20": {
+      "kind": "RUN wren2-checkpoint20",
+      "relation": "HISTORICAL \u2014 recorded at ab3f9a9f7a32, accepted now is de9692bd4ee5",
+      "telemetry": "stale",
+      "points": [
+        "19",
+        "19",
+        "19"
+      ],
+      "model": "loaded",
+      "foot_len": "105",
+      "videos": 1
+    },
+    "wren2": {
+      "kind": "RUN wren2",
+      "relation": "HISTORICAL \u2014 recorded at a90b84033ced, accepted now is de9692bd4ee5",
+      "telemetry": "done",
+      "points": [
+        "240",
+        "240",
+        "240"
+      ],
+      "model": "loaded",
+      "foot_len": "105",
+      "videos": 0
+    },
+    "wren2-final": {
+      "kind": "RUN wren2-final",
+      "relation": "HISTORICAL \u2014 recorded at 26332a5955e3, accepted now is de9692bd4ee5",
+      "telemetry": "done",
+      "points": [
+        "240",
+        "240",
+        "240"
+      ],
+      "model": "loaded",
+      "foot_len": "105",
+      "videos": 1
+    },
+    "wren56-interrupt": {
+      "kind": "RUN wren56-interrupt",
+      "relation": "HISTORICAL \u2014 recorded at 5b61ef31ff13, accepted now is de9692bd4ee5",
+      "telemetry": "failed",
+      "points": [
+        "24",
+        "24",
+        "24"
+      ],
+      "model": "loaded",
+      "foot_len": "110",
+      "videos": 0
+    },
+    "wren56b-interrupt": {
+      "kind": "RUN wren56b-interrupt",
+      "relation": "HISTORICAL \u2014 recorded at 5b61ef31ff13, accepted now is de9692bd4ee5",
+      "telemetry": "failed",
+      "points": [
+        "6",
+        "6",
+        "6"
+      ],
+      "model": "loaded",
+      "foot_len": "110",
+      "videos": 0
+    },
+    "wren56c-interrupt": {
+      "kind": "RUN wren56c-interrupt",
+      "relation": "HISTORICAL \u2014 recorded at 5b61ef31ff13, accepted now is de9692bd4ee5",
+      "telemetry": "failed",
+      "points": [
+        "6",
+        "6",
+        "6"
+      ],
+      "model": "loaded",
+      "foot_len": "110",
+      "videos": 0
+    },
+    "wren56c-retry": {
+      "kind": "RUN wren56c-retry",
+      "relation": "HISTORICAL \u2014 recorded at 5b61ef31ff13, accepted now is de9692bd4ee5",
+      "telemetry": "done",
+      "points": [
+        "12",
+        "12",
+        "12"
+      ],
+      "model": "loaded",
+      "foot_len": "110",
+      "videos": 0
+    },
+    "wren57-interrupt": {
+      "kind": "RUN wren57-interrupt",
+      "relation": "HISTORICAL \u2014 recorded at 5b61ef31ff13, accepted now is de9692bd4ee5",
+      "telemetry": "failed",
+      "points": [
+        "6",
+        "6",
+        "6"
+      ],
+      "model": "loaded",
+      "foot_len": "110",
+      "videos": 0
+    },
+    "wren57-retry": {
+      "kind": "RUN wren57-retry",
+      "relation": "HISTORICAL \u2014 recorded at 79f86c69bfc3, accepted now is de9692bd4ee5",
+      "telemetry": "done",
+      "points": [
+        "12",
+        "12",
+        "12"
+      ],
+      "model": "loaded",
+      "foot_len": "110",
+      "videos": 1
+    },
+    "wren66-checkpoint20": {
+      "kind": "RUN wren66-checkpoint20",
+      "relation": "HISTORICAL \u2014 recorded at d4a0e73df567, accepted now is de9692bd4ee5",
+      "telemetry": "stale",
+      "points": [
+        "19",
+        "19",
+        "19"
+      ],
+      "model": "loaded",
+      "foot_len": "90",
+      "videos": 1
+    },
+    "wren66": {
+      "kind": "RUN wren66",
+      "relation": "HISTORICAL \u2014 recorded at 03077ee9eb82, accepted now is de9692bd4ee5",
+      "telemetry": "done",
+      "points": [
+        "240",
+        "240",
+        "240"
+      ],
+      "model": "loaded",
+      "foot_len": "90",
+      "videos": 0
+    },
+    "wren66-final": {
+      "kind": "RUN wren66-final",
+      "relation": "CURRENT \u2014 this run's revision is the accepted revision now",
+      "telemetry": "done",
+      "points": [
+        "240",
+        "240",
+        "240"
+      ],
+      "model": "loaded",
+      "foot_len": "90",
+      "videos": 1
+    }
+  }
+}

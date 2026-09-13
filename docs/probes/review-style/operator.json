@@ -1,0 +1,33 @@
+{
+  "project": "ot5-biped-copy29",
+  "run": "copy100",
+  "current": {
+    "selected": "copy100",
+    "stale": false,
+    "error": null,
+    "revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc",
+    "relation": "current",
+    "model": {
+      "available": true,
+      "reason": null,
+      "revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc"
+    },
+    "runs": [
+      "probe1",
+      "probe1-playback",
+      "probe2-checkpoint20",
+      "probe2",
+      "probe3-checkpoint20",
+      "probe3",
+      "probe3-final",
+      "foot90",
+      "copy100"
+    ]
+  },
+  "foot_len_mm": 100.0,
+  "video_sha256": "2308fe3baa4d0a5a2256a37deadfa798256ab6cca978ff8daeacc56c76a2ab24",
+  "playback_preserved_on_poll": true,
+  "historical_run": "probe3-final",
+  "return_to_current": true,
+  "private_address_same_machine": true
+}

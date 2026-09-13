@@ -1,0 +1,236 @@
+{
+  "schema": "reed-copy-lifecycle-v1",
+  "original_files_unchanged": 1206,
+  "inherited_run_asset_files_unchanged": 322,
+  "original_unavailable_during_browser_review": true,
+  "original_restored": true,
+  "engine_reopened_without_original": true,
+  "copy_accepted_revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc",
+  "copy_digest": "07bb7bc2baa3a1018d819552146d43a797f7032df9a0f58adcb076fc6055b44c",
+  "private_address_same_machine": true,
+  "views": {
+    "probe3-final": {
+      "revision": "a7ee956cafc8de6b1732bc83cb3f59d832a6fe46b5406f3624e88267f479fa2d",
+      "digest": "14d56ed42ef87185db899cb2485180a81f8eb0959aaf2f8356c7031760a6ebb1",
+      "params": "namevaluedefaultminmaxunitlabelepisode_s88220sEpisode length (x50 Hz = steps)fall_height12012050200mmTorso CoM height that ends the episodefoot_len707040120mmFoot length (X)foot_t88415mmFoot thicknessfoot_w35352060mmFoot width (Y)hip_spacing50503690mmHip-to-hip lateral spacinglimb_w18181030mmLeg member width/depthpolicy_on1001\u2014Play retained policyprinted_density125012504003000kg/m^3Printed material densityservo_torque200200501000N*mmActuator torque limitshin_len808050150mmShin lengththigh_len808050150mmThigh lengthtorso_d606040100mmTorso depth (fore-aft X)torso_h707040120mmTorso heighttorso_w909060140mmTorso width (lateral Y)",
+      "docs": "# docs/design-specs.md (snapshot)\n\n# design specs\n\nOne bullet per note, newest last. Written by the `cadex` CLI from a turn's\nclosing `NOTE design specs:` lines, and read back to the agent on its next\nvisit. Edit it freely; it is the project's, not the CLI's.\n\n- (2026-09-12) Standing height 238 mm (foot_t 8 + shin 80 + thigh 80 + torso 70), torso CoM at 203 mm. Total robot mass 0.651 kg at printed_density 1250 kg/m\u00b3 (ground plate excluded). Feet 70 \u00d7 35 \u00d7 8 mm boxes. Joint limits: hips \u00b160\u00b0, knees 0\u2026110\u00b0 (flexion one way only). Actuator torque limit 200 N\u00b7mm per joint (param servo_torque). Episode 8 s \u00d7 50 Hz = 400 steps; forward axis is WORLD +X; episode ends when torso_com_z < fall_height (120 mm). Reset variation: rigid tilt 0\u20133\u00b0, lift 5\u201315 mm, stumble 0\u201340 mm/s. Success measure for future runs: mean forward displacement of torso_com_x, survival fraction of the 400-step horizon, and fall count over seeds 0\u20139.\n",
+      "relation": "HISTORICAL \u2014 recorded at a7ee956cafc8, accepted now is 25d9b6ab7472",
+      "model": {
+        "available": true,
+        "components": 8,
+        "triangles": 96,
+        "bounds": {
+          "min": [
+            -200,
+            -150,
+            -10
+          ],
+          "max": [
+            200,
+            150,
+            248.59519958496094
+          ],
+          "center": [
+            0,
+            0,
+            119.29759979248047
+          ],
+          "radius": 281.4566917166768
+        }
+      },
+      "curve_points": {
+        "curve": "240",
+        "loss_curve": "240",
+        "episode_steps_curve": "240"
+      },
+      "foot_length_mm": 70.0,
+      "foot_mesh_sha256": "25d1583d794391230aaf36481e411182b9616caf4aa927d0355a71c6040f7f0b",
+      "orbit_zoom": true,
+      "video_played": true,
+      "download_sha256": "59724f619c5540468f8fd6e109aa319507be6a449eafcc8ef9f3259af6046853"
+    },
+    "foot90": {
+      "revision": "0596013572c6ca53ac1a83f7ee8153ae4bb88fcefa87486818c93f6aaaecaa48",
+      "digest": "395faa6bd23ffbedc920bdfd6161aef1b7f2b144c2917b39794adc7c22b25cb4",
+      "params": "namevaluedefaultminmaxunitlabelepisode_s\u20148220sEpisode length (x50 Hz = steps)fall_height\u201412050200mmTorso CoM height that ends the episodefoot_len907040120mmFoot length (X)foot_t\u20148415mmFoot thicknessfoot_w\u2014352060mmFoot width (Y)hip_spacing\u2014503690mmHip-to-hip lateral spacinglimb_w\u2014181030mmLeg member width/depthpolicy_on0001\u2014Play retained policyprinted_density\u201412504003000kg/m^3Printed material densityservo_torque\u2014200501000N*mmActuator torque limitshin_len\u20148050150mmShin lengththigh_len\u20148050150mmThigh lengthtorso_d\u20146040100mmTorso depth (fore-aft X)torso_h\u20147040120mmTorso heighttorso_w\u20149060140mmTorso width (lateral Y)",
+      "docs": "# docs/design-specs.md (snapshot)\n\n# design specs\n\nOne bullet per note, newest last. Written by the `cadex` CLI from a turn's\nclosing `NOTE design specs:` lines, and read back to the agent on its next\nvisit. Edit it freely; it is the project's, not the CLI's.\n\n- (2026-09-12) Standing height 238 mm (foot_t 8 + shin 80 + thigh 80 + torso 70), torso CoM at 203 mm. Total robot mass 0.651 kg at printed_density 1250 kg/m\u00b3 (ground plate excluded). Feet 70 \u00d7 35 \u00d7 8 mm boxes. Joint limits: hips \u00b160\u00b0, knees 0\u2026110\u00b0 (flexion one way only). Actuator torque limit 200 N\u00b7mm per joint (param servo_torque). Episode 8 s \u00d7 50 Hz = 400 steps; forward axis is WORLD +X; episode ends when torso_com_z < fall_height (120 mm). Reset variation: rigid tilt 0\u20133\u00b0, lift 5\u201315 mm, stumble 0\u201340 mm/s. Success measure for future runs: mean forward displacement of torso_com_x, survival fraction of the 400-step horizon, and fall count over seeds 0\u20139.\n\n## Review experiment: foot90\n\nAccepted foot length becomes 90 mm (previously 70 mm), symmetrically centred about the existing fixed ankle. Other design/task parameters remain unchanged; episode length remains eight seconds. Larger fore/aft support is a hypothesis; increased foot mass/inertia is part of this physical change. Evaluate displacement, survival and falls on seeds 0\u20139 after fresh 240-iteration / 1024-environment / seed-0 training. Actor-applied parameter revision after two product-agent quota refusals; see ADR-005.\n",
+      "relation": "HISTORICAL \u2014 recorded at 0596013572c6, accepted now is 25d9b6ab7472",
+      "model": {
+        "available": true,
+        "components": 8,
+        "triangles": 96,
+        "bounds": {
+          "min": [
+            -200,
+            -150,
+            -10
+          ],
+          "max": [
+            200,
+            150,
+            248.59519958496094
+          ],
+          "center": [
+            0,
+            0,
+            119.29759979248047
+          ],
+          "radius": 281.4566917166768
+        }
+      },
+      "curve_points": {
+        "curve": "240",
+        "loss_curve": "240",
+        "episode_steps_curve": "240"
+      },
+      "foot_length_mm": 90.0,
+      "foot_mesh_sha256": "ab419b61ad7523f92f9103be3432497a97a8a54fc413c837f371d4bb6f14fb3d",
+      "orbit_zoom": true,
+      "video_played": true,
+      "download_sha256": "1e17ab439a024be0908764aa00a90c2bb9999816c8a2d412dfa3c9c0b36719b7"
+    },
+    "copy100": {
+      "revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc",
+      "digest": "07bb7bc2baa3a1018d819552146d43a797f7032df9a0f58adcb076fc6055b44c",
+      "params": "namevaluedefaultminmaxunitlabelepisode_s\u20148220sEpisode length (x50 Hz = steps)fall_height\u201412050200mmTorso CoM height that ends the episodefoot_len1007040120mmFoot length (X)foot_t\u20148415mmFoot thicknessfoot_w\u2014352060mmFoot width (Y)hip_spacing\u2014503690mmHip-to-hip lateral spacinglimb_w\u2014181030mmLeg member width/depthpolicy_on0001\u2014Play retained policyprinted_density\u201412504003000kg/m^3Printed material densityservo_torque\u2014200501000N*mmActuator torque limitshin_len\u20148050150mmShin lengththigh_len\u20148050150mmThigh lengthtorso_d\u20146040100mmTorso depth (fore-aft X)torso_h\u20147040120mmTorso heighttorso_w\u20149060140mmTorso width (lateral Y)",
+      "docs": "# docs/design-specs.md (snapshot)\n\n# design specs\n\nOne bullet per note, newest last. Written by the `cadex` CLI from a turn's\nclosing `NOTE design specs:` lines, and read back to the agent on its next\nvisit. Edit it freely; it is the project's, not the CLI's.\n\n- (2026-09-12) Standing height 238 mm (foot_t 8 + shin 80 + thigh 80 + torso 70), torso CoM at 203 mm. Total robot mass 0.651 kg at printed_density 1250 kg/m\u00b3 (ground plate excluded). Feet 70 \u00d7 35 \u00d7 8 mm boxes. Joint limits: hips \u00b160\u00b0, knees 0\u2026110\u00b0 (flexion one way only). Actuator torque limit 200 N\u00b7mm per joint (param servo_torque). Episode 8 s \u00d7 50 Hz = 400 steps; forward axis is WORLD +X; episode ends when torso_com_z < fall_height (120 mm). Reset variation: rigid tilt 0\u20133\u00b0, lift 5\u201315 mm, stumble 0\u201340 mm/s. Success measure for future runs: mean forward displacement of torso_com_x, survival fraction of the 400-step horizon, and fall count over seeds 0\u20139.\n\n## Review experiment: foot90\n\nAccepted foot length becomes 90 mm (previously 70 mm), symmetrically centred about the existing fixed ankle. Other design/task parameters remain unchanged; episode length remains eight seconds. Larger fore/aft support is a hypothesis; increased foot mass/inertia is part of this physical change. Evaluate displacement, survival and falls on seeds 0\u20139 after fresh 240-iteration / 1024-environment / seed-0 training. Actor-applied parameter revision after two product-agent quota refusals; see ADR-005.\n\n## Independent-copy experiment: copy100\n\nFoot length 100 mm, previously 90 mm; other design and task parameters unchanged. Foot90 final fell in nine of ten seeds, so greater fore/aft support is a hypothesis worth testing, with increased foot mass/inertia and no assumed improvement. This bounded 240-iteration retraining proves copy independence, not gait quality across seeds. Actor-applied through public walk --set after product-agent session-limit refusal.\n",
+      "relation": "CURRENT \u2014 this run's revision is the accepted revision now",
+      "model": {
+        "available": true,
+        "components": 8,
+        "triangles": 96,
+        "bounds": {
+          "min": [
+            -200,
+            -150,
+            -10
+          ],
+          "max": [
+            200,
+            150,
+            248.59519958496094
+          ],
+          "center": [
+            0,
+            0,
+            119.29759979248047
+          ],
+          "radius": 281.4566917166768
+        }
+      },
+      "curve_points": {
+        "curve": "240",
+        "loss_curve": "240",
+        "episode_steps_curve": "240"
+      },
+      "foot_length_mm": 100.0,
+      "foot_mesh_sha256": "dbb8ba4bf6b3309dec535eac94802f23769e018e9b21338a6f154bb3f68a025a",
+      "orbit_zoom": true,
+      "video_played": true,
+      "download_sha256": "2308fe3baa4d0a5a2256a37deadfa798256ab6cca978ff8daeacc56c76a2ab24"
+    }
+  },
+  "video_check": {
+    "private_address_same_machine": true,
+    "browser_playback": true,
+    "download_sha256": "2308fe3baa4d0a5a2256a37deadfa798256ab6cca978ff8daeacc56c76a2ab24",
+    "decoded_frames": 8,
+    "decoded_frames_differ": true,
+    "encoded_seconds": 0.8,
+    "simulation_seconds": 0.62,
+    "original_failed_run_preserved": true,
+    "accepted_revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc",
+    "policy_sha256": "9e1674abf4dd70317dd6e3de32dd25164d09e2619fdde6c418c538e39a900903",
+    "seed": 0
+  },
+  "training": {
+    "device": "gpu",
+    "wall_time_s": 324.8821433640551,
+    "sha256": "9e1674abf4dd70317dd6e3de32dd25164d09e2619fdde6c418c538e39a900903",
+    "model_sha256": "3502b95af78bed55fa9e88ed26f143b3b2bfb04b3bbc31ecc7189641fa47d9ec",
+    "task_sha256": "ebfc10df7d35b88ecec017b50e4c4a52cb5367f22bfad1a46a50c1f121f60ae6",
+    "witness_error": 9.154245965703467e-08,
+    "witness_samples": 32,
+    "witness_tolerance": 0.0001,
+    "iterations": 240,
+    "envs": 1024,
+    "seed": 0,
+    "memory_limit_bytes": 21474836480,
+    "sampled_cgroup_peak_bytes": 5070766080,
+    "trainer_timeout_seconds": 1800,
+    "outer_timeout_seconds": 2100
+  },
+  "legs": [
+    {
+      "accepted_revision": "5876642f4d6183782b79cf7e609f52a43d9f8bab9a9a17bda4ac8f81074e346f",
+      "digest": "e091e6fef0c84e4821237f2d34f25abb9d0ea068d0f4d81a0341ab588cef559d",
+      "exit": 0,
+      "leg": "sweep",
+      "seconds": 1.28
+    },
+    {
+      "accepted_revision": "5876642f4d6183782b79cf7e609f52a43d9f8bab9a9a17bda4ac8f81074e346f",
+      "digest": "e091e6fef0c84e4821237f2d34f25abb9d0ea068d0f4d81a0341ab588cef559d",
+      "exit": 0,
+      "leg": "train",
+      "seconds": 418.39
+    },
+    {
+      "accepted_revision": "3a27d4706ebdd26c66d7ed1da44ec55d6953b4235548e49a2c7fe11154b17267",
+      "digest": "e091e6fef0c84e4821237f2d34f25abb9d0ea068d0f4d81a0341ab588cef559d",
+      "exit": 0,
+      "leg": "declare",
+      "seconds": 0.72
+    },
+    {
+      "accepted_revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc",
+      "digest": "07bb7bc2baa3a1018d819552146d43a797f7032df9a0f58adcb076fc6055b44c",
+      "exit": 0,
+      "leg": "rollout",
+      "seconds": 1.31
+    }
+  ],
+  "original_inventory_sha256": "a0f42ce87329a1f290cb660f3ed82dbcf83d220a39bddb0421f8106fe2f90a36",
+  "product_agent_revision_authored": false,
+  "product_agent_refusal": "Provider session quota, before authoring",
+  "rollout": {
+    "seed": 0,
+    "episode_limit_s": 8,
+    "observed_s": 0.62,
+    "termination": "fell",
+    "displacement_mm": [
+      188.4023414876298,
+      3.2627149670779874,
+      -81.16866514391302
+    ]
+  },
+  "video_checker_sha256": "94e928f7b83cf541ed6526ea7a8877c808a35747410f9c9c6bdc6d0b1ca8c221",
+  "live": {
+    "revision": "5876642f4d6183782b79cf7e609f52a43d9f8bab9a9a17bda4ac8f81074e346f",
+    "model": {
+      "available": true,
+      "components": 4,
+      "triangles": 48,
+      "bounds": {
+        "min": [
+          -200,
+          -150,
+          -10
+        ],
+        "max": [
+          200,
+          150,
+          238
+        ],
+        "center": [
+          0,
+          0,
+          114
+        ],
+        "radius": 279.0627169652012
+      }
+    },
+    "telemetry": "Training telemetry: trainingiteration: 32total: 240reward_per_step: 0.77468loss: 17.058episode_steps: 330.32Reward per step \u00b7 33 retained samplesiterations 0\u201332 \u00b7 range -0.80010\u20130.82032Loss \u00b7 33 retained samplesiterations 0\u201332 \u00b7 range 7.8509\u201368.591Episode length (steps) \u00b7 33 retained samplesiterations 0\u201332 \u00b7 range 33.464\u201320480checkpoints: none reported",
+    "model_loaded_while_training": true
+  }
+}

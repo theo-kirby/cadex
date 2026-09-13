@@ -1,0 +1,199 @@
+{
+  "project": "ot5-wren-copy54",
+  "prior_run_files_preserved": 362,
+  "original_files_preserved": 963,
+  "four_videos_checked_after_each": true,
+  "historical_interruption_preserved": true,
+  "persistent_server": true,
+  "same_machine_private_network": true,
+  "attempts": [
+    {
+      "exclusion": {
+        "interval_seconds": 0.05,
+        "scans": 1639,
+        "max_trainers": 1,
+        "observed_pids": [
+          2900169
+        ],
+        "violation": null,
+        "max_scan_gap_seconds": 0.05932673695497215
+      },
+      "run": "wren57-interrupt",
+      "exit": -2,
+      "samples": [
+        {
+          "file": 0,
+          "page": "iteration: -1",
+          "state": "stale"
+        },
+        {
+          "file": 0,
+          "page": "iteration: 0",
+          "state": "training"
+        },
+        {
+          "file": 2,
+          "page": "iteration: 2",
+          "state": "training"
+        },
+        {
+          "file": 3,
+          "page": "iteration: 3",
+          "state": "training"
+        },
+        {
+          "file": 5,
+          "page": "iteration: 4",
+          "state": "training"
+        }
+      ],
+      "host_peak_bytes": 4998832128,
+      "elapsed_s": 88.74,
+      "fresh_selection": "RUN wren57-interrupt",
+      "note": "error: Controlled interruption: SIGINT after real GPU updates; start a new cadex walk --out runs/<new-name>.",
+      "accepted_revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+      "digest": "b04439061b0278903fca11079ff0937dac12425a5a8b767e675e24542c7a4ea4",
+      "final": {
+        "state": "failed",
+        "device": "gpu",
+        "iteration": 5,
+        "total": 60,
+        "started_at": 1789263684.4583225,
+        "updated_at": 1789263770.1147068,
+        "wall_time_s": 85.65636968612671,
+        "reward_per_step": 0.060810476541519165,
+        "loss": 5.580748081207275,
+        "episode_steps": 175.04273986816406,
+        "error": "KeyboardInterrupt: ",
+        "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+        "model_sha256": "2529d882f9a340f1e3f96f18d0b0fd628d35e6cf274d3809dbd1816a9f8c679e"
+      },
+      "curve_samples": {
+        "curve": 6,
+        "loss_curve": 6,
+        "episode_steps_curve": 6
+      }
+    },
+    {
+      "exclusion": {
+        "interval_seconds": 0.05,
+        "scans": 2789,
+        "max_trainers": 1,
+        "observed_pids": [
+          2906987
+        ],
+        "violation": null,
+        "max_scan_gap_seconds": 0.0588746900903061
+      },
+      "run": "wren57-retry",
+      "exit": 0,
+      "samples": [
+        {
+          "file": 0,
+          "page": "iteration: -1",
+          "state": "stale"
+        },
+        {
+          "file": 0,
+          "page": "iteration: 0",
+          "state": "training"
+        },
+        {
+          "file": 1,
+          "page": "iteration: 1",
+          "state": "training"
+        },
+        {
+          "file": 3,
+          "page": "iteration: 3",
+          "state": "training"
+        },
+        {
+          "file": 4,
+          "page": "iteration: 4",
+          "state": "training"
+        },
+        {
+          "file": 6,
+          "page": "iteration: 5",
+          "state": "training"
+        },
+        {
+          "file": 7,
+          "page": "iteration: 7",
+          "state": "training"
+        },
+        {
+          "file": 8,
+          "page": "iteration: 8",
+          "state": "training"
+        },
+        {
+          "file": 10,
+          "page": "iteration: 9",
+          "state": "training"
+        },
+        {
+          "file": 11,
+          "page": "iteration: 11",
+          "state": "training"
+        }
+      ],
+      "host_peak_bytes": 5483139072,
+      "elapsed_s": 150.793,
+      "fresh_selection": "RUN wren57-retry",
+      "note": "\u2014",
+      "accepted_revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+      "digest": "b04439061b0278903fca11079ff0937dac12425a5a8b767e675e24542c7a4ea4",
+      "final": {
+        "state": "done",
+        "device": "gpu",
+        "iteration": 11,
+        "total": 12,
+        "started_at": 1789263782.3321154,
+        "updated_at": 1789263929.784999,
+        "wall_time_s": 55.53556377498899,
+        "reward_per_step": 0.1330547034740448,
+        "loss": 8.267842292785645,
+        "episode_steps": 99.90243530273438,
+        "error": "",
+        "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+        "model_sha256": "2529d882f9a340f1e3f96f18d0b0fd628d35e6cf274d3809dbd1816a9f8c679e"
+      },
+      "curve_samples": {
+        "curve": 12,
+        "loss_curve": 12,
+        "episode_steps_curve": 12
+      },
+      "policy": {
+        "relative_path": "runs/wren57-retry/train/wren57-retry.cxpolicy",
+        "bytes": 49095,
+        "sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+        "engine_verified": false
+      }
+    }
+  ],
+  "screenshots_sha256": {
+    "evidence/wren57/wren57-interrupt-finished.png": "fd7e696690b56a7e69502e53b42dd835c5a24c0dc7e95b0e1d0fae9a4a6c1a7a",
+    "evidence/wren57/wren57-interrupt-start.png": "0f4ccc01591b94e61bb056a637c12c6fe5ec3e393dbe5412a9d130735c241154",
+    "evidence/wren57/wren57-retry-finished.png": "07dabd8f68bbc47e93ab70c6a3877d167efd5ac40f87c43e764f1f799b1d82f9",
+    "evidence/wren57/wren57-retry-start.png": "81359ecec874cd5e6c59c6062746e32cfa0444e6885b9bf129bdc394a3ac0c85"
+  },
+  "verification": {
+    "cli": {
+      "passed": 397,
+      "skipped": 1,
+      "completed_at_utc": "2026-09-13T01:36:24.214694+00:00",
+      "log_sha256": "1e346c597bbe357552ef7beb1d1d3de5eebf6864d01501279c089aae80b0bf5b"
+    },
+    "engine": {
+      "passed": 2110,
+      "skipped": 53,
+      "completed_at_utc": "2026-09-13T01:40:38.162337+00:00",
+      "log_sha256": "76a92f7edd83c7e85d18371b6464cc29e9067cade9a8944d260e09533a8cfe15"
+    },
+    "guard_tests_passed": 5,
+    "suites_completed_before_experiment": true
+  },
+  "limits": "Sampled Linux process exclusion, not a host-wide scheduler lock; processes shorter than the maximum scan gap may escape observation. No second-device, new video, engine policy verification or gait-quality claim."
+}

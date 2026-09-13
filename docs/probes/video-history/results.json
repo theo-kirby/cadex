@@ -1,0 +1,47 @@
+{
+  "before": {
+    "synthetic": true,
+    "historical_runs": 64,
+    "bytes_per_video": 268435456,
+    "logical_video_bytes": 17179869184,
+    "http_seconds": [
+      6.996900927973911,
+      6.5910153209697455,
+      6.595025839982554
+    ]
+  },
+  "after": {
+    "synthetic": true,
+    "historical_runs": 64,
+    "bytes_per_video": 268435456,
+    "logical_video_bytes": 17179869184,
+    "http_seconds": [
+      7.041211697971448,
+      0.013217589003033936,
+      0.012345858966000378
+    ],
+    "browser_update_seconds": [
+      1.9301970179658383,
+      2.0228253599489108,
+      2.023347254958935
+    ]
+  },
+  "agent_attempt": {
+    "ok": false,
+    "error": "You've hit your session limit \u00b7 resets 5:30pm (America/New_York)",
+    "model": "claude-sonnet-5",
+    "revision": "25d9b6ab7472b968a3a72691ca44113ea86beda85802af3e22d9270952cb71fc",
+    "accepted_revision": ""
+  },
+  "real_copy_recovery": {
+    "same_machine_private_address": true,
+    "states": [
+      "missing refused",
+      "partial refused",
+      "restored plays and downloads"
+    ],
+    "prior_completed_video_available": true,
+    "protected_files_unchanged": 418,
+    "video_sha256": "2308fe3baa4d0a5a2256a37deadfa798256ab6cca978ff8daeacc56c76a2ab24"
+  }
+}

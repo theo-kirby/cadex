@@ -1,0 +1,119 @@
+{
+  "adr": "ADR-324",
+  "project": "ot5-lark-copy85",
+  "persistent_server": true,
+  "private_address_same_machine": true,
+  "server_restarted_onto_fix": true,
+  "server_command": "cadex review --project PROJECT --host PRIVATE_IP --port 8765",
+  "checked_at": "2026-09-13T12:14:22.586578+00:00",
+  "interruption": {
+    "run": "lark98-final",
+    "video": "rollout-6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9.webm",
+    "bytes": 14003,
+    "sha256": "6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9",
+    "aborted_attempts": 3,
+    "head_bytes_received": [
+      314,
+      512,
+      512
+    ],
+    "server_log": "review104-server.log",
+    "server_log_lines_before": 1,
+    "server_log_lines_added": 0,
+    "server_log_has_traceback": false,
+    "resumed_from_byte": 7001,
+    "resumed_content_range": "bytes 7001-14002/14003",
+    "resumed_tail_matches": true,
+    "whole_download_sha256_matches": true,
+    "mid_transfer_interrupted": false
+  },
+  "interruption_before_fix": {
+    "server_log": "review103-server.log",
+    "aborted_attempts": 3,
+    "head_bytes_received": [
+      314,
+      314,
+      512
+    ],
+    "server_log_lines_added": 0,
+    "server_log_has_traceback": false,
+    "mid_transfer_interrupted": false,
+    "note": "The 14003-byte real video is written whole before a reset can arrive, so the pre-fix server showed no traceback for it either; the mid-transfer traceback was reproduced only on the 48 MiB synthetic regression."
+  },
+  "fresh_download_and_playback": {
+    "persistent_server": true,
+    "private_address_same_machine": true,
+    "browser_playback": true,
+    "params_checked": [
+      "control_hz",
+      "episode_steps",
+      "fall_frac",
+      "foot_len",
+      "foot_t",
+      "foot_w",
+      "hip_spacing",
+      "joint_armature",
+      "joint_damping",
+      "joint_friction",
+      "limb_w",
+      "policy_on",
+      "printed_density",
+      "rollout_seed",
+      "servo_torque_nmm",
+      "shin_len",
+      "thigh_len",
+      "torso_d",
+      "torso_h",
+      "torso_w"
+    ],
+    "foot_len_mm": 90.0,
+    "components": 8,
+    "components_source": "first frame of the run's own retained trace",
+    "curves_present": true,
+    "expected_default": "lark98-final",
+    "is_default": true,
+    "fresh_selection": "RUN lark98-final",
+    "historical_selection": "lark98-checkpoint20",
+    "historical_source": "same training run by policy identity",
+    "policy_origin_panel": "Checked on selection/request: lark98 \u00b7 final \u00b7 declared source: lark98 \u00b7 snapshot; Check again to re-read retained files",
+    "lineage": {
+      "origin": {
+        "run": "lark98",
+        "path": "lark98.cxpolicy",
+        "kind": "final",
+        "iteration": null,
+        "recorded_at": "2026-09-13T10:17:26Z",
+        "also_retained_by": []
+      },
+      "recorded_source_run": "lark98",
+      "source_agrees": true,
+      "playbacks": [
+        {
+          "run": "lark98-checkpoint20",
+          "kind": "checkpoint",
+          "iteration": 19,
+          "path": "lark98.000020.cxpolicy",
+          "recorded_at": "2026-09-13T10:07:33Z",
+          "relation": "historical",
+          "status": "ok",
+          "videos": 2
+        }
+      ]
+    },
+    "download_sha256": "6c0bf873dc95fbb8b7994eca6bd54ffcf8f458688e45d8722272e5d7b6d9a3b9",
+    "decoded_frames": 81,
+    "decoded_frames_differ": true,
+    "encoded_seconds": 8.1,
+    "simulation_seconds": 8.0,
+    "accepted_revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+    "policy_sha256": "fca598975089c259917cba5c9f7e067d6bb3a56b75eb8357c20e4151411413df",
+    "seed": 0,
+    "style": "cadex-prototype-light-v1",
+    "returned_to_current": "RUN lark98-final"
+  },
+  "regression": [
+    "cli/tests/test_review_server.py::test_an_interrupted_download_is_one_log_line_not_a_traceback",
+    "cli/tests/test_review_server.py::test_browser_interrupted_download_leaves_polling_and_a_fresh_download_working"
+  ],
+  "scope": "Real Lark video: cancelled download requests and a resumed byte range against the persistent server leave its log free of tracebacks, and the fresh browser download is hash-equal after the restart. Mid-transfer interruption is pinned by the synthetic regression, not by this 14 KB file. No training, no new recording, no project mutation."
+}

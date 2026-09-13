@@ -1,0 +1,123 @@
+{
+  "schema": "cadex-training-restart-evidence-v1",
+  "project": "ot5-wren-copy54",
+  "run": "wren71",
+  "history": "wren66-final",
+  "persistent_port": 8765,
+  "private_address_same_machine": true,
+  "samples": [
+    {
+      "iteration": 6,
+      "commit_to_page_seconds": 0.42,
+      "reward": "reward_per_step: -0.23587",
+      "loss": "loss: 17.885",
+      "episode_steps": "episode_steps: 83.252",
+      "points": [
+        7,
+        7,
+        7
+      ]
+    },
+    {
+      "iteration": 7,
+      "commit_to_page_seconds": 0.898,
+      "reward": "reward_per_step: -0.18456",
+      "loss": "loss: 18.105",
+      "episode_steps": "episode_steps: 68.040",
+      "points": [
+        8,
+        8,
+        8
+      ]
+    },
+    {
+      "iteration": 8,
+      "commit_to_page_seconds": 1.423,
+      "reward": "reward_per_step: 0.0018800",
+      "loss": "loss: 12.135",
+      "episode_steps": "episode_steps: 98.937",
+      "points": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "iteration": 10,
+      "commit_to_page_seconds": 0.588,
+      "reward": "reward_per_step: -0.0073934",
+      "loss": "loss: 13.587",
+      "episode_steps": "episode_steps: 99.902",
+      "points": [
+        11,
+        11,
+        11
+      ]
+    },
+    {
+      "iteration": 11,
+      "commit_to_page_seconds": 1.097,
+      "reward": "reward_per_step: 0.065908",
+      "loss": "loss: 13.114",
+      "episode_steps": "episode_steps: 105.57",
+      "points": [
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "iteration": 13,
+      "commit_to_page_seconds": 0.24,
+      "reward": "reward_per_step: 0.27610",
+      "loss": "loss: 10.335",
+      "episode_steps": "episode_steps: 202.77",
+      "points": [
+        14,
+        14,
+        14
+      ]
+    },
+    {
+      "iteration": 14,
+      "commit_to_page_seconds": 0.829,
+      "reward": "reward_per_step: 0.32474",
+      "loss": "loss: 10.378",
+      "episode_steps": "episode_steps: 208.98",
+      "points": [
+        15,
+        15,
+        15
+      ]
+    }
+  ],
+  "trainers_before": [
+    {
+      "pid": 3303026,
+      "start_ticks": "100242161"
+    }
+  ],
+  "revision": "062e927c0196cc06ef7250010c40dbb6069cad4f2a7d1bef113d0845db4207b9",
+  "historical_revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+  "historical_video_sha256": "802baa759c98e52ba1067cab1f39e28dc72d3fee7c82b073b285bffe0a82470a",
+  "restart_command_seconds": 0.114,
+  "service_pids": [
+    "3255404",
+    "3308131"
+  ],
+  "first_resumed_update_seconds": 0.957,
+  "iteration_before": 4,
+  "iteration_after": 14,
+  "trainers_after": [
+    {
+      "pid": 3303026,
+      "start_ticks": "100242161"
+    }
+  ],
+  "historical_playback_preserved": true,
+  "historical_download_verified": true,
+  "no_navigation": true,
+  "fresh_default": "RUN wren71",
+  "return_to_current": "RUN wren71",
+  "ok": true
+}

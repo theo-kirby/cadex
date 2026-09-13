@@ -1,6 +1,10 @@
 # Goal: live headless project review
 
-Verified against source: 2026-09-12. Owner-directed charter revision (ADR-284).
+Verified against source: 2026-09-13. Owner-directed charter revision (ADR-284).
+D1-D11 ticked by the owner on 2026-09-13 after run ot5 (111 iterations): every
+criterion's state node under `crisp-sun-1239` carries its evidence, three fresh
+bipeds (Reed, Wren, Lark) went through the lifecycle, and the operator dashboard
+is live. See `.ouroboros/history/ot5.md`.
 The human owns this file; unattended roles do not edit it.
 
 ## Mission
@@ -17,6 +21,39 @@ and is **for inspection only**; the agent continues authoring and training throu
 the CLI. The script and project records remain authoritative. Browser state is
 not project state. The dashboard is a review client, not the replacement shell.
 
+**Live operator dashboard (owner steering, 2026-09-12).** The persistent
+private-network dashboard must show the project and experiment currently being
+worked on. Maintaining that live page is part of every experiment, not only a
+test fixture. At the next work iteration, update the existing shared dashboard
+on port 8765 from the obsolete ot4-carriage project to the active Reed/biped
+project or its current working copy. Keep that operator URL stable and the
+server running between iterations. Run one project per server as before.
+When work moves to a copy, deliberately update the served project, identify it
+clearly, and verify the operator-facing page over the private-network address.
+Use the dashboard yourself during design, training and review. A temporary
+browser-test server does not satisfy this instruction.
+
+**Visual reference (owner steering, 2026-09-12).** Both rendered policy videos
+and the dashboard's 3D viewport must match the visual environment and rendering
+style of the operator's sibling `neural-whoop` checkout. The owner identifies
+this as the same environment style used by mg-legs. This is an explicit visual
+reference, not permission to restore mg-legs as a mechanism or benchmark.
+Read `neural-whoop/web/studio/environment.js`, `web/studio/scene.js`,
+`web/studio/geometry.js`, `web/capture/` and `render-examples/README.md` in that
+checkout, and inspect actual reference frames before implementing the look.
+Match its fogged grey prototype-grid floor, seamless floor-to-background fade,
+sky gradient, lighting/material treatment, grounded soft shadows, antialiasing,
+and camera/framing quality. Floor extent, fog, grid subdivision and shadows
+must scale with subject size and framing so no stage edge or wall/ceiling seam
+appears. The viewport and saved videos must use a common environment/style
+contract so they show the same place, not independently approximated looks.
+Keep Cadex geometry dimensions, placements and recorded motion truthful; any
+reference drone-specific glyph enlargement is not a CAD modelling convention.
+Treat the reference checkout as read-only, honor licensing/provenance, and make
+Cadex's delivered renderer self-contained rather than dependent on sibling
+checkout paths. The scope is viewport/video appearance, not copying unrelated
+neural-whoop dashboard features.
+
 Success means the complete recorded lifecycle works. Measure gait quality
 honestly; a repeatable walking gait is not a completion gate. Retire mg-legs
 from the active charter and test workflow. Create a new parametric biped from a
@@ -30,54 +67,54 @@ Only these unchecked claims form this run's frontier. Each record names the
 criterion it advances, the evidence now present, and what remains. A record may
 say "ticks D1" when its evidence exists; the human owns the checkbox edit.
 
-- [ ] **D1. A live project dashboard is reachable.** One documented command
+- [x] **D1. A live project dashboard is reachable.** One documented command
   serves one selected project over the machine's Tailscale/private-network
   address. A browser can open it without a desktop session on the server.
   Evidence: a headless-browser smoke test against that address, with its command
   and result recorded; no claim of a second-device test unless one was run.
-- [ ] **D2. The browser shows the right model and specs.** Interactive 3D
+- [x] **D2. The browser shows the right model and specs.** Interactive 3D
   orbit/zoom, component identity, declared parameters, design specs and project
   decisions come from the selected accepted revision. Selecting an earlier run
   shows its model and specs, visibly identified as historical. Evidence: browser
   tests comparing displayed revision/run identities with recorded inputs and
   exercising model interaction on the fresh biped.
-- [ ] **D3. Training is visible while it runs.** The biped's real GPU training
+- [x] **D3. Training is visible while it runs.** The biped's real GPU training
   updates status, iteration, reward and loss histories, episode length and
   checkpoint availability without a page reload. Committed telemetry updates
   appear within five seconds under the measured test conditions. Missing or
   stale data is labelled. Evidence: a browser observation spanning multiple
   actual training updates, plus telemetry tests; synthetic data alone cannot
   tick this criterion.
-- [ ] **D4. Policy videos render, persist and play headlessly.** At least one
+- [x] **D4. Policy videos render, persist and play headlessly.** At least one
   verified intermediate checkpoint is rendered and appears in the dashboard
   while training remains active, and the final policy also has a saved video.
   Both play and download in the browser; each identifies the model revision,
   policy digest, rollout seed and simulation time. Evidence: real biped video
   files, a decoded frame/timing check and a browser playback/download test.
   A failed render leaves training running and reports its own failure.
-- [ ] **D5. Review history survives a design change.** Each run retains the
+- [x] **D5. Review history survives a design change.** Each run retains the
   model/script revision, specs, task/training configuration, metrics, policy
   identity and review/video references needed to interpret it. After a design
   edit and retraining, both runs remain selectable with their own curves, models
   and videos. Evidence: before/after identity and artifact checks, and browser
   assertions that old results have not silently switched to the new design.
-- [ ] **D6. Save, reopen and restart preserve the project.** Save/reopen and
+- [x] **D6. Save, reopen and restart preserve the project.** Save/reopen and
   restarting the dashboard and engine preserve accepted identity, specs, run
   history, curves and video access. Restarting the dashboard during training
   neither stops nor duplicates that training. Evidence: an automated lifecycle
   test and a recorded pass on the fresh biped with real artifacts.
-- [ ] **D7. Save-As/copy produces an independent project.** A documented
+- [x] **D7. Save-As/copy produces an independent project.** A documented
   headless operation copies the project and its retained review artifacts;
   another server can inspect the copy. Changing/retraining the copy leaves the
   original unchanged, and the copy remains usable with the original unavailable.
   Evidence: isolation, artifact resolution and browser reopen tests on the copy.
-- [ ] **D8. Interrupted and failed runs remain understandable.** Test a
+- [x] **D8. Interrupted and failed runs remain understandable.** Test a
   controlled training interruption, a failed run, and missing/partial review
   output. The dashboard distinguishes interrupted/failed/stale states from
   success, preserves prior completed results and explains the next CLI action.
   Evidence: fault-injection tests and one real interrupted biped training run
   followed by a successful new attempt. Checkpoint resume is not required.
-- [ ] **D9. The fresh biped completes the whole recorded lifecycle.** The
+- [x] **D9. The fresh biped completes the whole recorded lifecycle.** The
   product agent creates and documents a new biped, trains and reviews it through
   this system, uses that review to make a reasoned design change, and retrains.
   Both runs have saved playable videos and measured displacement, survival and
@@ -85,19 +122,54 @@ say "ticks D1" when its evidence exists; the human owns the checkbox edit.
   a lifecycle report linking D1-D8 evidence, and the comparative results. Poor
   gait is a valid measured result; skipped training or missing recording is not.
 
+- [x] **D10. The persistent operator dashboard stays current.** The existing
+  shared dashboard URL serves the actual working project, with the current run
+  selected by default for a new visit (active training first, otherwise the
+  latest attempt, including failed/interrupted attempts). It shows that run's
+  model/spec identity, available curves and videos, and explicit pending/stale/
+  failed states where outputs are not ready. Never silently substitute an older
+  successful run for a newer failed one. Preserve deliberate historical browsing
+  and video playback in an already-open page, with a visible route back to the
+  current run. On each experiment start/completion and working-project switch,
+  verify the persistent URL's project/run identity and update the published
+  status. Keep serving after tests and between iterations. Evidence: browser
+  checks on the persistent private-network URL across a real experiment and a
+  working-copy switch, plus regression coverage for current-run selection and
+  historical-view preservation. The immediate acceptance check is that the
+  shared URL shows the active biped work rather than ot4-carriage.
+
+- [x] **D11. Viewport and videos match the neural-whoop visual reference.**
+  The persistent biped dashboard and newly rendered checkpoint/final-policy
+  videos use the shared reference-matching environment described in the mission.
+  Evidence: identified neural-whoop reference screenshots/frames and matching
+  Cadex viewport screenshots plus decoded video frames, compared side by side
+  at equivalent framing, with an explicit assessment of floor/grid, horizon/fog,
+  palette, lighting/shadows, materials and camera quality. Also compare the same
+  Cadex pose/camera in viewport and video, and test close/wide framing and orbit
+  for visible stage edges, bad scale or lost contact shadows. A generic grid or
+  passing pixel-coverage test alone does not establish visual similarity. Use
+  the real biped on the persistent operator URL and retain the render/style
+  identity with newly produced videos; preserve older recordings as historical.
+  Browser interaction, live polling, verified playback/download and headless
+  operation must continue to pass after the visual change.
+
 ## Horizon ladder
 
 Granularity, not elapsed time. The critic selects the next unit after each actor
 turn; this ladder is the starting plan, not a fixed implementation sequence.
 
 - **short-term:**
-  1. Define the smallest project/run recording contract and its revision and
+  0. First, put the active biped project/run on the persistent shared dashboard,
+     verify it through the browser, and keep it current throughout work (D10).
+  1. After making the persistent dashboard current, implement and visually
+     compare the shared neural-whoop viewport/video environment (D11).
+  2. Define the smallest project/run recording contract and its revision and
      artifact identities; document it alongside a tested reader (D2, D5).
-  2. Deliver a vertical slice: one-project server, real model/spec view and a
+  3. Deliver a vertical slice: one-project server, real model/spec view and a
      headless browser test; establish private-network reachability (D1, D2).
-  3. Create the fresh agent-authored biped and start a bounded training probe;
+  4. Create the fresh agent-authored biped and start a bounded training probe;
      connect its actual telemetry, including retained loss history (D3, D9).
-  4. Render one verified rollout into a saved browser-playable video (D4).
+  5. Render one verified rollout into a saved browser-playable video (D4).
 - **medium-term:**
   1. Publish checkpoint videos during active training, preserving model/policy
      identity and recording measured overhead (D3, D4).
@@ -169,7 +241,7 @@ charter revision, not an actor interpretation.
 
 ## Exhaustion policy
 
-Maintain within this mission. Once D1-D9 have evidence, repeat the lifecycle,
+Maintain within this mission. Once D1-D11 have evidence, repeat the lifecycle,
 fix demonstrated recording/review defects and improve bounded operation. Do not
 expand into gait research, another dashboard mode or parked product work merely
 to fill the run. Report completion evidence honestly when no defect remains.
@@ -181,7 +253,8 @@ to fill the run. Report completion evidence honestly when no defect remains.
 - Real training, decoded videos and real lifecycle artifacts are required where
   the criteria say so. Record commands, observed identities, failures and limits.
 - A unit changes product code, a meaningful test or a user-facing document and
-  advances a D criterion. Bookkeeping alone is reserved for reconcile passes.
+  advances a D criterion. The operator-facing dashboard must track the active
+  project/run; fixture-only success cannot excuse leaving it on an obsolete project. Bookkeeping alone is reserved for reconcile passes.
 - Record causally with real State Impact targets; removals/direction changes earn
   an ADR, behavior changes update their docs, and landed roadmap items are marked.
 - Prove project isolation and permitted-path handling; distinguish a valid empty
@@ -194,7 +267,7 @@ to fill the run. Report completion evidence honestly when no defect remains.
 Every five work iterations or three unreconciled records, the actor's next unit
 is the reconcile pass: fold impacts, advance the high-water mark, regenerate the
 views, export, check and commit. Separate maintainer and planner remain off; the
-critic names the next unit. Unattended roles never edit this charter. The next
-run start ingests this revision and declares its criteria; editing the file does
-not prove a running process has adopted it. Do not launch or restart a run as
+critic names the next unit. Unattended roles never edit this charter. The runner ingests operator charter edits at the next iteration boundary and
+records a versioned directive; confirm adoption in its charter-reload log.
+The current actor and critic finish under their original charter. Do not launch or restart a run as
 part of charter authoring.

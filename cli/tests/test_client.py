@@ -13,6 +13,9 @@ that need not exist.
 
 from __future__ import annotations
 
+import os
+import signal
+
 import pytest
 
 from cadex_cli.client import CadexdClient, CadexdError, open_project
@@ -149,6 +152,22 @@ def test_opening_a_project_that_cannot_be_opened_says_which(engine, tmp_path) ->
         assert str(blocked) in str(caught.value)
     finally:
         running.shutdown()
+
+
+def test_an_engine_killed_mid_conversation_is_reported_with_its_exit_status(engine) -> None:
+    """ADR-325: a killed engine is a failed call that says how the engine
+    died. EOF on the protocol stream arrives before the child is reaped, so
+    the client waits for it rather than reporting ``exit status None``."""
+    running = CadexdClient(engine)
+    running.start()
+    try:
+        os.kill(running._process.pid, signal.SIGKILL)
+        with pytest.raises(CadexdError) as caught:
+            running.request("describe_api")
+        assert "closed its protocol stream" in str(caught.value)
+        assert f"exit status {-signal.SIGKILL}" in str(caught.value)
+    finally:
+        running.close()
 
 
 # -- the lock, which exists because cadexd is one per project -------------

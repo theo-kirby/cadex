@@ -1,0 +1,33 @@
+{
+  "schema": "cadex-lark-persistent-check-v1",
+  "purpose": "Iteration 81 (ADR-312): a fresh headless-browser visit to the persistent private-network operator dashboard after the bridge started injecting the standard tessellation request. Lark's accepted attempt is the one `cadex render` republished in iteration 80; the fix changes nothing already accepted. Same-machine private-address check, not a second-device test.",
+  "checked_at": "2026-09-13T06:30:18Z",
+  "url_host": "tailscale-ipv4",
+  "port": 8765,
+  "service_main_pid": 3653091,
+  "service_restarted": false,
+  "page_ready_seconds": 0.854,
+  "project_name": "ot5-lark — review",
+  "accepted_line": "accepted now: revision 753cf0cc4600 · digest 3b704a3fc1c4 · updated 2026-09-13T06:10:24Z · 0 run(s)",
+  "view_kind": "ACCEPTED NOW",
+  "view_revision": "753cf0cc460098ac606ef8e1946e7cf7eed1ea9b79e63e2709690955c7fc9aa7",
+  "view_digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254",
+  "model_state": "loaded",
+  "model_status": "accepted model at revision 753cf0cc4600 · 8 component(s), 96 triangles · from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 · placements: declared component placements",
+  "components": 8,
+  "triangles": 96,
+  "non_background_pixels": 41840,
+  "runs_listed": 0,
+  "params_listed": 20,
+  "freshness": "live",
+  "screenshot": {
+    "path": "evidence/create80/persistent-check81.png",
+    "sha256": "ed413857757b554bb8c57e50788e42cb0b0122b8b87869140a03e52b85f9df44"
+  },
+  "tessellation_cost_on_scratch_copy_seconds": {
+    "note": "write_script of Lark's accepted script on a scratch copy through the built engine, three writes each way, warm engine",
+    "without_display": [0.603, 0.492, 0.447],
+    "with_standard_display": [0.494, 0.442, 0.493],
+    "tessellated_outputs_with_display": 8
+  }
+}

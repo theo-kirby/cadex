@@ -1,0 +1,118 @@
+{
+  "schema": "cadex-policy-store-evidence-v2",
+  "ok": true,
+  "project": "ot5-lark-copy85",
+  "runs": [
+    "lark96-restart",
+    "lark109-engine2"
+  ],
+  "url": "http://100.104.232.88:8765/",
+  "persistent_port": 8765,
+  "private_address_same_machine": true,
+  "accepted_revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+  "accepted_digest": "c039961cd41d9bcc26956c566a55e3ace0cf2665f99b7ebfd180af12d2bd4076",
+  "service_pid": 568980,
+  "per_run": {
+    "lark96-restart": {
+      "policy_name": "lark96-restart.cxpolicy",
+      "policy_sha256": "f7a152ff9c545716a37ee2a740c25895e154d9efaf2dbf3d3e155fcbe339b980",
+      "record_status": "ok",
+      "record_asset_locator": "assets/lark96-restart.cxpolicy",
+      "page_before": {
+        "kind": "RUN lark96-restart",
+        "status": "completed",
+        "note": "\u2014",
+        "policy_store": "unstored \u2014 the record named assets/lark96-restart.cxpolicy but the project store does not hold it \u00b7 trainer copy retained at train/lark96-restart.cxpolicy \u00b7 next: store it: cadex asset --project <project-dir> --put <project-dir>/runs/lark96-restart/train/lark96-restart.cxpolicy \u00b7 or start a new attempt: cadex walk --out runs/<new-name>",
+        "policy_store_state": "unstored",
+        "telemetry_state": "done",
+        "problems": [
+          "project_artifacts.policy: missing",
+          "policy_store: unstored \u2014 this completed run's policy lark96-restart.cxpolicy is retained at train/lark96-restart.cxpolicy but the project store does not hold it; store it: cadex asset --project <project-dir> --put <project-dir>/runs/lark96-restart/train/lark96-restart.cxpolicy"
+        ],
+        "trainer_copy_path": "train/lark96-restart.cxpolicy",
+        "trainer_copy_status": "retained",
+        "store_copy_status": "missing"
+      },
+      "cli": {
+        "command": "cadex asset --project <project-dir> --put <project-dir>/runs/lark96-restart/train/lark96-restart.cxpolicy",
+        "exit": 0,
+        "ok": true,
+        "wall_seconds": 0.826,
+        "stored_name": "lark96-restart.cxpolicy"
+      },
+      "page_flip_seconds": 0.505,
+      "page_after": {
+        "kind": "RUN lark96-restart",
+        "status": "completed",
+        "note": "\u2014",
+        "policy_store": "stored \u2014 the project store holds this policy with the recorded digest \u00b7 trainer copy retained at train/lark96-restart.cxpolicy",
+        "policy_store_state": "stored",
+        "telemetry_state": "done",
+        "problems": [],
+        "trainer_copy_path": "train/lark96-restart.cxpolicy",
+        "trainer_copy_status": "retained",
+        "store_copy_status": "retained \u00b7 download"
+      },
+      "fresh_visit_after_policy_store": "stored \u2014 the project store holds this policy with the recorded digest \u00b7 trainer copy retained at train/lark96-restart.cxpolicy",
+      "fresh_visit_after_problems": []
+    },
+    "lark109-engine2": {
+      "policy_name": "lark109-engine2.cxpolicy",
+      "policy_sha256": "9c166417c633749c77fa3d7d011e11042b0c74070dd0cbe9095a3a1d02b85f3e",
+      "record_status": "ok",
+      "record_asset_locator": "assets/lark109-engine2.cxpolicy",
+      "page_before": {
+        "kind": "RUN lark109-engine2",
+        "status": "completed",
+        "note": "\u2014",
+        "policy_store": "unstored \u2014 the record named assets/lark109-engine2.cxpolicy but the project store does not hold it \u00b7 trainer copy retained at train/lark109-engine2.cxpolicy \u00b7 next: store it: cadex asset --project <project-dir> --put <project-dir>/runs/lark109-engine2/train/lark109-engine2.cxpolicy \u00b7 or start a new attempt: cadex walk --out runs/<new-name>",
+        "policy_store_state": "unstored",
+        "telemetry_state": "done",
+        "problems": [
+          "project_artifacts.policy: missing",
+          "policy_store: unstored \u2014 this completed run's policy lark109-engine2.cxpolicy is retained at train/lark109-engine2.cxpolicy but the project store does not hold it; store it: cadex asset --project <project-dir> --put <project-dir>/runs/lark109-engine2/train/lark109-engine2.cxpolicy"
+        ],
+        "trainer_copy_path": "train/lark109-engine2.cxpolicy",
+        "trainer_copy_status": "retained",
+        "store_copy_status": "missing"
+      },
+      "cli": {
+        "command": "cadex asset --project <project-dir> --put <project-dir>/runs/lark109-engine2/train/lark109-engine2.cxpolicy",
+        "exit": 0,
+        "ok": true,
+        "wall_seconds": 0.829,
+        "stored_name": "lark109-engine2.cxpolicy"
+      },
+      "page_flip_seconds": 1.012,
+      "page_after": {
+        "kind": "RUN lark109-engine2",
+        "status": "completed",
+        "note": "\u2014",
+        "policy_store": "stored \u2014 the project store holds this policy with the recorded digest \u00b7 trainer copy retained at train/lark109-engine2.cxpolicy",
+        "policy_store_state": "stored",
+        "telemetry_state": "done",
+        "problems": [],
+        "trainer_copy_path": "train/lark109-engine2.cxpolicy",
+        "trainer_copy_status": "retained",
+        "store_copy_status": "retained \u00b7 download"
+      },
+      "fresh_visit_after_policy_store": "stored \u2014 the project store holds this policy with the recorded digest \u00b7 trainer copy retained at train/lark109-engine2.cxpolicy",
+      "fresh_visit_after_problems": []
+    }
+  },
+  "fresh_visit_default_run": "RUN lark109-engine2",
+  "no_navigation": true,
+  "fresh_visit_after_default_run": "RUN lark109-engine2",
+  "record_bytes_unchanged": true,
+  "runs_files_unchanged": true,
+  "runs_files": 601,
+  "assets_added": [
+    "lark109-engine2.cxpolicy",
+    "lark96-restart.cxpolicy"
+  ],
+  "assets_prior_unchanged": true,
+  "stored_assets_sha256_match": true,
+  "accepted_identity_unchanged": true,
+  "service_pid_after": 568980,
+  "trainers_seen": []
+}

@@ -1,0 +1,74 @@
+{
+  "schema": "wren-video-recovery-v1",
+  "project": "ot5-wren-copy54",
+  "current": "wren71-final",
+  "prior": "wren66-final",
+  "faults": [
+    {
+      "fault": "missing",
+      "label": "Video files: unavailable (0/1 retained)Recorded video render: readyvideo 0 \u00b7 rollout-a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5.webm \u00b7 revision e9dee22bc90c \u00b7 policy fa7b28b8732a \u00b7 seed 0 \u00b7 8 s \u00b7 cadex-prototype-light-v1 \u2014 missing. Retry the CLI video command after restoring the retained inputs.",
+      "http_status": 404,
+      "unavailable": true,
+      "cli_guidance": true,
+      "prior": {
+        "revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+        "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+        "download_sha256": "802baa759c98e52ba1067cab1f39e28dc72d3fee7c82b073b285bffe0a82470a",
+        "playback_poll_preserved": true
+      }
+    },
+    {
+      "fault": "partial",
+      "label": "Video files: unavailable (0/1 retained)Recorded video render: readyvideo 0 \u00b7 rollout-a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5.webm \u00b7 revision e9dee22bc90c \u00b7 policy fa7b28b8732a \u00b7 seed 0 \u00b7 8 s \u00b7 cadex-prototype-light-v1 \u2014 refused: video digest mismatch. Retry the CLI video command after restoring the retained inputs.",
+      "http_status": 404,
+      "unavailable": true,
+      "cli_guidance": true,
+      "prior": {
+        "revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+        "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+        "download_sha256": "802baa759c98e52ba1067cab1f39e28dc72d3fee7c82b073b285bffe0a82470a",
+        "playback_poll_preserved": true
+      }
+    },
+    {
+      "fault": "failed",
+      "label": "Video files: unavailable (0/1 retained)Recorded video render: failed \u2014 injected encoder failure. Retry the CLI video command after fixing the retained inputs or encoder.video 0 \u00b7 rollout-a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5.webm \u00b7 revision e9dee22bc90c \u00b7 policy fa7b28b8732a \u00b7 seed 0 \u00b7 8 s \u00b7 cadex-prototype-light-v1 \u2014 refused: video digest mismatch. Retry the CLI video command after restoring the retained inputs.",
+      "http_status": 404,
+      "unavailable": true,
+      "cli_guidance": true,
+      "prior": {
+        "revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+        "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+        "download_sha256": "802baa759c98e52ba1067cab1f39e28dc72d3fee7c82b073b285bffe0a82470a",
+        "playback_poll_preserved": true
+      }
+    }
+  ],
+  "same_machine_private_address": true,
+  "baseline": {
+    "revision": "e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb",
+    "policy_sha256": "fa7b28b8732a6a5d7b86f3157ecfa81ab531d374c5c53a38415edde0da71b343",
+    "download_sha256": "a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5",
+    "playback_poll_preserved": true
+  },
+  "restored": {
+    "revision": "e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb",
+    "policy_sha256": "fa7b28b8732a6a5d7b86f3157ecfa81ab531d374c5c53a38415edde0da71b343",
+    "download_sha256": "a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5",
+    "playback_poll_preserved": true
+  },
+  "copy_restored_files": 3769,
+  "operator": {
+    "revision": "e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb",
+    "policy_sha256": "fa7b28b8732a6a5d7b86f3157ecfa81ab531d374c5c53a38415edde0da71b343",
+    "download_sha256": "a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5",
+    "playback_poll_preserved": true
+  },
+  "operator_unchanged": true,
+  "original_files_unchanged": 3769,
+  "screenshots": {
+    "partial.png": "58271165e116f6a40bf7a3e126e0b723f15657854c1fdf58520ef35cff0684bc",
+    "missing.png": "95af142f30a2bf909cd0a8a38e01cd82caaad93c5094dbc586ec0100e0463ba8",
+    "failed.png": "28602452b629d6b4352e59e743b1fde4059308b596e055db369b7b7e6fa770d9"
+  }
+}

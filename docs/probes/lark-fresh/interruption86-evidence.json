@@ -1,0 +1,386 @@
+{
+  "schema": "lark-interruption-evidence-v1",
+  "project": "ot5-lark-copy85",
+  "original": "ot5-lark",
+  "prefix": "lark86",
+  "persistent_url_host": "100.104.232.88:8765",
+  "persistent_private_address_same_machine": true,
+  "persistent_server": true,
+  "server_restarted": false,
+  "gates_before_launch": {
+    "cli-suite": {
+      "exit": 0,
+      "started": "2026-09-13T07:54:00Z",
+      "finished": "2026-09-13T08:00:54Z",
+      "summary": "437 passed, 1 skipped in 414.48s (0:06:54)"
+    },
+    "engine-suite": {
+      "exit": 0,
+      "started": "2026-09-13T08:00:54Z",
+      "finished": "2026-09-13T08:05:09Z",
+      "summary": "2110 passed, 53 skipped in 254.18s (0:04:14)"
+    },
+    "experiment": {
+      "exit": 0,
+      "started": "2026-09-13T08:05:21Z",
+      "finished": "2026-09-13T08:10:40Z"
+    }
+  },
+  "signal": {
+    "signal": "SIGINT",
+    "iteration": 5,
+    "trainer_pid": 3904655
+  },
+  "attempts": {
+    "lark86-interrupt": {
+      "exit": -2,
+      "requested_iterations": 60,
+      "final_iteration": 5,
+      "state": "failed",
+      "error": "KeyboardInterrupt: ",
+      "device": "gpu",
+      "curve_samples": {
+        "curve": 6,
+        "loss_curve": 6,
+        "episode_steps_curve": 6
+      },
+      "page_samples": [
+        {
+          "file": 0,
+          "page": "iteration: 0",
+          "state": "training"
+        },
+        {
+          "file": 2,
+          "page": "iteration: 1",
+          "state": "training"
+        },
+        {
+          "file": 3,
+          "page": "iteration: 3",
+          "state": "training"
+        },
+        {
+          "file": 4,
+          "page": "iteration: 4",
+          "state": "training"
+        }
+      ],
+      "host_peak_bytes": 5001551872,
+      "memory_max_bytes": 21474836480,
+      "timeout_seconds": 900,
+      "elapsed_s": 90.734,
+      "fresh_selection": "RUN lark86-interrupt",
+      "note": "error: Controlled interruption: SIGINT after real GPU updates; start a new cadex walk --out runs/<new-name>.",
+      "components": 8,
+      "accepted_revision": "083d086ad980d985b3714a5cdfaa0e37d9f58409171f95954e35aab0f93bacc3",
+      "digest": "4c4171abfa4f97cdf4585e2fd7421de91cb1e03c6ca553cc4cac5fc9ec515835",
+      "model_sha256": "ff77fff92a4ba08db4e472b652356f8ec52ce8f296ed180b6f5500f04d1d1b25",
+      "task_sha256": "cc96d21e52e6c322e2372e02532ad29fad643fc3a07a59ed4523e17c0e4ca807",
+      "exclusion": {
+        "scans": 1655,
+        "max_trainers": 1,
+        "observed_pids": [
+          3904655
+        ],
+        "violation": null,
+        "max_scan_gap_seconds": 0.06038244196679443,
+        "interval_seconds": 0.05
+      },
+      "terminal_browser": {
+        "telemetry_state": "failed",
+        "status": "failed",
+        "retry_guidance_shown": true,
+        "videos_shown": 0,
+        "reload_count": 1
+      },
+      "screenshots": {
+        "lark86-interrupt-start.png": "40c3e161dcc2ec86597d045d03c932ea0c7075099398034499c92a5e4abd318f",
+        "lark86-interrupt-finished.png": "0b72fb54bfa54e9db81adfbeb2f643ee686edb6dba1671a34c4fdde62c4f47dc"
+      }
+    },
+    "lark86-retry": {
+      "exit": 0,
+      "requested_iterations": 40,
+      "final_iteration": 39,
+      "state": "done",
+      "error": null,
+      "device": "gpu",
+      "curve_samples": {
+        "curve": 40,
+        "loss_curve": 40,
+        "episode_steps_curve": 40
+      },
+      "page_samples": [
+        {
+          "file": 0,
+          "page": "iteration: 0",
+          "state": "training"
+        },
+        {
+          "file": 2,
+          "page": "iteration: 1",
+          "state": "training"
+        },
+        {
+          "file": 3,
+          "page": "iteration: 3",
+          "state": "training"
+        },
+        {
+          "file": 4,
+          "page": "iteration: 4",
+          "state": "training"
+        },
+        {
+          "file": 5,
+          "page": "iteration: 5",
+          "state": "training"
+        },
+        {
+          "file": 7,
+          "page": "iteration: 7",
+          "state": "training"
+        },
+        {
+          "file": 8,
+          "page": "iteration: 8",
+          "state": "training"
+        },
+        {
+          "file": 9,
+          "page": "iteration: 9",
+          "state": "training"
+        },
+        {
+          "file": 11,
+          "page": "iteration: 11",
+          "state": "training"
+        },
+        {
+          "file": 12,
+          "page": "iteration: 12",
+          "state": "training"
+        },
+        {
+          "file": 13,
+          "page": "iteration: 13",
+          "state": "training"
+        },
+        {
+          "file": 15,
+          "page": "iteration: 14",
+          "state": "training"
+        },
+        {
+          "file": 16,
+          "page": "iteration: 16",
+          "state": "training"
+        },
+        {
+          "file": 17,
+          "page": "iteration: 17",
+          "state": "training"
+        },
+        {
+          "file": 19,
+          "page": "iteration: 19",
+          "state": "training"
+        },
+        {
+          "file": 21,
+          "page": "iteration: 20",
+          "state": "training"
+        },
+        {
+          "file": 22,
+          "page": "iteration: 22",
+          "state": "training"
+        },
+        {
+          "file": 24,
+          "page": "iteration: 24",
+          "state": "training"
+        },
+        {
+          "file": 26,
+          "page": "iteration: 25",
+          "state": "training"
+        },
+        {
+          "file": 27,
+          "page": "iteration: 27",
+          "state": "training"
+        },
+        {
+          "file": 29,
+          "page": "iteration: 28",
+          "state": "training"
+        },
+        {
+          "file": 30,
+          "page": "iteration: 30",
+          "state": "training"
+        },
+        {
+          "file": 31,
+          "page": "iteration: 31",
+          "state": "training"
+        },
+        {
+          "file": 33,
+          "page": "iteration: 32",
+          "state": "training"
+        },
+        {
+          "file": 34,
+          "page": "iteration: 34",
+          "state": "training"
+        },
+        {
+          "file": 36,
+          "page": "iteration: 35",
+          "state": "training"
+        },
+        {
+          "file": 37,
+          "page": "iteration: 37",
+          "state": "training"
+        },
+        {
+          "file": 39,
+          "page": "iteration: 38",
+          "state": "training"
+        },
+        {
+          "file": 39,
+          "page": "iteration: 39",
+          "state": "training"
+        }
+      ],
+      "host_peak_bytes": 5480005632,
+      "memory_max_bytes": 21474836480,
+      "timeout_seconds": 900,
+      "elapsed_s": 190.828,
+      "fresh_selection": "RUN lark86-retry",
+      "note": "\u2014",
+      "components": 8,
+      "accepted_revision": "083d086ad980d985b3714a5cdfaa0e37d9f58409171f95954e35aab0f93bacc3",
+      "digest": "4c4171abfa4f97cdf4585e2fd7421de91cb1e03c6ca553cc4cac5fc9ec515835",
+      "model_sha256": "ff77fff92a4ba08db4e472b652356f8ec52ce8f296ed180b6f5500f04d1d1b25",
+      "task_sha256": "cc96d21e52e6c322e2372e02532ad29fad643fc3a07a59ed4523e17c0e4ca807",
+      "exclusion": {
+        "scans": 3515,
+        "max_trainers": 1,
+        "observed_pids": [
+          3910803
+        ],
+        "violation": null,
+        "max_scan_gap_seconds": 0.05962720909155905,
+        "interval_seconds": 0.05
+      },
+      "terminal_browser": {
+        "telemetry_state": "done",
+        "status": "completed",
+        "retry_guidance_shown": false,
+        "videos_shown": 0,
+        "reload_count": 1
+      },
+      "screenshots": {
+        "lark86-retry-start.png": "bd0365ba26b42366fd49dff8f98f5f8bd619ab2d40bb0a02de49044049731eac",
+        "lark86-retry-finished.png": "64ca6e754c5779f9321e2b4c45c2b801c9bd9a7d517b4b6a08cfe2d8d647be5f"
+      }
+    }
+  },
+  "retry_video": {
+    "run": "lark86-retry-video",
+    "source_run": "lark86-retry",
+    "mode": "final-policy-playback",
+    "policy_sha256": "074e22f1070c0162ac335394f7c39d0775ed6bd3a58018942d8bc79f1c59c688",
+    "witness_error": 8.428807660720849e-08,
+    "witness_tolerance": 0.0001,
+    "accepted_revision": "7f6c23913d55184241d0b31ca0fdfddf17d3c613d0c25e17d5943af57c75661b",
+    "digest": "7f0d98163e8432b2daaaeefda4694c8a3a46d527a0b320a99914e753dd5c790d",
+    "render_seconds": 12.279,
+    "video": {
+      "path": "rollout-1f53d43d1c187de363eadae51931e90d91e8a7928e25ce5ebdb70df46322ca01.webm",
+      "sha256": "1f53d43d1c187de363eadae51931e90d91e8a7928e25ce5ebdb70df46322ca01",
+      "frames": 81,
+      "duration_seconds": 8.1,
+      "sim_seconds": 8.0,
+      "style": "cadex-prototype-light-v1",
+      "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+      "accepted_revision": "7f6c23913d55184241d0b31ca0fdfddf17d3c613d0c25e17d5943af57c75661b",
+      "seed": 0
+    },
+    "trace": {
+      "observed_s": 8.0,
+      "termination": "",
+      "fell": false,
+      "time_limit_reached": true,
+      "step_count": 400,
+      "total_reward": 194.66019320379075,
+      "seed": 0
+    },
+    "browser": {
+      "persistent_server": true,
+      "url": "http://100.104.232.88:8765/",
+      "private_address_same_machine": true,
+      "browser_playback": true,
+      "foot_len_mm": 90.0,
+      "components": 8,
+      "curves_present": true,
+      "fresh_selection": "RUN lark86-retry-video",
+      "historical_selection": null,
+      "download_sha256": "1f53d43d1c187de363eadae51931e90d91e8a7928e25ce5ebdb70df46322ca01",
+      "decoded_frames": 81,
+      "decoded_frames_differ": true,
+      "encoded_seconds": 8.1,
+      "simulation_seconds": 8.0,
+      "accepted_revision": "7f6c23913d55184241d0b31ca0fdfddf17d3c613d0c25e17d5943af57c75661b",
+      "policy_sha256": "074e22f1070c0162ac335394f7c39d0775ed6bd3a58018942d8bc79f1c59c688",
+      "seed": 0,
+      "style": "cadex-prototype-light-v1",
+      "returned_to_current": "RUN lark86-retry-video"
+    }
+  },
+  "old_videos_checked_after_each": [
+    "lark1-checkpoint20",
+    "lark1-final",
+    "lark2-checkpoint20",
+    "lark2-final"
+  ],
+  "historical_interruption": {
+    "selectable": true,
+    "status": "failed",
+    "videos_shown": 0,
+    "survived_refresh": true,
+    "screenshot": "dd0c34e2e9d7f379bd69227f31096aabba5f5adcd6c41181e3a2e92b8287f622"
+  },
+  "returned_to_current": "RUN lark86-retry-video",
+  "fresh_visit_after_completion": {
+    "view_kind": "RUN lark86-retry-video",
+    "revision": "7f6c23913d55184241d0b31ca0fdfddf17d3c613d0c25e17d5943af57c75661b"
+  },
+  "prior_run_files_preserved": 246,
+  "prior_asset_files_preserved": 4,
+  "original_files_excluding_git": 1419,
+  "original_files_including_git": 1852,
+  "original_unchanged_after_copy_retraining": true,
+  "original_checked_independently": true,
+  "copy_accepted_before": {
+    "revision": "083d086ad980d985b3714a5cdfaa0e37d9f58409171f95954e35aab0f93bacc3",
+    "digest": "4c4171abfa4f97cdf4585e2fd7421de91cb1e03c6ca553cc4cac5fc9ec515835",
+    "foot_len": 90.0,
+    "policy_on": 0.0
+  },
+  "copy_accepted_after": {
+    "revision": "7f6c23913d55184241d0b31ca0fdfddf17d3c613d0c25e17d5943af57c75661b",
+    "digest": "7f0d98163e8432b2daaaeefda4694c8a3a46d527a0b320a99914e753dd5c790d",
+    "foot_len": 90.0,
+    "policy_on": 1.0
+  },
+  "gait_claim": false,
+  "product_agent_authorship": false,
+  "new_d11_comparison": false
+}

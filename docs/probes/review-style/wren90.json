@@ -1,0 +1,303 @@
+{
+  "project": "ot5-wren-copy54",
+  "run": "wren71-final",
+  "historical": "wren57-retry",
+  "evidence_dir": "style73",
+  "video": {
+    "accepted_revision": "e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb",
+    "bounds": {
+      "center": [
+        0.0,
+        0.0,
+        127.8813289859041
+      ],
+      "max": [
+        300.0,
+        300.0,
+        265.7626579718082
+      ],
+      "min": [
+        -300.0,
+        -300.0,
+        -10.0
+      ],
+      "radius": 446.1067819288551
+    },
+    "camera": {
+      "distance": 1111.0435083365383,
+      "pitch": 0.5,
+      "target": [
+        0,
+        0,
+        127.8813289859041
+      ],
+      "yaw": 0.8
+    },
+    "duration_seconds": 8.1,
+    "fps": 10,
+    "frames": 81,
+    "height": 512,
+    "model_digest": "7a3f3a6603e4b0334975469fa64d80b067012b056ddee51363df2bb7a3e125cb",
+    "path": "rollout-a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5.webm",
+    "policy_sha256": "fa7b28b8732a6a5d7b86f3157ecfa81ab531d374c5c53a38415edde0da71b343",
+    "projection": "perspective 55 degrees",
+    "render_seconds": 12.521,
+    "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+    "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+    "seed": 0,
+    "sha256": "a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5",
+    "sim_seconds": 8.0,
+    "style": "cadex-prototype-light-v1",
+    "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+    "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+    "trace_sha256": "6ac7d87153c3d4a805ce1191117b0e655e95c37908746bc6b6efbafc0d03b8d3",
+    "width": 512
+  },
+  "screenshots": {
+    "persistent-default": "1d6c7e985191df69fa628ee53b48ab0cc56796992d2414af4a0fbc4bec67955a",
+    "persistent-same-pose": "1d6c7e985191df69fa628ee53b48ab0cc56796992d2414af4a0fbc4bec67955a",
+    "persistent-close": "30fc9b3bf44642b83ebc9b283878375521f45d6fb5370bd305617cb1aa91c4fd",
+    "persistent-wide": "2e13d6728e8815a57aede9100d3f681dae9f77b815955a1416411bba2b5279c4",
+    "persistent-under": "ac61d6262310e4b136f2800735a1b340e12a421b2f537ba8eb5f806d90a85259",
+    "persistent-orbit-drag": "4e0cf30885f78f9f7a53296ad067075a940f8888a9d929db1838e7928f21ed86",
+    "persistent-orbit-zoom": "cac5e8de78c4f5ebdde37231c365ea78de0819544fcd0e5f980fbdf6bb0269a6",
+    "persistent-orbit-far": "c4f3d5e4a19c3c539394570d3ad1d94cff855760a28f0513e2e9fc03f305a77e",
+    "capture-same-pose": "1d6c7e985191df69fa628ee53b48ab0cc56796992d2414af4a0fbc4bec67955a",
+    "reference-light-reed": "a5add59bc54f39187b5dc2b1e66b0cc3f99057cb69f11b04692888f4dc8a4843",
+    "reference-light-reed-close": "30102b85173adefae5f66381a393f440706e43431f4d841a686a2ced53a732ac",
+    "reference-light-reed-wide": "5a35b600e9e7ac3dff4c844852954564fbdcc060fa22737c4f2588314a36d1cc"
+  },
+  "reference_commit": "31caeb28abb3bdab8d9030bfc91f0c3f48ffa63a",
+  "reference_shipped_frame": {
+    "video": "render-examples/orbit_maneuver_policy.mp4",
+    "video_sha256": "cbb4a98684bcc96ac9a85d4fa53e74522ac66684c94c62e401ef04a3b1bae26f",
+    "seconds": 4,
+    "theme": "dark",
+    "image_sha256": "9a7eb3f0efe50cf4046a82c10e6b8db4c0d210c9aba292ddfa51934c047a83c9"
+  },
+  "persistent_identity": {
+    "selected": "wren71-final",
+    "stale": false,
+    "error": null,
+    "revision": "e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb",
+    "relation": "current",
+    "model": {
+      "available": true,
+      "reason": null,
+      "revision": "e9dee22bc90c428942562eeadf150ef4bcd4ab03d8e9ed96e0f959272cfa22bb"
+    },
+    "runs": [
+      "wren1-checkpoint20",
+      "wren1",
+      "wren1-final",
+      "wren2-checkpoint20",
+      "wren2",
+      "wren2-final",
+      "wren56-interrupt",
+      "wren56b-interrupt",
+      "wren56c-interrupt",
+      "wren56c-retry",
+      "wren57-interrupt",
+      "wren57-retry",
+      "wren66-checkpoint20",
+      "wren66",
+      "wren66-final",
+      "wren71-checkpoint20",
+      "wren71",
+      "wren71-final"
+    ]
+  },
+  "camera": {
+    "distance": 1111.0435083365383,
+    "pitch": 0.5,
+    "target": [
+      0,
+      0,
+      127.8813289859041
+    ],
+    "yaw": 0.8
+  },
+  "stats": {
+    "available": true,
+    "components": 8,
+    "triangles": 96,
+    "bounds": {
+      "center": [
+        0,
+        0,
+        127.8813289859041
+      ],
+      "max": [
+        300,
+        300,
+        265.7626579718082
+      ],
+      "min": [
+        -300,
+        -300,
+        -10
+      ],
+      "radius": 446.1067819288551
+    },
+    "style": "cadex-prototype-light-v1",
+    "stage": {
+      "roomSize": 62.21843646684614,
+      "fog": {
+        "near": 1.6665652625048073,
+        "far": 15.554609116711536
+      },
+      "pitch": 1,
+      "minor": 0.5,
+      "frameSpan": 1.1567452843388324
+    }
+  },
+  "orbit": {
+    "before": {
+      "distance": 1111.0435083365383,
+      "pitch": 0.5,
+      "target": [
+        0,
+        0,
+        127.8813289859041
+      ],
+      "yaw": 0.8
+    },
+    "after_drag": {
+      "distance": 1111.0435083365383,
+      "pitch": 0.8000000000000003,
+      "target": [
+        0,
+        0,
+        127.8813289859041
+      ],
+      "yaw": 2.6
+    },
+    "after_zoom_in": {
+      "distance": 647.4586627945838,
+      "pitch": 0.8000000000000003,
+      "target": [
+        0,
+        0,
+        127.8813289859041
+      ],
+      "yaw": 2.6
+    },
+    "after_zoom_out": {
+      "distance": 3916.896657687451,
+      "pitch": 0.8000000000000003,
+      "target": [
+        0,
+        0,
+        127.8813289859041
+      ],
+      "yaw": 2.6
+    },
+    "model_pixels": {
+      "drag": 50553,
+      "zoom_in": 130069,
+      "zoom_out": 4138
+    },
+    "stage_far": {
+      "roomSize": 219.34621283049725,
+      "fog": {
+        "near": 5.875344986531177,
+        "far": 54.83655320762431
+      },
+      "pitch": 1,
+      "minor": 0,
+      "frameSpan": 4.078014680816699
+    }
+  },
+  "lossless_viewport_capture_equal": true,
+  "historical_relation": "HISTORICAL \u2014 recorded at 79f86c69bfc3, accepted now is e9dee22bc90c",
+  "checkpoint": {
+    "accepted_revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+    "bounds": {
+      "center": [
+        0.0,
+        0.0,
+        127.8813289859041
+      ],
+      "max": [
+        300.0,
+        300.0,
+        265.7626579718082
+      ],
+      "min": [
+        -300.0,
+        -300.0,
+        -10.0
+      ],
+      "radius": 446.1067819288551
+    },
+    "camera": {
+      "distance": 1111.0435083365383,
+      "pitch": 0.5,
+      "target": [
+        0,
+        0,
+        127.8813289859041
+      ],
+      "yaw": 0.8
+    },
+    "duration_seconds": 8.1,
+    "fps": 10,
+    "frames": 81,
+    "height": 512,
+    "model_digest": "dc1e707ae72120b92d6cfb6fb79d81f515db7b5fa20f96bf0c877f73b47bcb35",
+    "path": "rollout-4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e.webm",
+    "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+    "projection": "perspective 55 degrees",
+    "render_seconds": 12.629,
+    "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+    "sampling": "10 fps, latest solved pose plus final pose, fixed camera; tessellation preview",
+    "seed": 0,
+    "sha256": "4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e",
+    "sim_seconds": 8.0,
+    "style": "cadex-prototype-light-v1",
+    "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+    "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+    "trace_sha256": "18a332e423694d8fae334b7b4dbb084dedc232e67dac02b644e3f9ea2332bef4",
+    "width": 512
+  },
+  "checkpoint_playback_download_poll": true,
+  "codec_mean_absolute_rgb_error": 1.500579833984375,
+  "images": {
+    "persistent-same-pose.png": "1d6c7e985191df69fa628ee53b48ab0cc56796992d2414af4a0fbc4bec67955a",
+    "persistent-orbit-far.png": "c4f3d5e4a19c3c539394570d3ad1d94cff855760a28f0513e2e9fc03f305a77e",
+    "persistent-default.png": "1d6c7e985191df69fa628ee53b48ab0cc56796992d2414af4a0fbc4bec67955a",
+    "reference-shipped-orbit-4s.png": "9a7eb3f0efe50cf4046a82c10e6b8db4c0d210c9aba292ddfa51934c047a83c9",
+    "persistent-wide.png": "2e13d6728e8815a57aede9100d3f681dae9f77b815955a1416411bba2b5279c4",
+    "reference-light-reed-close.png": "30102b85173adefae5f66381a393f440706e43431f4d841a686a2ced53a732ac",
+    "checkpoint-frame0.png": "df2149d6c1c0261be8fd66e57d6f5d1b5393995c336fc982bd89f95eedede739",
+    "persistent-under.png": "ac61d6262310e4b136f2800735a1b340e12a421b2f537ba8eb5f806d90a85259",
+    "reference-light-reed-wide.png": "5a35b600e9e7ac3dff4c844852954564fbdcc060fa22737c4f2588314a36d1cc",
+    "persistent-close.png": "30fc9b3bf44642b83ebc9b283878375521f45d6fb5370bd305617cb1aa91c4fd",
+    "reference-light-reed.png": "a5add59bc54f39187b5dc2b1e66b0cc3f99057cb69f11b04692888f4dc8a4843",
+    "persistent-orbit-zoom.png": "cac5e8de78c4f5ebdde37231c365ea78de0819544fcd0e5f980fbdf6bb0269a6",
+    "persistent-orbit-drag.png": "4e0cf30885f78f9f7a53296ad067075a940f8888a9d929db1838e7928f21ed86",
+    "video-frame0.png": "66fcc0b3bb43e878456a3a9f30a42dccf9e67d9250b8c0b683bde4c02941afbf",
+    "capture-same-pose.png": "1d6c7e985191df69fa628ee53b48ab0cc56796992d2414af4a0fbc4bec67955a",
+    "side-by-side.png": "a861046c0bc84411163f00dcbe60bb1a0494d49a6491f89ca72e8d4117bad0a0"
+  },
+  "motion_frames": {
+    "video-frame40.png": {
+      "frame_index": 40,
+      "sha256": "cf276506d62736470e2165676e338df528b3aea56c690912785915755a21195e"
+    },
+    "video-frame80.png": {
+      "frame_index": 80,
+      "sha256": "cf276506d62736470e2165676e338df528b3aea56c690912785915755a21195e"
+    }
+  },
+  "current_playback": {
+    "decoded_frames": 81,
+    "encoded_seconds": 8.1,
+    "simulation_seconds": 8.0,
+    "frames_differ": true,
+    "download_sha256": "a2fde70a223941d18096dc08d3559ab2cae8e0b834ad3b2cc6920487074bdcc5",
+    "playback_survives_three_polls": true,
+    "foot_len_mm": 90,
+    "private_address_same_machine": true
+  }
+}
