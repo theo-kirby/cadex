@@ -1,6 +1,6 @@
 # Wren: the recorded headless lifecycle
 
-Verified against source: 2026-09-13. [Cadex-new] Iteration 72.
+Verified against source: 2026-09-13. [Cadex-new] Iteration 75 (D8 repeat; other evidence dated below).
 
 Wren has completed a fresh-project lifecycle through creation, reopen, GPU
 training, recorded review, independent copy, interruption/retry, product-agent
@@ -118,7 +118,7 @@ show standing/shuffling. Poor gait does not invalidate the file lifecycle.
 | **D5 — retained design history** | [Common-seed comparison](revision66-evidence.json): 465 old run/asset files unchanged through revision/retraining. The current receipt plays/downloads 85, 105, 110 and 90 mm recordings, compares their own document snapshots and history lengths, and preserves selection through polls. |
 | **D6 — save/reopen/restart** | [restart69-evidence.json](restart69-evidence.json): two fresh engine restores, 2,004-file inventory, all 15 then-existing runs and videos. [restart71-evidence.json](restart71-evidence.json): same real trainer PID/start tick, updates 4→14, first newer page update 0.957 s after restart, uninterrupted historical playback. Engine reopen was not tested during training. |
 | **D7 — independent copy** | [copy-evidence.json](copy-evidence.json): original unavailable during copy edit/reopen/two-server browser review, complete original inventory unchanged. [interruption57-evidence.json](interruption57-evidence.json) adds copy training/retry with original preservation. Keep the entire project, not just its script. |
-| **D8 — interruption/failure clarity** | [INTERRUPTION.md](INTERRUPTION.md): real controlled interruption, failed status with KeyboardInterrupt and next CLI action, then successful retry; older results survived. [Reed missing/partial recovery](../reed-copy/video-recovery.json) and [browser fault regression](../../../cli/tests/test_review_lifecycle.py) are shared-product evidence; missing/partial video injection was not independently repeated on Wren here. |
+| **D8 — interruption/failure clarity** | [INTERRUPTION.md](INTERRUPTION.md): real controlled interruption, failed status with KeyboardInterrupt and next CLI action, then successful retry; older results survived. [Wren missing/partial/failed video repeat](video75-evidence.json) independently exercises retained Wren artifacts on a disposable full copy: unavailable outputs are refused, CLI guidance is visible, prior completed video still plays/downloads, and restored output recovers in the same page. See the reproducible command below. |
 | **D9 — agent lifecycle** | Creation and ordered steps above; [agent revision](REVISION66.md), retained project ADR-002/design specs, real retraining, both saved videos and the same-seed comparison. The authoring/session-limit and unequal-budget qualifications above are part of this evidence. |
 | **D10 — persistent current work** | [Copy switch](COPY.md), [real experiment start/completion](RESTART-TRAINING.md), [operator status](../operator-review/README.md), and current receipt: default wren71-final, 18 runs, historical playback preserved and return-to-current works. Server stays running. |
 | **D11 — reference appearance** | [Current 90 mm comparison](../review-style/README.md#current-90-mm-wren-comparison--iteration-73) and [wren90.json](../review-style/wren90.json): current wren71-final viewport/capture PNGs identical at the same pose/camera; decoded video RGB MAE 1.50058/255. Identified shipped reference plus light-reference renders compare floor/grid, horizon/fog, palette, materials, shadows, fit/close/wide and pointer orbit. Current and historical playback/download/polling pass. The [earlier 110 mm assessment](../review-style/README.md#repeat-on-wren-wren57-retry--iteration-64) remains historical. |
@@ -157,13 +157,12 @@ geometry or rewrite the saved recordings.
 
 ## Remaining acceptance limits
 
-The lifecycle claims have evidence; the owner judges acceptance. A stricter
-Wren-only acceptance of missing/partial-video fault injection still needs that
-specific repeat; the report currently cites the shared product's real Reed
-fault test. Iteration 72 checked access and identity; it was not a new equivalent-framing assessment.
+The lifecycle claims have evidence; the owner judges acceptance. Iteration 75
+independently repeated Wren missing/partial-video injection as described below.
+Iteration 72 checked access and identity; it was not a new equivalent-framing assessment.
 Iteration 73 subsequently closed that D11 gap with the linked current 90 mm
 reference comparison, including decoded video and close/wide/orbit views.
-The remaining fault-injection repeat calls for no new training. No second-device reachability,
+No training was repeated for the fault test. No second-device reachability,
 equal-budget causal design study, five-seed wren71 result or walking gait is
 claimed. No new dependency or product behavior was introduced.
 
@@ -177,3 +176,50 @@ ended with signal 15 at the lifecycle-test stage without a pytest failure
 report; an isolated `setsid env OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 pixi run test-engine` rerun passed. Its termination cause was
 not established. Logs are retained in `evidence/lifecycle72-final/`. No build
 was needed for this documentation/probe/test unit.
+
+
+## Wren video faults — iteration 75
+
+Run the assertion-bearing [browser lifecycle probe](video_recovery.py) with a
+new output directory outside the source project:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/wren-fresh/video_recovery.py \
+  "http://$(tailscale ip -4):8765/" "$HOME/cadex-projects/ot5-wren-copy54" \
+  "$HOME/cadex-projects/ot5-wren-video75-final"
+```
+
+The probe copies the entire project into a temporary sibling directory under
+cadex-projects, verifies its initial inventory, and serves only that copy on an
+allocated private-network port. It removes the copied **wren71-final** video,
+then replaces it with its first **64 bytes**, then injects an explicit failed
+encoder receipt while those partial bytes remain. These are controlled artifact
+faults, not an actual new encoder failure or training run.
+
+[The receipt](video75-evidence.json) records each automatically polled label:
+missing, digest mismatch, and `Video render: failed — injected encoder failure`.
+Each refuses the video endpoint with **404**, exposes no player/download link,
+and says **Retry the CLI video command** after restoring inputs or fixing the
+encoder. Each retains the current run's identity; each permits historical
+**wren66-final** playback, digest-checked download, and two refreshes without
+replacing or pausing the player. Returning to current shows the broken output,
+not a substituted successful run. Restoring the original video and receipt
+recovers playback/download in the same page and restores the full copy inventory.
+
+The persistent port **8765** stays on **ot5-wren-copy54 / wren71-final** before
+and after the test, with playback/download checked afterward. All **3,769** files in the source
+project inventory are byte-identical. Screenshots and raw evidence stay in the
+external output directory; the temporary copy and its server are cleaned up.
+The first probe attempts timed out playing the background operator tab after
+all copy checks passed; explicitly bringing the tab forward made the complete
+check pass. This is same-machine private-address evidence, not a second-device
+check. No product behavior or dependency changed.
+
+Iteration 75 verification: the real browser probe and all **four** report guard
+tests passed. Engine: **2,110 passed, 53 skipped**, 262.12 s. The full CLI run
+started before the report edit and collected its old guard: **418 passed,
+one skipped, one failed**, 403.95 s. That failure asserted the removed sentence
+claiming Wren fault injection had not been repeated. A fresh invocation of
+`pixi run python -m pytest cli/tests/test_wren_lifecycle_report.py` passed all
+four updated tests; the whole CLI suite was not repeated after that edit.
+Logs are retained beside the raw receipt. No product regression was observed.

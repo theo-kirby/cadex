@@ -31,6 +31,12 @@ No renderer defect was demonstrated. Service, project and default remain
 unchanged; no training or restart occurred.
 [Current visual assessment](../review-style/README.md#current-90-mm-wren-comparison--iteration-73).
 
+Iteration 75 exercised missing, partial and failed video output on a disposable
+full Wren copy. Historical playback/download and restoration passed; the shared
+URL still serves `wren71-final` and its verified video. All 3,769 source-project
+files remained byte-identical. No service restart or training occurred.
+[Wren fault evidence](../wren-fresh/LIFECYCLE.md#wren-video-faults--iteration-75).
+
 Iteration 69 verified two engine reopens and restarted the persistent service
 with the saved working project intact: all 15 run views matched, the open
 page kept playing, and fresh visits still selected `wren66-final`. Current

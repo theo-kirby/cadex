@@ -16,7 +16,7 @@ def test_report_links_all_criteria_and_resolves_local_evidence():
         assert (ROOT / link.split('#')[0]).is_file(), link
     assert '12 updates' in text and 'unequal training budgets' in text
     assert 'wren71 has no five-seed' in text
-    assert 'missing/partial video injection was not independently repeated on Wren' in text
+    assert 'Wren missing/partial/failed video repeat' in text
     assert 'not a new equivalent-framing assessment' in text
 
 
@@ -71,3 +71,24 @@ def test_current_repeat_is_separate_from_historical_comparison():
     current = receipt['views'][receipt['current']]
     assert current['revision'] == repeat['completion_browser']['view-revision']
     assert current['history_points']['curve'] == 240
+
+
+def test_wren_video_faults_preserve_history_and_operator():
+    receipt = json.loads((ROOT / 'video75-evidence.json').read_text())
+    assert receipt['current'] == 'wren71-final'
+    assert receipt['prior'] == 'wren66-final'
+    assert receipt['operator_unchanged'] and receipt['same_machine_private_address']
+    assert receipt['original_files_unchanged'] == receipt['copy_restored_files'] > 703
+    assert receipt['baseline'] == receipt['restored'] == receipt['operator']
+    assert receipt['operator']['playback_poll_preserved']
+    historical = json.loads((ROOT / 'lifecycle72-evidence.json').read_text())['views']['wren66-final']
+    assert [f['fault'] for f in receipt['faults']] == ['missing', 'partial', 'failed']
+    for fault, label in zip(receipt['faults'], ['missing', 'digest mismatch', 'injected encoder failure']):
+        assert fault['http_status'] == 404
+        assert fault['unavailable'] and fault['cli_guidance']
+        assert label in fault['label'] and 'Retry the CLI video command' in fault['label']
+        assert fault['prior']['playback_poll_preserved']
+        assert fault['prior']['revision'] == historical['revision']
+        assert fault['prior']['policy_sha256'] == historical['policy_sha256']
+        assert fault['prior']['download_sha256'] == historical['video_sha256']
+    assert set(receipt['screenshots']) == {'missing.png', 'partial.png', 'failed.png'}
