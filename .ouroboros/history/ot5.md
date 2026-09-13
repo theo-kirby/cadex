@@ -6,11 +6,11 @@ ended: 2026-09-13T14:44:55+00:00
 hours: 19.4
 state: killed
 iterations: 111
-commits: 136
+commits: 137
 criteria_ticked: 0
-criteria_closed: 0
+criteria_closed: 11
 criteria_total: 11
-merged: no
+merged: 33d499b8ab628ea66e6043f4805cb1638d224dd6
 branch: ouroboros/ot5
 memory: hypergraph
 actor: claude:claude-fable-5-1
@@ -18,15 +18,15 @@ actor: claude:claude-fable-5-1
 
 # Run ot5
 
-111 iterations in 19.4h on `sb1x`, killed (limit resets in 29 min: every harness is blocked (claude, codex): every harness in the chain is blocked). Branch `ouroboros/ot5`, not merged.
+111 iterations in 19.4h on `sb1x`, killed (limit resets in 29 min: every harness is blocked (claude, codex): every harness in the chain is blocked). Branch `ouroboros/ot5`, merged as `33d499b8`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 111 (changed 109, recorded 72) |
-| commits | 136 — 283 files changed, 47157 insertions(+), 103 deletions(-) |
-| criteria | **this run ticked 0**; 0 of 11 checked at the tip |
+| commits | 137 — 284 files changed, 47262 insertions(+), 113 deletions(-) |
+| criteria | **this run ticked 0**; 11 of 11 checked at the tip |
 | reverts | 0 |
 | verdicts | continue 101, done_rejected 1, looping 2, reject 5, stuck 2 |
 | loop detector | no_frontier ×31 (longest streak 60) |
