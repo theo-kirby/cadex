@@ -11,6 +11,10 @@ Status: working
 
 ## Current
 
+**Wren-specific browser evidence now covers missing, partial and failed video output on an isolated full project copy.** Each fault refuses playback/download and media requests with CLI recovery guidance while historical `wren66-final` plays and downloads correctly through polling; restoring the original files recovers `wren71-final` on the same page. All 3,769 original files and the restored copy inventory match. These are controlled artifact faults, not a new real encoder crash or training interruption [rec: fresh-timber-6139].
+
+Video lists now lead with verified current availability (available, unavailable or partly available) and retained/recorded counts, separately labelling the historical render outcome (ADR-310). Missing/truncated/restored and mixed-file browser regressions preserve historical playback; the real Wren probe repeats recovery with truthful headlines. Final-tree CLI validation passes 421 tests/1 skipped and engine validation 2,110/53 skipped [rec: blue-forest-5016].
+
 **Wren's working copy now has a clean real GPU interruption followed by a successful retry, with both outcomes readable on the persistent dashboard.** `wren57-interrupt` receives SIGINT at iteration 5 and retains failed/KeyboardInterrupt telemetry with six samples per curve; sequential `wren57-retry` exits 0 with completed/done status and twelve samples per curve. Browser checks verify explicit interruption/retry guidance, historical selection, return to current, and all four older videos through eight decode/playback/hash-download checks [rec: fair-garden-6418].
 
 The first Wren probe retained two corrected harness defects and disclosed overlapping CLI CPU toy training; its successful interruption/retry evidence remains historical [rec: small-wind-0172]. ADR-305's repeat runs both suites to completion before training and guards against Python CPU/GPU trainers and pytest before launch and during browser waits. Both sampled monitors observe at most one trainer and no violation (largest gaps 59.33/58.87 ms). Judgement: the repeat supersedes the earlier exclusion evidence only; this is sampled observation, not a host-wide scheduler lock. Its saved policy passes the trainer-local witness check, with no new engine rollout, video or gait claim [rec: fair-garden-6418].
@@ -51,3 +55,5 @@ Charter criterion: **D8. Interrupted and failed runs remain understandable** A c
 - weathered-sage-2750 — beyond-cache corruption refusal across restart and restoration with 4,122 files preserved
 - small-wind-0172 — Wren interruption/retry with retained probe defects and disclosed suite overlap
 - fair-garden-6418 — ADR-305 guarded sequential repeat establishes clean interruption/retry evidence
+- fresh-timber-6139 — Wren-only missing/partial/failed output recovery and historical playback with original files preserved
+- blue-forest-5016 — ADR-310 separates current availability from recorded outcome; regressions and Wren recovery pass

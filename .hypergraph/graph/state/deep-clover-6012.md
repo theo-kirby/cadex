@@ -11,6 +11,10 @@ Status: working
 
 ## Current
 
+**New-failure publication preserves deliberate historical playback through automatic polling.** A browser regression publishes a distinct failed attempt while a historical video plays: selection, video element, revision and advancing playback survive two subsequent polls; fresh visits and return-to-current select the same new failure without a substituted video. This is synthetic publication coverage, not another failed Wren training run [rec: loyal-canyon-2866].
+
+Persistent private port 8765 remains on `ot5-wren-copy54` / `wren71-final`, playback revision `e9dee22bc90c…`, with current and historical `wren66-final` playback and hash-matching downloads verified. Wren video-fault probes preserve all 3,769 source files and confirm the current availability headline; the service stays active without restart, training or project switch. Evidence remains same-machine private-address only. Latest final-tree suites pass CLI 422/1 skipped and engine 2,110/53 skipped [rec: fresh-timber-6139] [rec: blue-forest-5016] [rec: loyal-canyon-2866].
+
 **Persistent private port 8765 serves `ot5-wren-copy54`, 18 runs, default `wren71-final`, at playback revision `e9dee22bc90c…` with 90 mm feet and playable/downloadable video.** The dashboard followed real `wren71` training, checkpoint publication and completion; its restart preserved the single trainer and historical playback, with telemetry recovery in 0.957 s [rec: odd-pebble-9529].
 
 Six historical/current views spanning 85/105/110/90 mm designs preserve model/document identities, three curve histories and hash-matching video playback/download through polling and return to current. All 703 run/asset files remained byte-identical. The retry retains 12 curve points, checkpoint20 its stale-labelled 19-point snapshot and the four finals 240 each [rec: crisp-stream-4743]. The subsequent current-design visual comparison again verified current/historical playback, downloads and polling while the same service remained active, without restart or new training. All observations are same-machine private-address evidence [rec: terse-walrus-5414].
@@ -51,3 +55,6 @@ None yet.
 - odd-pebble-9529 — persistent dashboard follows wren71 through real-training restart and final publication
 - crisp-stream-4743 — six historical/current views pass and 703 run/asset files remain unchanged
 - terse-walrus-5414 — current and historical playback remain verified during current-design visual comparison
+- fresh-timber-6139 — persistent current video verified before/after isolated Wren faults
+- blue-forest-5016 — truthful available headline and unchanged persistent project verified
+- loyal-canyon-2866 — new failed-attempt polling regression preserves historical playback; persistent current/history verification and full suites pass
