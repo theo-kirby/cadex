@@ -2,12 +2,19 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
-**Current state (iteration 84):** the product agent revised Lark from
-`lark1`'s measured results (`torso_h` 70 → 45 mm, project ADR-004), `lark2`
-retrained it under the same bounds, and all four retained policies were
-compared on the declared seeds 0–9: both 45 mm policies survive every episode
-where `lark1-final` fell on all ten. The persistent port 8765 page selects
-`lark2-final`. See [REVISION84.md](REVISION84.md) and its receipts
+**Current state (iteration 85):** the working project is the whole-project
+copy **`ot5-lark-copy85`**, which the persistent port 8765 now serves with
+`lark2-final` selected by default as HISTORICAL against the copy's own
+accepted 90 mm-foot, policy-off edit (revision `083d086ad980…`). The copy
+proved D7 on Lark with the original path unavailable throughout the edit,
+two engine restores and both browser checks, and `ot5-lark` (1,852 files)
+is byte-identical to its pre-copy inventory. See [COPY85.md](COPY85.md) and
+[`copy85-evidence.json`](copy85-evidence.json). Before that (iteration 84)
+the product agent revised Lark from `lark1`'s measured results (`torso_h`
+70 → 45 mm, project ADR-004), `lark2` retrained it under the same bounds,
+and all four retained policies were compared on the declared seeds 0–9:
+both 45 mm policies survive every episode where `lark1-final` fell on all
+ten. See [REVISION84.md](REVISION84.md) and its receipts
 [`training84-evidence.json`](training84-evidence.json) and
 [`revision84-evidence.json`](revision84-evidence.json).
 

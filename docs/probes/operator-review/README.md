@@ -5,7 +5,21 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Wren lifecycle report](../wren-fresh/LIFECYCLE.md) links D1–D11 evidence, the design
 comparisons and their limits, and the current persistent-browser check.
 
-The shared private-network dashboard on port 8765 serves **`ot5-lark`**,
+The shared private-network dashboard on port 8765 serves
+**`ot5-lark-copy85`**, the whole-project copy of the third fresh biped
+(iteration 85, ADR-314), with **`lark2-final` selected by default** as
+HISTORICAL (playback revision `ca88f223b54c…`) against the copy's own
+accepted revision `083d086ad980…` (`foot_len` 80 → 90 mm, `policy_on` 0, a
+copy-only CLI edit; no retraining). The service was deliberately stopped and
+started on the copy with no trainer running, checked over the private
+address before and after the D7 probe, and stays running. All six retained
+runs, their curves and all four videos play from the copy; the original
+`ot5-lark` is byte-identical to its pre-copy inventory and is no longer
+served. Evidence: [COPY85.md](../lark-fresh/COPY85.md),
+[`copy85-evidence.json`](../lark-fresh/copy85-evidence.json), and in the
+copy `evidence/copy85/` and `evidence/lark2-final-switch85-browser.json`.
+
+Until iteration 85 it served **`ot5-lark`**,
 the third fresh product-agent biped, with **`lark2-final` selected by
 default** (playback revision `ca88f223b54c…`) on the product agent's own
 45 mm-torso revision (design revision `62f4e2a0e2df…`, project ADR-004).

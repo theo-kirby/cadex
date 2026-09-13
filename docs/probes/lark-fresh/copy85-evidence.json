@@ -1,0 +1,334 @@
+{
+  "original": "ot5-lark",
+  "copy": "ot5-lark-copy85",
+  "source_files": 1852,
+  "source_inventory_sha256": "f463ad63dfccd9ae70069b5f20fadc88b49eebf6ad6b1e57c5b683fa78a2aeea",
+  "original_revision": "ca88f223b54c060ea67f5531e89f07e25fcf061d934c5357c0fe6582df25289d",
+  "original_digest": "a1232a4a8c26733fd71eb7aaba0094213d6df954136bee8b118a36713b75e576",
+  "default_run": "lark2-final",
+  "second_server": {
+    "lark1": {
+      "revision": "ebe0f62df8027baa51cff85d6f9bd9901f87fb1dc7dc9610b012924e4f5256d3",
+      "digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "torso": "7d7dee467cb9bab29d0c77f7a9bf7e8fcfd88034ca0dc1a10d2a2e9c01f5596f",
+        "thigh_l": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "thigh_r": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "shin_l": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "shin_r": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "foot_l": "82e0b0040decb5dac6aa1c2e5296fb3af1e4acba83c3a343e87a01d5516611d4",
+        "foot_r": "82e0b0040decb5dac6aa1c2e5296fb3af1e4acba83c3a343e87a01d5516611d4",
+        "ground_plate": "a8d1c77093771ccdcb832c6d743af2248656fa96fcccfcacea76f574d82c5793"
+      }
+    },
+    "lark1-checkpoint20": {
+      "revision": "54ec0ef7958d49830a881aa797a2f09edcecd541a36afb2c956c9b97055979e4",
+      "digest": "185caf6c180ac27878dac97f3e8de502d14e700790dfebbf233d55f042be1ea1",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 19,
+        "loss_curve": 19,
+        "episode_steps_curve": 19
+      },
+      "mesh_sha256": {
+        "torso": "d22317d32f1e599c77eb40e7d7d666a6436ef6377f6649dca6c738620bffd94f",
+        "thigh_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "thigh_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "foot_l": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "foot_r": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "ground_plate": "ee1a6d102e0ac8b17dde7942c1f24d1f8e16e6d7870b92625895ed6dfe3454c8"
+      },
+      "video": {
+        "sha256": "c5f165541dd14536a18e3b59948200d5b8b0851f1488b64560f117199d395f30",
+        "policy_sha256": "e6dcbbcc68b4c563ef14acd493845654e78e9a7a4f18724a89cf4d0158c9ad4f",
+        "seed": 0,
+        "sim_seconds": 0.98
+      },
+      "playback_download_poll": true
+    },
+    "lark1-final": {
+      "revision": "44f8f6a113a3a63a17587da33ce803473977cab493b6c735d7ba8403d394b4e2",
+      "digest": "bfd2bdeb36a2ed69c8c1f4a3471e387fae21d101ca8c2a62a5f6911b6a7163f4",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "torso": "d22317d32f1e599c77eb40e7d7d666a6436ef6377f6649dca6c738620bffd94f",
+        "thigh_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "thigh_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "foot_l": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "foot_r": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "ground_plate": "ee1a6d102e0ac8b17dde7942c1f24d1f8e16e6d7870b92625895ed6dfe3454c8"
+      },
+      "video": {
+        "sha256": "25b363291b402b896290d043aac29a662cfa8b69f1635dc962b14db2e88c6526",
+        "policy_sha256": "396c013c3c3565e0b63448f9e3ed372a882544330dac8ff6cd9d79036e2087c4",
+        "seed": 0,
+        "sim_seconds": 0.5
+      },
+      "playback_download_poll": true
+    },
+    "lark2": {
+      "revision": "62f4e2a0e2df414b00d27dd8644f59313507953129805e6c47b22a250db419cb",
+      "digest": "add12df51777f9ed9b8da7fd593a587e1ef4aaaf7078143048388b76ffb87aff",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "torso": "adb37a9dbcf39101080cc913eeaa58c147ffd78613600af76a09d8d7bf091e0d",
+        "thigh_l": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "thigh_r": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "shin_l": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "shin_r": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "foot_l": "82e0b0040decb5dac6aa1c2e5296fb3af1e4acba83c3a343e87a01d5516611d4",
+        "foot_r": "82e0b0040decb5dac6aa1c2e5296fb3af1e4acba83c3a343e87a01d5516611d4",
+        "ground_plate": "a8d1c77093771ccdcb832c6d743af2248656fa96fcccfcacea76f574d82c5793"
+      }
+    },
+    "lark2-checkpoint20": {
+      "revision": "95a37e532daee7e55aaa1b9521a5122db760f5b355f2f15982f885770d889c79",
+      "digest": "36d6c451054132d75e8ee49651e7429c0dd7c5543a0ce7c3ae5fbc3b9c4db94c",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 19,
+        "loss_curve": 19,
+        "episode_steps_curve": 19
+      },
+      "mesh_sha256": {
+        "torso": "ba6dbd065e815a93ffd981662569d825094b976d501fd03977b80db8f1db178f",
+        "thigh_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "thigh_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "foot_l": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "foot_r": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "ground_plate": "ee1a6d102e0ac8b17dde7942c1f24d1f8e16e6d7870b92625895ed6dfe3454c8"
+      },
+      "video": {
+        "sha256": "dfb45737df667051192453df68ab030e4689a25c91c95713ba82a26c6e8df115",
+        "policy_sha256": "8eb15d8a7570438690b29f9d32b51cd6f706514f53f03ed0afcb4e624d6d14e1",
+        "seed": 0,
+        "sim_seconds": 8.0
+      },
+      "playback_download_poll": true
+    },
+    "lark2-final": {
+      "revision": "ca88f223b54c060ea67f5531e89f07e25fcf061d934c5357c0fe6582df25289d",
+      "digest": "a1232a4a8c26733fd71eb7aaba0094213d6df954136bee8b118a36713b75e576",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "torso": "ba6dbd065e815a93ffd981662569d825094b976d501fd03977b80db8f1db178f",
+        "thigh_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "thigh_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "foot_l": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "foot_r": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "ground_plate": "ee1a6d102e0ac8b17dde7942c1f24d1f8e16e6d7870b92625895ed6dfe3454c8"
+      },
+      "video": {
+        "sha256": "af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826",
+        "policy_sha256": "b79a63908e9418d2c7347ed7a6fb432f540c429e15c8112b4bc7cb2bc43763a3",
+        "seed": 0,
+        "sim_seconds": 8.0
+      },
+      "playback_download_poll": true
+    }
+  },
+  "persistent_server": {
+    "lark1": {
+      "revision": "ebe0f62df8027baa51cff85d6f9bd9901f87fb1dc7dc9610b012924e4f5256d3",
+      "digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "torso": "7d7dee467cb9bab29d0c77f7a9bf7e8fcfd88034ca0dc1a10d2a2e9c01f5596f",
+        "thigh_l": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "thigh_r": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "shin_l": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "shin_r": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "foot_l": "82e0b0040decb5dac6aa1c2e5296fb3af1e4acba83c3a343e87a01d5516611d4",
+        "foot_r": "82e0b0040decb5dac6aa1c2e5296fb3af1e4acba83c3a343e87a01d5516611d4",
+        "ground_plate": "a8d1c77093771ccdcb832c6d743af2248656fa96fcccfcacea76f574d82c5793"
+      }
+    },
+    "lark1-checkpoint20": {
+      "revision": "54ec0ef7958d49830a881aa797a2f09edcecd541a36afb2c956c9b97055979e4",
+      "digest": "185caf6c180ac27878dac97f3e8de502d14e700790dfebbf233d55f042be1ea1",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 19,
+        "loss_curve": 19,
+        "episode_steps_curve": 19
+      },
+      "mesh_sha256": {
+        "torso": "d22317d32f1e599c77eb40e7d7d666a6436ef6377f6649dca6c738620bffd94f",
+        "thigh_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "thigh_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "foot_l": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "foot_r": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "ground_plate": "ee1a6d102e0ac8b17dde7942c1f24d1f8e16e6d7870b92625895ed6dfe3454c8"
+      },
+      "video": {
+        "sha256": "c5f165541dd14536a18e3b59948200d5b8b0851f1488b64560f117199d395f30",
+        "policy_sha256": "e6dcbbcc68b4c563ef14acd493845654e78e9a7a4f18724a89cf4d0158c9ad4f",
+        "seed": 0,
+        "sim_seconds": 0.98
+      },
+      "playback_download_poll": true
+    },
+    "lark1-final": {
+      "revision": "44f8f6a113a3a63a17587da33ce803473977cab493b6c735d7ba8403d394b4e2",
+      "digest": "bfd2bdeb36a2ed69c8c1f4a3471e387fae21d101ca8c2a62a5f6911b6a7163f4",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "torso": "d22317d32f1e599c77eb40e7d7d666a6436ef6377f6649dca6c738620bffd94f",
+        "thigh_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "thigh_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "foot_l": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "foot_r": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "ground_plate": "ee1a6d102e0ac8b17dde7942c1f24d1f8e16e6d7870b92625895ed6dfe3454c8"
+      },
+      "video": {
+        "sha256": "25b363291b402b896290d043aac29a662cfa8b69f1635dc962b14db2e88c6526",
+        "policy_sha256": "396c013c3c3565e0b63448f9e3ed372a882544330dac8ff6cd9d79036e2087c4",
+        "seed": 0,
+        "sim_seconds": 0.5
+      },
+      "playback_download_poll": true
+    },
+    "lark2": {
+      "revision": "62f4e2a0e2df414b00d27dd8644f59313507953129805e6c47b22a250db419cb",
+      "digest": "add12df51777f9ed9b8da7fd593a587e1ef4aaaf7078143048388b76ffb87aff",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "torso": "adb37a9dbcf39101080cc913eeaa58c147ffd78613600af76a09d8d7bf091e0d",
+        "thigh_l": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "thigh_r": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "shin_l": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "shin_r": "80b73dfed57501b4604d54e51ffab6f801bd6da7e6289bde678d1d07cd944fe8",
+        "foot_l": "82e0b0040decb5dac6aa1c2e5296fb3af1e4acba83c3a343e87a01d5516611d4",
+        "foot_r": "82e0b0040decb5dac6aa1c2e5296fb3af1e4acba83c3a343e87a01d5516611d4",
+        "ground_plate": "a8d1c77093771ccdcb832c6d743af2248656fa96fcccfcacea76f574d82c5793"
+      }
+    },
+    "lark2-checkpoint20": {
+      "revision": "95a37e532daee7e55aaa1b9521a5122db760f5b355f2f15982f885770d889c79",
+      "digest": "36d6c451054132d75e8ee49651e7429c0dd7c5543a0ce7c3ae5fbc3b9c4db94c",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 19,
+        "loss_curve": 19,
+        "episode_steps_curve": 19
+      },
+      "mesh_sha256": {
+        "torso": "ba6dbd065e815a93ffd981662569d825094b976d501fd03977b80db8f1db178f",
+        "thigh_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "thigh_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "foot_l": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "foot_r": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "ground_plate": "ee1a6d102e0ac8b17dde7942c1f24d1f8e16e6d7870b92625895ed6dfe3454c8"
+      },
+      "video": {
+        "sha256": "dfb45737df667051192453df68ab030e4689a25c91c95713ba82a26c6e8df115",
+        "policy_sha256": "8eb15d8a7570438690b29f9d32b51cd6f706514f53f03ed0afcb4e624d6d14e1",
+        "seed": 0,
+        "sim_seconds": 8.0
+      },
+      "playback_download_poll": true
+    },
+    "lark2-final": {
+      "revision": "ca88f223b54c060ea67f5531e89f07e25fcf061d934c5357c0fe6582df25289d",
+      "digest": "a1232a4a8c26733fd71eb7aaba0094213d6df954136bee8b118a36713b75e576",
+      "foot_len": 80.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "torso": "ba6dbd065e815a93ffd981662569d825094b976d501fd03977b80db8f1db178f",
+        "thigh_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "thigh_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_l": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "shin_r": "65c1bcd74e4514c0cd42e9d05020b9190151ee7251ba6aef3ea66ca0100988dc",
+        "foot_l": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "foot_r": "f55bf9d10d71e1222c78f5a922042d98c390ea0751da466071338dab68cec2fa",
+        "ground_plate": "ee1a6d102e0ac8b17dde7942c1f24d1f8e16e6d7870b92625895ed6dfe3454c8"
+      },
+      "video": {
+        "sha256": "af610491bedf8ed8d13b8bbc7c05c94954747d95f86514b387256148c84cf826",
+        "policy_sha256": "b79a63908e9418d2c7347ed7a6fb432f540c429e15c8112b4bc7cb2bc43763a3",
+        "seed": 0,
+        "sim_seconds": 8.0
+      },
+      "playback_download_poll": true
+    }
+  },
+  "copy_revision": "083d086ad980d985b3714a5cdfaa0e37d9f58409171f95954e35aab0f93bacc3",
+  "copy_digest": "4c4171abfa4f97cdf4585e2fd7421de91cb1e03c6ca553cc4cac5fc9ec515835",
+  "changes": {
+    "foot_len": [
+      80.0,
+      90.0
+    ],
+    "policy_on": [
+      1.0,
+      0.0
+    ]
+  },
+  "source_unavailable_during_edit_restore_browser": true,
+  "original_unchanged": true,
+  "retained_files": 250,
+  "retained_sha256": "f54adac1ae335f4c5579838f1f2257d48c169ecd0db3d8d06184d499b06ab1f9",
+  "persistent_url_host": "100.104.232.88:8765",
+  "persistent_private_address_same_machine": true,
+  "product_agent_authorship": false,
+  "retraining": false,
+  "screenshots": {
+    "persistent-accepted.png": "00d200a8f306fee8634b3193fe14e4c3a43668fa531eb3f2671dbcc62782e06a",
+    "second-accepted.png": "2f83d8818200df8d18d0f24dd09c8b3914158042c863b6c8684f9ae32451b4eb"
+  },
+  "ok": true
+}

@@ -1043,5 +1043,15 @@ Lark's declared seeds 0–9 from their own retained models and policies. Both
 where `lark1-final` falls on all ten seeds after a +190 mm lunge and
 `lark1-checkpoint20` on two. One training seed per design and a shuffle, not a
 gait; the 125 pre-revision run/asset files are byte-identical. See
-[REVISION84.md](probes/lark-fresh/REVISION84.md) and ADR-313. Lark's copy
-and interruption evidence remain for later units.
+[REVISION84.md](probes/lark-fresh/REVISION84.md) and ADR-313.
+
+Iteration 85 proved D7 on Lark (ADR-314): the whole project was copied to
+`ot5-lark-copy85`, the persistent port 8765 was deliberately switched to the
+copy, and with the original path unavailable throughout, the public CLI
+changed only the copy (`foot_len` 80 → 90, `policy_on` 0; revision
+`083d086ad980…`), two fresh engine processes restored it, and a second
+server and the persistent one both showed all six retained runs with their
+own revisions, curves, meshes and playable, downloadable videos; the
+original's 1,852 files are byte-identical. The copy is now the working
+project on the shared URL. See [COPY85.md](probes/lark-fresh/COPY85.md).
+Lark's controlled-interruption (D8) evidence remains for a later unit.

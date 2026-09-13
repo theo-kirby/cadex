@@ -538,6 +538,9 @@ The [real Wren copy lifecycle](probes/wren-fresh/COPY.md) supplies an executable
 engine/browser check with the original path unavailable throughout a copy-only
 parameter edit and two restores, plus retained model/curve/video checks on the
 persistent operator URL and a second server.
+The [Lark copy lifecycle](probes/lark-fresh/COPY85.md) repeats it on the third
+fresh project with the same driver made project-agnostic: the default run and
+the parameter changes are arguments (`docs/probes/lark-fresh/copy_lifecycle.py`).
 
 The copy test in `cli/tests/test_review_lifecycle.py` exercises this command,
 opens both projects in headless Chromium, changes the copy's accepted fixture,

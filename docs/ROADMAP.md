@@ -2717,6 +2717,11 @@ field, and every client gets it through the surface it already reads.
 
 ## Live headless project review (ADR-284)
 
+- [x] Lark copy isolation on the persistent dashboard (ADR-314): whole-project
+      copy `ot5-lark-copy85` served on port 8765, edited through the CLI and
+      restored with the original path unavailable; six retained runs and four
+      videos review from the copy on two servers; the original is byte-identical.
+
 - [x] Lark's review-driven revision, retraining and declared-seed comparison
       (ADR-313): the product agent chose `torso_h` 70 → 45 mm from `lark1`'s
       measurements, `lark2` retrained it on the persistent dashboard with

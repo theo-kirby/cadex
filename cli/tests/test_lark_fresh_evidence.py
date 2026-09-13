@@ -314,3 +314,50 @@ def test_lark_agent_revision_comparison_uses_the_declared_ten_seeds():
     assert runs["lark2-checkpoint20"]["browser"]["returned_to_current"] == "RUN lark2"
     readme = (PROBE / "REVISION84.md").read_text()
     assert "revision84-evidence.json" in readme and "training84-evidence.json" in readme
+
+
+def test_lark_copy_is_independent_with_the_original_unavailable():
+    """``copy85-evidence.json`` is the D7 receipt on Lark: the whole project
+    was copied, the persistent operator service switched to the copy, the
+    original path renamed away for the entire copy-only CLI edit, two fresh
+    engine restores and both browser checks, and every original file proved
+    byte-identical afterwards. Both servers showed the same six retained runs
+    with their own revisions, digests, parameters, curves, meshes and videos."""
+    receipt = json.loads((PROBE / "copy85-evidence.json").read_text())
+    assert receipt["ok"] and receipt["original"] == "ot5-lark" and receipt["copy"] == "ot5-lark-copy85"
+    assert receipt["source_files"] > receipt["retained_files"] >= 250
+    assert re.fullmatch(HEX64, receipt["source_inventory_sha256"])
+    assert re.fullmatch(HEX64, receipt["retained_sha256"])
+    assert receipt["source_unavailable_during_edit_restore_browser"] is True
+    assert receipt["original_unchanged"] is True
+    assert receipt["copy_revision"] != receipt["original_revision"]
+    assert receipt["copy_digest"] != receipt["original_digest"]
+    assert receipt["changes"] == {"foot_len": [80.0, 90.0], "policy_on": [1.0, 0.0]}
+    assert receipt["product_agent_authorship"] is False and receipt["retraining"] is False
+    assert receipt["persistent_url_host"].endswith(":8765")
+    assert not receipt["persistent_url_host"].startswith(("127.", "localhost", "[::1]"))
+    assert receipt["persistent_private_address_same_machine"] is True
+    assert receipt["default_run"] == "lark2-final"
+    second, persistent = receipt["second_server"], receipt["persistent_server"]
+    assert second == persistent
+    assert set(persistent) == {"lark1", "lark1-checkpoint20", "lark1-final",
+                               "lark2", "lark2-checkpoint20", "lark2-final"}
+    assert len({run["revision"] for run in persistent.values()}) == 6
+    for name, run in persistent.items():
+        assert re.fullmatch(HEX64, run["revision"]) and re.fullmatch(HEX64, run["digest"])
+        assert run["foot_len"] == 80.0
+        assert all(run["curves"][h] > 0 for h in ("curve", "loss_curve", "episode_steps_curve"))
+        assert len(run["mesh_sha256"]) == 8
+        assert ("video" in run) == name.endswith(("-checkpoint20", "-final"))
+        if "video" in run:
+            assert run["playback_download_poll"] is True
+            assert re.fullmatch(HEX64, run["video"]["sha256"])
+            assert re.fullmatch(HEX64, run["video"]["policy_sha256"])
+            assert run["video"]["seed"] == 0 and 0 < run["video"]["sim_seconds"] <= 8
+    assert persistent["lark2-final"]["revision"] == receipt["original_revision"]
+    assert persistent["lark1-final"]["curves"]["curve"] == persistent["lark2-final"]["curves"]["curve"] == 240
+    assert persistent["lark1-checkpoint20"]["curves"]["curve"] < 240
+    assert set(receipt["screenshots"]) == {"second-accepted.png", "persistent-accepted.png"}
+    for text in ((PROBE / "COPY85.md").read_text(),
+                 (REPO_ROOT / "docs" / "probes" / "operator-review" / "README.md").read_text()):
+        assert "ot5-lark-copy85" in text and receipt["copy_revision"][:12] in text

@@ -23302,3 +23302,27 @@ geometry from training variance and it is not a gait. The persistent port
 experiment's completion (`lark2-final`) and kept serving throughout; the
 125 pre-revision run/asset files are byte-identical. No protocol, payload,
 engine, shell or dependency change.
+
+## ADR-314 — Lark's copy is the working project, proved independent with the original unavailable (2026-09-13)
+
+[Cadex-new] D7 on the third fresh biped. `ot5-lark` (1,852 files) was copied
+whole to `ot5-lark-copy85` with no writer active, the persistent port 8765
+service was deliberately stopped and started on the copy, and the original
+directory was renamed away for the entire probe: a copy-only public-CLI edit
+(`foot_len` 80 → 90 mm, `policy_on` 1 → 0; accepted revision `083d086ad980…`,
+digest `4c4171abfa4f…`), two fresh engine restores, and headless-browser
+checks of a separately started server and the persistent one. Both servers
+showed all six retained runs with their own revisions, digests, 80 mm
+parameters, curve lengths, served mesh hashes and — for the four playback
+runs — videos that played, survived a poll and downloaded hash-equal; the
+accepted view showed the copy's new identity with no video substituted and
+return-to-current selected historical `lark2-final`. The 250 retained
+`runs/` and `assets/` files in the copy and all 1,852 original files are
+byte-identical to their pre-copy inventories. The one tooling change: the
+Wren copy driver became `docs/probes/lark-fresh/copy_lifecycle.py` with the
+default run and the parameter changes as arguments and the component count
+taken from each served model, so nothing in it names a project. The copy is
+now the working project on the shared URL, identified as such in the
+operator status; `ot5-lark` is retained, unchanged and unserved. Same-machine
+private-address checks; no retraining, no agent authorship, no new D11
+claim. No protocol, payload, engine, shell or dependency change.
