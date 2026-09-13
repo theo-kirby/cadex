@@ -1,4 +1,9 @@
-"""Write compact Wren experiment evidence; retain raw outputs inside the project."""
+"""Write compact training-experiment evidence; retain raw outputs inside the project.
+
+usage: summarize_training.py PROJECT RUN [SCHEMA]   (SCHEMA defaults to the Wren receipt schema)
+Project-agnostic: the torso is the one traced component whose output name contains
+``torso`` (``c_torso`` on Wren, ``torso_link`` on Lark).
+"""
 import hashlib
 import json
 from pathlib import Path
@@ -6,6 +11,7 @@ import sys
 
 root = Path(sys.argv[1])
 name = sys.argv[2]
+schema = sys.argv[3] if len(sys.argv) > 3 else 'wren-training-evidence-v1'
 evidence = root / 'evidence'
 
 
@@ -29,7 +35,7 @@ for phase in ('intermediate', 'final'):
     witness = entry.get('witness', {})
     entry['witness'] = {key: witness.get(key) for key in
                         ('witness_error', 'witness_tolerance', 'model_sha256', 'task_sha256')}
-result['schema'] = 'wren-training-evidence-v1'
+result['schema'] = schema
 result['project'] = root.name
 result['resource_bound'] = read(evidence / (name + '-resource-bound.json'))
 if (evidence / (name + '-start-browser.json')).exists():
@@ -43,7 +49,8 @@ for run_name in (name + '-checkpoint20', name + '-final'):
     trace_path = run / 'rollout/assembly-simulation-trace.json'
     trace = read(trace_path)
     policy = trace['policy']
-    first, last = [f['component_placements']['c_torso']['position_mm']
+    (torso,) = [k for k in trace['frames'][0]['component_placements'] if 'torso' in k]
+    first, last = [f['component_placements'][torso]['position_mm']
                    for f in (trace['frames'][0], trace['frames'][-1])]
     result['policies'][run_name] = {
         'browser': read(evidence / (run_name + '-check.json')),

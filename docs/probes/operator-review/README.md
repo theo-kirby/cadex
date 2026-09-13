@@ -6,8 +6,19 @@ The [Wren lifecycle report](../wren-fresh/LIFECYCLE.md) links D1–D11 evidence,
 comparisons and their limits, and the current persistent-browser check.
 
 The shared private-network dashboard on port 8765 now serves **`ot5-lark`**,
-the third fresh product-agent biped, at accepted revision **`753cf0cc4600…`**,
-digest `3b704a3fc1c4…`, with **no runs yet** (ACCEPTED NOW is the default
+the third fresh product-agent biped, with **`lark1-final` selected by
+default** (playback revision `44f8f6a113a3…`, accepted digest now
+`bfd2bdeb36a2…` with the final policy declared). Iteration 82 ran Lark's
+first bounded 240-update GPU experiment on this URL: the live page tracked
+training, `lark1-checkpoint20` was published with a verified video while the
+trainer was active, and the final policy has a verified, downloadable video;
+both policies fall within a second on seed 0. No trainer remains active; the
+service was not restarted and stays running.
+[Lark training evidence](../lark-fresh/README.md#first-bounded-real-training-probe-lark1-iteration-82),
+[compact receipt](../lark-fresh/training-evidence.json).
+
+Until iteration 82 it served Lark at its creation revision **`753cf0cc4600…`**,
+digest `3b704a3fc1c4…`, with no runs (ACCEPTED NOW was the default
 view). Iteration 80 created it in one `cadex -p` turn, switched the service
 from `ot5-wren-copy54` deliberately, fixed the reader's refusal of a first
 accepted attempt (ADR-311, one service restart with no trainer running),

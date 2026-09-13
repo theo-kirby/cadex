@@ -132,3 +132,92 @@ and the earlier projects must match their pre-creation snapshots. The compact
 receipt is [`evidence.json`](evidence.json), guarded by
 `cli/tests/test_lark_fresh_evidence.py`; screenshots stay in the project's
 `evidence/create80/`, with their hashes in the receipt.
+
+## First bounded real training probe, `lark1` (iteration 82)
+
+Lark's first real GPU experiment ran on the accepted design through the
+persistent private-network dashboard, using the Wren experiment driver with
+nothing named after Wren:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/lark-fresh/train.py \
+  "$HOME/cadex-projects/ot5-lark" lark1 "http://$(tailscale ip -4):8765/"
+python3 docs/probes/wren-fresh/summarize_training.py \
+  "$HOME/cadex-projects/ot5-lark" lark1 lark-training-evidence-v1 \
+  > docs/probes/lark-fresh/training-evidence.json
+```
+
+`train.py` discovers the model, task and policy outputs from the CLI's own
+envelopes by kind (`assembly_mjcf_xml`, `assembly_training_task_json`,
+`assembly_policy_receipt_json`) rather than by name, and reuses the
+project-agnostic `observe.py` and `check_video.py` beside the Wren driver by
+path; `summarize_training.py` now takes the receipt schema as its third
+argument and finds the torso as the one traced component named for it
+(`c_torso` on Wren, `torso_link` on Lark), and regenerates Wren's
+`training-evidence.json` byte-identically. Same bounds as `wren1`: 240 PPO
+updates, 1024 environments, training seed 0, checkpoints every 20 updates,
+`timeout 1800` and a `MemoryMax=20G` scope, from the existing
+`~/cadex-train-venv`; no new dependency. The compact receipt is
+[`training-evidence.json`](training-evidence.json), guarded by
+`cli/tests/test_lark_fresh_evidence.py`; raw outputs, trainer log, timeline,
+screenshots and all checkpoints stay in the project's `runs/lark1*` and
+`evidence/`.
+
+**Training.** Exit 0 on the GPU, 240 updates (last index 239), 1,052 s of
+wall clock; sampled host peak 9.33 GB of the enforced 21,474,836,480-byte cap
+(the scope's own `MemoryPeak` 5.02 GB at first sample), sampled GPU peak
+15,152 MiB. The training export (`policy_on=0` explicit) is revision
+`ebe0f62df802…` at the unchanged creation digest `3b704a3fc1c4…`; model
+`7e24cabd622d…`, task `402cca3b869d…`. Ordinary updates took a median of
+1.34 s; the wall clock is dominated by the eleven checkpoint exports, which
+cost 54–58 s each (694 s of the 992 s between the first and last committed
+update). Final batch reward/step 3.29, loss 78.2, episode-length estimate
+26.4 steps, up from 0.30 / 20,480 at update 0 — the estimate falling means
+episodes end early, and the rollouts below confirm it. The offboard JAX
+process emitted its usual overflow-cast RuntimeWarning at initialisation.
+
+**Live observation (D3, D10).** A fresh headless-browser visit to the
+persistent URL during training selected `RUN lark1` without a click, showed
+`CURRENT — this run's revision is the accepted revision now`, drew the eight
+retained components (orbit and zoom exercised), and over 180 s moved through
+seven page iterations (3 → 11) on its own poll with one navigation; each
+appeared 0.39–1.52 s after the trainer committed it, with reward, loss,
+episode-length and both curves updating. Receipt `evidence/lark1-observe.json`
+and screenshot beside it in the project.
+
+**Checkpoint published during training (D4).** `lark1.000020.cxpolicy`
+(`e6dcbbcc68b4…`) was imported through the public CLI, declared, rolled out
+with the engine's witness (error 8.0e-8 under 1e-4), rendered and recorded as
+`lark1-checkpoint20` (playback revision `54ec0ef7958d…`) while the trainer
+was at updates 18–26; its video (`c5f165541dd1…`, 11 frames, 0.98 s of
+simulation, `cadex-prototype-light-v1`) rendered in 3.07 s, decoded, played
+and downloaded hash-equal on the persistent page, which still selected the
+active `RUN lark1` for a fresh visit and returned to it afterwards. Trainer
+intervals were 1.39 s median in the 90 s before the render, 1.42 s during it
+and 1.34 s after: continued progress, not a zero-overhead claim.
+
+**Final policy (D4).** `lark1.cxpolicy` (`396c013c3c35…`) was recorded as
+`lark1-final` (playback revision `44f8f6a113a3…`) with a verified video
+(`25b363291b40…`, 6 frames, 0.50 s); a fresh visit selected `RUN lark1-final`,
+played and downloaded it, selected `lark1-checkpoint20` as HISTORICAL with
+its own revision, and returned to the current run. The accepted script now
+carries the final policy declaration (digest `bfd2bdeb36a2…`); the training
+run keeps its own recorded identity, and the run record written before
+training was unchanged by the playbacks.
+
+| Seed 0, episode limit 8 s | Checkpoint 20 | Final policy |
+|---|---:|---:|
+| Observed simulation time | 0.98 s | 0.50 s |
+| Fell | yes | yes |
+| Control steps | 49 | 25 |
+| Torso X displacement | −110.8 mm | +194.3 mm |
+| Total reward | −19.9 | +89.9 |
+
+Both policies fall within a second: the final one lunges forward and drops
+(+194 mm in 0.5 s before crossing the fall threshold), the checkpoint falls
+backward. This is the honest measured result of one 240-update run on one
+seed; it is not a gait, and the reward rising while episodes shorten says
+the forward-progress term is paid for by falling. Limits: same-machine
+private-address checks, not a second-device test; one training seed and one
+rollout seed; no design revision, retraining, copy or interruption evidence
+for Lark yet.

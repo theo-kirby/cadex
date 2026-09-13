@@ -1020,5 +1020,16 @@ tessellation request, with an engine-backed browser regression on a fresh
 project).
 The create/save/reopen probe then passed with identical components, meshes,
 placements, specs and viewport pixels before and after two in-place engine
-reopens. See [the Lark evidence](probes/lark-fresh/README.md). Training,
-recording and revision of Lark remain for later units.
+reopens. See [the Lark evidence](probes/lark-fresh/README.md).
+
+Iteration 82 ran Lark's first bounded real GPU experiment, `lark1`, on the
+persistent port 8765 dashboard with the Wren driver generalised to discover
+its outputs by kind: 240 updates, exit 0, live page updates within 1.6 s of
+each trainer commit, checkpoint 20 published with a verified video while the
+trainer was active, and a verified final video; the fresh visit now selects
+`lark1-final`. On seed 0 both policies fall within a second (checkpoint 20
+at 0.98 s, final at 0.50 s after lunging +194 mm forward): a measured poor
+result, not a gait. See [the `lark1` section](probes/lark-fresh/README.md#first-bounded-real-training-probe-lark1-iteration-82)
+and [its receipt](probes/lark-fresh/training-evidence.json). Lark's
+design revision, retraining, copy and interruption evidence remain for later
+units.

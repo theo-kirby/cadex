@@ -155,3 +155,61 @@ def test_the_probe_rejects_scripts_that_name_an_earlier_project():
     assert foreign.search("mg_legs") and foreign.search("cdx-rl/checkpoints")
     assert not foreign.search("lark = assembly.assemble(...)  # torso, thigh, shin, foot")
     assert not foreign.search('assembly.policy(walk_task, weights="walk.cxpolicy")')
+
+
+def test_lark_checkpoint_was_played_during_real_bounded_training():
+    """``training-evidence.json`` is the receipt of Lark's first real GPU run.
+
+    ``docs/probes/lark-fresh/train.py`` trains the accepted Lark design
+    offboard under the declared bounds, publishes checkpoint 20 as a verified
+    rollout and video while the trainer is still iterating, observes the
+    persistent operator page over the private address as it updates, and
+    retains the final policy's video. The receipt is held to those claims:
+    real device, exit 0, the declared 240 updates, the 20 GB host bound, a
+    witness-verified checkpoint whose browser check passed with the trainer
+    still active, at least seven live page updates without a reload and each
+    within five seconds of the trainer's commit, and both policies measured on
+    the same seed and episode limit with decoded, downloaded videos. Nothing
+    here needs a browser, an engine, a GPU or the project.
+    """
+    evidence = json.loads((PROBE / "training-evidence.json").read_text())
+    assert evidence["schema"] == "lark-training-evidence-v1"
+    assert evidence["project"] == "ot5-lark" and evidence["run"] == "lark1"
+    assert set(evidence["geometry"]) == {"lark_model-model.xml", "walk_task-task.json"}
+    assert evidence["training_exit"] == evidence["observer_exit"] == 0
+    final = evidence["trainer_final"]
+    # Trainer iterations are zero-based: 0..239 is the declared 240 updates.
+    assert final["iteration"] + 1 == 240 and final["state"] == "done" and final["device"] == "gpu"
+    assert evidence["resource_bound"]["MemoryMax"] == str(20 * 1024**3)
+    assert evidence["memory"]["host_peak_bytes"] < 20 * 1024**3
+    assert evidence["training_wall_seconds"] < 1800
+    mid = evidence["intermediate"]
+    assert mid["run"] == "lark1-checkpoint20"
+    assert mid["trainer_active_after_browser"] and mid["browser_check_exit"] == 0
+    assert mid["before"] < 20 <= mid["render_before"] <= mid["render_after"] <= mid["after"]
+    assert mid["witness"]["witness_error"] < mid["witness"]["witness_tolerance"]
+    assert mid["overhead"]["during_window"]["count"] >= 1
+    live = evidence["live_browser"]
+    assert live["ok"] and live["reload_count"] == 1 and live["orbit_zoom"]
+    assert live["default_view_kind"] == "RUN lark1"
+    assert len(live["page_iterations"]) >= 7
+    assert all(0 <= x["committed_to_page_s"] < 5 for x in live["first_seen"].values())
+    policies = evidence["policies"]
+    assert set(policies) == {"lark1-checkpoint20", "lark1-final"}
+    for name, policy in policies.items():
+        assert re.fullmatch(HEX64, policy["policy_sha256"])
+        assert policy["seed"] == 0 and policy["episode_limit_s"] == 8
+        assert 0 < policy["observed_s"] <= 8
+        assert policy["fell"] == (policy["termination"] == "fell")
+        assert policy["fell"] != policy["time_limit_reached"]
+        browser = policy["browser"]
+        assert browser["browser_playback"] and browser["decoded_frames"] == policy["video"]["frames"]
+        assert browser["download_sha256"] == policy["video"]["sha256"]
+        assert browser["policy_sha256"] == policy["policy_sha256"]
+        assert abs(browser["simulation_seconds"] - policy["observed_s"]) < 1e-6
+        assert browser["style"] == "cadex-prototype-light-v1"
+    assert policies["lark1-checkpoint20"]["browser"]["fresh_selection"] == "RUN lark1"
+    assert policies["lark1-final"]["browser"]["fresh_selection"] == "RUN lark1-final"
+    assert policies["lark1-final"]["browser"]["historical_selection"] == "lark1-checkpoint20"
+    assert policies["lark1-final"]["policy_sha256"] != policies["lark1-checkpoint20"]["policy_sha256"]
+    assert "training-evidence.json" in (PROBE / "README.md").read_text()
