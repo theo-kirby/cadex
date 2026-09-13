@@ -1,6 +1,6 @@
 # Fresh biped review evidence
 
-Verified against source: 2026-09-12. [Cadex-new]
+Verified against source: 2026-09-13. [Cadex-new]
 
 The project is `ot5-biped` under the operator's `cadex-projects` directory,
 outside this checkout, with its own Git history. Nothing was imported from
@@ -930,6 +930,11 @@ evidence. The persistent operator URL was checked again while generating it:
 a route back to the current run.
 
 ## Second fresh project: Wren
+
+Wren’s [completed lifecycle report](probes/wren-fresh/LIFECYCLE.md) links
+D1–D11 evidence and the current `wren71-final` repeat, separately from the
+historical experiments below. It names the remaining Wren-specific acceptance
+limits and the unequal training budgets in the agent revision comparison.
 
 Iteration 46 repairs the previously unrecorded Wren probe and verifies
 `ot5-wren` at accepted revision `5309bebc6597…` on the persistent port 8765.

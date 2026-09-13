@@ -2,6 +2,9 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
+The [Wren lifecycle report](../wren-fresh/LIFECYCLE.md) links D1–D11 evidence, the design
+comparisons and their limits, and the current persistent-browser check.
+
 The shared private-network dashboard on port 8765 serves **`ot5-wren-copy54`**,
 with **`wren71-final` selected by default**, playback revision **`e9dee22bc90c…`**
 and the product agent's 90 mm feet. Iteration 71 completed a 240-update GPU
@@ -12,6 +15,13 @@ playable and downloadable; a fresh completion visit confirmed the final default.
 No experiment trainer remains active. The service stays running.
 [Real-training restart proof and receipts](../wren-fresh/RESTART-TRAINING.md).
 The earlier [seed 0–4 comparison](../wren-fresh/REVISION66.md) remains historical.
+
+Iteration 72 rechecked this persistent URL without restarting it or training:
+six current/historical playback views expose their own eight-component models,
+retained documents, curves and hash-matching video downloads. All 703 run/asset
+files stayed unchanged. Fresh default remains `wren71-final` among 18 runs;
+historical playback and return-to-current passed.
+[Current browser receipt](../wren-fresh/lifecycle72-evidence.json).
 
 Iteration 69 verified two engine reopens and restarted the persistent service
 with the saved working project intact: all 15 run views matched, the open

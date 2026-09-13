@@ -2,6 +2,9 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
+The [Wren lifecycle report](LIFECYCLE.md) links D1–D11 evidence, the design
+comparisons and their limits, and the current persistent-browser check.
+
 Current working project: [`ot5-wren-copy54`](COPY.md), with the product
 agent's accepted 90 mm feet. Its [controlled interruption/retry experiment](INTERRUPTION.md)
 kept port 8765 current and preserves the original Wren and historical videos.
