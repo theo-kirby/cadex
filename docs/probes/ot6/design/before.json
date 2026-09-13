@@ -1,0 +1,143 @@
+{
+  "url_host": "8765",
+  "shots": {
+    "1400": {
+      "innerWidth": 1400,
+      "innerHeight": 900,
+      "visual_viewport": {
+        "width": 1385,
+        "scale": 1
+      },
+      "scrollWidth": 1385,
+      "horizontal_overflow_px": 0,
+      "page_height": 3993,
+      "fonts": {
+        "body": "14px",
+        "h1": "18px",
+        "h2": "14px",
+        "badge": "12px",
+        "mono": "12px",
+        "small": "12px",
+        "button": "13.3333px"
+      },
+      "canvas": {
+        "width": 1019,
+        "height": 520,
+        "left": 331
+      },
+      "sidebar": {
+        "width": 280,
+        "top": 87.390625
+      },
+      "tokens": {
+        "--bg": "#14161a",
+        "--panel": "#1d2026",
+        "--line": "#2c3038",
+        "--fg": "#e6e8ec",
+        "--muted": "#9aa0aa",
+        "--ok": "#4caf50",
+        "--warn": "#e0a54a",
+        "--bad": "#e05a5a",
+        "--info": "#5b9dcd",
+        "--hist": "#b08ad6"
+      },
+      "project": "ot5-lark-copy85 \u2014 review",
+      "view": "RUN lark109-engine2",
+      "freshness": "live",
+      "model": "loaded",
+      "png_bytes": 280480
+    },
+    "400x850": {
+      "innerWidth": 868,
+      "innerHeight": 1845,
+      "visual_viewport": {
+        "width": 400,
+        "scale": 1
+      },
+      "scrollWidth": 868,
+      "horizontal_overflow_px": 0,
+      "page_height": 28772,
+      "fonts": {
+        "body": "14px",
+        "h1": "18px",
+        "h2": "14px",
+        "badge": "12px",
+        "mono": "12px",
+        "small": "12px",
+        "button": "13.3333px"
+      },
+      "canvas": {
+        "width": 34,
+        "height": 520,
+        "left": 331
+      },
+      "sidebar": {
+        "width": 280,
+        "top": 127.984375
+      },
+      "tokens": {
+        "--bg": "#14161a",
+        "--panel": "#1d2026",
+        "--line": "#2c3038",
+        "--fg": "#e6e8ec",
+        "--muted": "#9aa0aa",
+        "--ok": "#4caf50",
+        "--warn": "#e0a54a",
+        "--bad": "#e05a5a",
+        "--info": "#5b9dcd",
+        "--hist": "#b08ad6"
+      },
+      "project": "ot5-lark-copy85 \u2014 review",
+      "view": "RUN lark109-engine2",
+      "freshness": "live",
+      "model": "loaded",
+      "png_bytes": 85919
+    },
+    "400-desktop": {
+      "innerWidth": 400,
+      "innerHeight": 850,
+      "visual_viewport": {
+        "width": 385,
+        "scale": 1
+      },
+      "scrollWidth": 868,
+      "horizontal_overflow_px": 468,
+      "page_height": 29053,
+      "fonts": {
+        "body": "14px",
+        "h1": "18px",
+        "h2": "14px",
+        "badge": "12px",
+        "mono": "12px",
+        "small": "12px",
+        "button": "13.3333px"
+      },
+      "canvas": {
+        "width": 19,
+        "height": 520,
+        "left": 331
+      },
+      "sidebar": {
+        "width": 280,
+        "top": 127.984375
+      },
+      "tokens": {
+        "--bg": "#14161a",
+        "--panel": "#1d2026",
+        "--line": "#2c3038",
+        "--fg": "#e6e8ec",
+        "--muted": "#9aa0aa",
+        "--ok": "#4caf50",
+        "--warn": "#e0a54a",
+        "--bad": "#e05a5a",
+        "--info": "#5b9dcd",
+        "--hist": "#b08ad6"
+      },
+      "project": "ot5-lark-copy85 \u2014 review",
+      "view": "RUN lark109-engine2",
+      "freshness": "live",
+      "model": "loaded",
+      "png_bytes": 84588
+    }
+  }
+}
