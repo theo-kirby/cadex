@@ -121,7 +121,7 @@ show standing/shuffling. Poor gait does not invalidate the file lifecycle.
 | **D8 — interruption/failure clarity** | [INTERRUPTION.md](INTERRUPTION.md): real controlled interruption, failed status with KeyboardInterrupt and next CLI action, then successful retry; older results survived. [Reed missing/partial recovery](../reed-copy/video-recovery.json) and [browser fault regression](../../../cli/tests/test_review_lifecycle.py) are shared-product evidence; missing/partial video injection was not independently repeated on Wren here. |
 | **D9 — agent lifecycle** | Creation and ordered steps above; [agent revision](REVISION66.md), retained project ADR-002/design specs, real retraining, both saved videos and the same-seed comparison. The authoring/session-limit and unequal-budget qualifications above are part of this evidence. |
 | **D10 — persistent current work** | [Copy switch](COPY.md), [real experiment start/completion](RESTART-TRAINING.md), [operator status](../operator-review/README.md), and current receipt: default wren71-final, 18 runs, historical playback preserved and return-to-current works. Server stays running. |
-| **D11 — reference appearance** | [Wren side-by-side assessment](../review-style/README.md#repeat-on-wren-wren57-retry--iteration-64) and [wren.json](../review-style/wren.json): actual reference frame plus light reference renderer, floor/grid, fog/horizon, palette, materials, lighting/contact shadows, fit/close/wide/orbit, and same-pose/camera viewport/video comparison (RGB MAE 1.5044/255). Current recordings retain the same shared style identity. This is the historical **110 mm** comparison, not a new equivalent-framing assessment of the current 90 mm pose. |
+| **D11 — reference appearance** | [Current 90 mm comparison](../review-style/README.md#current-90-mm-wren-comparison--iteration-73) and [wren90.json](../review-style/wren90.json): current wren71-final viewport/capture PNGs identical at the same pose/camera; decoded video RGB MAE 1.50058/255. Identified shipped reference plus light-reference renders compare floor/grid, horizon/fog, palette, materials, shadows, fit/close/wide and pointer orbit. Current and historical playback/download/polling pass. The [earlier 110 mm assessment](../review-style/README.md#repeat-on-wren-wren57-retry--iteration-64) remains historical. |
 
 ## Current browser proof and preservation
 
@@ -160,10 +160,10 @@ geometry or rewrite the saved recordings.
 The lifecycle claims have evidence; the owner judges acceptance. A stricter
 Wren-only acceptance of missing/partial-video fault injection still needs that
 specific repeat; the report currently cites the shared product's real Reed
-fault test. D11's full visual comparison is historical at 110 mm, while the
-current 90 mm recordings reuse that verified renderer/style; this iteration
-checks access and identity, not a fresh side-by-side similarity assessment.
-Neither gap calls for another training repeat. No second-device reachability,
+fault test. Iteration 72 checked access and identity; it was not a new equivalent-framing assessment.
+Iteration 73 subsequently closed that D11 gap with the linked current 90 mm
+reference comparison, including decoded video and close/wide/orbit views.
+The remaining fault-injection repeat calls for no new training. No second-device reachability,
 equal-budget causal design study, five-seed wren71 result or walking gait is
 claimed. No new dependency or product behavior was introduced.
 

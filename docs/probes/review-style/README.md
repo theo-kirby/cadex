@@ -1,6 +1,6 @@
 # Review environment: shared renderer and visual comparison
 
-Verified against source: 2026-09-12. [Cadex-new]
+Verified against source: 2026-09-13. [Cadex-new]
 
 **The shared renderer is delivered (ADR-301) and its comparison has been
 repeated on the current design.** The persistent Reed dashboard, the
@@ -10,6 +10,58 @@ the same reference-derived light scene. The charter's D11 evidence list is asses
 [lifecycle report](../reed-lifecycle/README.md#d11-assessment); the evidence
 below is that assessment's source and claims no new training experiment or
 completion of the lifecycle charter.
+
+## Current 90 mm Wren comparison — iteration 73
+
+The persistent private-network dashboard still serves **ot5-wren-copy54**,
+with **wren71-final** selected on a fresh visit, revision `e9dee22bc90c…`,
+90 mm feet and 18 retained runs. The [compact receipt](wren90.json) closes
+the current-design comparison gap recorded by the Wren lifecycle report.
+No new training, video publication, project switch or server restart occurred.
+
+```bash
+PYTHONPATH=cli pixi run python docs/probes/review-style/compare.py \
+  "http://$(tailscale ip -4):8765/" "$HOME/cadex-projects/ot5-wren-copy54" \
+  "$HOME/neural-whoop" wren71-final wren57-retry style73
+```
+
+Images, `side-by-side.html`, its screenshot and `comparison.json` remain in
+this project's `evidence/style73/`. The additional `check_current.py` there
+fully decodes the current video, extracts frames 40/80 and checks current
+playback/download through three refreshes; run it with `PYTHONPATH=cli pixi
+run python` and the same private URL. The reference checkout was read-only:
+commit `31caeb28abb3bdab8d9030bfc91f0c3f48ffa63a`, actual shipped
+`render-examples/orbit_maneuver_policy.mp4` at 4 s (video SHA-256
+`cbb4a98684bcc96ac9a85d4fa53e74522ac66684c94c62e401ef04a3b1bae26f`).
+That shipped frame is dark-themed. The light comparison renders the exact
+Wren geometry through the reference's unmodified scene/environment modules
+at identical fit, close and wide cameras. No drone glyph enlargement is applied.
+The retained filenames `reference-light-reed*` are the generic probe's names;
+their actual subject here is the current Wren, not Reed.
+
+| Property | Assessment from the retained images |
+|---|---|
+| Pose/camera parity | Persistent viewport and capture-page 512² PNGs are byte-identical. Decoded current frame zero has RGB mean absolute error **1.50058/255** (tolerance 3/255). Camera yaw 0.8, pitch 0.5, distance 1111.04 mm and target `[0, 0, 127.88133]` mm match the video record. |
+| Floor/grid | Same grey tiles, metre labels, major lines and framing-derived subdivisions in reference and Cadex. The finite blue plate is actual 600×600 mm model geometry, not the presentation floor. |
+| Horizon/fog/sky | Fit and low-pitch 3× wide pairs fade smoothly into the cool-grey sky gradient. No stage edge, wall or ceiling seam is visible. |
+| Palette/materials | Same bright, rough coloured components and subdued floor. Faces have comparable light/dark separation, with no glossy or metallic distraction. The shipped dark drone frame establishes the reference-native grid/fog layout; its palette is not misrepresented as the light target. |
+| Lighting/shadows | Both lights cast the torso shadow beside and connected to the feet on the plate. Cadex's close-view shadow is slightly crisper than the reference's filtered edge, consistent with ADR-301's fitted frustum/bias. No floating contact or lost shadow at close framing was seen. At 3× wide the shadow becomes a small mark, as it does in the reference. |
+| Camera/antialiasing | Fit and 0.7× close retain torso and feet with comparable occupancy. Edges are smooth at 512²; video encoding slightly softens them. At 3× wide the subject is deliberately small but remains visible. |
+| Pointer orbit/zoom | Real drag changes yaw 0.8→2.6 and pitch 0.5→0.8. Wheel zoom reaches 647.46 mm then 3916.90 mm; model coverage is 50,553/130,069/4,138 pixels for drag/near/far. The floor restages from 62.22 m to 219.35 m with fog far 15.55→54.84 m; the far view has major lines only and no edge. |
+| Underside/motion | Below-floor orbit removes the front-sided presentation floor and exposes the real plate underside. Decoded frames 40 and 80 (4 and 8 s) show the biped holding a bent pose on the same floor with grounded shadow; no gait claim follows. |
+
+The current video (`a2fde70a2239…`, policy `fa7b28b8732a…`, rollout seed 0)
+fully decodes to **81 frames at 10 fps**, 8.1 s encoded for 8 s simulation.
+It plays and downloads with its recorded digest, retaining playback through
+three polls. Historical `wren57-retry` (110 mm) also plays/downloads, stays
+historical through polling, and returns to the current run. Both retain
+`cadex-prototype-light-v1`, style SHA-256
+`27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c`.
+
+No visual mismatch requiring a renderer change was demonstrated. This is a
+same-machine browser check through the private address, not a second-device
+test or a new live-training telemetry measurement. Old recordings remain
+historical; no accepted state or retained run artifact was rewritten.
 
 ## Repeat on Wren `wren57-retry` — iteration 64
 

@@ -23,6 +23,14 @@ files stayed unchanged. Fresh default remains `wren71-final` among 18 runs;
 historical playback and return-to-current passed.
 [Current browser receipt](../wren-fresh/lifecycle72-evidence.json).
 
+Iteration 73 compared the current 90 mm viewport and decoded final video with
+identified neural-whoop references at matched pose/camera and close/wide
+framing. Lossless viewport/capture parity and RGB codec error 1.50058/255;
+pointer orbit, current and historical playback/download/polling passed.
+No renderer defect was demonstrated. Service, project and default remain
+unchanged; no training or restart occurred.
+[Current visual assessment](../review-style/README.md#current-90-mm-wren-comparison--iteration-73).
+
 Iteration 69 verified two engine reopens and restarted the persistent service
 with the saved working project intact: all 15 run views matched, the open
 page kept playing, and fresh visits still selected `wren66-final`. Current
