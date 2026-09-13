@@ -8,8 +8,10 @@ port 8765 current and preserves the original Wren and historical videos.
 Current run: **`wren57-retry`**, completed after the guarded interruption.
 Both required suites finished before launch; both attempts recorded a maximum
 of one trainer and no exclusion violation (ADR-305).
-The parameter revision remains caller-authored; the product-agent revision
-authorship gap is still open.
+The parameter revision remains caller-authored. A new [product-agent turn in
+iteration 58](AGENT-REVISION.md#current-attempt-working-copy-iteration-58) was
+refused at the provider session limit before authoring; the revision gap stays
+open. All 434 retained run/asset files and four browser videos remain intact.
 
 Previous experiment: [the completed revised-foot comparison](COMPARISON.md)
 retains both training runs and their four videos; the persistent dashboard

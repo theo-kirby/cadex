@@ -1,0 +1,64 @@
+{
+  "project": "ot5-wren-copy54",
+  "accepted_revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+  "accepted_digest": "b04439061b0278903fca11079ff0937dac12425a5a8b767e675e24542c7a4ea4",
+  "authored_revision": false,
+  "training_started": false,
+  "default_run": "wren57-retry",
+  "persistent_server": true,
+  "private_address_same_machine": true,
+  "historical": {
+    "wren1-checkpoint20": {
+      "revision": "ce541019cce8f148df291e138c88fb3fb28b7125cd6145c0098d0c3ae2d6c1bf",
+      "video_sha256": "b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc",
+      "playback_polling_download": true
+    },
+    "wren1-final": {
+      "revision": "a8073874ab76e4cc10cd09f4746138feec8b8fcb9f7c45540c1046d40b620849",
+      "video_sha256": "ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd",
+      "playback_polling_download": true
+    },
+    "wren2-checkpoint20": {
+      "revision": "ab3f9a9f7a32c0e8b3aef92db3a5a2f88e0cce11fc2e26bc51d933d5308c53eb",
+      "video_sha256": "250c0534a5deb7bedab0f547cb933ba2976943bbd410d8efe8618febbdde5529",
+      "playback_polling_download": true
+    },
+    "wren2-final": {
+      "revision": "26332a5955e3a044b968e3ec14eec809d2090dfe10922c4f242c1a5a12bdc477",
+      "video_sha256": "59825c07950c377e1ff6f53139f20f25dfcdb5786e72eead861b52b5c2b41d1b",
+      "playback_polling_download": true
+    }
+  },
+  "retained_files": 434,
+  "retained_inventory_sha256": "187049e09973968b7baf8f18b618c7d8dc236044a9ec8d46ce9737618e643dea",
+  "accepted_unchanged": true,
+  "return_to_current": true,
+  "screenshots": {
+    "current.png": "97241623a4c52c712d3f945d2391bcb362f713e65148f4a65b6d663e0f40fd8e",
+    "accepted.png": "a450f8ac94e62a50b8590e947f351dbd57bf6e8dce15d6f08b09be3b5d005a46"
+  },
+  "attempt": {
+    "ok": false,
+    "error": "You've hit your session limit \u00b7 resets 10:40pm (America/New_York)",
+    "model": "claude-sonnet-5",
+    "outputs": [],
+    "accepted_revision": "",
+    "exit_code": 1
+  },
+  "prompt_sha256": "df0b15b59d34a28173dfec527af998612d3781b62f965a821819edca63aa8d5d",
+  "ok": true,
+  "tests": [
+    {
+      "suite": "cli",
+      "exit_code": 0,
+      "seconds": 372.5299587249756,
+      "log_sha256": "e181ec25e5eb6f2aa6cc04f0f070822749277dcd3624a7b16085b1cb3294e34d"
+    },
+    {
+      "suite": "engine",
+      "exit_code": 0,
+      "seconds": 253.9202482700348,
+      "log_sha256": "7d0c6cc02ecf690ad1fa8416d6c2d00ec65a059dc544a3de62ca1979c8e16ccd"
+    }
+  ]
+}

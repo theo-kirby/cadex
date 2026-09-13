@@ -1,19 +1,25 @@
 # Persistent operator review
 
-Verified against source: 2026-09-12. [Cadex-new]
+Verified against source: 2026-09-13. [Cadex-new]
 
 The shared private-network dashboard on port 8765 serves **`ot5-wren-copy54`**,
-with **`wren56c-retry` selected by default**, accepted revision **`5b61ef31ff13…`**
-and 110 mm feet. Its short GPU training attempt completed 12 updates and saved
-a policy; no training remains active. It has no new rollout/video. All four
+with **`wren57-retry` selected by default**, accepted revision **`5b61ef31ff13…`**
+and 110 mm feet. Its guarded GPU retry completed 12 updates and saved a policy;
+no experiment training remains active. It has no new rollout/video. All four
 older videos remain selectable, playable and downloadable as historical results.
 
-The preceding **`wren56c-interrupt`** retains its six real updates, failed status,
-`KeyboardInterrupt` and explicit controlled-interruption/retry guidance. Browser
-checks passed after both outcomes and on return from historical interruption.
-The original Wren and all 294 prior run files are unchanged. The service stays
-running; the foot revision remains caller-authored and Wren's product-agent
-revision authorship gap stays open. [Experiment and limitations](../wren-fresh/INTERRUPTION.md).
+The preceding **`wren57-interrupt`** retains its six real updates, failed status,
+`KeyboardInterrupt` and controlled-interruption/retry guidance. Both attempts
+ran after the required suites, with at most one trainer observed and no
+exclusion violation. [Experiment and limitations](../wren-fresh/INTERRUPTION.md).
+
+Iteration 58's product-agent revision turn on this copy was refused by the
+provider session limit before authoring. Accepted identity/specs and all 434
+run/asset files remain unchanged. Persistent-browser checks verified the
+current default, accepted view, all four historical video playbacks/downloads
+and return-to-current. The service remains running. The foot revision is still
+caller-authored; Wren's D9 authorship gap remains open.
+[Attempt and evidence](../wren-fresh/AGENT-REVISION.md#current-attempt-working-copy-iteration-58).
 
 Previous experiment status (before the copy switch):
 

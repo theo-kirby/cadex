@@ -1,6 +1,61 @@
 # Wren product-agent revision attempt
 
-Verified against source: 2026-09-12 (2026-09-13 UTC). [Cadex-new]
+Verified against source: 2026-09-13. [Cadex-new]
+
+## Current attempt: working copy, iteration 58
+
+The product-agent revision remains blocked by provider capacity. One real
+`cadex -p` turn on **`ot5-wren-copy54`**, using its stored `claude-sonnet-5`
+preference, exited 1: “You've hit your session limit · resets 10:40pm
+(America/New_York)”. This is the provider's reported reset time, not a promise
+that another attempt will succeed. No accepted revision or outputs were
+returned. No fallback was attempted: the earlier attempt below already found
+the same limit on both stored and fallback models. No training was started.
+
+The prompt supplied the retained comparison report: original final-policy
+falls in two of five seeds, revised final survival in all five eight-second
+episodes, small displacement and standing poses. It asked the product agent
+to inspect the current effective parameters, choose and accept **one** geometry
+change, explain its hypothesis and tradeoff, keep `policy_on=0`, preserve task
+settings and history, and return its own `DECISION:` and `NOTE design-specs:`.
+The 110 mm working-copy foot length was explicitly identified as an isolation
+test. The caller did not choose a replacement dimension after the refusal.
+
+[agent58-evidence.json](agent58-evidence.json) records the refusal, prompt
+hash and successful preservation/browser checks. All **434 run and asset
+files** match the pre-attempt inventory. Accepted revision `5b61ef31ff13…`,
+digest `b04439061b02…`, effective parameters, declared specs, script text and
+project decisions/progress are unchanged. Reopen metadata is not asserted
+byte-identical. The complete prompt, CLI envelope, stderr, inventory, verifier,
+screenshots and test logs stay in the copy's `evidence/agentrev58/` directory.
+Retain that directory with the whole project.
+
+The persistent private-network URL on port 8765 still serves the copy and
+selects **`wren57-retry`** for a new visit. ACCEPTED NOW loads eight components,
+110 mm feet and disabled policy, without substituting an older video. All four
+historical checkpoint/final models retain their own revision and digest;
+their videos play through three polls and download with matching SHA-256.
+Accepted browsing survives polling, and return-to-current selects
+`wren57-retry`. The accepted/current screenshots were inspected. The server
+remains running. These are same-machine private-address browser checks, not a
+second-device test, new training, new video or a new visual-style comparison.
+
+Reproduce the read-only checks while this accepted identity remains current:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python \
+  "$HOME/cadex-projects/ot5-wren-copy54/evidence/agentrev58/verify.py" \
+  "http://$(tailscale ip -4):8765/"
+```
+
+A future design attempt should use a fresh evidence directory and inventory,
+and the public prompt command shown below with the working-copy project path.
+Do not overwrite this failed attempt or train an unchanged design under an
+agent-authored revision claim. Wren's D9 authorship gap remains open.
+
+Verification: `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 pixi run python -m pytest cli/tests` passed 397 tests, 1 skipped in 372.33 s. Then the same environment with `pixi run test-engine` passed 2110 tests, 53 skipped in 253.65 s. Both suites ran sequentially after the refused design turn; no experiment trainer was launched. Full logs and their hashes are retained with the compact receipt. Persistent browser checks and git diff --check pass; hypergraph export/check runs before commit.
+
+## Historical attempt: original project, iteration 53
 
 Iteration 53 attempted the outstanding product-agent revision with the actual
 CLI. **No new design was authored.** Both `claude-fable-5` (stored preference)
