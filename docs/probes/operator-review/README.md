@@ -2,6 +2,18 @@
 
 Verified against source: 2026-09-12. [Cadex-new]
 
+The shared private-network dashboard on port 8765 now serves **`ot5-wren-copy54`**.
+The default remains **`wren2-final`**, revision **`26332a5955e3…`**, with 105 mm
+feet, explicitly HISTORICAL relative to the copy-only accepted 110 mm feet and
+disabled policy. Select ACCEPTED NOW for that untrained edit. No training is
+active. The original Wren is unchanged. The persistent browser and a second
+server verified all retained models, curves and four playable/downloadable
+videos while the original path was unavailable. [Copy lifecycle and reproduction](../wren-fresh/COPY.md).
+The service stays running on the copy; this parameter edit is not product-agent
+authorship. The Wren D9 authorship gap remains open.
+
+Previous experiment status (before the copy switch):
+
 The shared private-network dashboard on port 8765 serves `ot5-wren`, with
 **`wren2-final` selected by default**, revision **`26332a5955e3…`**, 105 mm feet.
 Iteration 52 completed 240 GPU iterations; no training remains active.
@@ -35,7 +47,7 @@ checkout, the detached command is:
 ```bash
 systemd-run --user --unit=cadex-operator-review --property=Restart=on-failure \
   --working-directory="$PWD" "$PWD/cadex" review \
-  --project "$HOME/cadex-projects/ot5-wren" \
+  --project "$HOME/cadex-projects/ot5-wren-copy54" \
   --host "$(tailscale ip -4)" --port 8765
 ```
 

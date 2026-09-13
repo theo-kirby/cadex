@@ -1,0 +1,332 @@
+{
+  "original": "ot5-wren",
+  "copy": "ot5-wren-copy54",
+  "source_files": 1566,
+  "source_inventory_sha256": "facfbb4ec7dbf9ab7ae4ce14e29932352de2c2e448b15e8eabad4f414e18b796",
+  "original_revision": "26332a5955e3a044b968e3ec14eec809d2090dfe10922c4f242c1a5a12bdc477",
+  "original_digest": "4a3642fad859de19c197e33f6421811805c68bf06e2b7511f414acb3870cc845",
+  "second_server": {
+    "wren1": {
+      "revision": "c2e89b36b1e27cacc6afab5210a3cc627ec2d91f1f0e95ca37093ed4b7f6cd13",
+      "digest": "dbd02d7c12a0553b9ffadb3466e73da4055521264dd52e0bea40b2cc16588714",
+      "foot_len_mm": 85.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "ground": "dead8683ae5e11c501d0b394306950baea630370cb0cc4f4be72c8f5f4607165",
+        "torso": "acdd9edb95dd6604623fe75bf64429c6cdbd651194c76f725093d72e7ff3fafe",
+        "thigh_l": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "thigh_r": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "shin_l": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "shin_r": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "foot_l": "c2e37125533a4cc2b1bf80b45c338ef8144f51ec6f734e03f9e0a219ac71d3bf",
+        "foot_r": "c2e37125533a4cc2b1bf80b45c338ef8144f51ec6f734e03f9e0a219ac71d3bf"
+      }
+    },
+    "wren1-checkpoint20": {
+      "revision": "ce541019cce8f148df291e138c88fb3fb28b7125cd6145c0098d0c3ae2d6c1bf",
+      "digest": "7a9356516ebe020b75136254875353f35b6ed4d45de70cbe225731a82df41e78",
+      "foot_len_mm": 85.0,
+      "curves": {
+        "curve": 19,
+        "loss_curve": 19,
+        "episode_steps_curve": 19
+      },
+      "mesh_sha256": {
+        "ground": "b5268ef2231e305577b96c0b806783b8107dd16f7760f84b947d3569a96e39f3",
+        "torso": "423d1ba16a57365df8e89367a2960c889cdbbd0f98131af048436321792fa24a",
+        "thigh_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "thigh_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "foot_l": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25",
+        "foot_r": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25"
+      },
+      "video": {
+        "sha256": "b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc",
+        "policy_sha256": "111961e5c8c3352d1d3bf7751657ed1117ac86e8c6bfb26ee6916423d0465dc0",
+        "seed": 0,
+        "sim_seconds": 8.0
+      },
+      "playback_download_poll": true
+    },
+    "wren1-final": {
+      "revision": "a8073874ab76e4cc10cd09f4746138feec8b8fcb9f7c45540c1046d40b620849",
+      "digest": "b6712b35562328ff8eb77192b5314e2d2820baa0ac7b11255078683336acc280",
+      "foot_len_mm": 85.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "ground": "b5268ef2231e305577b96c0b806783b8107dd16f7760f84b947d3569a96e39f3",
+        "torso": "423d1ba16a57365df8e89367a2960c889cdbbd0f98131af048436321792fa24a",
+        "thigh_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "thigh_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "foot_l": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25",
+        "foot_r": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25"
+      },
+      "video": {
+        "sha256": "ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd",
+        "policy_sha256": "133bf5ac6fa8747305d86264554c4ed58b5a8b4c792ab32cf19422ba0613b235",
+        "seed": 0,
+        "sim_seconds": 0.46
+      },
+      "playback_download_poll": true
+    },
+    "wren2": {
+      "revision": "a90b84033ced66e50409c25be6150d5042da2d5ea192e419cc31c04d09d20972",
+      "digest": "502fc7ad0409f8cadb6fb2e46d077fcb55fcfd9c0da2db2cb620e24c261535c1",
+      "foot_len_mm": 105.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "ground": "dead8683ae5e11c501d0b394306950baea630370cb0cc4f4be72c8f5f4607165",
+        "torso": "acdd9edb95dd6604623fe75bf64429c6cdbd651194c76f725093d72e7ff3fafe",
+        "thigh_l": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "thigh_r": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "shin_l": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "shin_r": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "foot_l": "b648ca8010927c334d2376a53254191b791bae8296c3c9d09464e53b488b3e2c",
+        "foot_r": "b648ca8010927c334d2376a53254191b791bae8296c3c9d09464e53b488b3e2c"
+      }
+    },
+    "wren2-checkpoint20": {
+      "revision": "ab3f9a9f7a32c0e8b3aef92db3a5a2f88e0cce11fc2e26bc51d933d5308c53eb",
+      "digest": "de6714cab8e19907f0a559972cc34ecf5dbac9aa34df8b8bbca209ec9573cd32",
+      "foot_len_mm": 105.0,
+      "curves": {
+        "curve": 19,
+        "loss_curve": 19,
+        "episode_steps_curve": 19
+      },
+      "mesh_sha256": {
+        "ground": "b5268ef2231e305577b96c0b806783b8107dd16f7760f84b947d3569a96e39f3",
+        "torso": "423d1ba16a57365df8e89367a2960c889cdbbd0f98131af048436321792fa24a",
+        "thigh_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "thigh_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "foot_l": "8599d371197ab9d48e8ccc87a3e40b73c19fe2c089b5195a03838f1889f2d04c",
+        "foot_r": "8599d371197ab9d48e8ccc87a3e40b73c19fe2c089b5195a03838f1889f2d04c"
+      },
+      "video": {
+        "sha256": "250c0534a5deb7bedab0f547cb933ba2976943bbd410d8efe8618febbdde5529",
+        "policy_sha256": "0544c42b666673fec5687d0ce0f25e936b815f81bfcebd003b6befbedd8e0bc9",
+        "seed": 0,
+        "sim_seconds": 8.0
+      },
+      "playback_download_poll": true
+    },
+    "wren2-final": {
+      "revision": "26332a5955e3a044b968e3ec14eec809d2090dfe10922c4f242c1a5a12bdc477",
+      "digest": "4a3642fad859de19c197e33f6421811805c68bf06e2b7511f414acb3870cc845",
+      "foot_len_mm": 105.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "ground": "b5268ef2231e305577b96c0b806783b8107dd16f7760f84b947d3569a96e39f3",
+        "torso": "423d1ba16a57365df8e89367a2960c889cdbbd0f98131af048436321792fa24a",
+        "thigh_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "thigh_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "foot_l": "8599d371197ab9d48e8ccc87a3e40b73c19fe2c089b5195a03838f1889f2d04c",
+        "foot_r": "8599d371197ab9d48e8ccc87a3e40b73c19fe2c089b5195a03838f1889f2d04c"
+      },
+      "video": {
+        "sha256": "59825c07950c377e1ff6f53139f20f25dfcdb5786e72eead861b52b5c2b41d1b",
+        "policy_sha256": "465dc574562bc4012f1f8205cbef915c52d14d90486aafae2c48fecb621cc759",
+        "seed": 0,
+        "sim_seconds": 8.0
+      },
+      "playback_download_poll": true
+    }
+  },
+  "persistent_server": {
+    "wren1": {
+      "revision": "c2e89b36b1e27cacc6afab5210a3cc627ec2d91f1f0e95ca37093ed4b7f6cd13",
+      "digest": "dbd02d7c12a0553b9ffadb3466e73da4055521264dd52e0bea40b2cc16588714",
+      "foot_len_mm": 85.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "ground": "dead8683ae5e11c501d0b394306950baea630370cb0cc4f4be72c8f5f4607165",
+        "torso": "acdd9edb95dd6604623fe75bf64429c6cdbd651194c76f725093d72e7ff3fafe",
+        "thigh_l": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "thigh_r": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "shin_l": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "shin_r": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "foot_l": "c2e37125533a4cc2b1bf80b45c338ef8144f51ec6f734e03f9e0a219ac71d3bf",
+        "foot_r": "c2e37125533a4cc2b1bf80b45c338ef8144f51ec6f734e03f9e0a219ac71d3bf"
+      }
+    },
+    "wren1-checkpoint20": {
+      "revision": "ce541019cce8f148df291e138c88fb3fb28b7125cd6145c0098d0c3ae2d6c1bf",
+      "digest": "7a9356516ebe020b75136254875353f35b6ed4d45de70cbe225731a82df41e78",
+      "foot_len_mm": 85.0,
+      "curves": {
+        "curve": 19,
+        "loss_curve": 19,
+        "episode_steps_curve": 19
+      },
+      "mesh_sha256": {
+        "ground": "b5268ef2231e305577b96c0b806783b8107dd16f7760f84b947d3569a96e39f3",
+        "torso": "423d1ba16a57365df8e89367a2960c889cdbbd0f98131af048436321792fa24a",
+        "thigh_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "thigh_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "foot_l": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25",
+        "foot_r": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25"
+      },
+      "video": {
+        "sha256": "b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc",
+        "policy_sha256": "111961e5c8c3352d1d3bf7751657ed1117ac86e8c6bfb26ee6916423d0465dc0",
+        "seed": 0,
+        "sim_seconds": 8.0
+      },
+      "playback_download_poll": true
+    },
+    "wren1-final": {
+      "revision": "a8073874ab76e4cc10cd09f4746138feec8b8fcb9f7c45540c1046d40b620849",
+      "digest": "b6712b35562328ff8eb77192b5314e2d2820baa0ac7b11255078683336acc280",
+      "foot_len_mm": 85.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "ground": "b5268ef2231e305577b96c0b806783b8107dd16f7760f84b947d3569a96e39f3",
+        "torso": "423d1ba16a57365df8e89367a2960c889cdbbd0f98131af048436321792fa24a",
+        "thigh_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "thigh_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "foot_l": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25",
+        "foot_r": "7316acca2d62bee48e3e8e01373413ffa1f1d513622cabc23df773cd4ca82f25"
+      },
+      "video": {
+        "sha256": "ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd",
+        "policy_sha256": "133bf5ac6fa8747305d86264554c4ed58b5a8b4c792ab32cf19422ba0613b235",
+        "seed": 0,
+        "sim_seconds": 0.46
+      },
+      "playback_download_poll": true
+    },
+    "wren2": {
+      "revision": "a90b84033ced66e50409c25be6150d5042da2d5ea192e419cc31c04d09d20972",
+      "digest": "502fc7ad0409f8cadb6fb2e46d077fcb55fcfd9c0da2db2cb620e24c261535c1",
+      "foot_len_mm": 105.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "ground": "dead8683ae5e11c501d0b394306950baea630370cb0cc4f4be72c8f5f4607165",
+        "torso": "acdd9edb95dd6604623fe75bf64429c6cdbd651194c76f725093d72e7ff3fafe",
+        "thigh_l": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "thigh_r": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "shin_l": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "shin_r": "5994cc7be2442c12be3cd71b6972ca6efb7bd88150648d66e6e798d4b51a9eb7",
+        "foot_l": "b648ca8010927c334d2376a53254191b791bae8296c3c9d09464e53b488b3e2c",
+        "foot_r": "b648ca8010927c334d2376a53254191b791bae8296c3c9d09464e53b488b3e2c"
+      }
+    },
+    "wren2-checkpoint20": {
+      "revision": "ab3f9a9f7a32c0e8b3aef92db3a5a2f88e0cce11fc2e26bc51d933d5308c53eb",
+      "digest": "de6714cab8e19907f0a559972cc34ecf5dbac9aa34df8b8bbca209ec9573cd32",
+      "foot_len_mm": 105.0,
+      "curves": {
+        "curve": 19,
+        "loss_curve": 19,
+        "episode_steps_curve": 19
+      },
+      "mesh_sha256": {
+        "ground": "b5268ef2231e305577b96c0b806783b8107dd16f7760f84b947d3569a96e39f3",
+        "torso": "423d1ba16a57365df8e89367a2960c889cdbbd0f98131af048436321792fa24a",
+        "thigh_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "thigh_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "foot_l": "8599d371197ab9d48e8ccc87a3e40b73c19fe2c089b5195a03838f1889f2d04c",
+        "foot_r": "8599d371197ab9d48e8ccc87a3e40b73c19fe2c089b5195a03838f1889f2d04c"
+      },
+      "video": {
+        "sha256": "250c0534a5deb7bedab0f547cb933ba2976943bbd410d8efe8618febbdde5529",
+        "policy_sha256": "0544c42b666673fec5687d0ce0f25e936b815f81bfcebd003b6befbedd8e0bc9",
+        "seed": 0,
+        "sim_seconds": 8.0
+      },
+      "playback_download_poll": true
+    },
+    "wren2-final": {
+      "revision": "26332a5955e3a044b968e3ec14eec809d2090dfe10922c4f242c1a5a12bdc477",
+      "digest": "4a3642fad859de19c197e33f6421811805c68bf06e2b7511f414acb3870cc845",
+      "foot_len_mm": 105.0,
+      "curves": {
+        "curve": 240,
+        "loss_curve": 240,
+        "episode_steps_curve": 240
+      },
+      "mesh_sha256": {
+        "ground": "b5268ef2231e305577b96c0b806783b8107dd16f7760f84b947d3569a96e39f3",
+        "torso": "423d1ba16a57365df8e89367a2960c889cdbbd0f98131af048436321792fa24a",
+        "thigh_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "thigh_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_l": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "shin_r": "e5e4dcb734ea84b12714485e4c1c4089d8d3e38cc2029ea4f7d33831b8411a6b",
+        "foot_l": "8599d371197ab9d48e8ccc87a3e40b73c19fe2c089b5195a03838f1889f2d04c",
+        "foot_r": "8599d371197ab9d48e8ccc87a3e40b73c19fe2c089b5195a03838f1889f2d04c"
+      },
+      "video": {
+        "sha256": "59825c07950c377e1ff6f53139f20f25dfcdb5786e72eead861b52b5c2b41d1b",
+        "policy_sha256": "465dc574562bc4012f1f8205cbef915c52d14d90486aafae2c48fecb621cc759",
+        "seed": 0,
+        "sim_seconds": 8.0
+      },
+      "playback_download_poll": true
+    }
+  },
+  "copy_revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+  "copy_digest": "b04439061b0278903fca11079ff0937dac12425a5a8b767e675e24542c7a4ea4",
+  "changes": {
+    "foot_len": [
+      105,
+      110
+    ],
+    "policy_on": [
+      1,
+      0
+    ]
+  },
+  "source_unavailable_during_edit_restore_browser": true,
+  "original_unchanged": true,
+  "retained_files": 232,
+  "retained_sha256": "78dfa559a74a1d7a122ffb0a2d50812d5f8eaa603daaf96a714cf53bca3fb6f7",
+  "persistent_private_address_same_machine": true,
+  "product_agent_authorship": false,
+  "retraining": false,
+  "screenshots": {
+    "persistent-accepted.png": "a0d903015b2f4df9765e8ff7205c932d4cedc212ab98a4385f61eed356eee493",
+    "second-accepted.png": "76149d90af0b2c6855b6475ef975034868d8a094798d100c5bde95cc5a71a76a"
+  },
+  "ok": true
+}
