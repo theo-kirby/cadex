@@ -27,7 +27,7 @@ The eleven done criteria D1–D11 are child state nodes. The latest operator dir
 
 **The Wren product-agent revision gap is closed.** The agent's accepted 110→90 mm foot change has its own rationale in project ADR-002, one bounded 240-update retraining, verified checkpoint/final videos and a seeds 0–4 comparison against the 110 mm retry. All three compared policies survive 5/5; the final moves further with lower reward, without a gait or causal claim. Iteration 65's helper changes and cut-off acceptance are now recorded, and executing the helpers against real artifacts corrected their script/authorship lookups. Persistent port 8765 followed active `wren66` to `wren66-final` on `ot5-wren-copy54`; 465 pre-revision run/asset files remain unchanged [rec: red-jasper-1884].
 
-The persistent Wren D11 comparison is also recorded: byte-identical viewport/capture, decoded-frame error 1.5044/255 and close/wide reference restaging, with 23 evidence-guard tests and no full-suite claim for the backfilled iteration. Its interim D9 gap is superseded by the subsequent agent revision. Reconcile judgement: retain the charter aggregate's `open` status; these deltas close that specific gap and update evidence, without declaring whole-goal completion or editing owner checkboxes [rec: kind-oak-1484] [rec: red-jasper-1884].
+**Wren's D1–D11 lifecycle report now links historical/current review evidence and discloses unequal training budgets (12 versus 240 updates).** Missing/partial-video fault injection still relies on historical Reed and shared regressions rather than a Wren-specific repeat [rec: crisp-stream-4743]. The report's then-current 90 mm visual-comparison limit is now resolved: `wren71-final` has matched-pose/camera viewport/capture parity, decoded-frame error 1.50058/255, identified reference fit/close/wide comparisons and real orbit/zoom assessment. Reconcile judgement: fold this later record into the aggregate to avoid retaining a superseded limit; keep `open`, with no whole-goal declaration or owner checkbox edit. No new training repeat was needed [rec: terse-walrus-5414].
 
 ## Negative knowledge
 
@@ -43,3 +43,5 @@ None yet.
 - modest-dawn-3706 — adds shared neural-whoop visual-reference criterion D11
 - kind-oak-1484 — iteration 64 visual comparison backfilled with explicit verification limits
 - red-jasper-1884 — iteration 65 work recorded and Wren product-agent revision gap closed by authored, retrained and compared 90 mm design
+- crisp-stream-4743 — lifecycle report states unequal budgets and remaining evidence limits
+- terse-walrus-5414 — current 90 mm visual comparison resolves the report's historical-only D11 limit

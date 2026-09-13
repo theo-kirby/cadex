@@ -11,9 +11,9 @@ Status: working
 
 ## Current
 
-**Persistent private port 8765 serves `ot5-wren-copy54`, 15 runs, default `wren66-final`, at playback revision `de9692bd4ee5…` with 90 mm feet, 240 telemetry points and playable/downloadable video.** The stable service followed active `wren66` through checkpoint publication and completion without restart; historical `wren66-checkpoint20` and `wren57-retry` retain identities and return-to-current works [rec: red-jasper-1884].
+**Persistent private port 8765 serves `ot5-wren-copy54`, 18 runs, default `wren71-final`, at playback revision `e9dee22bc90c…` with 90 mm feet and playable/downloadable video.** The dashboard followed real `wren71` training, checkpoint publication and completion; its restart preserved the single trainer and historical playback, with telemetry recovery in 0.957 s [rec: odd-pebble-9529].
 
-A subsequent measured service restart answered after 1.05 s; the open playing page showed stale at 0.13 s, recovered without navigation and kept the same video element. All 15 run views plus ACCEPTED NOW compared equal; fresh visits still select `wren66-final`, current/historical downloads match recorded hashes, and operator status links the proof. The service remains active at the latest recorded check. No real trainer was active during this restart, and observations remain same-machine private-address evidence [rec: sunny-canyon-4438].
+Six historical/current views spanning 85/105/110/90 mm designs preserve model/document identities, three curve histories and hash-matching video playback/download through polling and return to current. All 703 run/asset files remained byte-identical. The retry retains 12 curve points, checkpoint20 its stale-labelled 19-point snapshot and the four finals 240 each [rec: crisp-stream-4743]. The subsequent current-design visual comparison again verified current/historical playback, downloads and polling while the same service remained active, without restart or new training. All observations are same-machine private-address evidence [rec: terse-walrus-5414].
 
 Live-page document reading and accepted-geometry reload fixes remain in place (ADR-306/307); earlier checks preserved all 465 prior run/asset files [rec: calm-grove-2647] [rec: violet-wave-6524].
 
@@ -48,3 +48,6 @@ None yet.
 - violet-wave-6524 — accepted geometry reloads on live identity change; persistent Wren read-only checks pass (ADR-307)
 - red-jasper-1884 — persistent page follows real wren66 training and defaults to its completed 90 mm final
 - sunny-canyon-4438 — measured restart preserves open playback, all views and fresh-current selection
+- odd-pebble-9529 — persistent dashboard follows wren71 through real-training restart and final publication
+- crisp-stream-4743 — six historical/current views pass and 703 run/asset files remain unchanged
+- terse-walrus-5414 — current and historical playback remain verified during current-design visual comparison
