@@ -25,7 +25,9 @@ The owner's fixed choices, made in conversation and not open to actor interpreta
 
 The eleven done criteria D1–D11 are child state nodes. The latest operator directive adds shared neural-whoop viewport/video appearance to the persistent-dashboard obligation; keep the current dashboard serving first, then implement and visually compare that environment. Reconcile judgement: group the new gaps here with the existing criteria; the directive expands the frontier without reopening previously evidenced D1–D8 [rec: simple-raven-5405] [rec: modest-dawn-3706].
 
-**D10 immediate acceptance passes:** persistent port 8765 serves Reed copy29/copy100 with current-attempt defaults, historical/playback preservation and private-address browser evidence. The server stayed active after tests. Real experiment-spanning persistent-URL evidence remains open; D11 visual comparison is newly required and unproven [rec: falling-ocean-4411] [rec: modest-dawn-3706].
+**The Wren product-agent revision gap is closed.** The agent's accepted 110→90 mm foot change has its own rationale in project ADR-002, one bounded 240-update retraining, verified checkpoint/final videos and a seeds 0–4 comparison against the 110 mm retry. All three compared policies survive 5/5; the final moves further with lower reward, without a gait or causal claim. Iteration 65's helper changes and cut-off acceptance are now recorded, and executing the helpers against real artifacts corrected their script/authorship lookups. Persistent port 8765 followed active `wren66` to `wren66-final` on `ot5-wren-copy54`; 465 pre-revision run/asset files remain unchanged [rec: red-jasper-1884].
+
+The persistent Wren D11 comparison is also recorded: byte-identical viewport/capture, decoded-frame error 1.5044/255 and close/wide reference restaging, with 23 evidence-guard tests and no full-suite claim for the backfilled iteration. Its interim D9 gap is superseded by the subsequent agent revision. Reconcile judgement: retain the charter aggregate's `open` status; these deltas close that specific gap and update evidence, without declaring whole-goal completion or editing owner checkboxes [rec: kind-oak-1484] [rec: red-jasper-1884].
 
 ## Negative knowledge
 
@@ -39,3 +41,5 @@ None yet.
 - simple-raven-5405 — adds persistent current-project dashboard criterion D10
 - falling-ocean-4411 — current Reed operator dashboard acceptance passes; real experiment-spanning evidence remains open
 - modest-dawn-3706 — adds shared neural-whoop visual-reference criterion D11
+- kind-oak-1484 — iteration 64 visual comparison backfilled with explicit verification limits
+- red-jasper-1884 — iteration 65 work recorded and Wren product-agent revision gap closed by authored, retrained and compared 90 mm design

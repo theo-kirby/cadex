@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**D11 now also has a comparison on the persistent Wren working copy**, using `wren57-retry` (110 mm) and historical `wren2-final` (105 mm). Viewport/capture PNGs are byte-identical; decoded-video mean absolute RGB error is 1.5044/255 (threshold 3). The reference renderer is restaged at the same close/wide cameras, and the side-by-side includes a shipped dark reference frame. Pointer orbit/zoom shows no stage edge; historical playback/download and return to current pass. No renderer change was needed. Iteration 64's late backfill has 23 passing evidence-guard tests, but no recorded full-suite result; evidence is same-machine private-address only [rec: kind-oak-1484].
+
 **One shipped browser scene now renders both the live viewport and the recorded policy videos in the neural-whoop style; the charter evidence list is met on copy100 and current-design shin55-final.** [rec: soft-aspen-5095] ADR-300 chose one scene for viewport and explicit video frames after the baseline measurement found two independent renderers (perspective WebGL for review, orthographic CPU for video), neither with floor, fog or shadows; it keeps Python validation, locking, sampling, encoding and a fixed whole-trajectory camera. The baseline also recorded that shipped reference clips are dark-themed despite the owner's light request (the light palette wins), and that Reed's apparent stage is authoritative ground-slab geometry, which is never replaced [rec: modest-journey-2059].
 
 ADR-301 delivered that shared scene: the reference's MIT environment and floor code at commit `31caeb28…` adapted with notices, plus a pinned upstream Three.js r160 module, self-contained and CDN-free. The DevTools pipe driver moved from tests into the CLI; Chromium and FFmpeg are video prerequisites. New video records carry style digest `27893221…` (`cadex-prototype-light-v1`), renderer version, projection, camera, bounds and resolution; older recordings and `run.json` references survive [rec: royal-arrow-2065].
@@ -21,7 +23,7 @@ Charter criterion: match the read-only sibling `neural-whoop` reference (fogged 
 
 On shin55-final over persistent port 8765, viewport/capture PNGs are byte-identical and decoded-frame RGB error is 1.6732/255. The reference-module light frame on the same geometry matches floor/grid, fog/horizon, palette, lighting/shadows, materials and framing. Close/wide/underside views plus pointer orbit and wheel zoom retain the model and show no stage edge; historical checkpoint playback/download survives polling and returns to current. Receipt `docs/probes/review-style/shin55.json` is test-guarded; no demonstrated defect required a renderer change [rec: soft-aspen-5095].
 
-Reconcile judgement: `working`. The earlier assertion that the charter reserves visual acceptance for the owner was unsupported; only the checkbox edit is owner-reserved, as for every criterion. The copy100-only comparison limit is resolved by the shin55 repeat. Remaining limits: all observations are same-machine; no light-themed reference clip ships, so comparison uses the reference renderer on Reed geometry; shadow frustum/bias differ deliberately. This does not claim a Wren D11 comparison [rec: lucky-bramble-8274] [rec: soft-aspen-5095] [rec: mild-river-8224].
+Reconcile judgement: `working`. The earlier assertion that the charter reserves visual acceptance for the owner was unsupported; only the checkbox edit is owner-reserved, as for every criterion. The copy100-only comparison limit is resolved by the shin55 repeat. Remaining limits: all observations are same-machine; no light-themed reference clip ships, so comparison uses the reference renderer on Reed geometry; shadow frustum/bias differ deliberately. The earlier Wren inspection did not claim a D11 comparison; the later comparison above resolves that limit [rec: lucky-bramble-8274] [rec: soft-aspen-5095] [rec: mild-river-8224].
 
 ## Negative knowledge
 
@@ -36,3 +38,4 @@ Reconcile judgement: `working`. The earlier assertion that the charter reserves 
 - lucky-bramble-8274 — corrects unsupported owner-acceptance reservation and inventories actual evidence limits
 - soft-aspen-5095 — current-design visual comparison, pointer interaction and historical video evidence satisfy D11
 - mild-river-8224 — Wren browser inspection explicitly makes no D11 comparison claim
+- kind-oak-1484 — backfilled persistent Wren D11 comparison, reference camera restaging and shipped reference frame, with verification limits

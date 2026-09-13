@@ -11,7 +11,11 @@ Status: working
 
 ## Current
 
-**Persistent private port 8765 serves `ot5-wren-copy54`, default completed `wren57-retry`, now at accepted/playback revision `79f86c69bfc3…` with its own engine-verified video; the service remains active at the latest recorded check.** Eight components and 110 mm feet remain visible; historical `wren2-final` remains `26332a5955e3…`. The retry video's arrival preserved historical playback in the real browser and in a distinct-video regression [rec: tender-vine-9199]. Two review defects the live page exposed are fixed without restarting the service: open documents no longer close on every poll (ADR-306) and the accepted viewport now reloads geometry when the selected revision or digest changes (ADR-307). After each fix, private-address checks read current/accepted/historical decisions through 6.5 s of polling, returned to current, verified project/run/model identities and replayed/downloaded the retry video with its recorded hash; all 465 prior run/asset files stayed byte-identical [rec: calm-grove-2647] [rec: violet-wave-6524].
+**Persistent private port 8765 serves `ot5-wren-copy54`, 15 runs, default `wren66-final`, at playback revision `de9692bd4ee5…` with 90 mm feet, 240 telemetry points and playable/downloadable video.** The stable service followed active `wren66` through checkpoint publication and completion without restart; historical `wren66-checkpoint20` and `wren57-retry` retain identities and return-to-current works [rec: red-jasper-1884].
+
+A subsequent measured service restart answered after 1.05 s; the open playing page showed stale at 0.13 s, recovered without navigation and kept the same video element. All 15 run views plus ACCEPTED NOW compared equal; fresh visits still select `wren66-final`, current/historical downloads match recorded hashes, and operator status links the proof. The service remains active at the latest recorded check. No real trainer was active during this restart, and observations remain same-machine private-address evidence [rec: sunny-canyon-4438].
+
+Live-page document reading and accepted-geometry reload fixes remain in place (ADR-306/307); earlier checks preserved all 465 prior run/asset files [rec: calm-grove-2647] [rec: violet-wave-6524].
 
 The stable URL followed `wren56c-interrupt` to `wren56c-retry`, then the guarded clean `wren57-interrupt` to `wren57-retry`, with private-address start/terminal checks, historical interruption selection and return to current; after a refused product-agent turn, published operator status was corrected to name the actual retry [rec: small-wind-0172] [rec: fair-garden-6418] [rec: dawn-bell-5364]. The earlier working-copy switch verified review with the original path unavailable [rec: crimson-bell-5375]. Before that switch, revised Wren training and two provider refusals retained accepted/current/historical identities [rec: frosty-birch-2464] [rec: smooth-pine-9795]. All of these are same-machine private-address checks, not second-device evidence.
 
@@ -42,3 +46,5 @@ None yet.
 - tender-vine-9199 — retry video published to the persistent page; historical playback survives its arrival
 - calm-grove-2647 — document reading stays selected across live polls while current navigation updates (ADR-306)
 - violet-wave-6524 — accepted geometry reloads on live identity change; persistent Wren read-only checks pass (ADR-307)
+- red-jasper-1884 — persistent page follows real wren66 training and defaults to its completed 90 mm final
+- sunny-canyon-4438 — measured restart preserves open playback, all views and fresh-current selection
