@@ -618,3 +618,34 @@ def test_lark_operator_dashboard_serves_a_bounded_run_list_after_the_restart():
     assert receipt["idle_poll"]["nodes_added"] == receipt["historical_idle_poll"]["nodes_added"]
     assert receipt["route_back_to_current"] is True
     assert "scale99-evidence.json" in (REPO_ROOT / "docs" / "probes" / "operator-review" / "README.md").read_text()
+
+
+def test_disk100_receipt_shows_per_run_disk_use_on_the_persistent_dashboard() -> None:
+    """Iteration 100 (ADR-322): the persistent private-network dashboard
+    serves per-run disk use with its run detail and never in its list; the
+    default run's count equals an independent walk of its directory, the
+    policy asset it shares with its training run is sized once and named as
+    shared, a historical checkpoint run kept its own count and playing video
+    through two polls, and the route back to current works."""
+    receipt = json.loads((PROBE / "disk100-evidence.json").read_text())
+    assert receipt["adr"] == "ADR-322" and receipt["project"] == "ot5-lark-copy85"
+    assert receipt["url"].startswith("http://100.") and receipt["list_has_disk"] is False
+    assert receipt["runs"] == 13 and receipt["default_run_rule"] == "lark98-final"
+    disk = receipt["default_disk"]
+    assert (disk["bytes"], disk["files"]) == (disk["independent_walk"]["bytes"], disk["independent_walk"]["files"])
+    assert disk["bytes"] == sum(entry["bytes"] for entry in disk["by_dir"].values())
+    assert disk["files"] == sum(entry["files"] for entry in disk["by_dir"].values())
+    assert disk["hardlinked_entries"] == 0 and disk["skipped_count"] == 0
+    assert disk["shared"]["policy"]["shared_with"] == ["lark98"]
+    assert disk["shared_bytes"] == disk["shared"]["policy"]["bytes"] > 0
+    assert receipt["runs_total_bytes"] > 10 * disk["bytes"]
+    default = receipt["default_view"]
+    assert default["run"] == "lark98-final" and re.fullmatch(HEX64, default["revision"])
+    assert default["relation"].startswith("CURRENT") and default["summary"].startswith("Disk use: ")
+    assert "under runs/lark98-final/" in default["summary"] and default["size_cells"] == 13
+    assert default["video_label_has_size"] is True
+    historical = receipt["historical_view"]
+    assert historical["run"] == "lark98-checkpoint20" and historical["relation"].startswith("HISTORICAL")
+    assert historical["bytes"] > 0 and historical["playback_kept_through_two_polls"] is True
+    assert historical["count_kept"] is True and receipt["route_back_to_current"] is True
+    assert "disk100-evidence.json" in (REPO_ROOT / "docs" / "probes" / "operator-review" / "README.md").read_text()

@@ -23580,3 +23580,45 @@ probe scripts that read history lengths from the list were moved to
 `samples`/the detail. On the Lark server the list poll went from 554 KB to
 the record bytes alone (measured after the restart, in the operator README).
 No protocol op, payload or `shell/` change; `docs/CLI.md` describes both forms.
+
+## ADR-322 — Per-run disk use travels with the run detail, counted from permitted files with shared references sized once (2026-09-13)
+
+**Context.** The charter's bounded-operation rung asks that review clarity
+hold over longer histories, "including bounded telemetry, disk use and
+visible missing artifacts". ADR-321 bounded the poll; nothing yet said what
+a run *keeps*. On the persistent `ot5-lark-copy85` server thirteen runs hold
+about 11 MB under `runs/`, and a training run and its playback run both cite
+one policy asset under `assets/` — a `du` over `runs/` would miss it and a
+sum over records would count it twice. The critic named this as the unit.
+
+**Decision.** `review_record.run_disk_use(root, record, others)` counts one
+run's permitted project-local files: every regular file that resolves inside
+`runs/<name>` (the same containment rule as every other reference), each
+inode once, no symlink followed — a linked file or directory is listed as
+skipped, because bytes kept elsewhere are not this run retaining them — split
+by top-level subdirectory, from `stat` alone with nothing read or hashed and
+a `DISK_USE_ENTRY_LIMIT` of 20 000 entries past which it reports
+`truncated` and a floor. Each reference the record names is sized with the
+reader's own status words (`retained`, `missing`, `refused` — never opened —
+and `not recorded`). A `project_artifacts` reference that resolves outside
+the run is sized under `shared_bytes` and `shared_with` names the other runs
+whose records cite the same path, so a shared file is counted once for the
+project rather than once per run. A run directory that escapes the project
+is `unreadable` and nothing under it is stat'ed. It is attached to
+`/api/run/<name>` by the new `ReviewProject.detail` — the detail form, the
+one place histories and verified checkpoints already travel — and never to
+the run list, so the two-second poll stays what ADR-321 made it. The page's
+Artifacts card shows the total, the per-directory split, the skipped links,
+the shared references and a size column that says `missing — nothing on
+disk` and `refused — not read`; the accepted view has no run to count.
+
+**Consequences.** `cli/tests/test_review_disk_use.py` pins the count against
+an independent walk (hard link counted once, two symlinks skipped, leaked
+bytes absent), the status words, the shared-reference accounting, the bound,
+the escaped-run refusal, the list's freedom from it, and in the browser a
+historical selection with its video playing through a poll under a growing
+project, missing and refused sizes, and the route back to current. The
+persistent Lark dashboard was restarted onto it with no trainer active and
+verified over the private address (the operator README and
+`docs/probes/lark-fresh/disk100-evidence.json`). No protocol op, payload or
+`shell/` change; `docs/CLI.md` describes the block.

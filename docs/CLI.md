@@ -1482,6 +1482,31 @@ The snapshots and checkpoints belong to the run: retain and copy its whole
 them. Older trainers may lack loss/episode histories; the page labels these
 missing rather than inferring them from final metrics.
 
+**Disk use per run (ADR-322)** travels with the same detail, never with the
+list: `/api/run/<name>` carries `disk` (`cadex-run-disk-use-v1`), what that
+run keeps under `runs/<name>/` counted from its permitted project-local
+files only — every regular file that resolves inside the run directory,
+each inode once (a hard-linked pair is one file and one
+`hardlinked_entries`), nothing followed through a symlink (linked entries
+are listed under `skipped` with the reason), split by the run's top-level
+subdirectories in `by_dir`, as apparent sizes from `stat` with no bytes read
+and nothing hashed. `references` sizes each reference the record names with
+the reader's own status words: `retained` with its bytes, `missing` with
+none, `refused` and never opened, `not recorded`. A project-level reference
+(`project_artifacts`) that resolves outside the run — the policy asset a
+training run and its playback run both cite, a render directory two runs
+at one revision share — is **not** in the run's total: it is sized under
+`shared_bytes` and `shared_with` names the other runs whose records cite
+the same path, so one file is counted once however many runs share it.
+`state` is `counted`, `truncated` (the walk stopped at
+`DISK_USE_ENTRY_LIMIT` entries and the totals are a floor) or `unreadable`
+(the run directory is missing or escapes the project, and nothing under it
+was stat'ed). The Artifacts card shows the total, the per-directory split,
+the skipped links, the shared references with the runs that share them,
+and a size column on the artifact table that says `missing — nothing on
+disk` and `refused — not read` where the reader did; the accepted view has
+no run to count and says so.
+
 A playback run — a rollout of a checkpoint or final policy whose record names
 the training run it came from as `training.requested.source_run` — copies the
 training snapshot beside its own rollout but not the checkpoint files. Its

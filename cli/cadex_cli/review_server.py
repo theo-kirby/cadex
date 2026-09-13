@@ -54,6 +54,7 @@ from .review_record import (
     read_project_review,
     read_run_record,
     resolve_reference,
+    run_disk_use,
 )
 
 REVIEW_MODEL_SCHEMA = "cadex-review-model-v1"
@@ -785,6 +786,10 @@ class ReviewProject:
         return review
 
     def run(self, name: str) -> dict[str, Any] | None:
+        found = self._run(name)
+        return found[0] if found else None
+
+    def _run(self, name: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
         runs_dir = self.root / RUNS_DIRNAME
         if not name or name in (".", "..") or "/" in name or "\\" in name:
             return None
@@ -792,12 +797,29 @@ class ReviewProject:
         if not runs_dir.is_dir() or not run_dir.is_dir() or run_dir.parent != runs_dir:
             return None
         record = read_run_record(run_dir, self.root)
-        accepted = read_project_review(self.root)["accepted"]
+        review = read_project_review(self.root)
+        accepted = review["accepted"]
         recorded = (record.get("model") or {}).get("accepted_revision")
         if accepted.get("available") and recorded:
             record["relation"] = "current" if recorded == accepted["revision"] else "historical"
         else:
             record["relation"] = "unknown"
+        return record, review
+
+    def detail(self, name: str) -> dict[str, Any] | None:
+        """The ``/api/run/<name>`` form: the record with its full telemetry
+        (histories, digest-verified checkpoints — the one place they travel,
+        ADR-321) and its disk use (ADR-322): what this run keeps under
+        ``runs/<name>``, sized per reference, with project-level references
+        other runs share sized once and named as shared rather than folded
+        into this run's total. Neither is in the run list."""
+
+        found = self._run(name)
+        if found is None:
+            return None
+        record, review = found
+        record["telemetry"] = training_telemetry(self.root, record)
+        record["disk"] = run_disk_use(self.root, record, review["runs"])
         return record
 
     # -- files, each through an allowlist and the containment check --------
@@ -1032,13 +1054,10 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 self._send_json(project.review())
                 return
             if rest[:1] == ["run"] and len(rest) == 2:
-                record = project.run(rest[1])
+                record = project.detail(rest[1])
                 if record is None:
                     self._not_found(f"run {rest[1]!r}")
                     return
-                # The one place histories and verified checkpoints travel
-                # (ADR-321): one run per request, never the whole list.
-                record["telemetry"] = training_telemetry(project.root, record)
                 self._send_json(record)
                 return
             if rest[:1] == ["policy-origin"] and len(rest) == 2:

@@ -40,7 +40,10 @@ canvas#viewer { width: 100%; height: 520px; display: block; background: #1c1f24;
 #model-status[data-state="empty"], #model-status[data-state="missing"] { color: var(--warn); }
 #model-status[data-state="loaded"] { color: var(--ok); }
 #model-status[data-state="error"] { color: var(--bad); }
-ul#model-components, ul#problems, ul#docs, ul#decisions, ul#videos { margin: 6px 0 0; padding-left: 18px; }
+ul#model-components, ul#problems, ul#docs, ul#decisions, ul#videos, ul#disk-dirs, ul#disk-shared { margin: 6px 0 0; padding-left: 18px; }
+#disk { margin-bottom: 8px; } #disk[data-state="counted"] #disk-summary { color: var(--fg); }
+#disk[data-state="truncated"] #disk-summary, #disk[data-state="unreadable"] #disk-summary { color: var(--warn); }
+ul#disk-shared li[data-shared="true"] { color: var(--hist); }
 ul#model-components li .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 ul#problems li { color: var(--bad); }
 .status-retained { color: var(--ok); } .status-missing, .status-error { color: var(--bad); } .status-none { color: var(--muted); }

@@ -55,7 +55,12 @@
     <div class="card">
       <h2>Artifacts</h2>
       <ul id="problems"></ul>
-      <table id="artifacts" class="grid"><thead><tr><th>artifact</th><th>path</th><th>status</th></tr></thead><tbody></tbody></table>
+      <div id="disk" data-state="unselected">
+        <p id="disk-summary" class="muted">select a run to see what it keeps on disk</p>
+        <ul id="disk-dirs"></ul>
+        <ul id="disk-shared"></ul>
+      </div>
+      <table id="artifacts" class="grid"><thead><tr><th>artifact</th><th>path</th><th>status</th><th>size</th></tr></thead><tbody></tbody></table>
       <ul id="videos"></ul>
     </div>
     <div class="card">

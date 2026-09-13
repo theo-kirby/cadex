@@ -2,6 +2,34 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
+Iteration 100 (ADR-322) restarted the service once, with no trainer active,
+so the operator URL runs the server whose run detail carries **per-run disk
+use**: what the selected run keeps under `runs/<name>/`, counted from its
+permitted files only, each inode once and no symlink followed, split by
+subdirectory, with a size column on the artifact table and the project
+references it shares with other runs sized once and named. The run list
+still carries none of it. Over the private address a fresh visit selects
+**`lark98-final`** (revision `6f826037044a…`), whose panel reads 895.8 KB
+in 37 files, equal to an independent walk of the directory; its policy asset
+`assets/lark98.cxpolicy` (82.6 KB) is shown outside the run's total, shared
+with training run `lark98`; the thirteen runs together hold 9.1 MB under
+`runs/`. `lark98-checkpoint20` opened as history with its own count and its
+video playing through two polls, and the route back to current works.
+Restart:
+
+```bash
+systemctl --user restart cadex-operator-review.service
+```
+
+[Measured receipt](../lark-fresh/disk100-evidence.json), pinned by
+`cli/tests/test_lark_fresh_evidence.py`; reproduce against the persistent
+address with:
+
+```bash
+PYTHONPATH=cli:cli/tests pixi run python docs/probes/operator-review/check_disk.py \
+  "$HOME/cadex-projects/ot5-lark-copy85" "http://$(tailscale ip -4):8765/" /tmp/disk-check.json
+```
+
 Iteration 99 (ADR-321) restarted the service once, with no trainer active,
 so the operator URL runs the server whose run list carries each run's
 telemetry as a bounded summary and serves histories and digest-verified

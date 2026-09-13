@@ -39,6 +39,12 @@
     return node;
   }
   function short(value) { return value ? String(value).slice(0, 12) : '—'; }
+  function bytes(value) {
+    if (value == null || !isFinite(value)) return '—';
+    var units = ['B', 'KB', 'MB', 'GB', 'TB'], n = value, i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return (i ? n.toFixed(1) : String(n)) + ' ' + units[i];
+  }
   function fmt(value) {
     if (value == null) return '—';
     if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toPrecision(5);
@@ -307,13 +313,70 @@
     row('rollout total reward', fmt(rollout.total_reward));
   }
 
+  function diskFor(run) {
+    // The selected run's disk use travels with its detail (ADR-322), never
+    // with the run list; until it arrives the panel says so.
+    if (!run) return null;
+    if (state.detail && state.detail.run === run.run && state.detail.disk) return state.detail.disk;
+    return { state: 'pending' };
+  }
+
+  var diskKey = null;
+  function sizeCell(sized) {
+    // One status word per reference, the reader's own: retained (with its
+    // size), missing (nothing on disk), refused (never opened), not recorded.
+    if (!sized) return el('td', { className: 'muted', 'data-size': 'pending', text: '…' });
+    if (sized.status === 'retained') return el('td', { 'data-size': String(sized.bytes), text: bytes(sized.bytes) + (sized.files > 1 ? ' · ' + sized.files + ' files' : '') });
+    if (sized.status === 'missing') return el('td', { className: 'status-missing', 'data-size': 'missing', text: 'missing — nothing on disk' });
+    if (sized.status === 'refused') return el('td', { className: 'status-error', 'data-size': 'refused', text: 'refused — not read' });
+    return el('td', { className: 'status-none', 'data-size': 'none', text: '—' });
+  }
+
+  function renderDisk(run) {
+    var disk = diskFor(run), panel = $('disk'), summary = $('disk-summary'), dirs = $('disk-dirs'), shared = $('disk-shared');
+    var key = JSON.stringify([run && run.run, disk]);
+    if (key === diskKey) return;
+    diskKey = key;
+    clearChildren(dirs); clearChildren(shared);
+    summary.dataset.bytes = ''; summary.dataset.files = ''; summary.dataset.sharedBytes = '';
+    if (!disk) { panel.dataset.state = 'unselected'; summary.textContent = 'select a run to see what it keeps on disk'; return; }
+    panel.dataset.state = disk.state;
+    if (disk.state === 'pending') { summary.textContent = 'Disk use: counting…'; return; }
+    if (disk.state === 'unreadable') { summary.textContent = 'Disk use: not counted — ' + disk.reason; return; }
+    summary.dataset.bytes = String(disk.bytes); summary.dataset.files = String(disk.files); summary.dataset.sharedBytes = String(disk.shared_bytes);
+    summary.textContent = 'Disk use: ' + bytes(disk.bytes) + ' in ' + disk.files + ' file(s) under runs/' + run.run + '/' +
+      (disk.hardlinked_entries ? ' · ' + disk.hardlinked_entries + ' hard-linked entr' + (disk.hardlinked_entries === 1 ? 'y' : 'ies') + ' counted once' : '') +
+      (disk.skipped_count ? ' · ' + disk.skipped_count + ' entr' + (disk.skipped_count === 1 ? 'y' : 'ies') + ' skipped (symlinks are never followed)' : '') +
+      (disk.state === 'truncated' ? ' · TRUNCATED: ' + disk.reason : '') +
+      ' · apparent sizes, counted from this run\'s permitted files only';
+    Object.keys(disk.by_dir || {}).sort().forEach(function (dir) {
+      var entry = disk.by_dir[dir];
+      dirs.appendChild(el('li', { 'data-dir': dir, 'data-bytes': String(entry.bytes), text: (dir === '.' ? '(run root)' : dir + '/') + ' · ' + bytes(entry.bytes) + ' · ' + entry.files + ' file(s)' }));
+    });
+    (disk.skipped || []).forEach(function (item) {
+      dirs.appendChild(el('li', { className: 'status-missing', 'data-skipped': item.path, text: item.path + ' · skipped: ' + item.reason }));
+    });
+    var references = (disk.references || {}).project_artifacts || {};
+    Object.keys(references).sort().forEach(function (key) {
+      var item = references[key];
+      if (item.status !== 'retained' || item.in_run) return;
+      var who = item.shared_with || [];
+      shared.appendChild(el('li', { 'data-key': key, 'data-shared': String(who.length > 0), 'data-bytes': String(item.bytes),
+        text: 'project ' + key + ' ' + item.path + ' · ' + bytes(item.bytes) + ' · outside this run, not in its total' +
+              (who.length ? ' · shared with ' + who.join(', ') + ' (counted once for the project)' : ' · cited by this run only') }));
+    });
+    if (disk.shared_bytes) shared.appendChild(el('li', { className: 'muted', 'data-shared-total': String(disk.shared_bytes), text: 'project references outside this run: ' + bytes(disk.shared_bytes) + ' (each file counted once however many runs cite it)' }));
+  }
+
   function renderArtifacts() {
     var run = selectedRun();
     var problems = $('problems'), body = $('artifacts').querySelector('tbody'), videos = $('videos');
     clearChildren(problems); clearChildren(body);
-    if (!run) { clearChildren(videos); delete videos.dataset.key; body.appendChild(el('tr', {}, [el('td', { text: 'select a run to see its retained artifacts' }), el('td'), el('td')])); return; }
+    renderDisk(run);
+    if (!run) { clearChildren(videos); delete videos.dataset.key; body.appendChild(el('tr', {}, [el('td', { text: 'select a run to see its retained artifacts' }), el('td'), el('td'), el('td')])); return; }
     (run.problems || []).forEach(function (problem) { problems.appendChild(el('li', { text: problem })); });
     var resolved = run.resolved || { artifacts: {}, project_artifacts: {}, videos: [] };
+    var disk = diskFor(run), sizes = disk && disk.references ? disk.references : null;
     function rows(group, prefix) {
       Object.keys(resolved[group] || {}).sort().forEach(function (key) {
         var item = resolved[group][key];
@@ -325,12 +388,14 @@
         var cell = el('td', { className: cls, 'data-status': status.split(':')[0] });
         if (link) { cell.appendChild(el('a', { href: link, text: status })); cell.appendChild(document.createTextNode(' · ')); cell.appendChild(el('a', { href: link + '?download=1', text: 'download' })); }
         else cell.textContent = status;
-        body.appendChild(el('tr', { 'data-group': group, 'data-key': key }, [el('td', { text: group + '.' + key }), el('td', { className: 'mono', text: item.path == null ? '—' : item.path }), cell]));
+        var sized = sizes ? (key === 'project_docs' && group === 'artifacts' ? sizes.project_docs : (sizes[group] || {})[key]) : null;
+        body.appendChild(el('tr', { 'data-group': group, 'data-key': key }, [el('td', { text: group + '.' + key }), el('td', { className: 'mono', text: item.path == null ? '—' : item.path }), cell, sizeCell(sized)]));
       });
     }
     rows('artifacts', '/artifact/run/');
     rows('project_artifacts', '/artifact/project/');
-    var videoKey = JSON.stringify([run.run, run.videos, resolved.videos, run.video_render]);
+    var videoSizes = sizes ? sizes.videos || [] : [];
+    var videoKey = JSON.stringify([run.run, run.videos, resolved.videos, run.video_render, videoSizes]);
     if (videos.dataset.key === videoKey) return;
     videos.dataset.key = videoKey;
     clearChildren(videos);
@@ -351,6 +416,8 @@
       var item = (resolved.videos || [])[index] || {};
       var line = el('li', { 'data-video': String(index) });
       var label = 'video ' + index + ' · ' + (video.path || '?') + ' · revision ' + short(video.accepted_revision || (run.model || {}).accepted_revision) + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s · ' + (video.style || 'historical legacy style');
+      var sizedVideo = videoSizes[index];
+      if (sizedVideo && sizedVideo.status === 'retained') label += ' · ' + bytes(sizedVideo.bytes);
       if (item.exists && !item.error) {
         var url = '/video/run/' + encodeURIComponent(run.run) + '/' + index;
         line.appendChild(el('div', { text: label }));
@@ -486,7 +553,7 @@
     state.selected = view;
     originKey = null;
     render();
-    return Promise.all([loadModel(), loadDetail().then(function () { renderTraining(); })]);
+    return Promise.all([loadModel(), loadDetail().then(function () { renderTraining(); renderArtifacts(); })]);
   }
 
   function modelIdentity() {
@@ -541,6 +608,7 @@
       var run = selectedRun();
       return { selected: state.selected, stale: state.stale, error: state.error,
                detail: state.detail ? state.detail.run : null,
+               disk: state.detail && state.detail.disk ? { state: state.detail.disk.state, bytes: state.detail.disk.bytes, files: state.detail.disk.files, shared_bytes: state.detail.disk.shared_bytes } : null,
                revision: run ? (run.model || {}).accepted_revision : (state.review && state.review.accepted.revision),
                relation: run ? run.relation : 'accepted', model: state.model && { available: state.model.available, reason: state.model.reason, revision: state.model.revision },
                runs: state.review ? state.review.runs.map(function (r) { return r.run; }) : [] };

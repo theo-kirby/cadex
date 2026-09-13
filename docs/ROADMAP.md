@@ -2754,6 +2754,13 @@ field, and every client gets it through the surface it already reads.
       states, verified across atomic updates in a headless browser. D3's actual
       fresh-biped GPU observation remains open; fixture evidence does not tick it.
 
+- [x] Bounded operation over long histories: the run list carries a telemetry
+      summary per run and histories/verified checkpoints travel per selected run
+      (ADR-321); the same detail carries per-run disk use counted from permitted
+      files, each inode once, no symlink followed, with shared project references
+      sized once and missing/refused references named (ADR-322). Both verified
+      on the persistent Lark dashboard and in headless-browser regressions.
+
 - [x] Final policy publication failures publish failed telemetry (ADR-288),
       retaining metrics/checkpoints with headless browser fault-injection evidence.
       The real interrupted runs and new attempts are Wren's `wren57-*` (ADR-305)

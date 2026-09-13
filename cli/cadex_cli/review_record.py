@@ -40,6 +40,7 @@ import datetime as _datetime
 from functools import lru_cache
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import threading
@@ -640,6 +641,184 @@ def read_project_review(project_root: Path | str) -> dict[str, Any]:
         "decisions": decision_headings(root),
         "runs": runs,
     }
+
+
+# -- disk use, per run, from permitted project-local files only --------------
+
+DISK_USE_SCHEMA = "cadex-run-disk-use-v1"
+#: Directory entries one run's count will visit before it stops and says
+#: ``truncated``: a run directory is a few hundred files at most, and a
+#: reader that finds tens of thousands reports the bound rather than the
+#: whole tree.
+DISK_USE_ENTRY_LIMIT = 20_000
+#: How many skipped entries are listed by path; the rest are counted.
+DISK_USE_SKIPPED_LISTED = 32
+
+
+def _walk_counted(top: Path, base: Path, budget: list[int], seen: set[tuple[int, int]],
+                  skipped: list[dict[str, str]], counts: dict[str, int]) -> None:
+    """Sum regular files under ``top`` that resolve inside ``base``, each inode
+    once. Symlinks are never followed: a linked file or directory is listed
+    as skipped, because bytes kept elsewhere are not this run retaining
+    them. ``budget[0]`` is the remaining entry allowance; ``counts`` gains
+    ``bytes``, ``files``, ``hardlinked_entries`` and ``skipped_count``."""
+
+    try:
+        entries = sorted(os.scandir(top), key=lambda entry: entry.name)
+    except OSError as exc:
+        counts["skipped_count"] += 1
+        if len(skipped) < DISK_USE_SKIPPED_LISTED:
+            skipped.append({"path": relative_under(base, top) or top.name, "reason": f"unreadable: {exc.__class__.__name__}"})
+        return
+    for entry in entries:
+        if budget[0] <= 0:
+            counts["truncated"] = 1
+            return
+        budget[0] -= 1
+        relative = relative_under(base, Path(entry.path)) if not entry.is_symlink() else None
+        if entry.is_symlink() or relative is None:
+            counts["skipped_count"] += 1
+            if len(skipped) < DISK_USE_SKIPPED_LISTED:
+                shown = os.path.relpath(entry.path, base)
+                skipped.append({"path": shown.replace(os.sep, "/"),
+                                "reason": "symlink not followed" if entry.is_symlink() else "escapes the run directory"})
+            continue
+        if entry.is_dir(follow_symlinks=False):
+            _walk_counted(Path(entry.path), base, budget, seen, skipped, counts)
+            if counts.get("truncated"):
+                return
+            continue
+        if not entry.is_file(follow_symlinks=False):
+            continue
+        try:
+            stat = entry.stat(follow_symlinks=False)
+        except OSError:
+            counts["skipped_count"] += 1
+            if len(skipped) < DISK_USE_SKIPPED_LISTED:
+                skipped.append({"path": relative, "reason": "unreadable"})
+            continue
+        key = (stat.st_dev, stat.st_ino)
+        if key in seen:
+            counts["hardlinked_entries"] += 1
+            continue
+        seen.add(key)
+        counts["bytes"] += stat.st_size
+        counts["files"] += 1
+        head = relative.split("/", 1)[0] if "/" in relative else "."
+        by_dir = counts.setdefault("by_dir", {}).setdefault(head, {"bytes": 0, "files": 0})
+        by_dir["bytes"] += stat.st_size
+        by_dir["files"] += 1
+
+
+def _reference_size(base: Path, item: Mapping[str, Any]) -> dict[str, Any]:
+    """Bytes of one resolved reference: a file's size, or a directory's
+    counted files. A reference the reader refused is never opened; a
+    missing one has no size."""
+
+    if item.get("path") is None:
+        return {"path": None, "status": "not recorded", "bytes": None, "files": 0}
+    if item.get("error"):
+        return {"path": item["path"], "status": "refused", "bytes": None, "files": 0, "reason": item["error"]}
+    if not item.get("exists"):
+        return {"path": item["path"], "status": "missing", "bytes": None, "files": 0}
+    target = base / item["path"]
+    try:
+        if target.is_dir():
+            counts = {"bytes": 0, "files": 0, "hardlinked_entries": 0, "skipped_count": 0}
+            _walk_counted(target, base, [DISK_USE_ENTRY_LIMIT], set(), [], counts)
+            return {"path": item["path"], "status": "retained", "bytes": counts["bytes"], "files": counts["files"]}
+        stat = target.stat()
+    except OSError as exc:
+        return {"path": item["path"], "status": "missing", "bytes": None, "files": 0,
+                "reason": f"unreadable: {exc.__class__.__name__}"}
+    return {"path": item["path"], "status": "retained", "bytes": stat.st_size, "files": 1}
+
+
+def run_disk_use(project_root: Path | str, record: Mapping[str, Any],
+                 others: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+    """What one run keeps on disk, from permitted project-local files only.
+
+    ``bytes``/``files`` count every regular file under ``runs/<run>`` that
+    resolves inside it, each inode once (a hard-linked pair is one file and
+    one ``hardlinked_entries``), with nothing followed through a symlink —
+    linked entries are listed under ``skipped`` with the reason. ``by_dir``
+    splits that by the run's top-level subdirectories (``.`` for files at
+    its root). ``references`` sizes each reference the record names, with
+    the same status words the reader uses: ``retained`` (with bytes),
+    ``missing`` (no bytes), ``refused`` (never opened) or ``not recorded``.
+    A project-level reference (``project_artifacts``) that resolves outside
+    this run's directory is **not** in the run total: it is sized under
+    ``shared_bytes`` and, when other runs' records name the same path,
+    ``shared_with`` lists them, so a policy asset two runs share is counted
+    once however many runs cite it. ``state`` is ``counted``, ``truncated``
+    (the walk hit ``DISK_USE_ENTRY_LIMIT`` and the totals are a floor) or
+    ``unreadable`` (the run directory is missing or escapes the project,
+    and nothing under it was stat'ed). Only ``stat`` is read: no file
+    bytes, no hashing, so this costs one directory walk of one run.
+    """
+
+    root = Path(project_root).expanduser()
+    name = str(record.get("run"))
+    result: dict[str, Any] = {
+        "schema": DISK_USE_SCHEMA, "run": name, "state": "unreadable", "reason": None,
+        "bytes": 0, "files": 0, "hardlinked_entries": 0, "skipped_count": 0, "skipped": [],
+        "by_dir": {}, "references": {"artifacts": {}, "project_artifacts": {}, "videos": [],
+                                     "project_docs": None},
+        "shared_bytes": 0, "entry_limit": DISK_USE_ENTRY_LIMIT,
+    }
+    run_ref = resolve_reference(root, f"{RUNS_DIRNAME}/{name}")
+    if run_ref["error"] or not run_ref["exists"]:
+        result["reason"] = ("run directory escapes the project directory" if run_ref["error"]
+                            else "run directory missing")
+        return result
+    run_dir = root / RUNS_DIRNAME / name
+    if not run_dir.is_dir():
+        result["reason"] = "run directory is not a directory"
+        return result
+    seen: set[tuple[int, int]] = set()
+    counts = {"bytes": 0, "files": 0, "hardlinked_entries": 0, "skipped_count": 0}
+    _walk_counted(run_dir, run_dir, [DISK_USE_ENTRY_LIMIT], seen, result["skipped"], counts)
+    result["by_dir"] = counts.pop("by_dir", {})
+    truncated = bool(counts.pop("truncated", 0))
+    result.update(counts)
+    result["state"] = "truncated" if truncated else "counted"
+    result["reason"] = (f"stopped after {DISK_USE_ENTRY_LIMIT} directory entries; totals are a floor"
+                        if truncated else None)
+    resolved = record.get("resolved") or {}
+    for key, item in (resolved.get("artifacts") or {}).items():
+        sized = _reference_size(run_dir, item)
+        sized["in_run"] = True
+        result["references"]["artifacts"][key] = sized
+    run_real = run_dir.resolve()
+    cited: dict[str, list[str]] = {}
+    for other in others:
+        if str(other.get("run")) == name:
+            continue
+        for value in ((other.get("resolved") or {}).get("project_artifacts") or {}).values():
+            if isinstance(value, Mapping) and value.get("exists") and not value.get("error"):
+                cited.setdefault(str(value["path"]), []).append(str(other.get("run")))
+    for key, item in (resolved.get("project_artifacts") or {}).items():
+        sized = _reference_size(root, item)
+        in_run = False
+        if sized["status"] == "retained":
+            in_run = relative_under(run_real, root / item["path"]) is not None
+            if not in_run:
+                result["shared_bytes"] += sized["bytes"]
+        sized["in_run"] = in_run
+        sized["shared_with"] = sorted(set(cited.get(str(item.get("path")), []))) if item.get("path") else []
+        result["references"]["project_artifacts"][key] = sized
+    for index, item in enumerate(resolved.get("videos") or []):
+        sized = _reference_size(run_dir, item)
+        sized["in_run"] = True
+        sized["index"] = index
+        result["references"]["videos"].append(sized)
+    docs = record.get("project_docs") or {}
+    if docs.get("dir"):
+        item = resolve_reference(run_dir, docs["dir"])
+        sized = _reference_size(run_dir, item)
+        sized["in_run"] = True
+        result["references"]["project_docs"] = sized
+    return result
 
 
 # -- policy lineage, from retained identities and never from run names ------
