@@ -23102,3 +23102,25 @@ replacement paths and pruning. The CLI refused-turn regression now expects
 the retained accepted attempt and a distinct latest candidate from restore.
 This preserves existing meshes rather than
 repairing their loss through a subsequent rebuild.
+
+## ADR-304 — Compare Wren revisions using retained policy/model pairs (2026-09-12)
+
+[Cadex-new] The 85→105 mm foot hypothesis is evaluated on the declared seeds
+0–4, eight seconds at 50 Hz, with the original and revised checkpoint-20 and
+final policies. Fresh scratch projects replay each retained script with its
+recorded effective parameters and content-verified policy; every model/task/
+policy digest must match the retained run, and seed zero must reproduce the
+saved trace exactly. Actual survival comes from solved simulation time, not
+the trainer's batch episode estimate. Traces are retained inside Wren's
+`evidence/comparison52`, with compact results and reproduction commands in
+`docs/probes/wren-fresh/COMPARISON.md`.
+
+The design attribution stays explicit: the original Wren was product-agent
+authored; the foot revision was the public CLI parameter operation. This
+experiment is no substitute for a product-agent revision turn. Original run
+files and videos are preserved. The persistent server follows the new attempt
+through training and final review; historical playback checks allow an old
+final run and return to the current target shown at click time, since a new
+checkpoint can legitimately appear while the check runs. This replaces the
+probe's frozen initial-target assumption, not dashboard selection behavior.
+No dependency, engine, trainer or renderer change is introduced.

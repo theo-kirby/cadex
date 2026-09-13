@@ -936,8 +936,8 @@ Iteration 46 repairs the previously unrecorded Wren probe and verifies
 [Receipt and limitations](probes/wren-fresh/README.md): eight drawn components (seven biped solids plus ground),
 twelve declared defaults, pointer orbit/zoom, empty run state across polling,
 and two accepted-identity engine reopens on a disposable full copy. Both Reed
-projects remain byte-identical across this probe. Wren has no training or
-videos yet; this is the opening slice of the repeated lifecycle, not another
+projects remain byte-identical across this probe. At that point Wren had no training or
+videos; this is the opening slice of the repeated lifecycle, not another
 completed D9 lifecycle. In-place restore was found to replace retained
 attempt artifacts without tessellation; the successful receipt deliberately
 checks copy reopens and read-only browsing separately.
@@ -949,7 +949,20 @@ then completed Wren's first bounded real GPU experiment, `wren1`, on the same
 persistent private-network dashboard. See the [experiment command and evidence](probes/wren-fresh/README.md).
 The observer has verified real telemetry updates without reload, and checkpoint
 20 has a witness-verified rollout and browser-verified video published while
-training was active. The final policy also has a verified video and is selected
-by default: it fell at 0.46 s on seed 0, whereas checkpoint 20 survived 8 s.
+training was active. The final policy also has a verified video and was selected
+by default then: it fell at 0.46 s on seed 0, whereas checkpoint 20 survived 8 s.
 Both remain reviewable. This extends the repeated lifecycle; it does not yet establish Wren's
 design-change/retraining comparison or independent-copy lifecycle.
+
+Iteration 52 completes the [Wren design-change/retraining comparison](probes/wren-fresh/COMPARISON.md)
+after iteration 50's public CLI foot edit from 85 to 105 mm. The persistent
+server now defaults to `wren2-final`, revision `26332a5955e3…`; both revised
+policies have verified videos and the checkpoint video played during training.
+On the declared seeds 0–4, eight seconds at 50 Hz, the original final falls
+2/5 times and the revised final 0/5; both checkpoints survive all episodes.
+Mean torso displacement is small, so this is not a walking claim. All 114
+original run files remain byte-identical and all four recordings pass browser
+playback/download. This is a CLI parameter revision of a product-agent original,
+not a product-agent revision turn. Wren-specific independent-copy and controlled
+interruption evidence remains outside this unit; Reed's prior evidence stays
+separate. The operator server keeps running.

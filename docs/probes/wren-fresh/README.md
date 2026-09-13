@@ -2,6 +2,11 @@
 
 Verified against source: 2026-09-12. [Cadex-new]
 
+Current experiment: [the completed revised-foot comparison](COMPARISON.md)
+retains both training runs and their four videos; the persistent dashboard
+now selects `wren2-final`, revision `26332a5955e3…`. The sections below are
+historical evidence of the earlier lifecycle steps.
+
 The corrected iteration 46 probe passes on `ot5-wren`, accepted revision
 `5309bebc6597…`, digest `dbd02d7c12a0…`. The persistent private-network
 port 8765 now serves Wren and stays running. A same-machine headless Chromium

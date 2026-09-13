@@ -3,29 +3,24 @@
 Verified against source: 2026-09-12. [Cadex-new]
 
 The shared private-network dashboard on port 8765 serves `ot5-wren`, with
-`wren1-final` selected by default at revision `a8073874ab76…`.
-The accepted design is now `a90b84033ced…`: foot length 105 mm, old policy
-disabled, retraining not started. The latest attempt remains `wren1-final`
-with its original 85 mm feet and is visibly HISTORICAL. Select ACCEPTED NOW
-to inspect the new design; no new-design video exists yet. Both historical
-videos still play/download with their original hashes after this revision,
-and all retained run bytes are unchanged. The persistent server was not stopped.
-See [the revision evidence and declared comparison](../wren-fresh/README.md#review-driven-foot-revision-iteration-50).
-Wren's first GPU run completed 240 iterations in 697.0 seconds; no experiment
-training remains active. Both its checkpoint-20 and final-policy videos are
-retained in the shared prototype-light style. The final policy falls at 0.46 s
-on seed 0; the earlier checkpoint survives eight seconds. The page shows the
-latest result and keeps the better earlier result available as historical.
+**`wren2-final` selected by default**, revision **`26332a5955e3…`**, 105 mm feet.
+Iteration 52 completed 240 GPU iterations; no training remains active.
+The verified checkpoint and final videos both play/download, as do the original
+85 mm recordings. Historical playback survives polling and returns to current.
+The service was not restarted and stays running.
 
-Fresh-visit selection, video playback/download, preserved playback across
-polling, historical checkpoint selection and return to current all pass on the
-persistent private URL. During training, the browser observed seven real
-updates with 0.40–1.43 s measured commit-to-page delay. A fresh visit after
-checkpoint-video publication still selected the active training run.
-These are same-machine private-network checks, not second-device evidence.
-See [Wren's experiment and compact receipt](../wren-fresh/README.md).
-Reed's results remain in their original projects; the operator service remains
-running on Wren.
+At experiment start, the browser selected active `wren2` at revision
+`a90b84033ced…`. Seven real training updates reached the page within
+0.50–1.53 seconds, and the checkpoint video was played while training remained
+active. At completion, the browser verified the revised final identity and
+video. These are same-machine private-network checks, not second-device
+observations. The original Wren was product-agent authored; the foot revision
+was a public CLI parameter edit, not a product-agent design turn.
+
+The revised final policy survived five of five eight-second episodes, versus
+three of five for the original final policy. Small displacement and standing
+poses do not establish walking. See [the comparative lifecycle report](../wren-fresh/COMPARISON.md)
+and its compact training, playback/download and per-seed receipts.
 
 Keep the server running between iterations. On this Linux host, from the
 checkout, the detached command is:

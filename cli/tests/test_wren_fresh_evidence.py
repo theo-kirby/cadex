@@ -112,3 +112,56 @@ def test_inventory_excludes_only_invocation_outputs(tmp_path):
     (previous / 'retained.png').write_bytes(b'changed evidence')
     assert inventory(tmp_path, exclude=current) != before
     assert 'script.py' in before and 'evidence/previous/retained.png' in before
+
+
+def test_retraining_comparison_uses_the_declared_seeds_and_retained_models():
+    evidence = json.loads((PROBE / 'comparison-evidence.json').read_text())
+    assert evidence['protocol'] == dict(seeds=list(range(5)), episode_seconds=8,
+                                       control_hz=50, training_iterations=240,
+                                       environments=1024, training_seed=0)
+    assert evidence['original_run_files_preserved'] == 114
+    assert 'not product-agent authorship' in evidence['design_authorship']
+    runs = evidence['runs']
+    assert set(runs) == {'wren1-checkpoint20', 'wren1-final',
+                         'wren2-checkpoint20', 'wren2-final'}
+    model_ids = {}
+    for name, item in runs.items():
+        evaluation = item['evaluation']
+        assert evaluation['source_run_unchanged'] and evaluation['seed_zero_trace_identical']
+        rows = evaluation['rows']
+        assert [row['seed'] for row in rows] == list(range(5))
+        for row in rows:
+            assert row['survival_s'] == pytest.approx(row['step_count'] / 50)
+            assert row['fell'] == (row['termination'] == 'fell')
+            assert row['fell'] or row['survival_s'] == 8
+            assert row['policy_sha256'] == item['video']['policy_sha256']
+            assert row['task_sha256'] == item['video']['task_sha256']
+            assert row['foot_len_mm'] == (85 if name.startswith('wren1-') else 105)
+        assert len({row['model_sha256'] for row in rows}) == 1
+        model_ids[name] = rows[0]['model_sha256']
+        assert item['summary']['falls'] == sum(row['fell'] for row in rows)
+        assert item['summary']['mean_survival_s'] == pytest.approx(sum(row['survival_s'] for row in rows)/5)
+        assert item['browser']['browser_playback']
+        assert item['browser']['download_sha256'] == item['video']['sha256']
+        if name.startswith('wren1-'):
+            assert item['browser']['fresh_selection'] == 'RUN wren2-final'
+    assert model_ids['wren1-checkpoint20'] == model_ids['wren1-final']
+    assert model_ids['wren2-checkpoint20'] == model_ids['wren2-final']
+    assert model_ids['wren1-final'] != model_ids['wren2-final']
+
+
+def test_revised_checkpoint_was_played_during_real_bounded_training():
+    evidence = json.loads((PROBE / 'retraining-evidence.json').read_text())
+    assert evidence['training_exit'] == evidence['observer_exit'] == 0
+    # Trainer iterations are zero-based: 0..239 is the declared 240 updates.
+    assert evidence['trainer_final']['iteration'] + 1 == 240
+    assert evidence['trainer_final']['state'] == 'done'
+    assert evidence['resource_bound']['MemoryMax'] == str(20 * 1024**3)
+    mid = evidence['intermediate']
+    assert mid['trainer_active_after_browser'] and mid['browser_check_exit'] == 0
+    assert mid['after'] > mid['before']
+    assert mid['witness']['witness_error'] < mid['witness']['witness_tolerance']
+    assert evidence['live_browser']['ok'] and evidence['live_browser']['reload_count'] == 1
+    assert len(evidence['live_browser']['page_iterations']) >= 7
+    assert all(0 <= x['committed_to_page_s'] < 5 for x in evidence['live_browser']['first_seen'].values())
+    assert evidence['policies']['wren2-final']['browser']['fresh_selection'] == 'RUN wren2-final'
