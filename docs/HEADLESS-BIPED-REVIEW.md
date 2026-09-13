@@ -1013,8 +1013,11 @@ with no Reed or Wren history, and put on the persistent port 8765 by a
 deliberate service switch. The repeat exposed the hidden dependency it was
 meant to find: a first accepted script is staged under the engine's pre-run
 revision, which the review client refused (fixed, ADR-311), and the agent's
-`write_script` retains no tessellation, so the fresh model needed the public
-`cadex render` before the dashboard could draw it (recorded, not yet fixed).
+`write_script` retained no tessellation, so the fresh model needed the public
+`cadex render` before the dashboard could draw it (fixed in iteration 81,
+ADR-312: every modelling call through the bridge now carries the standard
+tessellation request, with an engine-backed browser regression on a fresh
+project).
 The create/save/reopen probe then passed with identical components, meshes,
 placements, specs and viewport pixels before and after two in-place engine
 reopens. See [the Lark evidence](probes/lark-fresh/README.md). Training,

@@ -38,7 +38,7 @@ import threading
 from typing import Any
 
 from .client import CadexdClient
-from .tools import injects_revision, tool_definitions
+from .tools import STANDARD_DISPLAY, injects_display, injects_revision, tool_definitions
 
 #: Long enough that a slow rebuild is not a broken pipe; the engine's own
 #: budget is what actually bounds a run.
@@ -177,9 +177,14 @@ class Bridge:
             return _content(f"No such tool: {tool!r}.", is_error=True)
 
         args = dict(arguments)
-        args.pop("expected_revision", None)  # the bridge owns this one
+        # The bridge owns both of these: the guard, and the tessellation the
+        # accepted attempt must retain for review (ADR-312).
+        args.pop("expected_revision", None)
+        args.pop("display", None)
         if injects_revision(protocol, tool):
             args["expected_revision"] = self.state.revision
+        if injects_display(protocol, tool):
+            args["display"] = dict(STANDARD_DISPLAY)
 
         with self._lock:
             try:

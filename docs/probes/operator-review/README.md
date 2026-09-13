@@ -11,7 +11,9 @@ digest `3b704a3fc1c4…`, with **no runs yet** (ACCEPTED NOW is the default
 view). Iteration 80 created it in one `cadex -p` turn, switched the service
 from `ot5-wren-copy54` deliberately, fixed the reader's refusal of a first
 accepted attempt (ADR-311, one service restart with no trainer running),
-gave the design its tessellation through the public `cadex render`, and
+gave the design its tessellation through the public `cadex render` (the
+cause — the agent's writes omitting `display` — is fixed by ADR-312 in
+iteration 81, which left Lark's accepted attempt untouched), and
 proved save/reopen on the persistent URL:
 [Lark creation and reopen evidence](../lark-fresh/README.md),
 [compact receipt](../lark-fresh/evidence.json). Training, videos and the

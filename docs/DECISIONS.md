@@ -23246,3 +23246,32 @@ tessellation until a public rebuild republishes the accepted attempt.
 `ot5-lark` received that through `cadex render` at unchanged revision and
 digest, and the receipt records all three states. No dependency, protocol,
 payload or engine change.
+
+## ADR-312 — Every CLI write carries the standard tessellation request (2026-09-13)
+
+[Cadex-new] ADR-311 recorded the defect it did not fix: the agent's
+`write_script` omitted `display`, so a project straight out of `cadex -p`
+had an accepted attempt with BREP outputs and no tessellation, and the
+review dashboard said `accepted attempt retained no tessellation` until a
+public rebuild — `cadex render`, `cadex params` — republished the attempt.
+Wren was created the same way and a later rebuild hid it; Lark exposed it.
+The omission was deliberate when the CLI had nothing to draw (ADR-061), and
+it stopped being right when the dashboard started drawing the accepted
+attempt (ADR-286). The bridge now injects `display: {quality: standard,
+edges: false}` — the request `cadex params` already makes (ADR-293) — on
+every op whose `OP_ARG_SPECS` takes it (`write_script`, `edit_script`,
+`set_params`, `rebuild`), overrules any value the model supplies the way
+it overrules `expected_revision`, and keeps dropping the reply's `display`
+block from what the model sees; `cadex script --set` asks for the same. The
+schemas still omit it: the list of ops comes from the protocol, not a
+second copy. Cost, measured on Lark's eight solids through the built
+engine on a scratch copy, three writes each way: 0.45–0.60 s without
+tessellation, 0.44–0.49 s with — within noise. Regressions: the bridge
+sends the constant on the four ops and never on `describe_api`/`inspect`;
+and an engine-backed headless-browser test writes a first script through
+the bridge on a fresh project, confirms the ADR-311 shape (staging under
+the pre-run revision, accepted revision different), and the dashboard
+draws the model with no `review/` render present — it failed on the old
+bridge with `retained no tessellation`. Reading a project still rebuilds
+nothing; the review client is unchanged. No dependency, protocol, payload,
+engine or shell change.

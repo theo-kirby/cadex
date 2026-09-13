@@ -1463,12 +1463,14 @@ What the page shows, and where each thing comes from:
   is the shape of every project's **first** accepted script: the engine
   stages an attempt under the revision it can compute before the worker
   runs, over an empty parameter-spec cache, and records the revision
-  recomputed with the collected specs as the accepted one. Note that the
-  agent's `write_script` never asks for tessellation (`display` is not in
-  its tool schemas), so a project straight out of `cadex -p` reports
-  `accepted attempt retained no tessellation` until a public rebuild with
-  display — `cadex render`, `cadex params` — republishes the accepted
-  attempt; the review client never rebuilds anything itself.
+  recomputed with the collected specs as the accepted one. The agent's
+  modelling calls and `cadex script --set` carry the same standard
+  tessellation request `cadex params` makes (ADR-312), so a project
+  straight out of `cadex -p` has a model to show; `accepted attempt
+  retained no tessellation` now names a project accepted before ADR-312,
+  or through a `restore` replay alone, and a public rebuild with display —
+  `cadex render`, `cadex params` — republishes the accepted attempt. The
+  review client never rebuilds anything itself.
 - **A run**: everything from its `run.json` (ADR-285) — identity, params
   and specs *as recorded*, training request and receipt, rollout seed and
   reward, artifacts with each one's status, the document snapshot — and
@@ -1807,8 +1809,13 @@ vocabulary to reconcile; a third vocabulary would be a third thing to keep
 in sync. The input schemas are **generated from `OP_ARG_SPECS`**, so they
 cannot drift from the protocol — only the prose is hand-written.
 
-`display` and `expected_revision` are removed from the schemas: the first
-asks for tessellation nothing here draws, the second is injected.
+`display` and `expected_revision` are removed from the schemas: both are
+injected by the bridge, never asked of the model. The revision comes from
+the last reply; `display` is the constant standard request (`quality:
+standard`, no edges) on every modelling op, so the accepted attempt the
+review dashboard draws always retains tessellation (ADR-312). Anything the
+model supplies for either is overruled, and the reply's `display` block is
+dropped before the model sees it.
 
 ### What the agent is told
 

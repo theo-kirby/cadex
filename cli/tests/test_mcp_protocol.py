@@ -136,7 +136,11 @@ def test_a_tool_call_reaches_the_engine_with_the_injected_revision() -> None:
 
     assert reply["result"]["isError"] is False
     (sent,) = client.args_for("write_script")
-    assert sent == {"source": "x", "expected_revision": "rev-1"}
+    assert sent == {
+        "source": "x",
+        "expected_revision": "rev-1",
+        "display": {"quality": "standard", "edges": False},
+    }
     # …and the guard that was used is visible to the model, not merely absent.
     payload = json.loads(reply["result"]["content"][0]["text"])
     assert payload["expected_revision_used"] == "rev-1"
@@ -156,6 +160,39 @@ def test_a_revision_the_model_supplies_is_overruled_not_honoured() -> None:
         )
     (sent,) = client.args_for("write_script")
     assert sent["expected_revision"] == "rev-1"
+
+
+def test_every_modelling_op_carries_the_standard_display_request(protocol) -> None:
+    """The accepted attempt must retain tessellation for review (ADR-312).
+
+    A first accepted script written without ``display`` left a fresh
+    project's dashboard saying ``accepted attempt retained no
+    tessellation`` until a later public rebuild republished it. The bridge
+    now asks for the same standard tessellation ``cadex params`` asks for,
+    on every op that takes it, and overrules anything the model supplies —
+    so the request is a constant, not a model choice.
+    """
+
+    client = FakeCadexd()
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        for tool, arguments in (
+            ("write_script", {"source": "x", "display": {"quality": "coarse"}}),
+            ("edit_script", {"old": "a", "new": "b"}),
+            ("set_params", {"values": {"k": 1}}),
+            ("rebuild", {}),
+            ("describe_api", {}),
+            ("inspect", {"scope": "outputs"}),
+        ):
+            _rpc(bridge, "tools/call", {"name": tool, "arguments": arguments})
+    for tool in ("write_script", "edit_script", "set_params", "rebuild"):
+        (sent,) = client.args_for(tool)
+        assert sent["display"] == {"quality": "standard", "edges": False}, tool
+    for tool in ("describe_api", "inspect"):
+        assert all("display" not in sent for sent in client.args_for(tool)), tool
+    # ...and this list is the protocol's, not a second copy of it.
+    from cadex_cli.tools import injects_display
+    takes_display = {op for op in CLI_TOOL_OPS if injects_display(protocol, op)}
+    assert takes_display == {"write_script", "edit_script", "set_params", "rebuild"}
 
 
 def test_the_revision_advances_across_calls() -> None:

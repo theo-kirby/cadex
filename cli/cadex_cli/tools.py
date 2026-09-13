@@ -21,9 +21,15 @@ concurrent writers and a CLI run has exactly one writer, so
 shown the revision on every result — the value it would have had to guess
 is reported rather than demanded.
 
-**``display`` is not in the schemas either.** It asks the engine for
-tessellation, which is what a viewport needs and nothing here has. BREP
-artifacts are staged for every declared output regardless, which is what
+**``display`` is not in the schemas either — the bridge supplies it too.**
+It asks the engine for tessellation, which no CLI turn draws; but the
+accepted attempt it lands in is what the review dashboard draws, and an
+attempt accepted *without* it left a freshly created project unreviewable
+until a later public rebuild republished it (ADR-312). So every modelling
+op the model calls carries the same standard request `cadex params` makes
+(ADR-293), the model is never asked for it, and :mod:`cadex_cli.bridge`
+drops the resulting block from what the model sees. BREP artifacts are
+staged for every declared output regardless, which is what
 :mod:`cadex_cli.export` reads.
 """
 
@@ -53,11 +59,13 @@ CLI_TOOL_OPS = (
     "put_asset",
 )
 
-#: Filled in by the bridge from the last reply, so never asked of the model.
-INJECTED_ARGS = frozenset({"expected_revision"})
+#: Filled in by the bridge — the revision from the last reply, the display
+#: request as a constant — so never asked of the model.
+INJECTED_ARGS = frozenset({"expected_revision", "display"})
 
-#: Meaningless without a viewport (see the module docstring).
-OMITTED_ARGS = frozenset({"display"})
+#: The tessellation request every modelling op carries: what `cadex params`
+#: asks for (ADR-293), and what the review dashboard draws (ADR-312).
+STANDARD_DISPLAY: dict[str, Any] = {"quality": "standard", "edges": False}
 
 _JSON_TYPES: dict[type, str] = {
     str: "string",
@@ -292,12 +300,12 @@ def tool_definitions(protocol: ModuleType) -> list[dict[str, Any]]:
         properties: dict[str, Any] = {}
         required: list[str] = []
         for name, python_type in required_args.items():
-            if name in INJECTED_ARGS or name in OMITTED_ARGS:
+            if name in INJECTED_ARGS:
                 continue
             properties[name] = _property_schema(op, name, python_type)
             required.append(name)
         for name, python_type in optional_args.items():
-            if name in INJECTED_ARGS or name in OMITTED_ARGS:
+            if name in INJECTED_ARGS:
                 continue
             properties[name] = _property_schema(op, name, python_type)
         definitions.append(
@@ -318,5 +326,15 @@ def tool_definitions(protocol: ModuleType) -> list[dict[str, Any]]:
 def injects_revision(protocol: ModuleType, op: str) -> bool:
     """True when ``op`` takes an ``expected_revision`` the bridge supplies."""
 
+    return _takes(protocol, op, "expected_revision")
+
+
+def injects_display(protocol: ModuleType, op: str) -> bool:
+    """True when ``op`` takes a ``display`` request the bridge supplies."""
+
+    return _takes(protocol, op, "display")
+
+
+def _takes(protocol: ModuleType, op: str, name: str) -> bool:
     required_args, optional_args = protocol.OP_ARG_SPECS.get(op, ({}, {}))
-    return "expected_revision" in required_args or "expected_revision" in optional_args
+    return name in required_args or name in optional_args

@@ -110,6 +110,7 @@ from .train import (
 )
 from .review_record import manifest_identity, write_run_record
 from .review_server import serve as serve_review
+from .tools import STANDARD_DISPLAY
 from .walk import (
     DEFAULT_LEG_TIMEOUT_S,
     POLICY_SWITCH,
@@ -1103,7 +1104,13 @@ def command_script(args: argparse.Namespace, report: RunReport) -> int:
 
         revision = read_working_revision(client)
         _progress(" · write_script")
-        request: dict[str, Any] = {"source": source, "expected_revision": revision}
+        # The same tessellation request the agent's writes carry (ADR-312):
+        # the accepted attempt is what the review dashboard draws.
+        request: dict[str, Any] = {
+            "source": source,
+            "expected_revision": revision,
+            "display": dict(STANDARD_DISPLAY),
+        }
         if args.replace:
             request["replace"] = True
         reply = client.request("write_script", request)

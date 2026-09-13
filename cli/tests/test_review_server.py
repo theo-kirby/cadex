@@ -1702,3 +1702,66 @@ def test_browser_accepted_geometry_tracks_live_identity(tmp_path, browser, initi
     finally:
         server.shutdown()
         server.server_close()
+
+
+@needs_browser
+def test_browser_draws_a_first_accepted_script_written_through_the_bridge_without_a_render(
+    engine, tmp_path, browser,
+):
+    """A project straight out of the agent's turn has a model to show (ADR-312).
+
+    The agent's writes reach the engine through the bridge, which used to omit
+    ``display``: the first accepted attempt had BREP outputs and no
+    tessellation, and this page said ``accepted attempt retained no
+    tessellation`` until ``cadex render`` republished it. The bridge now asks
+    for the standard tessellation on every modelling op. This is the same
+    path ``cadex -p`` takes minus the model, on a fresh project, with no
+    render, params or rebuild afterwards — and the store keeps the ADR-311
+    shape the reader must tolerate: the attempt staged under the pre-run
+    revision while the accepted revision carries the collected specs.
+    """
+    from cadex_cli.bridge import Bridge
+    from cadex_cli.client import CadexdClient, open_project
+    from cadex_cli.session import read_working_revision
+    from test_walk import TOY
+
+    root = tmp_path / 'fresh-project'
+    source = TOY.replace(
+        'p = params(', 'p = params(arm_len=num(80, min=40, max=160), '
+    ).replace('part.box(80, 8, 8)', 'part.box(p.arm_len, 8, 8)')
+    client = CadexdClient(engine)
+    client.start()
+    try:
+        open_project(client, root)
+        with Bridge(client, initial_revision=read_working_revision(client)) as bridge:
+            reply = bridge.call('write_script', {'source': source})
+        payload = json.loads(reply['content'][0]['text'])
+        assert payload['ok'] is True, payload
+        assert 'display' not in payload  # the model still never sees the block
+    finally:
+        client.shutdown()
+    manifest = json.loads((root / 'script.json').read_text())
+    accepted = manifest['accepted_revision']
+    assert payload['revision'] == accepted
+    staging = Path(manifest['accepted_attempt']['staging'])
+    assert staging.parts[0] == 'script_artifacts' and staging.parts[1] != accepted
+    assert not (root / 'review').exists()  # nothing rendered, rebuilt or exported
+
+    server, _thread = serve(root, '127.0.0.1', 0)
+    try:
+        model = _json(server.url + 'api/model/accepted')
+        assert model['available'] is True, model
+        assert model['revision'] == accepted and model['digest'] == manifest['accepted_digest']
+        assert model['source'].startswith("the accepted attempt's tessellation (display/*.tess)")
+        assert {c['name'] for c in model['components']} == {'base', 'swing'}
+        page = _open(browser, server.url)
+        assert _model_state(page) == 'loaded'
+        status = page.text('#model-status')
+        assert status.startswith('accepted model at revision ' + accepted[:12])
+        assert '2 component(s)' in status and 'retained no tessellation' not in status
+        assert page.text('#view-revision') == accepted
+        assert page.text("#params tr[data-param='arm_len'] td:nth-child(3)") == '80'
+        assert page.evaluate('window.cadexReview.viewer().nonBackgroundPixels()') > 1000
+    finally:
+        server.shutdown()
+        server.server_close()

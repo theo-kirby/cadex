@@ -45,10 +45,19 @@ fresh project** ([pre-fix receipt and screenshot](evidence.json)
    running, to load it.
 2. **The agent's turn retained no tessellation.** After the fix the page
    said `accepted attempt retained no tessellation`: `write_script` never
-   asks for `display`. **Not fixed in this unit.** The documented public
+   asked for `display`. Not fixed in iteration 80: the documented public
    remedy, `cadex render`, republished the accepted attempt under the
    accepted revision with tessellation at unchanged revision and digest.
    Wren's creation had this same shape and its later rebuild hid it.
+   **Fixed in iteration 81 (ADR-312)**: the bridge now injects the standard
+   tessellation request on every modelling op, so a project straight out
+   of `cadex -p` has a model to show. The regression in
+   `cli/tests/test_review_server.py` writes a first script through the
+   bridge on a fresh project through the built engine and asserts the
+   dashboard draws it with no render present; it failed on the old bridge.
+   Lark itself keeps the attempt `cadex render` republished — the fix
+   changes nothing already accepted, and a fresh visit to the persistent
+   URL after it is recorded in [`tessellation81.json`](tessellation81.json).
 
 Then the create/save/reopen probe passed on the persistent URL: the page
 loaded in 0.84 s, drew eight components (96 triangles, 41,840 non-background
