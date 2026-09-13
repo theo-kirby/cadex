@@ -1,0 +1,50 @@
+{
+  "iteration": 99,
+  "adr": "ADR-321",
+  "url": "http://100.104.232.88:8765/",
+  "project": "ot5-lark-copy85",
+  "checked_at": "2026-09-13T11:00:41Z",
+  "default_run_rule": "lark98-final",
+  "list_bytes": 109422,
+  "runs": 13,
+  "list_telemetry_bytes_max": 555,
+  "list_has_histories": false,
+  "ready_seconds": 0.75,
+  "default_view": {
+    "run": "lark98-final",
+    "revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",
+    "digest": "c039961cd41d9bcc26956c566a55e3ace0cf2665f99b7ebfd180af12d2bd4076",
+    "relation": "CURRENT \u2014 this run's revision is the acc",
+    "telemetry_state": "done",
+    "points": {
+      "curve": 240,
+      "loss_curve": 240,
+      "episode_steps_curve": 240
+    },
+    "checkpoints_retained": 12,
+    "components": 8
+  },
+  "idle_poll": {
+    "nodes_added": 62,
+    "project_bytes": 170413,
+    "detail_bytes": 54303,
+    "ms": 31.1
+  },
+  "download_sha256_matches": true,
+  "historical_view": {
+    "run": "lark1-final",
+    "revision": "44f8f6a113a3a63a17587da33ce803473977cab493b6c735d7ba8403d394b4e2",
+    "shown_revision": "44f8f6a113a3a63a17587da33ce803473977cab493b6c735d7ba8403d394b4e2",
+    "relation": "HISTORICAL \u2014 recorded at 44f8f6a113a3, a",
+    "points": 240,
+    "checkpoints_retained": 12,
+    "detail_run": "lark1-final"
+  },
+  "historical_idle_poll": {
+    "nodes_added": 62,
+    "project_bytes": 170413,
+    "detail_bytes": 57215,
+    "ms": 30.6
+  },
+  "route_back_to_current": true
+}

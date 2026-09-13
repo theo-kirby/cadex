@@ -759,7 +759,8 @@ def _telemetry(root, iteration=0, run="first", **changes):
 def test_telemetry_refuses_escape_mismatch_and_invalid_histories(served):
     root, server = served
     def read():
-        return next(r for r in _json(server.url + 'api/project')['runs'] if r['run'] == 'first')['telemetry']
+        # Histories and verified checkpoints travel with the run's detail (ADR-321).
+        return _json(server.url + 'api/run/first')['telemetry']
     path = _telemetry(root, task_sha256='wrong')
     assert read()['state'] == 'invalid'
     _telemetry(root, loss_curve=[[0, float('nan')]])
@@ -829,7 +830,7 @@ def test_playback_checkpoints_resolve_through_the_recorded_training_run(served, 
     _playback_run(root, "first-final", source="first", revision=REVISION_A)
 
     def telemetry(url=server.url, run="first-final"):
-        return next(r for r in _json(url + "api/project")["runs"] if r["run"] == run)["telemetry"]
+        return _json(url + "api/run/" + run)["telemetry"]
 
     # The training run itself: its own train/, no provenance needed.
     own = telemetry(run="first")

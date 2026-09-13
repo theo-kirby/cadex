@@ -586,36 +586,67 @@ def tessellation_to_stl(sidecar: Mapping[str, Any], data: bytes) -> bytes:
     return bytes(out)
 
 
-def training_telemetry(root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
-    """Observe the run-local trainer snapshot; never infer process success."""
+HISTORY_KEYS = ("curve", "loss_curve", "episode_steps_curve")
+
+
+def _telemetry_summary(result: dict[str, Any], reported: int) -> dict[str, Any]:
+    """The run-list form of a telemetry result (ADR-321): the same state,
+    reason and latest metrics, with each history replaced by its sample
+    count and the checkpoint list by how many entries it reports. Nothing
+    here is hashed and nothing grows with training length, so a poll of the
+    whole run list costs a bounded amount per run however long the history."""
+
+    result["samples"] = {key: len(result.pop(key, []) or []) for key in HISTORY_KEYS}
+    result.pop("checkpoints", None)
+    result["checkpoints_reported"] = reported
+    result["summary"] = True
+    return result
+
+
+def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = True) -> dict[str, Any]:
+    """Observe the run-local trainer snapshot; never infer process success.
+
+    ``detail=True`` is the ``/api/run/<name>`` form: full histories (at
+    most 512 samples each) and every reported checkpoint verified against
+    its recorded digest. ``detail=False`` is the ``/api/project`` form,
+    :func:`_telemetry_summary`: the same validation and state, sample
+    counts instead of histories, a count instead of the checkpoint list,
+    and no checkpoint bytes read. The two agree on ``state``, so the
+    current-run rule (:func:`default_run`) reads either.
+    """
+
     result: dict[str, Any] = {"state": "missing", "reason": "training telemetry missing",
                               "checkpoints": [], "curve": [], "loss_curve": [],
                               "episode_steps_curve": []}
+
+    def finish(value: dict[str, Any], reported: int = 0) -> dict[str, Any]:
+        return value if detail else _telemetry_summary(value, reported)
+
     run_ref = resolve_reference(root, f"runs/{record['run']}")
     if run_ref["error"] or not run_ref["exists"]:
         result["reason"] = "training run directory refused or missing"
-        return result
+        return finish(result)
     run_dir = root / run_ref["path"]
     # Fixed location also works before the running record sees the first snapshot.
     ref = resolve_reference(run_dir, "train/progress.json")
     if ref["error"] or not ref["exists"]:
         result["reason"] = "training telemetry refused or missing"
-        return result
+        return finish(result)
     path = run_dir / ref["path"]
     data = _load_json(path, limit=2 * 1024 * 1024)
     if not data or data.get("schema") != "cadex-training-progress-v1":
         result.update(state="invalid", reason="training telemetry unreadable or unsupported")
-        return result
+        return finish(result)
     expected = (record.get("task") or {}).get("sha256")
     if expected and data.get("task_sha256") and expected != data["task_sha256"]:
         result.update(state="invalid", reason="training telemetry task identity mismatch")
-        return result
+        return finish(result)
     try:
         stamp = float(data.get("updated_at", path.stat().st_mtime))
         age = max(0.0, _datetime.datetime.now(_datetime.timezone.utc).timestamp() - stamp)
         if not math.isfinite(stamp):
             raise ValueError("nonfinite timestamp")
-        for key in ("curve", "loss_curve", "episode_steps_curve"):
+        for key in HISTORY_KEYS:
             points = data.get(key, [])
             if not isinstance(points, list) or len(points) > 512:
                 raise ValueError("invalid history")
@@ -628,7 +659,8 @@ def training_telemetry(root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
                 raise ValueError("invalid metric")
             result[key] = value
     except (OSError, TypeError, ValueError, OverflowError):
-        return {"state": "invalid", "reason": "training telemetry has invalid metrics"}
+        return finish({"state": "invalid", "reason": "training telemetry has invalid metrics",
+                       "checkpoints": [], "curve": [], "loss_curve": [], "episode_steps_curve": []})
     reported = data.get("state")
     result.update(state=reported if reported in ("starting", "training", "done", "failed") else "unknown",
                   reported_state=reported, age_s=age, reason=str(data.get("error") or ""))
@@ -637,13 +669,16 @@ def training_telemetry(root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
     checkpoints = data.get("checkpoints", [])
     if not isinstance(checkpoints, list):
         result.update(state="invalid", reason="invalid checkpoint list")
-        return result
+        return finish(result)
+    reported = sum(1 for item in checkpoints[:512] if isinstance(item, dict))
     # Where the checkpoint bytes may be: this run's own train/ first, then the
     # training run its record names (a playback run copies the snapshot but
     # not the checkpoints). Both stay inside this project's runs/.
     bases: list[tuple[str, Path]] = [("run", run_dir / "train")]
     source = _checkpoint_source(root, record)
     result["checkpoint_source"] = source
+    if not detail:
+        return _telemetry_summary(result, reported)
     if source["state"] == "resolved":
         bases.append((source["run"], root / source["path"]))
     for item in checkpoints[:512]:
@@ -731,7 +766,11 @@ class ReviewProject:
     open shows up on its next poll, and a record that is rewritten from
     ``running`` to ``ok`` is read as it stands. The cost is one directory
     walk of ``runs/`` per request, which is what a review client should
-    pay to never show a stale run. Only video digests are cached, bounded and
+    pay to never show a stale run — and it is bounded per run: the list
+    carries each run's telemetry as a summary (state, latest metrics,
+    sample and checkpoint counts) and reads no checkpoint bytes; histories
+    and digest-verified checkpoints are served for one run at a time by
+    ``/api/run/<name>`` (ADR-321). Only video digests are cached, bounded and
     keyed by file identity, size and nanosecond modification/change times.
     """
 
@@ -741,7 +780,7 @@ class ReviewProject:
     def review(self) -> dict[str, Any]:
         review = read_project_review(self.root)
         for record in review["runs"]:
-            record["telemetry"] = training_telemetry(self.root, record)
+            record["telemetry"] = training_telemetry(self.root, record, detail=False)
         review["served_at"] = _now()
         return review
 
@@ -997,6 +1036,9 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 if record is None:
                     self._not_found(f"run {rest[1]!r}")
                     return
+                # The one place histories and verified checkpoints travel
+                # (ADR-321): one run per request, never the whole list.
+                record["telemetry"] = training_telemetry(project.root, record)
                 self._send_json(record)
                 return
             if rest[:1] == ["policy-origin"] and len(rest) == 2:

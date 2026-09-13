@@ -51,7 +51,7 @@ def main():
             assert foot == run['params']['values']['foot_len']
             points = {k: int(page.attribute('[data-history=%s]' % k, 'data-points'))
                       for k in ('curve', 'loss_curve', 'episode_steps_curve')}
-            assert all(n == len(run['telemetry'][k]) and n > 0 for k, n in points.items())
+            assert all(n == run['telemetry']['samples'][k] and n > 0 for k, n in points.items())  # list summary (ADR-321)
             docs = {}
             for doc, digest in run['project_docs']['files'].items():
                 body = (root / 'runs' / name / run['project_docs']['dir'] / doc).read_bytes()

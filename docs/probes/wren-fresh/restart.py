@@ -69,7 +69,7 @@ def run_summary(data):
     return {run['run']: {'outcome': run['outcome'], 'relation': run['relation'], 'status': run['status'],
                          'revision': run['model']['accepted_revision'], 'digest': run['model']['digest'],
                          'telemetry': run['telemetry']['state'], 'iteration': run['telemetry']['iteration'],
-                         'points': [len(run['telemetry'][k] or []) for k in ('curve', 'loss_curve', 'episode_steps_curve')],
+                         'points': [run['telemetry']['samples'][k] for k in ('curve', 'loss_curve', 'episode_steps_curve')],  # list summary (ADR-321)
                          'videos': [(v['sha256'], v['policy_sha256'], v['seed'], v['sim_seconds']) for v in run['videos']]}
             for run in data['runs']}
 

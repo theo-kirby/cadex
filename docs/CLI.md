@@ -1459,6 +1459,24 @@ The browser polls every two seconds and plots retained reward, loss and episode
 length histories (at most 512 samples each), alongside iteration, total and
 checkpoint availability. Checkpoint bytes must match the reported sha256 to
 appear as retained; this is integrity evidence, not engine policy verification.
+The cost of that poll is bounded per run, however long the history (ADR-321):
+`GET /api/project` carries every run's telemetry as a **summary** — state,
+reason, latest metrics, the sample count of each history, the number of
+checkpoints reported and the checkpoint-source state — and reads no
+checkpoint bytes; `GET /api/run/<name>` carries the one selected run's
+histories and its digest-verified checkpoint list. The page fetches both on
+each poll (the list, then the selected run's detail) and renders the panel
+from one response, so iteration and sample counts never come from different
+snapshots; until the detail arrives after a selection the panel says
+`loading history…` with the summary's counts and a `pending` checkpoint line.
+The run list in the sidebar is rebuilt only when a run's name, status,
+relation, record time or revision changes, and the telemetry panel only when
+the shown telemetry changes, so an idle poll adds a constant number of DOM
+nodes whatever the run count. `window.cadexReview.lastPoll()` reports the last
+poll's list bytes, detail bytes and wall time. The `test_review_history_scale.py`
+suite pins this over sixty-three runs with 512-sample histories and three
+checkpoints each, then grows the history by twenty runs under a deliberately
+selected historical run whose video keeps playing.
 The snapshots and checkpoints belong to the run: retain and copy its whole
 `train/` directory with the project. No server or browser is needed to retain
 them. Older trainers may lack loss/episode histories; the page labels these
@@ -1972,6 +1990,7 @@ Fast, and honest about what it did not run.
 | `test_walk.py` | `cadex walk` against a fake `cadex` (leg order, flags, refusals; no engine), and the toy through two real walks with the real engine and trainer — **skips** the latter without the training venv. |
 | `test_review_server.py` | The review dashboard (ADR-286): the API, the allowlist and its refusals, the CLI command, and the page in a headless Chromium over its DevTools pipe (`cdp_browser.py`) — **skips** the browser half without a Chromium (`CADEX_BROWSER` names one); the private-address smoke runs only with `CADEX_REVIEW_HOST` set. |
 | `test_review_lifecycle.py` | The dashboard across restart and copy (D6/D7): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. Whole-directory copy coverage checks independent accepted fixtures and historical model/curves/video access with the original path unavailable. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
+| `test_review_history_scale.py` | Bounded operation over a long run history (ADR-321): sixty-three runs with 512-sample histories and three verified checkpoints each. Over HTTP, the run list carries a telemetry summary under 1.5 KB per run with no histories and no checkpoint hashing, the per-run detail carries both, and missing/invalid/mismatched states survive the summary. In the browser, a deliberately selected historical run keeps its selection, histories and playing video while twenty runs are added and the newest run's telemetry grows; an idle poll adds no more DOM nodes after the growth than before; a fresh visit selects the training run and the current-run button reaches it with its growing history within five seconds. **Skips** the browser half without a Chromium or FFmpeg. |
 | `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** rendering/playback without both Chromium and FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies

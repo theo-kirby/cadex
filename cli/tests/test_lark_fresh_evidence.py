@@ -588,3 +588,33 @@ def test_render_failure_observer_takes_the_prior_run_as_an_argument():
     assert "wren71" not in source and "lark2" not in source
     assert "project, training_run, url, prior = sys.argv[1:]" in source
     assert "'--label', 'render-recovery'" in source and "-render-recovery-check.json" in source
+
+
+def test_lark_operator_dashboard_serves_a_bounded_run_list_after_the_restart():
+    """Iteration 99 (ADR-321): the persistent Lark server was restarted with
+    no trainer active onto the summary-list server, and a headless browser on
+    the private address saw the current run's full detail, its playing and
+    hash-equal video, a historical run's own histories, and an idle poll that
+    adds the same number of nodes on either view."""
+    receipt = json.loads((PROBE / "scale99-evidence.json").read_text())
+    assert receipt["project"] == "ot5-lark-copy85" and receipt["url"].startswith("http://100.")
+    assert receipt["runs"] == 13 and receipt["list_has_histories"] is False
+    assert receipt["list_telemetry_bytes_max"] < 1500
+    default = receipt["default_view"]
+    assert receipt["default_run_rule"] == default["run"] == "lark98-final"
+    assert re.fullmatch(HEX64, default["revision"]) and default["relation"].startswith("CURRENT")
+    assert default["points"] == {"curve": 240, "loss_curve": 240, "episode_steps_curve": 240}
+    assert default["checkpoints_retained"] == 12 and default["components"] == 8
+    assert receipt["download_sha256_matches"] is True
+    historical = receipt["historical_view"]
+    assert historical["run"] == historical["detail_run"] == "lark1-final"
+    assert historical["shown_revision"] == historical["revision"] != default["revision"]
+    assert historical["relation"].startswith("HISTORICAL") and historical["points"] == 240
+    for poll in (receipt["idle_poll"], receipt["historical_idle_poll"]):
+        # The served list is the records (pretty-printed, ~13 KB each on Lark);
+        # the telemetry summaries are a small bounded share of it.
+        assert poll["project_bytes"] < 20_000 * receipt["runs"] and poll["detail_bytes"] > 10_000
+        assert receipt["list_telemetry_bytes_max"] * receipt["runs"] < 0.1 * poll["project_bytes"]
+    assert receipt["idle_poll"]["nodes_added"] == receipt["historical_idle_poll"]["nodes_added"]
+    assert receipt["route_back_to_current"] is True
+    assert "scale99-evidence.json" in (REPO_ROOT / "docs" / "probes" / "operator-review" / "README.md").read_text()

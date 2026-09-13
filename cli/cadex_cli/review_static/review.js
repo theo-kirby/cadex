@@ -1,17 +1,27 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// The review page. Polls /api/project, lets the reader pick the accepted
-// project or one recorded run, and shows exactly what the record says: a
-// historical run is labelled as such and drawn from its own retained mesh,
-// never from today's script. Nothing here writes anything anywhere.
+// The review page. Polls /api/project for the run list (each run's telemetry
+// as a bounded summary) and /api/run/<selected> for the one run whose
+// histories and verified checkpoints are on screen (ADR-321); lets the reader
+// pick the accepted project or one recorded run, and shows exactly what the
+// record says: a historical run is labelled as such and drawn from its own
+// retained mesh, never from today's script. Nothing here writes anything
+// anywhere. Poll work is bounded: the run list is rebuilt only when it
+// changes, and the telemetry panel only when the selected run's telemetry
+// does, so an idle poll over a long history touches a constant number of
+// nodes.
 (function () {
   'use strict';
 
   var POLL_MS = 2000;
   var state = { review: null, selected: 'accepted', lastOk: null, stale: false, model: null, viewer: null,
-                error: null, following: true, docKey: null, docRequest: 0 };
+                error: null, following: true, docKey: null, docRequest: 0, detail: null };
   var pendingPoll = null;
+  // The last poll's measured cost, for the operator and the regression suite:
+  // bytes of the run list, bytes of the selected run's detail, wall time.
+  var lastPoll = { project_bytes: 0, detail_bytes: 0, ms: 0 };
+  var sidebarKey = null, telemetryKey = null, detailRequest = 0;
   var readyResolve;
   var ready = new Promise(function (resolve) { readyResolve = resolve; });
 
@@ -36,10 +46,13 @@
     return String(value);
   }
 
-  function fetchJson(url) {
+  function fetchJson(url, measure) {
     return fetch(url, { cache: 'no-store' }).then(function (response) {
       if (!response.ok) throw new Error(url + ': HTTP ' + response.status);
-      return response.json();
+      return response.text();
+    }).then(function (body) {
+      if (measure) lastPoll[measure] = body.length;
+      return JSON.parse(body);
     });
   }
 
@@ -80,9 +93,16 @@
 
   function renderSidebar() {
     text('current-run', 'Current run: ' + currentView());
+    var accepted = state.review.accepted;
+    // Rebuilt only when what it shows changes: a poll over an unchanged
+    // history adds no nodes here however many runs there are.
+    var key = JSON.stringify([state.selected, accepted.available && accepted.revision, state.review.runs.map(function (run) {
+      return [run.run, run.relation, run.status, run.recorded_at, (run.model || {}).accepted_revision];
+    })]);
+    if (key === sidebarKey) return;
+    sidebarKey = key;
     var list = $('views');
     clearChildren(list);
-    var accepted = state.review.accepted;
     list.appendChild(el('li', { 'data-view': 'accepted', 'data-selected': String(state.selected === 'accepted'), onclick: function () { select('accepted'); } }, [
       el('div', { className: 'name', text: 'Accepted now' }),
       el('div', { className: 'muted small', text: accepted.available ? short(accepted.revision) : 'nothing accepted' })
@@ -200,11 +220,24 @@
       : 'specs unavailable' + (source ? ': ' + source : '') + (names.length ? ' — values only' : ''));
   }
 
+  function telemetryFor(run) {
+    // The selected run's detail (histories, verified checkpoints) when it has
+    // arrived for this run; otherwise the list's summary, which carries the
+    // same state and latest metrics with sample counts in place of samples.
+    if (!run) return {state: 'unselected'};
+    if (state.detail && state.detail.run === run.run && state.detail.telemetry) return state.detail.telemetry;
+    return run.telemetry || {state: 'missing'};
+  }
+
   function renderTelemetry(run) {
     var panel = $('telemetry');
+    var data = telemetryFor(run);
+    var key = JSON.stringify([run && run.run, data, state.detail && state.detail.run], function (k, v) { return k === 'age_s' ? undefined : v; });
+    if (key === telemetryKey) return;
+    telemetryKey = key;
     clearChildren(panel);
-    var data = run ? (run.telemetry || {state: 'missing'}) : {state: 'unselected'};
     panel.dataset.state = data.state;
+    panel.dataset.detail = !run ? '' : data.summary ? 'pending' : 'loaded';
     panel.appendChild(el('p', {text: 'Training telemetry: ' + data.state + (data.reason ? ' — ' + data.reason : '')}));
     if (!run) return;
     if (['missing', 'invalid', 'stale', 'failed', 'unknown'].includes(data.state)) {
@@ -214,8 +247,9 @@
       panel.appendChild(el('div', {'data-metric': key, text: key + ': ' + fmt(data[key])}));
     });
     [['curve', 'Reward per step'], ['loss_curve', 'Loss'], ['episode_steps_curve', 'Episode length (steps)']].forEach(function (item) {
-      var points = data[item[0]] || [], block = el('div', {'data-history': item[0], 'data-points': String(points.length)});
-      block.appendChild(el('p', {text: item[1] + (points.length ? ' · ' + points.length + ' retained samples' : ' — history missing')}));
+      var points = data[item[0]] || [], count = data.summary ? ((data.samples || {})[item[0]] || 0) : points.length;
+      var block = el('div', {'data-history': item[0], 'data-points': String(count)});
+      block.appendChild(el('p', {text: item[1] + (count ? ' · ' + count + ' retained samples' + (data.summary ? ' · loading history…' : '') : ' — history missing')}));
       if (points.length) {
         var xs = points.map(function (p) {return p[0];}), ys = points.map(function (p) {return p[1];});
         var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
@@ -230,6 +264,14 @@
       }
       panel.appendChild(block);
     });
+    if (data.summary) {
+      // Same shape as the detail below, so a reader (or a test) waiting on
+      // the provenance line sees "pending", never a missing element.
+      panel.appendChild(el('p', {id: 'checkpoint-source', 'data-state': 'pending', 'data-run': '',
+        text: 'Checkpoints: ' + fmt(data.checkpoints_reported) + ' reported · loading verification…'}));
+      panel.appendChild(el('ul', {id: 'checkpoints'}, [el('li', {'data-status': 'pending', 'data-source': '', text: 'checkpoints: verification pending'})]));
+      return;
+    }
     var source = data.checkpoint_source || {state: 'none', run: null, reason: ''};
     var sourceLine = el('p', {id: 'checkpoint-source', 'data-state': source.state, 'data-run': source.run || ''});
     if (source.state === 'none') sourceLine.textContent = 'Checkpoints: this run\'s own train/ directory';
@@ -425,12 +467,26 @@
     renderHeader(); renderSidebar(); renderIdentity(); renderPolicyOrigin(); renderParams(); renderTraining(); renderArtifacts(); renderDocs();
   }
 
+  function loadDetail() {
+    // One run's histories and verified checkpoints, for the selected run only.
+    var run = selectedRun(), request = ++detailRequest;
+    if (!run) { state.detail = null; lastPoll.detail_bytes = 0; return Promise.resolve(); }
+    return fetchJson('/api/run/' + encodeURIComponent(run.run), 'detail_bytes').then(function (detail) {
+      if (request !== detailRequest) return;
+      state.detail = detail;
+    }).catch(function () {
+      // A run that vanished between polls, or an unreachable server: the
+      // list's summary stays on screen and the next poll tries again.
+      if (request === detailRequest) state.detail = null;
+    });
+  }
+
   function select(view) {
     state.following = false;
     state.selected = view;
     originKey = null;
     render();
-    return loadModel();
+    return Promise.all([loadModel(), loadDetail().then(function () { renderTraining(); })]);
   }
 
   function modelIdentity() {
@@ -441,15 +497,20 @@
 
   function poll() {
     if (pendingPoll) return pendingPoll;
-    pendingPoll = fetchJson('/api/project').then(function (review) {
+    var started = performance.now();
+    pendingPoll = fetchJson('/api/project', 'project_bytes').then(function (review) {
       var previousModel = modelIdentity();
       if (Array.from($('videos').querySelectorAll('video')).some(function (video) {
         return !video.paused && !video.ended;
       })) state.following = false;
       state.review = review; state.lastOk = new Date(); state.stale = false; state.error = null;
       if (state.following) state.selected = currentView();
-      render();
-      if (previousModel !== modelIdentity()) return loadModel();
+      if (state.selected !== 'accepted' && !selectedRun()) state.selected = 'accepted';
+      return loadDetail().then(function () {
+        render();
+        lastPoll.ms = performance.now() - started;
+        if (previousModel !== modelIdentity()) return loadModel();
+      });
     }).catch(function (error) {
       state.stale = true; state.error = error.message;
       renderFreshness();
@@ -475,9 +536,11 @@
     select: select,
     refresh: poll,
     viewer: function () { return state.viewer; },
+    lastPoll: function () { return { project_bytes: lastPoll.project_bytes, detail_bytes: lastPoll.detail_bytes, ms: lastPoll.ms }; },
     state: function () {
       var run = selectedRun();
       return { selected: state.selected, stale: state.stale, error: state.error,
+               detail: state.detail ? state.detail.run : null,
                revision: run ? (run.model || {}).accepted_revision : (state.review && state.review.accepted.revision),
                relation: run ? run.relation : 'accepted', model: state.model && { available: state.model.available, reason: state.model.reason, revision: state.model.revision },
                runs: state.review ? state.review.runs.map(function (r) { return r.run; }) : [] };

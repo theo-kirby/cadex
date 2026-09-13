@@ -23540,3 +23540,43 @@ passed assertions is recorded in the receipt, with the publication-time check
 identity retained from the driver's own receipt and the post-recovery trainer
 sample taken from the committed timeline. The Wren command line gains the
 argument; nothing in product code, the protocol or the payload changed.
+
+## ADR-321 — The run list carries a telemetry summary; histories and verified checkpoints travel per run (2026-09-13)
+
+**Context.** The dashboard's `GET /api/project` attached every run's full
+telemetry — three histories of up to 512 samples and a checkpoint list whose
+every entry was hashed against its recorded digest — and the page fetched
+it every two seconds, then rebuilt the whole sidebar. On the persistent
+`ot5-lark-copy85` server that was 554 KB per poll for 13 runs and 97
+checkpoint files hashed per poll; a project with sixty runs would have
+carried about 2.5 MB and hashed every checkpoint it had ever kept, twice a
+minute, for as long as a browser was open. The charter's exhaustion policy
+names bounded operation over long histories as the work once D1–D11 have
+evidence, and the critic named it as this iteration's unit.
+
+**Decision.** `training_telemetry(root, record, detail=False)` returns the
+summary form: the same validation and `state`, the same reason and latest
+metrics, `samples` (each history's count), `checkpoints_reported` and the
+`checkpoint_source` state, with no histories and no checkpoint bytes read.
+`/api/project` serves that; `/api/run/<name>` now attaches the detail form
+(histories, digest-verified checkpoints) for the one run requested.
+`default_run` reads `state`, which both forms carry. `review.js` polls the
+list and then the selected run's detail and renders the telemetry panel
+from one response; the sidebar is keyed on what it shows and the panel on
+the telemetry it shows, so an idle poll adds a constant number of nodes.
+Until a selection's detail arrives the panel shows the summary's counts,
+`loading history…` and a `pending` checkpoint line of the same shape.
+`window.cadexReview.lastPoll()` exposes list bytes, detail bytes and wall
+time. `cli/tests/test_review_history_scale.py` pins it: sixty-three runs
+with 512-sample histories and three checkpoints each measured over HTTP,
+and in the browser a selected historical run with a playing video kept
+through a twenty-run growth of the list and a growing current-run history,
+with the idle-poll node count not rising after the growth.
+
+**Consequences.** The `telemetry` object in `/api/project` runs no longer
+has `curve`, `loss_curve`, `episode_steps_curve` or `checkpoints`; readers
+that want them ask `/api/run/<name>`. Two dashboard tests and the two Wren
+probe scripts that read history lengths from the list were moved to
+`samples`/the detail. On the Lark server the list poll went from 554 KB to
+the record bytes alone (measured after the restart, in the operator README).
+No protocol op, payload or `shell/` change; `docs/CLI.md` describes both forms.

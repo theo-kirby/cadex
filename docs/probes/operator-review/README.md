@@ -2,6 +2,26 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
+Iteration 99 (ADR-321) restarted the service once, with no trainer active,
+so the operator URL runs the server whose run list carries each run's
+telemetry as a bounded summary and serves histories and digest-verified
+checkpoints one run at a time through `/api/run/<name>`. The list poll on
+this 13-run project fell from 554 KB to 170 KB and reads no checkpoint bytes
+(97 files were hashed on every two-second poll before). Over the private
+address a fresh visit still selects **`lark98-final`** (revision
+`6f826037044a…`), with its 240-sample histories, twelve retained checkpoints
+and eight components loaded from the detail; its video played through a poll
+and downloaded hash-equal; `lark1-final` opened as history with its own
+revision and histories; and an idle poll added the same 62 nodes on either
+view. Restart:
+
+```bash
+systemctl --user restart cadex-operator-review.service
+```
+
+[Measured receipt](../lark-fresh/scale99-evidence.json), pinned by
+`cli/tests/test_lark_fresh_evidence.py`.
+
 Iteration 98 ran the [Lark encoder-failure experiment](../lark-fresh/RENDER98.md)
 on `ot5-lark-copy85` without restarting the service: `lark98` trained 240 GPU
 updates while its checkpoint-20 re-render was made to fail and then recovered.
