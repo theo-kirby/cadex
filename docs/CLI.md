@@ -1614,6 +1614,9 @@ What the page shows, and where each thing comes from:
   policy digest, seed and simulated seconds; none recorded says so.
   Downloads preserve Unicode filenames through an encoded UTF-8 name and an
   ASCII fallback in the response header (ADR-323).
+  A download the browser cancels mid-transfer is the client's decision: the
+  server logs one line naming the bytes sent, prints no traceback, and the
+  next whole or byte-range request serves the file (ADR-324).
 
 Video verification retains at most 256 digests in process memory (ADR-296).
 Each read still checks containment and file identity, size, and nanosecond

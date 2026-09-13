@@ -19,9 +19,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import signal
+import socket
 import struct
 import subprocess
 import sys
@@ -1983,3 +1985,121 @@ def test_download_filename_cannot_break_response_headers(served, name):
     assert disposition.isascii()
     assert '\r' not in disposition and '\n' not in disposition
     assert disposition.endswith("filename*=UTF-8''" + quote(name, safe=''))
+
+
+# -- interrupted downloads (ADR-324) -------------------------------------------
+
+def _large_video_project(tmp_path: Path) -> tuple[Path, bytes]:
+    """The review project with a 48 MiB retained video on ``second``: large
+    enough that a client closing after the headers leaves the server with
+    bytes still to write, which is what an interrupted download is."""
+
+    root = _review_project(tmp_path)
+    payload = os.urandom(1 << 20) * 48
+    (root / 'runs' / 'second' / 'big.webm').write_bytes(payload)
+    _rewrite_record(root / 'runs' / 'second', videos=[{
+        'path': 'big.webm', 'sha256': hashlib.sha256(payload).hexdigest(),
+        'policy_sha256': 'p' * 64, 'seed': 3, 'sim_seconds': 8.0,
+    }])
+    return root, payload
+
+
+def _abort_download(server, path: str) -> int:
+    """Start a download, read the response head, then reset the connection —
+    what a browser does when its user cancels. Returns the bytes received."""
+
+    host, port = server.server_address[:2]
+    with socket.create_connection((host, port), timeout=10) as sock:
+        sock.sendall(f'GET {path} HTTP/1.1\r\nHost: review\r\n\r\n'.encode('ascii'))
+        received = len(sock.recv(65536))
+        time.sleep(0.05)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+    return received
+
+
+def _wait_for_line(lines: list[str], fragment: str, timeout: float = 10.0) -> str:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for line in lines:
+            if fragment in line:
+                return line
+        time.sleep(0.05)
+    raise AssertionError(f'no log line containing {fragment!r} within {timeout}s: {lines}')
+
+
+def test_an_interrupted_download_is_one_log_line_not_a_traceback(tmp_path, capsys) -> None:
+    """A client that cancels a download mid-transfer is logged in one line
+    naming the bytes it took; the server prints no traceback, the request
+    is not mistaken for a completed one, and the next request — whole or
+    resumed with a byte range — gets the file (ADR-324)."""
+
+    root, payload = _large_video_project(tmp_path)
+    lines: list[str] = []
+    server, _thread = serve(root, '127.0.0.1', 0, log=lines.append)
+    try:
+        received = _abort_download(server, '/video/run/second/0?download=1')
+        assert 0 < received < len(payload)
+        line = _wait_for_line(lines, 'client closed the connection')
+        sent, total = map(int, re.search(r'after (\d+) of (\d+) bytes of big\.webm$', line).groups())
+        assert total == len(payload) and 0 <= sent < total
+        err = capsys.readouterr().err
+        assert 'Traceback' not in err and 'Exception occurred' not in err, err
+        assert [entry for entry in lines if 'client closed' in entry] == [line]
+
+        status, headers, body = _get(server.url + 'video/run/second/0?download=1')
+        assert status == 200 and body == payload
+        assert headers['content-disposition'] == 'attachment; filename="big.webm"'
+        resume_from = len(payload) // 2 + 12345
+        status, headers, body = _get(server.url + 'video/run/second/0',
+                                     {'Range': f'bytes={resume_from}-'})
+        assert status == 206 and body == payload[resume_from:]
+        assert headers['content-range'] == f'bytes {resume_from}-{len(payload) - 1}/{len(payload)}'
+        assert 'Traceback' not in capsys.readouterr().err
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_browser_interrupted_download_leaves_polling_and_a_fresh_download_working(
+        tmp_path, browser, capsys) -> None:
+    """With the page open and polling, one client cancels the video download
+    mid-transfer: the page keeps polling and stays live, the server logs
+    one line and no traceback, and a fresh browser download of the same
+    video completes byte-identical (ADR-324)."""
+
+    root, payload = _large_video_project(tmp_path)
+    lines: list[str] = []
+    server, _thread = serve(root, '127.0.0.1', 0, log=lines.append)
+    try:
+        page = _open(browser, server.url)
+        assert page.text('#view-kind') == 'RUN second'
+        assert page.attribute('#freshness', 'data-state') == 'live'
+        page.evaluate("window.polls=0; window.originalFetch=window.fetch;"
+                      "window.fetch=async (...args) => { const response=await originalFetch(...args);"
+                      "if(String(args[0]).includes('api/project')) polls++; return response; }")
+        received = _abort_download(server, '/video/run/second/0?download=1')
+        assert 0 < received < len(payload)
+        polls_at_abort = page.evaluate('polls')
+        line = _wait_for_line(lines, 'client closed the connection')
+        assert line.endswith(f'of {len(payload)} bytes of big.webm')
+        # Two automatic polls after the interruption, never refresh() from here.
+        page.wait_for(f'polls >= {polls_at_abort + 2}', timeout=15)
+        assert page.attribute('#freshness', 'data-state') == 'live'
+        assert page.text('#view-kind') == 'RUN second'
+
+        download = page.download('#videos a', timeout=60)
+        assert download.received_bytes == download.total_bytes == len(payload)
+        assert download.path.name == 'big.webm'
+        assert hashlib.sha256(download.path.read_bytes()).hexdigest() == hashlib.sha256(payload).hexdigest()
+        err = capsys.readouterr().err
+        assert 'Traceback' not in err and 'Exception occurred' not in err, err
+        # The page's own <video> element abandons its request once it has
+        # seen enough of a file it cannot decode, so the cancelled download
+        # is one of possibly several closed connections — each one line.
+        closed = [entry for entry in lines if 'client closed' in entry]
+        assert line in closed
+        assert all(re.search(r'after \d+ of 50331648 bytes of big\.webm$', entry) for entry in closed)
+    finally:
+        server.shutdown()
+        server.server_close()

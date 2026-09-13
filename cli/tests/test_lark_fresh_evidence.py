@@ -649,3 +649,35 @@ def test_disk100_receipt_shows_per_run_disk_use_on_the_persistent_dashboard() ->
     assert historical["bytes"] > 0 and historical["playback_kept_through_two_polls"] is True
     assert historical["count_kept"] is True and receipt["route_back_to_current"] is True
     assert "disk100-evidence.json" in (REPO_ROOT / "docs" / "probes" / "operator-review" / "README.md").read_text()
+
+
+def test_download104_receipt_shows_interrupted_downloads_recover_on_the_persistent_dashboard() -> None:
+    """Iteration 104 (ADR-324): cancelled download requests against the
+    persistent dashboard left its log free of tracebacks, a resumed byte
+    range and a whole download matched the retained video's bytes, and the
+    fresh browser check of the same real video still passed after the server
+    restarted onto the fix. The receipt says plainly that the real 14 KB file
+    cannot be interrupted mid-transfer; that case is the synthetic regression."""
+    receipt = json.loads((PROBE / "download104-evidence.json").read_text())
+    assert receipt["adr"] == "ADR-324" and receipt["project"] == "ot5-lark-copy85"
+    assert receipt["persistent_server"] is True and receipt["server_restarted_onto_fix"] is True
+    assert "PRIVATE_IP" in receipt["server_command"] and "100." not in json.dumps(receipt)
+    interruption = receipt["interruption"]
+    assert interruption["run"] == "lark98-final" and re.fullmatch(HEX64, interruption["sha256"])
+    assert interruption["aborted_attempts"] == len(interruption["head_bytes_received"]) == 3
+    assert all(0 < head < interruption["bytes"] for head in interruption["head_bytes_received"])
+    assert interruption["server_log_has_traceback"] is False and interruption["server_log_lines_added"] == 0
+    assert interruption["resumed_content_range"] == "bytes %d-%d/%d" % (
+        interruption["resumed_from_byte"], interruption["bytes"] - 1, interruption["bytes"])
+    assert interruption["resumed_tail_matches"] is True and interruption["whole_download_sha256_matches"] is True
+    assert interruption["mid_transfer_interrupted"] is False
+    assert receipt["interruption_before_fix"]["server_log_has_traceback"] is False
+    fresh = receipt["fresh_download_and_playback"]
+    assert fresh["download_sha256"] == interruption["sha256"] and fresh["browser_playback"] is True
+    assert fresh["fresh_selection"] == "RUN lark98-final" == fresh["returned_to_current"]
+    assert fresh["historical_selection"] == "lark98-checkpoint20" and fresh["decoded_frames"] > 1
+    tests = (REPO_ROOT / "cli" / "tests" / "test_review_server.py").read_text()
+    for name in receipt["regression"]:
+        assert name.split("::")[1] in tests, name
+    assert "download104-evidence.json" in (PROBE / "README.md").read_text()
+    assert "download104-evidence.json" in (PROBE / "LIFECYCLE.md").read_text()

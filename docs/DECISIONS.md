@@ -23659,3 +23659,27 @@ The file on disk and its recorded identity stay authoritative and unchanged.
 A Chromium regression verifies the downloaded bytes and Unicode filename;
 HTTP regressions cover accented names, quotes and CR/LF. No dependency,
 engine, payload or shell change.
+
+## ADR-324 — A client that closes mid-download is one log line, not a traceback (2026-09-13)
+
+A downloader that cancelled after the response head — a raw socket reset, the
+way a browser cancels — made the review server print socketserver's
+twenty-line `Exception occurred during processing of request` traceback for
+`ConnectionResetError`, while its request log had already recorded the
+transfer as a completed `200`. `do_GET` caught only `BrokenPipeError`, and on
+Linux a peer that closes with bytes unread reports `ECONNRESET` instead. A
+page's own `<video>` element abandons its request the same way once it has
+seen enough of a file, so a large retained video could fill the operator log
+with tracebacks on every visit. Treat both errors as the client's decision:
+`_send_file` logs one line naming the bytes sent of the bytes owed and the
+file, and `do_GET` swallows the pair for every other response. Recovery was
+already correct — polling continued and a fresh or byte-range download served
+the file — and now has regressions: an HTTP one that reproduces the reset on
+a 48 MiB retained video and asserts the single line, no traceback, a
+byte-identical whole download and a `206` resume, and a Chromium one that
+keeps the page polling through the interruption and downloads the same video
+fresh. The `cadex review` command still passes no request log, so on the
+persistent server the visible change is the absence of tracebacks; the real
+14 KB Lark video is written whole before a reset can arrive, so the
+mid-transfer case is established by the synthetic regression, not by that
+file. No dependency, engine, payload or shell change.

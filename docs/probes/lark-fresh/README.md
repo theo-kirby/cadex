@@ -5,6 +5,22 @@ Verified against source: 2026-09-13. [Cadex-new]
 The [Lark lifecycle report](LIFECYCLE.md) links D1–D11 evidence, the common-seed
 comparison, current visual assessment and remaining acceptance limits.
 
+**Iteration 104 (D4, ADR-324):** the persistent dashboard still serves
+`ot5-lark-copy85` and opens `lark98-final`; the server was restarted onto the
+interrupted-download fix. A synthetic 48 MiB retained video reproduced the
+defect on the previous code: a client cancelling after the response head made
+the server print a twenty-line traceback per cancellation while logging the
+transfer as a completed `200`. The server now logs one line naming the bytes
+sent and prints no traceback; an HTTP regression and a Chromium regression
+(page polling through the interruption, then a fresh byte-identical download)
+pin it. On the real video, three cancelled requests and a resumed byte range
+left the server log free of tracebacks before and after the fix — the 14 KB
+file is written whole before a reset can arrive, so the mid-transfer case
+rests on the synthetic regression — and the fresh browser download decoded,
+played and downloaded hash-equal, with historical selection and the route back
+to current passing. [Receipt](download104-evidence.json). Same-machine browser
+over the private address; no training, recording or project change.
+
 **Iteration 103 (D4, ADR-323):** the persistent dashboard still serves
 `ot5-lark-copy85` and opens `lark98-final`. After restarting the server onto
 the filename fix, the real final video decoded, played and downloaded

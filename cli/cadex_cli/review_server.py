@@ -926,6 +926,11 @@ class ReviewProject:
             return None
 
 
+# The two ways Linux reports a peer that went away mid-write: EPIPE, or
+# ECONNRESET when the peer closed with bytes still unread (ADR-324).
+CLIENT_GONE = (BrokenPipeError, ConnectionResetError)
+
+
 class ReviewHandler(BaseHTTPRequestHandler):
     """One request per connection (``Connection: close`` on every reply):
     a review server that has been shut down keeps no handler thread alive
@@ -1022,12 +1027,19 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 return
             handle.seek(start)
             remaining = length
-            while remaining > 0:
-                chunk = handle.read(min(1 << 20, remaining))
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-                remaining -= len(chunk)
+            try:
+                while remaining > 0:
+                    chunk = handle.read(min(1 << 20, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+            except CLIENT_GONE:
+                # A browser that cancelled a download or abandoned a video
+                # range request (ADR-324): the client's choice, not a fault
+                # of ours, so one line rather than socketserver's traceback.
+                self.log_message("client closed the connection after %d of %d bytes of %s",
+                                 length - remaining, length, path.name)
 
     # -- routing -----------------------------------------------------------
 
@@ -1043,7 +1055,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return
         try:
             self._route(segments, download)
-        except BrokenPipeError:
+        except CLIENT_GONE:
             pass
 
     def _route(self, segments: list[str], download: bool) -> None:
