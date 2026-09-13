@@ -24059,3 +24059,44 @@ boxes the size of its box parts, so it cannot show the difference.
 an inline mesh proxy is carried in full, bounded by the 8 MiB MJCF read
 limit. The style digest is unchanged in meaning: proxies are never in a
 recording.
+
+## ADR-334 — Finch: the MG90S joint module, and the free-base gap it exposed (2026-09-13)
+
+**Context.** The charter's D5 (ADR-328): the biped this run trains must be a
+mechanism someone could build — MG90S servos from `lib.servo` with catalog
+horns, bearings and fasteners, modelled printable parts that mount them, an
+inventory, a fit check, nothing of the world in the design. Lark (ot5) was
+boxes on a cyan slab. The project is `ot6-finch`, outside the repository;
+`docs/probes/ot6/finch/` is the evidence and `fit_check.py` the generator of
+its `docs/INVENTORY.md` and `docs/FIT.md`.
+
+**Decision.** One joint module for all four joints, dimensioned from the
+catalog's datasheet numbers: the servo in a 0.3 mm window through the
+parent's outboard cheek with its tabs seated and two M2×6 screws in 1.6 mm
+tap drills; the measured micro single-arm horn in a 2.5 mm form-fit slot on
+the child block, clamped to the spline by an M2×16 centre screw from the
+inboard end; the child's printed 7.9 mm stub in an MR128 bearing pressed
+into the parent's inboard cheek. Purchased parts are separate components
+fixed to their hosts, authored in the host's frame; each link's frame is its
+joint axis. Collision proxies are boxes per printed part and per servo case,
+declared with their relation to the solid; horns, bearings and screws carry
+mass only. The fit check is measurement, not construction: the engine's
+pairwise BREP clearance at the solved pose (ADR-237) and `cadex section`
+contour gaps through each cheek, against the declared clearances and the
+analytic thread-engagement volumes — 85 checks, all hold.
+
+**What it exposed.** Both `assembly.solve` (`no_grounded_component`, code
+-6) and the dynamics export refuse an assembly with no grounded component,
+and the charter forbids a floor in the design. The pelvis therefore carries
+`grounded=True` as a solver flag; the exported MJCF has a static pelvis and
+is not the trainable model. The engine unit that precedes D6 is: an assembly
+with no grounded component solves with its first component held as a free
+base, the exporter gives that base a free joint (the island path already
+does), and the ground plane comes from the environment — declared once on
+the task or the export, never as a part.
+
+**Consequences.** No engine, protocol, payload, shell or dependency change in
+this unit. The persistent operator dashboard serves `ot6-finch`; Lark's copy
+is no longer served, per the one-project-per-server rule. D4's remaining
+evidence — the labelled toggle on a real biped whose proxies stand off its
+solids — is `operator-proxies.png` beside `operator-solids.png`.
