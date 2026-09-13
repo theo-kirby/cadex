@@ -2,7 +2,17 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
-## Current attempt and review fix: iteration 61
+## Completed: iterations 65 and 66
+
+The gap below is closed. Iteration 65's design turn accepted `foot_len=90`,
+`policy_on=0` (revision `03077ee9eb82…`) through the agent's own `set_params`
+call and was cut off before returning its rationale; iteration 66 finished that
+turn, landing the agent's `DECISION:` as project ADR-002 and its design specs
+note, then retrained the design as `wren66` and compared it with the 110 mm
+retry on the declared seeds. [REVISION66.md](REVISION66.md) has the commands,
+numbers and limits. The sections below are the historical refused attempts.
+
+## Historical attempt and review fix: iteration 61
 
 One bounded product-agent turn again returned the provider session-limit error
 before authoring. Wren's product-agent revision gap remains open. Following the

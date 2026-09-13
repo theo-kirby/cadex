@@ -1,0 +1,841 @@
+{
+  "schema": "wren-revision-comparison-v1",
+  "project": "ot5-wren-copy54",
+  "protocol": {
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "episode_seconds": 8,
+    "control_hz": 50,
+    "training_iterations": 240,
+    "environments": 1024,
+    "training_seed": 0
+  },
+  "before_inventory_files": 465,
+  "before_inventory_preserved": true,
+  "runs": {
+    "wren57-retry": {
+      "evaluation": {
+        "schema": "wren-common-seeds-v1",
+        "run": "wren57-retry",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "episode_seconds": 8,
+        "control_hz": 50,
+        "source_run_unchanged": true,
+        "seed_zero_trace_identical": true,
+        "rows": [
+          {
+            "run": "wren57-retry",
+            "seed": 0,
+            "foot_len_mm": 110.0,
+            "displacement_x_mm": 46.47811508812686,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 217.46661994636978,
+            "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+            "model_sha256": "2529d882f9a340f1e3f96f18d0b0fd628d35e6cf274d3809dbd1816a9f8c679e",
+            "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+            "trace_sha256": "18a332e423694d8fae334b7b4dbb084dedc232e67dac02b644e3f9ea2332bef4"
+          },
+          {
+            "run": "wren57-retry",
+            "seed": 1,
+            "foot_len_mm": 110.0,
+            "displacement_x_mm": 39.02845435746901,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 214.47066981683474,
+            "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+            "model_sha256": "2529d882f9a340f1e3f96f18d0b0fd628d35e6cf274d3809dbd1816a9f8c679e",
+            "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+            "trace_sha256": "896089807476c6684f5891f56395394e6d6cbc7762432d6cff81eab3ba8a3340"
+          },
+          {
+            "run": "wren57-retry",
+            "seed": 2,
+            "foot_len_mm": 110.0,
+            "displacement_x_mm": 40.651310284768506,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 214.9960154672475,
+            "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+            "model_sha256": "2529d882f9a340f1e3f96f18d0b0fd628d35e6cf274d3809dbd1816a9f8c679e",
+            "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+            "trace_sha256": "a6b0bad8f08a564b0e205d6f55483dd1069f77f6003222988e89553a887f6620"
+          },
+          {
+            "run": "wren57-retry",
+            "seed": 3,
+            "foot_len_mm": 110.0,
+            "displacement_x_mm": 38.08157919517161,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 214.0630096589485,
+            "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+            "model_sha256": "2529d882f9a340f1e3f96f18d0b0fd628d35e6cf274d3809dbd1816a9f8c679e",
+            "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+            "trace_sha256": "354fff66c7317df524edcec5d246a06a2450192601999505f16c690d8370362f"
+          },
+          {
+            "run": "wren57-retry",
+            "seed": 4,
+            "foot_len_mm": 110.0,
+            "displacement_x_mm": 36.44518129953336,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 213.41122594922308,
+            "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+            "model_sha256": "2529d882f9a340f1e3f96f18d0b0fd628d35e6cf274d3809dbd1816a9f8c679e",
+            "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+            "trace_sha256": "6c9d35df98b7c9610c006020457a73651d02203b20ec7e7ac254c593cd6d2eb3"
+          }
+        ]
+      },
+      "evidence_directory": "evidence/comparison66/retry",
+      "accepted_revision": "79f86c69bfc38dbf650f266446f256a72dd5547f3eaa386c7328ce85c81224fa",
+      "accepted_digest": "dc1e707ae72120b92d6cfb6fb79d81f515db7b5fa20f96bf0c877f73b47bcb35",
+      "params": {
+        "specs": [
+          {
+            "default": 100.0,
+            "label": "Torso width (lateral Y)",
+            "max": 160.0,
+            "min": 60.0,
+            "name": "torso_w",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 60.0,
+            "label": "Torso depth (forward X)",
+            "max": 100.0,
+            "min": 40.0,
+            "name": "torso_d",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 75.0,
+            "label": "Torso height",
+            "max": 120.0,
+            "min": 50.0,
+            "name": "torso_h",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 85.0,
+            "label": "Hip-to-knee length",
+            "max": 130.0,
+            "min": 60.0,
+            "name": "thigh_len",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 85.0,
+            "label": "Knee-to-ankle length",
+            "max": 130.0,
+            "min": 60.0,
+            "name": "shin_len",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 16.0,
+            "label": "Leg member width/depth",
+            "max": 25.0,
+            "min": 10.0,
+            "name": "limb_w",
+            "step": 0.5,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 85.0,
+            "label": "Foot length (X)",
+            "max": 120.0,
+            "min": 60.0,
+            "name": "foot_len",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 40.0,
+            "label": "Foot width (Y)",
+            "max": 60.0,
+            "min": 25.0,
+            "name": "foot_w",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 8.0,
+            "label": "Foot thickness",
+            "max": 15.0,
+            "min": 5.0,
+            "name": "foot_t",
+            "step": 0.5,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 60.0,
+            "label": "Lateral distance between leg centerlines",
+            "max": 100.0,
+            "min": 40.0,
+            "name": "hip_spacing",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 1240.0,
+            "label": "Printed material density",
+            "max": 2000.0,
+            "min": 400.0,
+            "name": "printed_density",
+            "step": 10.0,
+            "type": "num",
+            "unit": "kg/m3"
+          },
+          {
+            "default": 0.0,
+            "label": "1 = declare trained policy + rollout",
+            "max": 1.0,
+            "min": 0.0,
+            "name": "policy_on",
+            "step": 1.0,
+            "type": "num"
+          }
+        ],
+        "specs_source": "project manifest before training",
+        "values": {
+          "foot_len": 110.0,
+          "foot_t": 8.0,
+          "foot_w": 40.0,
+          "hip_spacing": 60.0,
+          "limb_w": 16.0,
+          "policy_on": 1.0,
+          "printed_density": 1240.0,
+          "shin_len": 85.0,
+          "thigh_len": 85.0,
+          "torso_d": 60.0,
+          "torso_h": 75.0,
+          "torso_w": 100.0
+        }
+      },
+      "authored_by": null,
+      "video": {
+        "path": "rollout-4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e.webm",
+        "sha256": "4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e",
+        "policy_sha256": "a232fec18df3ed7621e13f966302adeeab23259039cb0ab4a6ea2d09f09d9814",
+        "model_digest": "dc1e707ae72120b92d6cfb6fb79d81f515db7b5fa20f96bf0c877f73b47bcb35",
+        "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+        "frames": 81,
+        "fps": 10,
+        "duration_seconds": 8.1,
+        "sim_seconds": 8.0,
+        "style": "cadex-prototype-light-v1",
+        "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+        "seed": 0
+      },
+      "browser": {
+        "browser_playback": true,
+        "download_sha256": "4d418967d41c1fe39b3ec2fa6945a0e8b5cf18343c4e3f5b1d0cf3dffbc3945e",
+        "fresh_selection": "RUN wren57-retry",
+        "historical_selection": null,
+        "returned_to_current": "RUN wren57-retry",
+        "foot_len_mm": 110.0,
+        "decoded_frames": 81,
+        "simulation_seconds": 8.0
+      },
+      "summary": {
+        "mean_displacement_x_mm": 40.13692804501387,
+        "min_displacement_x_mm": 36.44518129953336,
+        "mean_survival_s": 8.0,
+        "min_survival_s": 8.0,
+        "falls": 0,
+        "mean_total_reward": 214.88150816772472
+      }
+    },
+    "wren66-checkpoint20": {
+      "evaluation": {
+        "schema": "wren-common-seeds-v1",
+        "run": "wren66-checkpoint20",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "episode_seconds": 8,
+        "control_hz": 50,
+        "source_run_unchanged": true,
+        "seed_zero_trace_identical": true,
+        "rows": [
+          {
+            "run": "wren66-checkpoint20",
+            "seed": 0,
+            "foot_len_mm": 90.0,
+            "displacement_x_mm": 49.08233288735276,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 216.04013018351327,
+            "policy_sha256": "115261fa6eb240ddfb8c3e5ade951fbdd7f2e4fd759c43a9671ac23637961090",
+            "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+            "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+            "trace_sha256": "2db66254bf24efb8df1016fc6a18936af642c92e8d63289da1d34d7ad46f49a3"
+          },
+          {
+            "run": "wren66-checkpoint20",
+            "seed": 1,
+            "foot_len_mm": 90.0,
+            "displacement_x_mm": 41.65711615251304,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 213.45213200891118,
+            "policy_sha256": "115261fa6eb240ddfb8c3e5ade951fbdd7f2e4fd759c43a9671ac23637961090",
+            "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+            "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+            "trace_sha256": "d20e5a4a1aaa5d875bf9838ed0a1367b0d756449d18a2048a92e328027d6cea6"
+          },
+          {
+            "run": "wren66-checkpoint20",
+            "seed": 2,
+            "foot_len_mm": 90.0,
+            "displacement_x_mm": 43.19783036237519,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 213.28176737496284,
+            "policy_sha256": "115261fa6eb240ddfb8c3e5ade951fbdd7f2e4fd759c43a9671ac23637961090",
+            "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+            "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+            "trace_sha256": "ca762f6f26ae5702fe9726e5cfe1d3f621950133e272006ef6752cc1c070962e"
+          },
+          {
+            "run": "wren66-checkpoint20",
+            "seed": 3,
+            "foot_len_mm": 90.0,
+            "displacement_x_mm": 40.60586508466721,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 213.09986050013197,
+            "policy_sha256": "115261fa6eb240ddfb8c3e5ade951fbdd7f2e4fd759c43a9671ac23637961090",
+            "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+            "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+            "trace_sha256": "152c29c13da466d8f3e72bc7c938df548c8520b4e61fcdf8e56c430915ef9f90"
+          },
+          {
+            "run": "wren66-checkpoint20",
+            "seed": 4,
+            "foot_len_mm": 90.0,
+            "displacement_x_mm": 39.074862909314625,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 212.23657381215386,
+            "policy_sha256": "115261fa6eb240ddfb8c3e5ade951fbdd7f2e4fd759c43a9671ac23637961090",
+            "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+            "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+            "trace_sha256": "81f0dc0b20d903792f2538ce491e79df9193d356c79144942297aec12c8463dd"
+          }
+        ]
+      },
+      "evidence_directory": "evidence/comparison66/c66",
+      "accepted_revision": "d4a0e73df5676b1703ab66ea71e163406e7613677d9d12fe934b8779ab303777",
+      "accepted_digest": "99f9c003f3f22ecdacc56c4b475db80bae43f29dfc3006b7b49bfa46f2671d8a",
+      "params": {
+        "specs": [
+          {
+            "default": 100.0,
+            "label": "Torso width (lateral Y)",
+            "max": 160.0,
+            "min": 60.0,
+            "name": "torso_w",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 60.0,
+            "label": "Torso depth (forward X)",
+            "max": 100.0,
+            "min": 40.0,
+            "name": "torso_d",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 75.0,
+            "label": "Torso height",
+            "max": 120.0,
+            "min": 50.0,
+            "name": "torso_h",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 85.0,
+            "label": "Hip-to-knee length",
+            "max": 130.0,
+            "min": 60.0,
+            "name": "thigh_len",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 85.0,
+            "label": "Knee-to-ankle length",
+            "max": 130.0,
+            "min": 60.0,
+            "name": "shin_len",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 16.0,
+            "label": "Leg member width/depth",
+            "max": 25.0,
+            "min": 10.0,
+            "name": "limb_w",
+            "step": 0.5,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 85.0,
+            "label": "Foot length (X)",
+            "max": 120.0,
+            "min": 60.0,
+            "name": "foot_len",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 40.0,
+            "label": "Foot width (Y)",
+            "max": 60.0,
+            "min": 25.0,
+            "name": "foot_w",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 8.0,
+            "label": "Foot thickness",
+            "max": 15.0,
+            "min": 5.0,
+            "name": "foot_t",
+            "step": 0.5,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 60.0,
+            "label": "Lateral distance between leg centerlines",
+            "max": 100.0,
+            "min": 40.0,
+            "name": "hip_spacing",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 1240.0,
+            "label": "Printed material density",
+            "max": 2000.0,
+            "min": 400.0,
+            "name": "printed_density",
+            "step": 10.0,
+            "type": "num",
+            "unit": "kg/m3"
+          },
+          {
+            "default": 0.0,
+            "label": "1 = declare trained policy + rollout",
+            "max": 1.0,
+            "min": 0.0,
+            "name": "policy_on",
+            "step": 1.0,
+            "type": "num"
+          }
+        ],
+        "specs_source": "successful rollout envelope",
+        "values": {
+          "foot_len": 90.0,
+          "foot_t": 8.0,
+          "foot_w": 40.0,
+          "hip_spacing": 60.0,
+          "limb_w": 16.0,
+          "policy_on": 1.0,
+          "printed_density": 1240.0,
+          "shin_len": 85.0,
+          "thigh_len": 85.0,
+          "torso_d": 60.0,
+          "torso_h": 75.0,
+          "torso_w": 100.0
+        }
+      },
+      "authored_by": "product-agent-authored revision: foot_len 110->90 mm accepted by the agent in iteration 65 (revision 03077ee9eb82), rationale returned in iteration 66 as project ADR-002",
+      "video": {
+        "path": "rollout-682f41bf1ce4846686fba681512f04e3defee83ec12e930e7dc546498016e533.webm",
+        "sha256": "682f41bf1ce4846686fba681512f04e3defee83ec12e930e7dc546498016e533",
+        "policy_sha256": "115261fa6eb240ddfb8c3e5ade951fbdd7f2e4fd759c43a9671ac23637961090",
+        "model_digest": "99f9c003f3f22ecdacc56c4b475db80bae43f29dfc3006b7b49bfa46f2671d8a",
+        "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+        "frames": 81,
+        "fps": 10,
+        "duration_seconds": 8.1,
+        "sim_seconds": 8.0,
+        "style": "cadex-prototype-light-v1",
+        "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+        "seed": 0
+      },
+      "browser": {
+        "browser_playback": true,
+        "download_sha256": "682f41bf1ce4846686fba681512f04e3defee83ec12e930e7dc546498016e533",
+        "fresh_selection": "RUN wren66",
+        "historical_selection": null,
+        "returned_to_current": "RUN wren66",
+        "foot_len_mm": 90.0,
+        "decoded_frames": 81,
+        "simulation_seconds": 8.0
+      },
+      "summary": {
+        "mean_displacement_x_mm": 42.723601479244564,
+        "min_displacement_x_mm": 39.074862909314625,
+        "mean_survival_s": 8.0,
+        "min_survival_s": 8.0,
+        "falls": 0,
+        "mean_total_reward": 213.62209277593462
+      }
+    },
+    "wren66-final": {
+      "evaluation": {
+        "schema": "wren-common-seeds-v1",
+        "run": "wren66-final",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "episode_seconds": 8,
+        "control_hz": 50,
+        "source_run_unchanged": true,
+        "seed_zero_trace_identical": true,
+        "rows": [
+          {
+            "run": "wren66-final",
+            "seed": 0,
+            "foot_len_mm": 90.0,
+            "displacement_x_mm": 61.63626949323795,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 147.0637451868554,
+            "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+            "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+            "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+            "trace_sha256": "c14d760e401b9ce66218ddef7d8e17e5bdd91acce2a169e6a1f67c62251cbd3a"
+          },
+          {
+            "run": "wren66-final",
+            "seed": 1,
+            "foot_len_mm": 90.0,
+            "displacement_x_mm": 54.17825061412972,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 144.6234999929824,
+            "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+            "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+            "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+            "trace_sha256": "24716f174dad4955db5d0e53b944e37d1a150a1169f926757a6cf851ec1f76e2"
+          },
+          {
+            "run": "wren66-final",
+            "seed": 2,
+            "foot_len_mm": 90.0,
+            "displacement_x_mm": 55.37116143024888,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 145.09462351405622,
+            "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+            "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+            "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+            "trace_sha256": "1ac4c2b09dd655731cb8b17ca24b0e2f94b0913cc256d7b146bdfb3c67fbf4b5"
+          },
+          {
+            "run": "wren66-final",
+            "seed": 3,
+            "foot_len_mm": 90.0,
+            "displacement_x_mm": 53.156245127270886,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 144.13626000858682,
+            "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+            "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+            "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+            "trace_sha256": "f6e84a4dfce640f396e97225f34cc763bcb16f9e808caac8caa714d7be8c7e38"
+          },
+          {
+            "run": "wren66-final",
+            "seed": 4,
+            "foot_len_mm": 90.0,
+            "displacement_x_mm": 51.39175530967674,
+            "survival_s": 8.0,
+            "fell": false,
+            "termination": "",
+            "truncated": true,
+            "step_count": 400,
+            "total_reward": 143.46929632925233,
+            "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+            "model_sha256": "a5bfa2660ef2cdc9aa56d3dbce1900dab48c3e2002dea8ca81fb81837875ce21",
+            "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+            "trace_sha256": "967d733c90689d5e733838013ceb92c69ff3a0bbf91aaa0cd0e76f76ecaaa13c"
+          }
+        ]
+      },
+      "evidence_directory": "evidence/comparison66/f66",
+      "accepted_revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",
+      "accepted_digest": "cd99e3be15558082959904398942bda2e7ee962ff1f39ee51f3658ea9bc9d46c",
+      "params": {
+        "specs": [
+          {
+            "default": 100.0,
+            "label": "Torso width (lateral Y)",
+            "max": 160.0,
+            "min": 60.0,
+            "name": "torso_w",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 60.0,
+            "label": "Torso depth (forward X)",
+            "max": 100.0,
+            "min": 40.0,
+            "name": "torso_d",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 75.0,
+            "label": "Torso height",
+            "max": 120.0,
+            "min": 50.0,
+            "name": "torso_h",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 85.0,
+            "label": "Hip-to-knee length",
+            "max": 130.0,
+            "min": 60.0,
+            "name": "thigh_len",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 85.0,
+            "label": "Knee-to-ankle length",
+            "max": 130.0,
+            "min": 60.0,
+            "name": "shin_len",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 16.0,
+            "label": "Leg member width/depth",
+            "max": 25.0,
+            "min": 10.0,
+            "name": "limb_w",
+            "step": 0.5,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 85.0,
+            "label": "Foot length (X)",
+            "max": 120.0,
+            "min": 60.0,
+            "name": "foot_len",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 40.0,
+            "label": "Foot width (Y)",
+            "max": 60.0,
+            "min": 25.0,
+            "name": "foot_w",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 8.0,
+            "label": "Foot thickness",
+            "max": 15.0,
+            "min": 5.0,
+            "name": "foot_t",
+            "step": 0.5,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 60.0,
+            "label": "Lateral distance between leg centerlines",
+            "max": 100.0,
+            "min": 40.0,
+            "name": "hip_spacing",
+            "step": 1.0,
+            "type": "num",
+            "unit": "mm"
+          },
+          {
+            "default": 1240.0,
+            "label": "Printed material density",
+            "max": 2000.0,
+            "min": 400.0,
+            "name": "printed_density",
+            "step": 10.0,
+            "type": "num",
+            "unit": "kg/m3"
+          },
+          {
+            "default": 0.0,
+            "label": "1 = declare trained policy + rollout",
+            "max": 1.0,
+            "min": 0.0,
+            "name": "policy_on",
+            "step": 1.0,
+            "type": "num"
+          }
+        ],
+        "specs_source": "successful rollout envelope",
+        "values": {
+          "foot_len": 90.0,
+          "foot_t": 8.0,
+          "foot_w": 40.0,
+          "hip_spacing": 60.0,
+          "limb_w": 16.0,
+          "policy_on": 1.0,
+          "printed_density": 1240.0,
+          "shin_len": 85.0,
+          "thigh_len": 85.0,
+          "torso_d": 60.0,
+          "torso_h": 75.0,
+          "torso_w": 100.0
+        }
+      },
+      "authored_by": "product-agent-authored revision: foot_len 110->90 mm accepted by the agent in iteration 65 (revision 03077ee9eb82), rationale returned in iteration 66 as project ADR-002",
+      "video": {
+        "path": "rollout-802baa759c98e52ba1067cab1f39e28dc72d3fee7c82b073b285bffe0a82470a.webm",
+        "sha256": "802baa759c98e52ba1067cab1f39e28dc72d3fee7c82b073b285bffe0a82470a",
+        "policy_sha256": "46e7a4bf825c506e0bc5efb23c28dd45cd6562a10f3efb591458accd169d2110",
+        "model_digest": "cd99e3be15558082959904398942bda2e7ee962ff1f39ee51f3658ea9bc9d46c",
+        "task_sha256": "a42a8a8df8afadb87da35f4f5b01e8e3e8cac8480f4f6e49ec5784937410a276",
+        "frames": 81,
+        "fps": 10,
+        "duration_seconds": 8.1,
+        "sim_seconds": 8.0,
+        "style": "cadex-prototype-light-v1",
+        "style_sha256": "27893221b3c6cf784d62c16fdaa5c88d1beb031bcb195e5f34e1598ea56e5b0c",
+        "seed": 0
+      },
+      "browser": {
+        "browser_playback": true,
+        "download_sha256": "802baa759c98e52ba1067cab1f39e28dc72d3fee7c82b073b285bffe0a82470a",
+        "fresh_selection": "RUN wren66-final",
+        "historical_selection": "wren66-checkpoint20",
+        "returned_to_current": "RUN wren66-final",
+        "foot_len_mm": 90.0,
+        "decoded_frames": 81,
+        "simulation_seconds": 8.0
+      },
+      "summary": {
+        "mean_displacement_x_mm": 55.146736394912836,
+        "min_displacement_x_mm": 51.39175530967674,
+        "mean_survival_s": 8.0,
+        "min_survival_s": 8.0,
+        "falls": 0,
+        "mean_total_reward": 144.87748500634663
+      }
+    }
+  }
+}

@@ -165,3 +165,54 @@ def test_revised_checkpoint_was_played_during_real_bounded_training():
     assert len(evidence['live_browser']['page_iterations']) >= 7
     assert all(0 <= x['committed_to_page_s'] < 5 for x in evidence['live_browser']['first_seen'].values())
     assert evidence['policies']['wren2-final']['browser']['fresh_selection'] == 'RUN wren2-final'
+
+
+def test_agent_revision_comparison_retains_both_designs_on_the_declared_seeds():
+    """``report_revision.py`` output for the working copy: the product-agent's
+    90 mm revision (wren66) against the 110 mm retry it was made from, each
+    evaluated on seeds 0-4 from its own retained model, task and policy."""
+    evidence = json.loads((PROBE / 'revision66-evidence.json').read_text())
+    assert evidence['schema'] == 'wren-revision-comparison-v1'
+    assert evidence['project'] == 'ot5-wren-copy54'
+    assert evidence['protocol'] == dict(seeds=list(range(5)), episode_seconds=8,
+                                       control_hz=50, training_iterations=240,
+                                       environments=1024, training_seed=0)
+    assert evidence['before_inventory_preserved'] and evidence['before_inventory_files'] == 465
+    runs = evidence['runs']
+    assert set(runs) == {'wren57-retry', 'wren66-checkpoint20', 'wren66-final'}
+    foot = {'wren57-retry': 110, 'wren66-checkpoint20': 90, 'wren66-final': 90}
+    model_ids = {}
+    for name, item in runs.items():
+        evaluation = item['evaluation']
+        assert evaluation['run'] == name
+        assert evaluation['source_run_unchanged'] and evaluation['seed_zero_trace_identical']
+        rows = evaluation['rows']
+        assert [row['seed'] for row in rows] == list(range(5))
+        for row in rows:
+            assert row['survival_s'] == pytest.approx(row['step_count'] / 50)
+            assert row['fell'] == (row['termination'] == 'fell')
+            assert row['fell'] or row['survival_s'] == 8
+            assert row['foot_len_mm'] == foot[name] == item['params']['values']['foot_len']
+            assert row['policy_sha256'] == item['video']['policy_sha256']
+            assert row['task_sha256'] == item['video']['task_sha256']
+        assert len({row['model_sha256'] for row in rows}) == 1
+        model_ids[name] = rows[0]['model_sha256']
+        assert item['summary']['falls'] == sum(row['fell'] for row in rows)
+        assert item['summary']['mean_survival_s'] == pytest.approx(sum(row['survival_s'] for row in rows) / 5)
+        assert item['summary']['min_displacement_x_mm'] == min(row['displacement_x_mm'] for row in rows)
+        assert item['video']['sim_seconds'] == pytest.approx(rows[0]['survival_s'])
+        assert item['browser']['browser_playback']
+        assert item['browser']['download_sha256'] == item['video']['sha256']
+        assert item['browser']['foot_len_mm'] == foot[name]
+        assert item['evidence_directory'].startswith('evidence/comparison66/')
+    # Each playback declares its own policy and rollout, so playback revisions
+    # and digests differ; the shared identity is the trained model itself.
+    assert runs['wren66-checkpoint20']['accepted_revision'] != runs['wren66-final']['accepted_revision']
+    assert model_ids['wren66-checkpoint20'] == model_ids['wren66-final'] != model_ids['wren57-retry']
+    assert runs['wren57-retry']['accepted_revision'] != runs['wren66-final']['accepted_revision']
+    assert 'product-agent-authored revision' in runs['wren66-final']['authored_by']
+    assert runs['wren57-retry']['authored_by'] is None
+    # A new visit selects the latest attempt; the retry stays selectable as history.
+    assert runs['wren66-final']['browser']['fresh_selection'] == 'RUN wren66-final'
+    # ...and while training was active, return-to-current went to the live run.
+    assert runs['wren66-checkpoint20']['browser']['returned_to_current'] == 'RUN wren66'

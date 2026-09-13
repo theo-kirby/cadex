@@ -38,7 +38,7 @@ for location in sys.argv[3:]:
     runs[name] = dict(evaluation=result, evidence_directory=str(retained.relative_to(p)),
                       accepted_revision=record['model']['accepted_revision'],
                       accepted_digest=record['model']['digest'], params=record['params'],
-                      authored_by=record.get('requested', {}).get('design_authored_by'),
+                      authored_by=((record.get('training') or {}).get('requested') or {}).get('design_authored_by'),
                       video={k: video[k] for k in ('path', 'sha256', 'policy_sha256', 'model_digest', 'task_sha256', 'frames', 'fps', 'duration_seconds', 'sim_seconds', 'style', 'style_sha256', 'seed')},
                       browser={k: browser.get(k) for k in ('browser_playback', 'download_sha256', 'fresh_selection', 'historical_selection', 'returned_to_current', 'foot_len_mm', 'decoded_frames', 'simulation_seconds')},
                       summary=dict(

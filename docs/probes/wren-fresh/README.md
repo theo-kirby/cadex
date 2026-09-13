@@ -2,16 +2,16 @@
 
 Verified against source: 2026-09-13. [Cadex-new]
 
-Current working project: [`ot5-wren-copy54`](COPY.md), with accepted 110 mm
-feet. Its [controlled interruption/retry experiment](INTERRUPTION.md) keeps
-port 8765 current and preserves the original Wren and historical videos.
-Current run: **`wren57-retry`**, completed after the guarded interruption.
-Both required suites finished before launch; both attempts recorded a maximum
-of one trainer and no exclusion violation (ADR-305).
-The parameter revision remains caller-authored. A new [product-agent turn in
-iteration 58](AGENT-REVISION.md#current-attempt-working-copy-iteration-58) was
-refused at the provider session limit before authoring; the revision gap stays
-open. All 434 retained run/asset files and four browser videos remain intact.
+Current working project: [`ot5-wren-copy54`](COPY.md), with the product
+agent's accepted 90 mm feet. Its [controlled interruption/retry experiment](INTERRUPTION.md)
+kept port 8765 current and preserves the original Wren and historical videos.
+Current run: **`wren66-final`**, the product agent's own 90 mm revision
+retrained and compared on seeds 0–4 ([REVISION66.md](REVISION66.md), ADR-308).
+The agent accepted `foot_len=90`, `policy_on=0` in iteration 65 and returned
+its rationale in iteration 66 as the project's ADR-002; the earlier
+[refused attempts](AGENT-REVISION.md) are historical. All 465 run/asset files
+inventoried before the agent's change remain byte-identical. The interruption
+experiment's `wren57-retry` is now the 110 mm baseline that comparison uses.
 
 Previous experiment: [the completed revised-foot comparison](COMPARISON.md)
 retains both training runs and their four videos; the persistent dashboard

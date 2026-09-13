@@ -24,7 +24,10 @@ before = {str(p.relative_to(run)): sha(p) for p in run.rglob('*') if p.is_file()
 record = read(run / 'run.json')
 reference = read(run / 'rollout/assembly-simulation-trace.json')
 policy = reference['policy']
-script = (run / 'script.py').read_text()
+# A run published in place after training (publish_retry.py) keeps its training
+# script beside the playback one; the record names which script declared the
+# policy the retained trace actually ran.
+script = (run / record['artifacts']['script']).read_text()
 # Bake the RECORDED effective parameters into the scratch script defaults.
 # This avoids inheriting today's foot dimension or disabled-policy setting.
 for key, value in record['params']['values'].items():

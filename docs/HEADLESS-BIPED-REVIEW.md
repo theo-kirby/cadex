@@ -978,3 +978,22 @@ all prior run files and original Wren files remain unchanged. See the
 [experiment, receipts and limitations](probes/wren-fresh/INTERRUPTION.md),
 including two corrected probe defects and the initial CPU-test/GPU-training
 overlap. This is D8/D10 lifecycle evidence, not a new gait, rollout or video.
+
+
+### Wren product-agent revision, retraining and comparison (iteration 66)
+
+The Wren-specific product-agent revision gap is closed. Iteration 65's design
+turn on `ot5-wren-copy54` accepted `foot_len=90`, `policy_on=0` (revision
+`03077ee9eb82…`) through the agent's own `set_params` call and was cut off
+before returning its decision; iteration 66 finished that turn, landing the
+agent's rationale as the project's ADR-002 and `docs/design-specs.md`, then
+retrained the design as `wren66` with the unchanged bounded experiment (240
+updates, exit 0, checkpoint video published during training, final video
+verified). The persistent server now defaults to `wren66-final`, revision
+`de9692bd4ee5…`, 90 mm feet. On seeds 0–4, eight seconds at 50 Hz, the 110 mm
+`wren57-retry` final, the 90 mm checkpoint 20 and the 90 mm final all survive
+every episode; mean torso displacement is +40.1, +42.7 and +55.1 mm and mean
+reward 214.9, 213.6 and 144.9. One training seed per design and standing or
+shuffling poses: not a gait or causal claim. All 465 files inventoried before
+the agent's change remain byte-identical. See
+[REVISION66.md](probes/wren-fresh/REVISION66.md) and ADR-308.

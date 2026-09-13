@@ -23174,3 +23174,19 @@ in an already-open empty accepted view. Unchanged identity does not reset orbit
 or zoom; a selected historical run continues using its retained model. Browser
 regressions reproduce stale and empty geometry on the old source and check the
 new mesh bounds, camera preservation and historical identity. No new dependency.
+
+## ADR-308 — Wren's product-agent revision is authored, retrained and compared (2026-09-13)
+
+[Cadex-new] Three iterations recorded provider refusals of Wren's review-driven
+design turn. Iteration 65's turn accepted `foot_len=90`, `policy_on=0` on the
+working copy through the agent's own tools and was cut off before it returned a
+decision; iteration 66 completed that turn rather than authoring a replacement,
+so the accepted change and its rationale (project ADR-002, `docs/design-specs.md`)
+are both the agent's. The unchanged bounded experiment retrained it as `wren66`
+(240 iterations, exit 0, checkpoint and final videos published on the persistent
+page) and the three retained policies of the copy were evaluated on seeds 0–4.
+`compare.py` reads the script the run record names, since an in-place published
+retry keeps two, and `report_revision.py` reads authorship from the run's training
+provenance. Results are survival and displacement on one training seed per
+design, not a gait or causal claim. `docs/probes/wren-fresh/REVISION66.md`;
+receipt `revision66-evidence.json`, test-guarded. No new dependency.

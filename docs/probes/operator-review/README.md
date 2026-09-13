@@ -3,10 +3,18 @@
 Verified against source: 2026-09-13. [Cadex-new]
 
 The shared private-network dashboard on port 8765 serves **`ot5-wren-copy54`**,
-with **`wren57-retry` selected by default**, accepted playback revision
-**`79f86c69bfc3…`** and 110 mm feet. Its guarded GPU retry completed 12 updates;
-no experiment training remains active. Iteration 60 engine-verified its saved
-policy and published an 8-second seed-0 rollout video on this current attempt.
+with **`wren66-final` selected by default**, playback revision
+**`de9692bd4ee5…`** and the product agent's 90 mm feet (iteration 66,
+[REVISION66.md](../wren-fresh/REVISION66.md)). That 240-update GPU retraining
+completed with exit 0; no experiment training remains active. Its checkpoint
+20 video was published while training ran and its final policy has an
+engine-verified 8-second seed-0 video; `wren57-retry` (110 mm) is the
+historical baseline the seed 0–4 comparison uses.
+
+Before iteration 66 the page selected **`wren57-retry`**, accepted playback
+revision **`79f86c69bfc3…`** and 110 mm feet. Its guarded GPU retry completed
+12 updates. Iteration 60 engine-verified its saved
+policy and published an 8-second seed-0 rollout video on that attempt.
 All four older videos remain selectable, playable and downloadable. Historical
 playback survived the new video arriving; the current video fully decoded,
 played through polling and downloaded with a matching hash. The original
