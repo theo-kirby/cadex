@@ -3,7 +3,9 @@ checkpoint video published while training is active, the PERSISTENT operator
 dashboard observed (never a temporary server), renderer overhead measured from
 the trainer's own committed iteration intervals, and a retained final video.
 
-usage: pixi run python train.py PROJECT RUN URL   (PYTHONPATH=cli:cli/tests)
+usage: pixi run python train.py PROJECT RUN URL [AUTHORED_BY]   (PYTHONPATH=cli:cli/tests)
+AUTHORED_BY names who authored the accepted design under training; it defaults
+to the original Wren creation and is recorded in run.json and each playback review.
 Nothing here writes the trainer's progress snapshot; browser or render failure
 is recorded and leaves the trainer running under its own timeout.
 """
@@ -14,6 +16,7 @@ from cadex_cli.session import project_lock
 from cadex_cli.review_record import write_run_record
 from cadex_cli.walk import review_from_outputs, write_review
 p = Path(sys.argv[1]).resolve(); name = sys.argv[2]; url = sys.argv[3]
+authored_by = sys.argv[4] if len(sys.argv) > 4 else 'product-agent-authored Wren; accepted creation with provider-limit exit'
 repo = Path.cwd(); ev = p / 'evidence'; run = p / 'runs' / name; train = run / 'train'
 train.mkdir(parents=True, exist_ok=False)
 def read(x): return json.loads(x.read_text())
@@ -28,7 +31,7 @@ def cli(label, *args):
     return e
 old = {d.name: sha(d / 'run.json') for d in sorted((p / 'runs').iterdir()) if (d / 'run.json').is_file()}
 e = cli(name + '-export', 'params', '--set', 'policy_on=0', '--out', train)
-assert next(x['default'] for x in read(p / 'script.json')['param_specs'] if x['name'] == 'shin_len') == 85.0
+assert e['params']['policy_on'] == 0.0, e['params']
 m = read(p / 'script.json'); source = (p / 'script.py').read_text(); shutil.copyfile(p / 'script.py', run / 'script.py')
 geometry = {n: sha(train / n) for n in ('wren_model-model.xml', 'wren_walk-task.json')}
 cli(name + '-training-render', 'render')
@@ -36,7 +39,7 @@ with project_lock(p):
     retain_training_view(p, run)
 assert read(run / 'training-view.json')['model']['available']
 assert len(read(run / 'training-view.json')['model']['components']) == 8
-base = dict(project_root=p, mode='offboard-checkpoint-experiment', accepted_revision=e['accepted_revision'], digest=e['digest'], params=e['params'], param_specs=m['param_specs'], specs_source='successful CLI export', identity_source='successful params export envelope', requested={'iterations': 240, 'envs': 1024, 'seed': 0, 'checkpoint_every': 20, 'timeout_seconds': 1800, 'authored_by': 'product-agent-authored Wren; accepted creation with provider-limit exit'}, task_bundle=train / 'wren_walk-task.json', task_sha256=sha(train / 'wren_walk-task.json'), model_xml=train / 'wren_model-model.xml')
+base = dict(project_root=p, mode='offboard-checkpoint-experiment', accepted_revision=e['accepted_revision'], digest=e['digest'], params=e['params'], param_specs=m['param_specs'], specs_source='successful CLI export', identity_source='successful params export envelope', requested={'iterations': 240, 'envs': 1024, 'seed': 0, 'checkpoint_every': 20, 'timeout_seconds': 1800, 'authored_by': authored_by}, task_bundle=train / 'wren_walk-task.json', task_sha256=sha(train / 'wren_walk-task.json'), model_xml=train / 'wren_model-model.xml')
 write_run_record(run, status='running', snapshot_docs=True, **base)
 unit = 'cadex-' + name
 cmd = ['systemd-run', '--user', '--scope', '--unit=' + unit, '-p', 'MemoryMax=20G', 'timeout', '--signal=TERM', '--kill-after=20s', '1800', str(Path.home() / 'cadex-train-venv/bin/python'), 'training/cadex_train.py', str(train / 'wren_walk-task.json'), '--out', str(train / (name + '.cxpolicy')), '--iterations', '240', '--envs', '1024', '--seed', '0', '--checkpoint-every', '20']
@@ -111,7 +114,7 @@ def playback(policy, pname, active):
     shutil.copyfile(p / 'script.py', r / 'script.py'); shutil.copytree(p / 'review/render', r / 'render')
     (r / 'train').mkdir(); shutil.copyfile(train / 'progress.json', r / 'train/progress.json')
     review = review_from_outputs(e['outputs']); review['render'] = {'path': f'runs/{pname}/render'}
-    review['provenance'] = {'source_run': name, 'checkpoint': policy.name, 'training_active_at_start': active, 'design_authored_by': 'product-agent-authored Wren; accepted creation with provider-limit exit'}
+    review['provenance'] = {'source_run': name, 'checkpoint': policy.name, 'training_active_at_start': active, 'design_authored_by': authored_by}
     legs = [{'leg': 'rollout', 'exit': 0, 'accepted_revision': e['accepted_revision'], 'digest': e['digest']}]
     write_review(r, review=review, legs=legs, training={}, params=e['params'])
     write_run_record(r, project_root=p, status='ok', mode='checkpoint-playback' if active else 'final-policy-playback', legs=legs, accepted_revision=e['accepted_revision'], digest=e['digest'], params=e['params'], param_specs=read(p / 'script.json')['param_specs'], specs_source='successful rollout envelope', requested=review['provenance'], policy_name=policy.name, policy_sha256=digest, task_bundle=r / 'rollout/wren_walk-task.json', task_sha256=sha(train / 'wren_walk-task.json'), model_xml=r / 'rollout/wren_model-model.xml', trace=r / 'rollout/assembly-simulation-trace.json', review=review, snapshot_docs=True)
