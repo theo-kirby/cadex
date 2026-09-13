@@ -21,6 +21,8 @@ Charter criterion: match the read-only sibling `neural-whoop` reference (fogged 
 
 Reconcile judgement: `working`. The comparison has now been repeated on the current design of each fresh biped (Reed, Wren, Lark) with byte-identical viewport/capture images and decoded-video error under 1.7/255 each time. Only the checkbox edit is owner-reserved [rec: lucky-bramble-8274]. Remaining limits: all observations are same-machine private-address; no light-themed reference clip ships, so comparison uses the reference renderer on Cadex geometry; shadow frustum/bias differ deliberately [rec: soft-aspen-5095] [rec: windy-walrus-6950]. **The owner ticked D11 in the charter on 2026-09-13 after run ot5 stopped at iteration 111; the criterion is closed for ot5 with its evidence unchanged, and ot6's charter (ADR-328) supersedes it [rec: patient-pond-3886].**
 
+**The light look D11 assessed is retired (ADR-331).** ot6's D3 (`silver-ledge-4640`) deleted the light palette from `review_static/environment.js`, which now exports one dark `PALETTE` and no `setTheme`; new videos record `cadex-prototype-dark-v1`. The receipts on this node remain valid as history of the `cadex-prototype-light-v1` recordings they describe — those recordings still exist, and `lark98-final` on the persistent copy keeps its light recording beneath a new dark one — and the dark comparison under `docs/probes/ot6/look/` supersedes them as the current visual evidence [rec: keen-water-3378].
+
 ## Negative knowledge
 
 - [scope: the pre-ADR-301 review WebGL shader and CPU video rasterizer | confidence: high | evidence: modest-journey-2059] Two independently tuned renderers cannot establish viewport/video agreement; neither had floor, fog or shadows, and close orbit clipped the torso while wide orbit left the slab floating.
@@ -38,3 +40,4 @@ Reconcile judgement: `working`. The comparison has now been repeated on the curr
 - terse-walrus-5414 — current 90 mm matched-camera parity, identified reference comparison and orbit/zoom assessment close the current-design evidence gap
 - windy-walrus-6950 — current Lark `lark86-retry-video` comparison on the persistent URL: byte-identical PNGs, decoded RGB MAE 1.428984/255, close/wide/orbit inspection, playback/download verified
 - patient-pond-3886 — the owner ticked D11 on 2026-09-13 after run ot5 stopped at iteration 111; evidence unchanged
+- keen-water-3378 — ADR-331 retires the light look this criterion assessed; its receipts stand as history of the light recordings, the ot6 dark comparison is the current evidence
