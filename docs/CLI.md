@@ -2172,15 +2172,22 @@ project and shipped static allowlist while capture runs; it closes afterward.
 The persistent operator server is independent and remains running.
 
 Python verifies retained model/policy/task/seed identities and solved poses,
-fits a fixed perspective camera over the entire trajectory, and sends exact
-solved samples at 10 fps plus the final pose to the common scene. It encodes
+builds the subject's centre track over the sampled poses, and sends exact
+solved samples at 10 fps plus the final pose to the common scene, which
+frames each one with the **follow rig** (ADR-332, `docs/REVIEW-DESIGN.md`
+§10): the subject's standing height fills a declared 0.22 of the frame
+height at one standoff, the orientation is fixed, the anchor is a
+Hann-smoothed copy of the track with a soft drift limit, and a **timer** pill
+bottom-left shows simulation seconds. It encodes
 512×512 VP9 WebM and decodes every frame before publication. The per-project
 render lock and 300-second frame-production budget remain; encoding and decode
 each have a separate 60-second timeout. Render failures report their own status
 and preserve prior videos without touching training.
 
 Each new video records style version/digest, Three.js and Chromium versions,
-resolution, projection, camera and trajectory bounds alongside revision,
+resolution, projection, the first frame's camera, the rig's declared and
+measured framing (`framing`: fraction, standing height, standoff, drift and
+apparent-size extremes), the overlay, and trajectory bounds alongside revision,
 policy, seed, trace digest and simulation time. New recordings appear first;
 earlier entries and content-addressed files remain retained and downloadable.
 Identical video bytes are deduplicated. Old entries lacking a style are labelled

@@ -17,7 +17,7 @@ import pytest
 from cadex_cli.video import render, placed, stl
 from cadex_cli.browser import find_browser
 from cadex_cli.review_record import read_run_record
-from cadex_cli.review_server import serve
+from cadex_cli.review_server import serve, run_model
 from test_review_server import (browser, needs_browser, _open, _mesh_run,
                                 _rewrite_record, _project, REVISION_A,
                                 REVISION_B, _manifest, _get, _model_state, CLI_DIR)
@@ -339,8 +339,11 @@ def test_shared_scene_matches_decoded_video_and_keeps_older_recording(rendered, 
         trace = json.loads((run/'rollout/assembly-simulation-trace.json').read_text())
         frame = next(f for f in trace['frames'] if f.get('frame_kind') == 'solver_output')
         page.evaluate("document.getElementById('viewer').style.cssText='width:512px;height:512px;border:0;padding:0'")
+        # The video's first frame: its follow camera, the first solved pose and the timer at 0 s,
+        # each through the viewport's own shared scene (ADR-332).
         page.evaluate('cadexReview.viewer().frameBounds('+json.dumps(newest['bounds'])+');'
                       'cadexReview.viewer().setCamera('+json.dumps(newest['camera'])+');'
+                      'cadexReview.viewer().setClock(0);'
                       'cadexReview.viewer().setPoses('+json.dumps(frame['component_placements'])+')')
         import base64
         image = run/'viewport.png'
@@ -360,6 +363,76 @@ def test_shared_scene_matches_decoded_video_and_keeps_older_recording(rendered, 
             assert hashlib.sha256(download.path.read_bytes()).hexdigest() == record['videos'][index]['sha256']
     finally:
         server.shutdown();server.server_close()
+
+
+@needs_browser
+def test_capture_follows_the_subject_at_the_declared_framing_and_stamps_the_timer(rendered, browser):
+    """The follow rig and the timer overlay, through the shared scene (ADR-332):
+    one standoff at the declared fraction, a smoothed anchor that keeps the
+    subject inside the drift budget through a whip, fixed orientation, and a
+    clock pill baked bottom-left that changes with the seconds and nothing else."""
+    import math
+    root, video = rendered
+    rig = video['framing']
+    tan_v = math.tan(math.radians(55 / 2))
+    assert rig['fraction'] == 0.22 and rig['smooth_frames'] == 4
+    assert rig['standoff_mm'] == pytest.approx(rig['subject_height_mm'] / (2 * tan_v * 0.22))
+    assert video['camera']['distance'] == pytest.approx(rig['standoff_mm'])
+    assert 0 <= rig['worst_drift_ndc'] < rig['max_drift'] and 0 < rig['size_min'] <= rig['size_max']
+    assert abs(rig['size_max'] - 0.22) < 0.01 and video['overlay'].startswith('timer')
+    run = root / 'runs/sample'
+    trace = json.loads((run / 'rollout/assembly-simulation-trace.json').read_text())
+    frame = next(f for f in trace['frames'] if f.get('frame_kind') == 'solver_output')
+    manifest = run_model(root, read_run_record(run, root))
+    entries = [{'name': e['name'], 'placement': frame['component_placements'][e['name']],
+                'positions': [v for t in stl(run / 'rollout' / (e['output'] + '.stl')) for pt in t for v in pt]}
+               for e in manifest['components'] if e['name'] in frame['component_placements']]
+    server, _ = serve(root, '127.0.0.1', 0)
+    try:
+        page = browser.page(server.url + 'capture.html')
+        page.wait_for('window.cadexCapture?.available')
+        page.evaluate('cadexCapture.install(' + json.dumps(entries) + '); cadexCapture.frameBounds(' + json.dumps(video['bounds']) + ')')
+        # A steady walk of 12 mm (0.6 subject heights, a twentieth of one per frame): every
+        # camera keeps the standoff, the target follows the subject and the horizon (yaw,
+        # pitch) never moves.
+        walk = [[i, 0, 10] for i in range(13)]
+        steady = page.evaluate('cadexCapture.follow(' + json.dumps(walk) + ', {"subject_height_mm": 20})')
+        assert steady['standoff_mm'] == pytest.approx(20 / (2 * tan_v * 0.22))
+        assert all(c['distance'] == pytest.approx(steady['standoff_mm']) and c['yaw'] == 0.8 and c['pitch'] == 0.5
+                   for c in steady['cameras'])
+        # The end anchors sit inside the walk: the symmetric window is truncated there.
+        assert 8 < steady['cameras'][-1]['target'][0] - steady['cameras'][0]['target'][0] < 12
+        assert steady['worst_drift_ndc'] < 0.05 and steady['size_min'] > 0.2
+        # A whip of a whole standoff in one frame stays inside the drift budget: the soft limiter.
+        whip = [[0, 0, 10]] * 6 + [[steady['standoff_mm'], 0, 10]] * 6
+        whipped = page.evaluate('cadexCapture.follow(' + json.dumps(whip) + ', {"subject_height_mm": 20})')
+        assert 0.1 < whipped['worst_drift_ndc'] < whipped['max_drift'] == 0.26
+        with pytest.raises(Exception):
+            page.evaluate('cadexCapture.follow([[0, 0]], {"subject_height_mm": 20})')
+        # The timer: absent at rest, then a pill bottom-left whose pixels are the only difference.
+        page.evaluate('cadexCapture.setCamera(' + json.dumps(steady['cameras'][0]) + ')')
+        import base64
+        def shot(clock):
+            path = run / f'clock-{clock}.png'
+            path.write_bytes(base64.b64decode(page.evaluate(f'cadexCapture.setClock({clock}); cadexCapture.png()')))
+            return subprocess.check_output(['ffmpeg', '-v', 'error', '-i', str(path), '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'])
+        rest, zero, later = shot('null'), shot(0), shot(12.5)
+        assert len(rest) == len(zero) == 512 * 512 * 3
+        def changed(a, b):
+            rows = set()
+            for i in range(0, len(a), 3):
+                if a[i:i+3] != b[i:i+3]:
+                    rows.add(((i // 3) // 512, (i // 3) % 512))
+            return rows
+        pill = changed(rest, zero)
+        assert 400 < len(pill) < 512 * 512 // 16
+        assert all(y > 512 * 0.8 and x < 512 * 0.3 for y, x in pill), 'the timer sits bottom-left'
+        digits = changed(zero, later)
+        assert digits and digits <= pill | changed(rest, later)
+        assert page.evaluate('cadexCapture.modelPixels()')['count'] == page.evaluate('cadexCapture.nonBackgroundPixels()') > 0
+        assert shot('null') == rest
+    finally:
+        server.shutdown(); server.server_close()
 
 
 @needs_browser

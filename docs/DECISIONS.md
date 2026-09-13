@@ -23944,3 +23944,61 @@ Removal, under the change policy: two palette objects and one function
 gone from a file that is ours; `test_the_environment_is_dark_only_and_the_style_says_so`
 holds the module to one palette and no theme setter. No engine, protocol,
 payload, shell or dependency change.
+
+## ADR-332 — Recordings follow the subject at a declared framing, with a timer, through the shared scene (2026-09-13)
+
+**Context.** ADR-331 made the environment dark only and shared between the
+viewport and the capture, and its assessment (`docs/probes/ot6/look/README.md`)
+named the two things the reference look still had that Cadex's videos did not:
+a camera that tracks the subject at a declared framing fraction, and the timer
+overlay. The video was a fixed fit over every visited pose, so a rollout that
+travelled shrank its subject; the charter's D3 (ADR-328) asks for both.
+
+**Decision.** The follow rig and the timer live in the one scene module both
+clients share (`cli/cadex_cli/review_static/review_scene.js`), not in the
+renderer or the page:
+
+- `follow(track, options)` takes the subject's centre per output frame and
+  returns per-frame cameras plus the declared and measured numbers. The
+  subject's standing height fills a declared fraction of the frame height
+  (0.22, the reference's default) at one standoff; the camera keeps the
+  viewer's yaw and pitch and translates with a Hann-smoothed copy of the
+  track (half-window 4 frames, 0.4 s at 10 fps — the reference's 20 at 50 Hz);
+  the subject rests 0.06 of the half-frame below centre; and it may lead the
+  anchor by 0.26 of the half-frame before an `l·tanh(d/l)` limiter pulls the
+  anchor after it. Frame *i* is a pure function of the track, never of frame
+  *i − 1*. The end anchors sit inside the track because the symmetric window
+  is truncated there, which is the reference's behaviour too.
+- `setClock(seconds)` draws the reference's caption pill inside the WebGL
+  frame, bottom-left, in the page's ink and type at 3.2 % of the frame
+  height, so `png()` on the capture and the viewport bake the same pixels;
+  `null` hides it, and the viewport is at rest with it hidden.
+- `modelPixels()` boxes the model's pixels against the same environment-only
+  render (overlay included in both), and `nonBackgroundPixels()` is its count.
+
+`cadex_cli.video` builds the track from the sampled solved poses, takes the
+standing height from the first, calls `follow`, refuses a rig whose worst
+residual drift is not inside its budget, and records `framing` (declared and
+measured), `overlay` and the first frame's `camera` into the video; the
+`sampling` string says "follow camera at the declared framing". The style
+name stays `cadex-prototype-dark-v1`: the palette and environment are
+unchanged, and the rig is recorded per video.
+
+**Evidence.** `docs/probes/ot6/look/follow.py` on the persistent operator
+dashboard serving `ot5-lark-copy85` with `lark98-final` re-rendered: the
+viewport's own `follow` over the same track gives the recording's standoff and
+first camera; the viewport at the recording's camera, pose and clock is within
+1.16–1.24 of 255 of the decoded frames at 0, 4 and 8 s and byte-identical to
+the capture page; apparent size 0.2198–0.2201 across the clip; the floor
+outruns the fog at the close (0.5), follow and wide (0.08) framings and after
+a pointer drag; the timer's pixels are confined to the bottom-left. The frames
+sit beside the reference's shipped clips in `docs/probes/ot6/look/README.md`
+with the assessment. `test_video.py` exercises the rig on a synthetic walk and
+a whip and the overlay's pixel footprint; `test_review_design.py` pins the
+receipt.
+
+**Consequences.** No engine, protocol, payload, shell or dependency change.
+The per-frame capture now sets the camera as well as the poses and the clock
+(16.4 s for 81 frames of Lark, from 13.3). Lark barely moves, so the
+smoothing and the drift limiter are proven on the fixture rather than on this
+clip; a travelling mechanism (D6–D8) will be the first real exercise.

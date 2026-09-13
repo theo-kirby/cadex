@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import hashlib
+import math
 import re
 import shutil
 import socket
@@ -375,6 +376,8 @@ def test_phone_receipt_records_touch_orbit_and_every_region_on_the_operator_url(
 
 
 LOOK = REPO / "docs/probes/ot6/look"
+FOLLOW_IMAGES = ("follow-side-by-side", "video-follow-0s", "video-follow-4s", "video-follow-8s", "viewport-follow-4s",
+                 "viewport-follow-close", "viewport-follow-wide", "viewport-follow-orbit")
 LOOK_IMAGES = ("side-by-side", "reference-shipped-orbit-4s", "reference-dark-lark", "persistent-same-pose",
                "video-frame0", "persistent-framed", "persistent-wide", "persistent-orbit-far")
 
@@ -419,3 +422,55 @@ def test_look_receipt_compares_the_dark_viewport_capture_video_and_reference():
         assert f"{name}.png" in text, f"the assessment does not cite {name}.png"
     assert f"{receipt['codec_mean_absolute_rgb_error']:.2f}" in text
     assert "Verified against source: 2026-" in text
+
+
+def test_follow_receipt_records_the_tracking_camera_and_timer_on_the_operator_url():
+    """D3's second half on the operator URL (ADR-332): the run the persistent
+    page selected, the follow rig's declared numbers and standoff formula, the
+    viewport's rig agreeing with the recording's, apparent size held at the
+    declared fraction in every decoded frame and at the close and wide
+    framings, viewport and capture identical with the timer on, every decoded
+    frame inside the codec tolerance, the floor outrunning the fog, the drag
+    leaving the distance alone, the timer confined to the bottom-left, and
+    the committed frames cited by the assessment."""
+
+    receipt = json.loads((LOOK / "follow.json").read_text())
+    identity = receipt["persistent_identity"]
+    assert identity["selected"] == receipt["run"] and identity["relation"] == "current"
+    assert not identity["stale"] and identity["error"] is None
+    video, rig = receipt["video"], receipt["video"]["framing"]
+    assert identity["revision"] == video["accepted_revision"]
+    assert video["style"] == "cadex-prototype-dark-v1" and video["overlay"].startswith("timer")
+    assert "follow camera at the declared framing" in video["sampling"]
+    assert rig["fraction"] == 0.22 and rig["subject_y"] == -0.06 and rig["max_drift"] == 0.26 and rig["smooth_frames"] == 4
+    assert abs(rig["standoff_mm"] - rig["subject_height_mm"] / (2 * math.tan(math.radians(27.5)) * 0.22)) < 1e-6
+    assert rig["worst_drift_ndc"] < rig["max_drift"]
+    assert abs(rig["size_min"] - 0.22) < 0.005 and abs(rig["size_max"] - 0.22) < 0.005
+    assert receipt["rig_agrees"] is True and receipt["lossless_viewport_capture_equal"] is True
+    text = (LOOK / "README.md").read_text()
+    for s in ("0", "4", "8"):
+        error = receipt["codec_mean_absolute_rgb_error"][s]
+        assert 0 < error < 3 and f"{error:.2f}" in text
+        camera = receipt["cameras"][s]
+        assert camera["distance"] == rig["standoff_mm"] and camera["yaw"] == 0.8 and camera["pitch"] == 0.5
+        assert abs(receipt["apparent_fraction"][f"viewport-follow-{s}s"]["analytic"] - 0.22) < 0.005
+    for label, fraction in (("close", 0.5), ("wide", 0.08)):
+        assert abs(receipt["apparent_fraction"][f"viewport-follow-{label}"]["analytic"] - fraction) < 0.005
+        assert receipt["cameras"][label]["distance"] < rig["standoff_mm"] or label == "wide"
+    for name, stage in receipt["stage"].items():
+        assert stage["roomSize"] >= 4 * stage["fog"]["far"] - 1e-6, name
+        assert stage["pitch"] == 1
+    assert receipt["stage"]["viewport-follow-close"]["minor"] < receipt["stage"]["viewport-follow-4s"]["minor"]
+    assert receipt["stage"]["viewport-follow-wide"]["minor"] == 0
+    assert min(receipt["model_pixels"].values()) > 1000
+    orbit = receipt["orbit"]
+    assert orbit["after_drag"]["distance"] == orbit["before"]["distance"] == rig["standoff_mm"]
+    assert orbit["after_drag"]["yaw"] != orbit["before"]["yaw"]
+    region = receipt["timer_region"]
+    assert region["count"] > 400 and region["box"][1] > 512 * 0.8 and region["box"][2] < 512 * 0.3
+    assert set(receipt["reference_shipped"]) == {"orbit", "swing", "flip"}
+    assert len(receipt["reference_commit"]) == 40
+    for name in FOLLOW_IMAGES:
+        assert (LOOK / f"{name}.png").is_file(), name
+        assert receipt["images"][f"{name}.png"], name
+        assert f"{name}.png" in text, f"the assessment does not cite {name}.png"

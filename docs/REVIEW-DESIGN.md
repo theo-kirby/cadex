@@ -365,6 +365,32 @@ dark theme, over the same solids at the same cameras, equal in mean
 luminance to 0.1. The frames, the numbers and the written assessment —
 floor and grid, horizon and fog, palette, lighting and shadows, materials,
 framing, camera — are `docs/probes/ot6/look/README.md`, with the composite
-[side-by-side.png](probes/ot6/look/side-by-side.png). What that assessment
-says D3 still owes: the capture's tracking camera at a declared framing
-fraction, and the timer overlay.
+[side-by-side.png](probes/ot6/look/side-by-side.png).
+
+**The follow camera and the timer (ADR-332).** A recording's camera is the
+reference's follow rig, computed by the shared scene module (`follow`) from
+the subject's centre at every sampled solved pose and recorded into the
+video's `framing`: the subject's standing height — its vertical extent at the
+first solved pose — fills a declared **0.22** of the frame height, so the
+standoff is one number for the whole clip and apparent size is fixed by
+construction; the camera keeps the viewer's yaw and pitch (the horizon never
+moves) and translates with a Hann-smoothed copy of the track, half-window
+0.4 s, the subject resting 0.06 of the half-frame below centre for headroom;
+the subject may lead that anchor by 0.26 of the half-frame in either screen
+axis before an `l·tanh(d/l)` limiter pulls the anchor after it, so a whip
+cannot carry it out of frame. The viewport's default fit is unchanged: it is
+an inspection fit, and the same `follow` is available to it for a shot.
+
+The timer is the reference's caption pill: panel `rgba(20,22,26,.72)`, line
+`rgba(244,245,247,.22)`, ink `--ink`, the page's `--font` at 3.2 % of the
+frame height and never below `--fs-0`, tabular numerals letter-spaced 0.12 em,
+4.2 % of the height in from the bottom-left corner. It is drawn inside the
+WebGL frame after the stage, so the capture's PNG and the viewport bake the
+same pixels; it shows simulation seconds, and it is hidden while the viewport
+is at rest. Measured on the persistent dashboard with `lark98-final`
+re-rendered: the viewport at the recording's camera, pose and clock is within
+1.24 of 255 of every decoded frame checked and byte-identical to the capture
+page; the rig's apparent size is 0.2198–0.2201 across the clip; the frames
+and the assessment are the second half of
+[docs/probes/ot6/look/README.md](probes/ot6/look/README.md), composite
+[follow-side-by-side.png](probes/ot6/look/follow-side-by-side.png).

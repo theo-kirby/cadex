@@ -31,6 +31,12 @@ from .review_server import run_model
 FPS = 10
 MAX_BYTES = 32 * 1024 * 1024
 MAX_TRIANGLES = 20_000
+# The follow rig's declared framing (REVIEW-DESIGN.md §10, ADR-332): the subject's standing
+# height — its vertical extent at the first solved pose — fills this fraction of the frame
+# height, and the camera anchor is a Hann-smoothed subject track with this half-window at FPS
+# (0.4 s, the reference's 20 frames at 50 Hz). The rest of the rig's numbers are the scene
+# module's FOLLOW defaults; every one is recorded into the video it framed.
+FRAMING = {'fraction': 0.22, 'smooth_frames': 4}
 
 
 def require(condition, message):
@@ -151,15 +157,25 @@ def _render(root, directory):
             require(set(poses) == set(names), 'incomplete frame')
             return [(name, tri) for name in names
                     for tri in placed(meshes[name], poses[name])]
-        # Fit once over every visited pose: a moving camera would conceal travel.
+        # Bounds over every visited pose (the shadow camera and the stage cover the whole
+        # travel) and the subject's centre at each solved pose (the follow rig's track).
         lo, hi = [math.inf]*3, [-math.inf]*3
+        centres, height = [], None
         for frame in frames:
             require(time.monotonic()-started < 300, 'render exceeded 300 seconds')
+            flo, fhi = [math.inf]*3, [-math.inf]*3
             for _, tri in geometry(frame):
                 for point in tri:
                     for j, v in enumerate(point):
-                        lo[j], hi[j] = min(lo[j], v), max(hi[j], v)
+                        flo[j], fhi[j] = min(flo[j], v), max(fhi[j], v)
+            centres.append([(a+b)/2 for a, b in zip(flo, fhi)])
+            height = height if height is not None else fhi[2]-flo[2]
+            lo, hi = [min(a, b) for a, b in zip(lo, flo)], [max(a, b) for a, b in zip(hi, fhi)]
+        require(height > 0, 'subject has no height')
         count = math.ceil(times[-1]*FPS) + 1
+        def sample(i):
+            return len(frames)-1 if i == count-1 else max(0, bisect.bisect_right(times, i/FPS)-1)
+        track = [centres[sample(i)] for i in range(count)]
         with tempfile.TemporaryDirectory(prefix='.video-', dir=directory) as temporary:
             work = Path(temporary)
             executable = find_browser()
@@ -178,11 +194,20 @@ def _render(root, directory):
                     bounds = {'min': lo, 'max': hi, 'center': [(a+b)/2 for a,b in zip(lo,hi)],
                               'radius': math.dist(lo,hi)/2 or 1}
                     page.evaluate('cadexCapture.frameBounds(' + json.dumps(bounds) + '); cadexCapture.fit()')
-                    camera = page.evaluate('cadexCapture.camera()')
+                    # The follow rig: one standoff at the declared framing, a Hann-smoothed
+                    # anchor, fixed orientation; the scene module computes and reports it.
+                    rig = page.evaluate('cadexCapture.follow(' + json.dumps(track) + ', ' +
+                                        json.dumps({**FRAMING, 'subject_height_mm': height}) + ')')
+                    cameras = rig.pop('cameras')
+                    require(len(cameras) == count and rig['worst_drift_ndc'] < rig['max_drift'],
+                            'follow rig lost its subject')
                     for i in range(count):
                         require(time.monotonic()-started < 300, 'render exceeded 300 seconds')
-                        frame = frames[-1] if i == count-1 else frames[max(0, bisect.bisect_right(times, i/FPS)-1)]
-                        data = page.evaluate('cadexCapture.setPoses(' + json.dumps(frame['component_placements']) + '); cadexCapture.png()')
+                        frame = frames[sample(i)]
+                        clock = times[-1] if i == count-1 else i/FPS
+                        data = page.evaluate('cadexCapture.setCamera(' + json.dumps(cameras[i]) + '); cadexCapture.setPoses(' +
+                                             json.dumps(frame['component_placements']) + '); cadexCapture.setClock(' +
+                                             json.dumps(clock) + '); cadexCapture.png()')
                         (work / f'{i:04d}.png').write_bytes(base64.b64decode(data))
                     style = page.evaluate('cadexCapture.stats().style')
                     browser_version = browser.send('Browser.getVersion')['product']
@@ -212,8 +237,9 @@ def _render(root, directory):
                  'render_seconds': round(time.monotonic()-started, 3),
                  'style': style, 'style_sha256': style_digest(),
                  'renderer': 'Three.js r160 / ' + browser_version, 'width': 512, 'height': 512,
-                 'projection': 'perspective 55 degrees', 'camera': camera, 'bounds': bounds,
-                 'sampling': '10 fps, latest solved pose plus final pose, fixed camera; tessellation preview'}
+                 'projection': 'perspective 55 degrees', 'camera': cameras[0], 'bounds': bounds,
+                 'framing': rig, 'overlay': 'timer: simulation seconds, bottom left',
+                 'sampling': '10 fps, latest solved pose plus final pose, follow camera at the declared framing; tessellation preview'}
         status.update(state='ready', videos=[video] + [v for v in old.get('videos', []) if v.get('sha256') != sha])
         atomic_json(status_path, status)
         return video
