@@ -1,0 +1,259 @@
+{
+  "project": "ot5-wren-copy54",
+  "prior_run_files_preserved": 294,
+  "original_files_preserved": 963,
+  "four_videos_checked_after_each": true,
+  "historical_interruption_preserved": true,
+  "persistent_server": true,
+  "same_machine_private_network": true,
+  "attempts": [
+    {
+      "run": "wren56c-interrupt",
+      "exit": -2,
+      "elapsed_s": 96.717,
+      "host_peak_bytes": 5004201984,
+      "fresh_selection": "RUN wren56c-interrupt",
+      "accepted_revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+      "digest": "b04439061b0278903fca11079ff0937dac12425a5a8b767e675e24542c7a4ea4",
+      "note": "error: Controlled interruption: SIGINT after real GPU updates; start a new cadex walk --out runs/<new-name>.",
+      "samples": [
+        {
+          "file": 0,
+          "page": "iteration: -1",
+          "state": "stale"
+        },
+        {
+          "file": 0,
+          "page": "iteration: 0",
+          "state": "training"
+        },
+        {
+          "file": 1,
+          "page": "iteration: 1",
+          "state": "training"
+        },
+        {
+          "file": 2,
+          "page": "iteration: 2",
+          "state": "training"
+        },
+        {
+          "file": 3,
+          "page": "iteration: 3",
+          "state": "training"
+        },
+        {
+          "file": 5,
+          "page": "iteration: 5",
+          "state": "training"
+        }
+      ],
+      "trainer": {
+        "state": "failed",
+        "iteration": 5,
+        "total": 60,
+        "device": "gpu",
+        "error": "KeyboardInterrupt: ",
+        "reward_per_step": 0.061833202838897705,
+        "loss": 5.585019111633301,
+        "episode_steps": 176.55172729492188
+      },
+      "curve_lengths": {
+        "curve": 6,
+        "loss_curve": 6,
+        "episode_steps_curve": 6
+      },
+      "record_status": "failed",
+      "run_record_sha256": "864776a1149af1141615af3ddb430f92e62cccb787b6df3cc377c8913be761e0",
+      "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+      "model_xml_sha256": "2529d882f9a340f1e3f96f18d0b0fd628d35e6cf274d3809dbd1816a9f8c679e",
+      "videos": [
+        {
+          "fresh_selection": "RUN wren56c-interrupt",
+          "browser_playback": true,
+          "download_sha256": "b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc",
+          "decoded_frames": 81,
+          "returned_to_current": "RUN wren56c-interrupt",
+          "run": "wren1-checkpoint20"
+        },
+        {
+          "fresh_selection": "RUN wren56c-interrupt",
+          "browser_playback": true,
+          "download_sha256": "ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd",
+          "decoded_frames": 6,
+          "returned_to_current": "RUN wren56c-interrupt",
+          "run": "wren1-final"
+        },
+        {
+          "fresh_selection": "RUN wren56c-interrupt",
+          "browser_playback": true,
+          "download_sha256": "250c0534a5deb7bedab0f547cb933ba2976943bbd410d8efe8618febbdde5529",
+          "decoded_frames": 81,
+          "returned_to_current": "RUN wren56c-interrupt",
+          "run": "wren2-checkpoint20"
+        },
+        {
+          "fresh_selection": "RUN wren56c-interrupt",
+          "browser_playback": true,
+          "download_sha256": "59825c07950c377e1ff6f53139f20f25dfcdb5786e72eead861b52b5c2b41d1b",
+          "decoded_frames": 81,
+          "returned_to_current": "RUN wren56c-interrupt",
+          "run": "wren2-final"
+        }
+      ],
+      "resource_bound": {
+        "MemoryPeak": "4698275840",
+        "MemoryMax": "21474836480",
+        "ActiveState": "active"
+      }
+    },
+    {
+      "run": "wren56c-retry",
+      "exit": 0,
+      "elapsed_s": 153.874,
+      "host_peak_bytes": 5488803840,
+      "fresh_selection": "RUN wren56c-retry",
+      "accepted_revision": "5b61ef31ff134f0f31b079347d9e5d3fd6aec236f12ad9c7b45910640388d7e6",
+      "digest": "b04439061b0278903fca11079ff0937dac12425a5a8b767e675e24542c7a4ea4",
+      "note": "if no walk is running, this run was interrupted: start a new `cadex walk --out runs/<new-name>`",
+      "samples": [
+        {
+          "file": 0,
+          "page": "iteration: 0",
+          "state": "training"
+        },
+        {
+          "file": 2,
+          "page": "iteration: 1",
+          "state": "training"
+        },
+        {
+          "file": 3,
+          "page": "iteration: 3",
+          "state": "training"
+        },
+        {
+          "file": 4,
+          "page": "iteration: 4",
+          "state": "training"
+        },
+        {
+          "file": 5,
+          "page": "iteration: 5",
+          "state": "training"
+        },
+        {
+          "file": 7,
+          "page": "iteration: 7",
+          "state": "training"
+        },
+        {
+          "file": 8,
+          "page": "iteration: 8",
+          "state": "training"
+        },
+        {
+          "file": 9,
+          "page": "iteration: 9",
+          "state": "training"
+        },
+        {
+          "file": 11,
+          "page": "iteration: 11",
+          "state": "training"
+        }
+      ],
+      "trainer": {
+        "state": "done",
+        "iteration": 11,
+        "total": 12,
+        "device": "gpu",
+        "error": "",
+        "reward_per_step": 0.13632607460021973,
+        "loss": 8.23112678527832,
+        "episode_steps": 99.90243530273438
+      },
+      "curve_lengths": {
+        "curve": 12,
+        "loss_curve": 12,
+        "episode_steps_curve": 12
+      },
+      "record_status": "ok",
+      "run_record_sha256": "b0911b05fd5c321527d02c6f28dc5a167a755fef556ed6b6a212ad60c02a71e5",
+      "task_sha256": "878fd6e29272610834ba05902490896288a10e67ffd82452cbdabe37d2b1ed28",
+      "model_xml_sha256": "2529d882f9a340f1e3f96f18d0b0fd628d35e6cf274d3809dbd1816a9f8c679e",
+      "videos": [
+        {
+          "fresh_selection": "RUN wren56c-retry",
+          "browser_playback": true,
+          "download_sha256": "b534c28452de864328308e96ac8fd111fb305b7cd76b923f1211c31a113197dc",
+          "decoded_frames": 81,
+          "returned_to_current": "RUN wren56c-retry",
+          "run": "wren1-checkpoint20"
+        },
+        {
+          "fresh_selection": "RUN wren56c-retry",
+          "browser_playback": true,
+          "download_sha256": "ba2f38cd38081e8c3fe6aa4dd3a413de6b2a65ce532c7917e478c5bef302cbdd",
+          "decoded_frames": 6,
+          "returned_to_current": "RUN wren56c-retry",
+          "run": "wren1-final"
+        },
+        {
+          "fresh_selection": "RUN wren56c-retry",
+          "browser_playback": true,
+          "download_sha256": "250c0534a5deb7bedab0f547cb933ba2976943bbd410d8efe8618febbdde5529",
+          "decoded_frames": 81,
+          "returned_to_current": "RUN wren56c-retry",
+          "run": "wren2-checkpoint20"
+        },
+        {
+          "fresh_selection": "RUN wren56c-retry",
+          "browser_playback": true,
+          "download_sha256": "59825c07950c377e1ff6f53139f20f25dfcdb5786e72eead861b52b5c2b41d1b",
+          "decoded_frames": 81,
+          "returned_to_current": "RUN wren56c-retry",
+          "run": "wren2-final"
+        }
+      ],
+      "resource_bound": {
+        "MemoryPeak": "5288148992",
+        "MemoryMax": "21474836480",
+        "ActiveState": "active"
+      }
+    }
+  ],
+  "policy": {
+    "path": "runs/wren56c-retry/train/wren56c-retry.cxpolicy",
+    "sha256": "f96f80229e9c85e7a4f219da992f221d403527026c95922658143b82e7993042",
+    "bytes": 49137,
+    "engine_rollout_verified": false
+  },
+  "full_receipt_sha256": "0a1d456424439818e9a354d524e040ada0d1848dea084cb782cc00c50016ef3b",
+  "screenshots": {
+    "wren56c-interrupt-finished.png": "3fe3993c5b3b3bce69c1c4108534f415b5ead8b86aee47bfb194301e2c16ff97",
+    "wren56c-retry-start.png": "1df9c9a5385e24f22b5f88898d617a3c09fd616b71ea1f045027f838758321be",
+    "wren56c-interrupt-start.png": "d19c2c73fc1059a76886da83c46eacfddf393edbb09b1210823a2c42e04d9ef8",
+    "wren56c-retry-finished.png": "8b810e768b988f3454ae4f8e6e58dfe51d180835967d7bd20cb7c7fd8563b95c",
+    "wren56c-interrupt-terminal-confirmed.png": "1c9794c367129229939a22475fb5a29f5a2bb9b1cefffd5d518faf3dc1ac6e61",
+    "wren56c-retry-terminal-confirmed.png": "f44fbb6efb045de9c0c7774f9cb7dd7097cde0eab3fa6fa6d0f4c04244a6a5fc"
+  },
+  "limitations": [
+    "same-machine private-network browser, not a second device",
+    "training-only retry; no new engine rollout or video",
+    "initial CLI suite CPU toy training overlapped a GPU probe; run suites separately next time",
+    "two failed supervisor probes retained under wren56 and wren56b"
+  ],
+  "terminal_browser": {
+    "wren56c-interrupt": {
+      "status": "failed",
+      "telemetry": "failed",
+      "note": "error: Controlled interruption: SIGINT after real GPU updates; start a new cadex walk --out runs/<new-name>."
+    },
+    "wren56c-retry": {
+      "status": "completed",
+      "telemetry": "done",
+      "note": "\u2014"
+    }
+  }
+}

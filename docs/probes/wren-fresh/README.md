@@ -2,14 +2,15 @@
 
 Verified against source: 2026-09-12. [Cadex-new]
 
-Current working project: [`ot5-wren-copy54`](COPY.md), independently edited
-and reviewed with the original path unavailable. Port 8765 serves the copy,
-selecting retained `wren2-final` (105 mm) as historical relative to its accepted
-110 mm feet. No new training or product-agent authorship is claimed.
+Current working project: [`ot5-wren-copy54`](COPY.md), with accepted 110 mm
+feet. Its [controlled interruption/retry experiment](INTERRUPTION.md) keeps
+port 8765 current and preserves the original Wren and historical videos.
+The parameter revision remains caller-authored; the product-agent revision
+authorship gap is still open.
 
 Previous experiment: [the completed revised-foot comparison](COMPARISON.md)
 retains both training runs and their four videos; the persistent dashboard
-now selects `wren2-final`, revision `26332a5955e3…`. The sections below are
+then selected `wren2-final`, revision `26332a5955e3…`. The sections below are
 historical evidence of the earlier lifecycle steps.
 
 The corrected iteration 46 probe passes on `ot5-wren`, accepted revision

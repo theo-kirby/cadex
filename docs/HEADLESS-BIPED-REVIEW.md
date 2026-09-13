@@ -966,3 +966,15 @@ playback/download. This is a CLI parameter revision of a product-agent original,
 not a product-agent revision turn. Wren-specific independent-copy and controlled
 interruption evidence remains outside this unit; Reed's prior evidence stays
 separate. The operator server keeps running.
+
+
+### Wren copy interruption and recovery (iteration 56)
+
+The persistent server remains on `ot5-wren-copy54`, now selecting the completed
+12-update GPU retry `wren56c-retry` at accepted 110 mm feet. Its preceding real
+SIGINT interruption remains selectable with failed telemetry and CLI guidance.
+All four older videos still decode, play and download after both outcomes;
+all prior run files and original Wren files remain unchanged. See the
+[experiment, receipts and limitations](probes/wren-fresh/INTERRUPTION.md),
+including two corrected probe defects and the initial CPU-test/GPU-training
+overlap. This is D8/D10 lifecycle evidence, not a new gait, rollout or video.

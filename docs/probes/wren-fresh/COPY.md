@@ -2,7 +2,10 @@
 
 Verified against source: 2026-09-12. [Cadex-new]
 
-The working project is now `ot5-wren-copy54`. The persistent private-network
+For current status, see the [interruption/retry experiment](INTERRUPTION.md).
+The following is the retained iteration 54 copy-switch evidence.
+
+The working project became `ot5-wren-copy54`. The persistent private-network
 port 8765 serves this copy and defaults to retained `wren2-final` (105 mm feet),
 visibly HISTORICAL relative to the copy's accepted 110 mm feet and disabled
 policy. Select ACCEPTED NOW to inspect the copy-only edit. No new training
