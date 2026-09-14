@@ -179,6 +179,24 @@ export function create(canvas) {
     return install(entries);
   }
   function setPoses(poses) {meshes.forEach((m,n)=>pose(m,poses[n]));draw();}
+  // Exact bounds of the installed solids, in mm simulator coordinates, at each pose set in
+  // `frames` (a list of {name: placement}): every vertex of every solid is transformed, so a
+  // rotated part's box is its own and not its rotated box's. Leaves the last poses applied.
+  function boundsOver(frames) {
+    const v=new THREE.Vector3();
+    return frames.map(poses=> {
+      const lo=[Infinity,Infinity,Infinity], hi=[-Infinity,-Infinity,-Infinity];
+      meshes.forEach((m,n)=> {
+        pose(m,poses[n]); m.updateMatrix(); const a=m.geometry.attributes.position;
+        for (let i=0;i<a.count;i++) {
+          v.fromBufferAttribute(a,i).applyMatrix4(m.matrix);
+          const p=[v.x*1000,v.y*1000,v.z*1000];
+          for (let j=0;j<3;j++) {if(p[j]<lo[j])lo[j]=p[j]; if(p[j]>hi[j])hi[j]=p[j];}
+        }
+      });
+      return {min:lo,max:hi};
+    });
+  }
   function setCamera(value) {c=JSON.parse(JSON.stringify(value));draw();}
   // Simulation seconds on the timer overlay; null hides it (the viewport's resting state).
   function setClock(seconds) {clock=(seconds===null||seconds===undefined)?null:Number(seconds);}
@@ -253,7 +271,7 @@ export function create(canvas) {
   canvas.addEventListener('pointerup',lift);canvas.addEventListener('pointercancel',lift);
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0015));draw();},{passive:false});
   window.addEventListener('resize',draw);
-  return {available:true,load,install,clear,fit,draw,setPoses,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
+  return {available:true,load,install,clear,fit,draw,setPoses,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,style:STYLE,stage,showing:showing(),
       proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}}),
     png:()=>{draw();return canvas.toDataURL('image/png').split(',')[1];}};

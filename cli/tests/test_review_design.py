@@ -474,3 +474,63 @@ def test_follow_receipt_records_the_tracking_camera_and_timer_on_the_operator_ur
         assert (LOOK / f"{name}.png").is_file(), name
         assert receipt["images"][f"{name}.png"], name
         assert f"{name}.png" in text, f"the assessment does not cite {name}.png"
+
+
+FINCH = REPO / "docs/probes/ot6/finch"
+
+
+def test_finch_training_receipt_measures_the_real_biped_in_the_new_look():
+    """D6 (ADR-336): one bounded real GPU run on Finch under the charter's
+    limits, the task's episode, fall threshold and seed set declared, a
+    checkpoint video published while the trainer was active and a final
+    video afterwards — both in the dark reference look and naming what they
+    show — each policy measured over the declared ten seeds for pelvis
+    displacement, survival and falls, the render's impact on the trainer's
+    own update intervals, and the persistent dashboard serving the project
+    with the run selected at the end. A policy that did not stand is a valid
+    measured result; this pins the measurement, not the outcome."""
+
+    receipt = json.loads((FINCH / "training.json").read_text())
+    assert receipt["schema"] == "finch-training-evidence-v1" and receipt["project"] == "ot6-finch"
+    assert receipt["fall_below_mm"] == 84.0 and receipt["task"]["episode_steps"] == 400 and receipt["task"]["control_hz"] == 50
+    requested = receipt["requested"]
+    assert requested["timeout_seconds"] <= 7200 and receipt["training_wall_seconds"] < requested["timeout_seconds"]
+    assert receipt["resource_bound"]["MemoryMax"] == str(20 * 1024 ** 3) and receipt["resource_bound"]["ActiveState"] == "active"
+    assert receipt["memory"]["host_peak_bytes"] < 20 * 1024 ** 3
+    assert receipt["trainer_exit"] == 0 and receipt["trainer_final"]["state"] == "done" and receipt["trainer_final"]["device"] == "gpu"
+    assert receipt["trainer_final"]["iteration"] == requested["iterations"] - 1
+    overhead = receipt["render_overhead"]
+    assert overhead["concurrent_renders"] == 1 and overhead["during_window"]["count"] >= 1
+    assert all(overhead[w]["median_s"] > 0 for w in ("before_window", "during_window", "after_window"))
+    live = receipt["live_browser"]
+    assert live["persistent_server"] and live["default_view_kind"] == "RUN " + receipt["run"]
+    assert live["first_seen_count"] >= 7 and live["first_seen_max_committed_to_page_s"] < 5 and live["reload_count"] == 1
+    text = (FINCH / "README.md").read_text()
+    for phase in ("checkpoint20", "final"):
+        entry = receipt[phase]
+        assert len(entry["policy_sha256"]) == 64
+        assert entry["witness"]["witness_error"] < entry["witness"]["witness_tolerance"]
+        assert entry["trainer_active_after_browser"] == (phase == "checkpoint20") and entry["browser_check_exit"] == 0
+        video = entry["video"]
+        assert video["style"] == "cadex-prototype-dark-v1" and video["showing"].startswith("tessellated solids")
+        assert video["accepted_revision"] == entry["playback_revision"] != receipt["accepted_revision"] and video["frames"] > 0
+        assert entry["browser"]["download_sha256"] == video["sha256"] and entry["browser"]["components"] == 29
+        assert entry["browser"]["is_default"] == (phase == "final")
+        frame = FINCH / entry["video_frame"]["png"]
+        assert frame.is_file() and frame.stat().st_size <= IMAGE_CAP
+        assert hashlib.sha256(frame.read_bytes()).hexdigest() == entry["video_frame"]["sha256"]
+        assert frame.name in text, f"the assessment does not cite {frame.name}"
+        seeds = entry["seeds"]
+        assert seeds["seeds"] == list(range(10)) and seeds["episode_seconds"] == 8.0 and seeds["fall_below_mm"] == 84.0
+        assert len(seeds["per_seed"]) == 10 and seeds["falls"] + seeds["stood_full_episode"] == 10
+        assert seeds["falls"] == sum(1 for row in seeds["per_seed"] if row["fell"])
+        assert all(0 < row["survival_s"] <= 8.0 for row in seeds["per_seed"])
+        assert seeds["survival_s"]["min"] <= seeds["survival_s"]["mean"] <= seeds["survival_s"]["max"] <= 8.0
+        assert seeds["per_seed"][0]["survival_s"] == entry["observed_s"] and seeds["per_seed"][0]["fell"] == entry["fell"]
+        for key in ("falls", "stood_full_episode"):
+            assert f"{seeds[key]} / 10" in text or f"{seeds[key]}/10" in text, (phase, key)
+    end = receipt["dashboard_at_end"]
+    assert end["project"] == "ot6-finch" and end["accepted_revision"] == receipt["accepted_revision"]
+    assert {receipt["run"], receipt["run"] + "-checkpoint20", receipt["run"] + "-final"} <= {r["run"] for r in end["runs"]}
+    assert end["fresh_visit_selects"] == receipt["run"] + "-final"
+    assert "Verified against source: 2026-" in text

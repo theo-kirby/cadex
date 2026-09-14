@@ -24169,3 +24169,67 @@ island beside a free base is still not held (hazard 11 applies to it), and
 the floor's contact parameters are MuJoCo's defaults rather than a
 declaration — if a design ever needs a different ground, that is the
 declaration ADR-334 sketched, and it can be added then.
+
+## ADR-336 — Finch trains: the stand task declared, one bounded GPU run measured over its seed set, and the recorder taking a real tessellation (2026-09-13)
+
+**Context.** ADR-335 left Finch (ADR-334) trainable: a free base on the
+environment's floor. D6 of the ot6 charter (ADR-328) asks for one bounded
+real GPU run on it, a checkpoint video and a final video in the D3 look on
+the operator dashboard, and the measured displacement, survival and falls
+over a declared episode and seed set — with "standing for the full episode"
+as the bar and failing it a valid result. Lark's driver, evaluator and
+observer (`docs/probes/lark-fresh/train.py`,
+`docs/probes/wren-fresh/compare.py`, `observe.py`, `check_video.py`) were the
+precedent; two of them had Lark's shape baked in (eight components, a base
+found by the word "torso") and one product fact stopped the run halfway.
+
+**Decision.**
+
+1. *The task is declared in the script, as data* (project ADR-005,
+   `docs/design-specs.md`): `stand_task` on `finch_model`, 400 steps at 50 Hz
+   (8 s), the four servo position targets as actions bounded by the joint
+   limits, reward `alive_bonus` 0.5 + `forward_progress` 0.002·`comv_x` −
+   `control_cost` 2e-6·Στ², termination `fell` when `pelvis_z` < 0.7 × the
+   120 mm standing hip height = **84 mm**, reset variation on `pelvis_link`
+   of a 0–2° rigid tilt with a 4–10 mm lift and a 0–60 mm/s stumble
+   (measured floor clearance 0.0 mm). The forward weight is a fifth of
+   Lark's because Lark's taught a lunge (ADR-313); the alive bonus is what a
+   standing policy earns. The seed set is **0–9** through `rollout_seed`; a
+   placeholder policy declaration under `policy_on` carries the retained
+   policy's name and digest at playback. Accepted as revision
+   `a3dc4e9a0f84…` with `cadex script --set` — no model turn.
+2. *The recorder takes a real tessellation.* `cadex_cli.video` refused
+   Finch's checkpoint video with `incomplete or excessive component
+   geometry`: its cap was 20 000 triangles, sized for Lark's 96 boxes, and
+   Finch's 29 solids tessellate to **95 212**. The cap existed because the
+   per-frame trajectory bounds — the shadow camera's extent and the follow
+   rig's track — were computed in Python over every triangle at every solved
+   pose, which at 95 k triangles and 400 poses is minutes, not the 300 s
+   budget's fraction. Now the page fetches each retained solid over the
+   loopback server (the `load` path the viewer already uses) and reports the
+   triangle count it built, which must equal the count of the file Python
+   validated; the bounds and the track are computed in the scene module
+   (`boundsOver`) exactly, over every vertex, where the vertices are. The
+   cap is 500 000. Finch's 4-frame checkpoint video rendered in 3.5 s.
+   `test_video.py` renders a 27 652-triangle run with a turned tetrahedron
+   and holds the recorded bounds and standing height to the exact Python
+   bounds within 1e-3 mm, and shows they are narrower than the box of the
+   part's turned box.
+3. *The driver and the evaluator are Finch's own copies*
+   (`docs/probes/ot6/finch/train.py`, `evaluate.py`), not edits to Lark's:
+   29 components, the base named (`pelvis`), the episode and rate read from
+   the run's recorded parameters, the trainer bound raised to `timeout 3600`
+   (the charter allows two hours; Lark's 1800 was measured for eight bodies
+   and Finch has thirty) with `MemoryMax=20G` unchanged. Concurrent rendering
+   is bounded to the one checkpoint video and measured against the trainer's
+   committed update intervals.
+
+**Evidence.** <<RESULTS>>
+
+**Consequences.** No engine or protocol change. The recorder's `style_sha256`
+changes with the scene module, as it does for any change to the file that
+determines pixels; earlier recordings keep theirs. A run whose STL files
+exceed 500 000 triangles is still refused, and the 300 s frame-production
+budget still applies to the browser's rendering, which for Finch is well
+inside it. Evaluations wait for the trainer to finish so that the training
+measurement stays clean; nothing in this unit adds a dependency.

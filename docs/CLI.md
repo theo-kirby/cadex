@@ -2187,11 +2187,16 @@ code, shared with the tests. A loopback server serves only the configured
 project and shipped static allowlist while capture runs; it closes afterward.
 The persistent operator server is independent and remains running.
 
-Python verifies retained model/policy/task/seed identities and solved poses,
-builds the subject's centre track over the sampled poses, and sends exact
-solved samples at 10 fps plus the final pose to the common scene, which
-frames each one with the **follow rig** (ADR-332, `docs/REVIEW-DESIGN.md`
-§10): the subject's standing height fills a declared 0.22 of the frame
+Python verifies retained model/policy/task/seed identities and solved poses
+and validates every retained solid (up to 500 000 triangles in all — a real
+model such as Finch is 95 212, ADR-336); the capture page then fetches each
+of those solids over the loopback server and reports the triangle count it
+built, which must equal the validated file's. The trajectory bounds and the
+subject's centre track are computed in the scene, exactly, over every vertex
+at every solved pose (`boundsOver`), not in Python — which is what the
+earlier 20 000-triangle cap had paid for. Python sends exact solved samples
+at 10 fps plus the final pose to the common scene, which frames each one
+with the **follow rig** (ADR-332, `docs/REVIEW-DESIGN.md` §10): the subject's standing height fills a declared 0.22 of the frame
 height at one standoff, the orientation is fixed, the anchor is a
 Hann-smoothed copy of the track with a soft drift limit, and a **timer** pill
 bottom-left shows simulation seconds. It encodes

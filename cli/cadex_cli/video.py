@@ -30,7 +30,7 @@ from .review_server import run_model
 
 FPS = 10
 MAX_BYTES = 32 * 1024 * 1024
-MAX_TRIANGLES = 20_000
+MAX_TRIANGLES = 500_000
 # The follow rig's declared framing (REVIEW-DESIGN.md §10, ADR-332): the subject's standing
 # height — its vertical extent at the first solved pose — fills this fraction of the frame
 # height, and the camera anchor is a Hann-smoothed subject track with this half-window at FPS
@@ -144,38 +144,27 @@ def _render(root, directory):
         require(manifest['available'], 'no retained rollout model')
         names = trace['component_outputs']
         require(names and len(names) == len(set(names)), 'invalid component list')
-        meshes = {}
+        # Every solid is read and validated here, once, and its triangle count is what the
+        # page must report back after fetching the same retained file over the local server.
+        meshes, entries = {}, []
         for entry in manifest['components']:
             if entry['name'] in names:
-                require(entry['mesh_status'] == 'retained', 'missing component mesh')
+                require(entry['mesh_status'] == 'retained' and entry.get('mesh'), 'missing component mesh')
                 meshes[entry['name']] = stl(retained(directory, str(trace_path.parent.relative_to(directory) /
                                                                     (entry['output'] + '.stl'))))
+                # Manifest order is the component colour identity in both clients.
+                entries.append({'name': entry['name'], 'mesh': entry['mesh'],
+                                'placement': frames[0]['component_placements'][entry['name']]})
         require(set(meshes) == set(names) and sum(map(len, meshes.values())) <= MAX_TRIANGLES,
                 'incomplete or excessive component geometry')
-        def geometry(frame):
+        for frame in frames:
             poses = frame['component_placements']
             require(set(poses) == set(names), 'incomplete frame')
-            return [(name, tri) for name in names
-                    for tri in placed(meshes[name], poses[name])]
-        # Bounds over every visited pose (the shadow camera and the stage cover the whole
-        # travel) and the subject's centre at each solved pose (the follow rig's track).
-        lo, hi = [math.inf]*3, [-math.inf]*3
-        centres, height = [], None
-        for frame in frames:
-            require(time.monotonic()-started < 300, 'render exceeded 300 seconds')
-            flo, fhi = [math.inf]*3, [-math.inf]*3
-            for _, tri in geometry(frame):
-                for point in tri:
-                    for j, v in enumerate(point):
-                        flo[j], fhi[j] = min(flo[j], v), max(fhi[j], v)
-            centres.append([(a+b)/2 for a, b in zip(flo, fhi)])
-            height = height if height is not None else fhi[2]-flo[2]
-            lo, hi = [min(a, b) for a, b in zip(lo, flo)], [max(a, b) for a, b in zip(hi, fhi)]
-        require(height > 0, 'subject has no height')
+            for name in names:
+                placed((), poses[name])   # the pose checks, without transforming anything
         count = math.ceil(times[-1]*FPS) + 1
         def sample(i):
             return len(frames)-1 if i == count-1 else max(0, bisect.bisect_right(times, i/FPS)-1)
-        track = [centres[sample(i)] for i in range(count)]
         with tempfile.TemporaryDirectory(prefix='.video-', dir=directory) as temporary:
             work = Path(temporary)
             executable = find_browser()
@@ -185,12 +174,26 @@ def _render(root, directory):
                 with HeadlessBrowser(executable, width=512, height=512) as browser:
                     page = browser.page(server.url + 'capture.html')
                     page.wait_for('window.cadexCapture?.available')
-                    # Manifest order is the component colour identity in both clients.
-                    entries = [{'name': entry['name'],
-                                'positions': [v for tri in meshes[entry['name']] for p in tri for v in p],
-                                'placement': frames[0]['component_placements'][entry['name']]}
-                               for entry in manifest['components'] if entry['name'] in meshes]
-                    page.evaluate('cadexCapture.install(' + json.dumps(entries) + ')')
+                    # The page fetches each retained solid from the server over the run
+                    # directory Python just validated, and reports what it built; a count
+                    # that differs from the validated file's is a different file.
+                    loaded = page.evaluate('cadexCapture.load(' + json.dumps({'components': entries}) + ')',
+                                           await_promise=True)
+                    require([(e['name'], e['triangles']) for e in loaded] ==
+                            [(e['name'], len(meshes[e['name']])) for e in entries], 'page drew different geometry')
+                    # Bounds over every visited pose (the shadow camera and the stage cover the
+                    # whole travel) and the subject's centre at each solved pose (the follow
+                    # rig's track), exact over every vertex, computed where the vertices are.
+                    boxes = page.evaluate('cadexCapture.boundsOver(' +
+                                          json.dumps([f['component_placements'] for f in frames]) + ')')
+                    require(len(boxes) == len(frames) and all(
+                        all(math.isfinite(v) for v in b['min'] + b['max']) for b in boxes), 'bounds failed')
+                    lo = [min(b['min'][j] for b in boxes) for j in range(3)]
+                    hi = [max(b['max'][j] for b in boxes) for j in range(3)]
+                    centres = [[(a+b)/2 for a, b in zip(b['min'], b['max'])] for b in boxes]
+                    height = boxes[0]['max'][2] - boxes[0]['min'][2]
+                    require(height > 0, 'subject has no height')
+                    track = [centres[sample(i)] for i in range(count)]
                     bounds = {'min': lo, 'max': hi, 'center': [(a+b)/2 for a,b in zip(lo,hi)],
                               'radius': math.dist(lo,hi)/2 or 1}
                     page.evaluate('cadexCapture.frameBounds(' + json.dumps(bounds) + '); cadexCapture.fit()')

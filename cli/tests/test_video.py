@@ -3,6 +3,7 @@
 """Independent synthetic rollout fixtures; real verification is in test_walk."""
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import select
@@ -554,3 +555,81 @@ def test_video_availability_tracks_missing_partial_restored_and_history(rendered
     finally:
         server.shutdown()
         server.server_close()
+
+
+def _fine_stl(size, n):
+    """An ASCII STL of a ``size`` mm cube whose faces are gridded ``n``×``n``: 12·n² facets."""
+
+    def face(origin, u, v):
+        for i in range(n):
+            for j in range(n):
+                a = [origin[k] + u[k]*i/n*size + v[k]*j/n*size for k in range(3)]
+                b = [origin[k] + u[k]*(i+1)/n*size + v[k]*j/n*size for k in range(3)]
+                c = [origin[k] + u[k]*(i+1)/n*size + v[k]*(j+1)/n*size for k in range(3)]
+                d = [origin[k] + u[k]*i/n*size + v[k]*(j+1)/n*size for k in range(3)]
+                yield (a, b, c); yield (a, c, d)
+    s = size
+    faces = [((0, 0, 0), (1, 0, 0), (0, 1, 0)), ((0, 0, s), (0, 1, 0), (1, 0, 0)),
+             ((0, 0, 0), (0, 0, 1), (1, 0, 0)), ((0, s, 0), (1, 0, 0), (0, 0, 1)),
+             ((0, 0, 0), (0, 1, 0), (0, 0, 1)), ((s, 0, 0), (0, 0, 1), (0, 1, 0))]
+    lines = ['solid fine']
+    for origin, u, v in faces:
+        for tri in face(origin, u, v):
+            lines.append('  facet normal 0 0 0\n    outer loop')
+            lines.extend('      vertex %r %r %r' % tuple(p) for p in tri)
+            lines.append('    endloop\n  endfacet')
+    lines.append('endsolid fine')
+    return '\n'.join(lines) + '\n'
+
+
+def test_render_takes_a_real_tessellation_and_bounds_it_exactly(video_project):
+    """A real model is tens of thousands of triangles, not Lark's 96 boxes
+    (Finch's accepted revision tessellates to 95 212): the renderer takes it,
+    the page loads each retained solid over the local server and reports the
+    validated file's own triangle count back, and the bounds and the follow
+    track are exact over every vertex at every solved pose — a rotated part's
+    box is its own, not the box of its axis-aligned box — computed where the
+    vertices are rather than in Python, which is what the 20 000 cap paid for."""
+
+    if not shutil.which('ffmpeg') or not find_browser():
+        pytest.skip('FFmpeg and headless Chromium required')
+    root = video_project
+    run = root / 'runs/sample'
+    (run / 'rollout/torso.stl').write_text(_fine_stl(20.0, 48))   # 27 648 facets
+    tetra = [((0, 0, 0), (8, 0, 0), (0, 8, 0)), ((0, 0, 0), (0, 0, 8), (8, 0, 0)),
+             ((0, 0, 0), (0, 8, 0), (0, 0, 8)), ((8, 0, 0), (0, 0, 8), (0, 8, 0))]
+    (run / 'rollout/leg.stl').write_text('solid t\n' + ''.join(
+        '  facet normal 0 0 0\n    outer loop\n' + ''.join('      vertex %r %r %r\n' % p for p in tri) +
+        '    endloop\n  endfacet\n' for tri in tetra) + 'endsolid t\n')
+    trace_path = run / 'rollout/assembly-simulation-trace.json'
+    trace = json.loads(trace_path.read_text())
+    turn = [0, 0, math.sin(math.pi/8), math.cos(math.pi/8)]   # 45 degrees about Z
+    for frame in trace['frames'][1:]:
+        frame['component_placements']['shin'].update(rotation_xyzw=turn, position_mm=[0, 30, -40])
+    trace_path.write_text(json.dumps(trace))
+    meshes = {'body': stl(run / 'rollout/torso.stl'), 'shin': stl(run / 'rollout/leg.stl')}
+    assert 20_000 < sum(map(len, meshes.values())) == 27_652
+    started = time.monotonic()
+    video = render(root, 'sample')
+    assert time.monotonic() - started < 120
+    frames = [f for f in trace['frames'] if f.get('frame_kind') == 'solver_output']
+    def box(points):
+        return [[m(p[j] for p in points) for j in range(3)] for m in (min, max)]
+    exact = [box([p for name in meshes for tri in placed(meshes[name], f['component_placements'][name]) for p in tri])
+             for f in frames]
+    def aabb_corners(mesh):
+        low, high = box([p for tri in mesh for p in tri])
+        return [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
+    corners = [box([p for name in meshes for tri in placed([[c] * 3 for c in aabb_corners(meshes[name])],
+                                                             f['component_placements'][name]) for p in tri])
+               for f in frames]
+    lo = [min(b[0][j] for b in exact) for j in range(3)]
+    hi = [max(b[1][j] for b in exact) for j in range(3)]
+    assert all(abs(a - b) < 1e-3 for a, b in zip(video['bounds']['min'] + video['bounds']['max'], lo + hi))
+    assert abs(video['framing']['subject_height_mm'] - (exact[0][1][2] - exact[0][0][2])) < 1e-3
+    # The turned tetrahedron's own box is narrower than the box of its turned box.
+    assert max(b[1][1] for b in corners) > hi[1] + 4 > 39
+    assert video['frames'] == 6 and video['showing'].startswith('tessellated solids')
+    decoded = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(run / video['path']), '-f', 'rawvideo',
+                              '-pix_fmt', 'rgb24', '-'], capture_output=True, check=True).stdout
+    assert len(decoded) == 6 * 512 * 512 * 3
