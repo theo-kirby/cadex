@@ -68,3 +68,40 @@ all four slots, refuses a restart before any fifth dispatch, checks refusal and
 timeout stops, rejects changed prompts, blocks the automatic follow-up, checks
 evidence hashes and kills a timed-out child. These are runner fixtures, not
 F5–F7 design results.
+
+## Seeded repair (F4)
+
+Iteration 25 added `repair` while the documented reset was still ahead
+(18:02 New York time; ADR-354). No provider call was made in that unit.
+After the reset, collect the single frozen repair call on the preserved seed:
+
+```bash
+pixi run python docs/probes/ot7/runner/run.py repair \
+  "$PROJECTS/ot7-heron-repair" --model claude-fable-5
+```
+
+This mode requires an existing seed. It checks the script hash and first
+accepted revision against the original refusal receipt, the preserved accepted
+digest, working revision, and empty parameter/board/cage/mount/net overrides.
+It neither copies nor writes a design. It exclusively creates
+`evidence/f4-repair/`; an existing directory refuses redispatch, including an
+interrupted call. Earlier provider refusals remain in their original evidence
+directories and must be included in the final accounting.
+
+The runner first reads all accepted clearance pages with `restore=False`,
+retaining `before/clearance.json`, `before/fit.json` and their hashes. A failed
+read, missing report or changed script/metadata stops before any provider call.
+It then dispatches only `repair.prompt.txt`, without `--resume`, under the same
+30-minute bound and automatic-follow-up guard as design attempts. It records
+one consumed continuation, the provider stream, elapsed time, after-fit report
+and before/after accepted metadata and script hashes. The before artifacts are
+relative to `before/`, and turn artifacts to `turn-0/`, within `f4-repair/`.
+A refusal still retains after measurements. No smoke or additional continuation
+is run for F4. Missing evidence never means passing fit, and CLI exit status
+alone does not establish a completed design turn or a successful repair.
+
+Known-answer fixtures preserve a seed through collection, supply seven before
+failures and zero after failures, verify the sole frozen prompt and fresh
+session, reject changed seed identity, and stop on missing/failed/mutating
+before reads. They prove collection behavior only; F4's actual repair remains
+open until a product-agent turn supplies the measurements.

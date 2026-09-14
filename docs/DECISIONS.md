@@ -24811,3 +24811,14 @@ restart refusal, provider errors, changed prompts, suppressed automatic
 follow-ups, per-turn evidence hashes and process timeouts. This is tooling for
 F5–F7, not evidence that any of their designs passes. The runner README states
 how to run it and how to interpret incomplete or missing evidence.
+
+**F4 extension (iteration 25, 2026-09-14).** The same runner now accepts
+`repair` on the preserved first Heron seed. It pins script/revision/digest and
+empty overrides, captures unchanged before measurements, consumes exactly one
+frozen repair slot in a fresh session, and retains after measurements and
+identity. Exclusive `evidence/f4-repair` creation prevents redispatch; failed
+before evidence stops before the provider. No seed writer, new dependency,
+smoke, additional prompt or product behavior change. Known-answer fixtures
+pin seed preservation, seven-to-zero evidence collection, identity rejection,
+fresh prompting and failed-before stops. This is the critic's requested
+fallback before the recorded provider reset, not a repair result.

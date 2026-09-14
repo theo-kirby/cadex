@@ -67,16 +67,18 @@ def test_provider_failure_stops_without_spending_continuations(tmp_path, code):
     assert calls[-1][1] == 300 and '--timeout' in calls[-1][0]
 
 
-def test_changed_prompt_cannot_launch(tmp_path, monkeypatch):
+@pytest.mark.parametrize('design,name', [('heron', 'continue-3.prompt.txt'),
+                                          ('repair', 'repair.prompt.txt')])
+def test_changed_prompt_cannot_launch(tmp_path, monkeypatch, design, name):
     prompts = tmp_path / 'prompts'
     prompts.mkdir()
     for file in runner.PROMPTS.iterdir():
         (prompts / file.name).write_bytes(file.read_bytes())
-    (prompts / 'continue-3.prompt.txt').write_text('changed')
+    (prompts / name).write_text('changed')
     monkeypatch.setattr(runner, 'PROMPTS', prompts)
     target = project(tmp_path)
     with pytest.raises(ValueError, match='frozen prompt changed'):
-        runner.run('heron', target, 'fixture')
+        runner.run(design, target, 'fixture')
     assert not target.exists()
 
 
@@ -110,3 +112,93 @@ def test_timeout_kills_the_process_group_and_retains_output(tmp_path):
     assert result['exit_code'] == 'timeout'
     assert result['elapsed_seconds'] < 3
     assert 'started' in (tmp_path / 'turn.stdout.json').read_text()
+
+
+def repair_seed(tmp_path, monkeypatch):
+    target = project(tmp_path)
+    target.mkdir()
+    (target / 'evidence').mkdir()
+    (target / 'script.py').write_text('known seed fixture\n')
+    metadata = {'accepted_revision': 'first-revision', 'working_revision': 'first-revision',
+                'accepted_digest': 'ce35f4d3ae95b082ec54d862d8bc2fbfe59898cd37ddb30d4416918bfbc9603c',
+                'param_values': {}, 'board_values': [], 'cage_values': [],
+                'mount_values': [], 'net_values': []}
+    runner.write(target / 'script.json', metadata)
+    repo = tmp_path / 'repo'
+    retained = repo / 'docs/probes/ot7/retained'
+    retained.mkdir(parents=True)
+    runner.write(retained / 'repair-refusal.json', {'seed': {
+        'script_sha256': runner.digest(target / 'script.py')['sha256'],
+        'accepted_revision': 'first-revision'}})
+    monkeypatch.setattr(runner, 'REPO', repo)
+    return target
+
+
+def test_repair_preserves_seed_and_collects_one_frozen_fresh_turn(tmp_path, monkeypatch):
+    target = repair_seed(tmp_path, monkeypatch)
+    before = runner.seed_identity(target)
+    calls = []
+    fake = executor(calls)
+    def execute(command, out, stem, timeout):
+        result = fake(command, out, stem, timeout)
+        if stem == 'measurement':
+            # Known answer: before has seven failures, after has none.
+            runner.write(out / 'fit.json', {'verdict': 'fail' if out.name == 'before' else 'pass',
+                         'failing_count': 7 if out.name == 'before' else 0, 'pairs_checked': 10})
+        return result
+    report = runner.run('repair', target, 'fixture', execute)
+    assert runner.seed_identity(target) == before
+    assert report['seed'] == before == report['turns'][0]['accepted_after']
+    assert report['before']['seed_unchanged']
+    assert report['turns'][0]['static_fit']['failing_count'] == 0
+    assert report['turns'][0]['continuations_used'] == 1
+    assert [Path(cmd[-2]).name for cmd, _ in calls if '--child-turn' in cmd] == ['repair.prompt.txt']
+    assert [Path(cmd[-1]).name for cmd, _ in calls if '--child-measure' in cmd] == ['before', 'turn-0']
+    assert all('smoke' not in cmd for cmd, _ in calls)
+    assert {'clearance.json', 'fit.json'} <= {a['path'] for a in report['before']['artifacts']}
+    with pytest.raises(FileExistsError):
+        runner.run('repair', target, 'fixture', execute)
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize('change', ['script', 'accepted_revision', 'accepted_digest', 'param_values'])
+def test_repair_rejects_changed_seed_before_dispatch(tmp_path, monkeypatch, change):
+    target = repair_seed(tmp_path, monkeypatch)
+    if change == 'script':
+        (target / 'script.py').write_text('changed')
+    else:
+        metadata = json.loads((target / 'script.json').read_text())
+        metadata[change] = {'width': 42} if change == 'param_values' else 'changed'
+        runner.write(target / 'script.json', metadata)
+    with pytest.raises(ValueError, match='seed identity'):
+        runner.run('repair', target, 'fixture')
+    assert not (target / 'evidence/f4-repair').exists()
+
+
+@pytest.mark.parametrize('failure', ['missing', 'error', 'mutation'])
+def test_repair_never_calls_provider_without_unchanged_before_evidence(tmp_path, monkeypatch, failure):
+    target = repair_seed(tmp_path, monkeypatch)
+    calls = []
+    fake = executor(calls)
+    def execute(command, out, stem, timeout):
+        result = fake(command, out, stem, timeout)
+        if failure == 'missing':
+            (out / 'fit.json').unlink()
+        elif failure == 'error':
+            result['exit_code'] = 1
+        else:
+            (target / 'script.py').write_text('unexpected read mutation')
+        return result
+    report = runner.run('repair', target, 'fixture', execute)
+    assert report['status'] == 'before_unavailable'
+    assert report['turns'] == []
+    assert len(calls) == 1
+
+
+def test_repair_child_uses_frozen_prompt_without_resume(tmp_path, monkeypatch):
+    from cadex_cli import __main__ as cli
+    seen = []
+    monkeypatch.setattr(cli, 'main', lambda args: seen.extend(args) or 0)
+    assert runner.child_turn(tmp_path, tmp_path, runner.PROMPTS / 'repair.prompt.txt', 'fixture') == 0
+    assert '--resume' not in seen
+    assert seen[seen.index('-p') + 1] == (runner.PROMPTS / 'repair.prompt.txt').read_text()
