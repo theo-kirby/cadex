@@ -544,7 +544,7 @@
  },
  "earlier_run_records": {
   "count": 0,
-  "unchanged_verified_by_driver": true
+  "note": "run records present before the training run; the driver asserts each is byte-identical afterwards, which over an empty set proves nothing"
  },
  "dashboard_at_end": {
   "project": "ot6-finch",

@@ -244,8 +244,11 @@ committed, after one reload.
 `b68622345563…` with three runs — `finch1`, `finch1-checkpoint20` (marked
 historical, same training run by policy identity) and `finch1-final` — and a
 fresh visit selects `finch1-final`. The final video's accepted revision is the
-one the browser saw, and the D5 run records that preceded training are
-unchanged (their digests are in the driver's result).
+one the browser saw. **No run record existed before `finch1`**: the D5 and
+ADR-335 units accepted revisions and wrote `evidence/`, never a `runs/`
+entry, so the driver's preserved-records check ran over an empty set
+(`preserved_records: {}` in `finch1-experiment-result.json`) and proves
+nothing about earlier records — there were none to preserve.
 
 **What this does not claim.** One run, one seed for training, ten for
 evaluation; no shove band, no gait metric beyond pelvis displacement, no

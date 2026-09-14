@@ -132,7 +132,8 @@ receipt = {
                         'concurrent_renders': 1, 'render_seconds': mid['render_seconds']} if 'overhead' in mid else {'failure': mid.get('failure')},
     'checkpoint20': playback('intermediate', run + '-checkpoint20', eval_root / (project.name + '-eval-' + run + '-c')),
     'final': playback('final', run + '-final', eval_root / (project.name + '-eval-' + run + '-f')),
-    'earlier_run_records': {'count': len(result['preserved_records']), 'unchanged_verified_by_driver': True},
+    'earlier_run_records': {'count': len(result['preserved_records']),
+                            'note': 'run records present before the training run; the driver asserts each is byte-identical afterwards, which over an empty set proves nothing'},
     # Identity rows, not the served records: the full /api/project document is 36 KB.
     'dashboard_at_end': {'project': api['project'], 'accepted_revision': api['accepted']['revision'], 'served_at': api['served_at'],
                          'runs': [{k: r.get(k) for k in ('run', 'status', 'mode', 'relation')} | {'policy_sha256': (r.get('policy') or {}).get('sha256'),
