@@ -122,3 +122,40 @@ Robin **39**, and Heron **20** failures. The only removed findings are
 common volume. No measurement, source design or original receipt was changed.
 All three designs still fail; swept coverage remains unavailable. The F4
 provider refusal above remains zero completed design turns, not a repair result.
+
+## Portable regression and second provider refusal
+
+Iteration 19 resumed the same frozen repair prompt in a fresh session, as the
+critic requested. [The second receipt](repair-refusal-iteration19.json) records
+another session-limit refusal after **4.020 s**, with zero completed design
+turns. Before and after reads both report **15 failures** (8 intersections,
+6 below-clearance pairs, 1 world plane). ADR-353 removes six nominal 0.1 mm
+findings from the older seed's 21: two bearing gaps and four servo/tab-screw
+gaps. No geometry changed. Script, accepted revision, digest and accepted
+attempt remain unchanged; normal product restore updates `latest_candidate`
+and `updated_at`. The transcript and full before/after reports are retained
+under `ot7-heron-repair/evidence/iteration19/`, with hashes in the receipt.
+F4 remains open; there was no repeated retry within this dispatch.
+
+The fallback now has a portable regression in
+`cli/tests/test_retained_fit.py`. The three `*.measurements.json` files here
+encode **all 787 retained pairs** as component indices, distance and common
+volume, preserving the source numbers without rounding. Each cites the digest
+of the full original clearance report and is below 16 KB. They retain revision,
+world-geometry and sweep availability metadata. These are measurement fixtures,
+not substitutes for rebuilding the solids or proving that restore works.
+
+The test replays the actual product `fit_summary`, compares every failing pair
+and number against the original comparison receipt, and permits exactly the
+two explained Heron boundary corrections. It also checks the thread-engagement
+volumes, seating counts and designed 0.05 mm gaps against the explanation above.
+Expected totals remain **44 / 39 / 20**, with all sweeps unavailable. Restoring
+the old strict threshold in memory makes the Heron case fail on those two
+extra named pairs. F9's retained classification is now pinned; its broader
+restore/build evidence remains open.
+
+Validation for this regression unit: full CLI suite **684 passed, 1 skipped**
+in 530.16 s; focused replay **3 passed**. The deliberate old-threshold replay
+fails as expected. Log digests are in the second refusal receipt. No engine,
+protocol or payload implementation changed, so no full build or packaged gate
+was rerun.

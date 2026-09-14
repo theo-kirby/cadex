@@ -1,0 +1,69 @@
+{
+  "criterion": "F4",
+  "outcome": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)",
+  "project": "ot7-heron-repair",
+  "evidence_directory": "evidence/iteration19",
+  "elapsed_seconds": 4.020468473434448,
+  "exit_code": 1,
+  "prompt_sha256": "5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904",
+  "session_id": "4a6b06ae-0ba3-447d-8193-8769933150f2",
+  "fresh_session": true,
+  "completed_design_turns": 0,
+  "actor_design_edits": 0,
+  "fit_before": 15,
+  "fit_after": 15,
+  "script_unchanged": true,
+  "metadata_unchanged": false,
+  "artifacts": {
+    "after.clearance.json": {
+      "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803",
+      "bytes": 48856
+    },
+    "after.fit.json": {
+      "sha256": "63c8f7722485ec542fa91eb728158acfeb9fb6f0fa46512b6fd36d95d1fd4b30",
+      "bytes": 4488
+    },
+    "before.clearance.json": {
+      "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803",
+      "bytes": 48856
+    },
+    "before.fit.json": {
+      "sha256": "63c8f7722485ec542fa91eb728158acfeb9fb6f0fa46512b6fd36d95d1fd4b30",
+      "bytes": 4488
+    },
+    "run.json": {
+      "sha256": "bc5b37cc4722768bae41d8661fb2fbd30ec99e329d23c4f5a7368b4004c2019c",
+      "bytes": 27242
+    },
+    "turn.envelope.json": {
+      "sha256": "380d1e551f148901f4df35b93773bcce8c1ee237438ec4380e3e4ec2f162f5e9",
+      "bytes": 1454
+    },
+    "turn.stderr.txt": {
+      "sha256": "3129a282accd591370a712118bb85970706917fe3ea7a70d4ed9095f069f6349",
+      "bytes": 66
+    },
+    "turn.transcript.jsonl": {
+      "sha256": "5c41384de5d7c3b129467c5a63b9d6980de88507f02cd31ce7a4a6fed09cf19e",
+      "bytes": 37102
+    },
+    "cli-tests.log": {
+      "sha256": "1edb32fed50c8749f10d2375c1308b1a782e997954b1e06f54ad6ad6f752a8a9",
+      "bytes": 3071
+    },
+    "old-threshold-test.log": {
+      "sha256": "cc5504a9ac363147debc5d1836f386b4fb7afa08454a7ceca7649d3b0e328bc8",
+      "bytes": 2947
+    }
+  },
+  "metadata_changed_fields": [
+    "latest_candidate",
+    "updated_at"
+  ],
+  "accepted_identity_unchanged": true,
+  "metadata_change_reason": "Normal product restore updated latest_candidate and updated_at; accepted identity unchanged.",
+  "fallback_verification": {
+    "cli_suite": "684 passed, 1 skipped in 530.16s",
+    "old_threshold_replay": "1 failed, 2 deselected (expected Heron rounding regression)"
+  }
+}
