@@ -529,8 +529,14 @@ def test_finch_training_receipt_measures_the_real_biped_in_the_new_look():
         assert seeds["per_seed"][0]["survival_s"] == entry["observed_s"] and seeds["per_seed"][0]["fell"] == entry["fell"]
         for key in ("falls", "stood_full_episode"):
             assert f"{seeds[key]} / 10" in text or f"{seeds[key]}/10" in text, (phase, key)
+    # Declaring each retained policy in the script accepts a new revision (the same lifecycle
+    # as Lark's), so at the end the dashboard's accepted revision is the final playback's and
+    # the training run is served as history at its own.
     end = receipt["dashboard_at_end"]
-    assert end["project"] == "ot6-finch" and end["accepted_revision"] == receipt["accepted_revision"]
-    assert {receipt["run"], receipt["run"] + "-checkpoint20", receipt["run"] + "-final"} <= {r["run"] for r in end["runs"]}
+    assert end["project"] == "ot6-finch" and end["accepted_revision"] == receipt["final"]["playback_revision"]
+    served = {r["run"]: r for r in end["runs"]}
+    assert {receipt["run"], receipt["run"] + "-checkpoint20", receipt["run"] + "-final"} <= set(served)
+    assert served[receipt["run"]]["accepted_revision"] == receipt["accepted_revision"] and served[receipt["run"]]["relation"] == "historical"
+    assert served[receipt["run"] + "-final"]["policy_sha256"] == receipt["final"]["policy_sha256"] and served[receipt["run"] + "-final"]["videos"] == 1
     assert end["fresh_visit_selects"] == receipt["run"] + "-final"
     assert "Verified against source: 2026-" in text

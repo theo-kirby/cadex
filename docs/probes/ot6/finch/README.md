@@ -165,3 +165,91 @@ revision.
 - Screw-driver access to the tab screws is from inside the leg's gap (7.5 mm
   between cheek and block); a real build would reach them before fitting the
   child block.
+
+## Training (D6, ADR-336) — `training.json`
+
+One bounded real GPU run, `finch1`, on the stand task declared in the script
+(400 steps at 50 Hz, fall below 84.0 mm pelvis height, seed set 0–9; ADR-336
+§1). The task was accepted as revision `a3dc4e9a0f84…`; the driver's
+`params --set policy_on=0` export recorded the same script text and the same
+geometry digest `6ccf922e66f8…` as revision `a6e043dde0fe…`, and that is the
+revision the trainer's model and task bundle came from. Requested 240 PPO
+updates on 1024 environments, checkpoints every 20, under `systemd-run` with
+`MemoryMax=20G` and a 3600 s timeout. The trainer exited 0 in 2048.7 s of wall
+clock (state `done`, device `gpu`, iteration 239); host peak 9.72 GB in the
+scope, GPU peak 15 695 MiB. Every trainer-committed update interval is in the
+receipt: 204 plain updates with a median of 4.90 s (4.80–5.06 s), the
+first-update compile at 78 s and each checkpoint step at 43–84 s.
+
+`train.py` drove it; `evaluate.py` rolled each retained policy in a fresh
+scratch project over the ten seeds (seed 0 reproduces the retained trace
+byte for byte, and the source run is unchanged afterwards); `report_training.py`
+wrote `training.json` from those artifacts and decoded one frame from each
+retained video. Everything else — traces, videos, the trainer log, the 241-row
+timeline, the observer's samples — stays in the project under `evidence/` and
+`runs/finch1*/`, cited by path and digest.
+
+**The two policies over the declared seed set** (pelvis x-displacement over
+the episode, survival, falls; the retained trace is seed 0):
+
+| policy | video | stood the full 8 s | falls | survival s (mean, min–max) | x displacement mm (mean, min–max) |
+|---|---|---|---|---|---|
+| checkpoint 20 (`83bf27c5…`, iteration 19) | `video-finch1-checkpoint20.png` at 0.15 s of 0.3 s | 0 / 10 | 10 / 10 | 0.296, 0.20–0.34 | −60.2, −69.8 to −51.2 |
+| final (`0f0997e1…`, iteration 239) | `video-finch1-final.png` at 4.0 s of 8.0 s | 10 / 10 | 0 / 10 | 8.0, 8.0–8.0 | +361.1, +319.4 to +432.7 |
+
+The bar the charter names is standing for the full episode. The checkpoint
+fails it on every seed: the frame at 0.15 s shows the pelvis already pitched
+forward past the feet, and the pelvis crosses 84 mm at 0.2–0.34 s. The final
+policy meets it on every seed, and does more than stand: it shuffles
+forward about 36 cm in 8 s, with the seed-0 pelvis also drifting 167 mm to
+the side, on the alive bonus plus the small forward term. The reward curve
+in the receipt rises from −0.071 per step at update 0 to 0.62 at update 239
+(best 0.655 at update 164). The trainer's own running mean episode length at
+the last update was 211 of 400 steps across its 1024 environments; the ten
+CLI rollouts of the retained policy each reached the 400-step limit. Those
+are different measurements — the trainer's batch while learning against the
+retained policy replayed through the engine's rollout op — and the receipt
+records both without reconciling them.
+
+**In the new look.** Both videos are `cadex-prototype-dark-v1` from the
+shared environment module: the near-black grid mat with its PROTOTYPE and
+1 METER labels, fog to the horizon, the contact shadow under the soles, the
+follow rig holding the subject at its declared framing fraction, and the
+timer pill (0.20 s and 4.00 s in the two frames). Each video's identity
+strip says `tessellated solids of the accepted revision; collision proxies
+not drawn` (ADR-333), and each frame shows exactly that: the 29 solids — the
+pelvis with its open bay, the orange MG90S cases standing outboard of the
+legs, the horns on the child blocks, the thighs and shins with their soles —
+rather than the 14 declared collision boxes. Both browser checks decoded the
+downloaded file to the recorded frame count (4 and 81) with differing frames
+and matching digests.
+
+**Published while the trainer was active, on the persistent URL.** The
+driver's own checkpoint publication failed at the video render with
+`incomplete or excessive component geometry`: the recorder's 20 000-triangle
+cap, sized for Lark's boxes, against Finch's 95 212 (ADR-336 §2). The rollout,
+the script revision `22cbb1638d10…` and the run record were the driver's, made
+at trainer update 22–23; the video was rendered by hand on the fixed recorder
+at update 54 (3.47 s) and browser-checked on the persistent dashboard at
+update 54, both while the trainer was still training, and the run record is
+unchanged by either. The trainer's committed update intervals around that
+render — 15 before, 2 overlapping, 2 after — have medians of 4.934, 4.909 and
+4.949 s, so one bounded concurrent render cost the trainer nothing
+measurable. The observer's live check during training saw the persistent
+server select `RUN finch1` on a fresh visit with 29 components loaded and
+seven successive trainer updates each reach the page within 2.28 s of being
+committed, after one reload.
+
+**The dashboard at the end** serves `ot6-finch` at accepted revision
+`b68622345563…` with three runs — `finch1`, `finch1-checkpoint20` (marked
+historical, same training run by policy identity) and `finch1-final` — and a
+fresh visit selects `finch1-final`. The final video's accepted revision is the
+one the browser saw, and the D5 run records that preceded training are
+unchanged (their digests are in the driver's result).
+
+**What this does not claim.** One run, one seed for training, ten for
+evaluation; no shove band, no gait metric beyond pelvis displacement, no
+claim about how a printed Finch would behave under these targets. The
+checkpoint video is 0.3 s long because that is how long the checkpoint stood.
+The final policy's forward shuffle is a measured behaviour of a stand task
+with a forward term, not a walking result.

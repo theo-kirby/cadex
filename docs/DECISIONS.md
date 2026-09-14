@@ -24224,7 +24224,24 @@ found by the word "torso") and one product fact stopped the run halfway.
    is bounded to the one checkpoint video and measured against the trainer's
    committed update intervals.
 
-**Evidence.** <<RESULTS>>
+**Evidence.** `docs/probes/ot6/finch/training.json` (14.2 KB), the two
+decoded frames beside it and the README's assessment, pinned by
+`test_finch_training_receipt_measures_the_real_biped_in_the_new_look`. The
+run `finch1` exited 0 after 2048.7 s (240 updates, iteration 239 `done` on
+`gpu`; host peak 9.72 GB under `MemoryMax=20G`, GPU peak 15 695 MiB). Over
+seeds 0–9: **checkpoint 20 fell on 10 / 10** at 0.20–0.34 s (x displacement
+−60 mm mean); **the final policy stood the full 8 s on 10 / 10** and shuffled
+forward 361 mm mean (319–433). Reward per step −0.071 → 0.62 (best 0.655 at
+update 164). Both videos are `cadex-prototype-dark-v1`, name `tessellated
+solids of the accepted revision; collision proxies not drawn`, and were
+browser-checked on the persistent dashboard, the checkpoint's at trainer
+update 54 with the trainer active (its interval medians before, during and
+after the 3.47 s render: 4.934, 4.909 and 4.949 s) and the final's after
+`done`, where a fresh visit selects `finch1-final`. The driver's own
+checkpoint publication failed at the old 20 000-triangle cap, which is what
+§2 fixed; the hand render on the fixed recorder stands in for it and the
+receipt says so. The stand bar is met by the final policy and failed by the
+checkpoint, both measured.
 
 **Consequences.** No engine or protocol change. The recorder's `style_sha256`
 changes with the scene module, as it does for any change to the file that
