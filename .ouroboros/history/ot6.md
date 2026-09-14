@@ -6,11 +6,11 @@ ended: 2026-09-14T05:36:29+00:00
 hours: 8.3
 state: stopped
 iterations: 32
-commits: 46
+commits: 47
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 10
-merged: no
+merged: cab6d341e5978a31417bd5329d62a6bd458f1835
 branch: ouroboros/ot6
 memory: hypergraph
 actor: claude:claude-fable-5-1
@@ -18,14 +18,14 @@ actor: claude:claude-fable-5-1
 
 # Run ot6
 
-32 iterations in 8.3h on `sb1x`, stopped (critic accepted done 2x in a row). Branch `ouroboros/ot6`, not merged.
+32 iterations in 8.3h on `sb1x`, stopped (critic accepted done 2x in a row). Branch `ouroboros/ot6`, merged as `cab6d341`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 32 (changed 32, recorded 20) |
-| commits | 46 — 186 files changed, 18883 insertions(+), 313 deletions(-) |
+| commits | 47 — 188 files changed, 18980 insertions(+), 314 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 10 checked at the tip |
 | reverts | 0 |
 | verdicts | answer 1, continue 24, done_accepted 2, done_rejected 1, reject 4 |
