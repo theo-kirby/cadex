@@ -203,6 +203,50 @@ def test_a_clear_build_says_pass_and_a_partless_build_says_unavailable() -> None
     assert call.summary.endswith("fit unavailable")
 
 
+def test_a_build_reply_names_every_failing_pair_past_forty() -> None:
+    """Sixty failing pairs of sixty-three reach the model whole (ADR-346).
+
+    An earlier cut of the block stopped at forty and pointed at the scope
+    for the rest. The charter asks for every failing pair in the reply
+    itself, so this pins the count, every name, every distance and every
+    volume on the text the model actually receives.
+    """
+
+    pairs = []
+    for i in range(63):
+        failing = i % 21 != 20  # three clear pairs, sixty failing
+        pairs.append({
+            **_OVERLAP, "first": f"part{i}", "second": f"part{i + 1}",
+            "first_label": f"part{i}", "second_label": f"part{i + 1}",
+            "distance_mm": 12.0 + i if not failing else (0.0 if i % 2 else 0.001 * (i + 1)),
+            "common_volume_mm3": (0.25 + i) if (failing and i % 2) else 0.0,
+        })
+    expected = [
+        (r["first"], r["second"], r["distance_mm"], r["common_volume_mm3"])
+        for i, r in enumerate(pairs) if i % 21 != 20
+    ]
+    assert len(expected) == 60
+    client = _fit_client(pairs)
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        payload = json.loads(
+            bridge.call("write_script", {"source": "x"})["content"][0]["text"]
+        )
+        (call,) = bridge.state.calls
+    fit = payload["fit"]
+    assert fit["verdict"] == "fail"
+    assert fit["pairs_checked"] == 63 and fit["failing_count"] == 60
+    assert fit["counts"] == {
+        "clear": 3, "intersection": 30, "below clearance": 30, "unknown": 0,
+    }
+    assert [
+        (f["first"], f["second"], f["distance_mm"], f["common_volume_mm3"])
+        for f in fit["failing"]
+    ] == expected
+    assert "failing_truncated" not in fit and "note" not in fit
+    assert call.fit == fit
+    assert call.summary.endswith("fit fail: 60 failing of 63 pair(s)")
+
+
 def test_every_modelling_op_carries_a_fit_block_and_no_read_does() -> None:
     client = _fit_client(
         [_OVERLAP],

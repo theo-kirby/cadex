@@ -6,7 +6,7 @@ from cadex_cli.__main__ import main
 from cadex_cli.client import CadexdClient, open_project
 from cadex_cli.bridge import Bridge
 from cadex_cli.clearance import (
-    FIT_REPLY_PAIR_LIMIT, bounds_agreement, fit_summary, pair_status, write_clearance,
+    bounds_agreement, fit_summary, pair_status, write_clearance,
 )
 
 RIG = '''
@@ -104,14 +104,33 @@ def test_fit_summary_counts_an_unmeasured_pair_as_failing():
     assert fit_summary(value, minimum=0.01)['counts']['below clearance'] == 0
 
 
-def test_fit_summary_is_bounded_and_says_so():
-    pairs = [{'first': f'p{i}', 'second': f'q{i}', 'distance_mm': 0.0, 'common_volume_mm3': 5.0}
-             for i in range(FIT_REPLY_PAIR_LIMIT + 3)]
+def test_fit_summary_names_every_failing_pair_however_many_there_are():
+    """The charter asks for every failing pair in the reply, not the first N.
+
+    Ninety pairs, sixty of them failing -- thirty intersections and thirty
+    below the minimum -- each with its own distance and volume: every one
+    comes back by name with its own numbers, in measurement order, and
+    nothing in the block says "truncated" or points elsewhere.
+    """
+
+    pairs = []
+    for i in range(90):
+        kind = i % 3  # 0: intersection, 1: below clearance, 2: clear
+        pairs.append({
+            'first': f'p{i}', 'second': f'q{i}',
+            'distance_mm': (0.0, 0.001 * (i + 1), 5.0 + i)[kind],
+            'common_volume_mm3': 0.5 + i if kind == 0 else 0.0,
+        })
+    expected = [(r['first'], r['second'], r['distance_mm'], r['common_volume_mm3'])
+                for i, r in enumerate(pairs) if i % 3 != 2]
+    assert len(expected) == 60
     fit = fit_summary({'available': True, 'pairs': pairs})
-    assert fit['failing_count'] == FIT_REPLY_PAIR_LIMIT + 3
-    assert len(fit['failing']) == FIT_REPLY_PAIR_LIMIT
-    assert fit['failing_truncated'] == 3
-    assert 'inspect scope=clearance' in fit['note']
+    assert fit['verdict'] == 'fail'
+    assert fit['pairs_checked'] == 90 and fit['failing_count'] == 60
+    assert fit['counts'] == {'clear': 30, 'intersection': 30, 'below clearance': 30, 'unknown': 0}
+    assert [(f['first'], f['second'], f['distance_mm'], f['common_volume_mm3'])
+            for f in fit['failing']] == expected
+    assert 'failing_truncated' not in fit and 'note' not in fit
 
 
 def test_the_prose_report_prints_the_fit_and_each_failing_pair():

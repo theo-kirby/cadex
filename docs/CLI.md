@@ -2031,11 +2031,12 @@ block to the reply the model sees, beside the script's `stdout`:
 ```
 
 `verdict` is `pass` only when every pair was measured and every pair is
-clear at the `cadex clearance` defaults; `fail` names every pair that is
-not — an intersection, a distance below the minimum, or a pair the engine
-could not measure, with its reason — bounded to the first forty with a
-`failing_truncated` count and a pointer at `inspect scope=clearance`, which
-serves every pair. `unavailable` means the revision places no assembly
+clear at the `cadex clearance` defaults; `fail` names **every** pair that
+is not — an intersection, a distance below the minimum, or a pair the
+engine could not measure, with its reason — however many there are. The
+list is never cut short: sixty failing pairs are sixty entries, each with
+its own distance and volume, and nothing in the block points elsewhere
+for the rest. `unavailable` means the revision places no assembly
 components, so nothing was checked; it never means pass. A measurement the
 bridge cannot read is also `unavailable`, with the error, and the build is
 still accepted: **a failing fit is reported, never refused.** The block is

@@ -24579,8 +24579,18 @@ Three changes, all on the CLI side, no protocol change:
   the thresholds, and every failing pair by name with its distance and
   common volume — an intersection, a distance below the `cadex clearance`
   minimum, or a pair the engine could not measure, which is failing too
-  because an unknown is not a fit. It is bounded to forty failing pairs and
-  points at the scope for the rest. `unavailable` means no assembly
+  because an unknown is not a fit. The list is whole: every failing pair,
+  however many, is in the reply with its own numbers (*amended the same
+  day* — the first cut stopped at forty and pointed at the scope for the
+  rest, and the critic rejected it against ADR-341's wording, "every
+  failing pair by name with its distance and common volume". A pointer is
+  not a pair: an agent that has to page a second tool to learn its
+  forty-first failure will not, and a design with sixty failing pairs is
+  exactly the design that needs all sixty in front of it. The bound and
+  its `failing_truncated` count are gone; two fixtures with sixty failing
+  pairs, one on `fit_summary` and one on the bridge reply the model
+  receives, pin every name, distance and volume, and both fail on the
+  bounded code). `unavailable` means no assembly
   components were placed, or the measurement could not be read; it never
   means pass, and **it never refuses the build** — a failing fit is
   reported, on the terms ADR-341 sets, and acceptance is unchanged for

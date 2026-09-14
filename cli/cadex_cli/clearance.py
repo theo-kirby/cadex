@@ -29,11 +29,6 @@ def pair_status(row: dict[str, Any], minimum: float, maximum_volume: float) -> s
     return "clear"
 
 
-#: How many failing pairs a build reply names in full before it points at
-#: `inspect scope=clearance` for the rest. A failing set larger than this is
-#: a design that has not been placed yet, not one whose 41st pair matters.
-FIT_REPLY_PAIR_LIMIT = 40
-
 #: Where the fit block's numbers come from, said in the block itself so the
 #: agent reading it cannot mistake it for the script's own printout.
 FIT_SOURCE = (
@@ -50,9 +45,12 @@ def fit_summary(
 ) -> dict[str, Any]:
     """The measured fit as a build reply carries it (ADR-346).
 
-    ``value`` is an ``inspect scope=clearance`` value. The block is small by
-    construction: the check counts, and every pair that is not clear, by
-    name, with its minimum distance and common volume. A pair the engine
+    ``value`` is an ``inspect scope=clearance`` value. The block is the
+    check counts and **every** pair that is not clear, by name, with its
+    minimum distance and common volume -- never a prefix of them. The
+    charter (ADR-341) asks for every failing pair in the reply itself, and
+    a pointer at the scope is not the same thing: an agent that has to page
+    through a second tool to learn its 41st failure will not. A pair the engine
     could not measure is failing here too -- an unknown is not a fit -- and
     carries the engine's reason. ``verdict`` is ``pass`` only when every
     pair was measured and every pair is clear; ``unavailable`` when the
@@ -100,14 +98,8 @@ def fit_summary(
         "pairs_checked": len(pairs),
         "counts": counts,
         "failing_count": len(failing),
-        "failing": failing[:FIT_REPLY_PAIR_LIMIT],
+        "failing": failing,
     }
-    if len(failing) > FIT_REPLY_PAIR_LIMIT:
-        summary["failing_truncated"] = len(failing) - FIT_REPLY_PAIR_LIMIT
-        summary["note"] = (
-            f"{len(failing)} pairs fail; the first {FIT_REPLY_PAIR_LIMIT} are "
-            "listed. inspect scope=clearance lists every pair."
-        )
     if verdict == "unavailable":
         summary["note"] = (
             "No published assembly with pair measurements: fit is measured "
