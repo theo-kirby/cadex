@@ -11,6 +11,8 @@ Status: open
 
 ## Current
 
+**F4–F7 and F10 done acceptance remain open.** The closing report consolidates all five refused provider calls and distinguishes implemented checks from unproven agent outcomes [rec: windy-otter-5423]. Iteration 37 could not reconcile because its contributor dispatch explicitly prohibited state/view writes; it retained that conflict as a record-only dead end and produced no new design, fit or smoke evidence [rec: hollow-comet-5408]. Reconcile judgement: preserve that dispatch restriction as historical context; this explicitly authorized maintainer pass folds its pending impact without changing any criterion's status [rec: hollow-comet-5408].
+
 **Owner-directed work for run `ot7` (ADR-341): make the product agent design mechanisms that fit, on its own [rec: kind-dusk-1609].** It replaces the ot6 charter (ADR-328, `round-sun-8398`), whose D1, D2 and D4–D10 the owner ticked on 2026-09-14; D3, the rendered look, went to the owner's own manual work and does not carry [rec: nimble-wing-3050]. The measurement it is sized from: ot6 produced three buildable designs, but the product agent did not make them fit by itself — Finch was written by the actor with no model turn, the actor edited Robin's script twice, and Heron's three defects (a floor plane in the design, 248.2 mm³ of servo tab buried in its cheek, a horn left 0.2 mm from its link) were found by a hand-run probe and fed back as hand-written turns while the agent's printed output said the parts fit each time. The cause is in the product, not the model: the engine already measures every part pair's gap and overlap at the solved pose (`_measure_clearance` in `src/Mod/cadex/cadex_assembly_worker.py`), but the agent's tools cannot reach those measurements, its reply carries the script's stdout, its system prompt (`cli/cadex_cli/agent.py`) tells it to verify by printing, and nothing checks fit across a joint's range [rec: kind-dusk-1609].
 
 In priority order [rec: kind-dusk-1609]:
@@ -32,3 +34,5 @@ None yet.
 
 - kind-dusk-1609 — the ot7 operator directive: the charter (ADR-341) verbatim, the ten criteria F1–F10 declared as gaps
 - nimble-wing-3050 — the ot6 owner review this charter follows from: nine criteria ticked, D3 handed to manual work, the next charter's mission named
+- windy-otter-5423 — closing report consolidates evidence while F4–F7 and done acceptance stay open
+- hollow-comet-5408 — contributor-only dispatch blocked iteration 37 reconciliation; historical restriction folded by the authorized maintainer
