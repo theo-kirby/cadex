@@ -674,3 +674,86 @@ def test_heron_design_receipt_is_a_buildable_arm_on_the_operator_url():
         assert visit["status"].endswith("showing: tessellated solids")
         assert "with collision proxies" in visit["proxy_status"]
         assert png_size(HERON / f"operator-{visit['width']}.png")[0] <= visit["width"]
+
+
+def test_heron_training_receipt_measures_the_arm_reach_in_the_new_look():
+    """D8 (ADR-340): one bounded real GPU run on Heron, the product-agent
+    two-DoF arm, under the charter's limits, the task's episode, target,
+    tolerance, floor and seed set declared, a checkpoint video published while
+    the trainer was active and a final video afterwards -- both in the dark
+    reference look and naming what they show -- each policy measured over the
+    declared ten seeds for the tip's reach error at episode end and over the
+    final second, its best approach, successes and terminations, the render's
+    impact on the trainer's own update intervals, a viewport frame from the
+    servo side, and the persistent dashboard serving the project with the run
+    selected at the end. A policy that did not reach is a valid measured
+    result; this pins the measurement, not the outcome."""
+
+    receipt = json.loads((HERON / "training.json").read_text())
+    assert receipt["schema"] == "heron-training-evidence-v1" and receipt["project"] == "ot6-heron"
+    task = receipt["task"]
+    assert task["episode_steps"] == 200 and task["control_hz"] == 50
+    assert receipt["target_mm"] == [task["target_x"], 0.0, task["target_z"]] == [100.0, 0.0, 60.0]
+    assert receipt["reach_tol_mm"] == task["reach_tol"] == 10.0 and receipt["tip_floor_mm"] == task["tip_floor"] == 5.0
+    requested = receipt["requested"]
+    assert requested["timeout_seconds"] <= 7200 and receipt["training_wall_seconds"] < requested["timeout_seconds"]
+    assert receipt["resource_bound"]["MemoryMax"] == str(20 * 1024 ** 3) and receipt["resource_bound"]["ActiveState"] == "active"
+    assert receipt["memory"]["host_peak_bytes"] < 20 * 1024 ** 3
+    assert receipt["trainer_exit"] == 0 and receipt["trainer_final"]["state"] == "done" and receipt["trainer_final"]["device"] == "gpu"
+    assert receipt["trainer_final"]["iteration"] == requested["iterations"] - 1
+    overhead = receipt["render_overhead"]
+    assert overhead["concurrent_renders"] == 1 and overhead["render_seconds"] > 0
+    assert all(overhead[w]["median_s"] > 0 for w in ("before_window", "after_window"))
+    if overhead["during_window"]["count"] == 0:
+        step = overhead["enclosing_interval"]
+        assert step["checkpoint_boundary"] and step["seconds"] > overhead["render_seconds"] and len(step["other_checkpoint_steps_s"]) >= 2
+    live = receipt["live_browser"]
+    assert live["persistent_server"] and live["default_view_kind"] == "RUN " + receipt["run"]
+    assert live["samples"] >= 7 and live["first_seen_count"] >= 6
+    assert live["first_seen_max_committed_to_page_s"] < 5 and live["reload_count"] == 1
+    text = (HERON / "TRAINING.md").read_text()
+    for phase in ("checkpoint20", "final"):
+        entry = receipt[phase]
+        assert len(entry["policy_sha256"]) == 64
+        assert entry["witness"]["witness_error"] < entry["witness"]["witness_tolerance"]
+        assert entry["trainer_active_after_browser"] == (phase == "checkpoint20") and entry["browser_check_exit"] == 0
+        video = entry["video"]
+        assert video["style"] == "cadex-prototype-dark-v1" and video["showing"].startswith("tessellated solids")
+        assert video["accepted_revision"] == entry["playback_revision"] != receipt["accepted_revision"] and video["frames"] > 0
+        assert entry["browser"]["download_sha256"] == video["sha256"] and entry["browser"]["components"] == 15
+        assert entry["browser"]["is_default"] == (phase == "final")
+        frame = HERON / entry["video_frame"]["png"]
+        assert frame.is_file() and frame.stat().st_size <= IMAGE_CAP
+        assert hashlib.sha256(frame.read_bytes()).hexdigest() == entry["video_frame"]["sha256"]
+        assert frame.name in text, f"the assessment does not cite {frame.name}"
+        seeds = entry["seeds"]
+        assert seeds["seeds"] == list(range(10)) and seeds["episode_seconds"] == 4.0
+        assert seeds["target_mm"] == receipt["target_mm"] and seeds["reach_tol_mm"] == 10.0 and seeds["tip_floor_mm"] == 5.0
+        per_seed = [dict(zip(seeds["per_seed_columns"], row)) for row in seeds["per_seed"]]
+        assert len(per_seed) == 10
+        assert seeds["successes"] == sum(1 for row in per_seed if row["success"])
+        assert seeds["terminations"] == sum(1 for row in per_seed if row["terminated"])
+        assert seeds["terminations"] + seeds["full_episode"] == 10
+        # Success is the script's own bar: within tolerance at the end and over the whole final second, unterminated.
+        assert all(row["success"] == (not row["terminated"] and row["end_error_mm"] <= 10.0 and row["final_second_max_error_mm"] <= 10.0) for row in per_seed)
+        assert all(0 <= row["min_error_mm"] <= row["end_error_mm"] <= row["final_second_max_error_mm"] + 0.05 for row in per_seed)
+        assert all(0 < row["survival_s"] <= 4.0 and (row["first_within_tol_s"] is None) == (row["min_error_mm"] > 10.0) for row in per_seed)
+        assert seeds["end_error_mm"]["min"] <= seeds["end_error_mm"]["mean"] <= seeds["end_error_mm"]["max"]
+        assert per_seed[0]["survival_s"] == entry["observed_s"] and per_seed[0]["terminated"] == entry["terminated"]
+        assert abs(per_seed[0]["end_error_mm"] - entry["end_error_mm"]) <= 0.06
+        assert f"{seeds['successes']} / 10" in text or f"{seeds['successes']}/10" in text, phase
+    view = json.loads((HERON / "servo-view.json").read_text())
+    assert view["selected"] == "RUN " + receipt["run"] + "-final" and view["showing"] == "solids"
+    assert view["camera_before"]["yaw"] == 0.8 and view["camera_after"]["yaw"] < -1.0
+    assert view["camera_after"]["distance"] == view["camera_before"]["distance"]
+    png = HERON / view["png"]
+    assert png.is_file() and png.stat().st_size == view["png_bytes"] <= IMAGE_CAP
+    assert hashlib.sha256(png.read_bytes()).hexdigest() == view["png_sha256"] and png.name in text
+    end = receipt["dashboard_at_end"]
+    assert end["project"] == "ot6-heron" and end["accepted_revision"] == receipt["final"]["playback_revision"]
+    served = {r["run"]: r for r in end["runs"]}
+    assert {receipt["run"], receipt["run"] + "-checkpoint20", receipt["run"] + "-final"} <= set(served)
+    assert served[receipt["run"]]["accepted_revision"] == receipt["accepted_revision"] and served[receipt["run"]]["relation"] == "historical"
+    assert served[receipt["run"] + "-final"]["policy_sha256"] == receipt["final"]["policy_sha256"] and served[receipt["run"] + "-final"]["videos"] == 1
+    assert end["fresh_visit_selects"] == receipt["run"] + "-final"
+    assert "Verified against source: 2026-" in text
