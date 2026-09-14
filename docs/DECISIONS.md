@@ -24267,3 +24267,72 @@ proof of reopen. Training must follow a repair of this blocker. The receipt
 [`docs/probes/ot6/robin/ACCEPTED.md`](probes/ot6/robin/ACCEPTED.md) distinguishes
 original authorship, the literal repair, measured fits, source-derived dimensions
 and unverified physical retention. D7 stays open.
+
+## ADR-338 — Robin trains: the default rate diverged, the bounded run at 1e-4 completed, and the balancer it measured leans and drives (2026-09-14)
+
+**Context.** ADR-337 accepted Robin, the product-agent two-wheeled balancer,
+and the D-bore revision of 2026-09-14 (`docs/probes/ot6/robin/BORE.md`) made
+it reopen. D7 of the ot6 charter (ADR-328) asks for one bounded training run
+on it with its videos and measurements on the dashboard, and says poor
+performance is a valid measured result. Finch's driver, evaluator and
+receipt writer (ADR-336) were the precedent, with three Finch facts baked in:
+29 components, a base found by the word `pelvis`, and a fall threshold
+recomputed from limb lengths.
+
+**Decision.**
+
+1. *A diverged run is a failed run, kept, and the fix forward is the
+   trainer's own suggestion.* `robin1`, at the trainer's default learning
+   rate 3e-4, went non-finite at update 128 and stopped itself (ADR-088). Its
+   run record was rewritten with `status: failed` and the trainer's error,
+   its checkpoints and its checkpoint-20 video — published while it was
+   active — stay, and the dashboard serves it as a failed historical run.
+   `robin2` re-ran the identical request with `--learning-rate 1e-4` and
+   nothing else changed: the reward, termination, reset variation and
+   episode are the task the product agent declared, so the two runs share
+   one objective identity. Retuning the reward to make training stable would
+   have changed what was measured. The driver now records the rate in the
+   run's `requested` block and passes it explicitly.
+2. *The evaluator and receipt writer are Robin's own copies*
+   (`docs/probes/ot6/robin/train.py`, `evaluate.py`, `report_training.py`):
+   24 components, the base `comp_chassis` (the trace's key for the component
+   the script names `chassis`), the fall threshold read from the retained
+   task bundle's termination on `chassis_z` rather than recomputed, a fall
+   flag that is any termination other than the time limit (Robin's rule is
+   unlabelled, so the trace names it `termination`, not `fell`), and the
+   chassis pitch — the quantity the reward penalises — measured per seed
+   from the chassis quaternion as the largest |pitch| and the final pitch.
+3. *Render overhead when the render is shorter than a checkpoint step.*
+   Robin's updates take 0.81 s and its checkpoint steps 34 s; the 4.4 s
+   checkpoint render fell entirely inside the step at update 39, so no update
+   interval overlaps it. The receipt then reports the enclosing interval
+   beside the run's other checkpoint steps, and the test accepts an empty
+   during-window only with that measurement present.
+
+**Evidence.** `docs/probes/ot6/robin/training.json` (15.8 KB), the two
+decoded frames beside it and `TRAINING.md`'s assessment, pinned by
+`test_robin_training_receipt_measures_the_balancer_in_the_new_look`.
+`robin2` exited 0 after 620.8 s (240 updates on 1024 environments, `done`
+on `gpu`; host peak 7.41 GB under `MemoryMax=20G`, GPU peak 15 139 MiB).
+Over seeds 0–9: **checkpoint 20 fell on 10 / 10** at 0.40–0.58 s with the
+pitch reaching 64–74°; **the final policy survived the full 8 s on 10 / 10**
+— by holding a +11.0 to +11.2° lean and driving 1.8 m backward (seed 0
+also 1.9 m sideways), the equilibrium in which the damped gearmotors'
+torque at a steady wheel speed balances gravity's moment. Reward per step
+0.127 → 0.688 (best 0.703 at update 205). Both videos are
+`cadex-prototype-dark-v1`, name `tessellated solids of the accepted
+revision; collision proxies not drawn`, and were browser-checked on the
+persistent dashboard, the checkpoint's with the trainer active (the
+enclosing checkpoint step 34.50 s against 33.3–34.5 s for the others;
+plain-update medians 0.875 s before and 0.849 s after) and the final's
+after `done`, where a fresh visit at 1400×900 and 400×850 selects
+`robin2-final`. The observer saw six trainer updates each reach the page
+within 0.95 s.
+
+**Consequences.** No engine, protocol or product-code change; no new
+dependency. The task's bar (chassis frame above 46.2 mm for 400 steps) is
+met by the final policy and the operator's bar (upright and still) is not:
+a velocity or position term in the reward is the open design decision,
+recorded in the project's `DECISIONS.md` for the next turn on Robin rather
+than taken here. The default learning rate's divergence on this task is a
+measured fact about this reward on this model, not a diagnosis.

@@ -540,3 +540,88 @@ def test_finch_training_receipt_measures_the_real_biped_in_the_new_look():
     assert served[receipt["run"] + "-final"]["policy_sha256"] == receipt["final"]["policy_sha256"] and served[receipt["run"] + "-final"]["videos"] == 1
     assert end["fresh_visit_selects"] == receipt["run"] + "-final"
     assert "Verified against source: 2026-" in text
+
+
+ROBIN = REPO / "docs/probes/ot6/robin"
+
+
+def test_robin_training_receipt_measures_the_balancer_in_the_new_look():
+    """D7 (ADR-338): one bounded real GPU run on Robin, the product-agent
+    balancer, under the charter's limits, the task's episode, fall threshold
+    and seed set declared, a checkpoint video published while the trainer was
+    active and a final video afterwards -- both in the dark reference look and
+    naming what they show -- each policy measured over the declared ten seeds
+    for chassis displacement, chassis pitch, survival and falls, the render's
+    impact on the trainer's own update intervals, and the persistent dashboard
+    serving the project with the run selected at the end. A policy that did
+    not balance is a valid measured result; this pins the measurement, not the
+    outcome."""
+
+    receipt = json.loads((ROBIN / "training.json").read_text())
+    assert receipt["schema"] == "robin-training-evidence-v1" and receipt["project"] == "ot6-robin"
+    # 0.7 x the 66 mm upright chassis-frame height, read from the retained task bundle.
+    assert abs(receipt["fall_below_mm"] - 46.2) < 1e-6 and receipt["task"]["fall_frac"] == 0.7
+    assert receipt["task"]["episode_steps"] == 400 and receipt["task"]["control_hz"] == 50
+    requested = receipt["requested"]
+    assert requested["timeout_seconds"] <= 7200 and receipt["training_wall_seconds"] < requested["timeout_seconds"]
+    assert receipt["resource_bound"]["MemoryMax"] == str(20 * 1024 ** 3) and receipt["resource_bound"]["ActiveState"] == "active"
+    assert receipt["memory"]["host_peak_bytes"] < 20 * 1024 ** 3
+    assert receipt["trainer_exit"] == 0 and receipt["trainer_final"]["state"] == "done" and receipt["trainer_final"]["device"] == "gpu"
+    assert receipt["trainer_final"]["iteration"] == requested["iterations"] - 1
+    overhead = receipt["render_overhead"]
+    assert overhead["concurrent_renders"] == 1 and overhead["render_seconds"] > 0
+    assert all(overhead[w]["median_s"] > 0 for w in ("before_window", "after_window"))
+    if overhead["during_window"]["count"] == 0:
+        # Robin's updates take under a second and its checkpoint steps half a minute: a render
+        # shorter than the step it fell inside overlaps no update interval, and its impact is
+        # that step's length beside the run's other checkpoint steps.
+        step = overhead["enclosing_interval"]
+        assert step["checkpoint_boundary"] and step["seconds"] > overhead["render_seconds"] and len(step["other_checkpoint_steps_s"]) >= 2
+    live = receipt["live_browser"]
+    assert live["persistent_server"] and live["default_view_kind"] == "RUN " + receipt["run"]
+    # The observer's own guarantee: at least seven trainer updates seen on the page in one visit, and
+    # every update it could match to its commit time reached the page within five seconds (with
+    # sub-second updates the first page value can precede the file poll, so one may go unmatched).
+    assert live["samples"] >= 7 and live["first_seen_count"] >= 6
+    assert live["first_seen_max_committed_to_page_s"] < 5 and live["reload_count"] == 1
+    text = (ROBIN / "TRAINING.md").read_text()
+    for phase in ("checkpoint20", "final"):
+        entry = receipt[phase]
+        assert len(entry["policy_sha256"]) == 64
+        assert entry["witness"]["witness_error"] < entry["witness"]["witness_tolerance"]
+        assert entry["trainer_active_after_browser"] == (phase == "checkpoint20") and entry["browser_check_exit"] == 0
+        video = entry["video"]
+        assert video["style"] == "cadex-prototype-dark-v1" and video["showing"].startswith("tessellated solids")
+        assert video["accepted_revision"] == entry["playback_revision"] != receipt["accepted_revision"] and video["frames"] > 0
+        assert entry["browser"]["download_sha256"] == video["sha256"] and entry["browser"]["components"] == 24
+        assert entry["browser"]["is_default"] == (phase == "final")
+        frame = ROBIN / entry["video_frame"]["png"]
+        assert frame.is_file() and frame.stat().st_size <= IMAGE_CAP
+        assert hashlib.sha256(frame.read_bytes()).hexdigest() == entry["video_frame"]["sha256"]
+        assert frame.name in text, f"the assessment does not cite {frame.name}"
+        seeds = entry["seeds"]
+        assert seeds["seeds"] == list(range(10)) and seeds["episode_seconds"] == 8.0 and abs(seeds["fall_below_mm"] - 46.2) < 1e-6
+        per_seed = [dict(zip(seeds["per_seed_columns"], row)) for row in seeds["per_seed"]]
+        assert len(per_seed) == 10 and seeds["falls"] + seeds["balanced_full_episode"] == 10
+        assert seeds["falls"] == sum(1 for row in per_seed if row["fell"])
+        assert all(0 < row["survival_s"] <= 8.0 and 0 <= row["max_abs_pitch_deg"] <= 180 for row in per_seed)
+        assert all(abs(row["final_pitch_deg"]) <= row["max_abs_pitch_deg"] + 0.05 for row in per_seed)
+        assert seeds["survival_s"]["min"] <= seeds["survival_s"]["mean"] <= seeds["survival_s"]["max"] <= 8.0
+        assert seeds["max_abs_pitch_deg"]["min"] <= seeds["max_abs_pitch_deg"]["mean"] <= seeds["max_abs_pitch_deg"]["max"]
+        assert per_seed[0]["survival_s"] == entry["observed_s"] and per_seed[0]["fell"] == entry["fell"]
+        for key in ("falls", "balanced_full_episode"):
+            assert f"{seeds[key]} / 10" in text or f"{seeds[key]}/10" in text, (phase, key)
+    # The first run diverged to NaN at the trainer's default learning rate and is kept as a failed
+    # run on the dashboard, with its checkpoint video; the receipt carries it beside the run that
+    # completed, and the driver asserted its record unchanged.
+    diverged = receipt["diverged_run"]
+    assert diverged["record_status"] == "failed" and diverged["trainer_final"]["state"] == "failed" and "diverged" in diverged["error"]
+    assert diverged["requested"]["learning_rate"] > requested["learning_rate"] and diverged["checkpoint20_published_while_active"]
+    end = receipt["dashboard_at_end"]
+    assert end["project"] == "ot6-robin" and end["accepted_revision"] == receipt["final"]["playback_revision"]
+    served = {r["run"]: r for r in end["runs"]}
+    assert {receipt["run"], receipt["run"] + "-checkpoint20", receipt["run"] + "-final"} <= set(served)
+    assert served[receipt["run"]]["accepted_revision"] == receipt["accepted_revision"] and served[receipt["run"]]["relation"] == "historical"
+    assert served[receipt["run"] + "-final"]["policy_sha256"] == receipt["final"]["policy_sha256"] and served[receipt["run"] + "-final"]["videos"] == 1
+    assert end["fresh_visit_selects"] == receipt["run"] + "-final"
+    assert "Verified against source: 2026-" in text
