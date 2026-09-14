@@ -24453,3 +24453,45 @@ There is no policy training this run, and the dashboard and rendered look are
 out of scope.
 
 This is a charter decision, not a claim that any of it exists.
+
+## ADR-342 — The review dashboard's desk layout becomes a frame: two resizable sidebars around a stage (2026-09-14)
+
+The owner asked for the desk layout to change shape. ADR-341 had handed the
+dashboard to the owner's own work. What was two columns (a run list beside
+one long scrolling document) is now an application frame. A thin top bar
+(44 px, was a two-line masthead) and a left and right sidebar share one
+surface. The centre is a **stage**: a rounded `--bg` sheet set into that
+surface, so the corner where a sidebar meets the bar is the stage's radius.
+Each sidebar's inner edge drags to resize it, or to fold it away entirely.
+The stage holds the model by default. Curves, videos and an opened document
+are tabs on the same stage, because the owner named the centre as the place
+for any content module that is not the 3-D model, now or later. Information,
+settings and parameters moved into the sidebars by type. Left: runs,
+documents. Right: identity, model settings, training, parameters, artifacts.
+
+Kept: every element id and `data-*` hook the CLI suites pin, the palette, the
+phone and tablet layouts (the frame's containers are `display: contents` below
+1000 px, so the column reads in §2's order as before), and pointer-event
+orbit. Removed: the numbered section headings ("3 Model"). Once regions sit in
+three columns there is no single reading order for a number to state. Changed
+in the spec: at desk the top-bar title and the sidebar headings step down one
+rung of the type scale. The layout is remembered per browser in
+`localStorage`, and nothing else is: widths, open/folded state, folded
+sections. No server change, no new static file (the frame logic is a second
+closure in `review.js`, because `STATIC_FILES` is a whitelist read at import
+and the operator dashboard should pick the change up without a restart).
+
+A resizable stage can be portrait, and the viewer's Fit framed by vertical
+field of view alone, which clipped the model sideways there. Fit now uses the
+narrower of the two fields of view. It is unchanged for any canvas at least
+as wide as it is tall, which includes every video capture. Three existing
+browser tests changed with the layout. The proxy test folds both sidebars,
+because its fixture's proxies are 3–5× its solids and need a wide stage. The
+orbit test takes its reference Fit at the size it measures at. The disk-detail
+video test shows the Videos tab and waits past its own 15 s held request,
+where before it raced it.
+
+`docs/REVIEW-DESIGN.md` §12 is the contract. `test_review_design.py` holds the
+desk frame's geometry, and a new browser test drags, folds, reopens and
+switches the stage with a real mouse. §7/§8's receipts stay as the record of
+the page this replaced.

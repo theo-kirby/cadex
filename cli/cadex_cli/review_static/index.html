@@ -1,8 +1,11 @@
 <!DOCTYPE html>
 <!-- SPDX-FileCopyrightText: 2026 Cadex Authors
      SPDX-License-Identifier: LGPL-2.1-or-later
-     Layout, type and colour follow docs/REVIEW-DESIGN.md (ADR-329): the
-     regions below are its §2 in reading order, and their element ids are
+     Layout, type and colour follow docs/REVIEW-DESIGN.md (ADR-329, ADR-342).
+     At desk width the page is an application frame: a thin top bar, a left
+     and a right sidebar that meet it in one surface, and the stage between
+     them. Below 1000 px the frame dissolves (`display: contents`) and the
+     same regions read as one column in the order of §2. Element ids are
      the hooks the CLI suite pins. -->
 <html lang="en">
 <head>
@@ -13,25 +16,73 @@
 </head>
 <body>
 <header id="top">
-  <div>
+  <button id="toggle-left" class="frame-toggle" type="button" aria-controls="left" aria-expanded="true" title="Show or hide the left sidebar">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><path d="M6 3v10"/></svg>
+  </button>
+  <div class="title">
     <h1 id="project-name">Cadex review</h1>
     <div id="accepted-line">loading…</div>
   </div>
   <div id="freshness" data-state="loading">loading…</div>
+  <button id="toggle-right" class="frame-toggle" type="button" aria-controls="right" aria-expanded="true" title="Show or hide the right sidebar">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><path d="M10 3v10"/></svg>
+  </button>
 </header>
-<main>
-  <nav id="sidebar" class="card">
-    <h2>1 Runs</h2>
-    <details id="runs" open>
-      <summary id="runs-summary">Runs</summary>
-      <button id="current-run" type="button">Current run</button>
-      <ul id="views"></ul>
-      <p class="muted small">Inspection only. Authoring and training stay on the CLI; this page holds no project state.</p>
-    </details>
-  </nav>
-  <section id="detail">
-    <section id="identity" class="card region">
-      <h2>2 Identity</h2>
+<main id="frame">
+  <!-- Left sidebar: what to look at — the runs, and the project's documents. -->
+  <div id="left" class="rail" data-side="left">
+    <nav id="sidebar" class="card panel">
+      <h2>Runs</h2>
+      <details id="runs" open>
+        <summary id="runs-summary">Runs</summary>
+        <button id="current-run" type="button">Current run</button>
+        <ul id="views"></ul>
+        <p class="muted small">Inspection only. Authoring and training stay on the CLI; this page holds no project state.</p>
+      </details>
+    </nav>
+    <section id="docs-panel" class="card panel">
+      <h2>Documents and decisions</h2>
+      <div id="docs-note"></div>
+      <ul id="docs"></ul>
+      <ul id="decisions"></ul>
+    </section>
+  </div>
+  <div class="resizer" data-side="left" role="separator" aria-orientation="vertical" aria-controls="left" tabindex="0" title="Drag to resize · double-click to collapse"></div>
+
+  <!-- The stage: the model by default; curves, videos or a document when chosen. -->
+  <section id="stage" data-active="model">
+    <div id="stage-tabs" role="tablist" aria-label="Stage">
+      <button type="button" role="tab" data-stage="model" aria-selected="true">Model</button>
+      <button type="button" role="tab" data-stage="curves" aria-selected="false">Curves <span class="tab-dot" id="curves-dot"></span></button>
+      <button type="button" role="tab" data-stage="videos" aria-selected="false">Videos <span class="tab-count" id="videos-count"></span></button>
+      <span id="doc-tab" class="tab-group" hidden><button type="button" role="tab" data-stage="doc" aria-selected="false">Document</button><button type="button" id="doc-close" class="tab-close" aria-label="Close document" title="Close document">×</button></span>
+    </div>
+    <div class="stage-panels">
+      <section id="model" class="card region stage-panel" data-stage="model" role="tabpanel">
+        <h2>Model</h2>
+        <div id="model-status" data-state="empty">no model loaded</div>
+        <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
+        <div class="controls viewer-controls"><span class="hint">drag or touch to orbit · wheel to zoom</span><button id="model-fit" type="button">Fit</button></div>
+      </section>
+      <section id="curves" class="card region stage-panel" data-stage="curves" role="tabpanel">
+        <h2>Curves</h2>
+        <div id="telemetry"></div>
+      </section>
+      <section id="videos-region" class="card region stage-panel" data-stage="videos" role="tabpanel">
+        <h2>Videos</h2>
+        <ul id="videos"></ul>
+      </section>
+      <section id="doc-panel" class="card region stage-panel" data-stage="doc" role="tabpanel">
+        <pre id="doc-view" class="hidden"></pre>
+      </section>
+    </div>
+  </section>
+
+  <div class="resizer" data-side="right" role="separator" aria-orientation="vertical" aria-controls="right" tabindex="0" title="Drag to resize · double-click to collapse"></div>
+  <!-- Right sidebar: what it is — identity, model settings, training, parameters, artifacts. -->
+  <aside id="right" class="rail" data-side="right">
+    <section id="identity" class="card panel">
+      <h2>Identity</h2>
       <div class="badges"><span id="view-kind" class="badge"></span><span id="view-relation" class="badge"></span><span id="view-status" class="badge"></span></div>
       <table class="kv">
         <tr><th>revision</th><td id="view-revision" class="mono"></td></tr>
@@ -43,30 +94,25 @@
         <tr><th>policy store</th><td id="view-policy-store"></td></tr>
       </table>
     </section>
-    <section id="model" class="card region">
-      <h2>3 Model</h2>
-      <div id="model-status" data-state="empty">no model loaded</div>
-      <canvas id="viewer" width="960" height="540"></canvas>
-      <div class="controls"><span>drag or touch to orbit · wheel to zoom</span><button id="model-fit" type="button">Fit</button>
-        <label class="toggle" for="show-collision"><input type="checkbox" id="show-collision"> <span>show collision geometry</span> <span id="collision-note" class="muted"></span></label></div>
+    <section id="model-settings" class="card panel">
+      <h2>Model settings</h2>
+      <div class="controls">
+        <label class="toggle" for="show-collision"><input type="checkbox" id="show-collision"> <span>show collision geometry</span></label>
+        <span id="collision-note" class="muted"></span>
+      </div>
       <ul id="model-components"></ul>
     </section>
-    <section id="curves" class="card region">
-      <h2>4 Curves</h2>
-      <div id="telemetry"></div>
-    </section>
-    <section id="videos-region" class="card region">
-      <h2>5 Videos</h2>
-      <ul id="videos"></ul>
-    </section>
-    <section id="record" class="card region">
-      <h2>6 Record</h2>
-      <h3>Training and rollout</h3>
+    <section id="record" class="card panel">
+      <h2>Training and rollout</h2>
       <table id="training" class="kv"><tbody></tbody></table>
-      <h3>Parameters and specs</h3>
+    </section>
+    <section id="params-panel" class="card panel">
+      <h2>Parameters and specs</h2>
       <div id="params-note"></div>
       <div class="scroll"><table id="params" class="grid"><thead><tr><th>name</th><th>value</th><th>default</th><th>min</th><th>max</th><th>unit</th><th>label</th></tr></thead><tbody></tbody></table></div>
-      <h3>Artifacts</h3>
+    </section>
+    <section id="artifacts-panel" class="card panel">
+      <h2>Artifacts</h2>
       <ul id="problems"></ul>
       <div id="disk" data-state="unselected">
         <p id="disk-summary" class="muted">select a run to see what it keeps on disk</p>
@@ -74,13 +120,8 @@
         <ul id="disk-shared"></ul>
       </div>
       <div class="scroll"><table id="artifacts" class="grid"><thead><tr><th>artifact</th><th>path</th><th>status</th><th>size</th></tr></thead><tbody></tbody></table></div>
-      <h3>Documents and decisions</h3>
-      <div id="docs-note"></div>
-      <ul id="docs"></ul>
-      <ul id="decisions"></ul>
-      <pre id="doc-view" class="hidden"></pre>
     </section>
-  </section>
+  </aside>
 </main>
 <script type="module" src="/viewer.js"></script>
 </body>

@@ -364,7 +364,12 @@ def test_arriving_disk_detail_adds_video_size_without_replacing_playback(tmp_pat
     server, _thread = serve(root, "127.0.0.1", 0)
     try:
         page = browser.page(server.url)
-        page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
+        # Watched where a reader watches it: on the stage's Videos tab (REVIEW-DESIGN.md §12).
+        page.wait_for("!!window.cadexFrame")
+        page.evaluate("window.cadexFrame.show('videos')")
+        # The page first draws once the held detail request gives up (the 15 s
+        # hold above), so wait past it rather than racing it.
+        page.wait_for("document.querySelector('#videos video')?.readyState >= 2", timeout=40)
         page.evaluate("window.kept=document.querySelector('#videos video'); kept.muted=true; kept.loop=true; kept.play()", await_promise=True)
         page.wait_for("kept.currentTime > 0.1")
         assert page.text('[data-video-size="0"]') == ''

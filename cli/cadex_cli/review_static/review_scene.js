@@ -144,7 +144,11 @@ export function create(canvas) {
   }
   function fit() {
     if (!bounds) return;
-    c={yaw:.8,pitch:.5,distance:bounds.radius/Math.sin(55*Math.PI/360)*1.15,target:bounds.center.slice()};
+    // Frame the bounding sphere in the narrower field of view: a canvas at least as wide as it is tall frames by
+    // the vertical one (as it always has), a portrait one — a stage between two wide sidebars — by the horizontal.
+    const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height,tanV=Math.tan(55*Math.PI/360);
+    const half=Math.min(Math.atan(tanV),Math.atan(tanV*Math.min(1,w/h)));
+    c={yaw:.8,pitch:.5,distance:bounds.radius/Math.sin(half)*1.15,target:bounds.center.slice()};
     draw();
   }
   function clear() {

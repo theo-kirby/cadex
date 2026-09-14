@@ -699,3 +699,200 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize);
   else initialize();
 })();
+
+// The desk frame (REVIEW-DESIGN.md §12): two sidebars whose inner edges drag
+// to resize or fold them away, sections that fold under their headings, and
+// the stage's tabs. It is presentation only — it reads nothing from the
+// server, and remembers the reader's widths, folds and nothing else in this
+// browser's localStorage. Below the desk breakpoint the stylesheet dissolves
+// the frame and none of this has any visible effect.
+(function () {
+  'use strict';
+
+  var DESK = window.matchMedia('(min-width: 1000px)');
+  var STORE = 'cadex-review-frame';
+  var MIN = 200, FOLD_AT = 120, STAGE_MIN = 360;
+  var DEFAULTS = { left: 264, right: 340 };
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(STORE) || '{}') || {}; } catch (_) { saved = {}; }
+  var layout = {
+    left: { width: +saved.leftWidth || DEFAULTS.left, open: saved.leftOpen !== false },
+    right: { width: +saved.rightWidth || DEFAULTS.right, open: saved.rightOpen !== false },
+    folded: saved.folded && typeof saved.folded === 'object' ? saved.folded : {}
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function persist() {
+    try {
+      localStorage.setItem(STORE, JSON.stringify({ leftWidth: layout.left.width, leftOpen: layout.left.open,
+        rightWidth: layout.right.width, rightOpen: layout.right.open, folded: layout.folded }));
+    } catch (_) { /* a private window: the layout simply is not remembered */ }
+  }
+  // The widest a sidebar may be: whatever leaves the stage its minimum beside
+  // the other sidebar as it is now.
+  function widest(side) {
+    var other = side === 'left' ? layout.right : layout.left;
+    return Math.max(MIN, window.innerWidth - STAGE_MIN - (other.open ? other.width : 0));
+  }
+  function apply() {
+    var frame = $('frame');
+    ['left', 'right'].forEach(function (side) {
+      // The remembered width is the reader's; a narrow window only caps what
+      // is drawn, so widening the window again gives it back.
+      var pane = layout[side], width = Math.min(Math.max(pane.width, MIN), widest(side));
+      frame.style.setProperty('--' + side + '-w', (pane.open ? width : 0) + 'px');
+      frame.dataset[side] = pane.open ? 'open' : 'collapsed';
+      $('toggle-' + side).setAttribute('aria-expanded', String(pane.open));
+      var handle = frame.querySelector('.resizer[data-side="' + side + '"]');
+      handle.setAttribute('aria-valuenow', String(pane.open ? Math.round(width) : 0));
+      handle.setAttribute('aria-valuemin', '0');
+      handle.setAttribute('aria-valuemax', String(Math.round(widest(side))));
+    });
+  }
+  function toggle(side, open) {
+    layout[side].open = open == null ? !layout[side].open : !!open;
+    apply(); persist();
+  }
+
+  function dragHandle(handle) {
+    var side = handle.dataset.side, pointer = null, grab = 0, start = 0;
+    function reach(event) {
+      var box = $('frame').getBoundingClientRect();
+      return side === 'left' ? event.clientX - box.left : box.right - event.clientX;
+    }
+    handle.addEventListener('pointerdown', function (event) {
+      if (!DESK.matches || event.button > 0) return;
+      pointer = event.pointerId;
+      // Hold the edge where it was grabbed, so it does not jump to the pointer.
+      grab = (layout[side].open ? parseFloat(getComputedStyle($('frame')).getPropertyValue('--' + side + '-w')) : 0) - reach(event);
+      start = layout[side].width;
+      handle.setPointerCapture(pointer);
+      handle.classList.add('active');
+      $('frame').classList.add('dragging');
+      document.body.classList.add('resizing');
+      event.preventDefault();
+    });
+    handle.addEventListener('pointermove', function (event) {
+      if (event.pointerId !== pointer) return;
+      var raw = reach(event) + grab;
+      // Dragged most of the way shut, the sidebar folds away; dragged back
+      // out past the same point, it opens at the width under the pointer.
+      if (raw < FOLD_AT) layout[side].open = false;
+      else { layout[side].open = true; layout[side].width = Math.min(Math.max(raw, MIN), widest(side)); }
+      apply();
+    });
+    function release(event) {
+      if (event.pointerId !== pointer) return;
+      pointer = null;
+      // A drag that ends folded keeps the width the sidebar had before it, so
+      // reopening gives back what the reader was using, not the last few
+      // pixels it passed through on the way shut.
+      if (!layout[side].open) { layout[side].width = start; apply(); }
+      handle.classList.remove('active');
+      $('frame').classList.remove('dragging');
+      document.body.classList.remove('resizing');
+      persist();
+    }
+    handle.addEventListener('pointerup', release);
+    handle.addEventListener('pointercancel', release);
+    handle.addEventListener('dblclick', function () { toggle(side); });
+    handle.addEventListener('keydown', function (event) {
+      // Arrow keys move the edge the way the arrow points; Enter folds.
+      var step = event.shiftKey ? 64 : 16, grow = side === 'left' ? 1 : -1;
+      if (event.key === 'Enter' || event.key === ' ') toggle(side);
+      else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        var delta = (event.key === 'ArrowRight' ? step : -step) * grow;
+        if (!layout[side].open) { if (delta > 0) layout[side].open = true; }
+        else if (layout[side].width + delta < MIN) layout[side].open = false;
+        else layout[side].width = Math.min(layout[side].width + delta, widest(side));
+        apply(); persist();
+      } else return;
+      event.preventDefault();
+    });
+  }
+
+  function foldable(panel) {
+    var heading = panel.querySelector(':scope > h2');
+    if (!panel.id || !heading) return;
+    if (layout.folded[panel.id]) panel.dataset.folded = 'true';
+    heading.setAttribute('role', 'button');
+    heading.tabIndex = 0;
+    function flip() {
+      if (!DESK.matches) return;
+      var folded = panel.dataset.folded !== 'true';
+      if (folded) { panel.dataset.folded = 'true'; layout.folded[panel.id] = true; }
+      else { delete panel.dataset.folded; delete layout.folded[panel.id]; }
+      heading.setAttribute('aria-expanded', String(!folded));
+      persist();
+    }
+    heading.setAttribute('aria-expanded', String(panel.dataset.folded !== 'true'));
+    heading.addEventListener('click', flip);
+    heading.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); flip(); }
+    });
+  }
+
+  // The stage shows one panel at a time: the model unless the reader picks
+  // another. A document opened from the sidebar comes onto the stage, and
+  // leaves it when the view changes and the page closes it.
+  function stage() {
+    var root = $('stage'), tabs = Array.from(root.querySelectorAll('[role="tab"]'));
+    function show(name) {
+      root.dataset.active = name;
+      tabs.forEach(function (tab) { tab.setAttribute('aria-selected', String(tab.dataset.stage === name)); });
+    }
+    tabs.forEach(function (tab) { tab.addEventListener('click', function () { show(tab.dataset.stage); }); });
+    var doc = $('doc-view');
+    new MutationObserver(function () {
+      var open = !doc.classList.contains('hidden');
+      var wasOpen = !$('doc-tab').hidden;
+      $('doc-tab').hidden = !open;
+      if (open && !wasOpen) show('doc');
+      if (!open && root.dataset.active === 'doc') show('model');
+    }).observe(doc, { attributes: true, attributeFilter: ['class'] });
+    $('doc-close').addEventListener('click', function () {
+      doc.classList.add('hidden');
+    });
+    // Each tab says what is behind it without being opened: the training
+    // state as a dot, the number of playable clips as a count.
+    new MutationObserver(function () {
+      var value = $('telemetry').dataset.state;
+      if (value && value !== 'unselected') $('curves-dot').dataset.state = value;
+      else delete $('curves-dot').dataset.state;
+      $('curves-dot').title = value ? 'training telemetry: ' + value : '';
+    }).observe($('telemetry'), { attributes: true, attributeFilter: ['data-state'] });
+    new MutationObserver(function () {
+      var clips = $('videos').querySelectorAll('li[data-video]').length;
+      $('videos-count').textContent = clips ? String(clips) : '';
+    }).observe($('videos'), { childList: true });
+    return show;
+  }
+
+  function initialize() {
+    apply();
+    document.querySelectorAll('.resizer').forEach(dragHandle);
+    document.querySelectorAll('.rail .panel').forEach(foldable);
+    $('toggle-left').addEventListener('click', function () { toggle('left'); });
+    $('toggle-right').addEventListener('click', function () { toggle('right'); });
+    window.addEventListener('resize', apply);
+    var show = stage();
+    // The canvas follows its box, which a sidebar drag changes without any
+    // window resize; redraw whenever the box does.
+    if (window.ResizeObserver) {
+      new ResizeObserver(function () {
+        var viewer = window.cadexReview && window.cadexReview.viewer();
+        if (viewer && viewer.draw) viewer.draw();
+      }).observe($('viewer'));
+    }
+    window.cadexFrame = {
+      layout: function () {
+        return { left: { width: layout.left.width, open: layout.left.open }, right: { width: layout.right.width, open: layout.right.open },
+                 stage: $('stage').dataset.active };
+      },
+      toggle: toggle,
+      show: show
+    };
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize);
+  else initialize();
+})();

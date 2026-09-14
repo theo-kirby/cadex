@@ -1,6 +1,6 @@
 # REVIEW-DESIGN.md — The review dashboard as one designed page
 
-Verified against source: 2026-09-13. [Cadex-new]
+Verified against source: 2026-09-14. [Cadex-new]
 
 This is the design specification for the page `cadex review` serves
 (`cli/cadex_cli/review_static/`, ADR-286) and for the operator dashboard that
@@ -16,7 +16,9 @@ dashboard becomes one designed page: academic but modern, one type scale and
 one palette across chrome and viewport, a clear hierarchy, readable on a phone
 and orbitable by touch. §7 records what the page looked like before the spec,
 measured, and §8 what it looks like following it (ADR-329), measured the same
-way on the same operator URL.
+way on the same operator URL. §12 is the desk frame that replaced the
+two-column desk layout at the owner's direction (ADR-342): a thin top bar,
+two resizable sidebars and a stage that holds the model.
 
 ## 1. Purpose
 
@@ -32,30 +34,34 @@ Three consequences shape everything below:
 
 - **The model is the subject.** The viewport is the largest region on every
   width, and it is the thing the videos, the curves and the identities are
-  *about*. Nothing sits beside it at phone width.
+  *about*. At desk it *is* the centre of the page — the stage — and
+  everything that describes it sits in the sidebars either side (§12).
+  Nothing sits beside it at phone width.
 - **Identity before interpretation.** What is shown is named (run, revision,
   digest, relation to the accepted state, what the viewer is rendering) before
   any number about it, because a historical run must never read as the
   current design.
 - **Reading, not scanning.** Section headings read as an academic paper's —
-  sentence case, numbered, ruled — and the body is prose-sized. Controls read
+  sentence case, ruled — and the body is prose-sized. Controls read
   as a modern application's — flat, rounded, generous tap targets — so that a
   phone can drive them.
 
 ## 2. Hierarchy
 
-Top to bottom, in reading order, on every width. The order *is* the charter's
-"project and current run, model, curves, videos, history".
+Top to bottom, in reading order, below the desk breakpoint. The order *is*
+the charter's "project and current run, model, curves, videos, history". At
+desk the same regions are distributed across the frame — the column says
+where (§12) — and the element ids do not change with the width.
 
-| # | Region | Element hooks (stable) | What it is for |
-|---|---|---|---|
-| 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. |
-| 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). |
-| 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. |
-| 3 | **Model** | `#model`, `#model-status[data-showing]`, `#viewer`, `#model-fit`, `#show-collision`, `#collision-note`, `#model-components` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and the labelled **show collision geometry** toggle, off by default (§11). The status line ends with what is showing. |
-| 4 | **Curves** | `#curves`, `#telemetry`, `[data-metric]`, `[data-history]`, `#checkpoint-source`, `#checkpoints` | Training telemetry: the five metrics as a stat row, the three histories (reward per step, loss, episode length) as curves side by side on desk and stacked on phone, then checkpoint provenance. |
-| 5 | **Videos** | `#videos-region`, `#videos`, `#videos li[data-video][data-showing]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed, and what it shows — recordings made before that was recorded say so). |
-| 6 | **Record** | `#record`, `#training`, `#params`, `#params-note`, `#artifacts`, `#problems`, `#disk`, `#docs`, `#decisions`, `#doc-view` | The appendix: training request and receipt, parameters and specs, retained artifacts and disk use, document snapshots and decisions. Full tables at desk width; on phone each table scrolls inside its own card, never the page. |
+| # | Region | Element hooks (stable) | What it is for | Desk frame |
+|---|---|---|---|---|
+| 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. | top bar |
+| 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). | left sidebar |
+| 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. | right sidebar |
+| 3 | **Model** | `#model`, `#model-status[data-showing]`, `#viewer`, `#model-fit`, `#show-collision`, `#collision-note`, `#model-components` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and the labelled **show collision geometry** toggle, off by default (§11). The status line ends with what is showing. | stage, *Model* tab; toggle and component list in the right sidebar's *Model settings* (`#model-settings`) |
+| 4 | **Curves** | `#curves`, `#telemetry`, `[data-metric]`, `[data-history]`, `#checkpoint-source`, `#checkpoints` | Training telemetry: the five metrics as a stat row, the three histories (reward per step, loss, episode length) as curves side by side on desk and stacked on phone, then checkpoint provenance. | stage, *Curves* tab |
+| 5 | **Videos** | `#videos-region`, `#videos`, `#videos li[data-video][data-showing]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed, and what it shows — recordings made before that was recorded say so). | stage, *Videos* tab |
+| 6 | **Record** | `#record`, `#training`, `#params`, `#params-note`, `#artifacts`, `#problems`, `#disk`, `#docs`, `#decisions`, `#doc-view` | The appendix: training request and receipt, parameters and specs, retained artifacts and disk use, document snapshots and decisions. Full tables at desk width; on phone each table scrolls inside its own card, never the page. | right sidebar: *Training and rollout* (`#record`), *Parameters and specs* (`#params-panel`), *Artifacts* (`#artifacts-panel`); left sidebar: *Documents and decisions* (`#docs-panel`); an opened document on the stage's *Document* tab (`#doc-panel`) |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
 (`cli/tests/test_review_server.py`, `test_review_lifecycle.py`,
@@ -63,7 +69,8 @@ The element ids and `data-*` attributes above are the hooks the CLI suite
 them; it does not rename them, so every ot5 browser test keeps its meaning.
 
 Region 6 is the only one that may be collapsed by default, and only on phone.
-Regions 0–5 are always open.
+Regions 0–5 are always open. At desk every sidebar section folds under its
+heading at the reader's hand, never by default.
 
 ## 3. Type scale
 
@@ -73,8 +80,13 @@ One family, one scale, one line height.
 |---|---|---|---|
 | `--fs-0` | 12 px | 400 | captions, chips, monospace identities, table footers |
 | `--fs-1` | 14 px | 400 | body, table cells, controls |
-| `--fs-2` | 17 px | 600 | section headings (`h2`): sentence case, numbered, a hairline rule beneath |
+| `--fs-2` | 17 px | 600 | section headings (`h2`): sentence case, a hairline rule beneath; the page title in the desk top bar |
 | `--fs-3` | 22 px | 600 | the page title (`h1`): the project name |
+
+At desk the frame steps the two headings down one rung of the same scale:
+the title in the 44 px top bar is `--fs-2`, and a sidebar section's heading
+is `--fs-1` at 600 with no rule, because a ruled 17 px heading every few
+lines is what makes a 264 px sidebar read as a form (§12).
 
 - **Family**: `--font: system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
   identities in `--mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace`
@@ -84,8 +96,9 @@ One family, one scale, one line height.
   tabular-nums` so stat rows and tables align.
 - **Headings are sentence case, never uppercase.** The current page's
   small-caps grey `h2` is what made it read as a settings panel rather than a
-  document. Section headings carry their number ("3 Model") the way a paper's
-  do; the chip vocabulary (CURRENT, HISTORICAL, RUN, ACCEPTED NOW) stays
+  document. Section headings no longer carry a number (ADR-342): once the
+  regions sit in three columns at desk there is no single reading order for
+  a number to state. The chip vocabulary (CURRENT, HISTORICAL, RUN, ACCEPTED NOW) stays
   uppercase because those are labels, not headings.
 - The scale is the same at both breakpoints. Phone readability comes from
   layout (§6), not from shrinking the type: nothing on the page is smaller than
@@ -156,21 +169,26 @@ A 4 px base: `--s1` 4, `--s2` 8, `--s3` 12, `--s4` 16, `--s5` 24, `--s6` 32.
 - **Curves**: each history is an SVG with `viewBox 0 0 400 100`, `--accent`
   stroke of 1.5 px on a `--surface-2` field with a `--rule` frame, its range
   and iteration span as an `--fs-0` caption. The three sit in a
-  `repeat(auto-fit, minmax(240px, 1fr))` grid: abreast at the 1400 px
-  reference width, two then one as the column narrows (a 1000 px window has
-  a 616 px column, where three 240 px minima would overflow), stacked on
-  phone. The five metrics above them are a stat row of tiles whose text
+  `repeat(auto-fit, minmax(240px, 1fr))` grid below the desk breakpoint —
+  abreast while the column is wide enough, then two, then one, stacked on
+  phone — and stacked one per row, up to 1040 px wide, on the desk stage's
+  *Curves* tab, where they have the whole centre to themselves. The five metrics above them are a stat row of tiles whose text
   stays `key: value`, which is what the other suites read.
-- **The viewport** keeps a 16:9 box at desk (`aspect-ratio: 16 / 9`, up to
-  620 px tall) and 4:3 on phone, always the full width of its column, with
+- **The viewport** fills the stage at desk (§12), keeps a 16:9 box (up to
+  620 px tall) on a tablet and 4:3 on phone, always the full width of its
+  column, with
   `touch-action: none` so a one-finger drag orbits instead of scrolling the
   page. The canvas backing store follows the box, so the model is never
   stretched. **Orbit is by pointer events** (ADR-330): one pointer — mouse
   or finger — orbits, two fingers pinch-zoom, the wheel zooms, and the
   canvas captures the pointer so a drag that leaves it still orbits. The
-  Fit button restores the framing.
+  Fit button restores the framing, framing the model's bounding sphere in
+  the narrower field of view: a canvas at least as wide as it is tall frames
+  by the vertical one exactly as before (so a 512 × 512 capture is
+  unchanged), a portrait stage between two wide sidebars by the horizontal.
 - **Video** elements are the full width of their card with the same radius as
-  the viewport; the caption sits beneath, never overlaid, and leads with a
+  the viewport (on the desk stage, a grid of 360 px minimum cells, each clip
+  no taller than the stage); the caption sits beneath, never overlaid, and leads with a
   **Play / Pause control of the page's own** (`[data-video-play]`, a
   `--control`-height button) because the native controls' tap targets differ
   from phone to phone; the native controls stay for scrubbing. The download
@@ -183,7 +201,7 @@ between where a sidebar stops paying for itself.
 
 | Range | Layout |
 |---|---|
-| **≥ 1000 px** (desk; 1400 is the reference width) | Two columns: run selection as a 280 px sidebar, sticky under the masthead; regions 2–6 in the detail column. Curves three abreast. Masthead on one row. |
+| **≥ 1000 px** (desk; 1400 is the reference width) | The frame (§12): a 44 px top bar; a left sidebar (264 px by default), the stage, a right sidebar (340 px by default); each sidebar resizable and foldable by its inner edge. The page never scrolls; each sidebar and each stage panel scrolls on its own. Curves stacked on the stage. |
 | **600–999 px** (tablet, a half-width desk window) | One column. Run selection becomes a horizontal strip of run chips under the masthead, scrolling within itself. Curves two abreast, then one. |
 | **< 600 px** (phone; 400 × 850 is the reference size) | One column with `--s3` gutters. Run selection is a `<details>` disclosure showing "Runs · current: *name* · *n* recorded", closed by default, opening to the same list. Identity key/value pairs stack (key above value). The viewport, the curves and the videos are the full width. Tables in region 6 scroll horizontally inside their card. |
 
@@ -197,8 +215,10 @@ measured record of the page before it followed the spec, §8 after):
    only hide the sliver.
 2. **The layout viewport is the device width**: `innerWidth === 400` at phone
    size. §7 shows what happens when it is not.
-3. **The viewport fills its column**: canvas width ≥ 90 % of the detail
-   column at desk and ≥ 90 % of `innerWidth − 2·gutter` on phone.
+3. **The viewport fills its column**: at desk the canvas fills the stage
+   below its tab row (≥ 98 % of its width), the sidebars meet the window
+   edges and the page does not scroll vertically; on phone ≥ 90 % of
+   `innerWidth − 2·gutter`.
 4. **The palette tokens of §4 are the computed values** on the rendered page.
 5. **Type never drops below 12 px**, and `h1`/`h2`/body compute to §3.
 
@@ -429,3 +449,62 @@ frame of the video is within the codec tolerance of the shared scene with
 the proxies hidden and not with them shown. The real biped's screenshot with
 the toggle on waits for D5's project, whose proxies will differ from its
 printable parts; Lark's are boxes the size of its box parts.
+
+## 12. The desk frame: two sidebars and a stage
+
+At the owner's direction on 2026-09-14 (ADR-342) the desk layout stopped
+being a document with a run list beside it and became an application frame.
+Below 1000 px nothing in this section applies: the frame's containers are
+`display: contents`, and the regions read as the one column of §2 and §6.
+
+**Shape.** A **top bar** 44 px tall — toggle, project name, accepted
+identity (one line, ellipsised), freshness, toggle. Beneath it a **left
+sidebar**, the **stage** and a **right sidebar**. Bar and sidebars are one
+`--surface` with no rule between them; the stage is a `--bg` sheet with a
+12 px radius and a 1 px `--rule` border, set 6 px (`--frame`) into that
+surface. So where a sidebar meets the bar, the corner the eye sees is the
+stage's rounded one, and the viewport's sky is the stage's own background.
+
+**Sidebars, organised by type.** The left sidebar is *what to look at*:
+*Runs*, then *Documents and decisions*. The right sidebar is *what it is*:
+*Identity*, *Model settings* (the collision toggle and the component list),
+*Training and rollout*, *Parameters and specs*, *Artifacts*. Sections are
+ruled, not carded, and each folds under its heading. A new information,
+setting or parameter module belongs in the sidebar of its type, never on the
+stage.
+
+**Resizing and folding.** Each sidebar's inner edge is a 10 px
+`role="separator"` handle centred on the gap. Dragging it sets the width
+(never under 200 px, never so wide that the stage falls under 360 px); the
+edge stays where it was grabbed rather than jumping to the pointer. Dragged
+under 120 px, the sidebar folds to nothing and the stage takes the room;
+dragged back out past that point it opens under the pointer. A drag that
+ends folded keeps the width from before it. Double-clicking a handle, Enter
+on it, or the top bar's toggle folds or opens that side; arrow keys move the
+edge 16 px (64 with Shift). Widths animate over 180 ms except while dragging.
+The canvas redraws when its box changes, so the model is never stretched
+during a drag.
+
+**The stage** always holds one panel, the **Model** by default: the canvas
+fills it, the model status floats top-left and the orbit hint and *Fit*
+bottom-right, both as translucent `--bg` pills. Its tabs are **Model**,
+**Curves** (a dot in the telemetry state's colour), **Videos** (the count of
+playable clips) and, while one is open, **Document** — a document opened
+from the left sidebar comes onto the stage and leaves it when the view
+changes or its tab is closed. Inactive panels are `visibility: hidden`, not
+removed, so the canvas keeps its size and videos keep loading. Future
+centre content — plots, comparisons — is another tab, not another region.
+
+**What is remembered.** The two widths, whether each side is open, and which
+sections are folded, in this browser's `localStorage`, and nothing else. It
+is the reader's layout, not project state; a private window simply starts at
+the defaults.
+
+**Held by** `test_rendered_page_follows_the_spec[desk]` (bar height, the
+three columns edge to edge, the canvas filling the stage, no page scroll)
+and `test_desk_sidebars_drag_fold_and_the_stage_changes_what_it_shows`, which
+drags a handle with a real mouse (width and backing store follow), folds
+it shut by dragging, reopens it from the bar at its previous width, folds a
+section, switches the stage to *Curves*, opens a document onto the stage and
+watches the view change take it off, and reloads to find the layout kept.
+§7 and §8 remain the measured record of the two-column page this replaced.

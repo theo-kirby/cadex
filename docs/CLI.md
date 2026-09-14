@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-13. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-14. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -1472,10 +1472,13 @@ other command keeps the restore.
 ```
 
 The page's layout, type and colour follow `docs/REVIEW-DESIGN.md`
-(ADR-329): one dark palette, one type scale, six regions in reading order —
-masthead, run selection, identity, model, curves, videos, record — a sidebar
-at desk width and a closed run disclosure on a phone, with no horizontal
-overflow at either. `cli/tests/test_review_design.py` reads the spec back
+(ADR-329, ADR-342): one dark palette, one type scale, and the same regions
+— masthead, run selection, identity, model, curves, videos, record — laid
+out two ways. At desk width they form a frame: a thin top bar, a left and a
+right sidebar you can drag to resize or fold, and a stage in the centre that
+shows the model, or the curves, the videos or an opened document. On a phone
+they form one column with a closed run disclosure. Neither overflows
+horizontally. `cli/tests/test_review_design.py` reads the spec back
 from the rendered page at 1400×900 and 400×850.
 
 One project per server, inspection only. The page is for a person, on

@@ -711,6 +711,9 @@ def test_browser_orbit_and_zoom_move_the_camera_over_a_drawn_model(served, brows
     })""")
     assert max(widths) - min(widths) <= 1, widths
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    # Fit frames the model for the canvas's shape (a narrow stage frames by
+    # its horizontal field of view), so take the reference framing at this size.
+    page.click("#model-fit")
     page.scroll_into_view("#viewer")
     rect = page.rect("#viewer")
     cx, cy = rect["x"] + rect["width"] / 2, rect["y"] + rect["height"] / 2
@@ -750,6 +753,11 @@ def test_browser_shows_solids_by_default_and_proxies_only_under_the_labelled_tog
 
     root, server = served
     page = _open(browser, server.url)
+    # This fixture's proxies are three to five times its solids, so they need
+    # a stage wider than the one left between both sidebars at 1280 px to
+    # show their box growing on every side (REVIEW-DESIGN.md §12).
+    page.evaluate("window.cadexFrame.toggle('left', false); window.cadexFrame.toggle('right', false)")
+    page.evaluate("new Promise(r => setTimeout(r, 400))", await_promise=True)
     page.click("#views li[data-run='second']")
     assert _model_state(page) == "loaded"
     toggle = "document.getElementById('show-collision')"
