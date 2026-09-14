@@ -235,6 +235,8 @@ def build_parser() -> argparse.ArgumentParser:
         "clearance", help="Check accepted assembly pairs; write docs/clearance.md.",
     )
     _common(clearance_parser, inherit=True)
+    clearance_parser.add_argument("--sweep", action="store_true",
+                                  help="Read published joint sweeps into docs/clearance-sweep.md; never rebuild.")
     clearance_parser.add_argument("--assembly", default="", metavar="OUTPUT")
     clearance_parser.add_argument("--min-clearance-mm", type=float, default=MINIMUM_CLEARANCE_MM)
     clearance_parser.add_argument("--max-common-volume-mm3", type=float, default=MAXIMUM_COMMON_VOLUME_MM3)
@@ -1042,8 +1044,10 @@ def command_clearance(args: argparse.Namespace, report: RunReport) -> int:
         path, value = write_clearance(
             client, report.project_root, target=args.assembly,
             minimum=args.min_clearance_mm, maximum_volume=args.max_common_volume_mm3,
+            sweep=args.sweep,
         )
-        report.notes.append(f"clearance: {len(value['pairs'])} pair(s), written to {path}.")
+        coverage = f" sweep coverage={value['clearance_sweep'].get('status', 'unavailable')}" if args.sweep else ""
+        report.notes.append(f"clearance{coverage}: {len(value['pairs'])} static pair(s), written to {path}.")
         report.ok = True
         return EXIT_OK
 

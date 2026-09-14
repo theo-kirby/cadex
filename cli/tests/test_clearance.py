@@ -293,3 +293,47 @@ def test_fit_intent_survives_acceptance_and_reopen(engine, tmp_path):
     after = json.loads((root / 'script.json').read_text())
     for key in ('accepted_revision', 'accepted_digest', 'accepted_attempt'):
         assert after[key] == before[key]
+
+
+@pytest.mark.parametrize('status', ['complete', 'incomplete', None])
+def test_sweep_report_reads_every_paged_fact_without_rebuilding(tmp_path, monkeypatch, status):
+    from conftest import SOURCE_MODULE_DIR
+    monkeypatch.syspath_prepend(str(SOURCE_MODULE_DIR))
+    from CadexInspection import _bounded_page
+    sweep = {'status': status, 'step_degrees': 5, 'elapsed_seconds': 2.5,
+             'joints': [{'joint': 'hinge', 'status': status, 'elapsed_seconds': 2.4,
+                         'reason': 'pose budget exceeded' if status == 'incomplete' else '',
+                         'pairs': [{'first': 'base', 'second': f'link{i}',
+                                    'minimum_distance_mm': 0, 'maximum_common_volume_mm3': i,
+                                    'first_contact_degrees': 30} for i in range(60)]}]}
+    published = {'revision': 'accepted', 'assembly': 'asm', 'pairs': []}
+    if status:
+        published['clearance_sweep'] = sweep
+
+    class Client:
+        def request(self, op, arguments):
+            assert op == 'inspect' and arguments['scope'] == 'clearance'
+            return _bounded_page(published, arguments)
+
+    path, value = write_clearance(Client(), tmp_path, sweep=True)
+    rendered = json.loads(path.read_text().split('```json\n')[1].split('\n```')[0])
+    assert path.name == 'clearance-sweep.md'
+    if status:
+        assert rendered == sweep == value['clearance_sweep']
+    else:
+        assert rendered['status'] == 'unavailable'
+    assert 'not that fit passes' in path.read_text()
+
+
+def test_sweep_command_on_legacy_project_keeps_accepted_identity(engine, tmp_path, capsys):
+    root = tmp_path / 'project'
+    with CadexdClient(engine) as client:
+        open_project(client, root)
+        assert client.request('write_script', {'source': RIG, 'expected_revision': ''})['ok']
+    before = (root / 'script.json').read_bytes()
+    attempts = {p: p.read_bytes() for p in root.rglob('result.json')}
+    assert main(['clearance', '--sweep', '--project', str(root), '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['ok']
+    assert 'Coverage: unavailable' in (root / 'docs/clearance-sweep.md').read_text()
+    assert (root / 'script.json').read_bytes() == before
+    assert {p: p.read_bytes() for p in root.rglob('result.json')} == attempts

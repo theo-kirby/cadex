@@ -236,6 +236,12 @@ def test_clearance_is_a_served_inspect_scope_the_cli_offers(tmp_path) -> None:
 
     captured = capture_inspection(_service(tmp_path), {"scope": "clearance"})
     assert captured["kind"] == "clearance"
+    from CadexInspection import complete_inspection
+    from test_inventory_scope import _store
+    root = _store(tmp_path / "sweep", {"ok": True, "outputs": []})
+    missing = complete_inspection(capture_inspection(_service(root), {
+        "scope": "clearance", "path": "/clearance_sweep"}))
+    assert missing["value"]["status"] == "unavailable"
 
     tools_py = MODULE_DIR.parent.parent.parent / "cli" / "cadex_cli" / "tools.py"
     spec = spec_from_file_location("cadex_cli_tools_for_surface_test", tools_py)

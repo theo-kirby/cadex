@@ -70,6 +70,7 @@ Flags, valid on either side of the subcommand:
 | `--out DIR` | Write exported files here. Omit and nothing is written. |
 | `--format step,stl` | Any of `step`, `stl`, `brep`. Default `step,stl`. |
 | `--offset-mm N` | `section`: where along the plane normal to cut. **Omit it** to derive the offset from the accepted bounds (ADR-275); the old default was the constant 0.0, which on a mechanism standing off that plane draws an empty page and calls it `empty`. |
+| `--sweep` | `clearance`: write published joint sweep coverage and measurements to `docs/clearance-sweep.md`, without rebuilding (ADR-350). |
 | `--min-clearance-mm N` | `clearance`: flag distances strictly below N (default 0.1 mm). |
 | `--max-common-volume-mm3 N` | `clearance`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
 | `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output to inventory. A project publishes at most one, so this is only ever a check that you are looking at it. |
@@ -2282,3 +2283,24 @@ CLI threshold overrides apply to undeclared gaps and common volume; they do
 not replace a script's declared minimum or contact tolerance. Engine row
 `fit_failures` always describes the engine defaults. See XSCRIPT's measured-fit
 section for declaration syntax and the precise world-geometry detection rule.
+
+
+### Published joint sweeps (ADR-350, 2026-09-14)
+
+`inspect scope=clearance path=/clearance_sweep` reads the accepted assembly's
+published sweep unchanged: coverage status, declared step and runtime bounds,
+per-joint timings, pair minimum distances (mm), maximum common volumes (mm³),
+and first-contact values (degrees). First contact is the first sample from
+the lower limit within 0.001 mm; other joints stay at their solved pose.
+Missing data returns `status: unavailable` with a reason; unsupported joints
+and budget exhaustion retain `status: incomplete` and their reasons.
+Complete coverage means measurements exist, **not** that fit passes.
+
+`cadex clearance --sweep` writes these facts and the accepted revision to
+`docs/clearance-sweep.md`. Exit 0 means the report was written, including when
+coverage is missing or incomplete. Static threshold flags do not reinterpret
+sweep extrema as fit-intent verdicts. Inspection never rebuilds or re-accepts.
+To acquire measurements, explicitly build a script declaring
+`assembly.assembly(..., sweep_step_degrees=...)`. Legacy projects keep their
+accepted identity. The existing inspect arguments and generic paged response
+contract are unchanged; shell clients continue to pass the scope value through.

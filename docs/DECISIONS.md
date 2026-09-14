@@ -24677,3 +24677,20 @@ FreeCAD initialization; it was replaced before landing with fresh processes.
 The subprocess inherits the worker's OS sandbox. Tests cover analytic sphere
 contact, transformed source placement, baseline disagreement, unsupported joint,
 pose exhaustion, timeout, publication and byte-identical restoration.
+
+
+## ADR-350 — Read published sweeps through clearance inspection (2026-09-14)
+
+**Decision.** Extend the existing clearance scope with `clearance_sweep`,
+passing through the accepted output's measurements, coverage and timings.
+Absence is explicit `unavailable`, never a passing empty check. The CLI's
+`clearance --sweep` writes a separate report; complete coverage is explicitly
+not a fit verdict. No new protocol argument, op, dependency or geometry work
+is introduced. Agent instructions point to the paged sweep path. Static fit
+replies retain their solved-pose meaning. This removes no feature.
+
+**Evidence.** Known-result, missing/incomplete and pagination fixtures pin
+faithful reads. The packaged lifecycle test compares inspection against the
+retained sweep after restart and verifies accepted identity. F3 remains open
+for product Finch evidence and unsupported limited joints; ADR-348's negative
+Finch measurement is unchanged.

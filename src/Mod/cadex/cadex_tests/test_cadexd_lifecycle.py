@@ -2203,6 +2203,15 @@ def test_joint_sweep_is_published_and_restore_does_not_recompute(tmp_path):
         _stop(client)
         client = _spawn_cadexd()
         assert client.request('open_project', {'project_root': str(tmp_path)})['ok']
+        inspected = client.request('inspect', {'scope': 'clearance',
+            'path': '/clearance_sweep', 'limit': 50})
+        assert inspected['ok'], inspected
+        from CadexInspection import _bounded_page
+        assert inspected['value'] == _bounded_page({'clearance_sweep': sweep}, {
+            'path': '/clearance_sweep', 'limit': 50})['value']
+        pair = client.request('inspect', {'scope': 'clearance',
+            'path': '/clearance_sweep/joints/0/pairs/0', 'limit': 50})
+        assert pair['value'] == sweep['joints'][0]['pairs'][0]
         assert result_path.read_bytes() == retained
         assert json.loads(state_path.read_bytes())["accepted_attempt"] == accepted
     finally:

@@ -565,3 +565,24 @@ raw NDJSON — is `cadex_tests/cadexd_latency_integration.py` today.
   background `rebuild` restores `standard` after the drag settles.
 - The warm-standby worker for sub-100 ms slider drags (the per-drag
   `FreeCADCmd --safe-mode` spawn still dominates the 0.548 s median).
+
+
+### Published joint sweeps (ADR-350, 2026-09-14)
+
+`inspect scope=clearance path=/clearance_sweep` reads the accepted assembly's
+published sweep unchanged: coverage status, declared step and runtime bounds,
+per-joint timings, pair minimum distances (mm), maximum common volumes (mm³),
+and first-contact values (degrees). First contact is the first sample from
+the lower limit within 0.001 mm; other joints stay at their solved pose.
+Missing data returns `status: unavailable` with a reason; unsupported joints
+and budget exhaustion retain `status: incomplete` and their reasons.
+Complete coverage means measurements exist, **not** that fit passes.
+
+`cadex clearance --sweep` writes these facts and the accepted revision to
+`docs/clearance-sweep.md`. Exit 0 means the report was written, including when
+coverage is missing or incomplete. Static threshold flags do not reinterpret
+sweep extrema as fit-intent verdicts. Inspection never rebuilds or re-accepts.
+To acquire measurements, explicitly build a script declaring
+`assembly.assembly(..., sweep_step_degrees=...)`. Legacy projects keep their
+accepted identity. The existing inspect arguments and generic paged response
+contract are unchanged; shell clients continue to pass the scope value through.

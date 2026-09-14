@@ -1192,6 +1192,11 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             "revision": revision, "assembly": assembly,
             "available": bool(assembly) and measurements is not None,
             "pose": "initial solved pose (not swept motion)",
+            "clearance_sweep": by_name.get(assembly, {}).get("clearance_sweep") or {
+                "status": "unavailable", "joints": [],
+                "reason": "No published sweep for this accepted revision. Declare "
+                          "sweep_step_degrees on the assembly and explicitly rebuild.",
+            },
             "pairs": pairs,
             "world_geometry": by_name.get(assembly, {}).get("world_geometry", []),
         }
