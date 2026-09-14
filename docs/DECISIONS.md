@@ -24787,3 +24787,27 @@ at fixed 0.1, 0.0999 and 0.05 mm lateral gaps: static measurements and swept
 minima give the same minimum-clearance conclusions. Sweeps currently publish
 raw extrema, not fit verdicts; no second checker is added. CLI report tests
 pin the unchanged swept measurements and the corrected static verdicts.
+
+## ADR-354 — Bound the frozen ot7 evidence collection (2026-09-14)
+
+**Decision.** The off-product runner at `docs/probes/ot7/runner/run.py`
+collects one fresh frozen F5–F7 attempt: one create call and at most three
+ordered continuations. It validates prompt digests before dispatch, consumes
+slots durably, refuses existing project directories, captures provider frames
+through the existing CLI turn-factory seam, and blocks the CLI's unfrozen
+automatic follow-up. Accepted fit and inventory are read without restore;
+raw sweep coverage is preserved without inventing a swept verdict. A final
+bounded smoke retains its receipt even when fit fails. Only product-agent
+turns can change designs. No new dependency or product behavior change.
+
+**Why.** The critic requested this bounded evidence runner if F4's provider
+remained unavailable. The documented reset is still ahead of this unit; another
+retained-design audit would not advance the frontier. Four persistent slots
+and exclusive project creation prevent restarting a collector from granting
+an unnoticed fourth continuation. All interrupted attempts remain evidence.
+
+**Evidence.** `cli/tests/test_ot7_runner.py` exercises exhausted budgets,
+restart refusal, provider errors, changed prompts, suppressed automatic
+follow-ups, per-turn evidence hashes and process timeouts. This is tooling for
+F5–F7, not evidence that any of their designs passes. The runner README states
+how to run it and how to interpret incomplete or missing evidence.
