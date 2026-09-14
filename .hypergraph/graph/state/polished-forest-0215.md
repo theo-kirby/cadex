@@ -11,7 +11,11 @@ Status: open
 
 ## Current
 
-**A tested seeded-repair collector is ready; no real repair ran.** The F4 mode in `docs/probes/ot7/runner/` pins the preserved first Heron seed identity and empty overrides, requires complete unchanged before measurements, consumes one hash-checked frozen fresh-session prompt, and retains before/after reports, transcript hashes and accepted identity even on refusal. Exclusive evidence creation prevents redispatch; there is no continuation or smoke call. The provider reset was still ahead during the recorded unit. Full CLI validation passed 702 tests/1 skipped; the final focused runner suite passed 17, including a prompt-change case added after full-suite collection began. Fixture repairs are not real repair evidence: retain `open` [rec: blue-sky-2193].
+**The real collector measured the preserved Heron seed with unchanged script and metadata; no repair ran.** The child exited 0 in 0.164 seconds, collecting 105 unique pairs and 15 inventory components with matching accepted revision across three reports. Static fit has 15 failures: 8 intersections, 6 below-clearance pairs and one world-geometry failure; 91 pairs are clear. Shoulder servo/base overlap is 248.20162986795066 mm³. Both horn/link gaps measure approximately 0.2 mm but do not fail: the seed declares no contact intent and the default minimum is 0.1 mm. Swept coverage is unavailable. Artifact sizes and hashes are retained in `docs/probes/ot7/retained/repair-measurement.json`. This was a published-data read, with no rebuild, new sweep or provider call; the collector repair slot remains unused [rec: long-falcon-7461].
+
+The seeded-repair collector pins seed identity and empty overrides, requires complete unchanged before measurements, consumes one hash-checked frozen fresh-session prompt, and retains before/after reports, transcript hashes and accepted identity even on refusal. Exclusive evidence creation prevents redispatch; there is no continuation or smoke call [rec: blue-sky-2193]. Known-answer fixtures now exercise the real pagination reader and fit summary: later static failures survive, late-page errors prevent partial reports, and later nested joint/pair pages retain collision extrema and first contact. Deliberate truncation mutations fail the new cases. Latest full CLI validation: 706 passed / 1 skipped; focused runner suite: 20 passed. These are synthetic collection checks, not repair evidence [rec: long-spark-1984] [rec: true-wolf-3979].
+
+Reconcile judgement: the baseline and fixtures improve evidence collection but leave F4 open. An eventual zero-failure summary alone cannot prove all three original defects repaired, because the horn gaps lack contact intent. All three units ran before the documented provider reset without a repair dispatch [rec: long-spark-1984] [rec: true-wolf-3979] [rec: long-falcon-7461].
 
 **Two fresh frozen-prompt invocations were refused at the provider session limit: F4 remains open, with zero completed design turns.** The second `claude-fable-5` call used the unchanged prompt without `--resume`, exited 1 after 4.02 seconds and made zero transcript tool calls. No actor design edit occurred. Before/after published reads each report 15 failures: 8 intersections, 6 below-clearance pairs and one world plane. Accepted revision, digest, attempt and script remain unchanged; ordinary restore updates only `latest_candidate` and `updated_at`. The second receipt is `docs/probes/ot7/retained/repair-refusal-iteration19.json` [rec: keen-quill-2265].
 
@@ -32,3 +36,7 @@ None yet.
 
 - keen-quill-2265 — second refusal, zero completed turns, 15 before/after failures and unchanged accepted identity
 - blue-sky-2193 — seeded-repair collector and fixtures preserve identity and frozen prompting; no provider invocation or real repair
+
+- long-spark-1984 — static pagination and late-page-error fixtures; mutation detects lost failures
+- true-wolf-3979 — nested sweep pagination fixture and mutation; CLI 706 passed / 1 skipped
+- long-falcon-7461 — real unchanged-seed baseline and retained artifacts; 15 failures, unflagged horn gaps and unavailable sweep
