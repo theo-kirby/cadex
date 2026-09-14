@@ -2,6 +2,11 @@
 
 Verified against source: 2026-09-14. [Cadex-new]
 
+Current F9 assessment: [the regression receipt](../REGRESSION.md) consolidates
+the green gates, six preserved opens and explained fit differences, completing
+F9's evidence. The sections below retain each experiment's findings and the
+gaps that were open at that point.
+
 F4 did not run a design turn: the provider refused the frozen prompt at its
 session limit. The critic's fallback advanced F9 instead: the product checker
 reads all three retained ot6 designs, and every reported distance and common
