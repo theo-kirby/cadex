@@ -37,12 +37,18 @@ import tempfile
 import threading
 from typing import Any
 
+from .clearance import read_fit
 from .client import CadexdClient
 from .tools import STANDARD_DISPLAY, injects_display, injects_revision, tool_definitions
 
 #: Long enough that a slow rebuild is not a broken pipe; the engine's own
 #: budget is what actually bounds a run.
 SOCKET_TIMEOUT_SECONDS = 3600.0
+
+#: The ops that run the script and publish a revision. Each one's reply is
+#: what the model reasons about a build from, so each one carries the
+#: measured fit (ADR-346).
+MODELLING_OPS = frozenset({"write_script", "edit_script", "set_params", "rebuild"})
 
 
 @dataclass
@@ -54,6 +60,9 @@ class ToolCall:
     ok: bool
     summary: str
     failure_code: str = ""
+    #: The fit block a modelling reply carried (:func:`read_fit`), or None
+    #: for a read, a refusal, or a build whose measurements could not be read.
+    fit: dict[str, Any] | None = None
 
 
 @dataclass
@@ -64,6 +73,9 @@ class BridgeState:
     revision: str = ""
     #: The most recent successful modelling reply, display block and all.
     last_accepted: dict[str, Any] | None = None
+    #: The measured fit of the most recent successful modelling reply, as
+    #: the model saw it -- what the turn report carries as `fit`.
+    last_fit: dict[str, Any] | None = None
     calls: list[ToolCall] = field(default_factory=list)
 
 
@@ -204,16 +216,52 @@ class Bridge:
                     is_error=True,
                 )
             self._track(tool, reply)
+            ok = reply.get("ok") is True
+            # A build's reply carries the measured fit (ADR-346): the
+            # engine's own pair measurements at the solved pose, read back
+            # from the store the accepted revision just published to. The
+            # script's stdout is still in the reply; this is what says
+            # whether to believe it. Read under the lock so the revision the
+            # measurements describe is the one this reply accepted.
+            fit = self._read_fit() if ok and tool in MODELLING_OPS else None
 
-        ok = reply.get("ok") is True
+        summary = _summarize(tool, reply)
+        if fit is not None:
+            summary += "  " + _fit_line(fit)
+            self.state.last_fit = fit
         call = ToolCall(
-            tool, args, ok, _summarize(tool, reply), str(reply.get("failure_code") or "")
+            tool, args, ok, summary, str(reply.get("failure_code") or ""), fit
         )
         self._record(call)
+        view = _model_view(reply, args)
+        if fit is not None:
+            view["fit"] = fit
         return _content(
-            json.dumps(_model_view(reply, args), indent=2, sort_keys=True, default=str),
+            json.dumps(view, indent=2, sort_keys=True, default=str),
             is_error=not ok,
         )
+
+    def _read_fit(self) -> dict[str, Any]:
+        """The fit block for a build that just succeeded; never a raised error.
+
+        The build was accepted whatever happens here, and a reply that fails
+        because its *measurement* could not be read would refuse a design
+        for a reason the design did not cause. So a read failure is reported
+        in the block, as `verdict: unavailable` with the reason, and the
+        block is present on every build reply without exception.
+        """
+
+        try:
+            return read_fit(self.client)
+        except Exception as exc:  # any failure is a fit the model cannot see
+            return {
+                "verdict": "unavailable",
+                "source": "",
+                "pairs_checked": 0,
+                "failing_count": 0,
+                "failing": [],
+                "error": f"fit measurements could not be read: {exc}",
+            }
 
     def _record(self, call: ToolCall) -> None:
         self.state.calls.append(call)
@@ -235,12 +283,7 @@ class Bridge:
             revision = str(model_state.get("next_write_expected_revision") or "")
             if revision:
                 self.state.revision = revision
-        if reply.get("ok") is True and tool in {
-            "write_script",
-            "edit_script",
-            "set_params",
-            "rebuild",
-        }:
+        if reply.get("ok") is True and tool in MODELLING_OPS:
             self.state.last_accepted = reply
 
 
@@ -282,6 +325,17 @@ def _summarize(tool: str, reply: dict[str, Any]) -> str:
     names = ", ".join(_output_names(reply.get("outputs")))
     digest = str(reply.get("digest") or "")[:12]
     return f"{names} ({digest})" if names else digest
+
+
+def _fit_line(fit: dict[str, Any]) -> str:
+    """The fit block as one progress-log phrase."""
+
+    verdict = str(fit.get("verdict") or "")
+    if verdict == "unavailable":
+        return "fit unavailable"
+    return "fit {:s}: {:d} failing of {:d} pair(s)".format(
+        verdict, int(fit.get("failing_count") or 0), int(fit.get("pairs_checked") or 0)
+    )
 
 
 def _output_names(outputs: Any) -> list[str]:

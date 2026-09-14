@@ -84,6 +84,46 @@ def accepted_reply(
     }
 
 
+def inspect_reply(args: dict[str, Any], value: Any) -> dict[str, Any]:
+    """An ``inspect`` response as the protocol pins it, with ``value``."""
+
+    return {
+        "ok": True,
+        "scope": str(args.get("scope") or ""),
+        "target": str(args.get("target") or ""),
+        "path": str(args.get("path") or ""),
+        "value": value,
+        "page": {
+            "kind": "object" if isinstance(value, dict) else "scalar",
+            "offset": 0, "requested_limit": 50, "effective_limit": 50,
+            "returned": len(value) if isinstance(value, (dict, list)) else 1,
+            "total": len(value) if isinstance(value, (dict, list)) else 1,
+            "next_offset": None,
+        },
+        "document": {"name": "Ephemeral", "uid": "doc", "object_count": 0},
+        "surface": {
+            "available": True, "domain": "project", "engine": "xscript",
+            "surface_id": "xscript.project", "workbench": "PartWorkbench",
+        },
+        "result_json_bytes": 0,
+    }
+
+
+def clearance_value(
+    pairs: list[dict[str, Any]] | None = None, *, revision: str = "rev-1",
+    assembly: str = "asm",
+) -> dict[str, Any]:
+    """An ``inspect scope=clearance`` value: unavailable when no pairs."""
+
+    return {
+        "revision": revision,
+        "assembly": assembly if pairs else "",
+        "available": bool(pairs),
+        "pose": "initial solved pose (not swept motion)",
+        "pairs": list(pairs or []),
+    }
+
+
 def rejected_reply(revision: str, *, error: str = "no") -> dict[str, Any]:
     """A tool-level refusal — which still moves the working revision."""
 
@@ -128,6 +168,11 @@ class FakeCadexd:
         reply = self.replies.get(op)
         if callable(reply):
             reply = reply(dict(args or {}))
+        if reply is None and op == "inspect":
+            # The bridge reads scope=clearance after every build (ADR-346);
+            # an unconfigured fake publishes no assembly, so the fit is
+            # honestly unavailable rather than a shape-check failure.
+            reply = inspect_reply(dict(args or {}), clearance_value())
         if reply is None:
             reply = accepted_reply(op, "rev-1")
         frame = {"id": f"fake-{len(self.calls)}", **reply}

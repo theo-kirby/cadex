@@ -71,6 +71,10 @@ class RunReport:
     #: ``cadex walk``: the legs it ran, in order, and the review it read
     #: off the verified rollout's trace (ADR-199).
     walk: dict[str, Any] = field(default_factory=dict)
+    #: The measured fit the last accepted build reply carried to the model
+    #: (ADR-346): verdict, counts and every failing pair by name. Read from
+    #: the engine's published clearance measurements, never from stdout.
+    fit: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
@@ -101,6 +105,8 @@ class RunReport:
             payload["training_plan"] = dict(self.training_plan)
         if self.walk:
             payload["walk"] = dict(self.walk)
+        if self.fit:
+            payload["fit"] = dict(self.fit)
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -210,6 +216,20 @@ def human_lines(report: RunReport) -> list[str]:
         for name, path in sorted((plan.get("artifacts") or {}).items()):
             if path:
                 lines.append(f"  file {name:<13s} {path}")
+    if report.fit:
+        verdict = str(report.fit.get("verdict") or "")
+        if verdict == "unavailable":
+            lines.append("fit    unavailable: " + str(
+                report.fit.get("error") or report.fit.get("note") or ""))
+        else:
+            lines.append("fit    {:s}  {:d} failing of {:d} pair(s)".format(
+                verdict, int(report.fit.get("failing_count") or 0),
+                int(report.fit.get("pairs_checked") or 0)))
+            for pair in report.fit.get("failing") or []:
+                lines.append("  {:s} ∩ {:s}: {:s}  distance {:s} mm  common {:s} mm³".format(
+                    str(pair.get("first") or ""), str(pair.get("second") or ""),
+                    str(pair.get("status") or ""), _measure(pair.get("distance_mm")),
+                    _measure(pair.get("common_volume_mm3"))))
     for leg in report.walk.get("legs") or []:
         lines.append(
             "leg    {:<8s} exit {:d}  {:.1f} s".format(
@@ -230,6 +250,12 @@ def human_lines(report: RunReport) -> list[str]:
     if report.revision:
         lines.append(f"next   expected_revision {report.revision[:16]}")
     return lines
+
+
+def _measure(value: Any) -> str:
+    """A measurement, or the dash that says the engine could not take it."""
+
+    return "—" if value is None else _short(value)
 
 
 def _short(value: Any) -> str:

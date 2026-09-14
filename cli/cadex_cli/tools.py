@@ -106,7 +106,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
     "inspect": (
         "Read engine state. This is how you verify your work: there is no "
-        "viewport here and no screenshot to look at."
+        "viewport here and no screenshot to look at. scope=clearance is the "
+        "measured fit of the accepted assembly, every pair; a build reply's "
+        "`fit` block is its summary."
     ),
     "link_part": (
         "Pull one accepted solid out of ANOTHER project directory and store "
@@ -196,8 +198,13 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "`set_params` a `nets` or `boards` list; `inventory` is what the "
         "assembly is MADE OF — one row per component with the output it "
         "places, that output's catalog family and part number when a lib.* "
-        "generator built it, and the pose the solver settled on; `api` is "
-        "the tool surface."
+        "generator built it, and the pose the solver settled on; `clearance` "
+        "is the MEASURED FIT of the accepted assembly — every component "
+        "pair's minimum distance (mm) and common volume (mm³), measured by "
+        "the engine from the exact solids at the solved pose, with each "
+        "pair's label and catalog identity — the evidence that parts fit, "
+        "where a script's printout is only a claim; `api` is the tool "
+        "surface."
     ),
     ("inspect", "target"): (
         "The exact name the scope keys on — an output name for `output`, an "
@@ -236,6 +243,10 @@ INSPECT_SCOPES = (
     "history",
     "wiring",
     "inventory",
+    # The measured fit (ADR-346): the same published pair measurements
+    # `cadex clearance` reports, offered to the model whole because the
+    # `fit` block on a build reply is a summary of them.
+    "clearance",
     "blueprint",
     "api",
 )

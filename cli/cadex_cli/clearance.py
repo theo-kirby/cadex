@@ -29,6 +29,108 @@ def pair_status(row: dict[str, Any], minimum: float, maximum_volume: float) -> s
     return "clear"
 
 
+#: How many failing pairs a build reply names in full before it points at
+#: `inspect scope=clearance` for the rest. A failing set larger than this is
+#: a design that has not been placed yet, not one whose 41st pair matters.
+FIT_REPLY_PAIR_LIMIT = 40
+
+#: Where the fit block's numbers come from, said in the block itself so the
+#: agent reading it cannot mistake it for the script's own printout.
+FIT_SOURCE = (
+    "engine measurements of the exact solids at the solved pose, published "
+    "with the accepted revision (inspect scope=clearance). Not the script's "
+    "stdout; not a swept-motion check."
+)
+
+
+def fit_summary(
+    value: Any, *,
+    minimum: float = MINIMUM_CLEARANCE_MM,
+    maximum_volume: float = MAXIMUM_COMMON_VOLUME_MM3,
+) -> dict[str, Any]:
+    """The measured fit as a build reply carries it (ADR-346).
+
+    ``value`` is an ``inspect scope=clearance`` value. The block is small by
+    construction: the check counts, and every pair that is not clear, by
+    name, with its minimum distance and common volume. A pair the engine
+    could not measure is failing here too -- an unknown is not a fit -- and
+    carries the engine's reason. ``verdict`` is ``pass`` only when every
+    pair was measured and every pair is clear; ``unavailable`` when the
+    accepted revision publishes no assembly at all, which is a script with
+    nothing to fit rather than one that fails.
+    """
+
+    if not isinstance(value, dict):
+        value = {}
+    pairs = [row for row in (value.get("pairs") or []) if isinstance(row, dict)]
+    counts = {"clear": 0, "intersection": 0, "below clearance": 0, "unknown": 0}
+    failing: list[dict[str, Any]] = []
+    for row in pairs:
+        status = pair_status(row, minimum, maximum_volume)
+        counts[status] += 1
+        if status == "clear":
+            continue
+        item: dict[str, Any] = {
+            "first": str(row.get("first") or ""),
+            "second": str(row.get("second") or ""),
+            "status": status,
+            "distance_mm": row.get("distance_mm"),
+            "common_volume_mm3": row.get("common_volume_mm3"),
+        }
+        if row.get("error"):
+            item["error"] = str(row["error"])
+        failing.append(item)
+    available = bool(value.get("available")) or bool(pairs)
+    if not available:
+        verdict = "unavailable"
+    elif failing:
+        verdict = "fail"
+    else:
+        verdict = "pass"
+    summary: dict[str, Any] = {
+        "verdict": verdict,
+        "source": FIT_SOURCE,
+        "revision": str(value.get("revision") or ""),
+        "assembly": str(value.get("assembly") or ""),
+        "pose": str(value.get("pose") or ""),
+        "thresholds": {
+            "minimum_clearance_mm": float(minimum),
+            "maximum_common_volume_mm3": float(maximum_volume),
+        },
+        "pairs_checked": len(pairs),
+        "counts": counts,
+        "failing_count": len(failing),
+        "failing": failing[:FIT_REPLY_PAIR_LIMIT],
+    }
+    if len(failing) > FIT_REPLY_PAIR_LIMIT:
+        summary["failing_truncated"] = len(failing) - FIT_REPLY_PAIR_LIMIT
+        summary["note"] = (
+            f"{len(failing)} pairs fail; the first {FIT_REPLY_PAIR_LIMIT} are "
+            "listed. inspect scope=clearance lists every pair."
+        )
+    if verdict == "unavailable":
+        summary["note"] = (
+            "No published assembly with pair measurements: fit is measured "
+            "between assembly components, and this revision places none. A "
+            "design of separate parts that are meant to fit together has to "
+            "place them with assembly.component for the check to exist."
+        )
+    return summary
+
+
+def read_fit(
+    client: Any, *,
+    minimum: float = MINIMUM_CLEARANCE_MM,
+    maximum_volume: float = MAXIMUM_COMMON_VOLUME_MM3,
+) -> dict[str, Any]:
+    """Read the published clearance scope, every page, and summarise it."""
+
+    value = _read_path(client, {"scope": "clearance", "target": ""}, "")
+    if not isinstance(value, dict) or value.get("ok") is False:
+        raise InventoryError(str(value))
+    return fit_summary(value, minimum=minimum, maximum_volume=maximum_volume)
+
+
 def write_clearance(
     client: Any, root: Path | str, *, target: str = "",
     minimum: float = MINIMUM_CLEARANCE_MM,

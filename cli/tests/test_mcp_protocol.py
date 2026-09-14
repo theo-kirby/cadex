@@ -21,7 +21,9 @@ from cadex_cli import mcp
 from cadex_cli.bridge import Bridge
 from cadex_cli.tools import CLI_TOOL_OPS, tool_definitions
 
-from fake_cadexd import FakeCadexd, accepted_reply, rejected_reply
+from fake_cadexd import (
+    FakeCadexd, accepted_reply, clearance_value, inspect_reply, rejected_reply,
+)
 
 
 @pytest.fixture
@@ -120,6 +122,145 @@ def test_inspect_offers_only_scopes_a_headless_client_can_serve(protocol) -> Non
     # shell-only — nothing headless can render.
     assert "blueprint" in offered
     assert "put_blueprint" not in CLI_TOOL_OPS
+    # The measured fit is on the surface whole (ADR-346): the `fit` block a
+    # build reply carries is a summary of this scope.
+    assert "clearance" in offered
+
+
+# -- the fit block (ADR-346) -----------------------------------------------
+
+
+_OVERLAP = {
+    "first": "a", "second": "b", "first_label": "a", "second_label": "b",
+    "first_catalog": None, "second_catalog": None,
+    "distance_mm": 0.0, "common_volume_mm3": 100.0,
+}
+_CLEAR = {**_OVERLAP, "first": "b", "second": "c", "distance_mm": 10.0,
+          "common_volume_mm3": 0.0}
+
+
+def _fit_client(pairs, **replies):
+    def inspect(args):
+        assert args["scope"] == "clearance", args
+        return inspect_reply(args, clearance_value(pairs))
+    write = accepted_reply("write", "rev-2")
+    write["stdout"] = "no overlap\n"
+    return FakeCadexd(replies={"write_script": write, "inspect": inspect, **replies})
+
+
+def test_a_build_reply_carries_the_measured_fit_beside_the_stdout() -> None:
+    """The script says "no overlap"; the engine's measurement says 100 mm³."""
+
+    client = _fit_client([_OVERLAP, _CLEAR])
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        reply = _rpc(
+            bridge, "tools/call", {"name": "write_script", "arguments": {"source": "x"}}
+        )
+        (call,) = bridge.state.calls
+        last_fit = bridge.state.last_fit
+
+    assert reply["result"]["isError"] is False
+    payload = json.loads(reply["result"]["content"][0]["text"])
+    assert payload["stdout"] == "no overlap\n"
+    fit = payload["fit"]
+    assert fit["verdict"] == "fail"
+    assert fit["pairs_checked"] == 2 and fit["failing_count"] == 1
+    assert fit["counts"] == {
+        "clear": 1, "intersection": 1, "below clearance": 0, "unknown": 0,
+    }
+    (failing,) = fit["failing"]
+    assert (failing["first"], failing["second"]) == ("a", "b")
+    assert failing["status"] == "intersection"
+    assert failing["common_volume_mm3"] == 100.0 and failing["distance_mm"] == 0.0
+    assert "stdout" in fit["source"] and "inspect scope=clearance" in fit["source"]
+    # It was read from the store the build published to, after the build.
+    assert [op for op, _ in client.calls] == ["write_script", "inspect"]
+    (asked,) = client.args_for("inspect")
+    assert asked["scope"] == "clearance"
+    # ...and the parent saw the same thing the model did.
+    assert call.fit == fit and last_fit == fit
+    assert call.summary.endswith("fit fail: 1 failing of 2 pair(s)")
+
+
+def test_a_clear_build_says_pass_and_a_partless_build_says_unavailable() -> None:
+    client = _fit_client([_CLEAR])
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        payload = json.loads(
+            bridge.call("write_script", {"source": "x"})["content"][0]["text"]
+        )
+    assert payload["fit"]["verdict"] == "pass"
+    assert payload["fit"]["failing"] == []
+
+    client = _fit_client([])
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        payload = json.loads(
+            bridge.call("write_script", {"source": "x"})["content"][0]["text"]
+        )
+        (call,) = bridge.state.calls
+    assert payload["fit"]["verdict"] == "unavailable"
+    assert payload["fit"]["pairs_checked"] == 0
+    assert "assembly.component" in payload["fit"]["note"]
+    assert call.summary.endswith("fit unavailable")
+
+
+def test_every_modelling_op_carries_a_fit_block_and_no_read_does() -> None:
+    client = _fit_client(
+        [_OVERLAP],
+        edit_script=accepted_reply("edit", "rev-3"),
+        set_params=accepted_reply("set", "rev-4"),
+        rebuild=accepted_reply("rebuild", "rev-5"),
+    )
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        for tool, arguments in (
+            ("write_script", {"source": "x"}),
+            ("edit_script", {"replacements": [{"old": "a", "new": "b"}]}),
+            ("set_params", {"values": {"w": 1}}),
+            ("rebuild", {}),
+        ):
+            payload = json.loads(bridge.call(tool, arguments)["content"][0]["text"])
+            assert payload["fit"]["verdict"] == "fail", tool
+        for tool, arguments in (
+            ("describe_api", {}),
+            ("inspect", {"scope": "clearance"}),
+        ):
+            payload = json.loads(bridge.call(tool, arguments)["content"][0]["text"])
+            assert "fit" not in payload, tool
+    calls = [op for op, _ in client.calls]
+    assert calls.count("inspect") == 5  # four fit reads and the model's own
+
+
+def test_a_refused_build_carries_no_fit_block() -> None:
+    client = FakeCadexd(replies={"write_script": lambda _a: rejected_reply("rev-9")})
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        reply = bridge.call("write_script", {"source": "x"})
+        (call,) = bridge.state.calls
+        assert bridge.state.last_fit is None
+    assert reply["is_error"] is True
+    assert "fit" not in json.loads(reply["content"][0]["text"])
+    assert call.fit is None
+    assert [op for op, _ in client.calls] == ["write_script"]
+
+
+def test_a_fit_that_cannot_be_read_is_reported_and_refuses_nothing() -> None:
+    """The build was accepted; a measurement the bridge cannot read says so."""
+
+    def failing_inspect(args):
+        return {
+            "ok": False, "tool": "core.inspect", "error": "store unreadable",
+            "failure_code": "INSPECT_FAILED", "failure_stage": "read",
+            "observed": {}, "normalized": {}, "requested": {}, "retry": True,
+            "candidates": [], "allowed_values": [], "native_diagnostics": [],
+            "state_change": "none",
+        }
+
+    client = FakeCadexd(replies={"inspect": failing_inspect})
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        reply = bridge.call("write_script", {"source": "x"})
+    assert reply["is_error"] is False
+    payload = json.loads(reply["content"][0]["text"])
+    assert payload["ok"] is True and payload["revision"] == "rev-1"
+    assert payload["fit"]["verdict"] == "unavailable"
+    assert "store unreadable" in payload["fit"]["error"]
 
 
 # -- calls ---------------------------------------------------------------

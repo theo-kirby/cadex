@@ -104,6 +104,17 @@ def test_the_prompt_states_the_headless_limits_rather_than_leaving_them(
     assert "expected_revision" in CLI_OVERLAY
 
 
+def test_the_prompt_says_fit_is_measured_and_a_printout_is_a_claim() -> None:
+    """ADR-346: the agent verifies fit from the `fit` block, never by printing."""
+
+    assert "FIT IS MEASURED, NOT PRINTED" in CLI_OVERLAY
+    assert "`fit` block" in CLI_OVERLAY
+    assert "inspect scope=clearance" in CLI_OVERLAY
+    assert "a claim the script makes about itself" in CLI_OVERLAY
+    # The old instruction -- verify through stdout -- is gone.
+    assert "its stdout comes back on every result" not in CLI_OVERLAY
+
+
 def test_the_prompt_pushes_for_a_parametric_script() -> None:
     """The cheap sweep only exists if the expensive turn made it possible."""
 
@@ -157,10 +168,16 @@ def test_a_scripted_turn_builds_exports_and_reports(tmp_path) -> None:
     assert Path(output.files["stl"]).is_file()
     assert "Built a 30 mm plate." in report.notes
 
-    # The engine's own stdout reached the model, which is the only way it
-    # can check its work here.
+    # The engine's own stdout reached the model...
     turn = factory.made[0]
-    assert "built at 30" in turn.last_payload("write_script")["stdout"]
+    payload = turn.last_payload("write_script")
+    assert "built at 30" in payload["stdout"]
+    # ...beside the fit block every build carries (ADR-346). A lone plate
+    # places no assembly component, so the honest answer is that nothing
+    # was checked -- and the turn's report says the same.
+    assert payload["fit"]["verdict"] == "unavailable"
+    assert report.fit["verdict"] == "unavailable"
+    assert report.to_json()["fit"] == report.fit
 
 
 @pytest.mark.usefixtures("engine")

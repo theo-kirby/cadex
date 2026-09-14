@@ -54,7 +54,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). **`--offset-mm` is optional**: omitted, the offset is derived from the accepted bounds the way the walk derives it — every candidate is cut and the one covering the most objects wins (ADR-273, ADR-275). The note reports the offset, whether it was `explicit` or `derived`, and how many of the model's objects the cut reached. | no |
 | `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews plus `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
-| `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. | no |
+| `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. The same rows reach the agent as `inspect scope=clearance` and, summarised, as the `fit` block on every build reply (ADR-346). | no |
 | `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, and the pose the solver settled on. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
@@ -1894,7 +1894,11 @@ revision and commits views under a revision directory. The same snapshot supplie
 ```
 
 `error` is present instead of `notes` when `ok` is false. `outputs` entries
-that produced no file carry `skipped` with the reason. An `asset` run adds
+that produced no file carry `skipped` with the reason. A prompt run whose
+turn accepted a build adds `fit`, the measured-fit block that build's reply
+carried to the model (§4, ADR-346) — `verdict`, counts and every failing
+pair by name — and the prose report prints it as a `fit` line with one
+line per failing pair. An `asset` run adds
 `assets`, the store's listing as `[{"name", "bytes", "sha256"}, …]`, sorted
 by name — the same rows `put_asset` and `inspect scope=assets` return. A
 `train` run adds `training`, the offboard trainer's receipt exactly as it
@@ -1942,7 +1946,8 @@ cli/cadex_cli/
   agent.py             one `claude -p` turn; the system prompt
   export.py            STEP/STL/BREP out of the display block; the rest copied
   render.py            accepted tessellation -> depth-tested named-angle SVG previews
-  clearance.py         inspect scope=clearance -> docs/clearance.md; read-time thresholds
+  clearance.py         inspect scope=clearance -> docs/clearance.md; read-time thresholds;
+                       and the `fit` block every build reply carries (ADR-346)
   inventory.py         inspect scope=inventory -> the project's docs/inventory.md
   train.py             the offboard trainer as a subprocess, local or remote
   walk.py              the lifecycle walk's leg plan (ADR-199)
@@ -2002,6 +2007,44 @@ review dashboard draws always retains tessellation (ADR-312). Anything the
 model supplies for either is overruled, and the reply's `display` block is
 dropped before the model sees it.
 
+### Every build reply carries the measured fit (ADR-346)
+
+After a successful `write_script`, `edit_script`, `set_params` or `rebuild`,
+the bridge reads `inspect scope=clearance` — the engine's own pair
+measurements of the accepted assembly's exact solids at the solved pose,
+published with the revision the build just accepted — and adds a `fit`
+block to the reply the model sees, beside the script's `stdout`:
+
+```json
+"fit": {
+  "verdict": "fail",
+  "source": "engine measurements of the exact solids at the solved pose, …",
+  "revision": "…", "assembly": "asm",
+  "pose": "initial solved pose (not swept motion)",
+  "thresholds": {"minimum_clearance_mm": 0.1, "maximum_common_volume_mm3": 1e-06},
+  "pairs_checked": 3,
+  "counts": {"clear": 2, "intersection": 1, "below clearance": 0, "unknown": 0},
+  "failing_count": 1,
+  "failing": [{"first": "a", "second": "b", "status": "intersection",
+               "distance_mm": 0.0, "common_volume_mm3": 100.0}]
+}
+```
+
+`verdict` is `pass` only when every pair was measured and every pair is
+clear at the `cadex clearance` defaults; `fail` names every pair that is
+not — an intersection, a distance below the minimum, or a pair the engine
+could not measure, with its reason — bounded to the first forty with a
+`failing_truncated` count and a pointer at `inspect scope=clearance`, which
+serves every pair. `unavailable` means the revision places no assembly
+components, so nothing was checked; it never means pass. A measurement the
+bridge cannot read is also `unavailable`, with the error, and the build is
+still accepted: **a failing fit is reported, never refused.** The block is
+computed from the published measurements and never from `stdout` — a
+script that prints "no overlap" over two solids that share 100 mm³ is
+handed both, and the system prompt tells the model which one is the claim.
+`clearance` is an `inspect` scope on the model's surface for the same
+reason, and the last accepted build's block is the envelope's `fit`.
+
 ### What the agent is told
 
 The system prompt is the CLI's own overlay plus `describe_api`'s live
@@ -2015,9 +2058,13 @@ The overlay says three things the engine does not:
 - **Build it parametric**, because the cheap sweep only exists if the
   expensive turn made one possible.
 - **You cannot see your work.** No viewport, no screenshot, no render, no
-  pin — the agent verifies through `inspect scope=output` facts and the
-  script's own `stdout`, and is told so rather than discovering it by
-  failing.
+  pin — the agent verifies through `inspect scope=output` facts, and is
+  told so rather than discovering it by failing.
+- **Fit is measured, not printed** (ADR-346). The `fit` block on every
+  build reply is the evidence that parts fit; the script's `stdout` is a
+  claim the script makes about itself, and a `fit` naming a failing pair
+  overrules any printout that says otherwise. The prompt no longer tells
+  the agent to verify by printing.
 - **You cannot train, and a file comes in by path.** `put_asset` is how a
   trained policy, its provenance or a mesh enters the project, and its
   reply's `sha256` is the digest the script names; asked to train, the

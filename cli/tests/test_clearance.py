@@ -4,7 +4,10 @@ import json
 import pytest
 from cadex_cli.__main__ import main
 from cadex_cli.client import CadexdClient, open_project
-from cadex_cli.clearance import bounds_agreement, pair_status, write_clearance
+from cadex_cli.bridge import Bridge
+from cadex_cli.clearance import (
+    FIT_REPLY_PAIR_LIMIT, bounds_agreement, fit_summary, pair_status, write_clearance,
+)
 
 RIG = '''
 block = part.box(10, 10, 10)
@@ -42,6 +45,96 @@ def test_real_pairs_and_threshold_changes_without_rebuild(engine, tmp_path, caps
     assert envelope['ok'], envelope
     assert sorted(root.rglob('result.json')) == attempts
     assert 'intersection' in path.read_text()
+
+
+def test_a_script_that_prints_no_overlap_gets_the_overlap_in_its_reply(engine, tmp_path):
+    """The transaction F1 names (ADR-346): stdout is a claim, `fit` the evidence.
+
+    Blocks a and b share 100 mm³ and the script says they do not. Through the
+    bridge the model is handed both, and the fit block is computed from the
+    published measurements -- the same rows `cadex clearance` reports --
+    never from what the script printed.
+    """
+    root = tmp_path / 'printed'
+    lying = RIG.replace('diag = assembly.solve(asm)',
+                        'diag = assembly.solve(asm)\nprint("fit check: no overlap")')
+    with CadexdClient(engine) as client:
+        open_project(client, root)
+        with Bridge(client, initial_revision='') as bridge:
+            reply = bridge.call('write_script', {'source': lying})
+            (call,) = bridge.state.calls
+        assert reply['is_error'] is False
+        payload = json.loads(reply['content'][0]['text'])
+        assert payload['ok'] is True
+        assert 'fit check: no overlap' in payload['stdout']
+        fit = payload['fit']
+        assert fit['verdict'] == 'fail'
+        assert fit['pairs_checked'] == 3 and fit['failing_count'] == 1
+        assert fit['counts'] == {'clear': 2, 'intersection': 1, 'below clearance': 0, 'unknown': 0}
+        (failing,) = fit['failing']
+        assert (failing['first'], failing['second']) == ('a', 'b')
+        assert failing['status'] == 'intersection'
+        assert failing['common_volume_mm3'] == pytest.approx(100)
+        assert failing['distance_mm'] == pytest.approx(0)
+        assert fit['revision'] == payload['accepted_revision']
+        assert fit['assembly'] == 'asm'
+        assert call.fit == fit
+        # The same numbers `cadex clearance` writes, because they are the
+        # same published rows.
+        _, value = write_clearance(client, root)
+        rows = {(r['first'], r['second']): r for r in value['pairs']}
+        assert rows['a', 'b']['common_volume_mm3'] == pytest.approx(failing['common_volume_mm3'])
+        assert fit_summary(value)['failing'] == fit['failing']
+
+
+def test_fit_summary_counts_an_unmeasured_pair_as_failing():
+    value = {'available': True, 'revision': 'r', 'assembly': 'asm', 'pose': 'p', 'pairs': [
+        {'first': 'a', 'second': 'b', 'distance_mm': None, 'common_volume_mm3': None,
+         'error': 'Assembly solver did not produce a solved pose'},
+        {'first': 'a', 'second': 'c', 'distance_mm': 0.05, 'common_volume_mm3': 0.0},
+        {'first': 'b', 'second': 'c', 'distance_mm': 3.0, 'common_volume_mm3': 0.0},
+    ]}
+    fit = fit_summary(value)
+    assert fit['verdict'] == 'fail'
+    assert fit['counts'] == {'clear': 1, 'intersection': 0, 'below clearance': 1, 'unknown': 1}
+    assert [(f['first'], f['second'], f['status']) for f in fit['failing']] == [
+        ('a', 'b', 'unknown'), ('a', 'c', 'below clearance')]
+    assert fit['failing'][0]['error'].startswith('Assembly solver')
+    assert fit['thresholds'] == {'minimum_clearance_mm': 0.1, 'maximum_common_volume_mm3': 1e-6}
+    assert fit_summary(value, minimum=0.01)['counts']['below clearance'] == 0
+
+
+def test_fit_summary_is_bounded_and_says_so():
+    pairs = [{'first': f'p{i}', 'second': f'q{i}', 'distance_mm': 0.0, 'common_volume_mm3': 5.0}
+             for i in range(FIT_REPLY_PAIR_LIMIT + 3)]
+    fit = fit_summary({'available': True, 'pairs': pairs})
+    assert fit['failing_count'] == FIT_REPLY_PAIR_LIMIT + 3
+    assert len(fit['failing']) == FIT_REPLY_PAIR_LIMIT
+    assert fit['failing_truncated'] == 3
+    assert 'inspect scope=clearance' in fit['note']
+
+
+def test_the_prose_report_prints_the_fit_and_each_failing_pair():
+    from cadex_cli.report import RunReport, human_lines
+    report = RunReport(project_root='/p', fit=fit_summary({'available': True, 'pairs': [
+        {'first': 'a', 'second': 'b', 'distance_mm': 0.0, 'common_volume_mm3': 100.0},
+        {'first': 'a', 'second': 'c', 'distance_mm': None, 'common_volume_mm3': None,
+         'error': 'Component has no measurable shape'},
+    ]}))
+    lines = human_lines(report)
+    assert 'fit    fail  2 failing of 2 pair(s)' in lines
+    assert '  a ∩ b: intersection  distance 0 mm  common 100 mm³' in lines
+    assert '  a ∩ c: unknown  distance — mm  common — mm³' in lines
+    assert report.to_json()['fit']['failing_count'] == 2
+    unavailable = RunReport(fit={'verdict': 'unavailable', 'error': 'store unreadable'})
+    assert 'fit    unavailable: store unreadable' in human_lines(unavailable)
+    assert 'fit' not in RunReport().to_json()
+
+
+def test_fit_summary_without_an_assembly_is_unavailable_not_passing():
+    fit = fit_summary({'available': False, 'pairs': [], 'revision': 'r', 'assembly': ''})
+    assert fit['verdict'] == 'unavailable' and fit['pairs_checked'] == 0
+    assert fit_summary(None)['verdict'] == 'unavailable'
 
 
 @pytest.mark.parametrize('row', [{}, {'distance_mm': 0, 'common_volume_mm3': None},

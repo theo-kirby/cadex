@@ -24558,3 +24558,52 @@ failing fit checks still reported; the seeded repair of Heron's first ot6
 revision gets one. A design that still fails after its last continuation is a
 measured result, and a changed byte in any prompt is a new attempt. The actor
 never edits a design in an `ot7-*` project.
+
+## ADR-346 — Every build reply carries the measured fit, and the agent is told a printout is a claim (2026-09-14)
+
+Run ot7's first product change (ADR-341, F1). ot6 found that the product
+agent's printed output said Heron's parts fit while its cheek buried 248.2
+mm³ of servo tab and a horn sat 0.2 mm from its link; the engine had
+measured both, because `_measure_clearance` runs on every accepted assembly
+and publishes every pair's minimum distance and common volume at the solved
+pose, but the agent's tool surface did not offer the `clearance` inspect
+scope, its build replies carried the script's stdout and nothing measured,
+and its system prompt told it to verify through `print(...)`.
+
+Three changes, all on the CLI side, no protocol change:
+
+- **The bridge attaches a `fit` block to every successful `write_script`,
+  `edit_script`, `set_params` and `rebuild` reply**, read from `inspect
+  scope=clearance` after the build under the same lock, so the measurements
+  describe the revision the reply accepted. The block is the check counts,
+  the thresholds, and every failing pair by name with its distance and
+  common volume — an intersection, a distance below the `cadex clearance`
+  minimum, or a pair the engine could not measure, which is failing too
+  because an unknown is not a fit. It is bounded to forty failing pairs and
+  points at the scope for the rest. `unavailable` means no assembly
+  components were placed, or the measurement could not be read; it never
+  means pass, and **it never refuses the build** — a failing fit is
+  reported, on the terms ADR-341 sets, and acceptance is unchanged for
+  every existing script. The block's `source` names where its numbers come
+  from and says in so many words that it is not the script's stdout.
+- **`clearance` joins the CLI's inspect scopes**, so the model can read
+  every pair whole, with labels and catalog identity, the way `cadex
+  clearance` does.
+- **The system prompt says fit is measured, not printed.** The bullet that
+  told the agent to verify through stdout is gone; in its place the overlay
+  says a printout is a claim the script makes about itself, the `fit`
+  block is the evidence, and a `fit` naming a failing pair overrules any
+  printout that says the parts fit.
+
+The turn's `--json` envelope carries the last accepted build's block as
+`fit`, and the prose report prints it, one line per failing pair, which is
+what F5–F7's per-turn fit failure counts are read from. Evidence: a
+real-engine transaction test in which a script prints "fit check: no
+overlap" over two blocks sharing 100 mm³ and the model's reply carries both
+the printout and the 100 mm³ intersection by pair name; bridge tests on the
+fake engine for pass, fail, unavailable, refused-build and unreadable-
+measurement cases; `test_project_tool_surface.py` pins that `clearance` is
+a scope the engine serves and the CLI offers, reading the CLI's list by
+path so neither tree imports the other. Not done here, by design: fit
+intent (F2) and the swept check (F3) are the next units; the block's `pose`
+still says "initial solved pose (not swept motion)" and will until F3.

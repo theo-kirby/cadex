@@ -907,6 +907,8 @@ def command_prompt(
         report.revision = bridge.state.revision or report.revision
         if accepted is not None:
             apply_modeling_reply(report, accepted)
+        if bridge.state.last_fit is not None:
+            report.fit = dict(bridge.state.last_fit)
         _refresh_script_state(client, report)
 
         if not result.ok:
