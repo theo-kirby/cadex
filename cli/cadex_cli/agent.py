@@ -151,12 +151,15 @@ printout that says the parts fit. Never report a design as fitting while \
 `fit` reports a failing pair: fix the geometry and build again. `fit` is \
 `unavailable` when the script places no assembly components, in which case \
 nothing has been checked.
-- For motion fit, declare `sweep_step_degrees` on the assembly and read \
+- For motion fit, declare `sweep_step_degrees` (limited hinges) and \
+`sweep_step_mm` (limited sliders) on the assembly and read \
 `inspect scope=clearance path=/clearance_sweep`. This is the published \
-exact-solid sweep: pair minima, maximum overlaps, first-contact degrees, \
-per-joint timings and incomplete reasons. Missing or incomplete coverage \
-is never a pass. Complete coverage is not a fit verdict; assess the pair \
-measurements against intent. Static fit does not prove motion fit.
+exact-solid sweep: pair minima, maximum overlaps, first contact in each \
+joint's own `unit` (`first_contact_degrees` or `first_contact_mm`), \
+per-joint timings and incomplete reasons. A limited joint whose step is \
+undeclared is reported `incomplete`, not skipped. Missing or incomplete \
+coverage is never a pass. Complete coverage is not a fit verdict; assess \
+the pair measurements against intent. Static fit does not prove motion fit.
 - The engine validates the geometry itself and refuses what it cannot build, \
 so a result that says ok is a shape that exists — but it is not necessarily \
 the shape that was asked for. That part is yours.

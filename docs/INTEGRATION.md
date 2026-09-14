@@ -567,15 +567,19 @@ raw NDJSON — is `cadex_tests/cadexd_latency_integration.py` today.
   `FreeCADCmd --safe-mode` spawn still dominates the 0.548 s median).
 
 
-### Published joint sweeps (ADR-350, 2026-09-14)
+### Published joint sweeps (ADR-350, ADR-351, 2026-09-14)
 
 `inspect scope=clearance path=/clearance_sweep` reads the accepted assembly's
-published sweep unchanged: coverage status, declared step and runtime bounds,
-per-joint timings, pair minimum distances (mm), maximum common volumes (mm³),
-and first-contact values (degrees). First contact is the first sample from
-the lower limit within 0.001 mm; other joints stay at their solved pose.
-Missing data returns `status: unavailable` with a reason; unsupported joints
-and budget exhaustion retain `status: incomplete` and their reasons.
+published sweep unchanged: coverage status, the declared steps (`step_degrees`
+for hinges, `step_mm` for sliders, either null when undeclared) and runtime
+bounds, per-joint timings, pair minimum distances (mm), maximum common volumes
+(mm³), and first-contact values in each joint's own `unit`: a revolute joint
+reports `range_degrees`, `initial_degrees` and `first_contact_degrees`; a
+slider reports `range_mm`, `initial_mm` and `first_contact_mm`. First contact
+is the first sample from the lower limit within 0.001 mm; other joints stay at
+their solved pose. Missing data returns `status: unavailable` with a reason;
+unsupported joints, a limited joint whose step is undeclared, and budget
+exhaustion retain `status: incomplete` and their reasons.
 Complete coverage means measurements exist, **not** that fit passes.
 
 `cadex clearance --sweep` writes these facts and the accepted revision to
@@ -583,6 +587,7 @@ Complete coverage means measurements exist, **not** that fit passes.
 coverage is missing or incomplete. Static threshold flags do not reinterpret
 sweep extrema as fit-intent verdicts. Inspection never rebuilds or re-accepts.
 To acquire measurements, explicitly build a script declaring
-`assembly.assembly(..., sweep_step_degrees=...)`. Legacy projects keep their
+`assembly.assembly(..., sweep_step_degrees=...)` and/or
+`assembly.assembly(..., sweep_step_mm=...)`. Legacy projects keep their
 accepted identity. The existing inspect arguments and generic paged response
 contract are unchanged; shell clients continue to pass the scope value through.

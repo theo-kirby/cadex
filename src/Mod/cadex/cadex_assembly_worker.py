@@ -5651,16 +5651,29 @@ def _sweep_child(source, target):
             shape.importBrepFromString(item["brep"])
             components[name] = SimpleNamespace(Shape=shape,
                 Placement=App.Placement(App.Matrix(*item["placement"])))
-        result = _sweep_hinge(components, data["component_data"], data["joint_data"],
+        result = _sweep_joint(components, data["component_data"], data["joint_data"],
                               data["baseline"], data["name"], data["step"])
     except Exception as exc:
         result = {"status": "incomplete", "reason": str(exc)}
     Path(target).write_text(json.dumps(result), encoding="utf-8")
 
 
-def _sweep_hinge(components, component_data, joint_data, baseline, name, step):
+#: The limit, declared step and unit each sweepable joint kind uses.
+_SWEEP_KINDS = {
+    "revolute": ("angle_limits_degrees", "sweep_step_degrees", "degrees"),
+    "slider": ("length_limits_mm", "sweep_step_mm", "mm"),
+}
+
+
+def _sweep_joint(components, component_data, joint_data, baseline, name, step):
+    """Sample one limited hinge or slider of a rigid tree with exact solids.
+
+    A hinge turns its subtree about the solved connector +Z; a slider
+    translates it along that axis. Values, limits and first contact are in
+    the joint's own unit (degrees or mm), named in the result's ``unit``.
+    """
     import FreeCAD as App
-    from CadexDynamics import extract_tree, joint_transform, joint_coordinates
+    from CadexDynamics import extract_tree, joint_transform, joint_coordinates, length_mm
     joints = [{**data, "name": key, "connectors": [
         {"component": c["component_output"], "local_matrix": c["local_frame"]["matrix"]}
         for c in data["connectors"]]} for key, data in joint_data.items()]
@@ -5669,9 +5682,14 @@ def _sweep_hinge(components, component_data, joint_data, baseline, name, step):
     if tree["closures"] or tree["couplings"] or tree["static_joints"]:
         raise ValueError("closed, coupled or static-joint graph is unsupported")
     joint = next(j for j in joints if j["name"] == name)
-    if joint["kind"] != "revolute" or joint["suppressed"]:
-        raise ValueError("only unsuppressed limited tree hinges are supported")
-    low, high = joint["angle_limits_degrees"]
+    if joint["kind"] not in _SWEEP_KINDS or joint["suppressed"]:
+        raise ValueError("only unsuppressed limited tree hinges and sliders are supported")
+    limits_key, _step_key, unit = _SWEEP_KINDS[joint["kind"]]
+    if joint.get(limits_key) is None:
+        raise ValueError(f"{joint['kind']} joint declares no {limits_key}")
+    low, high = joint[limits_key]
+    if low is None or high is None:
+        raise ValueError(f"{limits_key} is open-ended, so the range has no bound to sweep")
     count = math.ceil((high - low) / step)
     if count < 0 or count + 1 > _SWEEP_MAX_POSES:
         raise ValueError("pose budget exceeded")
@@ -5708,21 +5726,24 @@ def _sweep_hinge(components, component_data, joint_data, baseline, name, step):
         cached[key] = d, v
     connectors = joint["connectors"]
     a, b = [c["component"] for c in connectors]
-    coords = joint_coordinates("revolute", joint_transform(
+    coords = joint_coordinates(joint["kind"], joint_transform(
         list(poses[a].toMatrix().A), connectors[0]["local_matrix"],
         list(poses[b].toMatrix().A), connectors[1]["local_matrix"]), context=name)
     if coords["residual_mm"] > 1e-4 or coords["residual_radians"] > 1e-6:
-        raise ValueError("solved hinge has non-hinge residual")
-    initial = math.degrees(coords["values"][0])
+        raise ValueError(f"solved {joint['kind']} joint has a residual its kind cannot express")
+    initial = (math.degrees(coords["values"][0]) if unit == "degrees"
+               else length_mm(coords["values"][0]))
     side = 0 if a == body["parent"] else 1
     frame = poses[body["parent"]].multiply(App.Placement(App.Matrix(*connectors[side]["local_matrix"])))
+    contact_key = "first_contact_" + unit
     rows = [{"first": a, "second": b, "minimum_distance_mm": None,
-             "maximum_common_volume_mm3": None, "first_contact_degrees": None}
+             "maximum_common_volume_mm3": None, contact_key: None}
             for a, b in cached]
     for value in values:
-        turn = App.Placement(App.Vector(), App.Rotation(App.Vector(0, 0, 1),
-                             (value - initial) * (1 if side == 0 else -1)))
-        delta = frame.multiply(turn).multiply(frame.inverse())
+        travel = (value - initial) * (1 if side == 0 else -1)
+        motion = (App.Placement(App.Vector(), App.Rotation(App.Vector(0, 0, 1), travel))
+                  if unit == "degrees" else App.Placement(App.Vector(0, 0, travel), App.Rotation()))
+        delta = frame.multiply(motion).multiply(frame.inverse())
         for n in moving:
             shapes[n].Placement = delta.multiply(solved_shapes[n])
         for row in rows:
@@ -5732,28 +5753,44 @@ def _sweep_hinge(components, component_data, joint_data, baseline, name, step):
                 row["minimum_distance_mm"] = d
             if row["maximum_common_volume_mm3"] is None or v > row["maximum_common_volume_mm3"]:
                 row["maximum_common_volume_mm3"] = v
-            if row["first_contact_degrees"] is None and d <= 1e-3:
-                row["first_contact_degrees"] = value
-    return {"status": "complete", "sample_count": len(values), "range_degrees": [low, high],
-            "initial_degrees": initial, "solved_pose_agreement": True, "pairs": rows}
+            if row[contact_key] is None and d <= 1e-3:
+                row[contact_key] = value
+    return {"status": "complete", "kind": joint["kind"], "unit": unit, "step": step,
+            "sample_count": len(values), "range_" + unit: [low, high],
+            "initial_" + unit: initial, "solved_pose_agreement": True, "pairs": rows}
 
 
-def _measure_joint_sweeps(components, component_data, joint_data, baseline, step, solved):
+def _measure_joint_sweeps(components, component_data, joint_data, baseline, steps, solved):
+    """Sweep every limited joint; ``steps`` maps each declared step name to its value.
+
+    A limited joint whose kind's step is undeclared, or whose kind is not
+    sweepable, is reported ``incomplete`` with the reason, never skipped.
+    """
     import time
-    report = {"status": "complete", "step_degrees": step,
+    report = {"status": "complete",
+              "step_degrees": steps.get("sweep_step_degrees"), "step_mm": steps.get("sweep_step_mm"),
               "per_joint_seconds": _SWEEP_JOINT_SECONDS, "total_seconds": _SWEEP_TOTAL_SECONDS,
               "max_poses": _SWEEP_MAX_POSES, "max_pairs": _SWEEP_MAX_PAIRS, "joints": []}
     start = time.monotonic()
     for name, joint in joint_data.items():
         if joint.get("angle_limits_degrees") is None and joint.get("length_limits_mm") is None:
             continue
+        kind = joint.get("kind")
+        limits_key, step_key, unit = _SWEEP_KINDS.get(kind, (None, None, None))
+        step = steps.get(step_key) if step_key else None
         remaining = _SWEEP_TOTAL_SECONDS - (time.monotonic() - start)
-        if not solved or remaining <= 0:
+        if kind not in _SWEEP_KINDS:
+            result = {"status": "incomplete",
+                      "reason": f"only unsuppressed limited tree hinges and sliders are supported, not {kind}"}
+        elif step is None:
+            result = {"status": "incomplete",
+                      "reason": f"{step_key} is not declared on the assembly, so this limited {kind} joint was not swept"}
+        elif not solved or remaining <= 0:
             result = {"status": "incomplete", "reason": "unsolved assembly or total runtime budget exceeded"}
         else:
             result = _bounded_sweep_call(components, component_data, joint_data, baseline, name, step,
                 min(remaining, _SWEEP_JOINT_SECONDS))
-        report["joints"].append({"joint": name, **result})
+        report["joints"].append({"joint": name, "kind": kind, "unit": unit, **result})
         if result["status"] != "complete":
             report["status"] = "incomplete"
     report["elapsed_seconds"] = time.monotonic() - start
@@ -6301,10 +6338,12 @@ def validate_and_solve_assembly(
     clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
     world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result)
     clearance_sweep = None
-    if assembly_properties.get("sweep_step_degrees") is not None:
+    sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
+                   if assembly_properties.get(key) is not None}
+    if sweep_steps:
         clearance_sweep = _measure_joint_sweeps(
             components, component_data, joint_data, clearance,
-            assembly_properties["sweep_step_degrees"], diagnostics["status"] == "solved")
+            sweep_steps, diagnostics["status"] == "solved")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
     if simulation_contract is not None:

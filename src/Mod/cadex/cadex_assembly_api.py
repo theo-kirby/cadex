@@ -1294,6 +1294,7 @@ class AssemblyDomainAPI:
         joints: Sequence[DomainValue] = (),
         *,
         sweep_step_degrees: float | None = None,
+        sweep_step_mm: float | None = None,
         contacts: Sequence[Sequence[DomainValue]] = (),
         clearances: Sequence[Sequence[Any]] = (),
         label: str = "",
@@ -1307,6 +1308,9 @@ class AssemblyDomainAPI:
         fails, even for contacts. These checks report, never refuse acceptance.
         A pair may have only one declaration. World geometry belongs in the
         environment; collision planes on design bodies are reported separately.
+        ``sweep_step_degrees`` samples every limited hinge and ``sweep_step_mm``
+        every limited slider through its range with exact solids after the
+        build; a limited joint whose step is undeclared is reported unswept.
         """
 
         operation = "assembly"
@@ -1336,6 +1340,8 @@ class AssemblyDomainAPI:
                     )
         if sweep_step_degrees is not None:
             sweep_step_degrees = _number(operation, "sweep_step_degrees", sweep_step_degrees, minimum=1e-6)
+        if sweep_step_mm is not None:
+            sweep_step_mm = _number(operation, "sweep_step_mm", sweep_step_mm, minimum=1e-6)
         intent = []
         seen = set()
         for kind, declarations, size in (("contact", contacts, 2), ("clearance", clearances, 3)):
@@ -1360,6 +1366,7 @@ class AssemblyDomainAPI:
             joints=joint_values,
             **({"fit_intent": intent} if intent else {}),
             **({"sweep_step_degrees": sweep_step_degrees} if sweep_step_degrees is not None else {}),
+            **({"sweep_step_mm": sweep_step_mm} if sweep_step_mm is not None else {}),
             label=label,
         )
 

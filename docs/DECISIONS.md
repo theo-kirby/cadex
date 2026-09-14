@@ -24694,3 +24694,31 @@ faithful reads. The packaged lifecycle test compares inspection against the
 retained sweep after restart and verifies accepted identity. F3 remains open
 for product Finch evidence and unsupported limited joints; ADR-348's negative
 Finch measurement is unchanged.
+
+
+## ADR-351 — Sweep limited sliders in millimetres (2026-09-14)
+
+**Decision.** `assembly.assembly(..., sweep_step_mm=...)` extends the ADR-349
+producer to limited, unsuppressed slider joints in rigid trees: the subtree
+translates along the solved connector +Z axis from the lower to the upper
+length limit, with the same exact-solid measurements, solved-pose agreement
+check, endpoint-inclusive sampling and per-joint, total, pose and pair
+budgets as hinges. Each joint entry now names its `kind`, `unit` and `step`,
+and reports `range_<unit>`, `initial_<unit>` and `first_contact_<unit>`, so
+degrees and millimetres are never mixed under one key. The assembly-level
+report carries both `step_degrees` and `step_mm`, null when undeclared. A
+limited joint whose kind's step is undeclared, an open-ended limit, or any
+other limited kind (cylindrical included) is reported `incomplete` with the
+reason rather than skipped, because the charter's F3 asks for every limited
+joint to be accounted for. Acceptance, retained-result reads, the inspect
+scope and the CLI command are unchanged; consumers pass the new fields
+through. No dependency is added.
+
+**Evidence.** A two-sphere slider fixture whose contact begins 2 mm before
+coincidence reports first contact within one 0.75 mm step of −2 mm, the
+analytic lens volume π(4r+d)(2r−d)²/12 at the nearest sample, the solved
+distance of 6 mm, and elapsed time under the per-joint bound; the same sweep
+with the connector order reversed reports the same overlap and contact. The
+hinge fixture pins the undeclared-step, open-ended and cylindrical reasons.
+The packaged lifecycle test publishes and restores a slider sweep beside the
+hinge one.

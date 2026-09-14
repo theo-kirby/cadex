@@ -300,12 +300,18 @@ def test_sweep_report_reads_every_paged_fact_without_rebuilding(tmp_path, monkey
     from conftest import SOURCE_MODULE_DIR
     monkeypatch.syspath_prepend(str(SOURCE_MODULE_DIR))
     from CadexInspection import _bounded_page
-    sweep = {'status': status, 'step_degrees': 5, 'elapsed_seconds': 2.5,
-             'joints': [{'joint': 'hinge', 'status': status, 'elapsed_seconds': 2.4,
+    sweep = {'status': status, 'step_degrees': 5, 'step_mm': 0.5, 'elapsed_seconds': 2.5,
+             'joints': [{'joint': 'hinge', 'kind': 'revolute', 'unit': 'degrees', 'step': 5,
+                         'status': status, 'elapsed_seconds': 2.4,
                          'reason': 'pose budget exceeded' if status == 'incomplete' else '',
                          'pairs': [{'first': 'base', 'second': f'link{i}',
                                     'minimum_distance_mm': 0, 'maximum_common_volume_mm3': i,
-                                    'first_contact_degrees': 30} for i in range(60)]}]}
+                                    'first_contact_degrees': 30} for i in range(60)]},
+                        {'joint': 'slide', 'kind': 'slider', 'unit': 'mm', 'step': 0.5,
+                         'status': 'complete', 'elapsed_seconds': 0.1, 'range_mm': [-4, 10],
+                         'initial_mm': 8, 'pairs': [{'first': 'base', 'second': 'rod',
+                                    'minimum_distance_mm': 0, 'maximum_common_volume_mm3': 3.4,
+                                    'first_contact_mm': -2}]}]}
     published = {'revision': 'accepted', 'assembly': 'asm', 'pairs': []}
     if status:
         published['clearance_sweep'] = sweep
@@ -323,6 +329,7 @@ def test_sweep_report_reads_every_paged_fact_without_rebuilding(tmp_path, monkey
     else:
         assert rendered['status'] == 'unavailable'
     assert 'not that fit passes' in path.read_text()
+    assert '`first_contact_mm` are in mm' in path.read_text()
 
 
 def test_sweep_command_on_legacy_project_keeps_accepted_identity(engine, tmp_path, capsys):

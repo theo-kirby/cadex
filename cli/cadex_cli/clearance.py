@@ -161,8 +161,11 @@ def write_clearance(
                 "Missing or incomplete coverage is not a passing check. "
                 "Other joints stay at the solved pose; first contact is the first "
                 "sample from the lower limit within 0.001 mm, not an interpolated event.\n\n"
-                "Pair minima are in mm, maximum common volumes in mm³, joint values "
-                "in degrees and timings in seconds. The published report follows "
+                "Pair minima are in mm, maximum common volumes in mm³ and timings in "
+                "seconds. Each joint names its own `unit`: hinge ranges, initial "
+                "values and `first_contact_degrees` are in degrees at `step_degrees`; "
+                "slider ranges, initial values and `first_contact_mm` are in mm at "
+                "`step_mm`. The published report follows "
                 "unchanged, including incomplete reasons and runtime bounds. "
                 "This command never builds or accepts geometry.\n\n"
                 "```json\n" + json.dumps(published, indent=2, ensure_ascii=False) + "\n```\n")

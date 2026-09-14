@@ -1195,7 +1195,8 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             "clearance_sweep": by_name.get(assembly, {}).get("clearance_sweep") or {
                 "status": "unavailable", "joints": [],
                 "reason": "No published sweep for this accepted revision. Declare "
-                          "sweep_step_degrees on the assembly and explicitly rebuild.",
+                          "sweep_step_degrees (hinges) and/or sweep_step_mm (sliders) "
+                          "on the assembly and explicitly rebuild.",
             },
             "pairs": pairs,
             "world_geometry": by_name.get(assembly, {}).get("world_geometry", []),

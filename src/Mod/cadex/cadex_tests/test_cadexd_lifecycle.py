@@ -2180,11 +2180,16 @@ def test_cadexd_plays_a_trained_policy_into_a_simulation_trace() -> None:
 
 
 @pytest.mark.skipif(FREECADCMD is None, reason="Needs built engine")
-def test_joint_sweep_is_published_and_restore_does_not_recompute(tmp_path):
-    source = JOINT_SCRIPT.replace('assembly.connector(swing, "origin"))',
-        'assembly.connector(swing, "origin"), angle_limits_degrees=[0, 10])').replace(
+@pytest.mark.parametrize("kind, limits, step, unit", [
+    ("revolute", "angle_limits_degrees=[0, 10]", "sweep_step_degrees=5", "degrees"),
+    ("slider", "length_limits_mm=[0, 10]", "sweep_step_mm=5", "mm"),
+])
+def test_joint_sweep_is_published_and_restore_does_not_recompute(tmp_path, kind, limits, step, unit):
+    source = JOINT_SCRIPT.replace('assembly.joint("revolute"', f'assembly.joint("{kind}"').replace(
+        'assembly.connector(swing, "origin"))',
+        f'assembly.connector(swing, "origin"), {limits})').replace(
         'assembly.assembly([base, swing], [j])',
-        'assembly.assembly([base, swing], [j], sweep_step_degrees=5)')
+        f'assembly.assembly([base, swing], [j], {step})')
     client = _spawn_cadexd()
     try:
         assert client.request('open_project', {'project_root': str(tmp_path)})['ok']
@@ -2200,6 +2205,9 @@ def test_joint_sweep_is_published_and_restore_does_not_recompute(tmp_path):
         assert sweep['status'] == 'complete', sweep
         assert sweep['joints'][0]['sample_count'] == 3
         assert sweep['joints'][0]['solved_pose_agreement']
+        assert (sweep['joints'][0]['kind'], sweep['joints'][0]['unit']) == (kind, unit)
+        assert sweep['joints'][0]['range_' + unit] == [0, 10]
+        assert 'first_contact_' + unit in sweep['joints'][0]['pairs'][0]
         _stop(client)
         client = _spawn_cadexd()
         assert client.request('open_project', {'project_root': str(tmp_path)})['ok']
