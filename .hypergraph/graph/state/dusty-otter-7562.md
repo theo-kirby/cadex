@@ -7,21 +7,25 @@ parents:
 - round-sun-8398
 summary: ''
 ---
-Status: blocked
+Status: working
 
 ## Current
 
-**Blocked on an engine unit: a free-base solve.** `assembly.solve` and the dynamics export both refuse an assembly with no grounded component (`no_grounded_component`, in both `cadex_assembly_worker.py` and `CadexDynamics.py`), and the charter forbids a floor in the design, so Finch's pelvis is grounded for the solver and its accepted MJCF has a static base — a biped that cannot fall cannot be trained to stand. The prerequisite is a free-base solve: the first component held for the solver, a free joint in the export (the exporter's island path already gives an unreached component a free joint), and the ground supplied by the environment (the reset-variation floor checks must find an environment plane). That unit changes the xscript surface and needs the engine suite and the packaged gate; after it, the Finch script drops `grounded=True`, declares the task, and trains as a new accepted revision [rec: sleepy-rain-9945]. The criterion's other inputs are in place: D5 is evidenced (`cool-hill-9617`) and the D3 look is in place (`silver-ledge-4640`).
+**D6's evidence list is complete pending the owner's tick (ADR-336).** Finch's stand task declares 400 steps at 50 Hz, a fall below 84.0 mm pelvis height, seeds 0–9 and reset variation on `pelvis_link` (task revision `a3dc4e9a0f84…`). The bounded GPU run `finch1` completed 240 PPO updates on 1024 environments in 2048.7 s, exit 0, with host peak 9.72 GB and GPU peak 15 695 MiB under `MemoryMax=20G` and a 3600 s timeout. Checkpoint 20 fell on 10/10 seeds at 0.20–0.34 s; the final policy stood the full 8 s on 10/10 and shuffled +361.1 mm mean (319–433). Checkpoint and final videos show real tessellation in `cadex-prototype-dark-v1` on the persistent dashboard, which selects `finch1-final` on a fresh visit at accepted revision `b68622345563…`. Evidence: `docs/probes/ot6/finch/training.json` and its receipt regression; full CLI suite 557 passed, 1 skipped [rec: tiny-tooth-8197].
+
+The engine prerequisite is resolved (ADR-335): nothing grounded means a free base, with the first component held for solving and a free joint plus `environment/floor` in MJCF. Finch was re-accepted ungrounded at `bcce40a82d57…`; stock MuJoCo held it standing for 2 s and a 0.3 m/s shove made it fall onto, never through, the environment floor. No world geometry enters the design [rec: loyal-canyon-4623].
 
 Charter criterion: **D6. The real biped trains, is measured and is recorded in the new look.** One bounded real GPU training run on the redesigned biped, a checkpoint video and a final video in the D3 look on the operator dashboard, and the measured displacement, survival and falls over a declared episode and seed set. Standing for the full episode is the bar the report measures against; failing it is a valid measured result. Declared target `gap-d6-real-biped-trains-measured`; the human owns the checkbox edit [rec: brisk-ledge-9638].
 
-Reconcile judgement: `blocked` rather than `open` — the record names the prerequisite explicitly and it lies in the engine, outside this criterion's own scope; nothing is implemented or claimed for D6 itself [rec: sleepy-rain-9945].
+Reconcile judgement: fold the prerequisite and subsequent evidence together as `blocked` → `working`; the later handoff satisfies the task, bounded training, measurement and video items the prerequisite record left owed. The human still owns the checkbox [rec: loyal-canyon-4623] [rec: tiny-tooth-8197].
 
 ## Negative knowledge
 
-None yet.
+- [scope: Finch finch1 evidence | confidence: high | evidence: tiny-tooth-8197] The +361.1 mm shuffle is stand-task behaviour, not a walking result. The trainer's final running episode estimate (211/400 steps) and ten CLI rollouts (400/400) are distinct measurements. The checkpoint video was rendered manually after the driver's old triangle cap refused it. No run record preceded finch1: `preserved_records: {}` proves no earlier-record preservation; the receipt and README now say so.
 
 ## Provenance
 
-- brisk-ledge-9638 — the ot6 directive (ADR-328) declared this criterion as gap `gap-d6-real-biped-trains-measured`
-- sleepy-rain-9945 — ADR-334's carried concern: the engine's `no_grounded_component` refusal leaves Finch's accepted MJCF with a static base; the free-base solve with the ground from the environment is D6's prerequisite
+- brisk-ledge-9638 — the ot6 directive declared D6
+- sleepy-rain-9945 — the original static-base prerequisite
+- loyal-canyon-4623 — ADR-335 resolves the free-base solve/export prerequisite and verifies Finch on the environment floor
+- tiny-tooth-8197 — ADR-336 training and video evidence, ten-seed measurements, full CLI verification and corrected preservation claim
