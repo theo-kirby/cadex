@@ -202,3 +202,79 @@ def test_repair_child_uses_frozen_prompt_without_resume(tmp_path, monkeypatch):
     assert runner.child_turn(tmp_path, tmp_path, runner.PROMPTS / 'repair.prompt.txt', 'fixture') == 0
     assert '--resume' not in seen
     assert seen[seen.index('-p') + 1] == (runner.PROMPTS / 'repair.prompt.txt').read_text()
+
+
+@pytest.mark.parametrize('late_page_error', [False, True])
+def test_measurement_child_keeps_late_failures_and_sweep_evidence(tmp_path, monkeypatch,
+                                                                 late_page_error):
+    """Exercise the real reader/fit summary, not the runner's fake executor."""
+    from contextlib import contextmanager
+    from cadex_cli import __main__ as cli
+    from cadex_cli.inventory import InventoryError
+
+    calls = []
+    clear = {'first': 'base', 'second': 'link', 'distance_mm': 1.0,
+             'common_volume_mm3': 0.0}
+    overlap = {'first': 'servo', 'second': 'cheek', 'distance_mm': 0.0,
+               'common_volume_mm3': 248.2}
+    missed = {'first': 'horn', 'second': 'link', 'distance_mm': 0.2,
+              'common_volume_mm3': 0.0, 'intent': {'kind': 'contact'}}
+    sweep = {'status': 'incomplete', 'joints': [
+        {'joint': 'knee', 'elapsed_seconds': 1.25, 'reason': 'runtime bound',
+         'pairs': [{'first': 'thigh', 'second': 'shin', 'minimum_distance_mm': 0.0,
+                    'maximum_common_volume_mm3': 12.0, 'first_contact_degrees': 30.0}]}]}
+    inventory = {'components': [{'component': 'servo', 'catalog': {'part_number': 'MG90S'}}]}
+
+    class Client:
+        def request(self, op, args):
+            assert op == 'inspect'  # No rebuild or acceptance is permitted.
+            assert args['target'] == ''
+            calls.append((args['scope'], args['path'], args['offset']))
+            key = calls[-1]
+            pages = {
+                ('clearance', '', 0): ({'available': True, 'revision': 'accepted',
+                    'pairs': {'type': 'array', 'inspect_path': '/pairs'},
+                    'clearance_sweep': {'type': 'object', 'inspect_path': '/clearance_sweep'},
+                    'world_geometry': [{'component': 'floor', 'reason': 'world plane'}]}, None),
+                ('clearance', '/pairs', 0): ([clear], 1),
+                ('clearance', '/pairs', 1): ([overlap, missed], None),
+                ('clearance', '/clearance_sweep', 0): (sweep, None),
+                ('inventory', '', 0): (inventory, None),
+            }
+            if late_page_error and key == ('clearance', '/pairs', 1):
+                return {'ok': False, 'error': 'late page unavailable'}
+            value, next_offset = pages[key]
+            return {'ok': True, 'value': value, 'page': {'next_offset': next_offset}}
+
+    @contextmanager
+    def session(args, report, *, restore):
+        assert restore is False
+        assert args.project == str(tmp_path)
+        yield None, Client()
+
+    monkeypatch.setattr(cli, '_engine_session', session)
+    if late_page_error:
+        with pytest.raises(InventoryError, match='late page unavailable'):
+            runner.child_measure(tmp_path, tmp_path)
+        assert not (tmp_path / 'fit.json').exists()
+        assert not (tmp_path / 'clearance.json').exists()
+        assert ('inventory', '', 0) not in calls
+        return
+
+    assert runner.child_measure(tmp_path, tmp_path) == 0
+    raw = json.loads((tmp_path / 'clearance.json').read_text())
+    fit = json.loads((tmp_path / 'fit.json').read_text())
+    assert raw['pairs'] == [clear, overlap, missed]
+    assert raw['clearance_sweep'] == sweep
+    assert fit['revision'] == 'accepted'
+    assert fit['verdict'] == 'fail' and fit['pairs_checked'] == 3
+    assert fit['failing_count'] == 3
+    assert [(r['first'], r['second'], r['status'], r['distance_mm'], r['common_volume_mm3'])
+            for r in fit['failing']] == [
+        ('servo', 'cheek', 'intersection', 0.0, 248.2),
+        ('horn', 'link', 'missed contact', 0.2, 0.0),
+        ('floor', '', 'world geometry', None, None)]
+    assert json.loads((tmp_path / 'inventory.json').read_text()) == inventory
+    assert calls == [('clearance', '', 0), ('clearance', '/pairs', 0),
+                     ('clearance', '/pairs', 1), ('clearance', '/clearance_sweep', 0),
+                     ('inventory', '', 0)]

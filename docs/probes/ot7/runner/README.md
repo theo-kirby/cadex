@@ -105,3 +105,14 @@ failures and zero after failures, verify the sole frozen prompt and fresh
 session, reject changed seed identity, and stop on missing/failed/mutating
 before reads. They prove collection behavior only; F4's actual repair remains
 open until a product-agent turn supplies the measurements.
+
+Iteration 27 additionally exercises `child_measure` through the real paginated
+inspect reader and product fit summary. A known-answer fixture places an
+overlap and missed contact on a later page, plus a world-plane failure, and
+requires all three findings and their exact numbers in `fit.json`. It checks
+that nested swept extrema, first-contact angle, incomplete coverage and runtime
+survive unchanged in `clearance.json`, along with catalog inventory. An error
+on the later page must raise without writing a partial fit report. The session
+must use `restore=False` and issue only inspect requests. These are synthetic
+collector tests, not measurements of Heron or an F4 repair result. The provider
+reset was still ahead at 18:17 New York time; no provider call was made.
