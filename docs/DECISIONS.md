@@ -24532,3 +24532,29 @@ does not scroll. One media query is shared by the stylesheet and
 `review.js`. Portrait phones, tablets and desk windows are unchanged. The
 desk title is also no longer overlapped by the accepted-identity line when
 the bar is short of room. `docs/REVIEW-DESIGN.md` §13 is the contract.
+
+## ADR-345 — The ot7 prompts are frozen before any design turn (2026-09-14)
+
+Run ot7 measures whether the product agent makes a design fit on its own
+(ADR-341). That measurement is only as honest as the asks are fixed, so every
+prompt a design turn may see is committed under `docs/probes/ot7/prompts/`
+before the first design turn, pinned by digest in
+`cli/tests/test_ot7_prompts.py`. The arm and balancer prompts are Heron's and
+Robin's ot6 create prompts, byte-identical to their ot6 receipts, because the
+closing report compares each unassisted ot7 design with its ot6 counterpart
+and a changed ask would compare two different things. The biped prompt is new,
+written in Heron's shape to the charter's F7 line: four MG90S from
+`lib.servo`, hip and knee pitch per leg, the same servo-on-parent,
+horn-on-child, bearing-opposite joint module Finch proved buildable, five
+modelled printable parts, a free base, no world geometry, declared joint
+limits, and a verification paragraph that names the measured fit checks the
+tools report as the evidence rather than the printout. Its name is Plover.
+
+Three continuation prompts and one repair prompt are frozen with them. Each is
+design-agnostic by construction and by test: no digit, no design name, none of
+the part and defect words of the three ot6 designs. A design gets at most three
+continuations, in order, each spent only after a turn that accepted with
+failing fit checks still reported; the seeded repair of Heron's first ot6
+revision gets one. A design that still fails after its last continuation is a
+measured result, and a changed byte in any prompt is a new attempt. The actor
+never edits a design in an `ot7-*` project.
