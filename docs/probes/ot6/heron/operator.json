@@ -1,0 +1,41 @@
+{
+ "project_revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+ "components": 15,
+ "component_names": [
+  "comp_base",
+  "comp_bearing_elbow",
+  "comp_bearing_shoulder",
+  "comp_centrescrew_elbow",
+  "comp_centrescrew_shoulder",
+  "comp_forearm",
+  "comp_horn_elbow",
+  "comp_horn_shoulder",
+  "comp_servo_elbow",
+  "comp_servo_shoulder",
+  "comp_tabscrew_elbow_0",
+  "comp_tabscrew_elbow_1",
+  "comp_tabscrew_shoulder_0",
+  "comp_tabscrew_shoulder_1",
+  "comp_upper_arm"
+ ],
+ "visits": [
+  {
+   "width": 1400,
+   "height": 900,
+   "selected": "accepted",
+   "overflow": false,
+   "status": "accepted model at revision 9c1f2fe7ea19 \u00b7 15 component(s), 29234 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids",
+   "accepted": "accepted now: revision 9c1f2fe7ea19 \u00b7 digest f9be3985bc55 \u00b7 updated 2026-09-14T04:05:11Z \u00b7 0 run(s)",
+   "proxy_status": "accepted model at revision 9c1f2fe7ea19 \u00b7 15 component(s), 29234 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids with collision proxies (20 outlines from the accepted attempt's heron_model (assembly.mjcf export at the accepted revision))"
+  },
+  {
+   "width": 400,
+   "height": 850,
+   "selected": "accepted",
+   "overflow": false,
+   "status": "accepted model at revision 9c1f2fe7ea19 \u00b7 15 component(s), 29234 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids",
+   "accepted": "accepted now: revision 9c1f2fe7ea19 \u00b7 digest f9be3985bc55 \u00b7 updated 2026-09-14T04:05:11Z \u00b7 0 run(s)",
+   "proxy_status": "accepted model at revision 9c1f2fe7ea19 \u00b7 15 component(s), 29234 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids with collision proxies (20 outlines from the accepted attempt's heron_model (assembly.mjcf export at the accepted revision))"
+  }
+ ]
+}

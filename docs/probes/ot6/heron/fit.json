@@ -1,0 +1,651 @@
+{
+ "schema": "heron-fit-evidence-v1",
+ "project": "ot6-heron",
+ "revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+ "script_sha256": "820e3ea063921539fd2a3adb44873fe7572a043d56f43e46d3a33bd202afc675",
+ "script_bytes": 32013,
+ "result_sha256": "948974c5a453d702fc409640187e08dc5f7c696deb370111ac7c763f875ceafb",
+ "params": {
+  "window_clear": 0.3,
+  "horn_clear": 0.2,
+  "stub_clear": 0.1,
+  "side_gap": 1.0,
+  "cheek_t": 4.0,
+  "block_w": 14.0,
+  "upper_len": 80.0,
+  "fore_len": 70.0,
+  "z_shoulder": 40.0,
+  "target_x": 100.0,
+  "target_z": 60.0,
+  "tip_floor": 5.0,
+  "episode_steps": 200.0,
+  "control_hz": 50.0,
+  "reach_tol": 10.0
+ },
+ "mass_g": {
+  "printed": 86.58,
+  "purchased": 32.97,
+  "total": 119.54
+ },
+ "catalog_counts": {
+  "servo/mg90s": 2,
+  "servo_horn/mg90s-single_arm": 2,
+  "bearing/mr128": 2,
+  "bolt/m2x6-socket": 4,
+  "bolt/m2x16-socket": 2
+ },
+ "components": 15,
+ "pair_count": 105,
+ "geoms": 20,
+ "inventory": [
+  {
+   "component": "comp_base",
+   "solid": "base",
+   "source": "modelled: printed base: bench foot with four M3 clearance holes, webs, and the shoulder clevis (outboard cheek with servo window and tap-drilled tab holes, inboard cheek with bearing bore); grounded",
+   "catalog": null,
+   "mass_g": 34.955,
+   "volume_mm3": 28189.518,
+   "proxies": "8 box",
+   "relation": "foot, webs, cheek panels around the window as boxes; holes, window and bore not subtracted",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_upper_arm",
+   "solid": "upper_arm",
+   "source": "modelled: printed upper arm: shoulder child block (horn pocket, bearing stub, centre-screw counterbore), beam, and the elbow clevis",
+   "catalog": null,
+   "mass_g": 31.735,
+   "volume_mm3": 25593.023,
+   "proxies": "7 box",
+   "relation": "block, beam, bridge and cheek panels as boxes; pocket, stub and window not modelled",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_forearm",
+   "solid": "forearm",
+   "source": "modelled: printed forearm: elbow child block (horn pocket, bearing stub, counterbore), beam and rounded tip; its frame is the tip",
+   "catalog": null,
+   "mass_g": 19.885,
+   "volume_mm3": 16036.193,
+   "proxies": "2 box, 1 sphere",
+   "relation": "block and beam as boxes, tip as a sphere; pocket and stub not modelled",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_servo_shoulder",
+   "solid": "servo_shoulder",
+   "source": "catalog servo `mg90s`",
+   "catalog": {
+    "family": "servo",
+    "part_number": "mg90s"
+   },
+   "mass_g": 13.4,
+   "volume_mm3": 8240.943,
+   "proxies": "1 box",
+   "relation": "case envelope box only; tabs, spline and horn not in contact",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_servo_elbow",
+   "solid": "servo_elbow",
+   "source": "catalog servo `mg90s`",
+   "catalog": {
+    "family": "servo",
+    "part_number": "mg90s"
+   },
+   "mass_g": 13.4,
+   "volume_mm3": 8240.943,
+   "proxies": "1 box",
+   "relation": "case envelope box only; tabs, spline and horn not in contact",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_horn_shoulder",
+   "solid": "horn_shoulder",
+   "source": "catalog servo_horn `mg90s-single_arm`",
+   "catalog": {
+    "family": "servo_horn",
+    "part_number": "mg90s-single_arm"
+   },
+   "mass_g": 0.133,
+   "volume_mm3": 115.796,
+   "proxies": "none (mass only)",
+   "relation": "\u2014",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_horn_elbow",
+   "solid": "horn_elbow",
+   "source": "catalog servo_horn `mg90s-single_arm`",
+   "catalog": {
+    "family": "servo_horn",
+    "part_number": "mg90s-single_arm"
+   },
+   "mass_g": 0.133,
+   "volume_mm3": 115.796,
+   "proxies": "none (mass only)",
+   "relation": "\u2014",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_bearing_shoulder",
+   "solid": "bearing_shoulder",
+   "source": "catalog bearing `mr128`",
+   "catalog": {
+    "family": "bearing",
+    "part_number": "mr128"
+   },
+   "mass_g": 1.726,
+   "volume_mm3": 219.911,
+   "proxies": "none (mass only)",
+   "relation": "\u2014",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_bearing_elbow",
+   "solid": "bearing_elbow",
+   "source": "catalog bearing `mr128`",
+   "catalog": {
+    "family": "bearing",
+    "part_number": "mr128"
+   },
+   "mass_g": 1.726,
+   "volume_mm3": 219.911,
+   "proxies": "none (mass only)",
+   "relation": "\u2014",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_tabscrew_shoulder_0",
+   "solid": "tabscrew_shoulder_0",
+   "source": "catalog bolt `m2x6-socket`",
+   "catalog": {
+    "family": "bolt",
+    "part_number": "m2x6-socket"
+   },
+   "mass_g": 0.326,
+   "volume_mm3": 41.532,
+   "proxies": "none (mass only)",
+   "relation": "\u2014",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_tabscrew_shoulder_1",
+   "solid": "tabscrew_shoulder_1",
+   "source": "catalog bolt `m2x6-socket`",
+   "catalog": {
+    "family": "bolt",
+    "part_number": "m2x6-socket"
+   },
+   "mass_g": 0.326,
+   "volume_mm3": 41.532,
+   "proxies": "none (mass only)",
+   "relation": "\u2014",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_tabscrew_elbow_0",
+   "solid": "tabscrew_elbow_0",
+   "source": "catalog bolt `m2x6-socket`",
+   "catalog": {
+    "family": "bolt",
+    "part_number": "m2x6-socket"
+   },
+   "mass_g": 0.326,
+   "volume_mm3": 41.532,
+   "proxies": "none (mass only)",
+   "relation": "\u2014",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_tabscrew_elbow_1",
+   "solid": "tabscrew_elbow_1",
+   "source": "catalog bolt `m2x6-socket`",
+   "catalog": {
+    "family": "bolt",
+    "part_number": "m2x6-socket"
+   },
+   "mass_g": 0.326,
+   "volume_mm3": 41.532,
+   "proxies": "none (mass only)",
+   "relation": "\u2014",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_centrescrew_shoulder",
+   "solid": "centrescrew_shoulder",
+   "source": "catalog bolt `m2x16-socket`",
+   "catalog": {
+    "family": "bolt",
+    "part_number": "m2x16-socket"
+   },
+   "mass_g": 0.573,
+   "volume_mm3": 72.948,
+   "proxies": "none (mass only)",
+   "relation": "\u2014",
+   "valid_single_solid": true
+  },
+  {
+   "component": "comp_centrescrew_elbow",
+   "solid": "centrescrew_elbow",
+   "source": "catalog bolt `m2x16-socket`",
+   "catalog": {
+    "family": "bolt",
+    "part_number": "m2x16-socket"
+   },
+   "mass_g": 0.573,
+   "volume_mm3": 72.948,
+   "proxies": "none (mass only)",
+   "relation": "\u2014",
+   "valid_single_solid": true
+  }
+ ],
+ "checks": [
+  {
+   "check": "shoulder servo tabs seated on the cheek outer face: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "shoulder servo/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder horn nested in the block pocket: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "shoulder horn/block common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder horn on the spline top: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "shoulder horn/servo common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder bearing pressed in the cheek: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "shoulder bearing/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder stub in the bearing bore: radial clearance",
+   "measured": 0.1,
+   "expected": 0.1,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "shoulder stub/bearing common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder centre screw engagement in the spline",
+   "measured": 9.42478,
+   "expected": 9.42478,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder centre screw head seated in the block counterbore: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "shoulder centre screw/block common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder centre screw/horn common volume (hub bore)",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder tab screw 0 engagement in the tap-drilled cheek",
+   "measured": 4.0715,
+   "expected": 4.0715,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder tab screw 0/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder tab screw 1 engagement in the tap-drilled cheek",
+   "measured": 4.0715,
+   "expected": 4.0715,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder tab screw 1/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder stub through the inboard cheek lip hole: radial clearance (nearest parent/child approach)",
+   "measured": 0.6,
+   "expected": 0.6,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "shoulder parent/child common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow servo tabs seated on the cheek outer face: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "elbow servo/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow horn nested in the block pocket: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "elbow horn/block common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow horn on the spline top: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "elbow horn/servo common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow bearing pressed in the cheek: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "elbow bearing/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow stub in the bearing bore: radial clearance",
+   "measured": 0.1,
+   "expected": 0.1,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "elbow stub/bearing common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow centre screw engagement in the spline",
+   "measured": 9.42478,
+   "expected": 9.42478,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow centre screw head seated in the block counterbore: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "elbow centre screw/block common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow centre screw/horn common volume (hub bore)",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow tab screw 0 engagement in the tap-drilled cheek",
+   "measured": 4.0715,
+   "expected": 4.0715,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow tab screw 0/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow tab screw 1 engagement in the tap-drilled cheek",
+   "measured": 4.0715,
+   "expected": 4.0715,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow tab screw 1/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "elbow stub through the inboard cheek lip hole: radial clearance (nearest parent/child approach)",
+   "measured": 0.6,
+   "expected": 0.6,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "elbow parent/child common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "shoulder window clearance around the case (section)",
+   "measured": 0.3,
+   "expected": 0.3,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "elbow window clearance around the case (section)",
+   "measured": 0.29999,
+   "expected": 0.3,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "shoulder block to inboard cheek gap (XY section 5.3 mm above the axis)",
+   "measured": 1.0,
+   "expected": 1.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "elbow block to inboard cheek gap (XY section 5.3 mm above the axis)",
+   "measured": 1.0,
+   "expected": 1.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "no intersection other than the 6 declared thread engagements",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "pairs"
+  },
+  {
+   "check": "no unmeasured pair",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "pairs"
+  },
+  {
+   "check": "no plane, floor, bench or world geometry in the design",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "geoms"
+  },
+  {
+   "check": "no initial contact between proxies",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "contacts"
+  },
+  {
+   "check": "the base is the only grounded component",
+   "measured": 1,
+   "expected": 1,
+   "ok": true,
+   "unit": "components"
+  },
+  {
+   "check": "exactly two revolute joints, each a limited hinge",
+   "measured": 2,
+   "expected": 2,
+   "ok": true,
+   "unit": "joints"
+  },
+  {
+   "check": "every output a valid single solid",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "solids"
+  },
+  {
+   "check": "solver residual: solved",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "code"
+  },
+  {
+   "check": "episode length (steps)",
+   "measured": 200,
+   "expected": 200.0,
+   "ok": true,
+   "unit": "steps"
+  },
+  {
+   "check": "termination reads tip_z below tip_floor",
+   "measured": 5.0,
+   "expected": 5.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "reset variation: none (grounded); disturbances on the forearm",
+   "measured": 2,
+   "expected": 2,
+   "ok": true,
+   "unit": "events"
+  }
+ ],
+ "section": {
+  "plane": "XZ",
+  "offset_mm": -16.5,
+  "objects_cut": 8,
+  "shoulder_gap_mm": 0.3,
+  "elbow_gap_mm": 0.3,
+  "shoulder_side_gap": {
+   "plane": "XY",
+   "offset_mm": 45.3,
+   "objects_cut": 5,
+   "gap_mm": 1.0
+  },
+  "elbow_side_gap": {
+   "plane": "XY",
+   "offset_mm": 125.3,
+   "objects_cut": 4,
+   "gap_mm": 1.0
+  }
+ },
+ "ok": true,
+ "scope": "retained exact BREP at the accepted solved rest pose; no restore or swept-fit certification"
+}

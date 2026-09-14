@@ -625,3 +625,52 @@ def test_robin_training_receipt_measures_the_balancer_in_the_new_look():
     assert served[receipt["run"] + "-final"]["policy_sha256"] == receipt["final"]["policy_sha256"] and served[receipt["run"] + "-final"]["videos"] == 1
     assert end["fresh_visit_selects"] == receipt["run"] + "-final"
     assert "Verified against source: 2026-" in text
+
+
+HERON = REPO / "docs/probes/ot6/heron"
+
+
+def test_heron_design_receipt_is_a_buildable_arm_on_the_operator_url():
+    """D8's design half, on D5's rules: Heron, the product-agent two-DoF arm,
+    is two catalog MG90S servos with their catalog single-arm horns, two
+    MR128 bearings and six M2 screws mounting three modelled printable parts;
+    every fit rule in the retained measurements holds; nothing in the world is
+    in the design; the persistent dashboard showed its tessellated solids at
+    both charter widths without horizontal overflow, with the proxies only
+    under the labelled toggle."""
+
+    fit = json.loads((HERON / "fit.json").read_text())
+    assert fit["schema"] == "heron-fit-evidence-v1" and fit["project"] == "ot6-heron"
+    assert fit["ok"] and all(c["ok"] for c in fit["checks"]) and len(fit["checks"]) >= 50
+    assert fit["catalog_counts"] == {"servo/mg90s": 2, "servo_horn/mg90s-single_arm": 2, "bearing/mr128": 2,
+                                     "bolt/m2x6-socket": 4, "bolt/m2x16-socket": 2}
+    rows = fit["inventory"]
+    assert fit["components"] == len(rows) == 15
+    modelled = sorted(r["solid"] for r in rows if not r["catalog"])
+    assert modelled == ["base", "forearm", "upper_arm"]
+    assert all(r["source"].startswith("modelled: printed") for r in rows if not r["catalog"])
+    assert all(r["valid_single_solid"] for r in rows)
+    names = {c["check"]: c for c in fit["checks"]}
+    assert names["no plane, floor, bench or world geometry in the design"]["measured"] == 0
+    assert names["the base is the only grounded component"]["measured"] == 1
+    for joint in ("shoulder", "elbow"):
+        assert names[f"{joint} servo tabs seated on the cheek outer face: distance"]["measured"] == 0
+        assert names[f"{joint} servo/cheek common volume"]["measured"] == 0
+        assert names[f"{joint} horn nested in the block pocket: distance"]["measured"] == 0
+        assert names[f"{joint} window clearance around the case (section)"]["expected"] == fit["params"]["window_clear"]
+        assert names[f"{joint} stub in the bearing bore: radial clearance"]["expected"] == fit["params"]["stub_clear"]
+    assert fit["mass_g"]["total"] == pytest.approx(fit["mass_g"]["printed"] + fit["mass_g"]["purchased"], abs=0.02)
+
+    reopen = json.loads((HERON / "reopen.json").read_text())
+    assert reopen["revision"] == fit["revision"] and len(reopen["runs"]) >= 3
+    assert all(r["exit"] == 0 and r["revision"] == fit["revision"] for r in reopen["runs"])
+    assert reopen["every_run_matches_accepted_digest"] and reopen["distinct_digests"] == [reopen["accepted_digest"]]
+
+    operator = json.loads((HERON / "operator.json").read_text())
+    assert operator["project_revision"] == fit["revision"] and operator["components"] == 15
+    assert [v["width"] for v in operator["visits"]] == [1400, 400]
+    for visit in operator["visits"]:
+        assert visit["selected"] == "accepted" and not visit["overflow"]
+        assert visit["status"].endswith("showing: tessellated solids")
+        assert "with collision proxies" in visit["proxy_status"]
+        assert png_size(HERON / f"operator-{visit['width']}.png")[0] <= visit["width"]

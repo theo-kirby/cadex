@@ -24336,3 +24336,27 @@ a velocity or position term in the reward is the open design decision,
 recorded in the project's `DECISIONS.md` for the next turn on Robin rather
 than taken here. The default learning rate's divergence on this task is a
 measured fact about this reward on this model, not a diagnosis.
+## ADR-339 — Heron: the product agent's two-DoF MG90S arm, accepted after three measured corrections (2026-09-14)
+
+D8's design half (ADR-328). The product agent designed Heron from one prompt in
+the fresh external project `ot6-heron`: two MG90S on the parent/child joint
+module (servo in a cheek window, catalog single-arm horn in a pocket on the
+child, MR128 on a printed stub in the opposite cheek, M2 catalog screws), three
+printed parts, a grounded base, the forearm's frame at the tip, a fixed-target
+reach task with per-seed forearm pushes because a grounded mechanism has no
+base to vary at reset. The engine accepted the first mechanism; the published
+measurements showed three defects the script's own stdout denied: a bench
+`plane` collision on the base (the engine supplies a floor only to a free base,
+ADR-335, so the agent reached for one; the charter forbids world geometry in a
+design), the servo tab plates buried in the cheeks (248.2016 mm³ common volume,
+exactly the tab plate outside the window minus its holes), and horn pockets
+that cleared the horn on their floor (0.2 mm, the horn meeting nothing). Each
+went back to the agent as a resumed turn quoting the measurement; each
+correction was the agent's, submitted whole, and is a line in the project's
+`DECISIONS.md`. Accepted at `9c1f2fe7ea19…`; 55 of 55 fit rules hold on 105
+pairs; five fresh-process restores match the accepted digest; the persistent
+dashboard serves Heron's real solids at both widths. Rule kept from this: a
+script's stdout is a claim, the retained clearance pairs are the evidence, and
+a fit check reads only the latter. Receipt:
+[`docs/probes/ot6/heron/README.md`](probes/ot6/heron/README.md). No product
+code, protocol or dependency changed. Training is D8's next unit.
