@@ -179,16 +179,16 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* Desk: the frame (§12). A thin top bar and two sidebars are one surface;
+/* The frame (§12), at desk and on a phone held landscape (§13). A thin top bar and two sidebars are one surface;
    the stage is a rounded sheet set into it, so where a sidebar meets the
    bar the corner is the stage's radius. The page itself never scrolls —
    each sidebar and each stage panel scrolls on its own. */
-@media (min-width: 1000px) {
+@media (min-width: 1000px), (min-width: 600px) and (max-height: 560px) and (orientation: landscape) {
   html, body { height: 100%; overflow: hidden; }
   header#top { height: var(--bar); flex-wrap: nowrap; align-items: center; gap: var(--s2); padding: 0 var(--frame); border-bottom: 0; }
   header#top .title { flex: 1; display: flex; align-items: baseline; gap: var(--s3); overflow: hidden; padding-left: var(--s1); }
-  h1 { font-size: var(--fs-2); white-space: nowrap; }
-  #accepted-line { font-size: var(--fs-0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  h1 { font-size: var(--fs-2); white-space: nowrap; flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+  #accepted-line { flex: 1; font-size: var(--fs-0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #freshness { padding: 0 var(--s2); }
   .frame-toggle { display: inline-grid; place-items: center; width: var(--control); padding: 0; background: transparent; border-color: transparent; color: var(--ink); }
   .frame-toggle:hover { background: var(--surface-3); }
@@ -197,7 +197,7 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
   .frame-toggle[aria-expanded="true"] svg path { stroke-width: 3; }
 
   main#frame { position: relative; display: grid; grid-template-columns: var(--left-w) minmax(0, 1fr) var(--right-w);
-               grid-template-rows: minmax(0, 1fr); gap: 0; height: calc(100vh - var(--bar)); padding: 0 0 var(--frame);
+               grid-template-rows: minmax(0, 1fr); gap: 0; height: calc(100vh - var(--bar)); height: calc(100dvh - var(--bar)); padding: 0 0 var(--frame);
                background: var(--surface); transition: grid-template-columns .18s ease; }
   main#frame.dragging { transition: none; }
   #left, #right { display: block; order: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
@@ -269,4 +269,39 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
   #doc-panel { padding: 0; }
   pre#doc-view { max-width: 96ch; min-height: 100%; max-height: none; margin: 0 auto; padding: var(--s5); border: 0; border-radius: 0; background: transparent;
                  overflow: visible; font-size: var(--fs-1); line-height: 1.55; }
+}
+
+/* A phone held landscape (§13): the desk frame, sized for a short screen.
+   The model keeps the whole width; a sidebar opens as a drawer over it,
+   one at a time, and a tap on the model beside it closes it. */
+.scrim { display: none; }
+@media (max-width: 999px) and (min-width: 600px) and (max-height: 560px) and (orientation: landscape) {
+  :root { --bar: 40px; --frame: 4px; }
+  header#top .title { gap: var(--s2); }
+  main#frame { grid-template-columns: 0 minmax(0, 1fr) 0; }
+  main#frame[data-left], main#frame[data-right] { transition: none; }
+  #left, #right { position: absolute; top: 0; bottom: var(--frame); z-index: 20; width: var(--left-w); background: var(--surface);
+                  border: 1px solid var(--rule); box-shadow: 0 8px 32px rgba(0, 0, 0, .55); transition: transform .2s ease, visibility .2s; }
+  #left { left: 0; border-left: 0; border-radius: 0 12px 12px 0; }
+  #right { right: 0; width: var(--right-w); border-right: 0; border-radius: 12px 0 0 12px; }
+  main#frame[data-left="collapsed"] #left { transform: translateX(-100%); }
+  main#frame[data-right="collapsed"] #right { transform: translateX(100%); }
+  main#frame[data-left="collapsed"] .resizer[data-side="left"], main#frame[data-right="collapsed"] .resizer[data-side="right"] { display: none; }
+  .resizer { z-index: 21; width: 24px; }
+  .resizer[data-side="left"] { left: calc(var(--left-w) - 12px); }
+  .resizer[data-side="right"] { right: calc(var(--right-w) - 12px); }
+  .scrim { display: block; position: absolute; inset: 0; z-index: 15; visibility: hidden; background: rgba(0, 0, 0, .35); opacity: 0; transition: opacity .2s, visibility .2s; }
+  main#frame[data-left="open"] .scrim, main#frame[data-right="open"] .scrim { visibility: visible; opacity: 1; }
+  /* The run list is a list again in its drawer, not the tablet's strip. */
+  nav#sidebar ul { display: block; overflow: visible; padding-bottom: 0; }
+  nav#sidebar li { max-width: none; margin-bottom: var(--s2); }
+  #stage-tabs { height: 36px; padding: 0 var(--s1); }
+  .stage-panel { padding: var(--s3); }
+  #model-status { top: var(--s2); left: var(--s2); max-width: calc(100% - 2 * var(--s2));
+                  /* Two lines at most. The block padding stays inside a third line's half-leading, so no glyph of it shows. */
+                  padding-block: 2px; max-height: calc(2 * 1.45 * var(--fs-0) + 4px + 2px); overflow: hidden; }
+  #model .viewer-controls { bottom: var(--s2); right: var(--s2); }
+  #model .viewer-controls .hint { display: none; }
+  ul#videos { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  ul#videos video { max-height: calc(100dvh - var(--bar) - 120px); }
 }

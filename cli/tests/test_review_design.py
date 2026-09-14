@@ -430,6 +430,69 @@ def test_desk_sidebars_drag_fold_and_the_stage_changes_what_it_shows(served, bro
     assert page.evaluate("window.cadexFrame.layout().left") == {"width": 400, "open": True}
 
 
+@needs_browser
+def test_landscape_phone_gets_the_frame_with_drawers_over_the_model(served, browser) -> None:
+    """§13 at 844×390 under touch: the desk frame rather than the portrait
+    column — thin bar, the model across the whole width, no page scroll — with
+    both sidebars closed; a tap on a bar toggle slides that sidebar in as a
+    drawer over the model without narrowing it, opening the other closes it,
+    a tap on the model beside a drawer closes it, and one finger still orbits."""
+
+    root, server = served
+    _telemetry(root, iteration=4, run="first")
+    page = browser.page("about:blank")
+    page.send("Emulation.setDeviceMetricsOverride", {"width": 844, "height": 390, "deviceScaleFactor": 1, "mobile": True,
+                                                     "screenOrientation": {"type": "landscapePrimary", "angle": 90}})
+    page.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+    page.send("Page.navigate", {"url": server.url})
+    page.wait_for("document.readyState === 'complete' && !!window.cadexReview && !!window.cadexFrame")
+    page.evaluate("window.cadexReview.ready", await_promise=True)
+    page.evaluate("window.cadexReview.select('first')", await_promise=True)
+    assert _model_state(page) == "loaded"
+    settle = "new Promise(r => setTimeout(r, 450))"
+
+    def measure():
+        return page.evaluate("""(function () {
+          function r(s) { var b = document.querySelector(s).getBoundingClientRect(); return {x: b.x, right: b.right, width: b.width, height: b.height, y: b.y}; }
+          return {w: innerWidth, h: innerHeight, sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight,
+                  top: r('#top'), stage: r('#stage'), canvas: r('#viewer'), left: r('#left'), right: r('#right'),
+                  drawers: window.cadexFrame.layout().drawers}; })()""")
+
+    def tap(selector):
+        box = page.rect(selector)
+        page.tap(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.evaluate(settle, await_promise=True)
+
+    m = measure()
+    assert m["sw"] <= m["w"] and m["sh"] <= m["h"], m
+    assert m["top"]["height"] <= 44 and m["stage"]["y"] >= m["top"]["height"]
+    assert m["stage"]["width"] >= m["w"] - 2 * 4 - 2 and m["canvas"]["width"] >= 0.98 * m["stage"]["width"]
+    assert m["drawers"] == {"left": False, "right": False}
+    assert m["left"]["right"] <= 1 and m["right"]["x"] >= m["w"] - 1, "a closed drawer is on screen"
+    # The right sidebar slides in over the model; the model keeps its width.
+    tap("#toggle-right")
+    m2 = measure()
+    assert m2["drawers"] == {"left": False, "right": True}
+    assert abs(m2["right"]["right"] - m["w"]) <= 1 and m2["right"]["width"] >= 200
+    assert m2["stage"]["width"] == m["stage"]["width"]
+    assert page.evaluate("document.getElementById('view-revision').checkVisibility({visibilityProperty: true})")
+    # Opening the left one closes the right: one drawer at a time.
+    tap("#toggle-left")
+    m3 = measure()
+    assert m3["drawers"] == {"left": True, "right": False} and abs(m3["left"]["x"]) <= 1
+    assert page.evaluate("document.querySelectorAll('#views li[data-run]').length") == 3
+    # A tap on the model beside the drawer closes it.
+    page.tap(m3["w"] - 60, m3["h"] / 2)
+    page.evaluate(settle, await_promise=True)
+    assert measure()["drawers"] == {"left": False, "right": False}
+    # One finger on the model still orbits, and the page does not move.
+    cx, cy = m["canvas"]["x"] + m["canvas"]["width"] / 2, m["canvas"]["y"] + m["canvas"]["height"] / 2
+    before = page.evaluate("window.cadexReview.viewer().camera()")
+    page.touch_drag(cx, cy, cx + 120, cy + 40)
+    page.wait_for("window.cadexReview.viewer().camera().yaw !== %s" % json.dumps(before["yaw"]))
+    assert page.evaluate("scrollY") == 0
+
+
 def test_after_receipt_records_the_page_the_spec_describes():
     """The operator URL, captured at both sizes after the redesign (§8)."""
 

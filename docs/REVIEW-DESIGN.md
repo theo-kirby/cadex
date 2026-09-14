@@ -202,6 +202,7 @@ between where a sidebar stops paying for itself.
 | Range | Layout |
 |---|---|
 | **≥ 1000 px** (desk; 1400 is the reference width) | The frame (§12): a 44 px top bar; a left sidebar (264 px by default), the stage, a right sidebar (340 px by default); each sidebar resizable and foldable by its inner edge. The page never scrolls; each sidebar and each stage panel scrolls on its own. Curves stacked on the stage. |
+| **600–999 px, landscape, ≤ 560 px tall** (a phone held sideways) | The frame, with its sidebars as drawers over a full-width model (§13). |
 | **600–999 px** (tablet, a half-width desk window) | One column. Run selection becomes a horizontal strip of run chips under the masthead, scrolling within itself. Curves two abreast, then one. |
 | **< 600 px** (phone; 400 × 850 is the reference size) | One column with `--s3` gutters. Run selection is a `<details>` disclosure showing "Runs · current: *name* · *n* recorded", closed by default, opening to the same list. Identity key/value pairs stack (key above value). The viewport, the curves and the videos are the full width. Tables in region 6 scroll horizontally inside their card. |
 
@@ -465,8 +466,9 @@ printable parts; Lark's are boxes the size of its box parts.
 
 At the owner's direction on 2026-09-14 (ADR-342) the desk layout stopped
 being a document with a run list beside it and became an application frame.
-Below 1000 px nothing in this section applies: the frame's containers are
-`display: contents`, and the regions read as the one column of §2 and §6.
+Below 1000 px nothing in this section applies, except on a phone held
+landscape (§13): the frame's containers are `display: contents`, and the
+regions read as the one column of §2 and §6.
 
 **Shape.** A **top bar** 44 px tall — toggle, project name, accepted
 identity (one line, ellipsised), freshness, toggle. Beneath it a **left
@@ -519,3 +521,34 @@ it shut by dragging, reopens it from the bar at its previous width, folds a
 section, switches the stage to *Curves*, opens a document onto the stage and
 watches the view change take it off, and reloads to find the layout kept.
 §7 and §8 remain the measured record of the two-column page this replaced.
+
+## 13. A phone held landscape
+
+A phone turned sideways is 600–999 px wide and no more than 560 px tall. At
+that size the one column of §6 gives the model a strip of a few hundred pixels
+and makes everything else a long scroll. So there the page uses the desk frame
+of §12 instead (ADR-344), sized for a short screen:
+
+- The top bar is 40 px and the frame inset 4 px. The model and its tabs take
+  the whole width, and the page does not scroll.
+- **The sidebars are drawers.** Both start closed. The bar's toggles slide one
+  in over the model, a `--surface` sheet with a 12 px inner radius and a
+  shadow, at its §12 width capped to leave 72 px of model beside it. Opening
+  one closes the other. A tap on the dimmed model beside it closes it. Its
+  inner edge still drags to resize it, and dragging it under 120 px closes it.
+  The model is never narrowed, so opening a drawer never re-frames the view.
+- Which drawer is open is not remembered: turning the phone or reloading
+  starts with the model alone. Widths and folded sections are shared with the
+  desk layout.
+- To fit the short stage, the orbit hint is dropped, the model status is held
+  to two lines, and clips sit in 260 px cells no taller than the stage.
+
+Portrait is unchanged. A phone upright reads the column of §6, and a tablet
+or desk window taller than 560 px keeps its own layout.
+
+**Held by** `test_landscape_phone_gets_the_frame_with_drawers_over_the_model`,
+at 844 × 390 under touch emulation. It checks the frame, the full-width model
+and no page scroll with both drawers closed and off screen. It then taps
+drawers open and verifies that the model's width is unchanged, that only one
+drawer is open at a time, that a tap on the model closes a drawer, and that
+one finger still orbits without moving the page.

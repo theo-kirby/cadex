@@ -24518,3 +24518,17 @@ with framing (ADR-331's `chooseGridPitch`) is unchanged. The viewport and the
 capture page share the module, so they still match each other. Videos rendered
 from now on draw the grid at its world position, where earlier ones used the
 corner-anchored phase.
+
+## ADR-344 — A phone held landscape gets the desk frame, with drawers (2026-09-14)
+
+The owner asked for landscape phones to work more like the desk layout. At
+844 × 390 the page was the portrait column (6 410 px of scroll, with the model
+a strip in it). The frame of ADR-342 now applies from 600 px wide whenever the
+window is landscape and no taller than 560 px. There the sidebars are drawers
+over a full-width model instead of columns beside it, because two 264/340 px
+sidebars would leave a 240 px stage. Drawers start closed, open one at a time,
+and close on a tap beside them. Their open state is not remembered. The page
+does not scroll. One media query is shared by the stylesheet and
+`review.js`. Portrait phones, tablets and desk windows are unchanged. The
+desk title is also no longer overlapped by the accepted-identity line when
+the bar is short of room. `docs/REVIEW-DESIGN.md` §13 is the contract.

@@ -704,12 +704,15 @@
 // to resize or fold them away, sections that fold under their headings, and
 // the stage's tabs. It is presentation only — it reads nothing from the
 // server, and remembers the reader's widths, folds and nothing else in this
-// browser's localStorage. Below the desk breakpoint the stylesheet dissolves
-// the frame and none of this has any visible effect.
+// browser's localStorage. On a phone held landscape (§13) the same frame
+// opens its sidebars as drawers over the model, one at a time and closed by
+// default; that open state is not remembered. Below both, the stylesheet
+// dissolves the frame and none of this has any visible effect.
 (function () {
   'use strict';
 
-  var DESK = window.matchMedia('(min-width: 1000px)');
+  var FRAME = window.matchMedia('(min-width: 1000px), (min-width: 600px) and (max-height: 560px) and (orientation: landscape)');
+  var COMPACT = window.matchMedia('(max-width: 999px) and (min-width: 600px) and (max-height: 560px) and (orientation: landscape)');
   var STORE = 'cadex-review-frame';
   var MIN = 200, FOLD_AT = 120, STAGE_MIN = 360;
   var DEFAULTS = { left: 264, right: 340 };
@@ -718,8 +721,16 @@
   var layout = {
     left: { width: +saved.leftWidth || DEFAULTS.left, open: saved.leftOpen !== false },
     right: { width: +saved.rightWidth || DEFAULTS.right, open: saved.rightOpen !== false },
-    folded: saved.folded && typeof saved.folded === 'object' ? saved.folded : {}
+    folded: saved.folded && typeof saved.folded === 'object' ? saved.folded : {},
+    drawer: { left: false, right: false }
   };
+  // Whether a side is open in the frame as it is now laid out.
+  function isOpen(side) { return COMPACT.matches ? layout.drawer[side] : layout[side].open; }
+  function setOpen(side, open) {
+    if (!COMPACT.matches) { layout[side].open = open; return; }
+    layout.drawer[side] = open;
+    if (open) layout.drawer[side === 'left' ? 'right' : 'left'] = false;   // one drawer at a time
+  }
 
   function $(id) { return document.getElementById(id); }
   function persist() {
@@ -730,7 +741,9 @@
   }
   // The widest a sidebar may be: whatever leaves the stage its minimum beside
   // the other sidebar as it is now.
+  // A drawer only has to leave a strip of the model to tap beside it.
   function widest(side) {
+    if (COMPACT.matches) return Math.max(MIN, Math.min(420, window.innerWidth - 72));
     var other = side === 'left' ? layout.right : layout.left;
     return Math.max(MIN, window.innerWidth - STAGE_MIN - (other.open ? other.width : 0));
   }
@@ -739,18 +752,19 @@
     ['left', 'right'].forEach(function (side) {
       // The remembered width is the reader's; a narrow window only caps what
       // is drawn, so widening the window again gives it back.
-      var pane = layout[side], width = Math.min(Math.max(pane.width, MIN), widest(side));
-      frame.style.setProperty('--' + side + '-w', (pane.open ? width : 0) + 'px');
-      frame.dataset[side] = pane.open ? 'open' : 'collapsed';
-      $('toggle-' + side).setAttribute('aria-expanded', String(pane.open));
+      // A drawer keeps its width while closed, so it slides rather than shrinks.
+      var pane = layout[side], open = isOpen(side), width = Math.min(Math.max(pane.width, MIN), widest(side));
+      frame.style.setProperty('--' + side + '-w', (open || COMPACT.matches ? width : 0) + 'px');
+      frame.dataset[side] = open ? 'open' : 'collapsed';
+      $('toggle-' + side).setAttribute('aria-expanded', String(open));
       var handle = frame.querySelector('.resizer[data-side="' + side + '"]');
-      handle.setAttribute('aria-valuenow', String(pane.open ? Math.round(width) : 0));
+      handle.setAttribute('aria-valuenow', String(open ? Math.round(width) : 0));
       handle.setAttribute('aria-valuemin', '0');
       handle.setAttribute('aria-valuemax', String(Math.round(widest(side))));
     });
   }
   function toggle(side, open) {
-    layout[side].open = open == null ? !layout[side].open : !!open;
+    setOpen(side, open == null ? !isOpen(side) : !!open);
     apply(); persist();
   }
 
@@ -761,10 +775,10 @@
       return side === 'left' ? event.clientX - box.left : box.right - event.clientX;
     }
     handle.addEventListener('pointerdown', function (event) {
-      if (!DESK.matches || event.button > 0) return;
+      if (!FRAME.matches || event.button > 0) return;
       pointer = event.pointerId;
       // Hold the edge where it was grabbed, so it does not jump to the pointer.
-      grab = (layout[side].open ? parseFloat(getComputedStyle($('frame')).getPropertyValue('--' + side + '-w')) : 0) - reach(event);
+      grab = (isOpen(side) ? parseFloat(getComputedStyle($('frame')).getPropertyValue('--' + side + '-w')) : 0) - reach(event);
       start = layout[side].width;
       handle.setPointerCapture(pointer);
       handle.classList.add('active');
@@ -777,8 +791,8 @@
       var raw = reach(event) + grab;
       // Dragged most of the way shut, the sidebar folds away; dragged back
       // out past the same point, it opens at the width under the pointer.
-      if (raw < FOLD_AT) layout[side].open = false;
-      else { layout[side].open = true; layout[side].width = Math.min(Math.max(raw, MIN), widest(side)); }
+      if (raw < FOLD_AT) setOpen(side, false);
+      else { setOpen(side, true); layout[side].width = Math.min(Math.max(raw, MIN), widest(side)); }
       apply();
     });
     function release(event) {
@@ -787,7 +801,7 @@
       // A drag that ends folded keeps the width the sidebar had before it, so
       // reopening gives back what the reader was using, not the last few
       // pixels it passed through on the way shut.
-      if (!layout[side].open) { layout[side].width = start; apply(); }
+      if (!isOpen(side)) { layout[side].width = start; apply(); }
       handle.classList.remove('active');
       $('frame').classList.remove('dragging');
       document.body.classList.remove('resizing');
@@ -802,8 +816,8 @@
       if (event.key === 'Enter' || event.key === ' ') toggle(side);
       else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         var delta = (event.key === 'ArrowRight' ? step : -step) * grow;
-        if (!layout[side].open) { if (delta > 0) layout[side].open = true; }
-        else if (layout[side].width + delta < MIN) layout[side].open = false;
+        if (!isOpen(side)) { if (delta > 0) setOpen(side, true); }
+        else if (layout[side].width + delta < MIN) setOpen(side, false);
         else layout[side].width = Math.min(layout[side].width + delta, widest(side));
         apply(); persist();
       } else return;
@@ -818,7 +832,7 @@
     heading.setAttribute('role', 'button');
     heading.tabIndex = 0;
     function flip() {
-      if (!DESK.matches) return;
+      if (!FRAME.matches) return;
       var folded = panel.dataset.folded !== 'true';
       if (folded) { panel.dataset.folded = 'true'; layout.folded[panel.id] = true; }
       else { delete panel.dataset.folded; delete layout.folded[panel.id]; }
@@ -875,6 +889,11 @@
     $('toggle-left').addEventListener('click', function () { toggle('left'); });
     $('toggle-right').addEventListener('click', function () { toggle('right'); });
     window.addEventListener('resize', apply);
+    COMPACT.addEventListener('change', apply);
+    // A tap on the model beside an open drawer closes it.
+    document.querySelector('.scrim').addEventListener('click', function () {
+      layout.drawer.left = layout.drawer.right = false; apply();
+    });
     var show = stage();
     // The canvas follows its box, which a sidebar drag changes without any
     // window resize; redraw whenever the box does.
@@ -887,6 +906,7 @@
     window.cadexFrame = {
       layout: function () {
         return { left: { width: layout.left.width, open: layout.left.open }, right: { width: layout.right.width, open: layout.right.open },
+                 drawers: COMPACT.matches ? { left: layout.drawer.left, right: layout.drawer.right } : null,
                  stage: $('stage').dataset.active };
       },
       toggle: toggle,
