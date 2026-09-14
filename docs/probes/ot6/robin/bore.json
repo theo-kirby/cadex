@@ -1,0 +1,227 @@
+{
+ "project": "ot6-robin",
+ "kind": "design correction (new accepted revision), not recovery of revision 71709063",
+ "previous": {
+  "revision": "71709063d6af7ee357d5bb5b409e3332730a1465e0caa62f92f93535ec04cd84",
+  "digest": "806ab1343b7c94789c986fe244d610b93bf4e8516e4bf0457408f31f081f6c4e",
+  "script_history": "ot6-robin/script_history/0002-71709063d6af.py",
+  "failure_evidence_retained": [
+   "ot6-robin-src/accepted-result.json",
+   "ot6-robin-src/iteration20-section.json",
+   "ot6-robin-src/restore-probe/"
+  ],
+  "script_artifacts_pruned_by_store": "yes \u2014 ADR-045 lifecycle keeps the accepted attempt plus ATTEMPT_KEEP; script_artifacts/ is git-ignored as rebuild output"
+ },
+ "accepted": {
+  "revision": "5ad94d65e61a04635f6157b378bbea1fbde91e89819f44790ae5063d4b2db3b7",
+  "digest": "185f9ccc4f9666e1e70d2a7e7c593add297edf3b3c28c1ac4117f28f2aeba885",
+  "engine_source": "dev-tree",
+  "command": "cadex script --project ot6-robin --set ot6-robin-src/bore-candidate.py --json (no --replace: no output dropped)",
+  "started": "2026-09-14T02:21:59Z",
+  "finished": "2026-09-14T02:22:05Z",
+  "exit": 0,
+  "notes": [
+   "committed 675e1ad."
+  ],
+  "history_entry": "0003-5ad94d65e61a.py"
+ },
+ "source_change": {
+  "only_block_changed": "wheel D-bore cutter (plus its stdout line and one header comment)",
+  "before": "shaft_seg = part.common([mot.body, cylinder]); cutter = part.offset(shaft_seg, bore_clear/2, output_type=\"solid\")",
+  "after": "cutter0 = part.cut(part.cylinder(SHAFT_R + bore_clear/2, ...), [flat box at FLAT_Y + bore_clear/2]); cutter = part.transform(cutter0, translation=[0, s*mf, axle_z], rotation_axis=[-s,0,0], rotation_degrees=90)",
+  "declared_clearance": {
+   "bore_clear_mm_diametral": 0.1,
+   "radial_on_round_mm": 0.05,
+   "normal_on_flat_mm": 0.05,
+   "shaft_flat_plane_canonical_y_mm": 1.0,
+   "cutter_flat_plane_canonical_y_mm": 1.05
+  }
+ },
+ "reopen": [
+  {
+   "run": 1,
+   "command": "cadex section --plane XY --offset-mm 50 --json (fresh process; default restore pass)",
+   "exit": 0,
+   "ok": true,
+   "revision": "5ad94d65e61a04635f6157b378bbea1fbde91e89819f44790ae5063d4b2db3b7",
+   "digest": "185f9ccc4f9666e1e70d2a7e7c593add297edf3b3c28c1ac4117f28f2aeba885",
+   "digest_matches_accepted": true,
+   "notes": [
+    "section: XY 50 mm (explicit); ok; 3/24 objects cut; $HOME/cadex-projects/ot6-robin/review/section/5ad94d65e61a04635f6157b378bbea1fbde91e89819f44790ae5063d4b2db3b7/XY-50/summary.json.",
+    "committed f65edee."
+   ],
+   "started": "2026-09-14T02:22:38Z",
+   "finished": "2026-09-14T02:22:48Z"
+  },
+  {
+   "run": 2,
+   "command": "cadex section --plane XY --offset-mm 50 --json (fresh process; default restore pass)",
+   "exit": 0,
+   "ok": true,
+   "revision": "5ad94d65e61a04635f6157b378bbea1fbde91e89819f44790ae5063d4b2db3b7",
+   "digest": "185f9ccc4f9666e1e70d2a7e7c593add297edf3b3c28c1ac4117f28f2aeba885",
+   "digest_matches_accepted": true,
+   "notes": [
+    "section: XY 50 mm (explicit); ok; 3/24 objects cut; $HOME/cadex-projects/ot6-robin/review/section/5ad94d65e61a04635f6157b378bbea1fbde91e89819f44790ae5063d4b2db3b7/XY-50/summary.json.",
+    "committed b9e629d."
+   ],
+   "started": "2026-09-14T02:22:48Z",
+   "finished": "2026-09-14T02:22:59Z"
+  },
+  {
+   "run": 3,
+   "command": "cadex section --plane XY --offset-mm 50 --json (fresh process; default restore pass)",
+   "exit": 0,
+   "ok": true,
+   "revision": "5ad94d65e61a04635f6157b378bbea1fbde91e89819f44790ae5063d4b2db3b7",
+   "digest": "185f9ccc4f9666e1e70d2a7e7c593add297edf3b3c28c1ac4117f28f2aeba885",
+   "digest_matches_accepted": true,
+   "notes": [
+    "section: XY 50 mm (explicit); ok; 3/24 objects cut; $HOME/cadex-projects/ot6-robin/review/section/5ad94d65e61a04635f6157b378bbea1fbde91e89819f44790ae5063d4b2db3b7/XY-50/summary.json.",
+    "committed 5593ccb."
+   ],
+   "started": "2026-09-14T02:22:59Z",
+   "finished": "2026-09-14T02:23:09Z"
+  }
+ ],
+ "restored_attempts_differ_only_in": "budget/elapsed_seconds (result.json key-by-key diff of the retained restore attempts)",
+ "fit": {
+  "checks": 84,
+  "ok": true,
+  "pair_count": 276,
+  "mass_g": 139.60133,
+  "solids": 24,
+  "wheel_motor_distance_mm": [
+   0.05,
+   0.05
+  ],
+  "wheel_motor_overlap_mm3": [
+   0.0,
+   0.0
+  ],
+  "wheel_volume_mm3": 12512.29798,
+  "wheel_volume_mm3_previous_revision": 12512.29902,
+  "wheel_mass_g": 15.51525,
+  "acceptance_attempt_vs_restored_attempt": "inventory, checks and mass identical; only result_sha256 differs (elapsed_seconds)",
+  "acceptance_attempt_result_sha256": "7be3683ed6fe722d8519c9c54d264fe128d3361ebc7e7db01951e278281ee5cd",
+  "restored_attempt_result_sha256": "7e92bc4ff607efcdeb1f288a27c0f515f697e24746cba5057b4f043969173898",
+  "scope": "retained exact BREP at accepted solved pose; no restore or swept-fit certification"
+ },
+ "operator_dashboard": {
+  "url": "http://<private-address>:8765/",
+  "service": "cadex-operator-review (user unit, active throughout)",
+  "start": {
+   "revision": "71709063d6af7ee357d5bb5b409e3332730a1465e0caa62f92f93535ec04cd84",
+   "components": 24,
+   "visits": [
+    {
+     "width": 1400,
+     "selected": "accepted",
+     "overflow": false
+    },
+    {
+     "width": 400,
+     "selected": "accepted",
+     "overflow": false
+    }
+   ]
+  },
+  "end": {
+   "revision": "5ad94d65e61a04635f6157b378bbea1fbde91e89819f44790ae5063d4b2db3b7",
+   "components": 24,
+   "triangles": 56996,
+   "visits": [
+    {
+     "width": 1400,
+     "selected": "accepted",
+     "overflow": false
+    },
+    {
+     "width": 400,
+     "selected": "accepted",
+     "overflow": false
+    }
+   ],
+   "showing_default": "tessellated solids",
+   "proxy_toggle": "9 outlines from the accepted attempt robin_model"
+  }
+ },
+ "training_started": false,
+ "files": [
+  {
+   "path": "ot6-robin-src/accepted-71709063.py",
+   "bytes": 20081,
+   "sha256": "82ecac64b7d4cce11892290880a657c58a4065ac2d39c663ea67308894692863"
+  },
+  {
+   "path": "ot6-robin-src/bore-candidate.py",
+   "bytes": 21266,
+   "sha256": "5dfb61688aaf541519e8a99f2d77f986146119b68e6a81115d8ea2148fa4e9cb"
+  },
+  {
+   "path": "ot6-robin-src/iteration21/script-set.json",
+   "bytes": 1089,
+   "sha256": "b2e2fc6f4ce297051ef423e6c72ac842c65adee4b30eb706d73e9a7ecd3b1fe6"
+  },
+  {
+   "path": "ot6-robin-src/iteration21/section1.json",
+   "bytes": 1284,
+   "sha256": "01075dd0698452d28e5a9c9d59dfb5f0f12c7ec7bb3d3fd5947bcf899e3d2e16"
+  },
+  {
+   "path": "ot6-robin-src/iteration21/section2.json",
+   "bytes": 1284,
+   "sha256": "e91fa972ff54ad9b3b0018356db2818e8a039f7ac90cf3e1baf47546353e29a0"
+  },
+  {
+   "path": "ot6-robin-src/iteration21/section3.json",
+   "bytes": 1284,
+   "sha256": "0b7eb2957da645fa05c8c859896e1cf15dfe068fa9f712cb89834014021d27e1"
+  },
+  {
+   "path": "ot6-robin-src/iteration21/fit/fit.json",
+   "bytes": 15621,
+   "sha256": "4f45ac823caacff16be2741805aa6c6113e306ff14f593c46357e95177c482e9"
+  },
+  {
+   "path": "ot6-robin-src/iteration21/fit-restored/fit.json",
+   "bytes": 15621,
+   "sha256": "3063801d79e01d79e7bb7f5195fc8088853da856aeeba54a21697d3b0e0fac2b"
+  },
+  {
+   "path": "ot6-robin-src/iteration21/start/operator.json",
+   "bytes": 1906,
+   "sha256": "de1df09245b95dcb2e376e66bbccaee8066228aa75cbc2a2049b78f77234e759"
+  },
+  {
+   "path": "ot6-robin-src/iteration21/end/operator.json",
+   "bytes": 1906,
+   "sha256": "55e6cb8dbb19ba8986644b3193765978b094bc9cf1945a4fe7b9ab82197b2c66"
+  },
+  {
+   "path": "ot6-robin/script.py",
+   "bytes": 21266,
+   "sha256": "5dfb61688aaf541519e8a99f2d77f986146119b68e6a81115d8ea2148fa4e9cb"
+  },
+  {
+   "path": "ot6-robin/script_history/0003-5ad94d65e61a.py",
+   "bytes": 21266,
+   "sha256": "5dfb61688aaf541519e8a99f2d77f986146119b68e6a81115d8ea2148fa4e9cb"
+  },
+  {
+   "path": "ot6-robin/docs/INVENTORY.md",
+   "bytes": 3183,
+   "sha256": "b2cf46b8f03e67de4ab5a88c6c4f34365550ca2e8b2bf8a9174e2b3d54b2cd52"
+  },
+  {
+   "path": "ot6-robin/docs/FIT.md",
+   "bytes": 8388,
+   "sha256": "9344ff93b0d5cc4431269594e525dd3cc883fdee36f50187fed46b47a99ae52d"
+  },
+  {
+   "path": "ot6-robin/DECISIONS.md",
+   "bytes": 3338,
+   "sha256": "65c9ca0aea9f00ba96b1f621fa46f13b8580e8eed02dfea74a29c3a7e00dc621"
+  }
+ ]
+}

@@ -2,7 +2,7 @@
 
 Verified against source: 2026-09-14. [Cadex-new]
 
-Historical attempt receipt. Current result: [complete candidate accepted after reset repair; reopen blocked](ACCEPTED.md).
+Historical attempt receipt. Later: [complete candidate accepted after reset repair; reopen blocked](ACCEPTED.md), [the restore failure diagnosed](RESTORE.md). Current result: [D-bore construction revised; reopen holds](BORE.md).
 
 **No balancer was accepted.** The product agent started from the empty external
 project `ot6-robin`, accepted a catalog probe, then failed to accept the proposed

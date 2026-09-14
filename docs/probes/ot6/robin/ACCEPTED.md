@@ -2,6 +2,8 @@
 
 Verified against source: 2026-09-14. [Cadex-new]
 
+Historical receipt for revision `71709063d6af…`. Current result: [D-bore construction revised; reopen holds](BORE.md).
+
 Robin is now the complete **24-solid product-agent design**, accepted at
 `71709063d6af7ee357d5bb5b409e3332730a1465e0caa62f92f93535ec04cd84`.
 The [repair receipt](repair.json) separates the original authored candidate

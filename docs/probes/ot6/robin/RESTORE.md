@@ -2,6 +2,8 @@
 
 Verified against source: 2026-09-14. [Cadex-new]
 
+Historical diagnosis of revision `71709063d6af…`. Current result: [the bore construction was revised as a new design revision; reopen holds](BORE.md). The reproducer below reads the project's accepted attempt, which is now that revision; the old revision's frozen inputs and replays stay under `ot6-robin-src/restore-probe/`.
+
 Robin still cannot reopen. A fresh `cadex section --plane XY --offset-mm 50
 --json` on its retained accepted project exited 1 with **“The restore pass
 digest does not match the accepted digest.”** The accepted revision remains

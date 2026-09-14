@@ -1,5 +1,7 @@
 """Read Robin's retained accepted measurements; write project inventory and fit report.
 
+Runs against whichever revision the project has accepted; the receipt names it.
+
 Usage: python3 docs/probes/ot6/robin/fit_check.py PROJECT OUT
 No rebuild or re-acceptance. Checks the solved pose, not swept motion or fabrication.
 """
@@ -104,9 +106,9 @@ fit = ['# Robin — measured fits', '', 'Verified against source: 2026-09-14. [C
        f"Revision `{a['revision']}`. Retained exact BREP, initial solved pose only. {len(pairs)} measured component pairs.", '',
        '| check | result |', '|---|---|']
 fit += [f"| {c['check']} | {json.dumps({k:v for k,v in c.items() if k != 'check'})} |" for c in checks]
-fit += ['', 'The motor shoulder has the declared 0.3 mm clearance, not face contact. Clamp bars touch the motors. The D-bore has 0.05 mm radial skin clearance; this establishes a clearance fit, not a tested press fit or axial retention. Source-derived hub engagement is 8 mm and boss gap 1 mm.',
+fit += ['', 'The motor shoulder has the declared 0.3 mm clearance, not face contact. Clamp bars touch the motors. The D-bore has 0.05 mm radial clearance to the catalog shaft (its nearest wheel/motor approach); this establishes a clearance fit, not a tested press fit or axial retention. Source-derived hub engagement is 8 mm and boss gap 1 mm.',
         'The author’s stdout claims 12.566 mm³ solid-cylinder screw engagement. Actual screw/insert common volume is 4.852224 mm³; the catalog insert has a bore, so the stdout claim is not a measurement.',
-        'A subsequent cadex section command refused restore with a digest mismatch. No acceptance check was bypassed. These retained measurements do not certify that reopen works; repair that before training.', '']
+        'These retained measurements do not certify that reopen works: restore is measured separately, by fresh-process cadex section runs, and reported under the product checkout in docs/probes/ot6/robin/. No acceptance check was bypassed.', '']
 (project/'docs/FIT.md').write_text('\n'.join(fit))
 out.mkdir(parents=True, exist_ok=True)
 (out/'fit.json').write_text(json.dumps(receipt, indent=1)+'\n')

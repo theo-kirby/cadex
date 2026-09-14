@@ -1,0 +1,734 @@
+{
+ "project": "ot6-robin",
+ "revision": "5ad94d65e61a04635f6157b378bbea1fbde91e89819f44790ae5063d4b2db3b7",
+ "script_sha256": "5dfb61688aaf541519e8a99f2d77f986146119b68e6a81115d8ea2148fa4e9cb",
+ "result_sha256": "7e92bc4ff607efcdeb1f288a27c0f515f697e24746cba5057b4f043969173898",
+ "inventory": [
+  {
+   "solid": "chassis",
+   "source": "modelled: printed motor pockets, insert seats, battery bay and board bosses",
+   "mass_g": 75.65556,
+   "volume_mm3": 61012.54718,
+   "proxies": "box, box",
+   "relation": "block and tower envelopes fill the pockets/bay; bosses omitted",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "wheel_l",
+   "source": "modelled: printed D-bore hub, web and rim",
+   "mass_g": 15.51525,
+   "volume_mm3": 12512.29798,
+   "proxies": "sphere",
+   "relation": "radius-30 sphere represents tread contact; extends beyond the 8 mm tread width",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "wheel_r",
+   "source": "modelled: printed D-bore hub, web and rim",
+   "mass_g": 15.51525,
+   "volume_mm3": 12512.29798,
+   "proxies": "sphere",
+   "relation": "radius-30 sphere represents tread contact; extends beyond the 8 mm tread width",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "motor_l",
+   "source": "catalog gearmotor/pololu-2367",
+   "mass_g": 9.5,
+   "volume_mm3": 3135.54371,
+   "proxies": "box",
+   "relation": "case envelope box; shaft and boss omitted",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "motor_r",
+   "source": "catalog gearmotor/pololu-2367",
+   "mass_g": 9.5,
+   "volume_mm3": 3135.54371,
+   "proxies": "box",
+   "relation": "case envelope box; shaft and boss omitted",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "clamp_l",
+   "source": "modelled: printed recessed motor clamp bar",
+   "mass_g": 1.16295,
+   "volume_mm3": 937.85897,
+   "proxies": "box",
+   "relation": "bar envelope box; screw holes filled",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "clamp_r",
+   "source": "modelled: printed recessed motor clamp bar",
+   "mass_g": 1.16295,
+   "volume_mm3": 937.85897,
+   "proxies": "box",
+   "relation": "bar envelope box; screw holes filled",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "board",
+   "source": "catalog board/pi-zero-2-w",
+   "mass_g": 6.44118,
+   "volume_mm3": 3481.72125,
+   "proxies": "box",
+   "relation": "PCB and component envelope box",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "insert_clamp_l_0",
+   "source": "catalog heat_insert/m2-standard",
+   "mass_g": 0.28051,
+   "volume_mm3": 33.00089,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "insert_clamp_l_1",
+   "source": "catalog heat_insert/m2-standard",
+   "mass_g": 0.28051,
+   "volume_mm3": 33.00089,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "insert_clamp_r_0",
+   "source": "catalog heat_insert/m2-standard",
+   "mass_g": 0.28051,
+   "volume_mm3": 33.00089,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "insert_clamp_r_1",
+   "source": "catalog heat_insert/m2-standard",
+   "mass_g": 0.28051,
+   "volume_mm3": 33.00089,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "insert_board_0",
+   "source": "catalog heat_insert/m2-standard",
+   "mass_g": 0.28051,
+   "volume_mm3": 33.00089,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "insert_board_1",
+   "source": "catalog heat_insert/m2-standard",
+   "mass_g": 0.28051,
+   "volume_mm3": 33.00089,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "insert_board_2",
+   "source": "catalog heat_insert/m2-standard",
+   "mass_g": 0.28051,
+   "volume_mm3": 33.00089,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "insert_board_3",
+   "source": "catalog heat_insert/m2-standard",
+   "mass_g": 0.28051,
+   "volume_mm3": 33.00089,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "screw_clamp_l_0",
+   "source": "catalog bolt/m2x7-socket",
+   "mass_g": 0.35069,
+   "volume_mm3": 44.67345,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "screw_clamp_l_1",
+   "source": "catalog bolt/m2x7-socket",
+   "mass_g": 0.35069,
+   "volume_mm3": 44.67345,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "screw_clamp_r_0",
+   "source": "catalog bolt/m2x7-socket",
+   "mass_g": 0.35069,
+   "volume_mm3": 44.67345,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "screw_clamp_r_1",
+   "source": "catalog bolt/m2x7-socket",
+   "mass_g": 0.35069,
+   "volume_mm3": 44.67345,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "screw_board_0",
+   "source": "catalog bolt/m2x8-socket",
+   "mass_g": 0.37535,
+   "volume_mm3": 47.81504,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "screw_board_1",
+   "source": "catalog bolt/m2x8-socket",
+   "mass_g": 0.37535,
+   "volume_mm3": 47.81504,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "screw_board_2",
+   "source": "catalog bolt/m2x8-socket",
+   "mass_g": 0.37535,
+   "volume_mm3": 47.81504,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  },
+  {
+   "solid": "screw_board_3",
+   "source": "catalog bolt/m2x8-socket",
+   "mass_g": 0.37535,
+   "volume_mm3": 47.81504,
+   "proxies": "none (mass only)",
+   "relation": "mass only",
+   "valid_single_solid": true
+  }
+ ],
+ "mass_g": 139.60133,
+ "checks": [
+  {
+   "check": "chassis/motor_l distance mm",
+   "measured": 0.3,
+   "expected": 0.3,
+   "ok": true
+  },
+  {
+   "check": "chassis/motor_l overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "wheel_l/motor_l distance mm",
+   "measured": 0.05,
+   "expected": 0.05,
+   "ok": true
+  },
+  {
+   "check": "wheel_l/motor_l overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "motor_l/clamp_l distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "motor_l/clamp_l overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/clamp_l distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/clamp_l overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/motor_r distance mm",
+   "measured": 0.3,
+   "expected": 0.3,
+   "ok": true
+  },
+  {
+   "check": "chassis/motor_r overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "wheel_r/motor_r distance mm",
+   "measured": 0.05,
+   "expected": 0.05,
+   "ok": true
+  },
+  {
+   "check": "wheel_r/motor_r overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "motor_r/clamp_r distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "motor_r/clamp_r overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/clamp_r distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/clamp_r overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/board distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/board overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_clamp_l_0 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_clamp_l_0 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_l/screw_clamp_l_0 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_l/screw_clamp_l_0 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_l/insert_clamp_l_0 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_l/insert_clamp_l_0 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "insert_clamp_l_0 thread engagement >= 3 mm annular equivalent",
+   "measured_mm3": 4.852224,
+   "minimum_mm3": 3.39292,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_clamp_l_1 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_clamp_l_1 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_l/screw_clamp_l_1 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_l/screw_clamp_l_1 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_l/insert_clamp_l_1 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_l/insert_clamp_l_1 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "insert_clamp_l_1 thread engagement >= 3 mm annular equivalent",
+   "measured_mm3": 4.852224,
+   "minimum_mm3": 3.39292,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_clamp_r_0 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_clamp_r_0 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_r/screw_clamp_r_0 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_r/screw_clamp_r_0 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_r/insert_clamp_r_0 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_r/insert_clamp_r_0 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "insert_clamp_r_0 thread engagement >= 3 mm annular equivalent",
+   "measured_mm3": 4.852224,
+   "minimum_mm3": 3.39292,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_clamp_r_1 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_clamp_r_1 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_r/screw_clamp_r_1 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_r/screw_clamp_r_1 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_r/insert_clamp_r_1 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "clamp_r/insert_clamp_r_1 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "insert_clamp_r_1 thread engagement >= 3 mm annular equivalent",
+   "measured_mm3": 4.852224,
+   "minimum_mm3": 3.39292,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_board_0 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_board_0 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/screw_board_0 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/screw_board_0 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/insert_board_0 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/insert_board_0 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "insert_board_0 thread engagement >= 3 mm annular equivalent",
+   "measured_mm3": 4.852224,
+   "minimum_mm3": 3.39292,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_board_1 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_board_1 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/screw_board_1 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/screw_board_1 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/insert_board_1 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/insert_board_1 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "insert_board_1 thread engagement >= 3 mm annular equivalent",
+   "measured_mm3": 4.852224,
+   "minimum_mm3": 3.39292,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_board_2 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_board_2 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/screw_board_2 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/screw_board_2 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/insert_board_2 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/insert_board_2 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "insert_board_2 thread engagement >= 3 mm annular equivalent",
+   "measured_mm3": 4.852224,
+   "minimum_mm3": 3.39292,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_board_3 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "chassis/insert_board_3 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/screw_board_3 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/screw_board_3 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/insert_board_3 distance mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "board/insert_board_3 overlap mm3",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "insert_board_3 thread engagement >= 3 mm annular equivalent",
+   "measured_mm3": 4.852224,
+   "minimum_mm3": 3.39292,
+   "ok": true
+  },
+  {
+   "check": "unexpected intersections",
+   "measured": 0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "unmeasured pairs",
+   "measured": 0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "invalid or multi-solid outputs",
+   "measured": 0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "grounded components",
+   "measured": 0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "solver code",
+   "measured": 0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "additional reset penetration mm",
+   "measured": 0.0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "minimum reset lift mm",
+   "measured": 3.0,
+   "expected": 3,
+   "ok": true
+  },
+  {
+   "check": "maximum reset lift mm",
+   "measured": 5.0,
+   "expected": 5,
+   "ok": true
+  },
+  {
+   "check": "initial contacts outside the wheel/environment pairs",
+   "measured": 0,
+   "expected": 0,
+   "ok": true
+  },
+  {
+   "check": "initial wheel/environment contacts",
+   "measured": 2,
+   "expected": 2,
+   "ok": true
+  }
+ ],
+ "ok": true,
+ "pair_count": 276,
+ "scope": "retained exact BREP at accepted solved pose; no restore or swept-fit certification"
+}
