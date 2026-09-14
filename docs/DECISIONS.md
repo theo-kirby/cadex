@@ -24644,3 +24644,19 @@ acceptance and accepted-state verification are unchanged. Tests cover malformed
 intent, legacy definition stability, exact kernel measurements, and a failing
 transaction that accepts and restores with the same accepted digest. The
 script API's existing generated description exposes the new keyword arguments.
+
+## ADR-348 — Measure the joint-sweep premise on retained geometry (2026-09-14)
+
+The first F3 unit is a read-only experiment before publication and CLI changes:
+reconstruct accepted BREPs, verify all solved pairs, then move a hinge's entire
+descendant branch about its solved local connector frame. Reuse the existing
+kinematic tree; do not use pre-solve global connector facts. A known-angle
+fixture, an independent accepted-MJCF pose witness and per-child runtime bounds
+make the measurement reviewable. No product behaviour changes in this unit.
+
+All four Finch sweeps finish within 180 seconds each. At 5° samples both knee
+ranges retain a 1 mm shin-to-thigh gap and no overlap, contrary to ot6's written
+prediction of contact past about 60°. Preserve that negative result rather than
+inventing the contact angle the charter expected. F3 stays open for the product
+checker, discoverability, general joint semantics and gates. The experiment and
+full artifact digests are in `docs/probes/ot7/sweep/README.md`.
