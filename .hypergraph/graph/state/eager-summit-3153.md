@@ -7,17 +7,15 @@ parents:
 - mild-ledge-7157
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-**Latest verification is green: CLI 686 passed/1 skipped; the preceding engine run passed 2,142/53 skipped, fresh build/stage exited 0, and the packaged lifecycle gate passed 18 again during retained restore checks.** The paged build-reply negative control fails both new cases as expected. Subsequent units changed tests/docs only, not product or payload code [rec: hidden-lodge-4550] [rec: still-raven-7629] [rec: tidy-journey-9462].
+**F9 evidence is complete, pending the owner's checkbox.** `docs/probes/ot7/REGRESSION.md` consolidates green engine results (2,142 passed/53 skipped), CLI results (693 passed/1 skipped), successful build/stage, and the packaged lifecycle gate (18 passed), with their distinct verification scopes. The closure unit reused these receipts rather than rerunning gates [rec: narrow-valley-3317].
 
-**The retained restore/open gap is closed.** Six fresh packaged opens (restore and reopen for Finch, Robin and Heron) preserve accepted identity, parameters, script and pinned result bytes; only normal restore metadata `latest_candidate` and `updated_at` change. Published reports and newly rebuilt candidate measurements match all 787 pinned pairs exactly, with no added/missing pairs or changed distances/volumes. Source projects remain unchanged [rec: still-raven-7629].
+Six preserved restore/reopen checks for Finch, Robin and Heron preserve accepted identity and all 787 published/rebuilt pairs (406/276/105). Their 44/39/20 static failures are explained by ot6 screw exceptions, undeclared seatings/gaps and exactly two corrected Heron numerical threshold flags. These retained final revisions have no unknowns or world geometry; unavailable sweeps remain unavailable. F4's first seed is distinct [rec: narrow-valley-3317].
 
-A portable regression replays all 406/276/105 retained pairs and pins every named failure and number: Finch 44, Robin 39, Heron 20. Differences from ot6 are explained by contact/thread classification and exactly two Heron nominal-0.1 mm rounding corrections (ADR-353); the old threshold fails the Heron regression as expected. No unknowns or world geometry occur in these retained revisions; all sweeps remain unavailable [rec: keen-quill-2265] [rec: still-raven-7629].
-
-Charter criterion: both suites and relevant packaged gate pass; retained ot6 Finch, Robin and Heron open, and checker differences against ot6 probes are explained. Reconcile judgement: retain `open` because the new records close the retained restore/open gap but explicitly do not claim full F9 closure. Restoration success is not fit success; the designs still have 44/39/20 static failures [rec: kind-dusk-1609] [rec: keen-quill-2265] [rec: still-raven-7629].
+Reconcile judgement: mark `working`, correcting the prior closure interpretation. F9 requires passing regression gates, retained compatibility and explained checker differences; the retained designs' explained fit failures do not prevent closure. This does not close F4–F7 or claim whole-goal completion [rec: narrow-valley-3317].
 
 ## Negative knowledge
 
@@ -41,3 +39,4 @@ None yet.
 - keen-quill-2265 — portable regression pins all 787 measurements and 44/39/20 failures; CLI 684/1
 - still-raven-7629 — six packaged restores/reopens preserve identity and rebuilt measurements; lifecycle 18 passed
 - tidy-journey-9462 — paged build-reply regression and negative control; CLI 686 passed/1 skipped
+- narrow-valley-3317 — consolidated regression closure receipt; explicitly corrects F9 to working despite explained retained fit failures
