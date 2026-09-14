@@ -1,0 +1,283 @@
+{
+ "schema": "ot6-d9-final-regression-v1",
+ "source_commit": "aa293fc011af3de3112c9bff9190258f3c0e7627",
+ "suites": [
+  {
+   "command": "pixi run test-engine",
+   "exit_code": 0,
+   "started": "2026-09-14T04:56:54Z",
+   "finished": "2026-09-14T05:01:23Z",
+   "seconds": 268.06,
+   "log_sha256": "72986edbabfd78faa5aedaa49f6faca83709da071c280aec2155165702237f89",
+   "log_bytes": 12504,
+   "passed": 2114,
+   "skipped": 53,
+   "failed": 0,
+   "error": 0
+  },
+  {
+   "command": "pixi run python -m pytest cli/tests",
+   "exit_code": 0,
+   "files": {
+    "cli/tests/test_asset.py": [
+     7,
+     0,
+     0
+    ],
+    "cli/tests/test_clearance.py": [
+     19,
+     0,
+     0
+    ],
+    "cli/tests/test_client.py": [
+     11,
+     0,
+     0
+    ],
+    "cli/tests/test_commands.py": [
+     23,
+     0,
+     0
+    ],
+    "cli/tests/test_engine_resolution.py": [
+     12,
+     0,
+     0
+    ],
+    "cli/tests/test_export.py": [
+     13,
+     0,
+     0
+    ],
+    "cli/tests/test_inventory.py": [
+     6,
+     0,
+     0
+    ],
+    "cli/tests/test_lark_fresh_evidence.py": [
+     24,
+     0,
+     0
+    ],
+    "cli/tests/test_lifecycle_report.py": [
+     6,
+     0,
+     0
+    ],
+    "cli/tests/test_linked_part.py": [
+     4,
+     0,
+     0
+    ],
+    "cli/tests/test_mcp_protocol.py": [
+     22,
+     0,
+     0
+    ],
+    "cli/tests/test_project_docs.py": [
+     37,
+     0,
+     0
+    ],
+    "cli/tests/test_render.py": [
+     19,
+     0,
+     0
+    ],
+    "cli/tests/test_review_design.py": [
+     124,
+     0,
+     0
+    ],
+    "cli/tests/test_review_disk_use.py": [
+     8,
+     0,
+     0
+    ],
+    "cli/tests/test_review_history_scale.py": [
+     3,
+     0,
+     0
+    ],
+    "cli/tests/test_review_lifecycle.py": [
+     2,
+     0,
+     0
+    ],
+    "cli/tests/test_review_record.py": [
+     34,
+     0,
+     0
+    ],
+    "cli/tests/test_review_server.py": [
+     57,
+     1,
+     0
+    ],
+    "cli/tests/test_review_style_evidence.py": [
+     14,
+     0,
+     0
+    ],
+    "cli/tests/test_section.py": [
+     13,
+     0,
+     0
+    ],
+    "cli/tests/test_train.py": [
+     24,
+     0,
+     0
+    ],
+    "cli/tests/test_turn_loop.py": [
+     31,
+     0,
+     0
+    ],
+    "cli/tests/test_video.py": [
+     14,
+     0,
+     0
+    ],
+    "cli/tests/test_walk.py": [
+     65,
+     0,
+     0
+    ],
+    "cli/tests/test_wren_fresh_evidence.py": [
+     14,
+     0,
+     0
+    ],
+    "cli/tests/test_wren_lifecycle_report.py": [
+     4,
+     0,
+     0
+    ]
+   },
+   "started": "2026-09-14T05:01:23Z",
+   "finished": "2026-09-14T05:10:06Z",
+   "seconds": 523.25,
+   "log_sha256": "667f30af2b3190e512a6ca40d48c6322c98dc05c8486d581f4d37be108ed72e5",
+   "log_bytes": 2751,
+   "passed": 610,
+   "skipped": 1,
+   "failed": 0,
+   "error": 0
+  }
+ ],
+ "operator_url": "http://<private-address>:8765/",
+ "run": "heron1-final",
+ "visits": [
+  {
+   "at": "2026-09-14T05:12:03.008813+00:00",
+   "width": 1400,
+   "height": 900,
+   "touch": false,
+   "selected": "heron1-final",
+   "relation": "current",
+   "stale": false,
+   "model_revision": "0c8c64c92252711b630c3f86e381e9aa0788c62c7137186c8a9462912c286d5a",
+   "status": "model of run heron1-final at revision 0c8c64c92252 \u00b7 15 component(s), 53620 triangles \u00b7 from runs/heron1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids",
+   "overflow_px": 0,
+   "drawn_pixels": 39841,
+   "polling": {
+    "window_s": 10.5,
+    "project_fetches": 5,
+    "max_gap_s": 2.001,
+    "last_poll_ms": 22.09999990463257
+   },
+   "png": "final-1400.png",
+   "png_bytes": 121747,
+   "png_sha256": "bae888276e37f51e48d9e39b9425440dd0e7437c41b0e7af2fc73850ec3d74b5",
+   "playback_seconds": 0.19982,
+   "download": {
+    "bytes": 35809,
+    "sha256": "4f16f9117af665ec625a602a4667800b9705baca6b24dda54b62300df16955c8",
+    "by_touch": false
+   }
+  },
+  {
+   "at": "2026-09-14T05:12:15.389116+00:00",
+   "width": 400,
+   "height": 850,
+   "touch": true,
+   "selected": "heron1-final",
+   "relation": "current",
+   "stale": false,
+   "model_revision": "0c8c64c92252711b630c3f86e381e9aa0788c62c7137186c8a9462912c286d5a",
+   "status": "model of run heron1-final at revision 0c8c64c92252 \u00b7 15 component(s), 53620 triangles \u00b7 from runs/heron1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids",
+   "overflow_px": 0,
+   "drawn_pixels": 8801,
+   "polling": {
+    "window_s": 10.5,
+    "project_fetches": 5,
+    "max_gap_s": 2.002,
+    "last_poll_ms": 25.90000009536743
+   },
+   "touch_orbit": {
+    "camera_before": {
+     "yaw": 0.8,
+     "pitch": 0.5,
+     "distance": 223.43567093502185,
+     "target": [
+      19.99967350589577,
+      -8.825000762939453,
+      67.92499923706055
+     ]
+    },
+    "camera_after": {
+     "yaw": -0.4,
+     "pitch": 1,
+     "distance": 223.43567093502185,
+     "target": [
+      19.99967350589577,
+      -8.825000762939453,
+      67.92499923706055
+     ]
+    },
+    "page_scrolled_px": 0
+   },
+   "png": "final-400.png",
+   "png_bytes": 51208,
+   "png_sha256": "8f05dabfb66008a7de701484f603f69ae41c3ff7af91f4f26c0da5fc75bd045d",
+   "playback_seconds": 0.199432,
+   "download": {
+    "bytes": 35809,
+    "sha256": "4f16f9117af665ec625a602a4667800b9705baca6b24dda54b62300df16955c8",
+    "by_touch": true
+   }
+  }
+ ],
+ "project": "ot6-heron",
+ "accepted_revision": "0c8c64c92252711b630c3f86e381e9aa0788c62c7137186c8a9462912c286d5a",
+ "runs": [
+  {
+   "run": "heron1-checkpoint20",
+   "relation": "historical",
+   "outcome": "completed",
+   "videos": 1
+  },
+  {
+   "run": "heron1",
+   "relation": "historical",
+   "outcome": "completed",
+   "videos": 0
+  },
+  {
+   "run": "heron1-final",
+   "relation": "current",
+   "outcome": "completed",
+   "videos": 1
+  }
+ ],
+ "retained_video": {
+  "sha256": "4f16f9117af665ec625a602a4667800b9705baca6b24dda54b62300df16955c8",
+  "style": "cadex-prototype-dark-v1",
+  "showing": "tessellated solids of the accepted revision; collision proxies not drawn"
+ },
+ "service": [
+  "ActiveState=active",
+  "ActiveEnterTimestamp=Mon 2026-09-14 00:05:46 EDT"
+ ]
+}

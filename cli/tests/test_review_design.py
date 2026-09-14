@@ -757,3 +757,93 @@ def test_heron_training_receipt_measures_the_arm_reach_in_the_new_look():
     assert served[receipt["run"] + "-final"]["policy_sha256"] == receipt["final"]["policy_sha256"] and served[receipt["run"] + "-final"]["videos"] == 1
     assert end["fresh_visit_selects"] == receipt["run"] + "-final"
     assert "Verified against source: 2026-" in text
+
+
+REGRESSION = REPO / "docs/probes/ot6/regression"
+# The ot5 behaviours D9 names, each pinned to the tests that exercise it in
+# the CLI suite (`file::test`), so a renamed or deleted test breaks the receipt.
+OT5_BEHAVIOURS = {
+    "review server and record suites": [
+        "test_review_server.py::test_the_project_api_reads_the_project_live",
+        "test_review_record.py::test_the_record_carries_identities_and_only_relative_paths"],
+    "live polling within five seconds": [
+        "test_review_server.py::test_browser_polls_training_histories_checkpoints_and_stale_states",
+        "test_review_history_scale.py::test_browser_long_history_keeps_selection_and_playback_with_bounded_poll_work"],
+    "playback and download": [
+        "test_review_server.py::test_recorded_videos_are_served_whole_or_by_range",
+        "test_review_server.py::test_browser_playing_video_survives_new_current_attempt",
+        "test_review_server.py::test_browser_interrupted_download_leaves_polling_and_a_fresh_download_working"],
+    "restart during training": [
+        "test_review_lifecycle.py::test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone"],
+    "copy isolation": [
+        "test_review_lifecycle.py::test_copied_project_reopens_without_source_and_keeps_edits_isolated",
+        "test_review_record.py::test_the_reader_reads_a_copied_project_the_same"],
+    "failed-run states": [
+        "test_review_server.py::test_browser_explains_a_failed_observation_whose_training_finished",
+        "test_review_server.py::test_browser_lists_a_completed_run_whose_policy_was_never_stored_as_a_problem",
+        "test_review_server.py::test_browser_observes_final_policy_publication_failure"],
+    "headless operation": [
+        "test_review_server.py::test_the_review_command_serves_until_interrupted_and_writes_nothing",
+        "test_review_server.py::test_browser_reaches_the_dashboard_over_the_private_network_address"],
+}
+
+
+def test_final_regression_receipt_shows_everything_ot5_proved_still_holds():
+    """D9: after the redesign, the look change and the three model changes,
+    the engine and CLI suites are green on the recorded commit, every ot5
+    behaviour the criterion names is exercised by tests that still exist and
+    whose files passed with no failure, and a fresh visit to the persistent
+    operator URL at 1400×900 and at 400×850 under touch selects the arm's
+    final run by itself, draws its real solids, has no horizontal overflow,
+    polls with no gap over five seconds, plays the retained video and
+    downloads it with the recorded digest — the phone visit orbiting by one
+    finger without scrolling the page. Skips are not claimed as exercised."""
+
+    receipt = json.loads((REGRESSION / "final.json").read_text())
+    assert receipt["schema"] == "ot6-d9-final-regression-v1" and len(receipt["source_commit"]) == 40
+    suites = {s["command"]: s for s in receipt["suites"]}
+    assert set(suites) == {"pixi run test-engine", "pixi run python -m pytest cli/tests"}
+    for s in suites.values():
+        assert s["exit_code"] == 0 and s["failed"] == 0 and s["error"] == 0 and s["passed"] > 0
+        assert s["started"] < s["finished"] and s["seconds"] > 0 and len(s["log_sha256"]) == 64
+    files = suites["pixi run python -m pytest cli/tests"]["files"]  # path -> [passed, skipped, failed]
+    assert sum(row[0] for row in files.values()) == suites["pixi run python -m pytest cli/tests"]["passed"]
+    assert sum(row[1] for row in files.values()) == suites["pixi run python -m pytest cli/tests"]["skipped"]
+    assert suites["pixi run test-engine"]["passed"] >= 2114
+    assert suites["pixi run python -m pytest cli/tests"]["passed"] >= 609
+    for behaviour, tests in OT5_BEHAVIOURS.items():
+        for test in tests:
+            path, name = test.split("::")
+            assert f"def {name}(" in (REPO / "cli/tests" / path).read_text(), f"{behaviour}: {test} is gone"
+            assert files[f"cli/tests/{path}"][2] == 0, behaviour
+    assert receipt["operator_url"] == "http://<private-address>:8765/"
+    assert receipt["project"] == "ot6-heron" and receipt["run"] == "heron1-final"
+    served = {r["run"]: r for r in receipt["runs"]}
+    assert served["heron1-final"]["relation"] == "current" and served["heron1-final"]["videos"] == 1
+    assert served["heron1"]["relation"] == "historical" and served["heron1-checkpoint20"]["videos"] == 1
+    video = receipt["retained_video"]
+    assert video["style"] == "cadex-prototype-dark-v1" and video["showing"].startswith("tessellated solids")
+    visits = {(v["width"], v["height"]): v for v in receipt["visits"]}
+    assert set(visits) == {(1400, 900), (400, 850)}
+    text = (REGRESSION / "README.md").read_text()
+    for size, visit in visits.items():
+        assert visit["touch"] == (size == (400, 850))
+        assert visit["selected"] == "heron1-final" and visit["relation"] == "current" and not visit["stale"]
+        assert visit["overflow_px"] == 0 and visit["drawn_pixels"] > 1000
+        assert visit["status"].endswith("showing: tessellated solids")
+        polling = visit["polling"]
+        assert polling["project_fetches"] >= 3 and polling["max_gap_s"] < 5 and polling["last_poll_ms"] > 0
+        assert visit["playback_seconds"] > 0.1
+        assert visit["download"]["sha256"] == video["sha256"] and visit["download"]["by_touch"] == visit["touch"]
+        png = REGRESSION / visit["png"]
+        assert png.is_file() and png.stat().st_size == visit["png_bytes"] <= IMAGE_CAP
+        assert hashlib.sha256(png.read_bytes()).hexdigest() == visit["png_sha256"]
+        assert png_size(png)[0] <= size[0] and png.name in text
+    orbit = visits[(400, 850)]["touch_orbit"]
+    assert orbit["camera_after"]["yaw"] != orbit["camera_before"]["yaw"]
+    assert orbit["camera_after"]["distance"] == orbit["camera_before"]["distance"]
+    assert orbit["page_scrolled_px"] == 0
+    assert "ActiveState=active" in receipt["service"]
+    for behaviour in OT5_BEHAVIOURS:
+        assert behaviour in text, f"the assessment does not name {behaviour!r}"
+    assert "Verified against source: 2026-" in text
