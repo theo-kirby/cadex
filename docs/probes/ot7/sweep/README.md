@@ -133,9 +133,84 @@ All large receipts and logs stay under
 | hip_r.log | `c2cc9688fcb1dcf5234e196cab072aa8688b9214f837f54d4fcfddf2a6e9d5b2` |
 | knee_r.log | `d277d46c667f526624466bc32dcfc2e91b4ac3df959af6c3ea28cb6fbfbde69b` |
 
-**F3 remains open.** Product publication, agent inspection, `cadex clearance
---sweep`, declared sampling policy, suite-integrated known-angle tests and
-product runtime bounds are absent. General limited-joint semantics need care:
-holding every other coordinate fixed can be incompatible with a closed or
-coupled graph and must report unknown rather than silently sever constraints.
-No product acceptance behaviour changed.
+**What this experiment left open** was product publication, agent inspection,
+`cadex clearance --sweep`, a declared sampling policy, suite-integrated
+known-angle tests and product runtime bounds. ADR-349, ADR-350 and ADR-351
+installed those; the section below is the product checker run on Finch.
+General limited-joint semantics still need care: holding every other coordinate
+fixed can be incompatible with a closed or coupled graph, and the product
+reports such graphs `incomplete` rather than silently severing constraints.
+
+## Product measurement — one product-agent turn on a Finch copy
+
+The charter forbids the actor editing a design in an `ot7-*` project, so the
+product checker was requested through the product agent itself. A fresh copy
+of read-only `ot6-finch` (everything but its `evidence/` and `runs/`
+trees) was made at `cadex-projects/ot7-finch-product-sweep`, and one
+`./cadex -p` turn was given
+[`finch.product-sweep.prompt.txt`](finch.product-sweep.prompt.txt)
+(sha256 `d15a271942951f5b69277cb765921b46986da7543593e0ec6c45bb6ebbf3a407`). It asks
+for one script change, a 5° sweep declaration, one coarsening to at most 10°
+if and only if the budget is exceeded, and the published report read back.
+This prompt is a measurement request, not one of the frozen design
+continuations, and it names no defect. The turn ran under model
+`claude-fable-5`, exited 0, and its only script edit is
+`sweep_step_degrees=` on `assembly.assembly(...)`; every other line of the
+script is byte-identical to ot6-finch's.
+
+Read-only `cadex clearance --sweep` on the copy before the turn reported
+`status: unavailable` at the ot6 revision `b6862234…`. The turn accepted two
+revisions, each read back here from the stored `result.json`, not from the
+agent's reply:
+
+| Revision | Step | Coverage | hip_l | knee_l | hip_r | knee_r | Total |
+|---|---:|---|---:|---:|---:|---:|---:|
+| `a2fb2c07…` | 5° | incomplete | 25 samples, 66.2 s | 19, 27.3 s | 25, 75.1 s | **runtime budget exceeded** at 11.3 s | 180.0 s |
+| `61303150…` | 10° | complete | 13, 35.7 s | 10, 16.2 s | 13, 36.2 s | 10, 16.3 s | 104.4 s |
+
+Bounds in force: 90 s per joint, 180 s shared, 73 poses, 2,000 pairs; ranges
+−60°…60° for the hips and 0°…90° for the knees, initial 0°, solved-pose
+agreement true on every completed joint. The 5° run is the enforced bound
+doing its job: three hinges consumed 168.6 s of the shared 180 s and the fourth
+was cut off and reported, not skipped. The engine and CLI suites were running
+on the same 32-core machine during both builds (load average 24 at the 5° build), so those
+elapsed times are an upper bound on an idle box; the read-only experiment above
+measured 24.9–63.1 s per joint idle.
+
+Every completed joint reports all 406 pairs. In each, 40 pairs have a first
+contact and every one of them is at the joint's lower limit (−60° or 0°): the
+permanent seatings and 12 thread engagements at ≤ 7.854 mm³, present at the
+solved pose and at every sample. **No pair first touches inside any range**,
+at either step. The knee pairs: `thigh_l_link`/`shin_l_link` and
+`thigh_r_link`/`shin_r_link` keep a minimum distance of 1.0 mm
+(0.9999999999999964 at worst), 0 mm³ common volume, first contact null, at 5°
+and at 10°. The product checker therefore agrees with the experiment: the
+knee-to-thigh contact the ot6 README predicted is absent on this revision, and
+the angle F3 asked for is reported as none, not invented.
+
+One discrepancy between the agent's words and the measurements is recorded
+rather than smoothed over: the reply says "exactly the same 44 pairs report a
+first contact", while the published sweep has 40. The other four are the four
+bearing-stub pairs, which sit at their designed 0.05 mm radial clearance in the
+static report (below the default minimum, so among the 44 static failures) and
+never touch through the sweep. The numbers the agent quoted for coverage,
+timings and the knee pairs match the published data.
+
+Evidence stays in the project copy under `evidence/`; `turn1.envelope.json`
+is the CLI's `--json` reply, `turn1.stderr.txt` the tool trace and reply,
+`turn1.transcript.jsonl` the agent CLI session (236 lines), and the two
+`result.json` files are the accepted attempts under `script_artifacts/`:
+
+| Artifact | SHA-256 |
+|---|---|
+| turn1.envelope.json | `8edd4d9ac77369ce82b3968d2360b20a16188f3d91cb370a6f6d4ae440ee54cc` |
+| turn1.stderr.txt | `64fb678ed041f322664611e7e7d662b2068d0881a31c0c51dab8bb71068fb743` |
+| turn1.transcript.jsonl | `d0c31e1c78511289b48e300a2fb2744c636159f4ba0171c6d0246f5333b3f4c6` |
+| a2fb2c07…/result.json (5°) | `9b2ce9c67c42874cf21f18fd01f9ca50243cc460d9807dc814fb93a1000e6c2b` |
+| 61303150…/result.json (10°) | `c9952aa3b10bf6564867def8121eb578750ea0e7d488eed14a61a1e3fc8f0d4f` |
+| docs/clearance-sweep.md after the turn | `06a686ed4fa3c39ed5946c21e3aeaec14b93caf029a8bbb20b9436e921971fad` |
+| script.py after the turn | `5a73e48749c8a7112b0f347ee19c8d49f6bd13a8d97220246e95f8951b1525d4` |
+
+Gates run in the same iteration against the committed source, after one
+`pixi run build-engine` and `stage-engine`: engine 2,127 passed and 53
+skipped; CLI 641 passed and 1 skipped; packaged lifecycle 18 passed.
