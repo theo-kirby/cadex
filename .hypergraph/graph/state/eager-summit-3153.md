@@ -11,13 +11,13 @@ Status: open
 
 ## Current
 
-**Latest verification is green after the minimum-clearance correction (ADR-353): engine 2,142 passed/53 skipped, CLI 681 passed/1 skipped, fresh build and stage exited 0, and packaged lifecycle 18 passed.** Staged worker SHA-256 matches source. The corrected retained-input recheck leaves Finch at 44 failures and Robin at 39, and reduces Heron from 22 to 20 by removing only its two nominal-0.1 mm rounding flags. Accepted projects and retained input measurements were unchanged [rec: hidden-lodge-4550].
+**Latest verification is green: CLI 686 passed/1 skipped; the preceding engine run passed 2,142/53 skipped, fresh build/stage exited 0, and the packaged lifecycle gate passed 18 again during retained restore checks.** The paged build-reply negative control fails both new cases as expected. Subsequent units changed tests/docs only, not product or payload code [rec: hidden-lodge-4550] [rec: still-raven-7629] [rec: tidy-journey-9462].
 
-**Retained ot6 comparison now exists.** Fresh read-only Finch/Robin/Heron copies opened with `restore=False`; all measured pair distances/common volumes exactly equalled retained result tables, with unchanged script, metadata and result hashes and no unknown pairs. Initial counts were 406/44, 276/39 and 105/22 pairs/failures. Every difference against ot6 verdicts is explained: thread engagements, undeclared seatings, intended 0.05 mm gaps, and the two Heron rounding flags subsequently fixed. All three retained sweeps remain unavailable. Receipts and explanations are in `docs/probes/ot7/retained/` [rec: lucky-willow-8039] [rec: hidden-lodge-4550].
+**The retained restore/open gap is closed.** Six fresh packaged opens (restore and reopen for Finch, Robin and Heron) preserve accepted identity, parameters, script and pinned result bytes; only normal restore metadata `latest_candidate` and `updated_at` change. Published reports and newly rebuilt candidate measurements match all 787 pinned pairs exactly, with no added/missing pairs or changed distances/volumes. Source projects remain unchanged [rec: still-raven-7629].
 
-F8 added engine 2,127 passed/53 skipped, final CLI 666 passed/1 skipped and staged lifecycle plus smoke 43 passed. That unit changed no engine source or payload and needed no full build [rec: lean-fountain-9707]. Earlier F3 producer/consumer work also had fresh build/stage and green suites/gates [rec: misty-spark-6372] [rec: green-river-3790] [rec: curious-cedar-4881] [rec: kind-flint-2780]. F2's earlier full-CLI telemetry failure (636 passed/1 skipped/1 failed) and passing isolated retry remain part of the history; later green runs do not erase it or prove it pre-existing [rec: crisp-ember-0302].
+A portable regression replays all 406/276/105 retained pairs and pins every named failure and number: Finch 44, Robin 39, Heron 20. Differences from ot6 are explained by contact/thread classification and exactly two Heron nominal-0.1 mm rounding corrections (ADR-353); the old threshold fails the Heron regression as expected. No unknowns or world geometry occur in these retained revisions; all sweeps remain unavailable [rec: keen-quill-2265] [rec: still-raven-7629].
 
-Charter criterion: both suites and relevant packaged gate pass; retained ot6 Finch, Robin and Heron open, and checker differences against ot6 probes are explained [rec: kind-dusk-1609]. Reconcile judgement: retain `open`, as the latest impact explicitly directs. The previous missing-comparison claim is superseded: read-only opening and the comparison are evidenced. A rebuild/restore of all three retained designs is not newly claimed; all still fail fit and their retained sweeps are unavailable. This pass does not infer criterion closure beyond the declared impact [rec: lucky-willow-8039] [rec: hidden-lodge-4550].
+Charter criterion: both suites and relevant packaged gate pass; retained ot6 Finch, Robin and Heron open, and checker differences against ot6 probes are explained. Reconcile judgement: retain `open` because the new records close the retained restore/open gap but explicitly do not claim full F9 closure. Restoration success is not fit success; the designs still have 44/39/20 static failures [rec: kind-dusk-1609] [rec: keen-quill-2265] [rec: still-raven-7629].
 
 ## Negative knowledge
 
@@ -37,3 +37,7 @@ None yet.
 - lean-fountain-9707 — green F8 engine/CLI and staged smoke verification without engine or payload changes
 - lucky-willow-8039 — retained read-only ot6 comparison, exact pair-table equality and explained verdict differences
 - hidden-lodge-4550 — corrected retained counts 44/39/20; latest green suites, fresh build/stage and packaged gate; F9 explicitly remains open
+
+- keen-quill-2265 — portable regression pins all 787 measurements and 44/39/20 failures; CLI 684/1
+- still-raven-7629 — six packaged restores/reopens preserve identity and rebuilt measurements; lifecycle 18 passed
+- tidy-journey-9462 — paged build-reply regression and negative control; CLI 686 passed/1 skipped
