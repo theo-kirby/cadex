@@ -24425,3 +24425,31 @@ policy meets the task's bar and is not a stationary hold: a tighter
 tolerance or a heavier tip-speed term is a design decision recorded in the
 project's `DECISIONS.md` for the next turn on Heron, not taken here. The 3 mm
 low bias is observed, not diagnosed.
+
+## ADR-341 — The product agent designs mechanisms that fit, on its own (2026-09-14)
+
+The owner reviewed run ot6 criterion by criterion and ticked D1, D2 and D4–D10.
+D3, the rendered look, went to the owner's manual work together with the
+dashboard (record `nimble-wing-3050`). What ot6 showed is that the three
+designs fit because someone outside the product agent made them fit. Finch was
+written by the actor with no model turn. The actor edited Robin's
+agent-written script twice. Heron's three defects came back to the agent only
+through a hand-run probe (ADR-339), while its printed output said the parts fit.
+
+The measurements already exist: the assembly worker computes every part pair's
+distance and common volume at the solved pose. The agent cannot reach them.
+Its reply carries the script's stdout, and its system prompt tells it to
+verify by printing. Nothing sweeps a joint through its declared limits.
+
+Run ot7's charter (`.ouroboros/goal.md`) therefore puts measured fit in the
+agent's reply and tools, adds declared fit intent (intended contact and
+clearance between named parts) with a four-way check, sweeps every limited
+joint for first contact, and adds a one-command smoke rollout. It then requires
+the agent to repair Heron's first ot6 revision from measurements alone, and to
+reach fitting designs for the arm, balancer and a new biped prompt with no
+actor edits and at most three frozen, design-agnostic continuation prompts. A
+failing fit is reported and never refused, so existing projects are unaffected.
+There is no policy training this run, and the dashboard and rendered look are
+out of scope.
+
+This is a charter decision, not a claim that any of it exists.

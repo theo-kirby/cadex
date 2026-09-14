@@ -1,4 +1,4 @@
-run: ot6
+run: ot7
 goal: .ouroboros/goal.md
 memory: auto            # -> hypergraph (config + CLI present)
 backend: headless       # tmux: one streaming window per harness call in the run session
@@ -43,7 +43,7 @@ roles:
     fallback:
       - { harness: codex, model: gpt-6-astra }
 git:
-  branch: null            # -> ouroboros/ot6
+  branch: null            # -> ouroboros/ot7
   tag_on_accept: true
   revert_on_reject: false # fix forward: the charter forbids reverting this run's own
                           # commits. A rejected commit stays, gets no ok tag, and the
