@@ -133,6 +133,71 @@ def test_fit_summary_names_every_failing_pair_however_many_there_are():
     assert 'failing_truncated' not in fit and 'note' not in fit
 
 
+@pytest.mark.parametrize('late_read_failure', [False, True])
+def test_build_reply_resolves_late_fit_pages_or_reports_unavailable(
+    monkeypatch, protocol, late_read_failure,
+):
+    """A clear first page cannot conceal failures or an unreadable later page."""
+    from types import SimpleNamespace
+    from conftest import SOURCE_MODULE_DIR
+    monkeypatch.syspath_prepend(str(SOURCE_MODULE_DIR))
+    from CadexInspection import _bounded_page
+
+    pairs = [{'first': 'base', 'second': f'link{i}', 'distance_mm': 2.0,
+              'common_volume_mm3': 0.0} for i in range(60)]
+    pairs[57].update(distance_mm=None, common_volume_mm3=None,
+                     error='Kernel could not measure this pair')
+    pairs[58].update(distance_mm=0.0, common_volume_mm3=248.2)
+    pairs[59].update(distance_mm=0.2, intent={'kind': 'contact'})
+    published = {'available': True, 'revision': 'accepted', 'assembly': 'asm',
+                 'pairs': pairs, 'world_geometry': [
+                     {'component': 'environment', 'reason': 'declared world geometry'}]}
+    requests = []
+
+    class Client:
+        engine = SimpleNamespace(protocol=protocol)
+
+        def request(self, op, arguments):
+            requests.append((op, dict(arguments)))
+            if op == 'write_script':
+                return {'ok': True, 'accepted_revision': 'accepted',
+                        'model_state': {'next_write_expected_revision': 'accepted'},
+                        'stdout': 'all parts fit'}
+            assert op == 'inspect' and arguments['scope'] == 'clearance'
+            if (late_read_failure and arguments['path'] == '/pairs'
+                    and arguments['offset'] > 0):
+                return {'ok': False, 'error': 'late measurement page unreadable'}
+            return _bounded_page(published, arguments)
+
+    bridge = Bridge(Client(), initial_revision='before')
+    reply = bridge.call('write_script', {'source': 'fixture'})
+    payload = json.loads(reply['content'][0]['text'])
+    assert not reply['is_error'] and payload['ok']
+    assert payload['accepted_revision'] == bridge.state.revision == 'accepted'
+    assert payload['stdout'] == 'all parts fit'
+    assert any(args.get('path') == '/pairs' and args.get('offset', 0) > 0
+               for op, args in requests if op == 'inspect')
+    assert [op for op, _ in requests].count('write_script') == 1
+    fit = payload['fit']
+    assert bridge.state.last_fit == bridge.state.calls[0].fit == fit
+    if late_read_failure:
+        assert fit['verdict'] == 'unavailable'
+        assert 'late measurement page unreadable' in fit['error']
+        assert fit['pairs_checked'] == 0
+    else:
+        assert fit['verdict'] == 'fail' and fit['pairs_checked'] == 60
+        assert fit['counts'] == {'clear': 57, 'intersection': 1, 'below clearance': 0,
+                                 'unknown': 1, 'missed contact': 1, 'world geometry': 1}
+        assert fit['failing_count'] == 4
+        assert [(f['first'], f['second'], f['status']) for f in fit['failing']] == [
+            ('base', 'link57', 'unknown'), ('base', 'link58', 'intersection'),
+            ('base', 'link59', 'missed contact'), ('environment', '', 'world geometry')]
+        assert fit['failing'][0]['error'] == pairs[57]['error']
+        assert fit['failing'][1]['common_volume_mm3'] == 248.2
+        assert fit['failing'][2]['distance_mm'] == 0.2
+        assert fit['failing'][2]['intent'] == {'kind': 'contact'}
+
+
 def test_the_prose_report_prints_the_fit_and_each_failing_pair():
     from cadex_cli.report import RunReport, human_lines
     report = RunReport(project_root='/p', fit=fit_summary({'available': True, 'pairs': [

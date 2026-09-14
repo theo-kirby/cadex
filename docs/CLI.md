@@ -2049,6 +2049,14 @@ handed both, and the system prompt tells the model which one is the claim.
 `clearance` is an `inspect` scope on the model's surface for the same
 reason, and the last accepted build's block is the envelope's `fit`.
 
+The bridge resolves all inspection pages before reporting fit. A later page
+can contain an intersection, a missed declared contact or an unmeasured pair
+even when the first page is clear; world-geometry findings are included too.
+If any later page cannot be read, the whole fit block is `unavailable` with
+the read error, rather than a verdict on the readable prefix. The successful
+build and its accepted revision still reach the agent. The paged build-reply
+fixture in `cli/tests/test_clearance.py` pins both outcomes.
+
 ### What the agent is told
 
 The system prompt is the CLI's own overlay plus `describe_api`'s live
