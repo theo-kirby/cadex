@@ -1193,6 +1193,7 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             "available": bool(assembly) and measurements is not None,
             "pose": "initial solved pose (not swept motion)",
             "pairs": pairs,
+            "world_geometry": by_name.get(assembly, {}).get("world_geometry", []),
         }
     return {
         "revision": revision,

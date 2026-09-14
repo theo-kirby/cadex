@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-13
+Verified against source: 2026-09-14
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -1524,3 +1524,41 @@ multi-engine runtime is preserved at
 `docs/history/RUNTIME_VERIFICATION.md`. Still-current facts — structured
 failure envelopes, transactional parity, resource budgets, revision
 integrity — are enforced by `src/Mod/cadex/cadex_tests/`.
+
+## Measured assembly fit (ADR-347)
+
+Fit intent belongs to the assembly definition:
+
+```python
+asm = assembly.assembly(
+    [base, horn, link], joints,
+    contacts=[(horn, link)],
+    clearances=[(base, link, 0.5)],
+)
+```
+
+Pairs reference the component variables, whose returned output names identify
+measurements. Each pair may have one declaration, in either order; self-pairs,
+foreign components, duplicates and nonfinite or negative minima are malformed
+script arguments. Declarations are part of the hashed definition. Omitting them
+preserves the existing definition and accepted-state restore contract.
+
+At the initial solved pose, the published `clearance` rows carry `intent` and
+`fit_failures`. The checker reports common volume above 1e-6 mm³ on **every**
+pair, including intended contacts; contact distance above 0.001 mm; declared
+clearance below its minimum in mm; and undeclared distance below 0.1 mm.
+An unmeasured pair remains unknown. A row can fail more than one check.
+These are advisory findings: a failing fit still builds and accepts.
+
+World geometry is a separate `world_geometry` finding by component name.
+Collision planes on design bodies (including bodies nested in exports), a
+single planar CAD face without solids, and `assembly.component(..., world=True)`
+are reported. A solid bench has no geometric property that distinguishes it
+from a printable base: mark environment solids with `world=True`. Grounding
+alone never means world geometry. The checker does not infer purpose from a
+component's name. Existing floor declarations continue to build.
+
+`inspect(scope="clearance")`, build-reply `fit`, and `cadex clearance` expose
+these facts. The summary counts each failing pair once, prioritising unknown,
+intersection, then intent; the row's `fit_failures` preserves all checks.
+World findings are counted separately. This is static fit, not swept motion.

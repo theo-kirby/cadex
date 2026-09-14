@@ -382,3 +382,14 @@ def test_publication_has_no_worker_or_artifact_io() -> None:
         "exportBrep(",
     ):
         assert forbidden not in source
+
+
+def test_agent_api_description_exposes_fit_intent():
+    """ADR-347: the model can discover declarations without an external doc."""
+    from CadexScriptedRuntime import _capability_api_listing
+
+    exports = {row['name']: row for row in _capability_api_listing()['assembly']['exports']}
+    assert 'contacts:' in exports['assembly']['signature']
+    assert 'clearances:' in exports['assembly']['signature']
+    assert 'never refuse acceptance' in exports['assembly']['description']
+    assert 'world:' in exports['component']['signature']

@@ -2268,3 +2268,17 @@ revision, policy, seed, trace digest and simulation time. New recordings appear 
 earlier entries and content-addressed files remain retained and downloadable.
 Identical video bytes are deduplicated. Old entries lacking a style are labelled
 “historical legacy style”. Copy the full project directory to retain all of them.
+
+### Declared fit intent (ADR-347)
+
+The published clearance scope includes each pair's `intent` and `fit_failures`,
+plus `world_geometry` findings by component name. Build-reply fit summaries and
+`cadex clearance` respect declared contacts (0.001 mm tolerance) and declared
+minimum clearances; undeclared pairs use the default 0.1 mm. Overlap above
+1e-6 mm³ still fails even for a declared contact. A missing contact has status
+`missed contact`; environment geometry has status `world geometry`. Counts of
+those statuses appear when present, and every finding reaches the reply.
+CLI threshold overrides apply to undeclared gaps and common volume; they do
+not replace a script's declared minimum or contact tolerance. Engine row
+`fit_failures` always describes the engine defaults. See XSCRIPT's measured-fit
+section for declaration syntax and the precise world-geometry detection rule.

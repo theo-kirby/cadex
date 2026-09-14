@@ -1056,6 +1056,7 @@ class AssemblyDomainAPI:
         placement: Sequence[float] | Mapping[str, Sequence[float]] | None = None,
         grounded: bool = False,
         flexible: bool = False,
+        world: bool = False,
         label: str = "",
     ) -> DomainValue:
         """Create one linked occurrence from a stable input reference.
@@ -1066,6 +1067,7 @@ class AssemblyDomainAPI:
         Set ``flexible=True`` only for an authenticated native Assembly source;
         its internal joints and stable occurrence paths then participate in the
         parent solve. A flexible occurrence cannot be grounded.
+        ``world=True`` marks environment geometry for an advisory fit failure.
         Reuse the returned variable in connectors and return it exactly once as
         a ``component_link`` output.
         """
@@ -1075,6 +1077,8 @@ class AssemblyDomainAPI:
             raise _error(operation, "grounded", "expected a boolean", grounded)
         if not isinstance(flexible, bool):
             raise _error(operation, "flexible", "expected a boolean", flexible)
+        if not isinstance(world, bool):
+            raise _error(operation, "world", "expected a boolean", world)
         if grounded and flexible:
             raise _error(
                 operation,
@@ -1089,6 +1093,7 @@ class AssemblyDomainAPI:
             placement=_placement(operation, "placement", placement),
             grounded=grounded,
             flexible=flexible,
+            **({"world": True} if world else {}),
             label=label,
         )
 
@@ -1288,13 +1293,19 @@ class AssemblyDomainAPI:
         components: Sequence[DomainValue],
         joints: Sequence[DomainValue] = (),
         *,
+        contacts: Sequence[Sequence[DomainValue]] = (),
+        clearances: Sequence[Sequence[Any]] = (),
         label: str = "",
     ) -> DomainValue:
         """Build one assembly graph from returned component and joint variables.
 
         Every listed component and joint must also be returned exactly once as
-        its own declared output.  At least one component must be grounded before
-        the graph is solved.
+        its own declared output. ``contacts=[(a, b)]`` requires touching within
+        0.001 mm; ``clearances=[(a, c, 0.5)]`` requires at least 0.5 mm.
+        Undeclared pairs require 0.1 mm. Common volume above 1e-6 mm³ always
+        fails, even for contacts. These checks report, never refuse acceptance.
+        A pair may have only one declaration. World geometry belongs in the
+        environment; collision planes on design bodies are reported separately.
         """
 
         operation = "assembly"
@@ -1322,11 +1333,29 @@ class AssemblyDomainAPI:
                         f"joints[{index}].connector[{connector_index}]",
                         "references a component that is not listed in components",
                     )
+        intent = []
+        seen = set()
+        for kind, declarations, size in (("contact", contacts, 2), ("clearance", clearances, 3)):
+            if not isinstance(declarations, (list, tuple)):
+                raise _error(operation, kind, "expected an array of declarations")
+            for entry in declarations:
+                if not isinstance(entry, (list, tuple)) or len(entry) != size:
+                    raise _error(operation, kind, f"expected {size} entries")
+                first, second = entry[:2]
+                key = frozenset((id(first), id(second)))
+                if len(key) != 2 or not key <= component_ids or key in seen:
+                    raise _error(operation, kind, "expected a unique pair of distinct assembly components")
+                seen.add(key)
+                row = {"kind": kind, "first": first, "second": second}
+                if kind == "clearance":
+                    row["minimum_mm"] = _number(operation, "minimum_mm", entry[2], minimum=0)
+                intent.append(row)
         return self._value(
             operation,
             "assembly",
             components=component_values,
             joints=joint_values,
+            **({"fit_intent": intent} if intent else {}),
             label=label,
         )
 
@@ -1598,7 +1627,7 @@ class AssemblyDomainAPI:
         component's own origin facing local +Z, where a box's colliding
         surface is its *top face*, so a floor built as a box needs an
         ``offset`` of half its thickness and a plane needs none. Prefer it
-        for ground: a box floor is a six-faced solid whose corners and sides
+        for legacy environment models: a box floor is a six-faced solid whose corners and sides
         MuJoCo has to consider on every step, and two MuJoCo builds asked
         the same question about one can answer differently -- measured on
         this mechanism, a box floor made MJX and MuJoCo disagree about the
@@ -1607,8 +1636,9 @@ class AssemblyDomainAPI:
 
         A plane carries no volume and therefore no mass, which does not
         matter here: a body's mass comes from its *solids*, never from its
-        collision shapes. Keep the ground's solid a box you can see and give
-        it a plane to touch with.
+        collision shapes. In a mechanism design the floor belongs to the
+        environment: declaring a plane on a design body now produces a
+        world-geometry fit failure (ADR-347), without refusing acceptance.
 
         **A primitive is placed in the component frame, which is not the
         solid's bounding box.** With no ``offset`` a primitive is centred on

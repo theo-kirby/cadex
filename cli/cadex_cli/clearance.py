@@ -24,7 +24,10 @@ def pair_status(row: dict[str, Any], minimum: float, maximum_volume: float) -> s
         return "unknown"
     if volume > maximum_volume:
         return "intersection"
-    if distance < minimum:
+    intent = row.get("intent") or {}
+    if intent.get("kind") == "contact":
+        return "missed contact" if distance > 1e-3 else "clear"
+    if distance < intent.get("minimum_mm", minimum):
         return "below clearance"
     return "clear"
 
@@ -65,7 +68,7 @@ def fit_summary(
     failing: list[dict[str, Any]] = []
     for row in pairs:
         status = pair_status(row, minimum, maximum_volume)
-        counts[status] += 1
+        counts[status] = counts.get(status, 0) + 1
         if status == "clear":
             continue
         item: dict[str, Any] = {
@@ -75,9 +78,18 @@ def fit_summary(
             "distance_mm": row.get("distance_mm"),
             "common_volume_mm3": row.get("common_volume_mm3"),
         }
+        if row.get("intent"):
+            item["intent"] = row["intent"]
+        if row.get("fit_failures"):
+            item["fit_failures"] = row["fit_failures"]
         if row.get("error"):
             item["error"] = str(row["error"])
         failing.append(item)
+    for world in value.get("world_geometry", []):
+        counts["world geometry"] = counts.get("world geometry", 0) + 1
+        failing.append({"first": world["component"], "second": "",
+                        "status": "world geometry", "distance_mm": None,
+                        "common_volume_mm3": None, "error": world["reason"]})
     available = bool(value.get("available")) or bool(pairs)
     if not available:
         verdict = "unavailable"
@@ -156,9 +168,16 @@ def write_clearance(
         row["status"] = pair_status(row, minimum, maximum_volume)
         distance = row.get("distance_mm")
         volume = row.get("common_volume_mm3")
+        intent = row.get("intent") or {}
+        detail = row.get("error") or (
+            "contact within 0.001 mm" if intent.get("kind") == "contact" else
+            f"declared minimum {intent['minimum_mm']:g} mm" if intent else ""
+        )
         text += (f"| {component(row, 'first')} | {component(row, 'second')} | "
                  f"{distance if distance is not None else '—'} | {volume if volume is not None else '—'} | "
-                 f"{row['status']} | {_cell(row.get('error'))} |\n")
+                 f"{row['status']} | {_cell(detail)} |\n")
+    for world in value.get("world_geometry", []):
+        text += f"\nWorld geometry: {_cell(world['component'])} — {_cell(world['reason'])}.\n"
     path = Path(root) / "docs" / "clearance.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")

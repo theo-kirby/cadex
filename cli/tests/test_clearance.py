@@ -262,3 +262,34 @@ def test_bounds_agreement_tolerates_tessellation_resolution():
     """f32 bounds at ~100 mm disagree by ~1e-5 mm; that is not a defect."""
     check = bounds_agreement([_pair(40.0 - 3.05e-6, 0.0)], DISJOINT)
     assert check['status'] == 'pass'
+
+
+def test_fit_intent_survives_acceptance_and_reopen(engine, tmp_path):
+    source = RIG.replace('placement=[9, 0, 0]', 'placement=[10.2, 0, 0]').replace(
+        'asm = assembly.assembly([a, b, c])',
+        'asm = assembly.assembly([a, b, c], contacts=[(a, b)], clearances=[(b, c, 0.5)])')
+    source = source.replace('grounded=True)', 'grounded=True, world=True)', 1)
+    root = tmp_path / 'intent'
+    with CadexdClient(engine) as client:
+        open_project(client, root)
+        with Bridge(client, initial_revision='') as bridge:
+            reply = bridge.call('write_script', {'source': source})
+        payload = json.loads(reply['content'][0]['text'])
+        assert payload['ok'], payload
+        fit = payload['fit']
+        assert fit['verdict'] == 'fail'
+        failures = {(r['first'], r['second']): r for r in fit['failing']}
+        assert failures['a', 'b']['status'] == 'missed contact'
+        assert failures['a', 'b']['distance_mm'] == pytest.approx(0.2)
+        assert failures['b', 'c']['status'] == 'intersection'
+        assert failures['a', '']['status'] == 'world geometry'
+    before = json.loads((root / 'script.json').read_text())
+    with CadexdClient(engine) as client:
+        open_project(client, root)
+        path, value = write_clearance(client, root)
+        assert 'contact within 0.001 mm' in path.read_text()
+        assert 'declared minimum 0.5 mm' in path.read_text()
+        assert fit_summary(value) == fit
+    after = json.loads((root / 'script.json').read_text())
+    for key in ('accepted_revision', 'accepted_digest', 'accepted_attempt'):
+        assert after[key] == before[key]

@@ -5600,6 +5600,69 @@ def _measure_clearance(
     return rows
 
 
+def _check_fit(rows, components, properties, component_outputs, raw_result=None):
+    """Annotate measured facts with advisory intent; never refuse a fit failure."""
+    intents = {}
+    for intent in properties.get("fit_intent", ()):
+        key = tuple(sorted(component_outputs[id(intent[side])] for side in ("first", "second")))
+        intents[key] = {k: v for k, v in intent.items() if k not in {"first", "second"}}
+    for row in rows:
+        intent = intents.get(tuple(sorted((row["first"], row["second"]))), {})
+        row["intent"] = intent
+        distance, volume = row["distance_mm"], row["common_volume_mm3"]
+        failures = []
+        if volume is not None and volume > 1e-6:
+            failures.append("intersection")
+        if row.get("error") or distance is None or volume is None:
+            failures.append("unknown")
+        if distance is not None:
+            if intent.get("kind") == "contact":
+                if distance > 1e-3:
+                    failures.append("missed contact")
+            elif distance < intent.get("minimum_mm", 0.1):
+                failures.append("below clearance")
+        row["fit_failures"] = failures
+    plane_components = set()
+    visited = set()
+
+    def visit(value):
+        if isinstance(value, DomainValue):
+            if id(value) in visited:
+                return
+            visited.add(id(value))
+            if value.operation == "body" and any(
+                shape.properties.get("kind") == "plane"
+                for shape in value.properties.get("collision", ())
+            ):
+                plane_components.add(component_outputs[id(value.arguments[0])])
+            visit(value.arguments)
+            visit(value.properties)
+        elif isinstance(value, Mapping):
+            for item in value.values():
+                visit(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                visit(item)
+
+    visit(raw_result or {})
+    world = []
+    for value in properties.get("components", ()):
+        name = component_outputs[id(value)]
+        reason = "declared world geometry" if value.properties.get("world") else None
+        if name in plane_components:
+            reason = "collision plane declared on design component"
+        try:
+            shape = _component_world_shape(components[name])
+            if (not shape.Solids and len(shape.Faces) == 1
+                    and type(shape.Faces[0].Surface).__name__ == "Plane"):
+                reason = "surface-only plane"
+        except Exception:
+            pass  # Pair measurement retains its explicit unknown diagnostic.
+        if reason:
+            world.append({"component": name, "status": "world geometry", "reason": reason})
+    return world
+
+
 def validate_and_solve_assembly(
     document: Any,
     raw_result: Mapping[str, Any],
@@ -6076,6 +6139,7 @@ def validate_and_solve_assembly(
         )
 
     clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
+    world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result)
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
     if simulation_contract is not None:
@@ -6331,6 +6395,7 @@ def validate_and_solve_assembly(
     if exploded_view_summaries:
         diagnostics["exploded_views"] = exploded_view_summaries
     by_name[assembly_output]["clearance"] = clearance
+    by_name[assembly_output]["world_geometry"] = world_geometry
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],

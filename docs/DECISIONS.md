@@ -24617,3 +24617,30 @@ a scope the engine serves and the CLI offers, reading the CLI's list by
 path so neither tree imports the other. Not done here, by design: fit
 intent (F2) and the swept check (F3) are the next units; the block's `pose`
 still says "initial solved pose (not swept motion)" and will until F3.
+
+
+## ADR-347 — Declared static fit is evidence, never an acceptance gate
+
+2026-09-14. F2 of the ot7 charter. `assembly.assembly` accepts contact pairs
+and clearance triples (two component values and a nonnegative minimum in mm).
+These declarations use existing graph values and output names, adding no op or
+dependency. Omitted defaults add no definition keys, preserving old digests.
+The existing exact-solid measurement annotates every pair with intent and all
+failing checks: overlap, missed contact, insufficient declared/default gap,
+and unknown geometry. This replaces the assumption that every touching pair
+needs separation; overlap is never excused by a contact declaration.
+
+Report world geometry separately: declared collision planes on design bodies,
+single planar CAD faces without solids, and explicit `world=True` components.
+A solid bench cannot be distinguished from a base by shape alone; its author
+must mark its purpose. Grounded bases are not automatically world geometry.
+Heron's first accepted revision used a collision plane, so the real-kernel
+fixture reproduces that actual failure as well as a 248.2 mm³ buried tab and
+a 0.2 mm missed horn/link contact. Passing touching contacts and declared and
+undeclared insufficient gaps have known-answer fixtures too.
+
+The published inspection scope and CLI summaries consume these findings;
+acceptance and accepted-state verification are unchanged. Tests cover malformed
+intent, legacy definition stability, exact kernel measurements, and a failing
+transaction that accepts and restores with the same accepted digest. The
+script API's existing generated description exposes the new keyword arguments.

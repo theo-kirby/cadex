@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-13
+Verified against source: 2026-09-14
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -2822,3 +2822,10 @@ field, and every client gets it through the surface it already reads.
       and the four-design common-seed comparison from the project's records;
       a test holds the committed report to its evidence. Survival improved,
       no design walks; the checkbox edit is the owner's.
+
+
+- [x] Advisory static fit intent (ADR-347, ot7 F2): assembly contact pairs and
+      minimum-clearance triples annotate published measurements; overlaps,
+      missed contacts, insufficient gaps and world geometry reach the agent.
+      Failing fit still accepts, with real-kernel defect fixtures and accepted
+      identity preserved across reopen. Swept fit remains a separate frontier.
