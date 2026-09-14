@@ -1547,6 +1547,12 @@ At the initial solved pose, the published `clearance` rows carry `intent` and
 `fit_failures`. The checker reports common volume above 1e-6 mm³ on **every**
 pair, including intended contacts; contact distance above 0.001 mm; declared
 clearance below its minimum in mm; and undeclared distance below 0.1 mm.
+Minimum-clearance comparisons allow an absolute **1e-9 mm** numerical slack
+(ADR-353): a deficit must exceed that slack to fail. There is no relative
+tolerance and no rounding of published distances or volumes. This is comparison
+noise allowance, not the 0.001 mm contact tolerance or a manufacturing allowance.
+Swept reports retain raw minima and maxima without threshold verdicts; apply the
+same slack when comparing a swept minimum with a declared or default minimum.
 An unmeasured pair remains unknown. A row can fail more than one check.
 These are advisory findings: a failing fit still builds and accepts.
 

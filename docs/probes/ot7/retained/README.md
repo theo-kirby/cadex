@@ -110,3 +110,15 @@ remain the last full regression evidence; this pass does not claim F9 complete.
 F4 still needs a product-agent repair when the provider is available; the
 threshold-rounding finding is a concrete follow-up for the checker. No retry
 was made after the refusal, and no design was edited to improve these scores.
+
+## Threshold correction (ADR-353)
+
+The follow-up checker fix uses an absolute 1e-9 mm allowance for declared and
+undeclared minimum comparisons. Re-evaluating the exact same retained
+`*.clearance.json` inputs with the corrected `fit_summary` gives Finch **44**,
+Robin **39**, and Heron **20** failures. The only removed findings are
+`comp_upper_arm` / `comp_bearing_shoulder` at 0.09999999999999952 mm and
+`comp_forearm` / `comp_bearing_elbow` at 0.09999999999999039 mm, both with zero
+common volume. No measurement, source design or original receipt was changed.
+All three designs still fail; swept coverage remains unavailable. The F4
+provider refusal above remains zero completed design turns, not a repair result.

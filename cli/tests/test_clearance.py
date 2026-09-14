@@ -344,3 +344,43 @@ def test_sweep_command_on_legacy_project_keeps_accepted_identity(engine, tmp_pat
     assert 'Coverage: unavailable' in (root / 'docs/clearance-sweep.md').read_text()
     assert (root / 'script.json').read_bytes() == before
     assert {p: p.read_bytes() for p in root.rglob('result.json')} == attempts
+
+
+@pytest.mark.parametrize('declared', [False, True])
+@pytest.mark.parametrize('gap,failed', [
+    (0.1, False), (0.09999999999999952, False),
+    (0.09999999999999039, False), (0.1 - 5e-10, False),
+    (0.1 - 2e-9, True), (0.0999, True), (0.05, True),
+])
+def test_minimum_noise_static_and_swept_reports(tmp_path, declared, gap, failed):
+    import copy
+    row = {'first': 'a', 'second': 'b', 'distance_mm': gap, 'common_volume_mm3': 0.0}
+    if declared:
+        row['intent'] = {'kind': 'clearance', 'minimum_mm': 0.1}
+    sweep = {'status': 'complete', 'joints': [{'joint': 'slide', 'status': 'complete',
+             'pairs': [{'first': 'a', 'second': 'b', 'minimum_distance_mm': gap,
+                        'maximum_common_volume_mm3': 0.0, 'first_contact_mm': None}]}]}
+    published = {'revision': 'accepted', 'assembly': 'asm', 'available': True,
+                 'pairs': [row], 'clearance_sweep': sweep}
+    class Client:
+        def request(self, op, arguments):
+            return {'ok': True, 'value': copy.deepcopy(published)}
+    # A declared minimum overrides the caller's stricter default.
+    minimum = 0.5 if declared else 0.1
+    assert fit_summary(published, minimum=minimum)['failing_count'] == int(failed)
+    path, value = write_clearance(Client(), tmp_path, minimum=minimum)
+    assert value['pairs'][0]['status'] == ('below clearance' if failed else 'clear')
+    assert value['pairs'][0]['distance_mm'] == gap
+    assert '1e-09 mm' in path.read_text()
+    path, value = write_clearance(Client(), tmp_path, minimum=minimum, sweep=True)
+    rendered = json.loads(path.read_text().split('```json\n')[1].split('\n```')[0])
+    assert rendered == sweep == value['clearance_sweep']
+    assert published['pairs'][0] == row
+
+
+def test_override_minimum_uses_absolute_not_relative_slack():
+    row = {'distance_mm': 0.4999999999999995, 'common_volume_mm3': 0.0}
+    assert pair_status(row, 0.5, 1e-6) == 'clear'
+    assert pair_status(dict(row, distance_mm=0.4999), 0.5, 1e-6) == 'below clearance'
+    # A large threshold must not enlarge the allowance through relative isclose.
+    assert pair_status(dict(row, distance_mm=1e6 - 1e-4), 1e6, 1e-6) == 'below clearance'

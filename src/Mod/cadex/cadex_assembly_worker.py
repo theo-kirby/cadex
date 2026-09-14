@@ -5797,6 +5797,10 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
     return report
 
 
+# Absolute comparison slack in mm, not a geometry/contact tolerance (ADR-353).
+_FIT_MINIMUM_SLACK_MM = 1e-9
+
+
 def _check_fit(rows, components, properties, component_outputs, raw_result=None):
     """Annotate measured facts with advisory intent; never refuse a fit failure."""
     intents = {}
@@ -5816,7 +5820,7 @@ def _check_fit(rows, components, properties, component_outputs, raw_result=None)
             if intent.get("kind") == "contact":
                 if distance > 1e-3:
                     failures.append("missed contact")
-            elif distance < intent.get("minimum_mm", 0.1):
+            elif intent.get("minimum_mm", 0.1) - distance > _FIT_MINIMUM_SLACK_MM:
                 failures.append("below clearance")
         row["fit_failures"] = failures
     plane_components = set()

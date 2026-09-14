@@ -89,3 +89,71 @@ def test_heron_defects_measured_by_real_kernel(tmp_path, monkeypatch):
                                 'reason': 'collision plane declared on design component'},
                                {'component': 'floor_face', 'status': 'world geometry',
                                 'reason': 'surface-only plane'}]
+
+
+@pytest.mark.parametrize('declared', [False, True])
+@pytest.mark.parametrize('gap,failed', [
+    (0.1, False), (0.09999999999999952, False),
+    (0.09999999999999039, False), (0.1 - 5e-10, False),
+    (0.1 - 2e-9, True), (0.0999, True), (0.05, True),
+])
+def test_minimum_comparison_preserves_raw_measurements(declared, gap, failed):
+    from cadex_assembly_worker import _check_fit
+    a, b = object(), object()
+    properties = {'fit_intent': [{'first': a, 'second': b, 'kind': 'clearance',
+                                  'minimum_mm': 0.1}]} if declared else {}
+    row = {'first': 'a', 'second': 'b', 'distance_mm': gap, 'common_volume_mm3': 0.0}
+    assert _check_fit([row], {}, properties, {id(a): 'a', id(b): 'b'}) == []
+    assert row['fit_failures'] == (['below clearance'] if failed else [])
+    assert row['distance_mm'] == gap and row['common_volume_mm3'] == 0.0
+
+
+_GAP_DRIVER = r'''
+import json, sys
+import FreeCAD as App
+import Part
+sys.path.insert(0, sys.argv[-1])
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps, _check_fit
+D = App.newDocument('GapSweep')
+a = D.addObject('Part::Feature', 'a')
+a.Shape = Part.makeBox(10, 10, 10)
+b = D.addObject('Part::Feature', 'b')
+components = {'a': a, 'b': b}
+data = {'a': {'grounded': True}, 'b': {'grounded': False}}
+joints = {'slide': {'kind': 'slider', 'suppressed': False, 'parameters': {},
+    'angle_limits_degrees': None, 'length_limits_mm': [0, 1],
+    'connectors': [{'component_output': name, 'local_frame': {'matrix': list(App.Matrix().A)}}
+                   for name in ('a', 'b')]}}
+reports = []
+for gap in (0.1, 0.0999, 0.05):
+    b.Shape = Part.makeBox(10, 10, 10, App.Vector(10 + gap, 0, 0))
+    D.recompute()
+    baseline = _measure_clearance(components)
+    sweep = _measure_joint_sweeps(components, data, joints, baseline, {'sweep_step_mm': 0.5}, True)
+    assert sweep['status'] == 'complete', sweep
+    raw = sweep['joints'][0]['pairs'][0]
+    verdicts = []
+    for declared in (False, True):
+        props = {'fit_intent': [{'first': a, 'second': b, 'kind': 'clearance', 'minimum_mm': 0.1}]} if declared else {}
+        static = dict(baseline[0])
+        extrema = {'first': 'a', 'second': 'b', 'distance_mm': raw['minimum_distance_mm'],
+                   'common_volume_mm3': raw['maximum_common_volume_mm3']}
+        _check_fit([static, extrema], {}, props, {id(a): 'a', id(b): 'b'})
+        verdicts.append([static, extrema])
+    reports.append({'gap': gap, 'sweep': sweep, 'verdicts': verdicts})
+print('CLEARANCE-FRAME ' + json.dumps(reports))
+'''
+
+
+@pytest.mark.skipif(kernel.FREECADCMD is None, reason='Needs real OCCT')
+def test_real_box_gap_static_and_swept_minima(tmp_path, monkeypatch):
+    monkeypatch.setattr(kernel, '_FRAME_DRIVER', _GAP_DRIVER)
+    for report in kernel._drive_frame(tmp_path):
+        raw = report['sweep']['joints'][0]['pairs'][0]
+        assert raw['minimum_distance_mm'] == pytest.approx(report['gap'], abs=1e-12)
+        assert raw['maximum_common_volume_mm3'] == 0
+        assert raw['first_contact_mm'] is None
+        for static, extrema in report['verdicts']:
+            expected = [] if report['gap'] == 0.1 else ['below clearance']
+            assert static['fit_failures'] == extrema['fit_failures'] == expected
+            assert extrema['distance_mm'] == raw['minimum_distance_mm']

@@ -24763,3 +24763,27 @@ termination, non-integral sampling intervals, timeout, manifest preservation
 with edited working source, and tampered MJCF rejection. Tolerances are finite
 and nonnegative. See this unit's graph record for full-suite and packaged
 verification results; no engine source changed, so no build was required.
+
+
+## ADR-353 — Allow numerical noise at clearance minima (2026-09-14)
+
+**Decision.** Engine static fit annotations and CLI fit verdicts flag a
+minimum-clearance deficit only when it exceeds an absolute 1e-9 mm. The rule
+applies equally to declared minima and the default (or CLI override), with no
+relative tolerance. Raw distances and volumes are never rounded or changed.
+Contact and intersection tolerances, advisory acceptance, and accepted identity
+are unchanged. No dependency or protocol change.
+
+**Why.** Retained Heron measured nominal 0.1 mm gaps as
+0.09999999999999952 and 0.09999999999999039 mm; strict comparison falsely
+flagged both. The fixed allowance is far below the 0.001 mm contact tolerance
+and does not grow with a large declared minimum. Deficits above 1e-9 mm,
+including the retained 0.05 mm gaps, still fail.
+
+**Evidence.** Known-answer tests cover both retained numbers, exact equality,
+inside and outside the allowance, and 0.0999/0.05 mm undersizing, with and
+without declarations. A real-kernel slider carries two boxes past each other
+at fixed 0.1, 0.0999 and 0.05 mm lateral gaps: static measurements and swept
+minima give the same minimum-clearance conclusions. Sweeps currently publish
+raw extrema, not fit verdicts; no second checker is added. CLI report tests
+pin the unchanged swept measurements and the corrected static verdicts.

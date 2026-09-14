@@ -2277,7 +2277,11 @@ Identical video bytes are deduplicated. Old entries lacking a style are labelled
 The published clearance scope includes each pair's `intent` and `fit_failures`,
 plus `world_geometry` findings by component name. Build-reply fit summaries and
 `cadex clearance` respect declared contacts (0.001 mm tolerance) and declared
-minimum clearances; undeclared pairs use the default 0.1 mm. Overlap above
+minimum clearances; undeclared pairs use the default 0.1 mm. A clearance
+deficit must exceed an absolute 1e-9 mm comparison slack to fail (ADR-353),
+including when `--min-clearance-mm` overrides the default. Published measurements remain
+unrounded. Swept reports publish raw extrema without threshold verdicts; the
+same slack applies when comparing their minima. Overlap above
 1e-6 mm³ still fails even for a declared contact. A missing contact has status
 `missed contact`; environment geometry has status `world geometry`. Counts of
 those statuses appear when present, and every finding reaches the reply.

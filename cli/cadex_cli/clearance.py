@@ -13,6 +13,8 @@ from .inventory import InventoryError, _cell, _read_path
 
 
 MINIMUM_CLEARANCE_MM = 0.1
+# Matches the engine comparison contract; never round published measurements.
+MINIMUM_COMPARISON_SLACK_MM = 1e-9
 MAXIMUM_COMMON_VOLUME_MM3 = 1.0e-6
 
 
@@ -28,7 +30,7 @@ def pair_status(row: dict[str, Any], minimum: float, maximum_volume: float) -> s
     intent = row.get("intent") or {}
     if intent.get("kind") == "contact":
         return "missed contact" if distance > 1e-3 else "clear"
-    if distance < intent.get("minimum_mm", minimum):
+    if intent.get("minimum_mm", minimum) - distance > MINIMUM_COMPARISON_SLACK_MM:
         return "below clearance"
     return "clear"
 
@@ -178,7 +180,8 @@ def write_clearance(
             f"Accepted revision `{value['revision']}`, assembly `{value['assembly']}`.\n"
             "Initial solved pose only; this is not a swept-motion check.\n\n"
             f"Minimum clearance: {minimum:g} mm; maximum common volume: {maximum_volume:g} mm³.\n"
-            "Distance below the minimum or volume above the maximum is flagged.\n\n")
+            f"Distance below the minimum by more than {MINIMUM_COMPARISON_SLACK_MM:g} mm "
+            "or volume above the maximum is flagged. Raw measurements are unchanged.\n\n")
     if not value.get("available"):
         text += "Measurements unavailable: no published assembly or no pair measurements; rebuild if needed.\n\n"
     text += "| first | second | distance (mm) | common volume (mm³) | verdict | detail |\n|---|---|---|---|---|---|\n"
