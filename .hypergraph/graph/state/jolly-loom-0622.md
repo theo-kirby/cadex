@@ -17,6 +17,8 @@ Status: working
 
 Charter criterion: **D1. A live project dashboard is reachable** One documented command serves one selected project over the machine's Tailscale/private-network address, and a browser can open it without a desktop session on the server. Evidence: a headless-browser smoke test against that address, with its command and result recorded; no claim of a second-device test unless one was run. Declared target `gap-d1-live-project-dashboard-reachable` [rec: lucky-comet-0031].
 
+**The owner ticked D1 in the charter on 2026-09-13 after run ot5 stopped at iteration 111; the criterion is closed for ot5 with its evidence unchanged, and ot6's charter (ADR-328) supersedes it [rec: patient-pond-3886].**
+
 ## Negative knowledge
 
 None yet.
@@ -27,3 +29,4 @@ None yet.
 - dusty-peak-9330 — the owner's charter revision (ADR-284) that introduced D1–D9, claiming none complete
 - rapid-crest-8826 — documented-command and same-machine private-address browser evidence closes D1 at fixture scope
 - easy-field-3407 — ADR-317/318 containment, four regressions, full CLI gate and patched persistent-service verification
+- patient-pond-3886 — the owner ticked D1 on 2026-09-13 after run ot5 stopped at iteration 111; evidence unchanged

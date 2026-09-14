@@ -108,6 +108,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/INTEGRATION.md` | **The process contract**: the cadexd protocol (test-enforced on both requests and responses) and the engine payload. |
 | `docs/BLENDER.md` | The shell: `mesh_agent`'s file map, its tools, and how to run its suites. |
 | `docs/CLI.md` | The headless CLI: subcommands, exit codes, the `--json` envelope, and how it reaches the engine. |
+| `docs/REVIEW-DESIGN.md` | **The review dashboard's design spec** (ADR-328): purpose, hierarchy, type scale, the dark palette shared by chrome and viewport, spacing, breakpoints, and the measured "before" it is held against. Change the page and this doc together. |
 | `docs/IDEAS.md` | Parking lot for uncommitted ideas. |
 | `docs/cadex-release-packaging.md` | One bundle: what ships, how it is gated. |
 | `training/README.md` | The offboard trainer: why training is not in the engine, what it reads and writes, how a policy comes home. |

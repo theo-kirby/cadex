@@ -60,7 +60,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. With `--dry-run`, report the plan — the files the leg would touch and the steps it would take, in either mode — and train nothing. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
-| `cadex review --host ADDR --port N` | Serve **this one project's** review dashboard to a browser, read-only (ADR-286): the accepted identity now, every recorded run labelled current/historical, its parameters and specs as recorded, training and rollout figures, retained artifacts, document snapshots, and the model in an orbit/zoom WebGL view — a run's own rollout meshes at its own revision, or the accepted attempt's tessellation. Opens no engine, rebuilds nothing, writes nothing, adds no `PROGRESS.md` row. Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. | no |
+| `cadex review --host ADDR --port N` | Serve **this one project's** review dashboard to a browser, read-only (ADR-286): the accepted identity now, every recorded run labelled current/historical, its parameters and specs as recorded, training and rollout figures, retained artifacts, document snapshots, and the model in an orbit/zoom WebGL view — a run's own rollout meshes at its own revision, or the accepted attempt's tessellation. Opens no engine, rebuilds nothing, writes nothing, adds no `PROGRESS.md` row. Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/REVIEW-DESIGN.md`. | no |
 
 Flags, valid on either side of the subcommand:
 
@@ -580,6 +580,22 @@ rollout is opened, and `/mesh/run/<name>/<part>.stl` serves only a file
 that resolves inside the project root. The video checker beside the fresh-project probes uses
 the lineage to find a video's training run and an older sibling without a
 naming convention.
+
+**Collision proxies (ADR-333).** Every model manifest carries a `collision`
+block: the proxies the simulation collides with, parsed from the MJCF the
+view already retains at its own identity — a run's recorded `model_xml`
+export (refused with `digest mismatch` when the rollout trace's policy
+receipt names another model), the accepted attempt's `assembly.mjcf` output,
+or nothing with the reason. Each geom is listed in its component's frame in
+mm and xyzw with MuJoCo's size meaning (half-sizes for a box, radius and
+half-length for a capsule or cylinder), inline mesh assets as vertices and
+faces, planes and unknown types listed but not drawn, and contact-free geoms
+counted as `skipped`. The page draws them only while **show collision
+geometry** is on (`#show-collision`, disabled with the reason when none are
+retained), as outlines over the solids that follow the solids' poses; the
+model status line ends `· showing: tessellated solids` or `… with collision
+proxies` (`data-showing`), and each component's line says what it has
+(`collision: 1 box`). A recording never contains them.
 
 A refused first design prompt can leave scaffold documents with no accepted
 manifest or run record. The dashboard shows missing geometry and a next CLI
@@ -1455,6 +1471,13 @@ other command keeps the restore.
 # review: serving biped at http://100.x.y.z:8765/ (read-only; Ctrl-C to stop)
 ```
 
+The page's layout, type and colour follow `docs/REVIEW-DESIGN.md`
+(ADR-329): one dark palette, one type scale, six regions in reading order —
+masthead, run selection, identity, model, curves, videos, record — a sidebar
+at desk width and a closed run disclosure on a phone, with no horizontal
+overflow at either. `cli/tests/test_review_design.py` reads the spec back
+from the rendered page at 1400×900 and 400×850.
+
 One project per server, inspection only. The page is for a person, on
 another device, with no display session on the machine that serves it:
 `--host` defaults to `127.0.0.1` (this machine only); give it the
@@ -1660,8 +1683,10 @@ What the page shows, and where each thing comes from:
   labelled recorded render outcome is historical: `ready` does not mean its
   output still exists or passes verification. Restoring the original bytes
   recovers playback on the next poll. Videos are the D4 slot: a recorded video plays inline
-  (byte ranges are served, so seeking works) and downloads, identified by
-  policy digest, seed and simulated seconds; none recorded says so.
+  from the page's own Play control or the native controls (byte ranges are
+  served, so seeking works) and downloads, identified by policy digest, seed
+  and simulated seconds; none recorded says so. The model orbits by mouse or
+  finger and pinch-zooms (ADR-330).
   Downloads preserve Unicode filenames through an encoded UTF-8 name and an
   ASCII fallback in the response header (ADR-323).
   A download the browser cancels mid-transfer is the client's decision: the
@@ -2141,10 +2166,15 @@ PYTHONPATH=cli pixi run python -m cadex_cli.video --project ~/cadex-projects/bip
 ```
 
 The viewport and newly recorded videos use the same locally shipped Three.js
-r160 scene: light prototype-grid floor, sky gradient, distance-scaled fog,
-ACES exposure 0.95, rough component materials and a fitted 2048² shadow map.
-The environment is adapted from the MIT neural-whoop reference; see
-[provenance and visual evidence](probes/review-style/README.md).
+r160 scene, **dark only** (ADR-331): the near-black prototype-grid mat with
+its PROTOTYPE / pitch labels and a subdivision chosen from the framing, sky
+gradient, distance-scaled fog, ACES exposure 0.95, rough component materials
+and a fitted 2048² shadow map. The style a video records is
+`cadex-prototype-dark-v1`; earlier `cadex-prototype-light-v1` recordings stay
+retained and labelled with their own style. The environment is adapted from
+the MIT neural-whoop reference; the dark look is compared with it frame by
+frame in [docs/probes/ot6/look](probes/ot6/look/README.md) and the earlier
+light comparison stays in [docs/probes/review-style](probes/review-style/README.md).
 CAD geometry stays in millimetres with unchanged poses; the renderer applies
 one uniform conversion to metres. The environmental floor sits just below the
 model bounds, and is front-sided so below-floor CAD inspection remains possible.
@@ -2157,17 +2187,33 @@ code, shared with the tests. A loopback server serves only the configured
 project and shipped static allowlist while capture runs; it closes afterward.
 The persistent operator server is independent and remains running.
 
-Python verifies retained model/policy/task/seed identities and solved poses,
-fits a fixed perspective camera over the entire trajectory, and sends exact
-solved samples at 10 fps plus the final pose to the common scene. It encodes
+Python verifies retained model/policy/task/seed identities and solved poses
+and validates every retained solid (up to 500 000 triangles in all — a real
+model such as Finch is 95 212, ADR-336); the capture page then fetches each
+of those solids over the loopback server and reports the triangle count it
+built, which must equal the validated file's. The trajectory bounds and the
+subject's centre track are computed in the scene, exactly, over every vertex
+at every solved pose (`boundsOver`), not in Python — which is what the
+earlier 20 000-triangle cap had paid for. Python sends exact solved samples
+at 10 fps plus the final pose to the common scene, which frames each one
+with the **follow rig** (ADR-332, `docs/REVIEW-DESIGN.md` §10): the subject's standing height fills a declared 0.22 of the frame
+height at one standoff, the orientation is fixed, the anchor is a
+Hann-smoothed copy of the track with a soft drift limit, and a **timer** pill
+bottom-left shows simulation seconds. It encodes
 512×512 VP9 WebM and decodes every frame before publication. The per-project
 render lock and 300-second frame-production budget remain; encoding and decode
 each have a separate 60-second timeout. Render failures report their own status
 and preserve prior videos without touching training.
 
 Each new video records style version/digest, Three.js and Chromium versions,
-resolution, projection, camera and trajectory bounds alongside revision,
-policy, seed, trace digest and simulation time. New recordings appear first;
+resolution, projection, the first frame's camera, the rig's declared and
+measured framing (`framing`: fraction, standing height, standoff, drift and
+apparent-size extremes), the overlay, **what it shows** (`showing`: the
+tessellated solids of the accepted revision, collision proxies not drawn;
+`proxies.retained` counts the run's proxies that were *not* drawn — the
+renderer never hands them to the capture and refuses to publish if the
+capture reports anything else, ADR-333), and trajectory bounds alongside
+revision, policy, seed, trace digest and simulation time. New recordings appear first;
 earlier entries and content-addressed files remain retained and downloadable.
 Identical video bytes are deduplicated. Old entries lacking a style are labelled
 “historical legacy style”. Copy the full project directory to retain all of them.

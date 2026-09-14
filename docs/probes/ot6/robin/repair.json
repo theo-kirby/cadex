@@ -1,0 +1,59 @@
+{
+ "accepted": {
+  "attempt_id": "1789351251460-06a146e2715e",
+  "revision": "71709063d6af7ee357d5bb5b409e3332730a1465e0caa62f92f93535ec04cd84",
+  "staging": "script_artifacts/3e0bbf25d43961124e4e58f10f40d37c096e4ba863c67fb0268247f5a406d9ae/attempt-1789351251460-06a146e2715e"
+ },
+ "only_source_change": {
+  "before": "height_mm=[1.0, 3.0]",
+  "after": "height_mm=[3.0, 5.0]"
+ },
+ "files": [
+  {
+   "path": "ot6-robin-src/recovered-candidate.py",
+   "bytes": 20081,
+   "sha256": "3981eb2b1d79764638f32f9872cabf30796552642d00a389dcf45e4e6c257b08"
+  },
+  {
+   "path": "ot6-robin-src/repaired-candidate.py",
+   "bytes": 20081,
+   "sha256": "82ecac64b7d4cce11892290880a657c58a4065ac2d39c663ea67308894692863"
+  },
+  {
+   "path": "ot6-robin-src/repair.json",
+   "bytes": 1089,
+   "sha256": "65db89c15bd285fd6621ed296ec3b81a5c7e029631f723a21947d419c08071ca"
+  },
+  {
+   "path": "ot6-robin-src/repair-start.json",
+   "bytes": 98,
+   "sha256": "dff6aff6d77145487ab75269b523164f4aeede94b94d22664dfaa407f901299f"
+  },
+  {
+   "path": "ot6-robin-src/bay-section.json",
+   "bytes": 511,
+   "sha256": "57609378c0e8a94821ecc56959c7c80d1b83eda3ab6bb9f6941323e5def7aa41"
+  },
+  {
+   "path": "ot6-robin-src/accepted-result.json",
+   "bytes": 813987,
+   "sha256": "7e67a301da837ba34fc2e7be4dfc33bd13261d4190ca63d9fb07547ec47231f7"
+  },
+  {
+   "path": "ot6-robin/docs/INVENTORY.md",
+   "bytes": 3183,
+   "sha256": "013d8368e21aa51edea715e76b2af0810f32cbea5350a9d738cb1b6b29064d8b"
+  },
+  {
+   "path": "ot6-robin/docs/FIT.md",
+   "bytes": 8305,
+   "sha256": "6663d0fd8bcf3f4cfee46afa43792cb73355ab57420090f658f8729dd4adc7cc"
+  }
+ ],
+ "restore": {
+  "ok": false,
+  "error": "The restore pass digest does not match the accepted digest.",
+  "accepted_digest": "806ab1343b7c94789c986fe244d610b93bf4e8516e4bf0457408f31f081f6c4e",
+  "rebuilt_digest": "d7e568d29a53dec7319779d44e039263a9eecc94ededabacae744ee313f2d7e0"
+ }
+}

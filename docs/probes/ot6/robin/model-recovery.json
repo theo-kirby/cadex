@@ -1,0 +1,214 @@
+{
+  "schema": "ot6-robin-model-recovery-v1",
+  "project": "ot6-robin",
+  "operator_url": "http://<private-address>:8765/",
+  "attempts": [
+    {
+      "model_argument": "opus",
+      "reported_model": "opus",
+      "started": "2026-09-14T01:55:58.933752+00:00",
+      "finished": "2026-09-14T01:56:01.170083+00:00",
+      "timeout_seconds": 1800,
+      "exit_code": 1,
+      "ok": false,
+      "error": "You've hit your session limit \u00b7 resets 10:10pm (America/New_York)",
+      "revision": "f5f0533481457549b2f07637a9ac825a5bb32ca7270dafdb504c8adf5c7e16b4"
+    },
+    {
+      "model_argument": "sonnet",
+      "reported_model": "sonnet",
+      "started": "2026-09-14T01:56:19.682388+00:00",
+      "finished": "2026-09-14T01:56:24.709068+00:00",
+      "timeout_seconds": 1800,
+      "exit_code": 1,
+      "ok": false,
+      "error": "You've hit your session limit \u00b7 resets 10:10pm (America/New_York)",
+      "revision": "f5f0533481457549b2f07637a9ac825a5bb32ca7270dafdb504c8adf5c7e16b4"
+    },
+    {
+      "model_argument": "haiku",
+      "reported_model": "haiku",
+      "started": "2026-09-14T01:56:37.534658+00:00",
+      "finished": "2026-09-14T01:56:39.648868+00:00",
+      "timeout_seconds": 1800,
+      "exit_code": 1,
+      "ok": false,
+      "error": "You've hit your session limit \u00b7 resets 10:10pm (America/New_York)",
+      "revision": "f5f0533481457549b2f07637a9ac825a5bb32ca7270dafdb504c8adf5c7e16b4"
+    }
+  ],
+  "operator_start": [
+    {
+      "at": "2026-09-14T01:55:38.286064+00:00",
+      "width": 1400,
+      "height": 900,
+      "touch": false,
+      "selected": "finch1-final",
+      "status": "model of run finch1-final at revision b68622345563 \u00b7 29 component(s), 95212 triangles \u00b7 from runs/finch1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids",
+      "overflow_px": 0,
+      "playback_seconds": 0.189939,
+      "download": {
+        "bytes": 155239,
+        "sha256": "f57c4c3bb2b3ce565d1feefa411c88879c92d4efe0561d45d3dddc9e995cb6f7"
+      }
+    },
+    {
+      "at": "2026-09-14T01:55:40.328822+00:00",
+      "width": 400,
+      "height": 850,
+      "touch": true,
+      "selected": "finch1-final",
+      "status": "model of run finch1-final at revision b68622345563 \u00b7 29 component(s), 95212 triangles \u00b7 from runs/finch1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids",
+      "overflow_px": 0,
+      "playback_seconds": 0.193742,
+      "download": {
+        "bytes": 155239,
+        "sha256": "f57c4c3bb2b3ce565d1feefa411c88879c92d4efe0561d45d3dddc9e995cb6f7"
+      }
+    }
+  ],
+  "operator_end": [
+    {
+      "at": "2026-09-14T01:56:53.005776+00:00",
+      "width": 1400,
+      "height": 900,
+      "touch": false,
+      "selected": "finch1-final",
+      "status": "model of run finch1-final at revision b68622345563 \u00b7 29 component(s), 95212 triangles \u00b7 from runs/finch1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids",
+      "overflow_px": 0,
+      "playback_seconds": 0.193879,
+      "download": {
+        "bytes": 155239,
+        "sha256": "f57c4c3bb2b3ce565d1feefa411c88879c92d4efe0561d45d3dddc9e995cb6f7"
+      }
+    },
+    {
+      "at": "2026-09-14T01:56:55.054015+00:00",
+      "width": 400,
+      "height": 850,
+      "touch": true,
+      "selected": "finch1-final",
+      "status": "model of run finch1-final at revision b68622345563 \u00b7 29 component(s), 95212 triangles \u00b7 from runs/finch1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids",
+      "overflow_px": 0,
+      "playback_seconds": 0.189427,
+      "download": {
+        "bytes": 155239,
+        "sha256": "f57c4c3bb2b3ce565d1feefa411c88879c92d4efe0561d45d3dddc9e995cb6f7"
+      }
+    }
+  ],
+  "project_after": {
+    "accepted_revision": "f5f0533481457549b2f07637a9ac825a5bb32ca7270dafdb504c8adf5c7e16b4",
+    "accepted_digest": "e1b68010cd87634310741d5cc641a092d43d23e1ec076c4992bec6d820ae8c45",
+    "accepted_contract": [
+      {
+        "domain": "part",
+        "name": "probe_motor",
+        "type": "solid"
+      }
+    ]
+  },
+  "artifacts_relative_to": "operator cadex-projects directory",
+  "artifacts": [
+    {
+      "path": "ot6-robin-src/resume.prompt.txt",
+      "bytes": 28296,
+      "sha256": "90cf1b13a450f84d5e393b8e69b27f1bb4a03076f337d9759fd5998ab04cd096"
+    },
+    {
+      "path": "ot6-robin-src/recovered-candidate.py",
+      "bytes": 20081,
+      "sha256": "3981eb2b1d79764638f32f9872cabf30796552642d00a389dcf45e4e6c257b08"
+    },
+    {
+      "path": "ot6-robin-src/iteration16-operator.py",
+      "bytes": 1947,
+      "sha256": "7c7f972c1cc12476f3f39fcdfaa44fa8339e65220ed755bb543e188cc24a9ad6"
+    },
+    {
+      "path": "ot6-robin-src/iteration17-start.json",
+      "bytes": 1231,
+      "sha256": "2c1226b0e6ae8161c5b72a3e0b3e42b97a263ae959199f39226a2d70621ad98d"
+    },
+    {
+      "path": "ot6-robin-src/iteration17-end.json",
+      "bytes": 1231,
+      "sha256": "1ba1281174c7f7e967f1e8a612216fd9b326ad3afd3389ac6a516879c7a215dc"
+    },
+    {
+      "path": "ot6-robin-src/opus.started",
+      "bytes": 32,
+      "sha256": "f85d51d700a02931d929f65d87971027403fc2a235d3ecf65af9d724619c8c01"
+    },
+    {
+      "path": "ot6-robin-src/opus.finished",
+      "bytes": 32,
+      "sha256": "b209ffd3902596bf214163bafe58f3ec3a3dbc8b9674cf317e70f2fbf67fd8f0"
+    },
+    {
+      "path": "ot6-robin-src/opus.exit",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "ot6-robin-src/opus.stdout.json",
+      "bytes": 704,
+      "sha256": "f7249281742f58d0eb09243834a4586122c90a79f949a639a78f417d9a08f821"
+    },
+    {
+      "path": "ot6-robin-src/opus.stderr",
+      "bytes": 67,
+      "sha256": "59cba2df78ad6f281c362be4a21e76b442b54532a81d0d4a835ec4925c5966b4"
+    },
+    {
+      "path": "ot6-robin-src/sonnet.started",
+      "bytes": 32,
+      "sha256": "7bcf628de10fc28ab571e7eed91ccb32917314deb8ca668b267339a42fafdc24"
+    },
+    {
+      "path": "ot6-robin-src/sonnet.finished",
+      "bytes": 32,
+      "sha256": "ca734451c0a7d689bdef72266a648ae1ce757f5c703e31938753cebc339fb248"
+    },
+    {
+      "path": "ot6-robin-src/sonnet.exit",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "ot6-robin-src/sonnet.stdout.json",
+      "bytes": 706,
+      "sha256": "08ffc7d22a0af55d79d1bddf66a6a2125514f6a207990aea3d07a0d60e8881d5"
+    },
+    {
+      "path": "ot6-robin-src/sonnet.stderr",
+      "bytes": 67,
+      "sha256": "59cba2df78ad6f281c362be4a21e76b442b54532a81d0d4a835ec4925c5966b4"
+    },
+    {
+      "path": "ot6-robin-src/haiku.started",
+      "bytes": 32,
+      "sha256": "8e6d4b0e3552972662adbeab79451a56b151d5fcdff0b7112ef853c488b409d2"
+    },
+    {
+      "path": "ot6-robin-src/haiku.finished",
+      "bytes": 32,
+      "sha256": "34f6677eef45c455dbb672c8e18c326be75509c68abe58b65258e5ad0948c219"
+    },
+    {
+      "path": "ot6-robin-src/haiku.exit",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "ot6-robin-src/haiku.stdout.json",
+      "bytes": 705,
+      "sha256": "55109ebbbd921b4e0d1f0acc62dca3b761691cb142d2f9a4225a7eac81a6c00c"
+    },
+    {
+      "path": "ot6-robin-src/haiku.stderr",
+      "bytes": 67,
+      "sha256": "59cba2df78ad6f281c362be4a21e76b442b54532a81d0d4a835ec4925c5966b4"
+    }
+  ]
+}

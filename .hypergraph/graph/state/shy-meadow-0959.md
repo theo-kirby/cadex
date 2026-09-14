@@ -19,7 +19,7 @@ Status: working
 
 **Real 70/90/100/55 mm Reed designs pass browser model/spec identity and orbit/zoom checks, sweeps retain geometry before training, and byte-identical parts each keep their mesh.** ADR-291 freezes assembled placements, run-local mesh bytes, parameter specs and project documents, and refuses dispatch on changed accepted identity [rec: quiet-arbor-0259]. ADR-293 fixes ordinary `walk --set` sweeps by requesting standard tessellation inside the parameter acceptance transaction [rec: candid-forest-9800] [rec: forest-ledge-2219]. ADR-302 fixes byte-identical BREP outputs (a mirrored limb pair) keeping only one side's mesh. Frozen training views of shin55, copy100 and probe3 keep their partial meshes as recorded, by the no-rebuild constraint, and say so [rec: fair-crow-5108].
 
-Status stays `working`: real-biped review and product-path regressions pass on three fresh projects, but historical snapshots are not backfilled and remain labelled [rec: forest-ledge-2219] [rec: fair-crow-5108] [rec: soft-forest-5662].
+Status stays `working`: real-biped review and product-path regressions pass on three fresh projects, but historical snapshots are not backfilled and remain labelled [rec: forest-ledge-2219] [rec: fair-crow-5108] [rec: soft-forest-5662]. **The owner ticked D2 in the charter on 2026-09-13 after run ot5 stopped at iteration 111; the criterion is closed for ot5 with its evidence unchanged, and ot6's charter (ADR-328) supersedes it [rec: patient-pond-3886].**
 
 Charter criterion: **D2. The browser shows the right model and specs** Interactive 3D orbit/zoom, component identity, declared parameters, design specs and project decisions come from the selected accepted revision; selecting an earlier run shows its model and specs, visibly identified as historical. Evidence: browser tests comparing displayed revision/run identities with recorded inputs and exercising model interaction on the fresh biped. Declared target `gap-d2-browser-shows-right-model` [rec: lucky-comet-0031], introduced with no implementation claimed [rec: dusty-peak-9330].
 
@@ -48,3 +48,4 @@ None yet.
 - violet-wave-6524 — ADR-307: geometry reloads on revision/digest change, including first acceptance; bounds and camera regressions
 - honest-rain-3132 — ADR-311: reader accepts a first accepted attempt staged under the pre-run revision; Lark's missing tessellation recorded
 - soft-forest-5662 — ADR-312: every CLI modelling write carries the standard tessellation request, engine-backed browser regression on a fresh project
+- patient-pond-3886 — the owner ticked D2 on 2026-09-13 after run ot5 stopped at iteration 111; evidence unchanged

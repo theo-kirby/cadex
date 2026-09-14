@@ -1,0 +1,63 @@
+{
+ "schema": "heron-reopen-evidence-v1",
+ "project": "ot6-heron",
+ "revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+ "accepted_digest": "f9be3985bc559d3631bbbb76b2d8138bf864d200ea6384fdb35eb09f045ea7de",
+ "what": "five fresh-process `cadex section` runs on the accepted project, each through the default restore pass that refuses on a digest mismatch (the command that exited 1 on Robin's first revision); all exited 0 at the accepted revision with one digest",
+ "runs": [
+  {
+   "command": "cadex section --plane XZ --offset-mm -16.5 --json",
+   "exit": 0,
+   "revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+   "accepted_revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+   "digest": "f9be3985bc559d3631bbbb76b2d8138bf864d200ea6384fdb35eb09f045ea7de",
+   "cut_status": "ok",
+   "objects_cut": 8,
+   "note": "ok"
+  },
+  {
+   "command": "cadex section --plane XY --offset-mm 46 --json",
+   "exit": 0,
+   "revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+   "accepted_revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+   "digest": "f9be3985bc559d3631bbbb76b2d8138bf864d200ea6384fdb35eb09f045ea7de",
+   "cut_status": "unsupported",
+   "objects_cut": 3,
+   "note": "unsupported"
+  },
+  {
+   "command": "cadex section --plane XY --offset-mm 126 --json",
+   "exit": 0,
+   "revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+   "accepted_revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+   "digest": "f9be3985bc559d3631bbbb76b2d8138bf864d200ea6384fdb35eb09f045ea7de",
+   "cut_status": "unsupported",
+   "objects_cut": 2,
+   "note": "unsupported"
+  },
+  {
+   "command": "cadex section --plane XY --offset-mm 45.3 --json",
+   "exit": 0,
+   "revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+   "accepted_revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+   "digest": "f9be3985bc559d3631bbbb76b2d8138bf864d200ea6384fdb35eb09f045ea7de",
+   "cut_status": "ok",
+   "objects_cut": 5,
+   "note": "ok"
+  },
+  {
+   "command": "cadex section --plane XY --offset-mm 125.3 --json",
+   "exit": 0,
+   "revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+   "accepted_revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+   "digest": "f9be3985bc559d3631bbbb76b2d8138bf864d200ea6384fdb35eb09f045ea7de",
+   "cut_status": "ok",
+   "objects_cut": 4,
+   "note": "ok"
+  }
+ ],
+ "distinct_digests": [
+  "f9be3985bc559d3631bbbb76b2d8138bf864d200ea6384fdb35eb09f045ea7de"
+ ],
+ "every_run_matches_accepted_digest": true
+}

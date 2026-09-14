@@ -1,0 +1,141 @@
+{
+  "schema": "ot6-d9-regression-v1",
+  "source_commit": "33d3452f2a7f44ad8eb33876055a1d8bed0ef59d",
+  "provider_attempt": {
+    "started": "2026-09-14T01:42:22.430640+00:00",
+    "finished": "2026-09-14T01:42:25.099220+00:00",
+    "exit_code": 1,
+    "timeout_seconds": 1800,
+    "model": "claude-fable-5",
+    "error": "provider session usage limit",
+    "accepted_revision": "f5f0533481457549b2f07637a9ac825a5bb32ca7270dafdb504c8adf5c7e16b4",
+    "accepted_contract": [
+      {
+        "domain": "part",
+        "name": "probe_motor",
+        "type": "solid"
+      }
+    ]
+  },
+  "suites": [
+    {
+      "command": "pixi run test-engine",
+      "exit_code": 0,
+      "passed": 2114,
+      "skipped": 53,
+      "seconds": 324.49
+    },
+    {
+      "command": "pixi run python -m pytest cli/tests",
+      "exit_code": 0,
+      "passed": 560,
+      "skipped": 1,
+      "seconds": 556.46
+    }
+  ],
+  "operator_url": "http://<private-address>:8765/",
+  "operator_start": {
+    "at": "2026-09-14T01:42:43.842486+00:00",
+    "selected": "finch1-final",
+    "status": "model of run finch1-final at revision b68622345563 \u00b7 29 component(s), 95212 triangles \u00b7 from runs/finch1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids"
+  },
+  "operator_end": [
+    {
+      "at": "2026-09-14T01:50:56.847314+00:00",
+      "width": 1400,
+      "height": 900,
+      "touch": false,
+      "selected": "finch1-final",
+      "status": "model of run finch1-final at revision b68622345563 \u00b7 29 component(s), 95212 triangles \u00b7 from runs/finch1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids",
+      "overflow_px": 0,
+      "playback_seconds": 0.196891,
+      "download": {
+        "bytes": 155239,
+        "sha256": "f57c4c3bb2b3ce565d1feefa411c88879c92d4efe0561d45d3dddc9e995cb6f7"
+      }
+    },
+    {
+      "at": "2026-09-14T01:50:58.954416+00:00",
+      "width": 400,
+      "height": 850,
+      "touch": true,
+      "selected": "finch1-final",
+      "status": "model of run finch1-final at revision b68622345563 \u00b7 29 component(s), 95212 triangles \u00b7 from runs/finch1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids",
+      "overflow_px": 0,
+      "playback_seconds": 0.193849,
+      "download": {
+        "bytes": 155239,
+        "sha256": "f57c4c3bb2b3ce565d1feefa411c88879c92d4efe0561d45d3dddc9e995cb6f7"
+      }
+    }
+  ],
+  "artifacts_relative_to": "operator cadex-projects directory",
+  "artifacts": [
+    {
+      "path": "ot6-robin-src/resume.prompt.txt",
+      "bytes": 28296,
+      "sha256": "90cf1b13a450f84d5e393b8e69b27f1bb4a03076f337d9759fd5998ab04cd096"
+    },
+    {
+      "path": "ot6-robin-src/recovered-candidate.py",
+      "bytes": 20081,
+      "sha256": "3981eb2b1d79764638f32f9872cabf30796552642d00a389dcf45e4e6c257b08"
+    },
+    {
+      "path": "ot6-robin-src/resume.stdout.json",
+      "bytes": 714,
+      "sha256": "0d3798ea8bdb29f0403ae2a990caf270592a2592649cd9a9f6f8f1e13b5c8901"
+    },
+    {
+      "path": "ot6-robin-src/resume.stderr",
+      "bytes": 67,
+      "sha256": "59cba2df78ad6f281c362be4a21e76b442b54532a81d0d4a835ec4925c5966b4"
+    },
+    {
+      "path": "ot6-robin-src/resume.started",
+      "bytes": 32,
+      "sha256": "fd4e016d6b4de71e6b8a9e01408bfb2fcf187fc9462ec6ac5cb0ee43e5029cc8"
+    },
+    {
+      "path": "ot6-robin-src/resume.finished",
+      "bytes": 32,
+      "sha256": "fd9223b28d50c589e01f3b778f1cc408e553c055369133ab94f385b03ffa6ba9"
+    },
+    {
+      "path": "ot6-robin-src/resume.exit",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "ot6-robin-src/iteration16-cli.log",
+      "bytes": 2671,
+      "sha256": "d401f289390a6fea4cf9c7d20eb7cc24cc833b154c07a84482138fa728918a0c"
+    },
+    {
+      "path": "ot6-robin-src/iteration16-engine.log",
+      "bytes": 12504,
+      "sha256": "8b2ed5d8f2628ddbfcc8d8f5798421c38905f13890fcc2659d2cfc7923199ba9"
+    },
+    {
+      "path": "ot6-robin-src/iteration16-start.json",
+      "bytes": 358,
+      "sha256": "448e58b06c22b70adcabbf66a971e2d967ba53cc0c06946885b75eec348c7d76"
+    },
+    {
+      "path": "ot6-robin-src/iteration16-end.json",
+      "bytes": 1231,
+      "sha256": "1c8143ef11c74538bb760c7ddd7733cb003366494db78b011875dd886f40adf1"
+    },
+    {
+      "path": "ot6-robin-src/iteration16-operator.py",
+      "bytes": 1947,
+      "sha256": "7c7f972c1cc12476f3f39fcdfaa44fa8339e65220ed755bb543e188cc24a9ad6"
+    }
+  ],
+  "limits": [
+    "Skipped tests are not claimed as exercised.",
+    "Restart and copy tests here use fixture producers, not new GPU training.",
+    "D7 and D8 remain open; repeat final regression assessment after their remaining work.",
+    "No source, protocol or payload change; no build or packaged gate."
+  ]
+}

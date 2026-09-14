@@ -43,6 +43,7 @@ import sys
 import threading
 from typing import Any, Callable, Mapping
 from urllib.parse import quote, unquote, urlsplit
+from xml.etree import ElementTree
 
 from .review_record import (
     policy_lineage,
@@ -162,11 +163,177 @@ def _render_sources(root: Path, record: Mapping[str, Any]) -> dict[str, str]:
     return sources
 
 
+MJCF_READ_LIMIT = 8 * 1024 * 1024
+MJCF_ARTIFACT_KIND = "assembly_mjcf_xml"
+# MuJoCo geom types the viewer can draw as a proxy outline. A plane is listed
+# and never drawn (it is infinite); anything else is listed as unknown.
+PROXY_TYPES = ("box", "sphere", "capsule", "cylinder", "mesh", "plane")
+
+
+def _no_collision(reason: str, source: str | None = None) -> dict[str, Any]:
+    return {"available": False, "source": source, "sha256": None, "reason": reason,
+            "geoms": [], "components": [], "skipped": 0}
+
+
+def _floats(value: str | None, count: int, default: list[float]) -> list[float] | None:
+    if value is None:
+        return list(default)
+    try:
+        parsed = [float(v) for v in value.split()]
+    except ValueError:
+        return None
+    if len(parsed) < count or not all(math.isfinite(v) for v in parsed):
+        return None
+    return parsed[:count]
+
+
+def _quat_from_z(direction: list[float]) -> list[float]:
+    """The xyzw rotation taking +Z onto ``direction`` (unit), for ``fromto`` geoms."""
+
+    dz = direction[2]
+    if dz > 1 - 1e-9:
+        return [0.0, 0.0, 0.0, 1.0]
+    if dz < -1 + 1e-9:
+        return [1.0, 0.0, 0.0, 0.0]
+    axis = [-direction[1], direction[0], 0.0]
+    norm = math.hypot(axis[0], axis[1])
+    half = math.acos(dz) / 2
+    return [axis[0] / norm * math.sin(half), axis[1] / norm * math.sin(half), 0.0, math.cos(half)]
+
+
+def collision_proxies(path: Path, *, source: str, expected_sha256: str | None = None) -> dict[str, Any]:
+    """The collision proxies a retained MJCF declares, per body, in mm and xyzw.
+
+    Read from the file the run (or the accepted attempt) retained at its own
+    identity — never regenerated — and refused when a digest the rollout trace
+    recorded for its model does not match, so a historical run's proxies are
+    the ones it rolled out against. Bodies are named as the trace's components
+    are, and every geom is expressed in its body's frame, so the viewer places
+    a proxy by the same pose it places the solid. Sizes keep MuJoCo's meaning
+    (half-sizes for a box, radius and half-length for a capsule or cylinder,
+    radius for a sphere) converted to millimetres; inline mesh assets are
+    carried as vertices and faces. Geoms that take part in no contact are
+    counted as skipped rather than listed: the toggle shows *collision*
+    geometry and nothing else.
+    """
+
+    block = _no_collision("", source)
+    try:
+        if path.is_symlink() or not path.is_file():
+            block["reason"] = "retained MJCF is not a regular file"
+            return block
+        if path.stat().st_size > MJCF_READ_LIMIT:
+            block["reason"] = "retained MJCF exceeds the read limit"
+            return block
+        data = path.read_bytes()
+        block["sha256"] = hashlib.sha256(data).hexdigest()
+        if expected_sha256 and block["sha256"] != expected_sha256:
+            block["reason"] = "retained MJCF is not the model this rollout ran (digest mismatch)"
+            return block
+        root = ElementTree.fromstring(data)
+    except (OSError, ElementTree.ParseError) as exc:
+        block["reason"] = f"retained MJCF unreadable: {type(exc).__name__}"
+        return block
+    if root.tag != "mujoco":
+        block["reason"] = "retained MJCF is not a MuJoCo model"
+        return block
+    meshes: dict[str, tuple[list[float], list[int]] | None] = {}
+    for asset in root.iter("mesh"):
+        name = asset.get("name")
+        vertex, face = asset.get("vertex"), asset.get("face")
+        if not name:
+            continue
+        try:
+            vertices = [float(v) * 1000.0 for v in (vertex or "").split()]
+            faces = [int(v) for v in (face or "").split()]
+        except ValueError:
+            meshes[name] = None
+            continue
+        ok = (vertices and len(vertices) % 3 == 0 and faces and len(faces) % 3 == 0
+              and all(math.isfinite(v) for v in vertices)
+              and all(0 <= f < len(vertices) // 3 for f in faces))
+        meshes[name] = (vertices, faces) if ok else None
+    geoms: list[dict[str, Any]] = []
+    skipped = 0
+    for body in root.iter("body"):
+        component = body.get("name")
+        if not component:
+            continue
+        for index, geom in enumerate(child for child in body if child.tag == "geom"):
+            contype = _floats(geom.get("contype"), 1, [1.0])
+            conaffinity = _floats(geom.get("conaffinity"), 1, [1.0])
+            if not contype or not conaffinity or (int(contype[0]) == 0 and int(conaffinity[0]) == 0):
+                skipped += 1
+                continue
+            kind = geom.get("type") or "sphere"
+            try:
+                size = [float(v) * 1000.0 for v in (geom.get("size") or "").split()]
+            except ValueError:
+                size = []
+            pos = _floats(geom.get("pos"), 3, [0.0, 0.0, 0.0])
+            quat = _floats(geom.get("quat"), 4, [1.0, 0.0, 0.0, 0.0])
+            entry: dict[str, Any] = {
+                "name": geom.get("name") or f"{component}/geom{index}", "component": component,
+                "type": kind, "size_mm": size, "pos_mm": None, "rotation_xyzw": None,
+                "drawn": kind in PROXY_TYPES and kind != "plane", "note": None,
+            }
+            fromto = _floats(geom.get("fromto"), 6, []) if geom.get("fromto") else None
+            if fromto is not None and len(fromto) == 6:
+                a, b = fromto[:3], fromto[3:]
+                length = math.dist(a, b)
+                if length <= 0:
+                    entry.update(drawn=False, note="degenerate fromto")
+                else:
+                    direction = [(q - p) / length for p, q in zip(a, b)]
+                    pos = [(p + q) / 2 for p, q in zip(a, b)]
+                    entry["rotation_xyzw"] = _quat_from_z(direction)
+                    entry["size_mm"] = [size[0] if size else 0.0, length * 500.0]
+            elif quat is not None:
+                w, x, y, z = quat
+                norm = math.sqrt(w * w + x * x + y * y + z * z) or 1.0
+                entry["rotation_xyzw"] = [x / norm, y / norm, z / norm, w / norm]
+            if pos is None or entry["rotation_xyzw"] is None:
+                entry.update(drawn=False, note="invalid pose")
+            else:
+                entry["pos_mm"] = [v * 1000.0 for v in pos]
+            if kind == "plane":
+                entry["note"] = "infinite plane: listed, not drawn"
+            elif kind not in PROXY_TYPES:
+                entry["note"] = f"unsupported geom type {kind!r}: listed, not drawn"
+            elif kind == "mesh":
+                asset = meshes.get(geom.get("mesh") or "")
+                if asset is None:
+                    entry.update(drawn=False, note="mesh asset not inline or invalid")
+                else:
+                    entry["vertices_mm"], entry["faces"] = asset
+            elif not size or any(v <= 0 for v in size[:{"box": 3, "sphere": 1}.get(kind, 2)]):
+                entry.update(drawn=False, note="invalid size")
+            geoms.append(entry)
+    block.update(available=True, geoms=geoms, skipped=skipped,
+                 components=sorted({g["component"] for g in geoms}))
+    return block
+
+
+def _run_collision(run_dir: Path, record: Mapping[str, Any], *, expected_sha256: str | None = None) -> dict[str, Any]:
+    """The run's own MJCF export, resolved through its record, as proxies."""
+
+    item = ((record.get("resolved") or {}).get("artifacts") or {}).get("model_xml") or {}
+    if item.get("path") is None:
+        return _no_collision("no MJCF export recorded for this run")
+    if item.get("error"):
+        return _no_collision(f"MJCF reference not honoured: {item['error']}")
+    if not item.get("exists"):
+        return _no_collision(f"MJCF export missing: {item['path']}")
+    source = f"runs/{run_dir.name}/{item['path']} (this run's own MJCF export at its revision)"
+    return collision_proxies(run_dir / item["path"], source=source, expected_sha256=expected_sha256)
+
+
 def _identity_model(**fields: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "schema": REVIEW_MODEL_SCHEMA, "view": None, "run": None, "relation": None,
         "revision": None, "digest": None, "available": False, "reason": None,
         "source": None, "placement_source": None, "components": [],
+        "collision": _no_collision("no model to show"),
     }
     base.update(fields)
     return base
@@ -256,6 +423,7 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
             model.update({key: retained.get(key) for key in
                           ("available", "components", "placement_source", "reason")})
             model["source"] = "assembled model retained before training"
+            model["collision"] = _run_collision(run_dir, record)
             for entry in model["components"]:
                 output = entry.get("output")
                 item = resolve_reference(run_dir, f"training-view/{output}.stl")
@@ -290,6 +458,7 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
                     "mesh_status": "retained", "placement": None,
                     "placement_source": "individual exported part: identity",
                 } for p in meshes],
+                "collision": _run_collision(run_dir, record),
             })
             return model
         return _model_before_rollout(root, model)
@@ -306,7 +475,8 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
     if not meshes:
         model["reason"] = f"no .stl meshes retained beside the trace ({trace_item['path']})"
         return model
-    placements, components = _first_frame_placements(_load_json(trace_path))
+    trace = _load_json(trace_path)
+    placements, components = _first_frame_placements(trace)
     sources = _render_sources(root, record)
     placement_source = ("rollout trace, first frame" if placements
                         else "none recorded: meshes shown at identity")
@@ -338,6 +508,10 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
                   "(the rollout leg's exports at this run's revision)",
         "placement_source": placement_source,
         "components": entries,
+        # The proxies the rollout ran against: the run's own export, and only
+        # if it is the model the trace's policy receipt names.
+        "collision": _run_collision(run_dir, record, expected_sha256=(
+            ((trace or {}).get("policy") or {}).get("model_sha256"))),
     })
     return model
 
@@ -376,6 +550,7 @@ def _model_before_rollout(root: Path, model: dict[str, Any]) -> dict[str, Any]:
         "placement_source": accepted["placement_source"],
         "components": accepted["components"],
         "meshes": accepted.get("meshes") or {},
+        "collision": accepted["collision"],
     })
     return model
 
@@ -529,8 +704,21 @@ def accepted_model(project_root: Path | str) -> dict[str, Any]:
             "mesh_status": "retained", "placement": None,
             "placement_source": "no component placement recorded: identity",
         })
+    collision = _no_collision("the accepted attempt exported no MJCF (no assembly.mjcf output)")
+    for output in result["outputs"]:
+        if (isinstance(output, Mapping) and output.get("artifact_kind") == MJCF_ARTIFACT_KIND
+                and isinstance(output.get("artifact_path"), str)):
+            item = resolve_reference(staging, output["artifact_path"])
+            if item["error"] or not item["exists"]:
+                collision = _no_collision("the accepted attempt's MJCF export is missing or not honoured")
+            else:
+                collision = collision_proxies(
+                    staging / item["path"],
+                    source=f"the accepted attempt's {output.get('name')} (assembly.mjcf export at the accepted revision)")
+            break
     model.update({
         "available": True,
+        "collision": collision,
         "source": "the accepted attempt's tessellation (display/*.tess), linked to each output by sha256",
         "placement_source": ("accepted attempt's simulation trace, first frame" if placements
                              else "declared component placements"),

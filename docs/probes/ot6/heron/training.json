@@ -1,0 +1,765 @@
+{
+ "schema": "heron-training-evidence-v1",
+ "project": "ot6-heron",
+ "run": "heron1",
+ "operator_url_source": "environment (private address, not committed)",
+ "accepted_revision": "5971903121bfcb7a90521280bc73f34f20adb869e26c51c125f07d62dacd84bd",
+ "digest": "f9be3985bc559d3631bbbb76b2d8138bf864d200ea6384fdb35eb09f045ea7de",
+ "geometry": {
+  "heron_model-model.xml": "cc991b947c3554d99ae7971f4e93f2af3b5f23609c0820d8aad36e754aa2cc59",
+  "heron_task-task.json": "691c8c144faeff10699dd0494eba886ce18a7d978ff7c89aa5c1b27ae74cd00c"
+ },
+ "record_agrees": true,
+ "task": {
+  "episode_steps": 200.0,
+  "control_hz": 50.0,
+  "target_x": 100.0,
+  "target_z": 60.0,
+  "reach_scale": 30.0,
+  "reach_tol": 10.0,
+  "tip_floor": 5.0,
+  "upper_len": 80.0,
+  "fore_len": 70.0,
+  "z_shoulder": 40.0,
+  "push_n_lo": 0.2,
+  "push_n_hi": 0.6,
+  "push_dur": 0.2,
+  "ctrl_cost_w": 2e-06,
+  "tip_vel_w": 0.0005
+ },
+ "task_values_source": "effective parameters recorded on both playback runs, whose task bundles are byte-identical to the training run's",
+ "target_mm": [
+  100.0,
+  0.0,
+  60.0
+ ],
+ "reach_tol_mm": 10.0,
+ "tip_floor_mm": 5.0,
+ "tip_floor_source": "the training run's retained task bundle, termination on tip_z",
+ "requested": {
+  "authored_by": "Heron, authored by the product agent from the D8 creation prompt and corrected three times by the same agent against quoted measurements (ADR-339); the reach task is declared in the same script",
+  "checkpoint_every": 20,
+  "envs": 1024,
+  "iterations": 240,
+  "learning_rate": 0.0003,
+  "seed": 0,
+  "timeout_seconds": 3600
+ },
+ "trainer_exit": 0,
+ "training_wall_seconds": 619.6,
+ "trainer_final": {
+  "iteration": 239,
+  "state": "done",
+  "reward_per_step": 0.5945913195610046,
+  "loss": 0.5040769577026367,
+  "episode_steps": 20.0,
+  "seconds": null,
+  "device": "gpu"
+ },
+ "best": {
+  "iteration": 239,
+  "reward_per_step": 0.5945913195610046
+ },
+ "reward_curve_every_20": {
+  "columns": [
+   "iteration",
+   "reward_per_step",
+   "episode_steps"
+  ],
+  "rows": [
+   [
+    0,
+    -0.1539,
+    20480.0
+   ],
+   [
+    19,
+    0.1846,
+    20.0
+   ],
+   [
+    39,
+    0.4471,
+    20.0
+   ],
+   [
+    59,
+    0.5302,
+    20.0
+   ],
+   [
+    79,
+    0.556,
+    20.0
+   ],
+   [
+    99,
+    0.5635,
+    20.0
+   ],
+   [
+    119,
+    0.5689,
+    20.0
+   ],
+   [
+    139,
+    0.5711,
+    20.0
+   ],
+   [
+    159,
+    0.5752,
+    20.0
+   ],
+   [
+    179,
+    0.5778,
+    20.0
+   ],
+   [
+    199,
+    0.5818,
+    20.0
+   ],
+   [
+    219,
+    0.5906,
+    20.0
+   ],
+   [
+    239,
+    0.5946,
+    20.0
+   ]
+  ]
+ },
+ "memory": {
+  "host_peak_bytes": 7083646976,
+  "gpu_peak_mib": 15137,
+  "samples": 130
+ },
+ "resource_bound": {
+  "MemoryCurrent": "4518006784",
+  "MemoryPeak": "4645003264",
+  "MemoryMax": "21474836480",
+  "ActiveState": "active"
+ },
+ "live_browser": {
+  "persistent_server": true,
+  "default_view_kind": "RUN heron1",
+  "model_state": "loaded",
+  "model_components_listed": 15,
+  "reload_count": 1,
+  "samples": 7,
+  "first_seen_max_committed_to_page_s": 1.1,
+  "first_seen_count": 6
+ },
+ "observer_exit": 0,
+ "update_intervals": {
+  "note": "every trainer-committed update interval over the whole run; boundary = the compile at update 0 and each checkpoint step (every 20th update)",
+  "count": 240,
+  "plain": {
+   "count": 204,
+   "median_s": 1.067,
+   "min_s": 1.053,
+   "max_s": 1.08
+  },
+  "boundary": [
+   {
+    "iteration": 0,
+    "seconds": 49.1
+   },
+   {
+    "iteration": 1,
+    "seconds": 10.1
+   },
+   {
+    "iteration": 19,
+    "seconds": 26.6
+   },
+   {
+    "iteration": 39,
+    "seconds": 25.8
+   },
+   {
+    "iteration": 59,
+    "seconds": 26.2
+   },
+   {
+    "iteration": 79,
+    "seconds": 25.9
+   },
+   {
+    "iteration": 99,
+    "seconds": 26.1
+   },
+   {
+    "iteration": 119,
+    "seconds": 26.8
+   },
+   {
+    "iteration": 139,
+    "seconds": 26.3
+   },
+   {
+    "iteration": 159,
+    "seconds": 26.3
+   },
+   {
+    "iteration": 179,
+    "seconds": 26.4
+   },
+   {
+    "iteration": 199,
+    "seconds": 26.5
+   },
+   {
+    "iteration": 219,
+    "seconds": 26.4
+   }
+  ],
+  "concurrent_loads_during_run": [
+   "checkpoint policy declaration (script --set), rollout and record",
+   "one checkpoint video render",
+   "the observer and one persistent-dashboard browser check"
+  ]
+ },
+ "render_overhead": {
+  "note": "trainer-committed iteration intervals; the render window is wall clock around the video render only",
+  "before_window": {
+   "count": 23,
+   "median_s": 1.071,
+   "median_excluding_checkpoint_boundaries_s": 1.071,
+   "max_s": 26.608
+  },
+  "during_window": {
+   "count": 11,
+   "median_s": 1.072,
+   "median_excluding_checkpoint_boundaries_s": 1.072,
+   "max_s": 1.077
+  },
+  "after_window": {
+   "count": 36,
+   "median_s": 1.07,
+   "median_excluding_checkpoint_boundaries_s": 1.07,
+   "max_s": 26.242
+  },
+  "concurrent_renders": 1,
+  "render_seconds": 13.231
+ },
+ "checkpoint20": {
+  "run": "heron1-checkpoint20",
+  "playback_revision": "a83f2fb51b72aa605f25babcde6b706561e9d9f45c5515acbba88ee19a6fe0e4",
+  "browser_saw_revision": true,
+  "policy_sha256": "eb7610301fc545f10f4ce2f31a57478a64222b354207f3a988fbf6da86666a9f",
+  "model_sha256": "cc991b947c3554d99ae7971f4e93f2af3b5f23609c0820d8aad36e754aa2cc59",
+  "task_sha256": "691c8c144faeff10699dd0494eba886ce18a7d978ff7c89aa5c1b27ae74cd00c",
+  "trace_sha256": "72f08d4ecb37c15b62e186b4958e763da3c170d0df9809000907765ab746a677",
+  "seed": 0,
+  "step_count": 200,
+  "observed_s": 4.0,
+  "termination": "",
+  "terminated": false,
+  "time_limit_reached": true,
+  "total_reward": -0.37614054541767905,
+  "tip_start_mm": [
+   70.0,
+   0.0,
+   120.0
+  ],
+  "tip_end_mm": [
+   -6.02,
+   0.0,
+   147.7
+  ],
+  "end_error_mm": 137.6,
+  "witness": {
+   "witness_error": 2.059043217409832e-08,
+   "witness_tolerance": 0.0001
+  },
+  "trainer_iterations_before_after": [
+   18,
+   37
+  ],
+  "trainer_active_after_browser": true,
+  "browser_check_exit": 0,
+  "render_seconds": 13.231,
+  "video": {
+   "path": "rollout-9c057f2392b741dfdc75395a436a26fc315ff455ddb05e4ea93e7b901a022532.webm",
+   "sha256": "9c057f2392b741dfdc75395a436a26fc315ff455ddb05e4ea93e7b901a022532",
+   "frames": 41,
+   "fps": 10,
+   "duration_seconds": 4.1,
+   "sim_seconds": 4.0,
+   "style": "cadex-prototype-dark-v1",
+   "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+   "width": 512,
+   "height": 512,
+   "showing": "tessellated solids of the accepted revision; collision proxies not drawn",
+   "accepted_revision": "a83f2fb51b72aa605f25babcde6b706561e9d9f45c5515acbba88ee19a6fe0e4"
+  },
+  "video_frame": {
+   "png": "video-heron1-checkpoint20.png",
+   "sha256": "988c1b44ef5678b0639e01ffc4a49ebfa8e3af527fdd7322c834b8173f6061fd",
+   "bytes": 110269,
+   "at_sim_s": 2.0
+  },
+  "browser": {
+   "fresh_selection": "RUN heron1",
+   "is_default": false,
+   "expected_default": "heron1",
+   "historical_selection": null,
+   "returned_to_current": "RUN heron1",
+   "decoded_frames": 41,
+   "download_sha256": "9c057f2392b741dfdc75395a436a26fc315ff455ddb05e4ea93e7b901a022532",
+   "style": "cadex-prototype-dark-v1",
+   "components": 15
+  },
+  "seeds": {
+   "schema": "heron-reach-seeds-v1",
+   "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "episode_seconds": 4.0,
+   "control_hz": 50.0,
+   "target_mm": [
+    100.0,
+    0.0,
+    60.0
+   ],
+   "reach_tol_mm": 10.0,
+   "tip_floor_mm": 5.0,
+   "success_rule": "not terminated, end error <= reach_tol, and every error over the final second <= reach_tol",
+   "end_error_mm": {
+    "mean": 137.61,
+    "min": 137.58,
+    "max": 137.66
+   },
+   "final_second_max_error_mm": {
+    "mean": 137.76,
+    "min": 137.58,
+    "max": 138.44
+   },
+   "final_second_mean_error_mm": {
+    "mean": 137.63,
+    "min": 137.49,
+    "max": 137.9
+   },
+   "min_error_mm": {
+    "mean": 67.08,
+    "min": 67.08,
+    "max": 67.08
+   },
+   "survival_s": {
+    "mean": 4.0,
+    "min": 4.0,
+    "max": 4.0
+   },
+   "successes": 0,
+   "terminations": 0,
+   "ever_within_tol": 0,
+   "full_episode": 10,
+   "mean_total_reward": -0.52,
+   "per_seed_columns": [
+    "seed",
+    "end_error_mm",
+    "final_second_max_error_mm",
+    "min_error_mm",
+    "first_within_tol_s",
+    "survival_s",
+    "success",
+    "terminated"
+   ],
+   "per_seed": [
+    [
+     0,
+     137.6,
+     137.6,
+     67.1,
+     null,
+     4.0,
+     false,
+     false
+    ],
+    [
+     1,
+     137.6,
+     137.6,
+     67.1,
+     null,
+     4.0,
+     false,
+     false
+    ],
+    [
+     2,
+     137.6,
+     137.8,
+     67.1,
+     null,
+     4.0,
+     false,
+     false
+    ],
+    [
+     3,
+     137.6,
+     137.6,
+     67.1,
+     null,
+     4.0,
+     false,
+     false
+    ],
+    [
+     4,
+     137.6,
+     137.6,
+     67.1,
+     null,
+     4.0,
+     false,
+     false
+    ],
+    [
+     5,
+     137.7,
+     138.4,
+     67.1,
+     null,
+     4.0,
+     false,
+     false
+    ],
+    [
+     6,
+     137.6,
+     137.8,
+     67.1,
+     null,
+     4.0,
+     false,
+     false
+    ],
+    [
+     7,
+     137.6,
+     137.6,
+     67.1,
+     null,
+     4.0,
+     false,
+     false
+    ],
+    [
+     8,
+     137.6,
+     137.7,
+     67.1,
+     null,
+     4.0,
+     false,
+     false
+    ],
+    [
+     9,
+     137.6,
+     137.8,
+     67.1,
+     null,
+     4.0,
+     false,
+     false
+    ]
+   ],
+   "evidence": "<project>/evidence/comparison-heron1/ot6-heron-eval-heron1-c"
+  }
+ },
+ "final": {
+  "run": "heron1-final",
+  "playback_revision": "0c8c64c92252711b630c3f86e381e9aa0788c62c7137186c8a9462912c286d5a",
+  "browser_saw_revision": true,
+  "policy_sha256": "68e1ee7b1fb59ac4f6f1f3557058e31bd1b6d31299d377018b0535cc6617c7f8",
+  "model_sha256": "cc991b947c3554d99ae7971f4e93f2af3b5f23609c0820d8aad36e754aa2cc59",
+  "task_sha256": "691c8c144faeff10699dd0494eba886ce18a7d978ff7c89aa5c1b27ae74cd00c",
+  "trace_sha256": "cdb410bf3078be376e222d4e57fd5ed46cf95dc2810e1f8d76ad7ab983358d9a",
+  "seed": 0,
+  "step_count": 200,
+  "observed_s": 4.0,
+  "termination": "",
+  "terminated": false,
+  "time_limit_reached": true,
+  "total_reward": 77.6483824386862,
+  "tip_start_mm": [
+   70.0,
+   0.0,
+   120.0
+  ],
+  "tip_end_mm": [
+   100.64,
+   0.0,
+   57.1
+  ],
+  "end_error_mm": 2.97,
+  "witness": {
+   "witness_error": 1.1573771756287796e-07,
+   "witness_tolerance": 0.0001
+  },
+  "trainer_iterations_before_after": [
+   239,
+   239
+  ],
+  "trainer_active_after_browser": false,
+  "browser_check_exit": 0,
+  "render_seconds": 14.633,
+  "video": {
+   "path": "rollout-4f16f9117af665ec625a602a4667800b9705baca6b24dda54b62300df16955c8.webm",
+   "sha256": "4f16f9117af665ec625a602a4667800b9705baca6b24dda54b62300df16955c8",
+   "frames": 41,
+   "fps": 10,
+   "duration_seconds": 4.1,
+   "sim_seconds": 4.0,
+   "style": "cadex-prototype-dark-v1",
+   "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+   "width": 512,
+   "height": 512,
+   "showing": "tessellated solids of the accepted revision; collision proxies not drawn",
+   "accepted_revision": "0c8c64c92252711b630c3f86e381e9aa0788c62c7137186c8a9462912c286d5a"
+  },
+  "video_frame": {
+   "png": "video-heron1-final.png",
+   "sha256": "e24a76f3f8e2b0a7a64f8fe21d0ed996101eb7d5c28c355bb2b8ef0855646e5b",
+   "bytes": 115781,
+   "at_sim_s": 2.0
+  },
+  "browser": {
+   "fresh_selection": "RUN heron1-final",
+   "is_default": true,
+   "expected_default": "heron1-final",
+   "historical_selection": "heron1-checkpoint20",
+   "returned_to_current": "RUN heron1-final",
+   "decoded_frames": 41,
+   "download_sha256": "4f16f9117af665ec625a602a4667800b9705baca6b24dda54b62300df16955c8",
+   "style": "cadex-prototype-dark-v1",
+   "components": 15
+  },
+  "seeds": {
+   "schema": "heron-reach-seeds-v1",
+   "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "episode_seconds": 4.0,
+   "control_hz": 50.0,
+   "target_mm": [
+    100.0,
+    0.0,
+    60.0
+   ],
+   "reach_tol_mm": 10.0,
+   "tip_floor_mm": 5.0,
+   "success_rule": "not terminated, end error <= reach_tol, and every error over the final second <= reach_tol",
+   "end_error_mm": {
+    "mean": 3.33,
+    "min": 2.96,
+    "max": 5.19
+   },
+   "final_second_max_error_mm": {
+    "mean": 9.15,
+    "min": 8.33,
+    "max": 9.6
+   },
+   "final_second_mean_error_mm": {
+    "mean": 5.69,
+    "min": 4.88,
+    "max": 6.22
+   },
+   "min_error_mm": {
+    "mean": 1.22,
+    "min": 0.36,
+    "max": 1.85
+   },
+   "survival_s": {
+    "mean": 4.0,
+    "min": 4.0,
+    "max": 4.0
+   },
+   "successes": 10,
+   "terminations": 0,
+   "ever_within_tol": 10,
+   "full_episode": 10,
+   "mean_total_reward": 71.62,
+   "per_seed_columns": [
+    "seed",
+    "end_error_mm",
+    "final_second_max_error_mm",
+    "min_error_mm",
+    "first_within_tol_s",
+    "survival_s",
+    "success",
+    "terminated"
+   ],
+   "per_seed": [
+    [
+     0,
+     3.0,
+     9.5,
+     1.0,
+     0.1,
+     4.0,
+     true,
+     false
+    ],
+    [
+     1,
+     3.0,
+     9.6,
+     0.8,
+     0.1,
+     4.0,
+     true,
+     false
+    ],
+    [
+     2,
+     3.0,
+     9.6,
+     1.2,
+     0.1,
+     4.0,
+     true,
+     false
+    ],
+    [
+     3,
+     3.0,
+     9.6,
+     1.2,
+     0.1,
+     4.0,
+     true,
+     false
+    ],
+    [
+     4,
+     3.6,
+     8.7,
+     1.8,
+     0.1,
+     4.0,
+     true,
+     false
+    ],
+    [
+     5,
+     3.0,
+     9.6,
+     1.0,
+     0.1,
+     4.0,
+     true,
+     false
+    ],
+    [
+     6,
+     3.0,
+     9.6,
+     0.4,
+     0.1,
+     4.0,
+     true,
+     false
+    ],
+    [
+     7,
+     3.5,
+     8.3,
+     1.2,
+     0.1,
+     4.0,
+     true,
+     false
+    ],
+    [
+     8,
+     3.2,
+     8.3,
+     1.8,
+     0.1,
+     4.0,
+     true,
+     false
+    ],
+    [
+     9,
+     5.2,
+     8.7,
+     1.8,
+     0.1,
+     4.0,
+     true,
+     false
+    ]
+   ],
+   "evidence": "<project>/evidence/comparison-heron1/ot6-heron-eval-heron1-f"
+  }
+ },
+ "diverged_run": null,
+ "earlier_run_records": {
+  "count": 0,
+  "note": "run records present before the training run; the driver asserts each is byte-identical afterwards, which over an empty set proves nothing"
+ },
+ "dashboard_at_end": {
+  "project": "ot6-heron",
+  "accepted_revision": "0c8c64c92252711b630c3f86e381e9aa0788c62c7137186c8a9462912c286d5a",
+  "served_at": "2026-09-14T04:43:20Z",
+  "runs": [
+   {
+    "run": "heron1-checkpoint20",
+    "status": "ok",
+    "mode": "checkpoint-playback",
+    "relation": "historical",
+    "policy_sha256": "eb7610301fc545f10f4ce2f31a57478a64222b354207f3a988fbf6da86666a9f",
+    "accepted_revision": "a83f2fb51b72aa605f25babcde6b706561e9d9f45c5515acbba88ee19a6fe0e4",
+    "videos": 1
+   },
+   {
+    "run": "heron1",
+    "status": "ok",
+    "mode": "offboard-checkpoint-experiment",
+    "relation": "historical",
+    "policy_sha256": "68e1ee7b1fb59ac4f6f1f3557058e31bd1b6d31299d377018b0535cc6617c7f8",
+    "accepted_revision": "5971903121bfcb7a90521280bc73f34f20adb869e26c51c125f07d62dacd84bd",
+    "videos": 0
+   },
+   {
+    "run": "heron1-final",
+    "status": "ok",
+    "mode": "final-policy-playback",
+    "relation": "current",
+    "policy_sha256": "68e1ee7b1fb59ac4f6f1f3557058e31bd1b6d31299d377018b0535cc6617c7f8",
+    "accepted_revision": "0c8c64c92252711b630c3f86e381e9aa0788c62c7137186c8a9462912c286d5a",
+    "videos": 1
+   }
+  ],
+  "fresh_visit_selects": "heron1-final"
+ }
+}

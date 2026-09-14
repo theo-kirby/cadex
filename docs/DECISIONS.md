@@ -23844,3 +23844,584 @@ sandbox is repaired outside the repo (`features.use_legacy_landlock` in
 AppArmor user-namespace restriction and the critic graded ot5 with no tools.
 
 This is a charter decision, not a claim that any of it exists.
+
+## ADR-329 — The review page follows its design spec (2026-09-13)
+
+The dashboard's stylesheet, markup and rendering script now follow
+`docs/REVIEW-DESIGN.md`, the ot6 charter's first criterion (ADR-328). One
+dark greyscale palette on `:root` whose page background is the environment
+module's dark scene background; one type scale (12/14/17/22 px); six
+regions in the charter's reading order under numbered sentence-case
+headings — the videos leave the artifacts card for a region of their own,
+the training table, parameters, artifacts and documents become the record
+appendix; the run list is a sticky sidebar at desk width and a closed
+`<details>` disclosure below 600 px, folded by the media query alone; the
+curves are a stat row over an `auto-fit` history grid; every table scrolls
+inside its card. The pre-spec tokens (`--panel`, `--line`, `--fg`, `--muted`,
+`--hist`), the uppercase grey headings, the fixed 520 px canvas, the fixed
+480 px video and the blue curve stroke are removed. No element id or
+`data-*` hook changed, so every ot5 browser test keeps its meaning, and the
+metric tiles keep their `key: value` text. Evidence: the after screenshots
+and receipt beside the before ones (§8 of the spec), and the rendered-page
+half of `cli/tests/test_review_design.py` — at 1400×900 and at 400×850 with
+touch emulation the layout viewport is the device width, nothing overflows
+it, the tokens and type compute to the spec, the canvas fills its column,
+and the disclosure is closed on the phone and opens on a tap.
+
+Deliberately not in this change: the viewport still renders the environment
+module's `light` palette, because the videos are captured in the same scene
+and switching or deleting that palette is D3's unit, which ships with
+decoded frames beside the reference and its own ADR. No engine, protocol,
+payload, shell or dependency change.
+
+## ADR-330 — The review viewer orbits by pointer events, and a video plays from the page's own control (2026-09-13)
+
+`review_scene.js` listened for `mousedown`/`mousemove`/`mouseup` and the
+wheel only, so on a phone — where the canvas's `touch-action: none` already
+kept a finger from scrolling — a drag did nothing at all, and the ot6
+charter's "orbitable by touch" (ADR-328, D2) was false in the code while the
+spec's §9 described a test that did not exist. The handlers are now pointer
+events: one pointer, mouse or finger, orbits; two fingers pinch-zoom; the
+wheel zooms; the canvas captures the pointer so a drag that leaves it still
+orbits. The existing mouse orbit test passes unchanged, because a mouse is
+a pointer.
+
+Each video's caption leads with a Play / Pause button of the page's own
+(`[data-video-play]`), a `--control`-height target, because the native
+controls' tap targets are not the same on every phone and, under headless
+Chromium's touch emulation, a tap on the surface only shows them. The native
+controls stay for scrubbing; playback state drives the label.
+
+The capture driver (`cli/cadex_cli/browser.py`) gains `touch`, `touch_drag`,
+`pinch`, `tap`, a `by_touch` download and a `clip` on `screenshot`, so the
+phone test and the operator capture drive the page as a finger would.
+Evidence: `test_phone_touch_orbits_pinches_plays_and_downloads` (orbit,
+pinch, Fit, legible curves, playback from a tap, download by tap with the
+recorded digest, all at 400×850 with touch emulation on a real encoded
+video), the phone receipt and seven region screenshots on the operator URL
+(`docs/REVIEW-DESIGN.md` §8a), and §9 of the spec rewritten to say exactly
+which test shows what. One behaviour of Chromium's gesture recogniser is
+recorded rather than worked around in the page: a tap within a few hundred
+milliseconds of a drag's end is dropped, so the capture script waits a
+second before tapping Fit. No engine, protocol, payload, shell or dependency
+change.
+
+## ADR-331 — The review environment is dark only: one palette, no theme setter (2026-09-13)
+
+`review_static/environment.js` carried two palettes adapted from the
+neural-whoop reference — a light "prototype map" and the reference's own dark
+void — behind `setTheme`, and both the viewport and the video capturer built
+it light (ADR-301, the owner's light-grey request of the time). The ot6
+charter (ADR-328) chose dark only and said the light palette is removed, not
+kept behind a switch; the page's own palette (ADR-329) had already made
+`--bg` equal to the dark scene background, so until this change the viewport
+was the one light region inside a dark page.
+
+The module now exports one `PALETTE` (the reference's dark tile and scene
+values, unchanged) and no `setTheme`; `createEnvironment` applies it once at
+construction, and everything else — the fog derived from the standoff, the
+floor sized from the fog, the grid subdivision from the framing — is as it
+was. The viewer's style name, recorded into every new video, is
+`cadex-prototype-dark-v1`; recordings made as `cadex-prototype-light-v1`
+stay retained and are labelled with their own style, and the ot5 receipts
+that pin that style are unchanged because they describe those recordings.
+
+Evidence, from `docs/probes/ot6/look/compare.py` on the persistent operator
+dashboard serving `ot5-lark-copy85` with `lark98-final` re-rendered in the
+dark look: the viewport and the capture page are byte-identical at the same
+pose and camera; the decoded first video frame is within the codec tolerance
+of that viewport (mean absolute RGB error 1.10 of 255); the reference's own
+unmodified scene and environment modules, dark theme, drawing the same Lark
+solids at the same four cameras, give frames whose mean luminance matches
+ours to 0.1; and the shipped reference clips, decoded, sit beside them in
+`docs/probes/ot6/look/README.md` with the written assessment the charter
+asks for — floor and grid, horizon and fog, palette, lighting and shadows,
+materials, framing and camera — including what is *not* yet matched: the
+tracking camera at a declared framing fraction and the timer overlay, which
+D3 still owes.
+
+Removal, under the change policy: two palette objects and one function
+gone from a file that is ours; `test_the_environment_is_dark_only_and_the_style_says_so`
+holds the module to one palette and no theme setter. No engine, protocol,
+payload, shell or dependency change.
+
+## ADR-332 — Recordings follow the subject at a declared framing, with a timer, through the shared scene (2026-09-13)
+
+**Context.** ADR-331 made the environment dark only and shared between the
+viewport and the capture, and its assessment (`docs/probes/ot6/look/README.md`)
+named the two things the reference look still had that Cadex's videos did not:
+a camera that tracks the subject at a declared framing fraction, and the timer
+overlay. The video was a fixed fit over every visited pose, so a rollout that
+travelled shrank its subject; the charter's D3 (ADR-328) asks for both.
+
+**Decision.** The follow rig and the timer live in the one scene module both
+clients share (`cli/cadex_cli/review_static/review_scene.js`), not in the
+renderer or the page:
+
+- `follow(track, options)` takes the subject's centre per output frame and
+  returns per-frame cameras plus the declared and measured numbers. The
+  subject's standing height fills a declared fraction of the frame height
+  (0.22, the reference's default) at one standoff; the camera keeps the
+  viewer's yaw and pitch and translates with a Hann-smoothed copy of the
+  track (half-window 4 frames, 0.4 s at 10 fps — the reference's 20 at 50 Hz);
+  the subject rests 0.06 of the half-frame below centre; and it may lead the
+  anchor by 0.26 of the half-frame before an `l·tanh(d/l)` limiter pulls the
+  anchor after it. Frame *i* is a pure function of the track, never of frame
+  *i − 1*. The end anchors sit inside the track because the symmetric window
+  is truncated there, which is the reference's behaviour too.
+- `setClock(seconds)` draws the reference's caption pill inside the WebGL
+  frame, bottom-left, in the page's ink and type at 3.2 % of the frame
+  height, so `png()` on the capture and the viewport bake the same pixels;
+  `null` hides it, and the viewport is at rest with it hidden.
+- `modelPixels()` boxes the model's pixels against the same environment-only
+  render (overlay included in both), and `nonBackgroundPixels()` is its count.
+
+`cadex_cli.video` builds the track from the sampled solved poses, takes the
+standing height from the first, calls `follow`, refuses a rig whose worst
+residual drift is not inside its budget, and records `framing` (declared and
+measured), `overlay` and the first frame's `camera` into the video; the
+`sampling` string says "follow camera at the declared framing". The style
+name stays `cadex-prototype-dark-v1`: the palette and environment are
+unchanged, and the rig is recorded per video.
+
+**Evidence.** `docs/probes/ot6/look/follow.py` on the persistent operator
+dashboard serving `ot5-lark-copy85` with `lark98-final` re-rendered: the
+viewport's own `follow` over the same track gives the recording's standoff and
+first camera; the viewport at the recording's camera, pose and clock is within
+1.16–1.24 of 255 of the decoded frames at 0, 4 and 8 s and byte-identical to
+the capture page; apparent size 0.2198–0.2201 across the clip; the floor
+outruns the fog at the close (0.5), follow and wide (0.08) framings and after
+a pointer drag; the timer's pixels are confined to the bottom-left. The frames
+sit beside the reference's shipped clips in `docs/probes/ot6/look/README.md`
+with the assessment. `test_video.py` exercises the rig on a synthetic walk and
+a whip and the overlay's pixel footprint; `test_review_design.py` pins the
+receipt.
+
+**Consequences.** No engine, protocol, payload, shell or dependency change.
+The per-frame capture now sets the camera as well as the poses and the clock
+(16.4 s for 81 frames of Lark, from 13.3). Lark barely moves, so the
+smoothing and the drift limiter are proven on the fixture rather than on this
+clip; a travelling mechanism (D6–D8) will be the first real exercise.
+
+## ADR-333 — The viewer shows the tessellated solids and says so; collision proxies only under a labelled toggle (2026-09-13)
+
+**Context.** The charter's D4 (ADR-328): the dashboard viewport and the
+videos render the accepted revision's tessellated solids, never the
+collision proxies, unless a visible toggle labelled as collision geometry is
+on, and the video's identity strip names what is shown. Both clients already
+drew the solids and nothing else, but nothing said so, and the proxies the
+simulation actually collides with — boxes and capsules on Lark, declared per
+part by the design turn (ADR-281) — were nowhere on the page.
+
+**Decision.** The proxies come from the **MJCF the view already retains at
+its own identity**, never from a rebuild: for a run, its recorded
+`model_xml` export (refused when the rollout trace's policy receipt names a
+different model digest, so a historical run's proxies are the ones it rolled
+out against); for the accepted view, the accepted attempt's `assembly.mjcf`
+output; for a run that borrows the accepted model, the accepted attempt's.
+`review_server.collision_proxies` parses bodies and geoms with the standard
+library, keeps only geoms that take part in contact, expresses each in its
+component's frame (bodies are named as the trace's components are) in mm and
+xyzw, carries inline mesh assets as vertices and faces, and lists a plane or
+an unsupported type without drawing it. The manifest's `collision` block
+says where the proxies came from, their digest, or why there are none.
+
+The shared scene module (`review_scene.js`) gains `setProxies` and
+`showProxies`: outlines (`EdgesGeometry`, the page's `--warn`, depth test
+off so they read through the solid) parented to the solid they belong to,
+so `setPoses` moves both; hidden until shown; `stats()` reports `showing`
+and the proxy counts. The page adds the checkbox **show collision
+geometry** to the model controls, disabled with the reason when no export is
+retained, keeps the reader's choice across run selection, appends
+`· showing: …` to the model status line with a `data-showing` hook, and
+lists each component's proxies (`collision: 1 box`). The video renderer
+never hands the capture any proxies and refuses to publish if the capture
+reports anything but `tessellated solids`; each new video records
+`showing` and `proxies: {drawn: false, retained: n}`, and the page's
+identity strip appends `· showing …`, labelling older recordings as not
+having said.
+
+**Evidence.** `test_collision_proxies_come_from_the_retained_mjcf_at_the_same_identity`
+(both views, units, `fromto`, inline mesh, plane, bad size, digest
+mismatch, missing export); `test_browser_shows_solids_by_default_and_proxies_only_under_the_labelled_toggle`
+on a fixture whose proxies differ from its solids (the box three times the
+torso cube, the capsule five times the leg cube): off by default, the drawn
+pixel box grows on every side when on, proxies follow poses, each run's are
+its own, a run without its export disables the toggle and says why;
+`test_video_shows_the_solids_never_the_proxies_and_says_so`: the decoded
+first frame is inside the codec tolerance of the shared scene with proxies
+hidden and not with them shown, and the identity strip names it. The real
+biped's operator-URL evidence waits for D5's project: Lark's proxies are
+boxes the size of its box parts, so it cannot show the difference.
+
+**Consequences.** No engine, protocol, payload, shell or dependency change;
+`xml.etree` is the standard library. A model manifest is one block larger;
+an inline mesh proxy is carried in full, bounded by the 8 MiB MJCF read
+limit. The style digest is unchanged in meaning: proxies are never in a
+recording.
+
+## ADR-334 — Finch: the MG90S joint module, and the free-base gap it exposed (2026-09-13)
+
+**Context.** The charter's D5 (ADR-328): the biped this run trains must be a
+mechanism someone could build — MG90S servos from `lib.servo` with catalog
+horns, bearings and fasteners, modelled printable parts that mount them, an
+inventory, a fit check, nothing of the world in the design. Lark (ot5) was
+boxes on a cyan slab. The project is `ot6-finch`, outside the repository;
+`docs/probes/ot6/finch/` is the evidence and `fit_check.py` the generator of
+its `docs/INVENTORY.md` and `docs/FIT.md`.
+
+**Decision.** One joint module for all four joints, dimensioned from the
+catalog's datasheet numbers: the servo in a 0.3 mm window through the
+parent's outboard cheek with its tabs seated and two M2×6 screws in 1.6 mm
+tap drills; the measured micro single-arm horn in a 2.5 mm form-fit slot on
+the child block, clamped to the spline by an M2×16 centre screw from the
+inboard end; the child's printed 7.9 mm stub in an MR128 bearing pressed
+into the parent's inboard cheek. Purchased parts are separate components
+fixed to their hosts, authored in the host's frame; each link's frame is its
+joint axis. Collision proxies are boxes per printed part and per servo case,
+declared with their relation to the solid; horns, bearings and screws carry
+mass only. The fit check is measurement, not construction: the engine's
+pairwise BREP clearance at the solved pose (ADR-237) and `cadex section`
+contour gaps through each cheek, against the declared clearances and the
+analytic thread-engagement volumes — 85 checks, all hold.
+
+**What it exposed.** Both `assembly.solve` (`no_grounded_component`, code
+-6) and the dynamics export refuse an assembly with no grounded component,
+and the charter forbids a floor in the design. The pelvis therefore carries
+`grounded=True` as a solver flag; the exported MJCF has a static pelvis and
+is not the trainable model. The engine unit that precedes D6 is: an assembly
+with no grounded component solves with its first component held as a free
+base, the exporter gives that base a free joint (the island path already
+does), and the ground plane comes from the environment — declared once on
+the task or the export, never as a part.
+
+**Consequences.** No engine, protocol, payload, shell or dependency change in
+this unit. The persistent operator dashboard serves `ot6-finch`; Lark's copy
+is no longer served, per the one-project-per-server rule. D4's remaining
+evidence — the labelled toggle on a real biped whose proxies stand off its
+solids — is `operator-proxies.png` beside `operator-solids.png`.
+
+## ADR-335 — A free base: an assembly that grounds nothing solves, exports with a free joint, and stands on the environment's floor (2026-09-13)
+
+**Context.** ADR-334 named the gap that stopped D6: both `assembly.solve`
+(`no_grounded_component`, code −6) and the dynamics tree refused an assembly
+with no grounded component, and the ot6 charter (ADR-328) forbids a floor,
+slab or wall in any design. Finch's pelvis therefore carried `grounded=True`
+as a solver flag and its accepted MJCF had a static base — not the model a
+policy could be trained on. Lark's floor had been a grounded cyan slab that
+was itself a part of the design, which is exactly what the charter retired.
+
+**Decision.** No grounded component means a **free base**, not an error, and
+the ground comes from the environment:
+
+- `assembly.solve` (`cadex_assembly_worker.py`): with `require_solved=True`
+  and nothing grounded, the **first component in script order is held** for
+  the native solver by a grounded joint the script did not write. It is
+  reported in the diagnostics as `free_base` beside `grounded_components:
+  []`; it is never marked grounded, so nothing downstream treats it as
+  static. The `-6` verdict is removed from `_SOLVER_VERDICTS` because
+  nothing produces it. Only the solved path holds: `require_solved=False`
+  never refused, and holding there would move placements an accepted
+  project may already carry.
+- `extract_tree` (`CadexDynamics.py`) no longer refuses; the island path it
+  always had gives that same first component a free joint and hangs the
+  rest of the mechanism off it. The pose is exact because the solver held
+  it — MUJOCO.md hazard 11 (an island collapsing onto its joint) is narrowed
+  to islands nothing holds.
+- `build_model` writes **`environment/floor`** — one infinite plane on the
+  world body at z = 0, +Z up, MuJoCo's default contact parameters (friction
+  1.0 / 0.005 / 0.0001, `condim` 3) — when and only when no component is
+  grounded, and records it in the manifest as `dynamics.environment.floor`;
+  a grounded model carries `environment: null` and gets no floor. The pair
+  rules already in `_contact_parameters` mean a sole's declared friction
+  wins, so the environment stays neutral and the design owns its contacts.
+  The review viewer lists nothing new: the floor is on `<worldbody>`, not in
+  a body, and the mat the environment module draws is already at the
+  model's lowest point.
+
+**Alternatives.** An explicit `ground=` on `assembly.mjcf` or the task was
+considered and not taken: a script that grounds nothing has already said what
+it means, and a declaration would be one more thing to get wrong for the
+same model. A floor on every model was not taken either: a grounded design's
+ground is whatever it grounded, and a plane under a pendulum's base would be
+a contact nobody declared.
+
+**Evidence.** `test_dynamics_tree.py` (the refusal becomes the free-base
+attachment), `test_dynamics_free_base.py` (the floor exists for a free base
+and not for a grounded one, a block placed on z = 0 rests there through half
+a second of physics, and the manifest names the floor and the resting
+contact with `world`), and a live `cadexd` script in
+`test_dynamics_mjcf_live.py` whose export a stock MuJoCo opens with eight
+coordinates and the floor. Finch is re-accepted without `grounded=True`
+(revision `bcce40a82d57…`, `free_base: pelvis_link`, 87 fit checks hold with
+the two soles resting on `world` at t = 0), and
+`docs/probes/ot6/finch/free_base.json` is the stock-MuJoCo rollout: held at
+its zero targets it stands for 2 s at 119.85 mm; shoved forward at 0.3 m/s
+with actuation disabled it falls onto the floor and rests with its pelvis at
+30.3 mm, never below it, with 2.79 mm of transient impact penetration.
+
+**Consequences.** No protocol op or `OP_ARG_SPECS` change (the xscript
+surface gains a case, not an argument); the solve diagnostics gain one key,
+`free_base`, and the model manifest one block, `environment`. Payload
+touched, so the packaged gate runs. D6 is unblocked: the next unit is Finch's
+task declaration and one bounded training run. Not done here: a second
+island beside a free base is still not held (hazard 11 applies to it), and
+the floor's contact parameters are MuJoCo's defaults rather than a
+declaration — if a design ever needs a different ground, that is the
+declaration ADR-334 sketched, and it can be added then.
+
+## ADR-336 — Finch trains: the stand task declared, one bounded GPU run measured over its seed set, and the recorder taking a real tessellation (2026-09-13)
+
+**Context.** ADR-335 left Finch (ADR-334) trainable: a free base on the
+environment's floor. D6 of the ot6 charter (ADR-328) asks for one bounded
+real GPU run on it, a checkpoint video and a final video in the D3 look on
+the operator dashboard, and the measured displacement, survival and falls
+over a declared episode and seed set — with "standing for the full episode"
+as the bar and failing it a valid result. Lark's driver, evaluator and
+observer (`docs/probes/lark-fresh/train.py`,
+`docs/probes/wren-fresh/compare.py`, `observe.py`, `check_video.py`) were the
+precedent; two of them had Lark's shape baked in (eight components, a base
+found by the word "torso") and one product fact stopped the run halfway.
+
+**Decision.**
+
+1. *The task is declared in the script, as data* (project ADR-005,
+   `docs/design-specs.md`): `stand_task` on `finch_model`, 400 steps at 50 Hz
+   (8 s), the four servo position targets as actions bounded by the joint
+   limits, reward `alive_bonus` 0.5 + `forward_progress` 0.002·`comv_x` −
+   `control_cost` 2e-6·Στ², termination `fell` when `pelvis_z` < 0.7 × the
+   120 mm standing hip height = **84 mm**, reset variation on `pelvis_link`
+   of a 0–2° rigid tilt with a 4–10 mm lift and a 0–60 mm/s stumble
+   (measured floor clearance 0.0 mm). The forward weight is a fifth of
+   Lark's because Lark's taught a lunge (ADR-313); the alive bonus is what a
+   standing policy earns. The seed set is **0–9** through `rollout_seed`; a
+   placeholder policy declaration under `policy_on` carries the retained
+   policy's name and digest at playback. Accepted as revision
+   `a3dc4e9a0f84…` with `cadex script --set` — no model turn.
+2. *The recorder takes a real tessellation.* `cadex_cli.video` refused
+   Finch's checkpoint video with `incomplete or excessive component
+   geometry`: its cap was 20 000 triangles, sized for Lark's 96 boxes, and
+   Finch's 29 solids tessellate to **95 212**. The cap existed because the
+   per-frame trajectory bounds — the shadow camera's extent and the follow
+   rig's track — were computed in Python over every triangle at every solved
+   pose, which at 95 k triangles and 400 poses is minutes, not the 300 s
+   budget's fraction. Now the page fetches each retained solid over the
+   loopback server (the `load` path the viewer already uses) and reports the
+   triangle count it built, which must equal the count of the file Python
+   validated; the bounds and the track are computed in the scene module
+   (`boundsOver`) exactly, over every vertex, where the vertices are. The
+   cap is 500 000. Finch's 4-frame checkpoint video rendered in 3.5 s.
+   `test_video.py` renders a 27 652-triangle run with a turned tetrahedron
+   and holds the recorded bounds and standing height to the exact Python
+   bounds within 1e-3 mm, and shows they are narrower than the box of the
+   part's turned box.
+3. *The driver and the evaluator are Finch's own copies*
+   (`docs/probes/ot6/finch/train.py`, `evaluate.py`), not edits to Lark's:
+   29 components, the base named (`pelvis`), the episode and rate read from
+   the run's recorded parameters, the trainer bound raised to `timeout 3600`
+   (the charter allows two hours; Lark's 1800 was measured for eight bodies
+   and Finch has thirty) with `MemoryMax=20G` unchanged. Concurrent rendering
+   is bounded to the one checkpoint video and measured against the trainer's
+   committed update intervals.
+
+**Evidence.** `docs/probes/ot6/finch/training.json` (14.2 KB), the two
+decoded frames beside it and the README's assessment, pinned by
+`test_finch_training_receipt_measures_the_real_biped_in_the_new_look`. The
+run `finch1` exited 0 after 2048.7 s (240 updates, iteration 239 `done` on
+`gpu`; host peak 9.72 GB under `MemoryMax=20G`, GPU peak 15 695 MiB). Over
+seeds 0–9: **checkpoint 20 fell on 10 / 10** at 0.20–0.34 s (x displacement
+−60 mm mean); **the final policy stood the full 8 s on 10 / 10** and shuffled
+forward 361 mm mean (319–433). Reward per step −0.071 → 0.62 (best 0.655 at
+update 164). Both videos are `cadex-prototype-dark-v1`, name `tessellated
+solids of the accepted revision; collision proxies not drawn`, and were
+browser-checked on the persistent dashboard, the checkpoint's at trainer
+update 54 with the trainer active (its interval medians before, during and
+after the 3.47 s render: 4.934, 4.909 and 4.949 s) and the final's after
+`done`, where a fresh visit selects `finch1-final`. The driver's own
+checkpoint publication failed at the old 20 000-triangle cap, which is what
+§2 fixed; the hand render on the fixed recorder stands in for it and the
+receipt says so. The stand bar is met by the final policy and failed by the
+checkpoint, both measured.
+
+**Consequences.** No engine or protocol change. The recorder's `style_sha256`
+changes with the scene module, as it does for any change to the file that
+determines pixels; earlier recordings keep theirs. A run whose STL files
+exceed 500 000 triangles is still refused, and the 300 s frame-production
+budget still applies to the browser's rendering, which for Finch is well
+inside it. Evaluations wait for the trainer to finish so that the training
+measurement stays clean; nothing in this unit adds a dependency.
+
+## ADR-337 — Robin's authored mechanism accepted after a measured reset-lift repair (2026-09-14)
+
+The critic authorized routine repair of the product-agent candidate without
+another provider turn. Change only reset lift [1,3] to [3,5] mm, based on the
+engine's measured 1.31 mm added penetration; submit the full source through
+`cadex script --set --replace`, explicitly retiring the accepted motor probe.
+The complete 24-solid mechanism passes acceptance and 84 retained fit checks,
+with catalog inventory and proxy relations recorded. The persistent dashboard
+now inspects Robin's accepted artifacts. No product code or dependency changes.
+
+A subsequent section command refuses restore because the rebuilt digest differs.
+Keep the refusal: accepted artifacts remain evidence of that acceptance, not
+proof of reopen. Training must follow a repair of this blocker. The receipt
+[`docs/probes/ot6/robin/ACCEPTED.md`](probes/ot6/robin/ACCEPTED.md) distinguishes
+original authorship, the literal repair, measured fits, source-derived dimensions
+and unverified physical retention. D7 stays open.
+
+## ADR-338 — Robin trains: the default rate diverged, the bounded run at 1e-4 completed, and the balancer it measured leans and drives (2026-09-14)
+
+**Context.** ADR-337 accepted Robin, the product-agent two-wheeled balancer,
+and the D-bore revision of 2026-09-14 (`docs/probes/ot6/robin/BORE.md`) made
+it reopen. D7 of the ot6 charter (ADR-328) asks for one bounded training run
+on it with its videos and measurements on the dashboard, and says poor
+performance is a valid measured result. Finch's driver, evaluator and
+receipt writer (ADR-336) were the precedent, with three Finch facts baked in:
+29 components, a base found by the word `pelvis`, and a fall threshold
+recomputed from limb lengths.
+
+**Decision.**
+
+1. *A diverged run is a failed run, kept, and the fix forward is the
+   trainer's own suggestion.* `robin1`, at the trainer's default learning
+   rate 3e-4, went non-finite at update 128 and stopped itself (ADR-088). Its
+   run record was rewritten with `status: failed` and the trainer's error,
+   its checkpoints and its checkpoint-20 video — published while it was
+   active — stay, and the dashboard serves it as a failed historical run.
+   `robin2` re-ran the identical request with `--learning-rate 1e-4` and
+   nothing else changed: the reward, termination, reset variation and
+   episode are the task the product agent declared, so the two runs share
+   one objective identity. Retuning the reward to make training stable would
+   have changed what was measured. The driver now records the rate in the
+   run's `requested` block and passes it explicitly.
+2. *The evaluator and receipt writer are Robin's own copies*
+   (`docs/probes/ot6/robin/train.py`, `evaluate.py`, `report_training.py`):
+   24 components, the base `comp_chassis` (the trace's key for the component
+   the script names `chassis`), the fall threshold read from the retained
+   task bundle's termination on `chassis_z` rather than recomputed, a fall
+   flag that is any termination other than the time limit (Robin's rule is
+   unlabelled, so the trace names it `termination`, not `fell`), and the
+   chassis pitch — the quantity the reward penalises — measured per seed
+   from the chassis quaternion as the largest |pitch| and the final pitch.
+3. *Render overhead when the render is shorter than a checkpoint step.*
+   Robin's updates take 0.81 s and its checkpoint steps 34 s; the 4.4 s
+   checkpoint render fell entirely inside the step at update 39, so no update
+   interval overlaps it. The receipt then reports the enclosing interval
+   beside the run's other checkpoint steps, and the test accepts an empty
+   during-window only with that measurement present.
+
+**Evidence.** `docs/probes/ot6/robin/training.json` (15.8 KB), the two
+decoded frames beside it and `TRAINING.md`'s assessment, pinned by
+`test_robin_training_receipt_measures_the_balancer_in_the_new_look`.
+`robin2` exited 0 after 620.8 s (240 updates on 1024 environments, `done`
+on `gpu`; host peak 7.41 GB under `MemoryMax=20G`, GPU peak 15 139 MiB).
+Over seeds 0–9: **checkpoint 20 fell on 10 / 10** at 0.40–0.58 s with the
+pitch reaching 64–74°; **the final policy survived the full 8 s on 10 / 10**
+— by holding a +11.0 to +11.2° lean and driving 1.8 m backward (seed 0
+also 1.9 m sideways), the equilibrium in which the damped gearmotors'
+torque at a steady wheel speed balances gravity's moment. Reward per step
+0.127 → 0.688 (best 0.703 at update 205). Both videos are
+`cadex-prototype-dark-v1`, name `tessellated solids of the accepted
+revision; collision proxies not drawn`, and were browser-checked on the
+persistent dashboard, the checkpoint's with the trainer active (the
+enclosing checkpoint step 34.50 s against 33.3–34.5 s for the others;
+plain-update medians 0.875 s before and 0.849 s after) and the final's
+after `done`, where a fresh visit at 1400×900 and 400×850 selects
+`robin2-final`. The observer saw six trainer updates each reach the page
+within 0.95 s.
+
+**Consequences.** No engine, protocol or product-code change; no new
+dependency. The task's bar (chassis frame above 46.2 mm for 400 steps) is
+met by the final policy and the operator's bar (upright and still) is not:
+a velocity or position term in the reward is the open design decision,
+recorded in the project's `DECISIONS.md` for the next turn on Robin rather
+than taken here. The default learning rate's divergence on this task is a
+measured fact about this reward on this model, not a diagnosis.
+## ADR-339 — Heron: the product agent's two-DoF MG90S arm, accepted after three measured corrections (2026-09-14)
+
+D8's design half (ADR-328). The product agent designed Heron from one prompt in
+the fresh external project `ot6-heron`: two MG90S on the parent/child joint
+module (servo in a cheek window, catalog single-arm horn in a pocket on the
+child, MR128 on a printed stub in the opposite cheek, M2 catalog screws), three
+printed parts, a grounded base, the forearm's frame at the tip, a fixed-target
+reach task with per-seed forearm pushes because a grounded mechanism has no
+base to vary at reset. The engine accepted the first mechanism; the published
+measurements showed three defects the script's own stdout denied: a bench
+`plane` collision on the base (the engine supplies a floor only to a free base,
+ADR-335, so the agent reached for one; the charter forbids world geometry in a
+design), the servo tab plates buried in the cheeks (248.2016 mm³ common volume,
+exactly the tab plate outside the window minus its holes), and horn pockets
+that cleared the horn on their floor (0.2 mm, the horn meeting nothing). Each
+went back to the agent as a resumed turn quoting the measurement; each
+correction was the agent's, submitted whole, and is a line in the project's
+`DECISIONS.md`. Accepted at `9c1f2fe7ea19…`; 55 of 55 fit rules hold on 105
+pairs; five fresh-process restores match the accepted digest; the persistent
+dashboard serves Heron's real solids at both widths. Rule kept from this: a
+script's stdout is a claim, the retained clearance pairs are the evidence, and
+a fit check reads only the latter. Receipt:
+[`docs/probes/ot6/heron/README.md`](probes/ot6/heron/README.md). No product
+code, protocol or dependency changed. Training is D8's next unit.
+
+## ADR-340 — Heron trains: one bounded run at the default rate completed, and the arm it measured reaches on every seed (2026-09-14)
+
+**Context.** ADR-339 accepted Heron, the product-agent two-DoF MG90S arm, and
+left D8's training half open: one bounded run with checkpoint and final videos
+in the D3 look and the reach measured over seeds 0–9. Robin's driver, evaluator
+and receipt writer (ADR-338) were the precedent, with Robin's facts baked in
+(24 components, a chassis and its pitch, a fall threshold). Iteration 25 wrote
+Heron's copies and launched the run; the trainer was still at update 139 when
+that iteration ended, so no receipt existed and the critic rejected it.
+
+**Decision.**
+
+1. *Finish the run that was launched rather than start another.* The trainer
+   and its driver were alive under their own 3600 s timeout; iteration 26
+   waited for them, then evaluated, reported and assessed. One project, one
+   bounded run; nothing was re-launched and no retained artifact was rewritten.
+2. *The evaluator and receipt writer are Heron's own copies*
+   (`docs/probes/ot6/heron/train.py`, `evaluate.py`, `report_training.py`,
+   `servo_view.py`): 15 components, the measured body `comp_forearm` whose
+   frame the agent authored at the tip, the termination read from the retained
+   task bundle's rule on `tip_z`, the target and tolerance from the run's own
+   recorded effective parameters, and per seed the reach error at episode end
+   and over the final second, the smallest error, the first time within
+   tolerance, successes and terminations. Success is the script's stated bar:
+   within `reach_tol` at the end and over the whole final second, unterminated.
+3. *The trainer's episode-length metric is reported as what it is.* It is
+   unroll × environments over endings in the unroll, so on a task whose only
+   endings are the synchronized time limit it alternates between 20 480 and
+   20.0; the assessment says so instead of reading it as an episode length.
+4. *A servo-side viewport frame is part of the evidence.* The dashboard's
+   default view is from the bearing side; `servo_view.py` orbits the persistent
+   dashboard's viewport by one pointer drag to the −Y side and keeps the frame
+   with its camera before and after, so the receipt shows the servo cases,
+   tab plates and horns rather than asserting they are there.
+
+**Evidence.** `docs/probes/ot6/heron/training.json` (15.1 KB), the two decoded
+frames and the servo-side viewport frame beside it, and `TRAINING.md`'s
+assessment, pinned by
+`test_heron_training_receipt_measures_the_arm_reach_in_the_new_look`.
+`heron1` exited 0 after 619.6 s (240 updates on 1024 environments at the
+default 3e-4, `done` on `gpu`; host peak 7.08 GB under `MemoryMax=20G`, GPU
+peak 15 137 MiB; plain updates median 1.067 s, checkpoint steps 25.8–26.8 s).
+Reward per step −0.154 → 0.595, best at the last update. Over seeds 0–9:
+**checkpoint 20 reached on 0 / 10** — it folds the arm back to (−6, 0, 148)
+and holds it at the joint limits, never nearer the target than its 67.08 mm
+start; **the final policy reached on 10 / 10** — within 10 mm by 0.1 s on
+every seed, nearest 0.36–1.85 mm, ending 2.96–5.19 mm away, never further
+than 9.60 mm over the final second after the two pushes; no seed terminated.
+The hold sits about 3 mm below the target and oscillates within the tolerance
+(final-second maximum 8.3–9.6 mm against a mean of 4.9–6.2 mm). Both videos
+are `cadex-prototype-dark-v1`, name `tessellated solids of the accepted
+revision; collision proxies not drawn`, and were browser-checked on the
+persistent dashboard, the checkpoint's with the trainer active (the 13.2 s
+render fell across plain updates 23–35: median 1.072 s during against 1.071 s
+before and 1.070 s after) and the final's after `done`, where a fresh visit
+selects `heron1-final`. The observer saw six trainer updates each reach the
+page within 1.1 s.
+
+**Consequences.** No engine, protocol or product-code change; no new
+dependency. D8 has both halves evidenced pending the owner's tick. The
+policy meets the task's bar and is not a stationary hold: a tighter
+tolerance or a heavier tip-speed term is a design decision recorded in the
+project's `DECISIONS.md` for the next turn on Heron, not taken here. The 3 mm
+low bias is observed, not diagnosed.

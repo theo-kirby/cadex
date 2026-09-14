@@ -1,0 +1,584 @@
+{
+ "schema": "finch-training-evidence-v1",
+ "project": "ot6-finch",
+ "run": "finch1",
+ "operator_url_source": "environment (private address, not committed)",
+ "accepted_revision": "a6e043dde0feabf179d0286a6b4afbc0f165808b042295f5354364c6838dec5d",
+ "digest": "6ccf922e66f8b3981da3281a524d94c47fb07135b25b43f44c02a4b9b4edf2a8",
+ "geometry": {
+  "finch_model-model.xml": "4514e2fb513289736f26d0507726017ae1b70dabf85c825b85becd3fb1eead48",
+  "stand_task-task.json": "48798f8c0c69908207f4e19dcc65c5b81ce8d1a6dba6fbcc81c5a44d5a1eb328"
+ },
+ "record_agrees": true,
+ "task": {
+  "episode_steps": 400.0,
+  "control_hz": 50.0,
+  "fall_frac": 0.7,
+  "thigh_len": 60.0,
+  "shin_len": 60.0
+ },
+ "task_values_source": "effective parameters recorded on both playback runs, whose task bundles are byte-identical to the training run's",
+ "fall_below_mm": 84.0,
+ "requested": {
+  "authored_by": "Finch, authored for the D5 unit and entered with cadex script --set (ADR-334); the stand task declared the same way in the D6 unit",
+  "checkpoint_every": 20,
+  "envs": 1024,
+  "iterations": 240,
+  "seed": 0,
+  "timeout_seconds": 3600
+ },
+ "trainer_exit": 0,
+ "training_wall_seconds": 2048.7,
+ "trainer_final": {
+  "iteration": 239,
+  "state": "done",
+  "reward_per_step": 0.6234723925590515,
+  "loss": 0.8275584578514099,
+  "episode_steps": 211.134033203125,
+  "seconds": null,
+  "device": "gpu"
+ },
+ "best": {
+  "iteration": 164,
+  "reward_per_step": 0.6546462774276733
+ },
+ "reward_curve_every_20": [
+  {
+   "iteration": 0,
+   "reward_per_step": -0.071,
+   "episode_steps": 20.500499725341797
+  },
+  {
+   "iteration": 19,
+   "reward_per_step": 0.1481,
+   "episode_steps": 12.953825950622559
+  },
+  {
+   "iteration": 39,
+   "reward_per_step": 0.3908,
+   "episode_steps": 21.005126953125
+  },
+  {
+   "iteration": 59,
+   "reward_per_step": 0.5139,
+   "episode_steps": 32.97906494140625
+  },
+  {
+   "iteration": 79,
+   "reward_per_step": 0.5914,
+   "episode_steps": 42.314048767089844
+  },
+  {
+   "iteration": 99,
+   "reward_per_step": 0.6215,
+   "episode_steps": 65.64102935791016
+  },
+  {
+   "iteration": 119,
+   "reward_per_step": 0.6308,
+   "episode_steps": 77.57575225830078
+  },
+  {
+   "iteration": 139,
+   "reward_per_step": 0.6279,
+   "episode_steps": 93.09090423583984
+  },
+  {
+   "iteration": 159,
+   "reward_per_step": 0.6425,
+   "episode_steps": 113.77777862548828
+  },
+  {
+   "iteration": 179,
+   "reward_per_step": 0.6178,
+   "episode_steps": 143.21678161621094
+  },
+  {
+   "iteration": 199,
+   "reward_per_step": 0.6109,
+   "episode_steps": 184.5045166015625
+  },
+  {
+   "iteration": 219,
+   "reward_per_step": 0.6285,
+   "episode_steps": 213.33334350585938
+  },
+  {
+   "iteration": 239,
+   "reward_per_step": 0.6235,
+   "episode_steps": 211.134033203125
+  }
+ ],
+ "memory": {
+  "host_peak_bytes": 9717895168,
+  "gpu_peak_mib": 15695,
+  "samples": 426
+ },
+ "resource_bound": {
+  "MemoryCurrent": "5328027648",
+  "MemoryPeak": "5633159168",
+  "MemoryMax": "21474836480",
+  "ActiveState": "active"
+ },
+ "live_browser": {
+  "persistent_server": true,
+  "default_view_kind": "RUN finch1",
+  "model_state": "loaded",
+  "model_components_listed": 29,
+  "reload_count": 1,
+  "samples": 7,
+  "first_seen_max_committed_to_page_s": 2.28,
+  "first_seen_count": 7
+ },
+ "observer_exit": 0,
+ "update_intervals": {
+  "note": "every trainer-committed update interval over the whole run; boundary = the compile at update 0 and each checkpoint step (every 20th update)",
+  "count": 240,
+  "plain": {
+   "count": 204,
+   "median_s": 4.9005,
+   "min_s": 4.795,
+   "max_s": 5.059
+  },
+  "boundary": [
+   {
+    "iteration": 0,
+    "seconds": 78.1
+   },
+   {
+    "iteration": 1,
+    "seconds": 31.1
+   },
+   {
+    "iteration": 19,
+    "seconds": 81.1
+   },
+   {
+    "iteration": 39,
+    "seconds": 80.1
+   },
+   {
+    "iteration": 59,
+    "seconds": 80.9
+   },
+   {
+    "iteration": 79,
+    "seconds": 83.8
+   },
+   {
+    "iteration": 99,
+    "seconds": 81.2
+   },
+   {
+    "iteration": 119,
+    "seconds": 82.3
+   },
+   {
+    "iteration": 139,
+    "seconds": 81.3
+   },
+   {
+    "iteration": 159,
+    "seconds": 43.7
+   },
+   {
+    "iteration": 179,
+    "seconds": 82.0
+   },
+   {
+    "iteration": 199,
+    "seconds": 42.8
+   },
+   {
+    "iteration": 219,
+    "seconds": 44.1
+   }
+  ],
+  "concurrent_loads_during_run": [
+   "checkpoint rollout and record",
+   "one checkpoint video render (3.5 s)",
+   "two persistent-dashboard browser checks",
+   "the 14-test cli/tests/test_video.py suite"
+  ]
+ },
+ "checkpoint_publication": {
+  "driver_failure": "CalledProcessError(1, ['pixi', 'run', 'python', '-m', 'cadex_cli.video', '--project', '<project>', '--run', 'finch1-checkpoint20'])",
+  "note": "the driver's own checkpoint publication failed at the video render (20 000-triangle cap, ADR-336); this video was rendered by hand on the fixed recorder at trainer update 54 and browser-checked on the persistent URL at update 54, both while the trainer was active; the rollout, script revision and record are the driver's"
+ },
+ "render_overhead": {
+  "note": "trainer-committed iteration intervals; the render window is wall clock around the video render only; during = intervals overlapping the render",
+  "before_window": {
+   "count": 15,
+   "median_s": 4.934,
+   "median_excluding_checkpoint_boundaries_s": 4.933,
+   "max_s": 4.992
+  },
+  "during_window": {
+   "count": 2,
+   "median_s": 4.909,
+   "median_excluding_checkpoint_boundaries_s": 4.909,
+   "max_s": 4.923
+  },
+  "after_window": {
+   "count": 2,
+   "median_s": 4.949,
+   "median_excluding_checkpoint_boundaries_s": 4.949,
+   "max_s": 5.0
+  },
+  "concurrent_renders": 1,
+  "render_seconds": 3.47
+ },
+ "checkpoint20": {
+  "run": "finch1-checkpoint20",
+  "playback_revision": "22cbb1638d10bcde3405f11ff25b5e320e5f727f9b23addf9dc84ba4ef62f5b9",
+  "browser_saw_revision": true,
+  "policy_sha256": "83bf27c5666f79005c8631bcd00f1a091b8915e4618833423bfe80f8f520cacc",
+  "model_sha256": "4514e2fb513289736f26d0507726017ae1b70dabf85c825b85becd3fb1eead48",
+  "task_sha256": "48798f8c0c69908207f4e19dcc65c5b81ce8d1a6dba6fbcc81c5a44d5a1eb328",
+  "trace_sha256": "98df8e43a9d87a8c781ada37ea1e509d8f02ad2b30575122f94744a85be29fde",
+  "seed": 0,
+  "step_count": 15,
+  "observed_s": 0.3,
+  "termination": "fell",
+  "fell": true,
+  "time_limit_reached": false,
+  "total_reward": 2.997137315933569,
+  "pelvis_displacement_mm": [
+   -60.797,
+   24.115,
+   -45.461
+  ],
+  "witness": {
+   "witness_error": 8.158944966554473e-08,
+   "witness_tolerance": 0.0001
+  },
+  "trainer_iterations_before_after": [
+   54,
+   56
+  ],
+  "trainer_active_after_browser": true,
+  "browser_check_exit": 0,
+  "render_seconds": 3.47,
+  "video": {
+   "path": "rollout-78ea1e0726e3c0240264f6170542821f11098dc2e256a547ffd77538c58a729e.webm",
+   "sha256": "78ea1e0726e3c0240264f6170542821f11098dc2e256a547ffd77538c58a729e",
+   "frames": 4,
+   "fps": 10,
+   "duration_seconds": 0.4,
+   "sim_seconds": 0.3,
+   "style": "cadex-prototype-dark-v1",
+   "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+   "width": 512,
+   "height": 512,
+   "showing": "tessellated solids of the accepted revision; collision proxies not drawn",
+   "accepted_revision": "22cbb1638d10bcde3405f11ff25b5e320e5f727f9b23addf9dc84ba4ef62f5b9"
+  },
+  "video_frame": {
+   "png": "video-finch1-checkpoint20.png",
+   "sha256": "7aa966a2b6fbe13fccb5d5fed6a3c139dcd2e4a0829c915e676fee57da0c0800",
+   "bytes": 137513,
+   "at_sim_s": 0.15
+  },
+  "browser": {
+   "fresh_selection": "RUN finch1",
+   "is_default": false,
+   "expected_default": "finch1",
+   "historical_selection": null,
+   "returned_to_current": "RUN finch1",
+   "decoded_frames": 4,
+   "download_sha256": "78ea1e0726e3c0240264f6170542821f11098dc2e256a547ffd77538c58a729e",
+   "style": "cadex-prototype-dark-v1",
+   "components": 29
+  },
+  "seeds": {
+   "schema": "finch-common-seeds-v1",
+   "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "episode_seconds": 8.0,
+   "control_hz": 50.0,
+   "fall_below_mm": 84.0,
+   "displacement_x_mm": {
+    "mean": -60.23,
+    "min": -69.79,
+    "max": -51.24
+   },
+   "survival_s": {
+    "mean": 0.296,
+    "min": 0.2,
+    "max": 0.34
+   },
+   "falls": 10,
+   "stood_full_episode": 0,
+   "mean_total_reward": 2.8,
+   "per_seed": [
+    {
+     "seed": 0,
+     "dx_mm": -60.8,
+     "survival_s": 0.3,
+     "fell": true
+    },
+    {
+     "seed": 1,
+     "dx_mm": -60.0,
+     "survival_s": 0.34,
+     "fell": true
+    },
+    {
+     "seed": 2,
+     "dx_mm": -51.2,
+     "survival_s": 0.2,
+     "fell": true
+    },
+    {
+     "seed": 3,
+     "dx_mm": -61.7,
+     "survival_s": 0.3,
+     "fell": true
+    },
+    {
+     "seed": 4,
+     "dx_mm": -69.8,
+     "survival_s": 0.32,
+     "fell": true
+    },
+    {
+     "seed": 5,
+     "dx_mm": -59.0,
+     "survival_s": 0.3,
+     "fell": true
+    },
+    {
+     "seed": 6,
+     "dx_mm": -66.4,
+     "survival_s": 0.28,
+     "fell": true
+    },
+    {
+     "seed": 7,
+     "dx_mm": -59.0,
+     "survival_s": 0.3,
+     "fell": true
+    },
+    {
+     "seed": 8,
+     "dx_mm": -56.8,
+     "survival_s": 0.28,
+     "fell": true
+    },
+    {
+     "seed": 9,
+     "dx_mm": -57.4,
+     "survival_s": 0.34,
+     "fell": true
+    }
+   ],
+   "evidence": "<project>/evidence/comparison-finch1/ot6-finch-eval-finch1-c"
+  }
+ },
+ "final": {
+  "run": "finch1-final",
+  "playback_revision": "b6862234556355f799591f314cde6b1a7caadb7d4659a0051d18a442c098912f",
+  "browser_saw_revision": true,
+  "policy_sha256": "0f0997e148c0b6754f72e3072f96170f0d14d29ea6a96007a88f9c620dea99df",
+  "model_sha256": "4514e2fb513289736f26d0507726017ae1b70dabf85c825b85becd3fb1eead48",
+  "task_sha256": "48798f8c0c69908207f4e19dcc65c5b81ce8d1a6dba6fbcc81c5a44d5a1eb328",
+  "trace_sha256": "ed8d7e49a036106943338bf58e8bfdf96e8283de1739f33db2fc66e4096bee5d",
+  "seed": 0,
+  "step_count": 400,
+  "observed_s": 8.0,
+  "termination": "",
+  "fell": false,
+  "time_limit_reached": true,
+  "total_reward": 222.07522938513387,
+  "pelvis_displacement_mm": [
+   319.405,
+   166.524,
+   -7.053
+  ],
+  "witness": {
+   "witness_error": 8.786716948113357e-08,
+   "witness_tolerance": 0.0001
+  },
+  "trainer_iterations_before_after": [
+   239,
+   239
+  ],
+  "trainer_active_after_browser": false,
+  "browser_check_exit": 0,
+  "render_seconds": 34.66,
+  "video": {
+   "path": "rollout-f57c4c3bb2b3ce565d1feefa411c88879c92d4efe0561d45d3dddc9e995cb6f7.webm",
+   "sha256": "f57c4c3bb2b3ce565d1feefa411c88879c92d4efe0561d45d3dddc9e995cb6f7",
+   "frames": 81,
+   "fps": 10,
+   "duration_seconds": 8.1,
+   "sim_seconds": 8.0,
+   "style": "cadex-prototype-dark-v1",
+   "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+   "width": 512,
+   "height": 512,
+   "showing": "tessellated solids of the accepted revision; collision proxies not drawn",
+   "accepted_revision": "b6862234556355f799591f314cde6b1a7caadb7d4659a0051d18a442c098912f"
+  },
+  "video_frame": {
+   "png": "video-finch1-final.png",
+   "sha256": "2209bf228d96d3c4eb7fc2c4229911e55431618df8067cdc48d5db22244a0b49",
+   "bytes": 131130,
+   "at_sim_s": 4.0
+  },
+  "browser": {
+   "fresh_selection": "RUN finch1-final",
+   "is_default": true,
+   "expected_default": "finch1-final",
+   "historical_selection": "finch1-checkpoint20",
+   "returned_to_current": "RUN finch1-final",
+   "decoded_frames": 81,
+   "download_sha256": "f57c4c3bb2b3ce565d1feefa411c88879c92d4efe0561d45d3dddc9e995cb6f7",
+   "style": "cadex-prototype-dark-v1",
+   "components": 29
+  },
+  "seeds": {
+   "schema": "finch-common-seeds-v1",
+   "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "episode_seconds": 8.0,
+   "control_hz": 50.0,
+   "fall_below_mm": 84.0,
+   "displacement_x_mm": {
+    "mean": 361.07,
+    "min": 319.4,
+    "max": 432.72
+   },
+   "survival_s": {
+    "mean": 8.0,
+    "min": 8.0,
+    "max": 8.0
+   },
+   "falls": 0,
+   "stood_full_episode": 10,
+   "mean_total_reward": 226.2,
+   "per_seed": [
+    {
+     "seed": 0,
+     "dx_mm": 319.4,
+     "survival_s": 8.0,
+     "fell": false
+    },
+    {
+     "seed": 1,
+     "dx_mm": 357.0,
+     "survival_s": 8.0,
+     "fell": false
+    },
+    {
+     "seed": 2,
+     "dx_mm": 432.7,
+     "survival_s": 8.0,
+     "fell": false
+    },
+    {
+     "seed": 3,
+     "dx_mm": 405.2,
+     "survival_s": 8.0,
+     "fell": false
+    },
+    {
+     "seed": 4,
+     "dx_mm": 349.7,
+     "survival_s": 8.0,
+     "fell": false
+    },
+    {
+     "seed": 5,
+     "dx_mm": 367.0,
+     "survival_s": 8.0,
+     "fell": false
+    },
+    {
+     "seed": 6,
+     "dx_mm": 321.9,
+     "survival_s": 8.0,
+     "fell": false
+    },
+    {
+     "seed": 7,
+     "dx_mm": 386.7,
+     "survival_s": 8.0,
+     "fell": false
+    },
+    {
+     "seed": 8,
+     "dx_mm": 337.0,
+     "survival_s": 8.0,
+     "fell": false
+    },
+    {
+     "seed": 9,
+     "dx_mm": 334.0,
+     "survival_s": 8.0,
+     "fell": false
+    }
+   ],
+   "evidence": "<project>/evidence/comparison-finch1/ot6-finch-eval-finch1-f"
+  }
+ },
+ "earlier_run_records": {
+  "count": 0,
+  "note": "run records present before the training run; the driver asserts each is byte-identical afterwards, which over an empty set proves nothing"
+ },
+ "dashboard_at_end": {
+  "project": "ot6-finch",
+  "accepted_revision": "b6862234556355f799591f314cde6b1a7caadb7d4659a0051d18a442c098912f",
+  "served_at": "2026-09-14T01:06:17Z",
+  "runs": [
+   {
+    "run": "finch1-checkpoint20",
+    "status": "ok",
+    "mode": "checkpoint-playback",
+    "relation": "historical",
+    "policy_sha256": "83bf27c5666f79005c8631bcd00f1a091b8915e4618833423bfe80f8f520cacc",
+    "accepted_revision": "22cbb1638d10bcde3405f11ff25b5e320e5f727f9b23addf9dc84ba4ef62f5b9",
+    "videos": 1
+   },
+   {
+    "run": "finch1",
+    "status": "ok",
+    "mode": "offboard-checkpoint-experiment",
+    "relation": "historical",
+    "policy_sha256": "0f0997e148c0b6754f72e3072f96170f0d14d29ea6a96007a88f9c620dea99df",
+    "accepted_revision": "a6e043dde0feabf179d0286a6b4afbc0f165808b042295f5354364c6838dec5d",
+    "videos": 0
+   },
+   {
+    "run": "finch1-final",
+    "status": "ok",
+    "mode": "final-policy-playback",
+    "relation": "current",
+    "policy_sha256": "0f0997e148c0b6754f72e3072f96170f0d14d29ea6a96007a88f9c620dea99df",
+    "accepted_revision": "b6862234556355f799591f314cde6b1a7caadb7d4659a0051d18a442c098912f",
+    "videos": 1
+   }
+  ],
+  "fresh_visit_selects": "finch1-final"
+ }
+}

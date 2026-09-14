@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-09-09
+Verified against source: 2026-09-13
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -121,6 +121,30 @@ MuJoCo is a kinematic *tree* plus equality constraints. A four-bar becomes
 a tree with `equality/connect` closing the loop. Tree extraction — picking
 the spanning tree and deciding which joints become closures — is the single
 hardest piece of slice M2.
+
+**Free base (ADR-335, 2026-09-13).** An assembly that grounds *nothing* is
+not an error: it is a mechanism whose fixed frame is not part of the design
+— a biped, a balancer, anything meant to fall. Both halves used to refuse it
+(`no_grounded_component`, code −6). Now `assembly.solve` **holds the first
+component in script order** for the native solver — a grounded joint the
+script did not write, reported in the diagnostics as `free_base` with
+`grounded_components: []` — so the pose is exactly the one the placements
+state (hazard 11 below is about an island the solver was *not* holding);
+`extract_tree` gives that same component a free joint through the island
+path it always had; and `build_model` writes **the environment's floor**, one
+infinite plane named `environment/floor` on the world body at z = 0 with
+MuJoCo's default contact parameters, recorded in the manifest as
+`dynamics.environment.floor`. A grounded model gets no floor and `environment:
+null` — its ground is whatever it grounded, and a design that wants a slab
+still declares a plane on that part. The floor's friction is 1.0 and a
+pair's friction is the elementwise maximum, so a sole's declared friction
+is what the contact sees. The design owns none of this: the charter that
+asked for a free base (ADR-328) also forbids a floor, wall or stage in any
+script, and the first mechanism through it, Finch, has soles on z = 0 and
+nothing else in the world (`docs/probes/ot6/finch/free_base.json`: held for
+2 s it stands, shoved at 0.3 m/s it falls onto the floor and not through it).
+Only `require_solved=True` holds a base — the unsolved path never refused,
+and holding there would move placements an accepted project may carry.
 
 ---
 
@@ -2030,6 +2054,10 @@ Ranked by how quietly they fail.
     the model exports, and the mass and inertia are all correct. What is
     wrong is only *where the machine is*, and on a grounded mechanism — every
     fixture before this one — the question never arises.
+    **Narrowed by ADR-335:** when *nothing* is grounded the solver now holds
+    the first component in script order, so a single-island free base keeps
+    its placements exactly; this hazard remains for a second island, and for
+    an island beside a grounded component, which nothing holds.
     **What to do:** put the pose in the solids, and give the two connectors
     of a joint the **identical posed world frame**. The residual is then zero
     at any slider setting and there is nothing to collapse. The cost is worth

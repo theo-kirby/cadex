@@ -1,0 +1,283 @@
+{
+ "revision": "f0450d9bdf1a924507618daece0f46ac1de66730940d0560247182bfb3a412ab",
+ "view": "accepted",
+ "components": 29,
+ "collision": {
+  "available": true,
+  "source": "the accepted attempt's finch_model (assembly.mjcf export at the accepted revision)",
+  "sha256": "dacfbf3374d8adee45a951a29a894017da8c2916c4091ccfe0c9024049526894",
+  "reason": "",
+  "skipped": 0
+ },
+ "geoms": {
+  "total": 20,
+  "drawn": 20,
+  "kinds": [
+   "box"
+  ]
+ },
+ "screenshots": {
+  "operator-solids": {
+   "sha256": "4e7b15b934185079b620432739e67505c55065edf663cd97df6b968ab338d5f3",
+   "bytes": 147317,
+   "size": [
+    1033,
+    1278
+   ],
+   "model_pixels": {
+    "count": 61665,
+    "box": [
+     390,
+     120,
+     697,
+     468
+    ],
+    "width": 1012,
+    "height": 568
+   }
+  },
+  "operator-proxies": {
+   "sha256": "6ca7cc5e5f8760d963b7b1ad3d246afc81b36aabb3ccfe197d589f680fd85411",
+   "bytes": 156929,
+   "size": [
+    1033,
+    1298
+   ],
+   "model_pixels": {
+    "count": 62492,
+    "box": [
+     389,
+     119,
+     697,
+     469
+    ],
+    "width": 1012,
+    "height": 568
+   }
+  },
+  "_cameras": {
+   "knee-close": {
+    "yaw": 0.9,
+    "pitch": 0.35,
+    "distance": 150.0,
+    "target": [
+     0.0,
+     40.0,
+     60.0
+    ]
+   },
+   "hip-close": {
+    "yaw": 0.9,
+    "pitch": 0.35,
+    "distance": 170.0,
+    "target": [
+     0.0,
+     55.0,
+     120.0
+    ]
+   },
+   "front": {
+    "yaw": 0.0,
+    "pitch": 0.15,
+    "distance": 420.0,
+    "target": [
+     0.0,
+     0.0,
+     75.0
+    ]
+   },
+   "iso": {
+    "yaw": 0.8,
+    "pitch": 0.45,
+    "distance": 480.0,
+    "target": [
+     0.0,
+     0.0,
+     75.0
+    ]
+   }
+  },
+  "operator-knee-close": {
+   "sha256": "2c59669f7154bc1c7758ec5f9098b102e98fdfdaa79b0e253e91573a18e88234",
+   "bytes": 58401,
+   "size": [
+    640,
+    480
+   ],
+   "model_pixels": {
+    "count": 101647,
+    "box": [
+     120,
+     0,
+     528,
+     468
+    ],
+    "width": 640,
+    "height": 480
+   },
+   "stage": {
+    "roomSize": 24,
+    "fog": {
+     "near": 1,
+     "far": 6
+    },
+    "pitch": 1,
+    "minor": 0.05,
+    "frameSpan": 0.15617011516552387
+   }
+  },
+  "operator-hip-close": {
+   "sha256": "f23eb9c7e2d981c7206fccb1e24b8782d93a1cc0c9bab3bc98cc1e1b247bfd36",
+   "bytes": 66058,
+   "size": [
+    640,
+    480
+   ],
+   "model_pixels": {
+    "count": 58114,
+    "box": [
+     145,
+     141,
+     439,
+     479
+    ],
+    "width": 640,
+    "height": 480
+   },
+   "stage": {
+    "roomSize": 24,
+    "fog": {
+     "near": 1,
+     "far": 6
+    },
+    "pitch": 1,
+    "minor": 0.05,
+    "frameSpan": 0.17699279718759373
+   }
+  },
+  "operator-front": {
+   "sha256": "b46c0e0080d251752f2daeb8eea1f0d90c937c8a7bd47f3479b401bc5feb5004",
+   "bytes": 24273,
+   "size": [
+    640,
+    480
+   ],
+   "model_pixels": {
+    "count": 15424,
+    "box": [
+     227,
+     166,
+     422,
+     332
+    ],
+    "width": 640,
+    "height": 480
+   },
+   "stage": {
+    "roomSize": 24,
+    "fog": {
+     "near": 1,
+     "far": 6
+    },
+    "pitch": 1,
+    "minor": 0.2,
+    "frameSpan": 0.4372763224634668
+   }
+  },
+  "operator-iso": {
+   "sha256": "f4e452d8f90bded958de3a14505e9b697d14a6102be365d55639146791fd18b4",
+   "bytes": 42468,
+   "size": [
+    640,
+    480
+   ],
+   "model_pixels": {
+    "count": 14577,
+    "box": [
+     263,
+     162,
+     413,
+     332
+    ],
+    "width": 640,
+    "height": 480
+   },
+   "stage": {
+    "roomSize": 26.88,
+    "fog": {
+     "near": 1,
+     "far": 6.72
+    },
+    "pitch": 1,
+    "minor": 0.2,
+    "frameSpan": 0.49974436852967635
+   }
+  }
+ },
+ "selected": "accepted",
+ "accepted_line": "accepted now: revision f0450d9bdf1a \u00b7 digest 002ec8efd867 \u00b7 updated 2026-09-13T23:40:42Z \u00b7 0 run(s)",
+ "status_off": "accepted model at revision f0450d9bdf1a \u00b7 29 component(s), 51556 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids",
+ "stats_off": {
+  "components": 29,
+  "triangles": 51556,
+  "style": "cadex-prototype-dark-v1",
+  "showing": "tessellated solids",
+  "proxies": {
+   "shown": false,
+   "drawn": 20,
+   "listed": 20
+  }
+ },
+ "status_on": "accepted model at revision f0450d9bdf1a \u00b7 29 component(s), 51556 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids with collision proxies (20 outlines from the accepted attempt's finch_model (assembly.mjcf export at the accepted revision))",
+ "stats_on": {
+  "components": 29,
+  "triangles": 51556,
+  "showing": "tessellated solids with collision proxies",
+  "proxies": {
+   "shown": true,
+   "drawn": 20,
+   "listed": 20
+  }
+ },
+ "components_listed": [
+  "pelvis_link \u2190 pelvis \u00b7 mesh retained (2332 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: 4 box",
+  "thigh_l_link \u2190 thigh_l \u00b7 mesh retained (3328 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: 3 box",
+  "shin_l_link \u2190 shin_l \u00b7 mesh retained (1976 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: 3 box",
+  "servo_hip_l_link \u2190 servo_hip_l \u00b7 mesh retained (1564 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: 1 box",
+  "tabscrew_hip_l_0_link \u2190 tabscrew_hip_l_0 \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "tabscrew_hip_l_1_link \u2190 tabscrew_hip_l_1 \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "bearing_hip_l_link \u2190 bearing_hip_l \u00b7 mesh retained (1008 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "horn_hip_l_link \u2190 horn_hip_l \u00b7 mesh retained (4070 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "centrescrew_hip_l_link \u2190 centrescrew_hip_l \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "servo_knee_l_link \u2190 servo_knee_l \u00b7 mesh retained (1564 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: 1 box",
+  "tabscrew_knee_l_0_link \u2190 tabscrew_knee_l_0 \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "tabscrew_knee_l_1_link \u2190 tabscrew_knee_l_1 \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "bearing_knee_l_link \u2190 bearing_knee_l \u00b7 mesh retained (1008 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "horn_knee_l_link \u2190 horn_knee_l \u00b7 mesh retained (4070 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "centrescrew_knee_l_link \u2190 centrescrew_knee_l \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "thigh_r_link \u2190 thigh_r \u00b7 mesh retained (3328 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: 3 box",
+  "shin_r_link \u2190 shin_r \u00b7 mesh retained (1976 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: 3 box",
+  "servo_hip_r_link \u2190 servo_hip_r \u00b7 mesh retained (1564 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: 1 box",
+  "tabscrew_hip_r_0_link \u2190 tabscrew_hip_r_0 \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "tabscrew_hip_r_1_link \u2190 tabscrew_hip_r_1 \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "bearing_hip_r_link \u2190 bearing_hip_r \u00b7 mesh retained (1008 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "horn_hip_r_link \u2190 horn_hip_r \u00b7 mesh retained (4070 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "centrescrew_hip_r_link \u2190 centrescrew_hip_r \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "servo_knee_r_link \u2190 servo_knee_r \u00b7 mesh retained (1564 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: 1 box",
+  "tabscrew_knee_r_0_link \u2190 tabscrew_knee_r_0 \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "tabscrew_knee_r_1_link \u2190 tabscrew_knee_r_1 \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "bearing_knee_r_link \u2190 bearing_knee_r \u00b7 mesh retained (1008 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "horn_knee_r_link \u2190 horn_knee_r \u00b7 mesh retained (4070 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared",
+  "centrescrew_knee_r_link \u2190 centrescrew_knee_r \u00b7 mesh retained (1004 triangles) \u00b7 placement: declared component placement (no solved trace) \u00b7 collision: none declared"
+ ],
+ "default_camera": {
+  "yaw": 0.8,
+  "pitch": 0.5,
+  "distance": 282.8239380173916,
+  "target": [
+   0,
+   0,
+   70.73941040039062
+  ]
+ }
+}

@@ -3,6 +3,7 @@
 """Independent synthetic rollout fixtures; real verification is in test_walk."""
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import select
@@ -17,7 +18,7 @@ import pytest
 from cadex_cli.video import render, placed, stl
 from cadex_cli.browser import find_browser
 from cadex_cli.review_record import read_run_record
-from cadex_cli.review_server import serve
+from cadex_cli.review_server import serve, run_model
 from test_review_server import (browser, needs_browser, _open, _mesh_run,
                                 _rewrite_record, _project, REVISION_A,
                                 REVISION_B, _manifest, _get, _model_state, CLI_DIR)
@@ -329,7 +330,7 @@ def test_shared_scene_matches_decoded_video_and_keeps_older_recording(rendered, 
     record = read_run_record(run, root)
     assert record['videos'] == [newest, legacy]
     assert all(v['exists'] and not v['error'] for v in record['resolved']['videos'])
-    assert newest['style'] == 'cadex-prototype-light-v1'
+    assert newest['style'] == 'cadex-prototype-dark-v1'
     assert len(newest['style_sha256']) == 64
     server, _ = serve(root, '127.0.0.1', 0)
     try:
@@ -339,8 +340,11 @@ def test_shared_scene_matches_decoded_video_and_keeps_older_recording(rendered, 
         trace = json.loads((run/'rollout/assembly-simulation-trace.json').read_text())
         frame = next(f for f in trace['frames'] if f.get('frame_kind') == 'solver_output')
         page.evaluate("document.getElementById('viewer').style.cssText='width:512px;height:512px;border:0;padding:0'")
+        # The video's first frame: its follow camera, the first solved pose and the timer at 0 s,
+        # each through the viewport's own shared scene (ADR-332).
         page.evaluate('cadexReview.viewer().frameBounds('+json.dumps(newest['bounds'])+');'
                       'cadexReview.viewer().setCamera('+json.dumps(newest['camera'])+');'
+                      'cadexReview.viewer().setClock(0);'
                       'cadexReview.viewer().setPoses('+json.dumps(frame['component_placements'])+')')
         import base64
         image = run/'viewport.png'
@@ -360,6 +364,138 @@ def test_shared_scene_matches_decoded_video_and_keeps_older_recording(rendered, 
             assert hashlib.sha256(download.path.read_bytes()).hexdigest() == record['videos'][index]['sha256']
     finally:
         server.shutdown();server.server_close()
+
+
+@needs_browser
+def test_capture_follows_the_subject_at_the_declared_framing_and_stamps_the_timer(rendered, browser):
+    """The follow rig and the timer overlay, through the shared scene (ADR-332):
+    one standoff at the declared fraction, a smoothed anchor that keeps the
+    subject inside the drift budget through a whip, fixed orientation, and a
+    clock pill baked bottom-left that changes with the seconds and nothing else."""
+    import math
+    root, video = rendered
+    rig = video['framing']
+    tan_v = math.tan(math.radians(55 / 2))
+    assert rig['fraction'] == 0.22 and rig['smooth_frames'] == 4
+    assert rig['standoff_mm'] == pytest.approx(rig['subject_height_mm'] / (2 * tan_v * 0.22))
+    assert video['camera']['distance'] == pytest.approx(rig['standoff_mm'])
+    assert 0 <= rig['worst_drift_ndc'] < rig['max_drift'] and 0 < rig['size_min'] <= rig['size_max']
+    assert abs(rig['size_max'] - 0.22) < 0.01 and video['overlay'].startswith('timer')
+    run = root / 'runs/sample'
+    trace = json.loads((run / 'rollout/assembly-simulation-trace.json').read_text())
+    frame = next(f for f in trace['frames'] if f.get('frame_kind') == 'solver_output')
+    manifest = run_model(root, read_run_record(run, root))
+    entries = [{'name': e['name'], 'placement': frame['component_placements'][e['name']],
+                'positions': [v for t in stl(run / 'rollout' / (e['output'] + '.stl')) for pt in t for v in pt]}
+               for e in manifest['components'] if e['name'] in frame['component_placements']]
+    server, _ = serve(root, '127.0.0.1', 0)
+    try:
+        page = browser.page(server.url + 'capture.html')
+        page.wait_for('window.cadexCapture?.available')
+        page.evaluate('cadexCapture.install(' + json.dumps(entries) + '); cadexCapture.frameBounds(' + json.dumps(video['bounds']) + ')')
+        # A steady walk of 12 mm (0.6 subject heights, a twentieth of one per frame): every
+        # camera keeps the standoff, the target follows the subject and the horizon (yaw,
+        # pitch) never moves.
+        walk = [[i, 0, 10] for i in range(13)]
+        steady = page.evaluate('cadexCapture.follow(' + json.dumps(walk) + ', {"subject_height_mm": 20})')
+        assert steady['standoff_mm'] == pytest.approx(20 / (2 * tan_v * 0.22))
+        assert all(c['distance'] == pytest.approx(steady['standoff_mm']) and c['yaw'] == 0.8 and c['pitch'] == 0.5
+                   for c in steady['cameras'])
+        # The end anchors sit inside the walk: the symmetric window is truncated there.
+        assert 8 < steady['cameras'][-1]['target'][0] - steady['cameras'][0]['target'][0] < 12
+        assert steady['worst_drift_ndc'] < 0.05 and steady['size_min'] > 0.2
+        # A whip of a whole standoff in one frame stays inside the drift budget: the soft limiter.
+        whip = [[0, 0, 10]] * 6 + [[steady['standoff_mm'], 0, 10]] * 6
+        whipped = page.evaluate('cadexCapture.follow(' + json.dumps(whip) + ', {"subject_height_mm": 20})')
+        assert 0.1 < whipped['worst_drift_ndc'] < whipped['max_drift'] == 0.26
+        with pytest.raises(Exception):
+            page.evaluate('cadexCapture.follow([[0, 0]], {"subject_height_mm": 20})')
+        # The timer: absent at rest, then a pill bottom-left whose pixels are the only difference.
+        page.evaluate('cadexCapture.setCamera(' + json.dumps(steady['cameras'][0]) + ')')
+        import base64
+        def shot(clock):
+            path = run / f'clock-{clock}.png'
+            path.write_bytes(base64.b64decode(page.evaluate(f'cadexCapture.setClock({clock}); cadexCapture.png()')))
+            return subprocess.check_output(['ffmpeg', '-v', 'error', '-i', str(path), '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'])
+        rest, zero, later = shot('null'), shot(0), shot(12.5)
+        assert len(rest) == len(zero) == 512 * 512 * 3
+        def changed(a, b):
+            rows = set()
+            for i in range(0, len(a), 3):
+                if a[i:i+3] != b[i:i+3]:
+                    rows.add(((i // 3) // 512, (i // 3) % 512))
+            return rows
+        pill = changed(rest, zero)
+        assert 400 < len(pill) < 512 * 512 // 16
+        assert all(y > 512 * 0.8 and x < 512 * 0.3 for y, x in pill), 'the timer sits bottom-left'
+        digits = changed(zero, later)
+        assert digits and digits <= pill | changed(rest, later)
+        assert page.evaluate('cadexCapture.modelPixels()')['count'] == page.evaluate('cadexCapture.nonBackgroundPixels()') > 0
+        assert shot('null') == rest
+    finally:
+        server.shutdown(); server.server_close()
+
+
+@needs_browser
+def test_video_shows_the_solids_never_the_proxies_and_says_so(rendered, browser):
+    """D4 (ADR-333): a recording is the tessellated solids; the run's proxies
+    differ from them, and the decoded first frame matches the shared scene
+    with the proxies hidden and not with them shown; the page's identity
+    strip names what the video shows, and an older video says it did not."""
+    root, video = rendered
+    assert video['showing'] == 'tessellated solids of the accepted revision; collision proxies not drawn'
+    assert video['proxies'] == {'drawn': False, 'retained': 2}
+    run = root / 'runs/sample'
+    record = read_run_record(run, root)
+    manifest = run_model(root, record)
+    assert manifest['collision']['available'] and len(manifest['collision']['geoms']) == 2
+    trace = json.loads((run / 'rollout/assembly-simulation-trace.json').read_text())
+    frame = next(f for f in trace['frames'] if f.get('frame_kind') == 'solver_output')
+    entries = [{'name': e['name'], 'placement': frame['component_placements'][e['name']],
+                'positions': [v for t in stl(run / 'rollout' / (e['output'] + '.stl')) for pt in t for v in pt]}
+               for e in manifest['components'] if e['name'] in frame['component_placements']]
+    def rgb(path):
+        return subprocess.check_output(['ffmpeg', '-v', 'error', '-i', str(path), '-frames:v', '1',
+                                        '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'])
+    decoded = rgb(run / video['path'])
+    server, _ = serve(root, '127.0.0.1', 0)
+    try:
+        page = browser.page(server.url + 'capture.html')
+        page.wait_for('window.cadexCapture?.available')
+        page.evaluate('cadexCapture.install(' + json.dumps(entries) + '); cadexCapture.frameBounds(' + json.dumps(video['bounds']) + ');'
+                      'cadexCapture.setCamera(' + json.dumps(video['camera']) + '); cadexCapture.setClock(0);'
+                      'cadexCapture.setProxies(' + json.dumps(manifest['collision']['geoms']) + ')')
+        import base64
+        def shot(shown):
+            path = run / f'proxies-{shown}.png'
+            page.evaluate(f'cadexCapture.showProxies({json.dumps(shown)})')
+            path.write_bytes(base64.b64decode(page.evaluate('cadexCapture.png()')))
+            return rgb(path)
+        hidden, shown = shot(False), shot(True)
+        assert len(hidden) == len(shown) == len(decoded) == 512 * 512 * 3
+        outline = sum(1 for i in range(0, len(hidden), 3)
+                      if sum(abs(a - b) for a, b in zip(hidden[i:i+3], shown[i:i+3])) > 40)
+        assert outline > 1000, 'the proxies draw as outlines the solids do not cover'
+        error_hidden = sum(abs(x - y) for x, y in zip(hidden, decoded)) / len(decoded)
+        error_shown = sum(abs(x - y) for x, y in zip(shown, decoded)) / len(decoded)
+        assert error_hidden < 3, 'the decoded frame is the solids, inside the codec tolerance'
+        assert error_shown > 1.5 * error_hidden, 'the decoded frame is not the proxies'
+        assert page.evaluate('cadexCapture.stats().showing') == 'tessellated solids with collision proxies'
+        assert page.evaluate('cadexCapture.modelPixels().count') > page.evaluate('cadexCapture.showProxies(false); cadexCapture.modelPixels().count')
+        # An older recording that never said what it showed is labelled as such on the page.
+        legacy = {**video, 'path': 'older.webm', 'sha256': '1' * 64}
+        legacy.pop('showing'); legacy.pop('proxies')
+        status = json.loads((run / 'video.json').read_text())
+        status['videos'] = [video, legacy]
+        (run / 'video.json').write_text(json.dumps(status))
+        page = _open(browser, server.url)
+        page.wait_for("document.querySelectorAll('#videos li[data-video]').length === 2")
+        assert page.attribute('#videos li[data-video="0"]', 'data-showing') == 'solids'
+        assert '· showing tessellated solids of the accepted revision; collision proxies not drawn' in page.text('#videos li[data-video="0"]')
+        assert page.attribute('#videos li[data-video="1"]', 'data-showing') == 'unrecorded'
+        assert 'showing not recorded' in page.text('#videos li[data-video="1"]')
+    finally:
+        server.shutdown(); server.server_close()
 
 
 @needs_browser
@@ -419,3 +555,81 @@ def test_video_availability_tracks_missing_partial_restored_and_history(rendered
     finally:
         server.shutdown()
         server.server_close()
+
+
+def _fine_stl(size, n):
+    """An ASCII STL of a ``size`` mm cube whose faces are gridded ``n``×``n``: 12·n² facets."""
+
+    def face(origin, u, v):
+        for i in range(n):
+            for j in range(n):
+                a = [origin[k] + u[k]*i/n*size + v[k]*j/n*size for k in range(3)]
+                b = [origin[k] + u[k]*(i+1)/n*size + v[k]*j/n*size for k in range(3)]
+                c = [origin[k] + u[k]*(i+1)/n*size + v[k]*(j+1)/n*size for k in range(3)]
+                d = [origin[k] + u[k]*i/n*size + v[k]*(j+1)/n*size for k in range(3)]
+                yield (a, b, c); yield (a, c, d)
+    s = size
+    faces = [((0, 0, 0), (1, 0, 0), (0, 1, 0)), ((0, 0, s), (0, 1, 0), (1, 0, 0)),
+             ((0, 0, 0), (0, 0, 1), (1, 0, 0)), ((0, s, 0), (1, 0, 0), (0, 0, 1)),
+             ((0, 0, 0), (0, 1, 0), (0, 0, 1)), ((s, 0, 0), (0, 0, 1), (0, 1, 0))]
+    lines = ['solid fine']
+    for origin, u, v in faces:
+        for tri in face(origin, u, v):
+            lines.append('  facet normal 0 0 0\n    outer loop')
+            lines.extend('      vertex %r %r %r' % tuple(p) for p in tri)
+            lines.append('    endloop\n  endfacet')
+    lines.append('endsolid fine')
+    return '\n'.join(lines) + '\n'
+
+
+def test_render_takes_a_real_tessellation_and_bounds_it_exactly(video_project):
+    """A real model is tens of thousands of triangles, not Lark's 96 boxes
+    (Finch's accepted revision tessellates to 95 212): the renderer takes it,
+    the page loads each retained solid over the local server and reports the
+    validated file's own triangle count back, and the bounds and the follow
+    track are exact over every vertex at every solved pose — a rotated part's
+    box is its own, not the box of its axis-aligned box — computed where the
+    vertices are rather than in Python, which is what the 20 000 cap paid for."""
+
+    if not shutil.which('ffmpeg') or not find_browser():
+        pytest.skip('FFmpeg and headless Chromium required')
+    root = video_project
+    run = root / 'runs/sample'
+    (run / 'rollout/torso.stl').write_text(_fine_stl(20.0, 48))   # 27 648 facets
+    tetra = [((0, 0, 0), (8, 0, 0), (0, 8, 0)), ((0, 0, 0), (0, 0, 8), (8, 0, 0)),
+             ((0, 0, 0), (0, 8, 0), (0, 0, 8)), ((8, 0, 0), (0, 0, 8), (0, 8, 0))]
+    (run / 'rollout/leg.stl').write_text('solid t\n' + ''.join(
+        '  facet normal 0 0 0\n    outer loop\n' + ''.join('      vertex %r %r %r\n' % p for p in tri) +
+        '    endloop\n  endfacet\n' for tri in tetra) + 'endsolid t\n')
+    trace_path = run / 'rollout/assembly-simulation-trace.json'
+    trace = json.loads(trace_path.read_text())
+    turn = [0, 0, math.sin(math.pi/8), math.cos(math.pi/8)]   # 45 degrees about Z
+    for frame in trace['frames'][1:]:
+        frame['component_placements']['shin'].update(rotation_xyzw=turn, position_mm=[0, 30, -40])
+    trace_path.write_text(json.dumps(trace))
+    meshes = {'body': stl(run / 'rollout/torso.stl'), 'shin': stl(run / 'rollout/leg.stl')}
+    assert 20_000 < sum(map(len, meshes.values())) == 27_652
+    started = time.monotonic()
+    video = render(root, 'sample')
+    assert time.monotonic() - started < 120
+    frames = [f for f in trace['frames'] if f.get('frame_kind') == 'solver_output']
+    def box(points):
+        return [[m(p[j] for p in points) for j in range(3)] for m in (min, max)]
+    exact = [box([p for name in meshes for tri in placed(meshes[name], f['component_placements'][name]) for p in tri])
+             for f in frames]
+    def aabb_corners(mesh):
+        low, high = box([p for tri in mesh for p in tri])
+        return [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
+    corners = [box([p for name in meshes for tri in placed([[c] * 3 for c in aabb_corners(meshes[name])],
+                                                             f['component_placements'][name]) for p in tri])
+               for f in frames]
+    lo = [min(b[0][j] for b in exact) for j in range(3)]
+    hi = [max(b[1][j] for b in exact) for j in range(3)]
+    assert all(abs(a - b) < 1e-3 for a, b in zip(video['bounds']['min'] + video['bounds']['max'], lo + hi))
+    assert abs(video['framing']['subject_height_mm'] - (exact[0][1][2] - exact[0][0][2])) < 1e-3
+    # The turned tetrahedron's own box is narrower than the box of its turned box.
+    assert max(b[1][1] for b in corners) > hi[1] + 4 > 39
+    assert video['frames'] == 6 and video['showing'].startswith('tessellated solids')
+    decoded = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(run / video['path']), '-f', 'rawvideo',
+                              '-pix_fmt', 'rgb24', '-'], capture_output=True, check=True).stdout
+    assert len(decoded) == 6 * 512 * 512 * 3

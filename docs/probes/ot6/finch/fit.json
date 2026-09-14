@@ -1,0 +1,666 @@
+{
+ "project": "ot6-finch",
+ "revision": "bcce40a82d57be86a6bd9e237ad666d069dfebd84986dc7944be96fb980ef1c1",
+ "script_sha256": "5152d1b29a87b2562709dae54d04d26f138efea1c76ce6d8e2bf35416c242620",
+ "script_bytes": 17304,
+ "params": {
+  "window_clear": 0.3,
+  "horn_clear": 0.2,
+  "stub_clear": 0.05,
+  "side_gap": 1.0,
+  "cheek_t": 4.0,
+  "hip_y": 34.0
+ },
+ "mass_g": {
+  "printed": 177.52,
+  "purchased": 65.94,
+  "total": 243.45
+ },
+ "catalog_counts": {
+  "servo/mg90s": 4,
+  "bolt/m2x6-socket": 8,
+  "bearing/mr128": 4,
+  "servo_horn/mg90s-single_arm": 4,
+  "bolt/m2x16-socket": 4
+ },
+ "components": 29,
+ "geoms": 21,
+ "checks": [
+  {
+   "check": "hip_l servo seated in the cheek window: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_l servo/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l horn nested in the block slot: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_l horn/block common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l horn on the spline top: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_l horn/servo common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l bearing pressed in the cheek: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_l bearing/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l stub in the bearing bore: radial clearance",
+   "measured": 0.05,
+   "expected": 0.05,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_l stub/bearing common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l centre screw engagement in the spline",
+   "measured": 7.85398,
+   "expected": 7.853981633974483,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l centre screw/block common volume (clearance hole)",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l centre screw clear of the horn hub bore",
+   "measured": 1.45,
+   "expected": 1.4500000000000002,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_l tab screw 0 engagement in the cheek",
+   "measured": 4.0715,
+   "expected": 4.071504079052371,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l tab screw 0/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l tab screw 1 engagement in the cheek",
+   "measured": 4.0715,
+   "expected": 4.071504079052371,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l tab screw 1/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_l block to inboard cheek gap",
+   "measured": 1.0,
+   "expected": 1.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_l spline to block hub recess (radial)",
+   "measured": 1.2,
+   "expected": 1.2000000000000002,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_r servo seated in the cheek window: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_r servo/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r horn nested in the block slot: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_r horn/block common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r horn on the spline top: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_r horn/servo common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r bearing pressed in the cheek: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_r bearing/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r stub in the bearing bore: radial clearance",
+   "measured": 0.05,
+   "expected": 0.05,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_r stub/bearing common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r centre screw engagement in the spline",
+   "measured": 7.85398,
+   "expected": 7.853981633974483,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r centre screw/block common volume (clearance hole)",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r centre screw clear of the horn hub bore",
+   "measured": 1.45,
+   "expected": 1.4500000000000002,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_r tab screw 0 engagement in the cheek",
+   "measured": 4.0715,
+   "expected": 4.071504079052371,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r tab screw 0/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r tab screw 1 engagement in the cheek",
+   "measured": 4.0715,
+   "expected": 4.071504079052371,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r tab screw 1/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "hip_r block to inboard cheek gap",
+   "measured": 1.0,
+   "expected": 1.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_r spline to block hub recess (radial)",
+   "measured": 1.2,
+   "expected": 1.2000000000000002,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_l servo seated in the cheek window: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_l servo/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l horn nested in the block slot: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_l horn/block common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l horn on the spline top: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_l horn/servo common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l bearing pressed in the cheek: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_l bearing/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l stub in the bearing bore: radial clearance",
+   "measured": 0.05,
+   "expected": 0.05,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_l stub/bearing common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l centre screw engagement in the spline",
+   "measured": 7.85398,
+   "expected": 7.853981633974483,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l centre screw/block common volume (clearance hole)",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l centre screw clear of the horn hub bore",
+   "measured": 1.45,
+   "expected": 1.4500000000000002,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_l tab screw 0 engagement in the cheek",
+   "measured": 4.0715,
+   "expected": 4.071504079052371,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l tab screw 0/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l tab screw 1 engagement in the cheek",
+   "measured": 4.0715,
+   "expected": 4.071504079052371,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l tab screw 1/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_l block to inboard cheek gap",
+   "measured": 1.0,
+   "expected": 1.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_l spline to block hub recess (radial)",
+   "measured": 1.2,
+   "expected": 1.2000000000000002,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_r servo seated in the cheek window: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_r servo/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r horn nested in the block slot: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_r horn/block common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r horn on the spline top: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_r horn/servo common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r bearing pressed in the cheek: distance",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_r bearing/cheek common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r stub in the bearing bore: radial clearance",
+   "measured": 0.05,
+   "expected": 0.05,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_r stub/bearing common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r centre screw engagement in the spline",
+   "measured": 7.85398,
+   "expected": 7.853981633974483,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r centre screw/block common volume (clearance hole)",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r centre screw clear of the horn hub bore",
+   "measured": 1.45,
+   "expected": 1.4500000000000002,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_r tab screw 0 engagement in the cheek",
+   "measured": 4.0715,
+   "expected": 4.071504079052371,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r tab screw 0/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r tab screw 1 engagement in the cheek",
+   "measured": 4.0715,
+   "expected": 4.071504079052371,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r tab screw 1/servo tab common volume",
+   "measured": 0.0,
+   "expected": 0.0,
+   "ok": true,
+   "unit": "mm3"
+  },
+  {
+   "check": "knee_r block to inboard cheek gap",
+   "measured": 1.0,
+   "expected": 1.0,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_r spline to block hub recess (radial)",
+   "measured": 1.2,
+   "expected": 1.2000000000000002,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_l window clearance around the case (section)",
+   "measured": 0.3,
+   "expected": 0.3,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "hip_r window clearance around the case (section)",
+   "measured": 0.3,
+   "expected": 0.3,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_l window clearance around the case (section)",
+   "measured": 0.3,
+   "expected": 0.3,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "knee_r window clearance around the case (section)",
+   "measured": 0.3,
+   "expected": 0.3,
+   "ok": true,
+   "unit": "mm"
+  },
+  {
+   "check": "no intersection other than the 12 declared thread engagements",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "pairs"
+  },
+  {
+   "check": "no unmeasured pair",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "pairs"
+  },
+  {
+   "check": "no plane, floor or world geometry in the design",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "geoms"
+  },
+  {
+   "check": "no initial contact between proxies",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "contacts"
+  },
+  {
+   "check": "only the two soles rest on the environment floor at t = 0",
+   "measured": 2,
+   "expected": 2,
+   "ok": true,
+   "unit": "pairs"
+  },
+  {
+   "check": "nothing grounded: the pelvis is the free base",
+   "measured": 1,
+   "expected": 1,
+   "ok": true,
+   "unit": "flag"
+  },
+  {
+   "check": "solver residual: solved",
+   "measured": 0,
+   "expected": 0,
+   "ok": true,
+   "unit": "code"
+  }
+ ],
+ "sections": {
+  "hip_l": {
+   "plane": "XZ",
+   "offset_mm": 58.887,
+   "objects_cut": 5,
+   "gap_mm": 0.3
+  },
+  "hip_r": {
+   "plane": "XZ",
+   "offset_mm": -58.887,
+   "objects_cut": 5,
+   "gap_mm": 0.3
+  },
+  "knee_l": {
+   "plane": "XZ",
+   "offset_mm": 47.387,
+   "objects_cut": 8,
+   "gap_mm": 0.3
+  },
+  "knee_r": {
+   "plane": "XZ",
+   "offset_mm": -47.387,
+   "objects_cut": 8,
+   "gap_mm": 0.3
+  }
+ },
+ "ok": true
+}

@@ -1,0 +1,166 @@
+{
+ "schema": "heron-design-evidence-v1",
+ "project": "ot6-heron",
+ "model": "claude-fable-5 (the CLI default; no --model given)",
+ "accepted_revision": "9c1f2fe7ea19c7bfd99d8c2dc55982428c460bd780aa55dde7bbb7887c9f9e7d",
+ "accepted_digest": "f9be3985bc559d3631bbbb76b2d8138bf864d200ea6384fdb35eb09f045ea7de",
+ "script_sha256": "820e3ea063921539fd2a3adb44873fe7572a043d56f43e46d3a33bd202afc675",
+ "script_bytes": 32013,
+ "turns": [
+  {
+   "turn": "create",
+   "what": "design turn from the empty project",
+   "prompt_sha256": "bcda5af55c50459968d87d4651cf0123e7f996227c6c80895365078860514e37",
+   "prompt_bytes": 9648,
+   "started": "2026-09-14T03:26:11Z",
+   "finished": "2026-09-14T03:50:24Z",
+   "exit": 0,
+   "stdout_sha256": "6069f098c8643162fe6fec1ae9535f9b18421f4af83a69b4023986fddb97b77e",
+   "stderr_sha256": "05b793a753c1b169fbf78515d4d943a6bc302ea521a0ecdc81ecd29c820e45f8",
+   "command": "timeout 1800 ./cadex --project $PROJECTS/ot6-heron --out $PROJECTS/ot6-heron-src/create-out --json -p \"$(cat create.prompt.txt)\""
+  },
+  {
+   "turn": "resume",
+   "what": "correction 1: remove the bench plane collision",
+   "prompt_sha256": "3b2b86a5fac908b1f3cdf239c0ddf42e90e48b4569e51a24d155befbac99c5dc",
+   "prompt_bytes": 1082,
+   "started": "2026-09-14T03:51:10Z",
+   "finished": "2026-09-14T03:53:50Z",
+   "exit": 0,
+   "stdout_sha256": "c4ae899b9743e8d9a3b55d1a0ff147d11c142f7e42c31d64ed169f4868cbcdc8",
+   "stderr_sha256": "a3079a53a308648e5734d6942507befd2e5af2d13d1b9bcf60a32aa9f006a403",
+   "command": "timeout 1500 ./cadex --project $PROJECTS/ot6-heron --resume --out $PROJECTS/ot6-heron-src/resume-out --json -p \"$(cat resume.prompt.txt)\""
+  },
+  {
+   "turn": "resume2",
+   "what": "correction 2: seat the servo tab plates on the cheek outer faces",
+   "prompt_sha256": "d3461e05c525964f7bb44a516b71e504972972e4495279942ed448ba64bb78c1",
+   "prompt_bytes": 2124,
+   "started": "2026-09-14T03:54:07Z",
+   "finished": "2026-09-14T03:59:50Z",
+   "exit": 0,
+   "stdout_sha256": "2f466325ebe36e44eb7e04ab6d03fa352c1a242f2ed3086c1ddf5e60c5bf902a",
+   "stderr_sha256": "3c69148806c60acca9162737a1a73f8d0711b7a05d9fbd888b1173c392e7cf8f",
+   "command": "timeout 1500 ./cadex --project $PROJECTS/ot6-heron --resume --out $PROJECTS/ot6-heron-src/resume2-out --json -p \"$(cat resume2.prompt.txt)\""
+  },
+  {
+   "turn": "resume3",
+   "what": "correction 3: make each horn pocket floor a contact face",
+   "prompt_sha256": "fe252c9374973b5a63586cd1f6a716788738b76c4becfebf2549340a5b45945c",
+   "prompt_bytes": 1485,
+   "started": "2026-09-14T04:00:25Z",
+   "finished": "2026-09-14T04:04:03Z",
+   "exit": 0,
+   "stdout_sha256": "4dae441e23074e32a37a2d446ddae792ad4c60ca26ec612818bc26f89d64322d",
+   "stderr_sha256": "51684a03032247865b8d106ac9cdc712968f0c0447920a26fa28b0a1f0060bc9",
+   "command": "timeout 1500 ./cadex --project $PROJECTS/ot6-heron --resume --out $PROJECTS/ot6-heron-src/resume3-out --json -p \"$(cat resume3.prompt.txt)\""
+  }
+ ],
+ "history": [
+  {
+   "ordinal": 1,
+   "file": "0001-ba81db48544e.py",
+   "revision": "ba81db48544e",
+   "saved_at": "2026-09-14T03:29:03Z",
+   "characters": 557,
+   "outputs": 1
+  },
+  {
+   "ordinal": 2,
+   "file": "0002-23d54a604cca.py",
+   "revision": "23d54a604cca",
+   "saved_at": "2026-09-14T03:29:31Z",
+   "characters": 784,
+   "outputs": 4
+  },
+  {
+   "ordinal": 3,
+   "file": "0003-4a17999ba63b.py",
+   "revision": "4a17999ba63b",
+   "saved_at": "2026-09-14T03:38:44Z",
+   "characters": 473,
+   "outputs": 4
+  },
+  {
+   "ordinal": 4,
+   "file": "0004-20089e810117.py",
+   "revision": "20089e810117",
+   "saved_at": "2026-09-14T03:47:17Z",
+   "characters": 30366,
+   "outputs": 48
+  },
+  {
+   "ordinal": 5,
+   "file": "0005-7e9eff5c4ff2.py",
+   "revision": "7e9eff5c4ff2",
+   "saved_at": "2026-09-14T03:49:15Z",
+   "characters": 30584,
+   "outputs": 48
+  },
+  {
+   "ordinal": 6,
+   "file": "0006-2207f8b96b01.py",
+   "revision": "2207f8b96b01",
+   "saved_at": "2026-09-14T03:53:25Z",
+   "characters": 30912,
+   "outputs": 48
+  },
+  {
+   "ordinal": 7,
+   "file": "0007-ac441479204d.py",
+   "revision": "ac441479204d",
+   "saved_at": "2026-09-14T03:57:15Z",
+   "characters": 31615,
+   "outputs": 48
+  },
+  {
+   "ordinal": 8,
+   "file": "0008-9c1f2fe7ea19.py",
+   "revision": "9c1f2fe7ea19",
+   "saved_at": "2026-09-14T04:02:49Z",
+   "characters": 32013,
+   "outputs": 48
+  }
+ ],
+ "design_defects_found_by_measurement": [
+  {
+   "revision": "7e9eff5c4ff2",
+   "defect": "assembly.collision(\"plane\") on the grounded base: world geometry in the design script",
+   "found_by": "the dynamics export listed a plane geom on comp_base",
+   "corrected_in": "2207f8b96b01"
+  },
+  {
+   "revision": "2207f8b96b01",
+   "defect": "servo tab plates buried in the outboard cheeks",
+   "found_by": "published clearance: base/servo_shoulder and upper_arm/servo_elbow common volume 248.2016 mm3 = (32.5-23.4)*12.2*2.4 - 2*pi*1.1^2*2.4, the tab plate outside the window minus its holes; the script stdout claimed 0",
+   "corrected_in": "ac441479204d"
+  },
+  {
+   "revision": "ac441479204d",
+   "defect": "horn pocket floor cleared the horn by horn_clear, so the horn met nothing on its link",
+   "found_by": "published clearance: upper_arm/horn_shoulder and forearm/horn_elbow distance 0.2 mm",
+   "corrected_in": "9c1f2fe7ea19"
+  }
+ ],
+ "external_evidence": {
+  "directory": "$PROJECTS/ot6-heron-src",
+  "accepted_sources": {
+   "accepted-7e9eff5c.py": "3339a1786d4d2bbcb69de9b4410ee325aed9ea73a327cd7703848484a677389d",
+   "accepted-noplane.py": "ac981d4c0d8bbbcf50a98c347734fe3a3bc20297182a3dae0172a03a163bd776",
+   "accepted-tabseat.py": "6f1e05ee7a287ccd6eda26e023b07ea0821c5aac197227fcca379bb6778e2bc6",
+   "accepted-hornfloor.py": "820e3ea063921539fd2a3adb44873fe7572a043d56f43e46d3a33bd202afc675"
+  },
+  "section_envelopes": {
+   "section-XY-125.3.json": "4a63b9656b77507b1256b20ace63f0f8e44610ce883b967de71598ca76c6d3df",
+   "section-XY-126.json": "d6772f26886c573a0781aa4320ee1a71efaec5abe43acac69a203f0415935f83",
+   "section-XY-45.3.json": "ce0c30ab542cb62aba533209c0a8d29470dff8ebf589046e98be4978decf958b",
+   "section-XY-46.json": "36aa937b38bfd627192356f2b80e1d5fe78377cdb13881575dd05d838c04a73f",
+   "section-XZ--16.5.json": "ab0cac889be3f136798ecad6064545d7e65345526090d9b227938d6e099ad898"
+  },
+  "start_of_iteration_operator_check": {
+   "operator-1400.png": "d31dfc4c7e1eee4d56a577b648d3d69e559f962247445f43e269db7bc71b7ba5",
+   "operator-400.png": "15f73a4e151e3de232db9735fc00b10c4c4351b82b6f3e139bcd1844bc91d7bd",
+   "operator.json": "92093d09feb252d73d871194c02b1d97774b9594f4fea30d90864c347b222493"
+  }
+ }
+}

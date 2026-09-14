@@ -1,0 +1,92 @@
+{
+  "schema": "ot6-robin-design-attempt-v1",
+  "outcome": "failed; only catalog probe accepted",
+  "project": "ot6-robin",
+  "model": "claude-fable-5",
+  "started": "2026-09-14T01:15:05Z",
+  "finished": "2026-09-14T01:33:06Z",
+  "timeout_seconds": 1800,
+  "exit_code": 1,
+  "provider_error": "You've hit your session limit \u00b7 resets 10:10pm (America/New_York)",
+  "accepted_revision": "f5f0533481457549b2f07637a9ac825a5bb32ca7270dafdb504c8adf5c7e16b4",
+  "accepted_digest": "e1b68010cd87634310741d5cc641a092d43d23e1ec076c4992bec6d820ae8c45",
+  "accepted_contract": [
+    {
+      "domain": "part",
+      "name": "probe_motor",
+      "type": "solid"
+    }
+  ],
+  "latest_candidate": {
+    "attempt_id": "1789349572557-ec9919aed5ad",
+    "error": "Task output 'balance_task' could not be built: The reset variation in task output 'balance_task' drives the mechanism 1.31 mm further into the floor than its reset pose already sits, at an azimuth of 0 degrees.",
+    "failure_code": "DOMAIN_CANDIDATE_FAILED",
+    "revision": "69241c70379be162588cf9e7ec99bf7a1f4151d552c259a12da6bd5a19cfb0dc",
+    "status": "failed"
+  },
+  "post_rejection_edit_error": "replacements[0].old must occur exactly once; found 0.",
+  "inventory_verified": false,
+  "fit_verified": false,
+  "training_started": false,
+  "operator_end": {
+    "url": "http://<private-address>:8765/",
+    "selected": "finch1-final",
+    "revision": "b6862234556355f799591f314cde6b1a7caadb7d4659a0051d18a442c098912f",
+    "components": 29,
+    "status": "model of run finch1-final at revision b68622345563 \u00b7 29 component(s), 95212 triangles \u00b7 from runs/finch1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids",
+    "reason": "Retain completed Finch lifecycle; Robin has no accepted mechanism."
+  },
+  "artifacts_relative_to": "operator cadex-projects directory",
+  "artifacts": [
+    {
+      "path": "ot6-robin-src/create.prompt.txt",
+      "sha256": "e20ee7abe5818015182693a2d950b84fc62da67868d2ee42cec748ca2299329b",
+      "bytes": 7650
+    },
+    {
+      "path": "ot6-robin-src/create.stdout.json",
+      "sha256": "fda760815caab1c3c91067476a25436022aa0e49bd183d03ec79862b7e41b215",
+      "bytes": 981
+    },
+    {
+      "path": "ot6-robin-src/create.stderr",
+      "sha256": "dcc3a59ce4dcc0971a1a9e12299bd7c4e6088e977e0c8a26e9b2f3c3a653a8f9",
+      "bytes": 1120
+    },
+    {
+      "path": "ot6-robin-src/create.started",
+      "sha256": "5ae1a3443318ae9f47793eccb2303a2134e61b5d9e6b0481bc07ac3e591b214e",
+      "bytes": 21
+    },
+    {
+      "path": "ot6-robin-src/create.finished",
+      "sha256": "054f5d846d6f5bfb6d2e652743d0ba11289d6b93113d5e3e0832f9b755d66c34",
+      "bytes": 21
+    },
+    {
+      "path": "ot6-robin-src/create.exit",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2
+    },
+    {
+      "path": "ot6-robin/script.py",
+      "sha256": "46f915b1985ee420fe2576ddd8d594c239ab41079c05780acbcb1599d26fefbc",
+      "bytes": 569
+    },
+    {
+      "path": "ot6-robin/script.json",
+      "sha256": "7de221ce8c06c29ac2c49a0ca546e07c5c02335735cebd6833803c1dcd409e62",
+      "bytes": 1585
+    },
+    {
+      "path": "ot6-robin/script_artifacts/69241c70379be162588cf9e7ec99bf7a1f4151d552c259a12da6bd5a19cfb0dc/attempt-1789349572557-ec9919aed5ad/request.json",
+      "sha256": "20303bb065ca3b1153ce6ad4886d5f626caa563567b24e5e5d2959ae5e9a3673",
+      "bytes": 23092
+    },
+    {
+      "path": "ot6-robin/script_artifacts/69241c70379be162588cf9e7ec99bf7a1f4151d552c259a12da6bd5a19cfb0dc/attempt-1789349572557-ec9919aed5ad/result.json",
+      "sha256": "2012606428ce1ebf093b6070bfff3441190f9e2af8c9e1e19eba2ad8f9b7312d",
+      "bytes": 2904
+    }
+  ]
+}

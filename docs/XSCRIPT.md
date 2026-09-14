@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-09
+Verified against source: 2026-09-13
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -74,6 +74,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `description` — the `CONTROL_FIELDS` vocabulary). Collected specs are
   cached in `script.json`; **values** live there too and are patched by
   `set_params` without touching source.
+- **An assembly that grounds nothing is a free base** (ADR-335). `grounded=True`
+  makes a component the fixed frame; leave it off every component and
+  `assembly.solve` holds the first one in script order for the solver
+  (reported as `free_base`, never as grounded), the dynamics export gives it
+  a free joint, and the ground it stands on is the environment's plane at
+  z = 0 — never a part of the script. A grounded assembly gets no such floor.
 - **`part.box`'s `origin` is a corner, not a centre.** `part.box(40, 40, 200)`
   occupies x ∈ [0, 40], y ∈ [0, 40], z ∈ [0, 200] — the origin is the
   minimum corner, and the solid is entirely on the positive side of the

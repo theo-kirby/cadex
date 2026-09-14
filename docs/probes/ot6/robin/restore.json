@@ -1,0 +1,222 @@
+{
+  "schema": "ot6-robin-restore-probe-v1",
+  "replays": 4,
+  "hash_seed": 0,
+  "accepted_revision": "71709063d6af7ee357d5bb5b409e3332730a1465e0caa62f92f93535ec04cd84",
+  "accepted_digest": "806ab1343b7c94789c986fe244d610b93bf4e8516e4bf0457408f31f081f6c4e",
+  "restored_digest": "c14013df428ff40ad9eef90cf75fc2096727f7f18c31a539a929621b171170ec",
+  "all_75_definitions_and_placements_equal": true,
+  "changed_artifacts": [
+    "wheel_l",
+    "wheel_r"
+  ],
+  "stable_replay_nodes": 36,
+  "total_replay_nodes": 40,
+  "varying_replay_nodes": {
+    "18": {
+      "operation": "offset",
+      "distinct_sha256": 4,
+      "sha256": [
+        "5cc52f459a18a7605181229f399d1afbed360d5ec23c6906c5413891519c22bb",
+        "d06230bf1edba6cd37043d2a8a831b32c838eb3434f6808280b5eab28e6fde2b",
+        "142f1aaf2d93154b5ef886a4176e9a2cc3856dbfe553c15071bfa116fba7e3e9",
+        "573ebfc01402b54ccef9350c37727b4aa3e38267385e1f7c7d3d83874f345479"
+      ],
+      "volume_range_mm3": [
+        63.68707860626532,
+        63.68707860626533
+      ],
+      "faces": [
+        14
+      ],
+      "edges": [
+        28
+      ]
+    },
+    "19": {
+      "operation": "cut",
+      "distinct_sha256": 4,
+      "sha256": [
+        "d8ee12b8f82268f515e3c3165a89d070c580129b5e67855f25ed70bee4b38898",
+        "610bdfbe4e624b2e56917338d70ff000ae9843f301f98742b433d042d4740496",
+        "fc6fb6aeba9348d6ef3ea72085d2869b4b16e2df49daa8848e8478758c7605db",
+        "460e7e4c0fd122b16d64f0a0705966c0fc18efda50a1b5cf0c7b640511101ab5"
+      ],
+      "volume_range_mm3": [
+        12512.299022931082,
+        12512.299022931082
+      ],
+      "faces": [
+        11
+      ],
+      "edges": [
+        23
+      ]
+    },
+    "38": {
+      "operation": "offset",
+      "distinct_sha256": 4,
+      "sha256": [
+        "6ea55d83b52503e242cb58f57c41fa2c988ab91fbb112f0e4679663964f16743",
+        "4955448fdab6744b95ae99cf7c47d10fe4408f9cbfd5a66fd4a4f44380b02b83",
+        "dca7d2842449d1149d39f75e4c67b314563ae395b3caff1d4e05005d06e4e55d",
+        "f02b183706072f3c7b73b82e6d932d43721acfacbf12360bddfe0529acabbce6"
+      ],
+      "volume_range_mm3": [
+        63.687078606265395,
+        63.68707860626542
+      ],
+      "faces": [
+        14
+      ],
+      "edges": [
+        28
+      ]
+    },
+    "39": {
+      "operation": "cut",
+      "distinct_sha256": 2,
+      "sha256": [
+        "df8cdc658fca77cbc1ab66d87effb819ca63b2bfa86fbde49f28acc5b4464a4f",
+        "336115daf7a5cb3ea91c12cc22b012ae47585c03a7c68e93026bcd49baaa2b0a",
+        "336115daf7a5cb3ea91c12cc22b012ae47585c03a7c68e93026bcd49baaa2b0a",
+        "336115daf7a5cb3ea91c12cc22b012ae47585c03a7c68e93026bcd49baaa2b0a"
+      ],
+      "volume_range_mm3": [
+        12512.299022931082,
+        12512.299022931082
+      ],
+      "faces": [
+        11
+      ],
+      "edges": [
+        23
+      ]
+    }
+  },
+  "frozen": {
+    "l-input": {
+      "operation": "input",
+      "distinct_sha256": 1,
+      "sha256": [
+        "0d840b6a03f93d940ce59917ee9ace751bc3aa76cc25c7539c8fd00d29db45aa",
+        "0d840b6a03f93d940ce59917ee9ace751bc3aa76cc25c7539c8fd00d29db45aa",
+        "0d840b6a03f93d940ce59917ee9ace751bc3aa76cc25c7539c8fd00d29db45aa",
+        "0d840b6a03f93d940ce59917ee9ace751bc3aa76cc25c7539c8fd00d29db45aa"
+      ],
+      "volume_range_mm3": [
+        58.62711992670332,
+        58.62711992670332
+      ],
+      "faces": [
+        5
+      ],
+      "edges": [
+        9
+      ]
+    },
+    "l-offset": {
+      "operation": "offset",
+      "distinct_sha256": 4,
+      "sha256": [
+        "3e2f5f5e5617d8c28e43191677cdda387df7d2625286cab15f660896aad3e279",
+        "9ede576643b7e3f74d21270e2a7157259b319381bbd9b6fc882acfa1aee04903",
+        "64de1bb3b4da4734877a3143e3b1cc14c4b1a33094af5273c886784da39bf39c",
+        "1e4fb5b82628fde5978626057d34ecf1f0ff4569af1815642c8a5e78c5a37bcc"
+      ],
+      "volume_range_mm3": [
+        63.6870786061969,
+        63.68707860619693
+      ],
+      "faces": [
+        14
+      ],
+      "edges": [
+        28
+      ]
+    },
+    "r-input": {
+      "operation": "input",
+      "distinct_sha256": 1,
+      "sha256": [
+        "e3ae9e26aa76f76469a121e22090fe6c00fb3aa2e364f6791cc5899a4bb61271",
+        "e3ae9e26aa76f76469a121e22090fe6c00fb3aa2e364f6791cc5899a4bb61271",
+        "e3ae9e26aa76f76469a121e22090fe6c00fb3aa2e364f6791cc5899a4bb61271",
+        "e3ae9e26aa76f76469a121e22090fe6c00fb3aa2e364f6791cc5899a4bb61271"
+      ],
+      "volume_range_mm3": [
+        58.627119926703315,
+        58.627119926703315
+      ],
+      "faces": [
+        5
+      ],
+      "edges": [
+        9
+      ]
+    },
+    "r-offset": {
+      "operation": "offset",
+      "distinct_sha256": 4,
+      "sha256": [
+        "7334fd86698dbc3ff5b8740eb8f3a7eef40f204f48c08252f281cf2204b8d05f",
+        "595293495007e8f3cffc56a0ff4ad48e9d0fe803e4cfd63adac567b584e34e3e",
+        "d850ed2a63c6a3652603a0de0c18423f3b13bef525bd212e2e9a56a8b6c0bcf6",
+        "fd37fdeb27827427862ed8ed4ec3ce1b953574a5ddd686c7323242ea2ea6c2a7"
+      ],
+      "volume_range_mm3": [
+        63.68707860619702,
+        63.687078606197026
+      ],
+      "faces": [
+        14
+      ],
+      "edges": [
+        28
+      ]
+    }
+  },
+  "external_root": "cadex-projects/ot6-robin-src/restore-probe",
+  "external_files": {
+    "frozen/manifest.json": "9388d6319b4831c5c5cb4d1770ea18c18fcef83d257d45bb36b43426058c7fb9",
+    "operator.json": "d3d491a2026377c68f3974c485fc4bcbb2f8d5d2f094155da7002d272c6e9127",
+    "engine-suite.log": "39458d0e82ca53ff2c746ae7a613aa49b5d94e2231fe83b6ddfb7af6e5a84d48",
+    "packaged-gate.log": "789f96f96851fe02e70d11fcba6c8049b44959196d8db5d78bd5401ba33549e1",
+    "../iteration20-section.json": "57609378c0e8a94821ecc56959c7c80d1b83eda3ab6bb9f6941323e5def7aa41"
+  },
+  "operator": [
+    {
+      "width": 1400,
+      "height": 900,
+      "at": "2026-09-14T02:14:04.755983+00:00",
+      "project": "ot6-robin \u2014 review",
+      "selected": "accepted",
+      "status": "accepted model at revision 71709063d6af \u00b7 24 component(s), 57044 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids",
+      "overflow_px": 0
+    },
+    {
+      "width": 400,
+      "height": 850,
+      "at": "2026-09-14T02:14:06.350028+00:00",
+      "project": "ot6-robin \u2014 review",
+      "selected": "accepted",
+      "status": "accepted model at revision 71709063d6af \u00b7 24 component(s), 57044 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids",
+      "overflow_px": 0
+    }
+  ],
+  "validation": {
+    "engine": {
+      "passed": 2114,
+      "skipped": 53,
+      "seconds": 283.06
+    },
+    "packaged_lifecycle": {
+      "passed": 16,
+      "seconds": 18.07
+    },
+    "evidence": {
+      "passed": 73,
+      "deselected": 16
+    }
+  }
+}

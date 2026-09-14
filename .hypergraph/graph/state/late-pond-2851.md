@@ -43,6 +43,8 @@ What works, and is not in doubt:
 
 **Retired from the active charter (2026-09-12, ADR-284).** The owner redirected run `ot5` to live headless project review and lifecycle recording on a *fresh, agent-designed* biped, and retired mg-legs from the active charter and the acceptance workflow: no new acceptance test may depend on it, and the new biped is built without importing the old mechanism, checkpoints or project history [rec: dusty-peak-9330] [rec: lucky-comet-0031]. Gait and shove optimisation are outside that mission, so **B7 and the shove-band tipping above are no longer on any active frontier** — they stay recorded here as history, and the general RL capabilities this node describes remain in place and in use. The old gait/shove criteria were retired, not declared achieved; historical records and the cdx-rl tree are not deletion targets [rec: dusty-peak-9330]. Maintainer judgement: status stays `open` because B7 is unfinished, not because anyone is working it; the active work lives on `crisp-sun-1239`.
 
+**A third fresh mechanism trained end to end at the default rate (2026-09-14).** Heron, a grounded two-DoF MG90S arm designed by the product agent under the ot6 charter, trained once in a bounded `heron1` run (240 PPO updates on 1024 environments, seed 0, learning rate 3e-4, 619.6 s, no divergence) and its final policy met the fixed-target reach task on every one of seeds 0–9, while checkpoint 20 met it on none; the lifecycle evidence lives on `civic-creek-8215` [rec: mild-hill-0753].
+
 ## Negative knowledge
 
 - [scope: reading a trainer reward curve | confidence: high | evidence: humble-path-4466] Trainer reward is not survival, and selecting a checkpoint by reward has lost to selecting by measured behaviour three separate times. Select by stepping-and-surviving.
@@ -55,6 +57,8 @@ What works, and is not in doubt:
 - [scope: fixed-seed convergence gates | confidence: high | evidence: stormy-cedar-1763] Which seeds converge PPO is platform arithmetic, not semantics — seed 0 converged on the machine that authored the gate and plateaus deterministically on an M4. A convergence gate must buy more than one ticket, and a gate that skips in CI was last verified on whatever machine last bothered.
 - [scope: MJX collision pairs | confidence: high | evidence: staid-valley-0501, sleepy-grove-5790, chilly-basin-7378] MJX implements no cylinder↔box pair (nor cylinder/mesh, box/ellipsoid or ellipsoid/mesh), while stock MuJoCo simulates all of them — so a model the engine and the exporter both accept can still be untrainable. **Superseded as an unguarded hazard by ADR-281**, which refuses those four pairs at `assembly.task` rather than letting `mjx.put_model` raise a `NotImplementedError` minutes of design work later [rec: sleepy-grove-5790]. The authoring advice stands unchanged: prefer box, capsule or sphere collision geometry on anything that must train, and note that `collides_with=[]` is *not* the escape — the mask test is an `or` over both directions, so both sides must agree.
 - [scope: spin-out termination on overpowered tiny mechanisms | confidence: high | evidence: staid-valley-0501] The guard must comfortably exceed σ·torque_limit/I·Δt or exploration dies in a handful of steps and the guard becomes the curriculum — measured as mean episode length 3.7 of 100 and a reward plateau, fixed by raising the guard and letting the spin cost do the shaping.
+
+- [scope: reading the trainer's `episode_steps` on a task whose only endings are the synchronized time limit | confidence: high | evidence: mild-hill-0753] The metric is unroll × envs over endings in the unroll, so it alternates 20,480 / 20.0 and says nothing about episode length. Report it as such; do not read it as survival.
 
 ## Provenance
 
@@ -74,3 +78,4 @@ What works, and is not in doubt:
 - chilly-basin-7378 — the fresh mixed-joint walk's design turn authored only supported collision shapes unaided, so the ADR-281 refusal never fired and the train leg completed
 - dusty-peak-9330 — the owner retired mg-legs from the active charter and acceptance workflow (ADR-284); gait/shove work is outside the ot5 mission, history preserved
 - lucky-comet-0031 — the ot5 directive: a fresh biped, built without the old mechanism, checkpoints or history
+- mild-hill-0753 — ADR-340: Heron, a third fresh mechanism, trained end to end at the default rate with the reach met on every seed; the trainer's episode_steps metric is uninformative on time-limit-only tasks

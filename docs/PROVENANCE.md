@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-09-12
+Verified against source: 2026-09-13
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -888,8 +888,10 @@ runtime CDN access or an npm toolchain.
 `31caeb28abb3bdab8d9030bfc91f0c3f48ffa63a`, copyright 2026 Theo, MIT.
 `REFERENCE-LICENSE.txt` retains the complete notice. Changes use local imports,
 allow the stage height to follow the CAD bounds, remove the 3 mm presentation
-lift, and make the environment floor front-sided for underside inspection.
-The light rig follows that reference's scene contract. Drone geometry, glyph
+lift, make the environment floor front-sided for underside inspection, and
+keep only the reference's dark palette (ADR-331): the light palette and the
+theme setter are removed, so the module exports one `PALETTE` and no
+`setTheme`. The light rig follows that reference's scene contract. Drone geometry, glyph
 scaling, controls, dashboard and capture application code are not imported.
 The sibling checkout is only a read-only comparison input; delivered Cadex
 rendering is self-contained. Our scene/adapter code remains LGPL-2.1-or-later.

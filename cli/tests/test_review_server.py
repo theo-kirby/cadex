@@ -102,12 +102,31 @@ def _trace(placements: dict[str, list[float]]) -> str:
     })
 
 
+# Collision proxies that DIFFER from the solids they stand for: the torso cube
+# spans 0..20 mm, its box proxy -20..40 mm; the leg cube is 8 mm, its capsule
+# 40 mm long and laid along Y; the sphere takes part in no contact and is not a
+# proxy at all. Bodies are named as the trace's components are.
+PROXY_MJCF = """<mujoco model="fixture">
+  <worldbody>
+    <body name="body" pos="0 0 0">
+      <geom name="body/collision0" type="box" size="0.03 0.03 0.03" pos="0.01 0.01 0.01"/>
+      <body name="shin" pos="0 0 -0.04">
+        <geom name="shin/collision0" type="capsule" size="0.006 0.02" quat="0.7071068 0.7071068 0 0"/>
+        <geom name="shin/visual" type="sphere" size="0.05" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+"""
+
+
 def _mesh_run(root: Path, name: str, *, revision: str) -> Path:
     """A walked run that retained its rollout meshes: body←torso, shin←leg."""
 
     # Two runs at one revision share a render directory; the helper makes it.
     shutil.rmtree(root / "review" / "render" / revision, ignore_errors=True)
     run = _walked_run(root, name, revision=revision)
+    (run / "train" / "rig-model.xml").write_text(PROXY_MJCF)
     rollout = run / "rollout"
     (rollout / "torso.stl").write_text(_cube_stl(20.0))
     (rollout / "leg.stl").write_text(_cube_stl(8.0))
@@ -159,11 +178,13 @@ def _stage_accepted(root: Path, revision: str, *, staging_revision: str | None =
     (staging / "display" / "display-000.tess.json").write_text(json.dumps(sidecar))
     (staging / "display" / "display-000.tess.bin").write_bytes(data)
     (staging / "outputs" / "assembly-simulation-trace.json").write_text(_trace({"body": [5.0, 0.0, 10.0]}))
+    (staging / "outputs" / "rig-model.xml").write_text(PROXY_MJCF)
     (staging / "result.json").write_text(json.dumps({
         "ok": True, "schema": "cadex-xscript-project-worker-v1",
         "component_sources": {"src-1": "torso"},
         "outputs": [
             {"name": "torso", "type": "solid", "artifact_kind": "brep", "artifact_path": "outputs/output-000.brep"},
+            {"name": "rig", "type": "mjcf", "artifact_kind": "assembly_mjcf_xml", "artifact_path": "outputs/rig-model.xml"},
             {"name": "body", "type": "component_link", "definition": {
                 "arguments": [{"object_name": "src-1"}],
                 "properties": {"placement": {"position": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0]}}}},
@@ -251,6 +272,62 @@ def test_a_run_without_its_trace_has_no_model_and_says_why(served) -> None:
     assert _get(server.url + "mesh/run/broken/torso.stl")[0] == 404
     record = _json(server.url + "api/run/broken")
     assert "artifacts.trace: missing" in record["problems"]
+
+
+def test_collision_proxies_come_from_the_retained_mjcf_at_the_same_identity(served) -> None:
+    """D4 (ADR-333): the proxies a view offers are parsed from the MJCF the run
+    (or the accepted attempt) retained, in the component's frame, in mm and
+    xyzw, and refused when the rollout's own receipt names another model."""
+
+    root, server = served
+    model = _json(server.url + "api/model/run/first")
+    collision = model["collision"]
+    assert collision["available"] is True and collision["skipped"] == 1
+    assert collision["source"].startswith("runs/first/train/rig-model.xml")
+    assert collision["sha256"] == hashlib.sha256(PROXY_MJCF.encode()).hexdigest()
+    assert collision["components"] == ["body", "shin"]
+    box, capsule = collision["geoms"]
+    assert box["component"] == "body" and box["type"] == "box" and box["drawn"] is True
+    assert box["size_mm"] == [30.0, 30.0, 30.0] and box["pos_mm"] == [10.0, 10.0, 10.0]
+    assert box["rotation_xyzw"] == [0.0, 0.0, 0.0, 1.0]
+    assert capsule["component"] == "shin" and capsule["type"] == "capsule"
+    assert capsule["size_mm"] == [6.0, 20.0] and capsule["pos_mm"] == [0.0, 0.0, 0.0]
+    assert capsule["rotation_xyzw"] == pytest.approx([0.7071068, 0.0, 0.0, 0.7071068])
+    # A fromto capsule, an inline mesh, a plane and a bad size are each said plainly.
+    (root / "runs" / "first" / "train" / "rig-model.xml").write_text("""<mujoco>
+      <asset><mesh name="hull" vertex="0 0 0 0.01 0 0 0 0.01 0 0 0 0.01" face="0 1 2 0 2 3 0 3 1 1 3 2"/></asset>
+      <worldbody><body name="body">
+        <geom type="capsule" size="0.005" fromto="0 0 0 0 0 0.05"/>
+        <geom type="mesh" mesh="hull"/>
+        <geom type="plane" size="0 0 0.1"/>
+        <geom type="box" size="0 0.01 0.01"/>
+      </body></worldbody></mujoco>""")
+    geoms = _json(server.url + "api/model/run/first")["collision"]["geoms"]
+    assert [g["type"] for g in geoms] == ["capsule", "mesh", "plane", "box"]
+    assert geoms[0]["pos_mm"] == [0.0, 0.0, 25.0] and geoms[0]["size_mm"] == [5.0, 25.0]
+    assert geoms[0]["rotation_xyzw"] == [0.0, 0.0, 0.0, 1.0] and geoms[0]["drawn"]
+    assert geoms[1]["drawn"] and len(geoms[1]["vertices_mm"]) == 12 and geoms[1]["faces"] == [0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 3, 2]
+    assert geoms[2]["drawn"] is False and "plane" in geoms[2]["note"]
+    assert geoms[3]["drawn"] is False and geoms[3]["note"] == "invalid size"
+    # The trace's policy receipt names the model it ran: another file is refused.
+    trace_path = root / "runs" / "first" / "rollout" / "assembly-simulation-trace.json"
+    trace = json.loads(trace_path.read_text())
+    trace["policy"] = {"model_sha256": "0" * 64}
+    trace_path.write_text(json.dumps(trace))
+    collision = _json(server.url + "api/model/run/first")["collision"]
+    assert collision["available"] is False and "digest mismatch" in collision["reason"]
+    assert collision["geoms"] == []
+    # No model, no proxies; a missing export says so.
+    assert _json(server.url + "api/model/run/broken")["collision"]["available"] is False
+    (root / "runs" / "second" / "train" / "rig-model.xml").unlink()
+    collision = _json(server.url + "api/model/run/second")["collision"]
+    assert collision["available"] is False and collision["reason"].startswith("MJCF export missing")
+    # The accepted view reads the accepted attempt's own assembly.mjcf output.
+    assert _json(server.url + "api/model/accepted")["collision"]["reason"] == "no model to show"
+    _stage_accepted(root, REVISION_B)
+    collision = _json(server.url + "api/model/accepted")["collision"]
+    assert collision["available"] is True and collision["source"].startswith("the accepted attempt's rig")
+    assert [g["component"] for g in collision["geoms"]] == ["body", "shin"]
 
 
 def _training_run(root: Path, name: str, *, revision: str, digest: str = "d" * 64,
@@ -662,6 +739,74 @@ def test_browser_orbit_and_zoom_move_the_camera_over_a_drawn_model(served, brows
     assert page.text("#artifacts tr[data-key='receipt'] td:nth-child(3)") == "not recorded"
     assert "artifacts.trace: missing" in page.evaluate(
         "Array.from(document.querySelectorAll('#problems li')).map(n => n.textContent)")
+
+
+@needs_browser
+def test_browser_shows_solids_by_default_and_proxies_only_under_the_labelled_toggle(served, browser) -> None:
+    """D4 (ADR-333): the viewport draws the tessellated solids; the collision
+    proxies — which differ from them in this project — appear only while the
+    labelled toggle is on, the status line says what is showing, and each
+    run's proxies are its own."""
+
+    root, server = served
+    page = _open(browser, server.url)
+    page.click("#views li[data-run='second']")
+    assert _model_state(page) == "loaded"
+    toggle = "document.getElementById('show-collision')"
+    assert page.evaluate(toggle + ".checked") is False and page.evaluate(toggle + ".disabled") is False
+    assert page.text("label[for='show-collision']").strip().startswith("show collision geometry")
+    assert page.attribute("#model-status", "data-showing") == "solids"
+    assert page.text("#model-status").endswith("· showing: tessellated solids")
+    stats = page.evaluate("window.cadexReview.viewer().stats()")
+    assert stats["showing"] == "tessellated solids"
+    assert stats["proxies"] == {"shown": False, "drawn": 2, "listed": 2}
+    solids = page.evaluate("window.cadexReview.viewer().modelPixels()")
+    assert solids["count"] > 1000
+    assert "collision: 1 box" in page.text("#model-components li[data-component='body']")
+    assert "collision: 1 capsule" in page.text("#model-components li[data-component='shin']")
+    page.scroll_into_view("#show-collision")
+    page.click("#show-collision")
+    page.wait_for("document.getElementById('model-status').dataset.showing === 'solids+proxies'")
+    assert page.evaluate("window.cadexReview.viewer().stats().showing") == "tessellated solids with collision proxies"
+    assert "showing: tessellated solids with collision proxies (2 outlines from runs/second/train/rig-model.xml" in page.text("#model-status")
+    with_proxies = page.evaluate("window.cadexReview.viewer().modelPixels()")
+    # The proxies outrun the solids: the box is three times the torso cube, the
+    # capsule five times the leg cube, so the drawn box grows on every side.
+    assert with_proxies["count"] > solids["count"] + 500
+    assert with_proxies["box"][0] < solids["box"][0] and with_proxies["box"][2] > solids["box"][2]
+    assert with_proxies["box"][1] < solids["box"][1] and with_proxies["box"][3] > solids["box"][3]
+    # The proxies move with the solids: poses set on the viewer carry both.
+    page.evaluate("window.cadexReview.viewer().setPoses({body:{position_mm:[0,0,0],rotation_xyzw:[0,0,0,1]},"
+                  "shin:{position_mm:[60,0,-40],rotation_xyzw:[0,0,0,1]}})")
+    moved = page.evaluate("window.cadexReview.viewer().modelPixels()")
+    assert moved["box"] != with_proxies["box"]
+    # Another run keeps the reader's choice and draws its own proxies; a run
+    # whose export is gone offers none and says so; the accepted view has none staged.
+    (root / "runs" / "first" / "train" / "rig-model.xml").write_text(
+        PROXY_MJCF.replace('size="0.03 0.03 0.03"', 'size="0.06 0.06 0.06"'))
+    page.click("#views li[data-run='first']")
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN first'")
+    assert _model_state(page) == "loaded"
+    page.wait_for("document.getElementById('model-status').dataset.showing === 'solids+proxies'")
+    assert page.evaluate(toggle + ".checked") is True
+    first = page.evaluate("window.cadexReview.viewer().modelPixels()")
+    # Twice the box at the same fit: the outline reaches further out on every side.
+    assert first["box"][0] < with_proxies["box"][0] and first["box"][2] > with_proxies["box"][2]
+    assert first["box"][1] <= with_proxies["box"][1] and first["box"][3] >= with_proxies["box"][3]
+    (root / "runs" / "second" / "train" / "rig-model.xml").unlink()
+    page.click("#views li[data-run='second']")
+    page.wait_for("document.getElementById('view-kind').textContent === 'RUN second'")
+    assert _model_state(page) == "loaded"
+    page.wait_for("document.getElementById('model-status').dataset.showing === 'solids'")
+    assert page.evaluate(toggle + ".disabled") is True
+    assert page.text("#collision-note").startswith("(none retained: MJCF export missing")
+    assert "collision: not retained" in page.text("#model-components li[data-component='body']")
+    assert page.evaluate("window.cadexReview.viewer().modelPixels()")["count"] < with_proxies["count"]
+    page.click("#views li[data-view='accepted']")
+    page.wait_for("document.getElementById('view-kind').textContent === 'ACCEPTED NOW'")
+    assert _model_state(page) == "missing"
+    assert page.evaluate(toggle + ".disabled") is True and page.text("#collision-note") == ""
+    assert page.evaluate("document.getElementById('model-status').hasAttribute('data-showing')") is False
 
 
 @needs_browser

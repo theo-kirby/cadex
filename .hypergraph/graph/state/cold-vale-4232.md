@@ -17,7 +17,7 @@ Status: working
 
 **Real Reed copy/edit/GPU retraining and source-unavailable reopen first proved D7.** A stopped-writer whole-directory copy matched all 1,206 source files; the copy alone received a disclosed actor-applied 90→100 mm foot revision, fresh 240-iteration GPU training and a verified final video; with the original temporarily unavailable, real engine reopen preserved accepted identity and a new private-address dashboard passed three-design (70/90/100 mm) browser checks. All 1,206 original files and 322 inherited run/asset files remained unchanged [rec: clever-fern-7568]. The earlier fixture established copied historical review and original isolation [rec: careful-gate-4868].
 
-Judgement: `working`. Three fresh projects show whole-project copies edited, reopened, reviewed and (Reed, Wren, Lark) retrained without touching the original. Temporary path unavailability does not imply OS-wide denial of access to the renamed source; the owner's checkbox is not edited [rec: warm-falcon-0420] [rec: scarlet-ocean-2381].
+Judgement: `working`. Three fresh projects show whole-project copies edited, reopened, reviewed and (Reed, Wren, Lark) retrained without touching the original. Temporary path unavailability does not imply OS-wide denial of access to the renamed source; the owner's checkbox is not edited [rec: warm-falcon-0420] [rec: scarlet-ocean-2381]. **The owner ticked D7 in the charter on 2026-09-13 after run ot5 stopped at iteration 111; the criterion is closed for ot5 with its evidence unchanged, and ot6's charter (ADR-328) supersedes it [rec: patient-pond-3886].**
 
 ## Negative knowledge
 
@@ -34,3 +34,4 @@ The copy procedure requires authoring, training and rendering to stop first; it 
 - fair-garden-6418 — clean sequential repeat preserves 362 prior run files and 963 source files
 - warm-falcon-0420 — Lark whole-project copy served on the persistent URL, edited and restored with the original unavailable, reviewed identically on two servers, original byte-identical (ADR-314)
 - scarlet-ocean-2381 — the original ot5-lark byte-identical after the copy's two training attempts, declaration and video (ADR-315)
+- patient-pond-3886 — the owner ticked D7 on 2026-09-13 after run ot5 stopped at iteration 111; evidence unchanged

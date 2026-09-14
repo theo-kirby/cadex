@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**Every run on the persistent Lark copy has its policy in the project store with its recorded digest (ADR-327).** `lark96-restart` and `lark109-engine2` were stored by running the command their own problem line named, from `/`; both `run.json` are byte-identical to before, 601 earlier run files and the accepted identity unchanged; `policy_store` carries `store_command`, and the two bounded drivers now store through the CLI before writing the record so the next real run never opens the gap [rec: empty-vine-5860].
+
 **Historical policy origins expose conflicting declarations (ADR-319).** The panel preserves the retained-byte-resolved origin while separately showing the declared training source and highlighting disagreement. A browser regression covers unrelated names, a conflicting source, missing retained bytes and explicit recheck, a final origin with no declaration, stale request isolation and retry after failure. This is inspection of retained history; project records are not rewritten [rec: stormy-shade-6266].
 
 **The agent's 70→45 mm Lark torso revision and `lark2` retraining preserve all 125 pre-revision run/asset files byte-identically.** `lark1` and `lark2` remain selectable on the persistent dashboard with their own revisions, curves and videos, and all four retained policies were compared on seeds 0–9 from their own retained models, tasks and hash-verified policies (ADR-313) [rec: brave-water-4060]. This is the third fresh project on which a product-agent revision and retraining left the prior design's history intact.
@@ -23,7 +25,7 @@ ADR-291 retains assembled placements, checked mesh bytes, parameter specs and pr
 
 Historical gaps remain explicit: foot90's original unavailable training snapshot is not rewritten from its later working rollout geometry, and the fix is verified on a real-engine fixture rather than another biped GPU run [rec: candid-forest-9800] [rec: forest-ledge-2219]. Complete project copies must include run directories and ignored policies, traces and videos; Git alone is insufficient [rec: light-brook-2640].
 
-Judgement: `working`. Reed, Wren and Lark each show a real design change and retraining with the prior run's identity, curves and videos intact and its files byte-identical; the owner's checkbox is not edited [rec: brave-water-4060].
+Judgement: `working`, and the owner ticked D5 on 2026-09-13 [rec: patient-pond-3886]. Reed, Wren and Lark each show a real design change and retraining with the prior run's identity, curves and videos intact and its files byte-identical [rec: brave-water-4060]; every Lark policy is now retained in the store as well as under its run [rec: empty-vine-5860]. **The owner ticked D5 in the charter on 2026-09-13 after run ot5 stopped at iteration 111; the criterion is closed for ot5 with its evidence unchanged, and ot6's charter (ADR-328) supersedes it [rec: patient-pond-3886].**
 
 Charter criterion: **D5. Review history survives a design change** Each run retains the model/script revision, specs, task/training configuration, metrics, policy identity and review/video references needed to interpret it; after a design edit and retraining, both runs remain selectable with their own curves, models and videos. Evidence: before/after identity and artifact checks, and browser assertions that old results have not silently switched to the new design. Declared target `gap-d5-review-history-survives-design` [rec: lucky-comet-0031].
 
@@ -50,3 +52,5 @@ Charter criterion: **D5. Review history survives a design change** Each run reta
 - red-jasper-1884 — agent revision/retraining preserves 465 prior files and separately retained baseline/checkpoint/final identities
 - brave-water-4060 — Lark agent revision and lark2 retraining preserve 125 prior files; both runs selectable with their own revisions, curves and videos
 - stormy-shade-6266 — ADR-319 historical origin display and conflict/missing-byte/stale-request/retry browser coverage
+- empty-vine-5860 — ADR-327: lark96-restart and lark109-engine2 policies stored with recorded digests, records byte-identical; drivers store before recording
+- patient-pond-3886 — the owner ticked D5 on 2026-09-13 after run ot5 stopped at iteration 111; evidence unchanged

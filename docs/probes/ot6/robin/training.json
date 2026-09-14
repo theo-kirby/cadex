@@ -1,0 +1,742 @@
+{
+ "schema": "robin-training-evidence-v1",
+ "project": "ot6-robin",
+ "run": "robin2",
+ "operator_url_source": "environment (private address, not committed)",
+ "accepted_revision": "c5347b32a408778cb0d71593ee60057b358dac9ae3c3067ab155a5b8612dbbce",
+ "digest": "185f9ccc4f9666e1e70d2a7e7c593add297edf3b3c28c1ac4117f28f2aeba885",
+ "geometry": {
+  "robin_model-model.xml": "43660a9e3e587a2684764b93b47114fb77c8ee1adeef376f1fa6a67e02471ada",
+  "balance_task-task.json": "38b753420069e37f8a55268595e9066b5aef1b6f04e2f2079534d5b4663ded28"
+ },
+ "record_agrees": true,
+ "task": {
+  "episode_steps": 400.0,
+  "control_hz": 50.0,
+  "fall_frac": 0.7,
+  "wheel_dia": 60.0,
+  "track": 90.0,
+  "chassis_h": 28.0,
+  "bay_h": 20.0
+ },
+ "task_values_source": "effective parameters recorded on both playback runs, whose task bundles are byte-identical to the training run's",
+ "fall_below_mm": 46.199999999999996,
+ "fall_below_source": "the training run's retained task bundle, termination on chassis_z",
+ "requested": {
+  "authored_by": "Robin, authored by the product agent from the D7 creation prompt; reset lift repaired (ADR-337) and the wheel D-bore revised as an analytic prism by the actor, both entered with cadex script --set; the balance task is declared in the same script",
+  "checkpoint_every": 20,
+  "envs": 1024,
+  "iterations": 240,
+  "learning_rate": 0.0001,
+  "seed": 0,
+  "timeout_seconds": 3600
+ },
+ "trainer_exit": 0,
+ "training_wall_seconds": 620.823,
+ "trainer_final": {
+  "iteration": 239,
+  "state": "done",
+  "reward_per_step": 0.6883468627929688,
+  "loss": 7.114964485168457,
+  "episode_steps": 126.41975402832031,
+  "seconds": null,
+  "device": "gpu"
+ },
+ "best": {
+  "iteration": 205,
+  "reward_per_step": 0.7026733756065369
+ },
+ "reward_curve_every_20": {
+  "columns": [
+   "iteration",
+   "reward_per_step",
+   "episode_steps"
+  ],
+  "rows": [
+   [
+    0,
+    0.1267,
+    28.9
+   ],
+   [
+    19,
+    0.0738,
+    24.9
+   ],
+   [
+    39,
+    0.1215,
+    28.8
+   ],
+   [
+    59,
+    0.2251,
+    40.6
+   ],
+   [
+    79,
+    0.4953,
+    78.8
+   ],
+   [
+    99,
+    0.5665,
+    84.6
+   ],
+   [
+    119,
+    0.6271,
+    98.0
+   ],
+   [
+    139,
+    0.6518,
+    100.4
+   ],
+   [
+    159,
+    0.6796,
+    115.7
+   ],
+   [
+    179,
+    0.6439,
+    97.5
+   ],
+   [
+    199,
+    0.683,
+    128.0
+   ],
+   [
+    219,
+    0.6482,
+    109.5
+   ],
+   [
+    239,
+    0.6883,
+    126.4
+   ]
+  ]
+ },
+ "memory": {
+  "host_peak_bytes": 7405207552,
+  "gpu_peak_mib": 15139,
+  "samples": 140
+ },
+ "resource_bound": {
+  "MemoryCurrent": "4387401728",
+  "MemoryPeak": "4528447488",
+  "MemoryMax": "21474836480",
+  "ActiveState": "active"
+ },
+ "live_browser": {
+  "persistent_server": true,
+  "default_view_kind": "RUN robin2",
+  "model_state": "loaded",
+  "model_components_listed": 24,
+  "reload_count": 1,
+  "samples": 7,
+  "first_seen_max_committed_to_page_s": 0.95,
+  "first_seen_count": 6
+ },
+ "observer_exit": 0,
+ "update_intervals": {
+  "note": "every trainer-committed update interval over the whole run; boundary = the compile at update 0 and each checkpoint step (every 20th update)",
+  "count": 240,
+  "plain": {
+   "count": 204,
+   "median_s": 0.812,
+   "min_s": 0.724,
+   "max_s": 0.897
+  },
+  "boundary": [
+   {
+    "iteration": 0,
+    "seconds": 46.9
+   },
+   {
+    "iteration": 1,
+    "seconds": 13.3
+   },
+   {
+    "iteration": 19,
+    "seconds": 34.0
+   },
+   {
+    "iteration": 39,
+    "seconds": 34.5
+   },
+   {
+    "iteration": 59,
+    "seconds": 33.6
+   },
+   {
+    "iteration": 79,
+    "seconds": 33.9
+   },
+   {
+    "iteration": 99,
+    "seconds": 33.3
+   },
+   {
+    "iteration": 119,
+    "seconds": 33.6
+   },
+   {
+    "iteration": 139,
+    "seconds": 34.4
+   },
+   {
+    "iteration": 159,
+    "seconds": 33.8
+   },
+   {
+    "iteration": 179,
+    "seconds": 33.9
+   },
+   {
+    "iteration": 199,
+    "seconds": 18.0
+   },
+   {
+    "iteration": 219,
+    "seconds": 34.2
+   }
+  ],
+  "concurrent_loads_during_run": [
+   "checkpoint policy declaration (script --set), rollout and record",
+   "one checkpoint video render",
+   "the observer and one persistent-dashboard browser check"
+  ]
+ },
+ "render_overhead": {
+  "note": "trainer-committed iteration intervals; the render window is wall clock around the video render only",
+  "before_window": {
+   "count": 38,
+   "median_s": 0.875,
+   "median_excluding_checkpoint_boundaries_s": 0.874,
+   "max_s": 33.964
+  },
+  "during_window": {
+   "count": 0,
+   "median_s": null,
+   "median_excluding_checkpoint_boundaries_s": null,
+   "max_s": null
+  },
+  "after_window": {
+   "count": 39,
+   "median_s": 0.849,
+   "median_excluding_checkpoint_boundaries_s": 0.849,
+   "max_s": 33.557
+  },
+  "concurrent_renders": 1,
+  "render_seconds": 4.371,
+  "enclosing_interval": {
+   "iteration": 39,
+   "seconds": 34.504,
+   "checkpoint_boundary": true,
+   "other_checkpoint_steps_s": [
+    46.9,
+    13.3,
+    34.0,
+    33.6,
+    33.9,
+    33.3,
+    33.6,
+    34.4,
+    33.8,
+    33.9,
+    18.0,
+    34.2
+   ]
+  }
+ },
+ "checkpoint20": {
+  "run": "robin2-checkpoint20",
+  "playback_revision": "30d6edc472b3ce1b69ce64d58829e98748ba39a411fd17773bd357abc67ace72",
+  "browser_saw_revision": true,
+  "policy_sha256": "4ce768b6fd5f6507ca261ce623e37e4bf257e82fe4f570ab9b940dcef188919b",
+  "model_sha256": "43660a9e3e587a2684764b93b47114fb77c8ee1adeef376f1fa6a67e02471ada",
+  "task_sha256": "38b753420069e37f8a55268595e9066b5aef1b6f04e2f2079534d5b4663ded28",
+  "trace_sha256": "52a24a67385180926e6858299bfec746a6317c6643ddc2c9b0d390ae4dcaaadd",
+  "seed": 0,
+  "step_count": 20,
+  "observed_s": 0.4,
+  "termination": "termination",
+  "fell": true,
+  "time_limit_reached": false,
+  "total_reward": 3.2127102108116286,
+  "chassis_displacement_mm": [
+   -64.353,
+   0.149,
+   -23.973
+  ],
+  "witness": {
+   "witness_error": 1.3557558592769692e-08,
+   "witness_tolerance": 0.0001
+  },
+  "trainer_iterations_before_after": [
+   18,
+   38
+  ],
+  "trainer_active_after_browser": true,
+  "browser_check_exit": 0,
+  "render_seconds": 4.371,
+  "video": {
+   "path": "rollout-245ab17720a60e874d5cba230b8d5fc8044acd43ee9c816a5b28663edeb4422c.webm",
+   "sha256": "245ab17720a60e874d5cba230b8d5fc8044acd43ee9c816a5b28663edeb4422c",
+   "frames": 5,
+   "fps": 10,
+   "duration_seconds": 0.5,
+   "sim_seconds": 0.4,
+   "style": "cadex-prototype-dark-v1",
+   "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+   "width": 512,
+   "height": 512,
+   "showing": "tessellated solids of the accepted revision; collision proxies not drawn",
+   "accepted_revision": "30d6edc472b3ce1b69ce64d58829e98748ba39a411fd17773bd357abc67ace72"
+  },
+  "video_frame": {
+   "png": "video-robin2-checkpoint20.png",
+   "sha256": "6fa70479c00dd3ebcc62bf047ba5546fc825cf25849b5a26c6124c6ab96d4b41",
+   "bytes": 145496,
+   "at_sim_s": 0.2
+  },
+  "browser": {
+   "fresh_selection": "RUN robin2",
+   "is_default": false,
+   "expected_default": "robin2",
+   "historical_selection": "robin1-checkpoint20",
+   "returned_to_current": "RUN robin2",
+   "decoded_frames": 5,
+   "download_sha256": "245ab17720a60e874d5cba230b8d5fc8044acd43ee9c816a5b28663edeb4422c",
+   "style": "cadex-prototype-dark-v1",
+   "components": 24
+  },
+  "seeds": {
+   "schema": "robin-common-seeds-v1",
+   "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "episode_seconds": 8.0,
+   "control_hz": 50.0,
+   "fall_below_mm": 46.199999999999996,
+   "displacement_x_mm": {
+    "mean": -72.0,
+    "min": -77.56,
+    "max": -64.35
+   },
+   "survival_s": {
+    "mean": 0.47,
+    "min": 0.4,
+    "max": 0.58
+   },
+   "max_abs_pitch_deg": {
+    "mean": 69.65,
+    "min": 63.56,
+    "max": 74.4
+   },
+   "final_pitch_deg": {
+    "mean": -69.65,
+    "min": -74.4,
+    "max": -63.56
+   },
+   "falls": 10,
+   "balanced_full_episode": 0,
+   "mean_total_reward": 5.28,
+   "per_seed_columns": [
+    "seed",
+    "dx_mm",
+    "survival_s",
+    "max_abs_pitch_deg",
+    "final_pitch_deg",
+    "fell"
+   ],
+   "per_seed": [
+    [
+     0,
+     -64.4,
+     0.4,
+     63.6,
+     -63.6,
+     true
+    ],
+    [
+     1,
+     -75.5,
+     0.48,
+     74.3,
+     -74.3,
+     true
+    ],
+    [
+     2,
+     -68.5,
+     0.42,
+     72.8,
+     -72.8,
+     true
+    ],
+    [
+     3,
+     -77.6,
+     0.5,
+     74.0,
+     -74.0,
+     true
+    ],
+    [
+     4,
+     -74.2,
+     0.5,
+     70.0,
+     -70.0,
+     true
+    ],
+    [
+     5,
+     -66.5,
+     0.42,
+     64.3,
+     -64.3,
+     true
+    ],
+    [
+     6,
+     -64.6,
+     0.4,
+     65.5,
+     -65.5,
+     true
+    ],
+    [
+     7,
+     -77.5,
+     0.52,
+     74.4,
+     -74.4,
+     true
+    ],
+    [
+     8,
+     -74.7,
+     0.48,
+     73.4,
+     -73.4,
+     true
+    ],
+    [
+     9,
+     -76.6,
+     0.58,
+     64.2,
+     -64.2,
+     true
+    ]
+   ],
+   "evidence": "<project>/evidence/comparison-robin2/ot6-robin-eval-robin2-c"
+  }
+ },
+ "final": {
+  "run": "robin2-final",
+  "playback_revision": "8d727e18b58772c1bf46edd8ad5cd4a3c0302abdefc7456e8413278cc6253167",
+  "browser_saw_revision": true,
+  "policy_sha256": "5380d421620af905235e1c78c8bb1ce1b4920b214ad294fab0a39af03e7231d0",
+  "model_sha256": "43660a9e3e587a2684764b93b47114fb77c8ee1adeef376f1fa6a67e02471ada",
+  "task_sha256": "38b753420069e37f8a55268595e9066b5aef1b6f04e2f2079534d5b4663ded28",
+  "trace_sha256": "7f3d0712b36313c844527fd33d1fa3e6905b1b38799d1ede028337e8516f0a2a",
+  "seed": 0,
+  "step_count": 400,
+  "observed_s": 8.0,
+  "termination": "",
+  "fell": false,
+  "time_limit_reached": true,
+  "total_reward": 206.0406502748354,
+  "chassis_displacement_mm": [
+   -1828.771,
+   -1892.929,
+   -5.094
+  ],
+  "witness": {
+   "witness_error": 1.043966980895288e-07,
+   "witness_tolerance": 0.0001
+  },
+  "trainer_iterations_before_after": [
+   239,
+   239
+  ],
+  "trainer_active_after_browser": false,
+  "browser_check_exit": 0,
+  "render_seconds": 35.764,
+  "video": {
+   "path": "rollout-9a6164389aca627fa86a0e7b62d9cf4a5967662ef31e5d864cd572052beddc7f.webm",
+   "sha256": "9a6164389aca627fa86a0e7b62d9cf4a5967662ef31e5d864cd572052beddc7f",
+   "frames": 81,
+   "fps": 10,
+   "duration_seconds": 8.1,
+   "sim_seconds": 8.0,
+   "style": "cadex-prototype-dark-v1",
+   "renderer": "Three.js r160 / Chrome/152.0.7977.64",
+   "width": 512,
+   "height": 512,
+   "showing": "tessellated solids of the accepted revision; collision proxies not drawn",
+   "accepted_revision": "8d727e18b58772c1bf46edd8ad5cd4a3c0302abdefc7456e8413278cc6253167"
+  },
+  "video_frame": {
+   "png": "video-robin2-final.png",
+   "sha256": "7a51b714506ff9c4abd2ccf5e30b7a7b54aa5333f9a32b73e0ff56b1b2222353",
+   "bytes": 144301,
+   "at_sim_s": 4.0
+  },
+  "browser": {
+   "fresh_selection": "RUN robin2-final",
+   "is_default": true,
+   "expected_default": "robin2-final",
+   "historical_selection": "robin2-checkpoint20",
+   "returned_to_current": "RUN robin2-final",
+   "decoded_frames": 81,
+   "download_sha256": "9a6164389aca627fa86a0e7b62d9cf4a5967662ef31e5d864cd572052beddc7f",
+   "style": "cadex-prototype-dark-v1",
+   "components": 24
+  },
+  "seeds": {
+   "schema": "robin-common-seeds-v1",
+   "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "episode_seconds": 8.0,
+   "control_hz": 50.0,
+   "fall_below_mm": 46.199999999999996,
+   "displacement_x_mm": {
+    "mean": -1825.27,
+    "min": -1851.83,
+    "max": -1798.86
+   },
+   "survival_s": {
+    "mean": 8.0,
+    "min": 8.0,
+    "max": 8.0
+   },
+   "max_abs_pitch_deg": {
+    "mean": 12.19,
+    "min": 11.06,
+    "max": 14.35
+   },
+   "final_pitch_deg": {
+    "mean": 11.09,
+    "min": 11.02,
+    "max": 11.16
+   },
+   "falls": 0,
+   "balanced_full_episode": 10,
+   "mean_total_reward": 206.12,
+   "per_seed_columns": [
+    "seed",
+    "dx_mm",
+    "survival_s",
+    "max_abs_pitch_deg",
+    "final_pitch_deg",
+    "fell"
+   ],
+   "per_seed": [
+    [
+     0,
+     -1828.8,
+     8.0,
+     12.2,
+     11.1,
+     false
+    ],
+    [
+     1,
+     -1851.3,
+     8.0,
+     12.7,
+     11.2,
+     false
+    ],
+    [
+     2,
+     -1808.5,
+     8.0,
+     12.9,
+     11.0,
+     false
+    ],
+    [
+     3,
+     -1818.3,
+     8.0,
+     11.1,
+     11.1,
+     false
+    ],
+    [
+     4,
+     -1821.3,
+     8.0,
+     11.1,
+     11.1,
+     false
+    ],
+    [
+     5,
+     -1851.8,
+     8.0,
+     14.3,
+     11.2,
+     false
+    ],
+    [
+     6,
+     -1833.5,
+     8.0,
+     14.4,
+     11.1,
+     false
+    ],
+    [
+     7,
+     -1832.7,
+     8.0,
+     11.2,
+     11.1,
+     false
+    ],
+    [
+     8,
+     -1798.9,
+     8.0,
+     11.1,
+     11.0,
+     false
+    ],
+    [
+     9,
+     -1807.5,
+     8.0,
+     11.1,
+     11.0,
+     false
+    ]
+   ],
+   "evidence": "<project>/evidence/comparison-robin2/ot6-robin-eval-robin2-f"
+  }
+ },
+ "diverged_run": {
+  "run": "robin1",
+  "record_status": "failed",
+  "requested": {
+   "checkpoint_every": 20,
+   "envs": 1024,
+   "iterations": 240,
+   "seed": 0,
+   "timeout_seconds": 3600,
+   "learning_rate": 0.0003,
+   "learning_rate_source": "trainer default (--learning-rate not passed); the driver did not yet record it"
+  },
+  "trainer_final": {
+   "iteration": 127,
+   "state": "failed",
+   "reward_per_step": 0.7144697904586792,
+   "loss": 5.658528804779053,
+   "episode_steps": 108.93616485595703,
+   "wall_time_s": 342.1867468357086,
+   "device": "gpu",
+   "best_iteration": 122,
+   "best_reward_per_step": 0.7428297400474548
+  },
+  "error": "SystemExit: Training diverged at iteration 128: reward_per_step and loss went non-finite (reward/step nan, loss nan).",
+  "error_in_full": "<project>/runs/robin1/train/progress.json",
+  "checkpoints_retained": [
+   "robin1.000020.cxpolicy",
+   "robin1.000040.cxpolicy",
+   "robin1.000060.cxpolicy",
+   "robin1.000080.cxpolicy",
+   "robin1.000100.cxpolicy",
+   "robin1.000120.cxpolicy",
+   "robin1.best.cxpolicy"
+  ],
+  "scope_journal": [
+   "cadex-robin1.scope: Consumed 6min 58.384s CPU time, 4.2G memory peak, 0B memory swap peak."
+  ],
+  "checkpoint20_published_while_active": true
+ },
+ "earlier_run_records": {
+  "count": 2,
+  "note": "run records present before the training run; the driver asserts each is byte-identical afterwards, which over an empty set proves nothing"
+ },
+ "dashboard_at_end": {
+  "project": "ot6-robin",
+  "accepted_revision": "8d727e18b58772c1bf46edd8ad5cd4a3c0302abdefc7456e8413278cc6253167",
+  "served_at": "2026-09-14T03:07:34Z",
+  "runs": [
+   {
+    "run": "robin1-checkpoint20",
+    "status": "ok",
+    "mode": "checkpoint-playback",
+    "relation": "historical",
+    "policy_sha256": "245ccfcda3bfdec461bf2074c3fe718377c8fba59a770eb98f657b0147e5eb4a",
+    "accepted_revision": "3df112a7dceacfec45ca24dfea449f2eb2ac26f73b8c9ec4c297ea3b5b0e6dd7",
+    "videos": 1
+   },
+   {
+    "run": "robin1",
+    "status": "failed",
+    "mode": "offboard-checkpoint-experiment",
+    "relation": "historical",
+    "policy_sha256": null,
+    "accepted_revision": "ff84ebe12df9a12751d1fd4287354ff087235d615d56b659e112700e3ac6390e",
+    "videos": 0
+   },
+   {
+    "run": "robin2-checkpoint20",
+    "status": "ok",
+    "mode": "checkpoint-playback",
+    "relation": "historical",
+    "policy_sha256": "4ce768b6fd5f6507ca261ce623e37e4bf257e82fe4f570ab9b940dcef188919b",
+    "accepted_revision": "30d6edc472b3ce1b69ce64d58829e98748ba39a411fd17773bd357abc67ace72",
+    "videos": 1
+   },
+   {
+    "run": "robin2",
+    "status": "ok",
+    "mode": "offboard-checkpoint-experiment",
+    "relation": "historical",
+    "policy_sha256": "5380d421620af905235e1c78c8bb1ce1b4920b214ad294fab0a39af03e7231d0",
+    "accepted_revision": "c5347b32a408778cb0d71593ee60057b358dac9ae3c3067ab155a5b8612dbbce",
+    "videos": 0
+   },
+   {
+    "run": "robin2-final",
+    "status": "ok",
+    "mode": "final-policy-playback",
+    "relation": "current",
+    "policy_sha256": "5380d421620af905235e1c78c8bb1ce1b4920b214ad294fab0a39af03e7231d0",
+    "accepted_revision": "8d727e18b58772c1bf46edd8ad5cd4a3c0302abdefc7456e8413278cc6253167",
+    "videos": 1
+   }
+  ],
+  "fresh_visit_selects": "robin2-final"
+ }
+}
