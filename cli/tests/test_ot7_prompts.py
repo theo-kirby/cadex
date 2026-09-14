@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
 """The ot7 prompt freeze (ADR-341, ADR-345).
 
 Every prompt a design turn may see in run ot7 is committed under
