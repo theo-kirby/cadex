@@ -107,7 +107,7 @@ class DynamicsError(ValueError):
     ``reason`` is a stable machine-readable code the worker turns into a
     candidate-failure stage; ``correction`` is the sentence the model reads
     and acts on. Every refusal in this module carries both -- an unmappable
-    joint, an ungrounded assembly and a mirrored occurrence are all author
+    joint, a flexible component and a mirrored occurrence are all author
     errors, and a refusal that does not say what to change is a bug report
     addressed to nobody.
     """
@@ -1878,17 +1878,12 @@ def extract_tree(
         for component in components
         if bool(component.get("grounded"))
     ]
-    if not grounded:
-        raise DynamicsError(
-            "This assembly has no grounded component, so a dynamics model has "
-            "no reference frame and every part would fall together.",
-            reason="no_grounded_component",
-            correction=(
-                "Ground the fixed base with api.component(..., grounded=True) "
-                "and reuse that variable throughout the graph."
-            ),
-            observed={"component_count": len(ordered)},
-        )
+    # No grounded component is not an error: it is a free base (ADR-335).
+    # Nothing is attached from ground, so the island path below gives the
+    # first component in script order a free joint -- the same component
+    # the assembly solver held to solve the pose -- and the rest of the
+    # mechanism hangs off it. ``build_model`` supplies the ground such a
+    # model stands on from the environment, never from the design.
     for component in components:
         if bool(component.get("flexible")):
             raise DynamicsError(
@@ -3101,6 +3096,69 @@ def _verify_restitution_is_resolvable(
     )
 
 
+#: The world's own floor, written only for a free base (ADR-335). The name
+#: is namespaced away from every ``<component>/collision<n>`` so a contact
+#: report that says ``environment/floor`` on the body ``world`` reads as
+#: what it is: the ground the environment supplied, not a part.
+ENVIRONMENT_FLOOR_GEOM = "environment/floor"
+
+#: MuJoCo's own defaults for a geom, stated rather than inherited so the
+#: manifest can say what the floor was. Sliding, torsional and rolling
+#: friction; a pair's friction is the elementwise maximum, so a design that
+#: declares more on a sole gets more, and one that declares less still
+#: meets this floor at 1.0.
+ENVIRONMENT_FLOOR_FRICTION = (1.0, 0.005, 0.0001)
+
+#: The spacing MuJoCo rules an infinite plane with for display. It is not a
+#: thickness (a plane has none) and it is not an extent (0 and 0 are).
+ENVIRONMENT_FLOOR_GRID_MM = 100.0
+
+
+def _environment_floor(mujoco: Any, spec: Any, tree: Mapping[str, Any]) -> dict[str, Any] | None:
+    """A free base stands on ground the environment supplies.
+
+    A mechanism with a grounded component has its ground: whatever it
+    grounded is static, and if the design wants a floor it declares a
+    plane on that part. A mechanism with **no** grounded component is a
+    free base, and the charter that asked for one (ADR-328, ADR-335) also
+    forbids a floor, wall or slab in the design -- so the world carries
+    the floor. One infinite plane at z = 0 with +Z up, on the world body,
+    with MuJoCo's default contact parameters; the design's shapes decide
+    the rest through the pair rules. Returns the record the manifest
+    carries, or ``None`` for a grounded model, which gets nothing.
+    """
+
+    if tree["grounded"]:
+        return None
+    spec.worldbody.add_geom(
+        name=ENVIRONMENT_FLOOR_GEOM,
+        type=mujoco.mjtGeom.mjGEOM_PLANE,
+        pos=[0.0, 0.0, 0.0],
+        quat=[1.0, 0.0, 0.0, 0.0],
+        size=[0.0, 0.0, length_m(ENVIRONMENT_FLOOR_GRID_MM)],
+        friction=list(ENVIRONMENT_FLOOR_FRICTION),
+        condim=3,
+        contype=1,
+        conaffinity=1,
+    )
+    return {
+        "floor": {
+            "geom": ENVIRONMENT_FLOOR_GEOM,
+            "body": "world",
+            "kind": "plane",
+            "z_mm": 0.0,
+            "normal": [0.0, 0.0, 1.0],
+            "friction": list(ENVIRONMENT_FLOOR_FRICTION),
+            "grid_mm": ENVIRONMENT_FLOOR_GRID_MM,
+            "reason": (
+                "no component is grounded, so the first component in script "
+                "order is a free base and the ground is the environment's, "
+                "not the design's"
+            ),
+        }
+    }
+
+
 def _add_collision_geoms(
     mujoco: Any,
     spec: Any,
@@ -3181,7 +3239,13 @@ def build_model(
       Building at the solved pose instead would make that check a
       tautology: it passes on a model whose joint axes are entirely wrong.
     * Grounded components are static bodies. Unreached ones get a free
-      joint and fall.
+      joint and fall. A model with no grounded component at all is a
+      **free base** (ADR-335): its floor is not a part of the design, so the
+      world carries one -- :data:`ENVIRONMENT_FLOOR_GEOM`, a plane at z = 0
+      with MuJoCo's default contact parameters, which the design's own
+      shapes override through the pair rules in :func:`_contact_parameters`
+      (friction is the maximum, so a sole's declared friction wins). A
+      grounded model gets no floor: its ground is whatever it grounded.
 
     Returns the spec, the compiled model, the tree, and per-joint records
     carrying each joint's qpos address and its solved coordinate.
@@ -3276,6 +3340,7 @@ def build_model(
     native_bodies: dict[str, Any] = {"": spec.worldbody}
     native_joints: dict[str, Any] = {}
     joint_records: list[dict[str, Any]] = []
+    environment = _environment_floor(mujoco, spec, tree)
     for body in tree["bodies"]:
         name = str(body["name"])
         parent_name = body["parent"]
@@ -3577,6 +3642,7 @@ def build_model(
         "excluded_pairs": excluded_pairs,
         "joint_dynamics": joint_dynamics_applied,
         "actuators": actuator_applied,
+        "environment": environment,
         "mujoco_version": str(getattr(mujoco, "__version__", "unknown")),
     }
 
@@ -4079,6 +4145,10 @@ def model_evidence(
         "tree_joint_count": int(tree["tree_joint_count"]),
         "maximum_depth": int(tree["maximum_depth"]),
         "grounded_components": list(tree["grounded"]),
+        # A free base (no grounded component) stands on the environment's
+        # floor, and the manifest says so; a grounded model carries None
+        # here because it was given no floor (ADR-335).
+        "environment": built["environment"],
         "gravity_m_s2": list(built["gravity_m_s2"]),
         # Recorded, not merely asserted: the flags are what make one trace
         # digest comparable to another, so the trace says which ones it ran

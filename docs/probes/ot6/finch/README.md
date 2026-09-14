@@ -9,10 +9,13 @@ a fit check, no world geometry, a viewport in which the hardware is
 recognisable, and the collision proxies declared per part. This directory is
 that evidence. The project is `~/cadex-projects/ot6-finch` (outside the
 repository, as the charter requires); its accepted revision is
-`f0450d9bdf1a924507618daece0f46ac1de66730940d0560247182bfb3a412ab`, its script
-is 17 319 bytes with sha256 `fe4e4231773e1c15…` (`fit.json` carries both in
-full), and it was entered with `cadex script --set` from a script authored for
-this unit — no model turn, no reuse of Lark's script.
+`bcce40a82d57be86a6bd9e237ad666d069dfebd84986dc7944be96fb980ef1c1`, its script
+is 17 304 bytes with sha256 `5152d1b29a87b256…` (`fit.json` and
+`free_base.json` carry both in full), and it was entered with `cadex script
+--set` from a script authored for this unit — no model turn, no reuse of
+Lark's script. (The D5 unit accepted it as `f0450d9bdf1a…` with the pelvis
+grounded for the solver; ADR-335 removed that need and the revision above is
+the same design with nothing grounded.)
 
 ## The mechanism
 
@@ -43,13 +46,15 @@ block, beam, integral 70 × 34 mm sole). Hips ±60°, knees 0–90°, axes on wo
 (176.5 N·mm), joint damping from the datasheet no-load speed.
 
 **Nothing in the world is part of the design.** No floor, slab, wall or
-stage: every collision geom is a box on a part of the design. The one thing
-this required: both the solver and the exporter still demand a grounded
-component, so the pelvis carries `grounded=True` — a solver flag on the base,
-not a world object. The exported MJCF therefore has a static pelvis and is
-not the trainable model; letting an assembly with no grounded component solve
-as a free base and supplying the ground from the environment is the engine
-unit that precedes D6 (ADR-334).
+stage: every collision geom is a box on a part of the design, and **nothing
+is grounded**. Finch is a free base (ADR-335): `assembly.solve` holds the
+pelvis — the first component in script order — to find the pose and reports
+it as `free_base`, the export gives `pelvis_link` a free joint, and the floor
+the soles rest on is the environment's plane `environment/floor` on the
+world body at z = 0, recorded in the manifest as `dynamics.environment` and
+never in the script. The D5 unit could not do this: both halves then refused
+an ungrounded assembly, so the pelvis carried `grounded=True` as a flag and
+the export had a static base (ADR-334). That flag is gone.
 
 ## The inventory and the fit check
 
@@ -118,13 +123,45 @@ receipt; the frames are 256-colour copies under the cap:
 - [operator-iso.png](operator-iso.png), [operator-front.png](operator-front.png):
   the whole mechanism on the dark mat with the PROTOTYPE / 1 METER labels.
 
+## The free base on the environment's floor (ADR-335)
+
+```bash
+pixi run python docs/probes/ot6/finch/free_base_probe.py ~/cadex-projects/ot6-finch docs/probes/ot6/finch
+```
+
+`free_base_probe.py` opens the accepted attempt's exported MJCF with MuJoCo
+alone (no Cadex on the path) and writes `free_base.json`: the solve verdict
+(`grounded_components: []`, `free_base: pelvis_link`), the model (30 bodies — the world, 5 printed and 24 catalog parts —
+`nq` 11 = one free joint and four hinges, 21 geoms = 20 declared boxes and the
+world's floor), the solved pose (pelvis at 120 mm, eight sole-corner contacts
+with `world` at 0.000 mm), and three short rollouts from the `solved`
+keyframe:
+
+| rollout | actuation | 2 s / 4 s pelvis z | outcome |
+|---|---|---|---|
+| held | `ctrl = 0`, servos hold their zero targets | 119.85 mm, upright | stands |
+| passive | disabled | 119.85 mm, upright | stands on straight legs — a balanced equilibrium the integrator never leaves |
+| shoved | disabled, 0.3 m/s forward on the free joint | 30.26 mm at 4 s, pelvis inverted | falls onto the floor, never through it |
+
+Deepest floor penetration: 0.15 mm at rest, 2.79 mm at the shoved impact
+(MuJoCo's default soft contact under a 244 g fall of 90 mm). Eight checks in
+the receipt hold: nothing grounded, the pelvis is the free base, the floor is
+the world's, only the soles touch it at t = 0, held stands for 2 s, passive
+stays on the floor, shoved falls onto it and not through it, impact
+penetration under 5 mm. `fit_check.py` gained two rules for the same fact —
+only the two soles rest on the floor at t = 0, and nothing is grounded — and
+its proxy-contact rule now excludes `world`: 87 checks, all hold, at the new
+revision.
+
 ## What this does not claim
 
 - Not a swept check: every measurement is at the solved standing pose. Knee
   flexion past about 60° would bring the sole toward the thigh cheeks; the
   90° limit is a policy bound, not a proven-clear travel.
-- The pelvis is grounded for the solver, so the export is a mechanism on a
-  fixed base; training (D6) waits on the free-base engine unit.
+- The free-base rollouts below are stock-MuJoCo physics on the accepted
+  export, not a policy and not training: they show the base is free and the
+  floor is there. D6's task declaration and bounded training run are the next
+  unit.
 - Screw-driver access to the tab screws is from inside the leg's gap (7.5 mm
   between cheek and block); a real build would reach them before fitting the
   child block.

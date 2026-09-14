@@ -1,0 +1,464 @@
+{
+ "project": "ot6-finch",
+ "revision": "bcce40a82d57be86a6bd9e237ad666d069dfebd84986dc7944be96fb980ef1c1",
+ "script_sha256": "5152d1b29a87b2562709dae54d04d26f138efea1c76ce6d8e2bf35416c242620",
+ "mjcf": {
+  "path": "script_artifacts/bcce40a82d57be86a6bd9e237ad666d069dfebd84986dc7944be96fb980ef1c1/attempt-1789344214912-bc2c2e8af104/outputs/finch_model-model.xml",
+  "sha256": "4514e2fb513289736f26d0507726017ae1b70dabf85c825b85becd3fb1eead48",
+  "bytes": 14294,
+  "manifest_sha256": "4514e2fb513289736f26d0507726017ae1b70dabf85c825b85becd3fb1eead48"
+ },
+ "solve": {
+  "status": "solved",
+  "verdict": "solved",
+  "grounded_components": [],
+  "free_base": "pelvis_link",
+  "component_count": 29,
+  "joint_count": 28
+ },
+ "model": {
+  "nbody": 30,
+  "nq": 11,
+  "nv": 10,
+  "ngeom": 21,
+  "nu": 4,
+  "free_joints": [
+   "pelvis_link/free"
+  ],
+  "floor": {
+   "geom": "environment/floor",
+   "body": "world",
+   "kind": "plane",
+   "z_mm": 0.0,
+   "normal": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "friction": [
+    1.0,
+    0.005,
+    0.0001
+   ],
+   "grid_mm": 100.0,
+   "reason": "no component is grounded, so the first component in script order is a free base and the ground is the environment's, not the design's"
+  },
+  "floor_geom_body": "world",
+  "grounded_components": [],
+  "timestep_s": 0.002,
+  "gravity_m_s2": [
+   0.0,
+   0.0,
+   -9.81
+  ]
+ },
+ "solved_pose": {
+  "pelvis_z_mm": 120.0,
+  "initial_contacts": [
+   [
+    "world",
+    "shin_l_link"
+   ],
+   [
+    "world",
+    "shin_r_link"
+   ]
+  ],
+  "initial_contact_count": 8,
+  "worst_initial_distance_mm": -4.7704895589362195e-15
+ },
+ "rollouts": [
+  {
+   "label": "held",
+   "seconds": 2.0,
+   "actuation": "ctrl = 0 (servos hold their zero targets)",
+   "shove_m_s": 0.0,
+   "pelvis_z_mm": [
+    [
+     0.0,
+     120.0
+    ],
+    [
+     0.1,
+     119.854
+    ],
+    [
+     0.2,
+     119.847
+    ],
+    [
+     0.3,
+     119.847
+    ],
+    [
+     0.4,
+     119.847
+    ],
+    [
+     0.5,
+     119.847
+    ],
+    [
+     0.6,
+     119.847
+    ],
+    [
+     0.7,
+     119.847
+    ],
+    [
+     0.8,
+     119.847
+    ],
+    [
+     0.9,
+     119.847
+    ],
+    [
+     1.0,
+     119.847
+    ],
+    [
+     1.1,
+     119.847
+    ],
+    [
+     1.2,
+     119.847
+    ],
+    [
+     1.3,
+     119.847
+    ],
+    [
+     1.4,
+     119.847
+    ],
+    [
+     1.5,
+     119.847
+    ],
+    [
+     1.6,
+     119.847
+    ],
+    [
+     1.7,
+     119.847
+    ],
+    [
+     1.8,
+     119.847
+    ],
+    [
+     1.9,
+     119.847
+    ],
+    [
+     2.0,
+     119.847
+    ]
+   ],
+   "pelvis_z_final_mm": 119.847,
+   "pelvis_z_min_mm": 119.847,
+   "pelvis_up_z_final": 1.0,
+   "deepest_floor_penetration_mm": 0.1534,
+   "touched_the_floor": [
+    "shin_l_link/collision2",
+    "shin_r_link/collision2"
+   ]
+  },
+  {
+   "label": "passive",
+   "seconds": 2.0,
+   "actuation": "disabled",
+   "shove_m_s": 0.0,
+   "pelvis_z_mm": [
+    [
+     0.0,
+     120.0
+    ],
+    [
+     0.1,
+     119.854
+    ],
+    [
+     0.2,
+     119.847
+    ],
+    [
+     0.3,
+     119.847
+    ],
+    [
+     0.4,
+     119.847
+    ],
+    [
+     0.5,
+     119.847
+    ],
+    [
+     0.6,
+     119.847
+    ],
+    [
+     0.7,
+     119.847
+    ],
+    [
+     0.8,
+     119.847
+    ],
+    [
+     0.9,
+     119.847
+    ],
+    [
+     1.0,
+     119.847
+    ],
+    [
+     1.1,
+     119.847
+    ],
+    [
+     1.2,
+     119.847
+    ],
+    [
+     1.3,
+     119.847
+    ],
+    [
+     1.4,
+     119.847
+    ],
+    [
+     1.5,
+     119.847
+    ],
+    [
+     1.6,
+     119.847
+    ],
+    [
+     1.7,
+     119.847
+    ],
+    [
+     1.8,
+     119.847
+    ],
+    [
+     1.9,
+     119.847
+    ],
+    [
+     2.0,
+     119.847
+    ]
+   ],
+   "pelvis_z_final_mm": 119.847,
+   "pelvis_z_min_mm": 119.847,
+   "pelvis_up_z_final": 1.0,
+   "deepest_floor_penetration_mm": 0.1534,
+   "touched_the_floor": [
+    "shin_l_link/collision2",
+    "shin_r_link/collision2"
+   ]
+  },
+  {
+   "label": "shoved",
+   "seconds": 4.0,
+   "actuation": "disabled",
+   "shove_m_s": 0.3,
+   "pelvis_z_mm": [
+    [
+     0.0,
+     120.0
+    ],
+    [
+     0.1,
+     121.786
+    ],
+    [
+     0.2,
+     120.003
+    ],
+    [
+     0.3,
+     119.731
+    ],
+    [
+     0.4,
+     119.735
+    ],
+    [
+     0.5,
+     119.716
+    ],
+    [
+     0.6,
+     119.694
+    ],
+    [
+     0.7,
+     119.667
+    ],
+    [
+     0.8,
+     119.637
+    ],
+    [
+     0.9,
+     119.601
+    ],
+    [
+     1.0,
+     119.558
+    ],
+    [
+     1.1,
+     119.509
+    ],
+    [
+     1.2,
+     119.45
+    ],
+    [
+     1.3,
+     119.371
+    ],
+    [
+     1.4,
+     119.261
+    ],
+    [
+     1.5,
+     119.106
+    ],
+    [
+     1.6,
+     118.886
+    ],
+    [
+     1.7,
+     118.568
+    ],
+    [
+     1.8,
+     118.104
+    ],
+    [
+     1.9,
+     117.421
+    ],
+    [
+     2.0,
+     116.412
+    ],
+    [
+     2.1,
+     114.915
+    ],
+    [
+     2.2,
+     112.701
+    ],
+    [
+     2.3,
+     109.456
+    ],
+    [
+     2.4,
+     104.785
+    ],
+    [
+     2.5,
+     98.256
+    ],
+    [
+     2.6,
+     89.532
+    ],
+    [
+     2.7,
+     78.571
+    ],
+    [
+     2.8,
+     65.845
+    ],
+    [
+     2.9,
+     57.304
+    ],
+    [
+     3.0,
+     54.968
+    ],
+    [
+     3.1,
+     46.66
+    ],
+    [
+     3.2,
+     28.518
+    ],
+    [
+     3.3,
+     30.196
+    ],
+    [
+     3.4,
+     30.063
+    ],
+    [
+     3.5,
+     30.37
+    ],
+    [
+     3.6,
+     30.354
+    ],
+    [
+     3.7,
+     30.333
+    ],
+    [
+     3.8,
+     30.311
+    ],
+    [
+     3.9,
+     30.287
+    ],
+    [
+     4.0,
+     30.261
+    ]
+   ],
+   "pelvis_z_final_mm": 30.261,
+   "pelvis_z_min_mm": 27.903,
+   "pelvis_up_z_final": -0.7919,
+   "deepest_floor_penetration_mm": 2.7892,
+   "touched_the_floor": [
+    "pelvis_link/collision1",
+    "shin_l_link/collision2",
+    "shin_r_link/collision2"
+   ]
+  }
+ ],
+ "assessment": "all hold",
+ "checks": {
+  "nothing_grounded": true,
+  "pelvis_is_the_free_base": true,
+  "floor_is_the_worlds": true,
+  "soles_rest_on_the_floor_at_t0": true,
+  "held_stands_2s": true,
+  "passive_stays_on_the_floor": true,
+  "shoved_falls_onto_the_floor_not_through_it": true,
+  "impact_penetration_under_5mm": true
+ }
+}

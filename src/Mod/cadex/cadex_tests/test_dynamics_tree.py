@@ -346,12 +346,26 @@ def test_a_second_grounded_component_stays_grounded() -> None:
     assert [item["joint"] for item in tree["static_joints"]] == ["tie"]
 
 
-def test_an_ungrounded_assembly_is_refused() -> None:
+def test_an_ungrounded_assembly_is_a_free_base_on_its_first_component() -> None:
+    """No grounded component is a free base, not an error (ADR-335).
+
+    The first component in script order gets the free joint -- the same
+    component the assembly solver held to find the pose -- and the rest of
+    the mechanism hangs off it as an ordinary tree. Nothing is grounded, so
+    ``build_model`` will supply the floor from the environment.
+    """
+
     components = [_component("arm"), _component("forearm")]
     joints = [_joint("elbow", "revolute", "arm", "forearm")]
-    with pytest.raises(dyn.DynamicsError) as excinfo:
-        dyn.extract_tree(components, joints)
-    assert excinfo.value.reason == "no_grounded_component"
+    tree = dyn.extract_tree(components, joints)
+    assert tree["grounded"] == []
+    assert [(body["name"], body["attachment"]) for body in tree["bodies"]] == [
+        ("arm", "free"),
+        ("forearm", "tree"),
+    ]
+    assert tree["bodies"][1]["parent"] == "arm"
+    assert tree["bodies"][1]["joint"] == "elbow"
+    assert tree["closures"] == []
 
 
 def test_a_flexible_component_is_refused_rather_than_assumed_rigid() -> None:

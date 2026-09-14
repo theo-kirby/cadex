@@ -148,6 +148,39 @@ result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
 """
 
 
+#: The same plate and arm with nothing grounded: a free base (ADR-335).
+#: ``assembly.solve`` holds the plate for the solve and reports it as
+#: ``free_base``; the export gives it a free joint and the environment's
+#: floor. The plate is placed so its underside is on z = 0.
+FREE_BASE_SCRIPT = """
+plate = part.box(60, 60, 6)
+arm = part.box(80, 8, 8)
+base = assembly.component(plate, placement=[-30, -30, 0])
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin",
+                                      offset={"position": [12, 0, 6],
+                                              "axis": [1, 0, 0],
+                                              "angle_degrees": 90}),
+                   assembly.connector(swing, "origin",
+                                      offset={"position": [0, 0, 0],
+                                              "axis": [1, 0, 0],
+                                              "angle_degrees": 90}))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+model = assembly.mjcf(asm, [
+    assembly.body(base, density_kg_m3=2700,
+                  collision=assembly.collision("box", size_mm=[60, 60, 6],
+                                               offset=[30, 30, 3])),
+    assembly.body(swing, density_kg_m3=7850,
+                  collision=assembly.collision("box", size_mm=[80, 8, 8],
+                                               offset=[40, 4, 4])),
+])
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag, "model": model}
+"""
+
+
 def _written(source: str) -> tuple[dict, Path]:
     """One script through one live cadexd, and what it retained."""
 
@@ -170,9 +203,17 @@ def _written(source: str) -> tuple[dict, Path]:
             if entry.get("artifact_path")
             and str(entry.get("artifact_kind") or "").startswith("assembly_")
         }
+        # The staged result's validations block -- the solver's own verdict
+        # on the assembly -- read for the same reason, inside the lifetime.
+        staged = sorted(root.glob("script_artifacts/*/attempt-*/result.json"))
+        validations = json.loads(staged[-1].read_text())["validations"] if staged else {}
         done = client.request("shutdown", timeout=60)
         assert done["ok"] is True
-        return {"display": written["display"], "payloads": payloads}, root
+        return {
+            "display": written["display"],
+            "payloads": payloads,
+            "validations": validations,
+        }, root
     finally:
         _stop(client)
         shutil.rmtree(root, ignore_errors=True)
@@ -414,3 +455,41 @@ def test_the_same_script_exports_the_same_bytes_across_cadexd_restarts() -> None
     # the store's number and ours.
     for written in (first, second):
         assert hashlib.sha256(written["payloads"]["model"]).hexdigest() == digest
+
+
+# ---------------------------------------------------------------------------
+# A free base, live (ADR-335).
+# ---------------------------------------------------------------------------
+
+
+def test_an_ungrounded_assembly_exports_a_free_base_on_the_environment_floor(
+    tmp_path: Path,
+) -> None:
+    """Nothing grounded: the solve holds the plate, the file lets it fall.
+
+    The plate is held for the solver and reported as ``free_base`` rather
+    than grounded; the exported file gives it a free joint, carries the
+    world's floor plane and nothing else the script did not write, and a
+    stock MuJoCo opens it at the placed pose with eight coordinates.
+    """
+
+    written, _root = _written(FREE_BASE_SCRIPT)
+    diagnostics = written["validations"]["assembly"]
+    assert diagnostics["status"] == "solved", diagnostics
+    assert diagnostics["solver_verdict"] == "solved"
+    assert diagnostics["grounded_components"] == []
+    assert diagnostics["free_base"] == "base"
+    assert diagnostics["component_placements"]["base"]["position_mm"] == [-30.0, -30.0, 0.0]
+
+    text = written["payloads"]["model"].decode("utf-8")
+    assert '<joint name="base/free" type="free"/>' in text
+    assert f'name="{dyn.ENVIRONMENT_FLOOR_GEOM}"' in text
+    assert text.count("<geom") == 3, "the floor and the two declared boxes"
+
+    result = _stock(written["payloads"]["model"], 0, tmp_path)
+    assert result["nbody"] == 3, "world, base and swing"
+    assert result["nq"] == 8, "a free joint and one hinge"
+    bodies = _body_index(text)
+    assert bodies == [(1, "base"), (2, "swing")], bodies
+    start = [dyn.length_mm(float(v)) for v in result["start_xpos"][3:6]]
+    assert start == pytest.approx([-30.0, -30.0, 0.0], abs=dyn.MJCF_POSE_TOLERANCE_MM)

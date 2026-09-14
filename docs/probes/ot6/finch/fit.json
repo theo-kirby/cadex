@@ -1,8 +1,8 @@
 {
  "project": "ot6-finch",
- "revision": "f0450d9bdf1a924507618daece0f46ac1de66730940d0560247182bfb3a412ab",
- "script_sha256": "fe4e4231773e1c1558ca4cd50e9acc06c9ea9c0a0714507cd3a8f47f855f4e35",
- "script_bytes": 17319,
+ "revision": "bcce40a82d57be86a6bd9e237ad666d069dfebd84986dc7944be96fb980ef1c1",
+ "script_sha256": "5152d1b29a87b2562709dae54d04d26f138efea1c76ce6d8e2bf35416c242620",
+ "script_bytes": 17304,
  "params": {
   "window_clear": 0.3,
   "horn_clear": 0.2,
@@ -24,7 +24,7 @@
   "bolt/m2x16-socket": 4
  },
  "components": 29,
- "geoms": 20,
+ "geoms": 21,
  "checks": [
   {
    "check": "hip_l servo seated in the cheek window: distance",
@@ -613,6 +613,20 @@
    "expected": 0,
    "ok": true,
    "unit": "contacts"
+  },
+  {
+   "check": "only the two soles rest on the environment floor at t = 0",
+   "measured": 2,
+   "expected": 2,
+   "ok": true,
+   "unit": "pairs"
+  },
+  {
+   "check": "nothing grounded: the pelvis is the free base",
+   "measured": 1,
+   "expected": 1,
+   "ok": true,
+   "unit": "flag"
   },
   {
    "check": "solver residual: solved",

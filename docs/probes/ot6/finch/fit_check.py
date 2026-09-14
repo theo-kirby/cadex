@@ -116,7 +116,16 @@ checks.append({'check': 'no unmeasured pair', 'measured': sum(1 for c in outs['f
                'ok': not any(c.get('error') for c in outs['finch']['clearance']), 'unit': 'pairs'})
 world = [c for c in dyn['collisions'] for s in c['shapes'] if s['kind'] not in ('box',)]
 checks.append({'check': 'no plane, floor or world geometry in the design', 'measured': len(world), 'expected': 0, 'ok': not world, 'unit': 'geoms'})
-checks.append({'check': 'no initial contact between proxies', 'measured': dyn['initial_contact_count'], 'expected': 0, 'ok': dyn['initial_contact_count'] == 0, 'unit': 'contacts'})
+# Since ADR-335 nothing in Finch is grounded: the export is a free base and the
+# floor is the environment's plane on the world body, so the soles rest on
+# `world` at t = 0. Proxies of the design must still not touch each other.
+part_contacts = [c for c in dyn['initial_contacts'] if 'world' not in c['component_outputs']]
+checks.append({'check': 'no initial contact between proxies', 'measured': len(part_contacts), 'expected': 0, 'ok': not part_contacts, 'unit': 'contacts'})
+floor_pairs = sorted({tuple(sorted(c['component_outputs'])) for c in dyn['initial_contacts'] if 'world' in c['component_outputs']})
+checks.append({'check': 'only the two soles rest on the environment floor at t = 0', 'measured': len(floor_pairs), 'expected': 2,
+               'ok': floor_pairs == [('shin_l_link', 'world'), ('shin_r_link', 'world')], 'unit': 'pairs'})
+checks.append({'check': 'nothing grounded: the pelvis is the free base', 'measured': 1 if (dyn['grounded_components'] == [] and dyn['environment'] and dyn['environment']['floor']['body'] == 'world') else 0,
+               'expected': 1, 'ok': dyn['grounded_components'] == [] and bool(dyn['environment']), 'unit': 'flag'})
 checks.append({'check': 'solver residual: solved', 'measured': outs['diagnostics']['diagnostics']['solver_code'], 'expected': 0,
                'ok': outs['diagnostics']['diagnostics']['status'] == 'solved', 'unit': 'code'})
 ok = all(c['ok'] for c in checks)

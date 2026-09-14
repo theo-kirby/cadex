@@ -45,7 +45,6 @@ _SOLVER_VERDICTS = {
     -3: "conflicting_constraints",
     -4: "over_constrained",
     -5: "malformed_constraints",
-    -6: "no_grounded_component",
 }
 _SUBELEMENT = re.compile(r"^(Face|Edge|Vertex)([1-9][0-9]*)$")
 _REFERENCE_METADATA: Mapping[tuple[str, str], Mapping[str, Any]] = MappingProxyType({})
@@ -5839,29 +5838,28 @@ def validate_and_solve_assembly(
             "occurrence_paths": occurrence_paths,
         }
 
+    diagnostics_properties = _properties(diagnostics_value, "solve")
+    require_solved = bool(diagnostics_properties.get("require_solved", True))
+    # A free base (ADR-335). An assembly that grounds nothing used to be
+    # refused (no_grounded_component, code -6); it is now a mechanism whose
+    # fixed frame is not part of the design. The native solver still needs
+    # a reference, so the first component in script order is *held* for
+    # the solve -- a grounded joint the script did not write, on the same
+    # component the dynamics tree gives a free joint to -- and reported as
+    # ``free_base`` rather than as grounded. Only under require_solved: the
+    # unsolved path never refused, and holding there would move placements
+    # an accepted project may already carry.
+    free_base: str | None = None
+    if require_solved and not grounded_outputs and component_values:
+        free_base = component_outputs[id(component_values[0])]
+        pending_grounding.append((0, free_base, components[free_base]))
+
     # Native AssemblyLinks synchronize their generated children and internal
     # joints in the worker before any model-authored connector is resolved.
     document.recompute()
     for ground_index, _output_name, component in pending_grounding:
         ground = joint_group.newObject("App::FeaturePython", f"Ground{ground_index}")
         JointObject.GroundedJoint(ground, component)
-
-    diagnostics_properties = _properties(diagnostics_value, "solve")
-    require_solved = bool(diagnostics_properties.get("require_solved", True))
-    if require_solved and not grounded_outputs:
-        raise AssemblyCandidateError(
-            "api.solve requires at least one grounded component; create the fixed "
-            "base with api.component(..., grounded=True) and reuse that variable "
-            "throughout the graph (no_grounded_component, code -6).",
-            details={
-                "stage": "assembly_grounding",
-                "status": "failed",
-                "solver_code": -6,
-                "solver_verdict": "no_grounded_component",
-                "component_count": len(components),
-                "grounded_components": [],
-            },
-        )
 
     joint_data: dict[str, dict[str, Any]] = {}
     joint_objects: dict[str, Any] = {}
@@ -6046,6 +6044,7 @@ def validate_and_solve_assembly(
         "component_count": len(components),
         "joint_count": len(joint_values),
         "grounded_components": grounded_outputs,
+        "free_base": free_base,
         "component_placements": component_placements,
         "component_occurrence_counts": {
             name: len(items) for name, items in component_occurrence_states.items()
@@ -6370,6 +6369,7 @@ def validate_and_solve_assembly(
         "component_count": len(components),
         "joint_count": len(joint_values),
         "grounded_components": grounded_outputs,
+        "free_base": free_base,
         "native_diagnostics": native_diagnostics,
         "component_placements": component_placements,
         "component_occurrence_counts": {

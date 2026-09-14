@@ -24100,3 +24100,72 @@ this unit. The persistent operator dashboard serves `ot6-finch`; Lark's copy
 is no longer served, per the one-project-per-server rule. D4's remaining
 evidence — the labelled toggle on a real biped whose proxies stand off its
 solids — is `operator-proxies.png` beside `operator-solids.png`.
+
+## ADR-335 — A free base: an assembly that grounds nothing solves, exports with a free joint, and stands on the environment's floor (2026-09-13)
+
+**Context.** ADR-334 named the gap that stopped D6: both `assembly.solve`
+(`no_grounded_component`, code −6) and the dynamics tree refused an assembly
+with no grounded component, and the ot6 charter (ADR-328) forbids a floor,
+slab or wall in any design. Finch's pelvis therefore carried `grounded=True`
+as a solver flag and its accepted MJCF had a static base — not the model a
+policy could be trained on. Lark's floor had been a grounded cyan slab that
+was itself a part of the design, which is exactly what the charter retired.
+
+**Decision.** No grounded component means a **free base**, not an error, and
+the ground comes from the environment:
+
+- `assembly.solve` (`cadex_assembly_worker.py`): with `require_solved=True`
+  and nothing grounded, the **first component in script order is held** for
+  the native solver by a grounded joint the script did not write. It is
+  reported in the diagnostics as `free_base` beside `grounded_components:
+  []`; it is never marked grounded, so nothing downstream treats it as
+  static. The `-6` verdict is removed from `_SOLVER_VERDICTS` because
+  nothing produces it. Only the solved path holds: `require_solved=False`
+  never refused, and holding there would move placements an accepted
+  project may already carry.
+- `extract_tree` (`CadexDynamics.py`) no longer refuses; the island path it
+  always had gives that same first component a free joint and hangs the
+  rest of the mechanism off it. The pose is exact because the solver held
+  it — MUJOCO.md hazard 11 (an island collapsing onto its joint) is narrowed
+  to islands nothing holds.
+- `build_model` writes **`environment/floor`** — one infinite plane on the
+  world body at z = 0, +Z up, MuJoCo's default contact parameters (friction
+  1.0 / 0.005 / 0.0001, `condim` 3) — when and only when no component is
+  grounded, and records it in the manifest as `dynamics.environment.floor`;
+  a grounded model carries `environment: null` and gets no floor. The pair
+  rules already in `_contact_parameters` mean a sole's declared friction
+  wins, so the environment stays neutral and the design owns its contacts.
+  The review viewer lists nothing new: the floor is on `<worldbody>`, not in
+  a body, and the mat the environment module draws is already at the
+  model's lowest point.
+
+**Alternatives.** An explicit `ground=` on `assembly.mjcf` or the task was
+considered and not taken: a script that grounds nothing has already said what
+it means, and a declaration would be one more thing to get wrong for the
+same model. A floor on every model was not taken either: a grounded design's
+ground is whatever it grounded, and a plane under a pendulum's base would be
+a contact nobody declared.
+
+**Evidence.** `test_dynamics_tree.py` (the refusal becomes the free-base
+attachment), `test_dynamics_free_base.py` (the floor exists for a free base
+and not for a grounded one, a block placed on z = 0 rests there through half
+a second of physics, and the manifest names the floor and the resting
+contact with `world`), and a live `cadexd` script in
+`test_dynamics_mjcf_live.py` whose export a stock MuJoCo opens with eight
+coordinates and the floor. Finch is re-accepted without `grounded=True`
+(revision `bcce40a82d57…`, `free_base: pelvis_link`, 87 fit checks hold with
+the two soles resting on `world` at t = 0), and
+`docs/probes/ot6/finch/free_base.json` is the stock-MuJoCo rollout: held at
+its zero targets it stands for 2 s at 119.85 mm; shoved forward at 0.3 m/s
+with actuation disabled it falls onto the floor and rests with its pelvis at
+30.3 mm, never below it, with 2.79 mm of transient impact penetration.
+
+**Consequences.** No protocol op or `OP_ARG_SPECS` change (the xscript
+surface gains a case, not an argument); the solve diagnostics gain one key,
+`free_base`, and the model manifest one block, `environment`. Payload
+touched, so the packaged gate runs. D6 is unblocked: the next unit is Finch's
+task declaration and one bounded training run. Not done here: a second
+island beside a free base is still not held (hazard 11 applies to it), and
+the floor's contact parameters are MuJoCo's defaults rather than a
+declaration — if a design ever needs a different ground, that is the
+declaration ADR-334 sketched, and it can be added then.
