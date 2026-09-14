@@ -7,20 +7,24 @@ parents:
 - mild-ledge-7157
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
+**F1's evidence is complete pending the owner's checkbox (ADR-346).** Every successful CLI bridge `write_script`, `edit_script`, `set_params` and `rebuild` reply carries fit verdict, thresholds, check counts and every failing pair's names, distance and common volume, read from published `inspect scope=clearance` measurements under the bridge lock, never inferred from stdout. Unknown pairs fail; unreadable measurements are unavailable and never refuse the build. `clearance` is on the agent's inspect surface and its instructions treat printouts as claims and measurements as evidence [rec: happy-dawn-1960] [rec: steady-quartz-9854].
+
+The original forty-pair limit is removed at `f2bf2c83`; two fixtures with sixty failing pairs pin complete summary and bridge replies, with no truncation field. The real-engine misleading-stdout transaction fixture receives the measured 100 mm³ intersection despite the script printing “no overlap.” The tool-surface test, `docs/CLI.md` and ADR-346 are updated. Full CLI verification on unchanged `f2bf2c83`: 636 passed, 1 skipped, exit 0 [rec: happy-dawn-1960] [rec: steady-quartz-9854].
+
+Fit covers the initial solved pose only; intent and swept checks remain F2 and F3. No assembly components yields unavailable, meaning nothing was checked. Reconcile judgement: mark `working` on the corrected complete-list evidence, not the premature parent claim; this does not close F9 or claim an unassisted design result [rec: happy-dawn-1960] [rec: steady-quartz-9854].
+
 Charter criterion: **F1. The agent sees measured fit.** After every design turn that builds, the tool reply carries a fit summary computed from the published clearance measurements, never from stdout: the check counts and every failing pair by name with its distance and common volume. `clearance` is an inspect scope on the agent's tool surface. The system prompt no longer tells the agent to verify fit by printing. Evidence: `test_project_tool_surface.py` updated with an ADR; a transaction test in which a script prints "no overlap" while its solids overlap receives the overlap in its reply; `docs/CLI.md` updated. Declared target `gap-f1-agent-sees-measured-fit`; a record may say "ticks F1" when its evidence exists, and the human owns the checkbox edit [rec: kind-dusk-1609].
-
-What exists today, as the charter measured it: the engine already measures every part pair's gap and overlap at the solved pose (`_measure_clearance` in `src/Mod/cadex/cadex_assembly_worker.py`), but the agent's tools cannot reach those measurements, its reply carries the script's stdout, and its system prompt (`cli/cadex_cli/agent.py`) tells it to verify by printing. ot6 recorded the consequence three times on Heron: the printout said the parts fit while the retained clearance table said otherwise (`civic-creek-8215`). A change to the agent's tool surface updates `test_project_tool_surface.py` and earns an ADR; prefer extending an existing inspect scope over a new op. [rec: kind-dusk-1609]
-
-Reconcile judgement: `open` — declared by the ot7 directive with no evidence yet; flips to `working` only when a record carries the criterion's evidence, on the reading ot5 and ot6 used (evidenced pending the owner's tick) [rec: kind-dusk-1609].
 
 ## Negative knowledge
 
-None yet.
+- [scope: happy-dawn-1960's initial F1 completion claim | confidence: high | evidence: steady-quartz-9854] The original forty-pair slice omitted failing pairs and did not meet F1. The complete-list correction and its full CLI verification supersede that claim.
 
 ## Provenance
 
-- kind-dusk-1609 — the ot7 directive (ADR-341) declared this criterion as gap `gap-f1-agent-sees-measured-fit`
+- kind-dusk-1609 — ADR-341 declared F1 and its evidence bar
+- happy-dawn-1960 — ADR-346 measured fit replies, inspect scope, prompt and transaction evidence
+- steady-quartz-9854 — removes the forty-pair defect and verifies all 636 CLI tests with one skip
