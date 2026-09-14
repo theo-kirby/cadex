@@ -11,7 +11,7 @@ artifacts:
 - docs/review-design/before-1400.png
 - docs/review-design/before-400x850.png
 - docs/probes/ot6/design/before.json
-- docs/probes/ot6/design/capture_before.py
+- docs/probes/ot6/design/capture_page.py
 ---
 ## What
 

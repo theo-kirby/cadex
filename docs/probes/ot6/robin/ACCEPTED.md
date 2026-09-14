@@ -56,6 +56,10 @@ default.
 
 ## Reopen refusal — unresolved, before training
 
+Follow-up: [the restore probe](RESTORE.md) isolates nondeterminism to the
+catalog shaft offset, including a direct kernel replay from identical input
+BREP bytes. The accepted identity is unchanged and reopening remains blocked.
+
 After acceptance, this command exited 1:
 
 ```bash
