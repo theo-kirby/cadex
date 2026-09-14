@@ -56,7 +56,7 @@ Only these unchecked claims form this run's frontier. Each record names the
 criterion it advances, the evidence now present, and what remains. A record may
 say "ticks D1" when its evidence exists; the human owns the checkbox edit.
 
-- [ ] **D1. The dashboard is one designed page.** A written design spec
+- [x] **D1. The dashboard is one designed page.** A written design spec
   (`docs/REVIEW-DESIGN.md`: purpose, hierarchy, type scale, palette, spacing,
   breakpoints, what each region is for) and a page that follows it: one dark
   palette across chrome and viewport, one type scale, headings that read as an
@@ -65,7 +65,7 @@ say "ticks D1" when its evidence exists; the human owns the checkbox edit.
   committed beside the spec, a browser test asserting no horizontal overflow
   and the spec's palette tokens on the rendered page, and the operator URL
   showing the new design on the active project.
-- [ ] **D2. The dashboard works on a phone.** At 400x850 with touch emulation:
+- [x] **D2. The dashboard works on a phone.** At 400x850 with touch emulation:
   the page is readable without zoom, the sidebar collapses, the model view fills
   the width and orbits by touch, curves are legible, videos play and download.
   Evidence: a headless browser test with a mobile viewport and touch events,
@@ -82,13 +82,13 @@ say "ticks D1" when its evidence exists; the human owns the checkbox edit.
   framing and orbit tested for stage edges, lost shadows or bad scale; the
   light palette removed from the code; existing playback, download, polling and
   headless tests still green.
-- [ ] **D4. The viewer shows the real model, and says so.** The dashboard
+- [x] **D4. The viewer shows the real model, and says so.** The dashboard
   viewport and the videos render the accepted revision's tessellated solids,
   never the collision proxies, unless a visible toggle labelled as collision
   geometry is on; the video's identity strip names what is shown. Evidence: a
   browser test toggling proxies on a project whose proxies differ from its
   solids, a decoded video frame check, and the operator URL on the real biped.
-- [ ] **D5. The biped is a buildable mechanism.** A redesigned biped in a fresh
+- [x] **D5. The biped is a buildable mechanism.** A redesigned biped in a fresh
   project uses MG90S servos from `lib.servo` with catalog horns, bearings and
   fasteners, and modelled printable parts that mount them. Evidence: a
   per-solid inventory in the project (`docs/INVENTORY.md`: every solid, its
@@ -98,27 +98,27 @@ say "ticks D1" when its evidence exists; the human owns the checkbox edit.
   slab or wall in the design; a viewport screenshot in which the servos and
   horns are recognisable; and the collision proxies declared per part with
   their relation to the solid recorded.
-- [ ] **D6. The real biped trains, is measured and is recorded in the new
+- [x] **D6. The real biped trains, is measured and is recorded in the new
   look.** One bounded real GPU training run on the redesigned biped, a
   checkpoint video and a final video in the D3 look on the operator dashboard,
   and the measured displacement, survival and falls over a declared episode
   and seed set. Standing for the full episode is the bar the report measures
   against; failing it is a valid measured result.
-- [ ] **D7. A two-wheeled balancing robot goes through the lifecycle.** The
+- [x] **D7. A two-wheeled balancing robot goes through the lifecycle.** The
   product agent designs it from a prompt in a fresh project (MG90S or another
   catalog motor, catalog wheels or modelled printable wheels, a body that
   mounts the board and battery volume), it meets D5's inventory and fit rules,
   trains once (bounded), and its videos and measurements are on the dashboard.
-- [ ] **D8. A single servo arm goes through the lifecycle.** Same as D7 for a
+- [x] **D8. A single servo arm goes through the lifecycle.** Same as D7 for a
   2 or 3 DoF arm on MG90S servos with a modelled base and links; its task is a
   reach or hold, measured.
-- [ ] **D9. Everything ot5 proved still holds.** The review server and record
+- [x] **D9. Everything ot5 proved still holds.** The review server and record
   suites, live polling within five seconds, playback and download, restart
   during training, copy isolation, failed-run states and headless operation
   all pass after the redesign, the look change and the model changes. Evidence:
   the CLI suite green, the engine suite green, and the operator URL serving the
   active project with the current run selected.
-- [ ] **D10. A closing report exists and the critic accepted done.**
+- [x] **D10. A closing report exists and the critic accepted done.**
   `docs/probes/ot6/REPORT.md` links the evidence for D1-D9, states what each
   measured, and names what remains open, with nothing claimed that a record
   does not carry. This is the run's last unit, not a repeat of any earlier one.
