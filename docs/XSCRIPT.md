@@ -1562,3 +1562,33 @@ component's name. Existing floor declarations continue to build.
 these facts. The summary counts each failing pair once, prioritising unknown,
 intersection, then intent; the row's `fit_failures` preserves all checks.
 World findings are counted separately. This is static fit, not swept motion.
+
+## Sampled hinge fit (ADR-349)
+
+`assembly.assembly(..., sweep_step_degrees=5)` requests an advisory exact-solid
+sweep when the assembly builds. The optional declaration enters the definition;
+omitting it preserves legacy definitions. The producer stores `clearance_sweep`
+on the assembly output in the accepted result. Opening a retained result does
+not recompute it. Static clearance inspection and the CLI still expose only the
+static report; sweep tool exposure is not yet installed.
+
+For each limited, unsuppressed revolute joint in a rigid tree, the producer
+moves its descendant solids around the solved connector axis, holding other
+joint coordinates at their solved values. Samples run from lower to upper limit
+in degrees, including both endpoints, at no more than the declared
+step (at least 0.000001 degree). Each pair reports minimum distance, maximum common volume, and the first
+sample at distance <= 0.001 mm (`first_contact_degrees`, null if absent). Contact
+at the lower limit is reported there. Sampling cannot exclude contact between
+samples and is not a continuous collision proof. The solved-pose measurements
+must first agree with static clearance within 0.0001 mm and 0.001 mm³.
+
+Each joint's native queries run in a fresh FreeCAD subprocess with a 90-second
+timeout; the assembly shares 180 seconds of sweep budget. Preparation and
+process cleanup add overhead. At most 73 poses and 2,000 pairs are allowed per
+joint. Reports carry the limits and measured elapsed seconds. Timeout, malformed
+or unsupported geometry, non-hinge limited joints, flexible components,
+closed/coupled/static-joint graphs, and unsolved assemblies produce explicit
+`incomplete` coverage and a reason. No samples means no claim about fit. Joints
+without limits are outside coverage. A sweep failure never rejects acceptance.
+The checker uses copied solids, never changes live placements, and never
+rebuilds historical scripts. It needs no dynamics declaration or MuJoCo run.

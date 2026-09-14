@@ -5600,6 +5600,166 @@ def _measure_clearance(
     return rows
 
 
+# A child owns native queries so a stuck OCCT operation cannot exceed the budget.
+_SWEEP_JOINT_SECONDS = 90.0
+_SWEEP_TOTAL_SECONDS = 180.0
+_SWEEP_MAX_POSES = 73
+_SWEEP_MAX_PAIRS = 2000
+
+
+def _bounded_sweep_call(components, component_data, joint_data, baseline, name, step, seconds):
+    import FreeCAD as App
+    import subprocess
+    import tempfile
+    import time
+    start = time.monotonic()
+    try:
+        payload = {"components": {n: {
+            "brep": _component_world_shape(obj).exportBrepToString(),
+            "placement": list(obj.Placement.toMatrix().A)} for n, obj in components.items()},
+            "component_data": component_data, "joint_data": joint_data,
+            "baseline": baseline, "name": name, "step": step}
+        with tempfile.TemporaryDirectory(prefix="cadex-fit-sweep-") as directory:
+            source = Path(directory) / "input.json"
+            target = Path(directory) / "output.json"
+            source.write_text(json.dumps(payload), encoding="utf-8")
+            code = ("import sys; sys.path.insert(0, " + repr(str(Path(__file__).parent)) + "); "
+                    "from cadex_assembly_worker import _sweep_child; _sweep_child("
+                    + repr(str(source)) + ", " + repr(str(target)) + ")")
+            binary = Path(App.getHomePath()) / "bin" / "FreeCADCmd"
+            subprocess.run([str(binary), "-c", code], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=True,
+                           timeout=max(0.001, seconds - (time.monotonic() - start)))
+            result = json.loads(target.read_text(encoding="utf-8"))
+    except subprocess.TimeoutExpired:
+        result = {"status": "incomplete", "reason": "runtime budget exceeded"}
+    except Exception as exc:
+        result = {"status": "incomplete", "reason": str(exc)}
+    result["elapsed_seconds"] = time.monotonic() - start
+    return result
+
+
+def _sweep_child(source, target):
+    import FreeCAD as App
+    import Part
+    from types import SimpleNamespace
+    data = json.loads(Path(source).read_text(encoding="utf-8"))
+    try:
+        components = {}
+        for name, item in data["components"].items():
+            shape = Part.Shape()
+            shape.importBrepFromString(item["brep"])
+            components[name] = SimpleNamespace(Shape=shape,
+                Placement=App.Placement(App.Matrix(*item["placement"])))
+        result = _sweep_hinge(components, data["component_data"], data["joint_data"],
+                              data["baseline"], data["name"], data["step"])
+    except Exception as exc:
+        result = {"status": "incomplete", "reason": str(exc)}
+    Path(target).write_text(json.dumps(result), encoding="utf-8")
+
+
+def _sweep_hinge(components, component_data, joint_data, baseline, name, step):
+    import FreeCAD as App
+    from CadexDynamics import extract_tree, joint_transform, joint_coordinates
+    joints = [{**data, "name": key, "connectors": [
+        {"component": c["component_output"], "local_matrix": c["local_frame"]["matrix"]}
+        for c in data["connectors"]]} for key, data in joint_data.items()]
+    tree = extract_tree([{"name": n, "grounded": d["grounded"], "flexible": d.get("flexible", False)}
+                         for n, d in component_data.items()], joints)
+    if tree["closures"] or tree["couplings"] or tree["static_joints"]:
+        raise ValueError("closed, coupled or static-joint graph is unsupported")
+    joint = next(j for j in joints if j["name"] == name)
+    if joint["kind"] != "revolute" or joint["suppressed"]:
+        raise ValueError("only unsuppressed limited tree hinges are supported")
+    low, high = joint["angle_limits_degrees"]
+    count = math.ceil((high - low) / step)
+    if count < 0 or count + 1 > _SWEEP_MAX_POSES:
+        raise ValueError("pose budget exceeded")
+    values = [min(low + i * step, high) for i in range(count + 1)]
+    if len(baseline) > _SWEEP_MAX_PAIRS:
+        raise ValueError("pair budget exceeded")
+    body = next(b for b in tree["bodies"] if b["joint"] == name)
+    moving = {body["name"]}
+    for b in tree["bodies"]:
+        if b["parent"] in moving:
+            moving.add(b["name"])
+    poses = {n: obj.Placement for n, obj in components.items()}
+    shapes = {n: _component_world_shape(obj).copy() for n, obj in components.items()}
+    solved_shapes = {n: shape.Placement for n, shape in shapes.items()}
+
+    def measure(a, b):
+        a, b = shapes[a], shapes[b]
+        if a.isNull() or b.isNull() or not a.Solids or not b.Solids:
+            raise ValueError("sweep requires solid components")
+        d = float(a.distToShape(b)[0])
+        v = float(a.common(b).Volume) if a.BoundBox.intersect(b.BoundBox) else 0.0
+        if not math.isfinite(d) or not math.isfinite(v) or min(d, v) < 0:
+            raise ValueError("invalid native measurement")
+        return d, v
+
+    cached = {}
+    for row in baseline:
+        key = row["first"], row["second"]
+        d, v = measure(*key)
+        if (row.get("error") or row["distance_mm"] is None or row["common_volume_mm3"] is None
+                or abs(d - row["distance_mm"]) > 1e-4
+                or abs(v - row["common_volume_mm3"]) > 1e-3):
+            raise ValueError("solved-pose clearance disagreement")
+        cached[key] = d, v
+    connectors = joint["connectors"]
+    a, b = [c["component"] for c in connectors]
+    coords = joint_coordinates("revolute", joint_transform(
+        list(poses[a].toMatrix().A), connectors[0]["local_matrix"],
+        list(poses[b].toMatrix().A), connectors[1]["local_matrix"]), context=name)
+    if coords["residual_mm"] > 1e-4 or coords["residual_radians"] > 1e-6:
+        raise ValueError("solved hinge has non-hinge residual")
+    initial = math.degrees(coords["values"][0])
+    side = 0 if a == body["parent"] else 1
+    frame = poses[body["parent"]].multiply(App.Placement(App.Matrix(*connectors[side]["local_matrix"])))
+    rows = [{"first": a, "second": b, "minimum_distance_mm": None,
+             "maximum_common_volume_mm3": None, "first_contact_degrees": None}
+            for a, b in cached]
+    for value in values:
+        turn = App.Placement(App.Vector(), App.Rotation(App.Vector(0, 0, 1),
+                             (value - initial) * (1 if side == 0 else -1)))
+        delta = frame.multiply(turn).multiply(frame.inverse())
+        for n in moving:
+            shapes[n].Placement = delta.multiply(solved_shapes[n])
+        for row in rows:
+            a, b = row["first"], row["second"]
+            d, v = (measure(a, b) if (a in moving) != (b in moving) else cached[a, b])
+            if row["minimum_distance_mm"] is None or d < row["minimum_distance_mm"]:
+                row["minimum_distance_mm"] = d
+            if row["maximum_common_volume_mm3"] is None or v > row["maximum_common_volume_mm3"]:
+                row["maximum_common_volume_mm3"] = v
+            if row["first_contact_degrees"] is None and d <= 1e-3:
+                row["first_contact_degrees"] = value
+    return {"status": "complete", "sample_count": len(values), "range_degrees": [low, high],
+            "initial_degrees": initial, "solved_pose_agreement": True, "pairs": rows}
+
+
+def _measure_joint_sweeps(components, component_data, joint_data, baseline, step, solved):
+    import time
+    report = {"status": "complete", "step_degrees": step,
+              "per_joint_seconds": _SWEEP_JOINT_SECONDS, "total_seconds": _SWEEP_TOTAL_SECONDS,
+              "max_poses": _SWEEP_MAX_POSES, "max_pairs": _SWEEP_MAX_PAIRS, "joints": []}
+    start = time.monotonic()
+    for name, joint in joint_data.items():
+        if joint.get("angle_limits_degrees") is None and joint.get("length_limits_mm") is None:
+            continue
+        remaining = _SWEEP_TOTAL_SECONDS - (time.monotonic() - start)
+        if not solved or remaining <= 0:
+            result = {"status": "incomplete", "reason": "unsolved assembly or total runtime budget exceeded"}
+        else:
+            result = _bounded_sweep_call(components, component_data, joint_data, baseline, name, step,
+                min(remaining, _SWEEP_JOINT_SECONDS))
+        report["joints"].append({"joint": name, **result})
+        if result["status"] != "complete":
+            report["status"] = "incomplete"
+    report["elapsed_seconds"] = time.monotonic() - start
+    return report
+
+
 def _check_fit(rows, components, properties, component_outputs, raw_result=None):
     """Annotate measured facts with advisory intent; never refuse a fit failure."""
     intents = {}
@@ -6140,6 +6300,11 @@ def validate_and_solve_assembly(
 
     clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
     world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result)
+    clearance_sweep = None
+    if assembly_properties.get("sweep_step_degrees") is not None:
+        clearance_sweep = _measure_joint_sweeps(
+            components, component_data, joint_data, clearance,
+            assembly_properties["sweep_step_degrees"], diagnostics["status"] == "solved")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
     if simulation_contract is not None:
@@ -6394,6 +6559,8 @@ def validate_and_solve_assembly(
         )
     if exploded_view_summaries:
         diagnostics["exploded_views"] = exploded_view_summaries
+    if clearance_sweep is not None:
+        by_name[assembly_output]["clearance_sweep"] = clearance_sweep
     by_name[assembly_output]["clearance"] = clearance
     by_name[assembly_output]["world_geometry"] = world_geometry
     by_name[assembly_output]["assembly_data"] = {

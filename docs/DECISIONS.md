@@ -24660,3 +24660,20 @@ prediction of contact past about 60°. Preserve that negative result rather than
 inventing the contact angle the charter expected. F3 stays open for the product
 checker, discoverability, general joint semantics and gates. The experiment and
 full artifact digests are in `docs/probes/ot7/sweep/README.md`.
+
+## ADR-349 — Publish bounded exact-solid hinge sweeps (2026-09-14)
+
+**Decision.** Opt-in `assembly.assembly(..., sweep_step_degrees=...)` publishes
+`clearance_sweep` beside static clearance. Limited rigid-tree hinges sweep their
+subtrees independently, with real BREP distance and volume, baseline agreement,
+endpoint-inclusive sampling, and explicit incomplete coverage for unsupported
+mechanisms or exhausted budgets. Acceptance and retained-result reads do not
+change. Agent and CLI exposure follow in a separate unit.
+
+**Bound.** Fresh FreeCAD children own native queries: 90 seconds per joint,
+180 shared seconds, 73 poses, 2,000 pairs. Serialization and cleanup add overhead.
+No dependency is added. A fork-only prototype blocked on a native lock after
+FreeCAD initialization; it was replaced before landing with fresh processes.
+The subprocess inherits the worker's OS sandbox. Tests cover analytic sphere
+contact, transformed source placement, baseline disagreement, unsupported joint,
+pose exhaustion, timeout, publication and byte-identical restoration.

@@ -2177,3 +2177,33 @@ def test_cadexd_plays_a_trained_policy_into_a_simulation_trace() -> None:
     finally:
         _stop(client)
         shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="Needs built engine")
+def test_joint_sweep_is_published_and_restore_does_not_recompute(tmp_path):
+    source = JOINT_SCRIPT.replace('assembly.connector(swing, "origin"))',
+        'assembly.connector(swing, "origin"), angle_limits_degrees=[0, 10])').replace(
+        'assembly.assembly([base, swing], [j])',
+        'assembly.assembly([base, swing], [j], sweep_step_degrees=5)')
+    client = _spawn_cadexd()
+    try:
+        assert client.request('open_project', {'project_root': str(tmp_path)})['ok']
+        written = client.request('write_script', {'source': source, 'expected_revision': ''})
+        assert written['ok'], written
+        state_path = tmp_path / 'script.json'
+        state = state_path.read_bytes()
+        accepted = json.loads(state)['accepted_attempt']
+        result_path = tmp_path / accepted['staging'] / 'result.json'
+        retained = result_path.read_bytes()
+        outputs = {o['name']: o for o in json.loads(retained)['outputs']}
+        sweep = outputs['asm']['clearance_sweep']
+        assert sweep['status'] == 'complete', sweep
+        assert sweep['joints'][0]['sample_count'] == 3
+        assert sweep['joints'][0]['solved_pose_agreement']
+        _stop(client)
+        client = _spawn_cadexd()
+        assert client.request('open_project', {'project_root': str(tmp_path)})['ok']
+        assert result_path.read_bytes() == retained
+        assert json.loads(state_path.read_bytes())["accepted_attempt"] == accepted
+    finally:
+        _stop(client)

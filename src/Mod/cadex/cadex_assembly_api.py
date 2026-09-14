@@ -1293,6 +1293,7 @@ class AssemblyDomainAPI:
         components: Sequence[DomainValue],
         joints: Sequence[DomainValue] = (),
         *,
+        sweep_step_degrees: float | None = None,
         contacts: Sequence[Sequence[DomainValue]] = (),
         clearances: Sequence[Sequence[Any]] = (),
         label: str = "",
@@ -1333,6 +1334,8 @@ class AssemblyDomainAPI:
                         f"joints[{index}].connector[{connector_index}]",
                         "references a component that is not listed in components",
                     )
+        if sweep_step_degrees is not None:
+            sweep_step_degrees = _number(operation, "sweep_step_degrees", sweep_step_degrees, minimum=1e-6)
         intent = []
         seen = set()
         for kind, declarations, size in (("contact", contacts, 2), ("clearance", clearances, 3)):
@@ -1356,6 +1359,7 @@ class AssemblyDomainAPI:
             components=component_values,
             joints=joint_values,
             **({"fit_intent": intent} if intent else {}),
+            **({"sweep_step_degrees": sweep_step_degrees} if sweep_step_degrees is not None else {}),
             label=label,
         )
 
