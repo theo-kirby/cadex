@@ -114,19 +114,37 @@ function greyboxTexture(palette = FALLBACK_TILE, repeatX = 1, repeatY = 1, label
 export function buildStageFloor(world, { size = 10, floorZ = 0, palette = FALLBACK_TILE,
                                          labels = true, pitch = 1, minor = 0 } = {}) {
   const group = new THREE.Group();
-  const repeat = size / (2 * pitch);          // block is 2·pitch -> repeat = metres / block
-
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(size, size),
+    new THREE.PlaneGeometry(1, 1),
     new THREE.MeshStandardMaterial({
-      map: greyboxTexture(palette, repeat, repeat, labels, { pitch, minor }),
+      map: greyboxTexture(palette, 1, 1, labels, { pitch, minor }),
       roughness: 1, metalness: 0, side: THREE.FrontSide,
     }));
-  floor.position.set(0, 0, floorZ);
   floor.receiveShadow = true;
+  floor.userData.pitch = pitch;
   group.add(floor);
+  resizeStageFloor(group, { size, floorZ });
 
   world.add(group);
+  return group;
+}
+
+// Resize a floor built by buildStageFloor without repainting its texture. The grid is anchored
+// to the world origin, not to the plane's corner: a block corner sits on x = y = 0 and every
+// `pitch` line sits on a whole multiple of `pitch` metres, whatever the floor's size. The viewer
+// grows the floor with the fog as the camera pulls back, so a grid laid from the corner slid
+// under the model on every zoom step and its "1 METER" lines stopped being where a metre is.
+export function resizeStageFloor(group, { size, floorZ }) {
+  const floor = group.children[0], pitch = floor.userData.pitch, block = 2 * pitch;
+  floor.scale.set(size, size, 1);
+  floor.position.set(0, 0, floorZ);
+  // uv' = uv·repeat + offset, and uv = (x + size/2) / size across the plane, so this offset puts
+  // tile coordinate x / block at world x.
+  const repeat = size / block, offset = -(size / 2) / block;
+  const map = floor.material.map;
+  map.repeat.set(repeat, repeat);
+  map.offset.set(offset - Math.floor(offset), offset - Math.floor(offset));
+  floor.userData.size = size;
   return group;
 }
 

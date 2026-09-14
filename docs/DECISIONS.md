@@ -24495,3 +24495,26 @@ where before it raced it.
 desk frame's geometry, and a new browser test drags, folds, reopens and
 switches the stage with a real mouse. §7/§8's receipts stay as the record of
 the page this replaced.
+
+## ADR-343 — The viewer's floor grid is anchored to the world origin (2026-09-14)
+
+The owner saw the floor "do a weird tiling thing" when zooming the viewport,
+with 1 METER squares that could not be read as a metre. Measured on the
+operator dashboard (ot6-heron), the viewer resizes the floor on every draw
+from the fog distance. Up to about 1.3× the fit distance the floor stayed at
+24 m. Past that it grew continuously: 25.025 m at 2×, 50.05 m at 4×. The
+texture was tiled from the plane's corner, so the phase of a block corner at
+the world origin went 0 → 0.256 → 0.512 of a block, and every major line slid
+under the model. Each tile was always the right size. Its position was wrong,
+and the texture (up to a 2048 px canvas) was repainted on every zoom step.
+
+`floor.js` now builds a unit plane scaled to the footprint. Its texture offset
+is `−(size/2)/(2·pitch)` mod 1, which puts every pitch line on a whole multiple
+of the pitch in world metres. `environment.setSize` repaints only when pitch or
+minor changes, and otherwise calls `resizeStageFloor`. Checked with a
+top-down camera aimed at world (3 m, 3 m) at 1.5, 3, 6 and 12 m: a major
+crossing sits at the frame centre at every distance. The minor mesh's step
+with framing (ADR-331's `chooseGridPitch`) is unchanged. The viewport and the
+capture page share the module, so they still match each other. Videos rendered
+from now on draw the grid at its world position, where earlier ones used the
+corner-anchored phase.

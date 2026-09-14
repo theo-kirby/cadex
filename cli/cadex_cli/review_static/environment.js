@@ -19,7 +19,7 @@
 //   - dispose tears the whole thing down (floor geometry + texture + the extra fill light).
 
 import * as THREE from "./three.module.js";
-import { buildStageFloor, chooseGridPitch } from "./floor.js";
+import { buildStageFloor, chooseGridPitch, resizeStageFloor } from "./floor.js";
 export const KEY_DIR = [0.22, 1.0, 0.15];
 
 // The derivation constants behind `setStage`. Every one of these used to be a hard-coded number
@@ -127,13 +127,18 @@ export function createEnvironment(view, { labels = true } = {}) {
   }
 
   function setSize(sz = {}) {
-    size = {
+    const next = {
       footprint: sz.footprint ?? size.footprint,
       floorZ: sz.floorZ ?? size.floorZ,
       pitch: sz.pitch ?? size.pitch,
       minor: sz.minor ?? size.minor,
     };
-    rebuildRoom();
+    const repaint = !room || next.pitch !== size.pitch || next.minor !== size.minor;
+    size = next;
+    // A zoom changes the floor's size on nearly every frame; only a change of grid repaints the
+    // texture, and the grid stays anchored to the world origin either way (floor.js).
+    if (repaint) rebuildRoom();
+    else resizeStageFloor(room, { size: size.footprint, floorZ: size.floorZ });
   }
 
   // Override the palette's fog distances (metres). The palette defaults are sized for a whole arena;

@@ -985,3 +985,39 @@ def test_closing_report_links_every_criterion_to_committed_evidence():
     for adr in adrs:
         assert f"## ADR-{adr} " in decisions, adr
     assert not PRIVATE_ADDRESS.search(text) and socket.gethostname() not in text
+
+
+@needs_browser
+def test_floor_grid_is_anchored_to_the_world_whatever_the_floor_size(served, browser) -> None:
+    """ADR-343: the floor grows with the fog as the camera pulls back, and its
+    grid must not slide — world x = y = 0 is a block corner and every pitch
+    line a whole multiple of the pitch, at any footprint, and resizing never
+    repaints the texture."""
+
+    _root, server = served
+    page = _open_plain(browser, server.url)
+    rows = page.evaluate("""(async () => {
+      const THREE = await import('/three.module.js'), floor = await import('/floor.js');
+      const world = new THREE.Group(), out = [];
+      const group = floor.buildStageFloor(world, {size: 24, pitch: 1, minor: 0.1});
+      const map = group.children[0].material.map;
+      for (const size of [24, 25.025, 50.05, 84, 671.3]) {
+        floor.resizeStageFloor(group, {size, floorZ: -0.04});
+        const mesh = group.children[0];
+        // tile coordinate of world x at uv = (x + size/2) / size, in blocks of 2·pitch
+        const at = x => ((x + size / 2) / size) * map.repeat.x + map.offset.x;
+        out.push({size, scale: mesh.scale.x, z: mesh.position.z, same: mesh.material.map === map,
+                  origin: at(0), metre: at(1), three: at(3), offset: map.offset.x});
+      }
+      return out; })()""", await_promise=True)
+    for row in rows:
+        assert row["same"] and row["scale"] == row["size"] and row["z"] == -0.04
+        assert 0 <= row["offset"] < 1
+        for key, blocks in (("origin", 0), ("metre", 0.5), ("three", 1.5)):
+            assert abs((row[key] - blocks) - round(row[key] - blocks)) < 1e-9, row
+
+
+def _open_plain(browser, url):
+    page = browser.page(url)
+    page.wait_for("document.readyState === 'complete'")
+    return page

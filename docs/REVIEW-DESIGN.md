@@ -387,6 +387,17 @@ floor and grid, horizon and fog, palette, lighting and shadows, materials,
 framing, camera — are `docs/probes/ot6/look/README.md`, with the composite
 [side-by-side.png](probes/ot6/look/side-by-side.png).
 
+**The grid is anchored to the world (ADR-343).** The mat's major lines sit
+on whole multiples of the pitch in world metres, with a block corner on the
+origin, whatever the floor's size. The floor grows with the fog as the camera
+pulls back, and until 2026-09-14 its texture was laid from the plane's corner.
+Zooming out past a 24 m floor slid the grid under the model, by 0.26 of a
+2 m block at twice the fit distance and 0.51 at four times, so a *1 METER*
+line was not where a metre is. A size change now rescales the plane and
+re-offsets the texture without repainting it. Only a change of pitch or minor
+mesh repaints. The minor mesh still steps with the framing (5 → 10 → 20 cm,
+then none) by design, and the major lines never move.
+
 **The follow camera and the timer (ADR-332).** A recording's camera is the
 reference's follow rig, computed by the shared scene module (`follow`) from
 the subject's centre at every sampled solved pose and recorded into the
