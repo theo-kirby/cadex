@@ -124,3 +124,32 @@ The real collector must preserve both joint rows, both pair rows, their exact
 extrema and timings in `clearance.json`. This is synthetic collection evidence,
 not a design result. At 18:29 New York time the reset remained ahead, so this
 unit made no provider call.
+
+## Real preserved-seed measurement (iteration 29)
+
+The real `--child-measure` process now has an integration receipt:
+[`repair-measurement.json`](../retained/repair-measurement.json). It read
+`ot7-heron-repair` with `restore=False`, exited zero in 0.164 seconds, and
+preserved both the script identity and the complete metadata bytes. The
+project-local files are under `evidence/iteration29-measurement/`; the receipt
+lists every artifact's size and SHA-256. Assertions verified those hashes,
+105 distinct pairs, 15 inventory components, and the same accepted revision
+in the clearance, fit and inventory reports.
+
+The measured baseline has **15 failing entries**: eight intersecting pairs,
+six below-clearance pairs, and one world-geometry failure on `comp_base`.
+The shoulder servo overlaps its base by 248.20162986795066 mm³. The shoulder
+horn is 0.19999999999999732 mm from the upper arm; the elbow horn is
+0.19999999999993 mm from the forearm. These gaps are present in the collected
+measurements but do not fail the default 0.1 mm clearance rule: this old seed
+declares no contact intent. A zero-failure summary alone therefore cannot
+establish that the repair resolved those disconnected attachments.
+
+Swept coverage is explicitly unavailable on this accepted revision. This read
+does not rebuild geometry, measure new poses, or prove real swept pagination.
+It establishes integration with the retained published measurements. At
+18:40 America/New_York the documented 20:20 provider reset was still ahead;
+no provider call or design edit occurred, and `evidence/f4-repair/` remains
+unconsumed. After reset, use the repair command above and compare its guarded
+before-read with this retained baseline; dispatch only the frozen repair
+prompt. F4 remains open, and earlier refusals remain part of its accounting.
