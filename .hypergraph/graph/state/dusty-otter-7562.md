@@ -15,6 +15,8 @@ Status: working
 
 The engine prerequisite is resolved (ADR-335): nothing grounded means a free base, with the first component held for solving and a free joint plus `environment/floor` in MJCF. Finch was re-accepted ungrounded at `bcce40a82d57…`; stock MuJoCo held it standing for 2 s and a 0.3 m/s shove made it fall onto, never through, the environment floor. No world geometry enters the design [rec: loyal-canyon-4623].
 
+**The owner ticked D6 on 2026-09-14 with the evidence unchanged**, as worded and knowing the gaps the next charter (ADR-341) raises the bar on rather than re-running; there is no policy training in ot7 [rec: nimble-wing-3050].
+
 Charter criterion: **D6. The real biped trains, is measured and is recorded in the new look.** One bounded real GPU training run on the redesigned biped, a checkpoint video and a final video in the D3 look on the operator dashboard, and the measured displacement, survival and falls over a declared episode and seed set. Standing for the full episode is the bar the report measures against; failing it is a valid measured result. Declared target `gap-d6-real-biped-trains-measured`; the human owns the checkbox edit [rec: brisk-ledge-9638].
 
 Reconcile judgement: fold the prerequisite and subsequent evidence together as `blocked` → `working`; the later handoff satisfies the task, bounded training, measurement and video items the prerequisite record left owed. The human still owns the checkbox [rec: loyal-canyon-4623] [rec: tiny-tooth-8197].
@@ -29,3 +31,4 @@ Reconcile judgement: fold the prerequisite and subsequent evidence together as `
 - sleepy-rain-9945 — the original static-base prerequisite
 - loyal-canyon-4623 — ADR-335 resolves the free-base solve/export prerequisite and verifies Finch on the environment floor
 - tiny-tooth-8197 — ADR-336 training and video evidence, ten-seed measurements, full CLI verification and corrected preservation claim
+- nimble-wing-3050 — the owner ticked D6 on 2026-09-14; evidence unchanged

@@ -7,11 +7,13 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: superseded
 
 ## Current
 
-**Owner-directed work for run `ot6` (ADR-328): make what ot5 built worth looking at — the review dashboard, the rendered look, the model itself, then the range of mechanisms, in that order [rec: brisk-ledge-9638].** It replaces the ot5 charter (ADR-284), whose D1–D11 the owner ticked on 2026-09-13 (`crisp-sun-1239`, [rec: patient-pond-3886]). Nothing here is a new leg of the north star; it is the quality bar the existing legs must meet before print-ready export or the unattended robot prompt can be worth doing. What the owner saw at ot5's close: a dashboard that is a stack of cards in dark chrome around a light viewport and collapses at phone width; videos in a light scene with the subject small and the camera far, unlike the `neural-whoop` reference; and a biped, Lark, that is `part.box` everywhere, box collisions and a cyan ground slab that is itself part of the design — not a robot anyone could build.
+**Superseded on 2026-09-14: the run ended with the critic's done acceptance, and the owner ticked nine of ten criteria.** After the closing report, D10's own text was made true — the report records the critic's `done_accepted` (iteration 30) and the run's final dashboard check on `ot6-heron` with `heron1-final` current — and done was claimed a second time under `report_done` [rec: hollow-slope-2048]; the critic's one rejection (a machine-specific project path in that record) was fixed forward with the project named portably, and the second acceptance ended the run under `on_done_accepted: 2` [rec: rising-bloom-3478]. The owner then reviewed the run criterion by criterion against the committed frames and ticked **D1, D2, D4, D5, D6, D7, D8, D9 and D10** in the charter (commit `b25477a0` on main). D5–D8 were ticked as worded, knowing the gaps the next charter raises the bar on rather than re-running: fit is checked at one pose only, Robin survives by leaning and driving backward, Heron holds about 3 mm low, and two of the three designs needed actor corrections to the agent's script. **D3 is not ticked**: the stage matches the neural-whoop reference but the subject does not (a saturated colour per solid, small in frame, scored on Lark), and the owner takes the dashboard and the rendered look into manual work outside unattended runs, so D3 does not carry forward. The ot7 charter (ADR-341, [rec: kind-dusk-1609]) replaces this one; its mission is that the product agent designs mechanisms that fit, on its own [rec: nimble-wing-3050].
+
+As it stood, for history: **Owner-directed work for run `ot6` (ADR-328): make what ot5 built worth looking at — the review dashboard, the rendered look, the model itself, then the range of mechanisms, in that order [rec: brisk-ledge-9638].** It replaces the ot5 charter (ADR-284), whose D1–D11 the owner ticked on 2026-09-13 (`crisp-sun-1239`, [rec: patient-pond-3886]). Nothing here is a new leg of the north star; it is the quality bar the existing legs must meet before print-ready export or the unattended robot prompt can be worth doing. What the owner saw at ot5's close: a dashboard that is a stack of cards in dark chrome around a light viewport and collapses at phone width; videos in a light scene with the subject small and the camera far, unlike the `neural-whoop` reference; and a biped, Lark, that is `part.box` everywhere, box collisions and a cyan ground slab that is itself part of the design — not a robot anyone could build.
 
 The owner's fixed choices, not open to actor interpretation [rec: brisk-ledge-9638]:
 
@@ -38,3 +40,6 @@ None yet.
 - mild-hill-0753 — ADR-340: D8's training half; D7 and D8 each a full recorded lifecycle, the frontier D9 then D10
 - bold-arbor-2078 — D9's final assessment; D1–D9 evidenced pending the owner's tick, D10 the only criterion without evidence
 - frosty-path-5235 — the closing report and the done claim: D1–D10 each evidenced in a record, D7–D9 flipped to working, the operator service on Heron
+- hollow-slope-2048 — D10's text made true: the critic's acceptance recorded in the report, the final dashboard check on Heron, done claimed a second time
+- rising-bloom-3478 — the critic's path rejection fixed forward; the second done acceptance ended the run
+- nimble-wing-3050 — the owner's review: D1, D2, D4–D10 ticked, D3 handed to manual work; the charter superseded by ADR-341

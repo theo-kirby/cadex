@@ -23,6 +23,8 @@ Status: working
 
 **Open.** A velocity or position term in the reward, so a balancer is measured against stationary balance, is the next design decision on Robin; it is left in the project's `DECISIONS.md` and was deliberately not taken during the training unit [rec: candid-delta-9314].
 
+**The owner ticked D7 on 2026-09-14 with the evidence unchanged.** Ticked as worded and knowing the gaps, because the next charter (ADR-341) raises the bar rather than re-running: Robin survives by leaning and driving backward, its fit was checked at one pose only, and the actor edited its script twice — which is exactly what ot7's F6 must do without [rec: nimble-wing-3050].
+
 Charter criterion: **D7. A two-wheeled balancing robot goes through the lifecycle.** The product agent designs it from a prompt in a fresh project (MG90S or another catalog motor, catalog wheels or modelled printable wheels, a body that mounts the board and battery volume), it meets D5's inventory and fit rules, trains once (bounded), and its videos and measurements are on the dashboard. The human owns the checkbox edit [rec: brisk-ledge-9638].
 
 Verification on the current tree: engine suite 2,114 passed / 53 skipped and packaged lifecycle gate 16 passed [rec: kind-reef-3852]; CLI suite 588 passed / 1 skipped, `test_review_design.py` 102 passed. No engine or product code changed in any of the three units [rec: candid-delta-9314].
@@ -45,3 +47,4 @@ Verification on the current tree: engine suite 2,114 passed / 53 skipped and pac
 - odd-orchard-4978 — D-bore revised as an analytic prism, new revision accepted, three fresh-process reopens pass, training unblocked
 - candid-delta-9314 — bounded training: robin1 diverged and kept as failed, robin2 completed, ten-seed evaluation, both videos on the dashboard
 - frosty-path-5235 — the closing report: D7 evidenced pending the owner's tick, the dashboard claim made historical (the service now serves ot6-heron), the reward term left open in the project
+- nimble-wing-3050 — the owner ticked D7 on 2026-09-14; evidence unchanged

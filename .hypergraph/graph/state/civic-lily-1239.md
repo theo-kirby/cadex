@@ -19,6 +19,8 @@ On commit `aa293fc0`, after the redesign, the look change and the three model ch
 
 The first pass (`copper-haven-4303`, taken mid-run on Finch before Robin and Heron existed: engine 2,114 / 53, CLI 560 / 1, the Finch final page at both widths with digest-matched downloads) said its own final assessment was pending and is superseded by the assessment above; its receipts `README.md` and `verification.json` remain beside it [rec: copper-haven-4303].
 
+**The owner ticked D9 on 2026-09-14 with the evidence unchanged; it holds as worded** [rec: nimble-wing-3050].
+
 Charter criterion: **D9. Everything ot5 proved still holds.** The review server and record suites, live polling within five seconds, playback and download, restart during training, copy isolation, failed-run states and headless operation all pass after the redesign, the look change and the model changes. Evidence: the CLI suite green, the engine suite green, and the operator URL serving the active project with the current run selected. Declared target `gap-d9-everything-ot5-proved-still`; the human owns the checkbox edit [rec: brisk-ledge-9638].
 
 ## Negative knowledge
@@ -31,3 +33,4 @@ Charter criterion: **D9. Everything ot5 proved still holds.** The review server 
 - copper-haven-4303 — the first pass, mid-run on Finch: full engine and CLI suites green, live Finch playback and digest-matched downloads at both widths; final assessment then pending
 - bold-arbor-2078 — the final assessment after D7 and D8: both suites green on the current tree, the one skip exercised, the persistent dashboard verified at both widths with heron1-final selected, the ot5 behaviours mapped to tests and retained evidence, receipt test-pinned
 - frosty-path-5235 — the closing report: D9 evidenced pending the owner's tick; restart during real training rests on the fixture test and ot5's Lark restart, and the report says so
+- nimble-wing-3050 — the owner ticked D9 on 2026-09-14; evidence unchanged
