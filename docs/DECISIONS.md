@@ -24250,3 +24250,20 @@ exceed 500 000 triangles is still refused, and the 300 s frame-production
 budget still applies to the browser's rendering, which for Finch is well
 inside it. Evaluations wait for the trainer to finish so that the training
 measurement stays clean; nothing in this unit adds a dependency.
+
+## ADR-337 — Robin's authored mechanism accepted after a measured reset-lift repair (2026-09-14)
+
+The critic authorized routine repair of the product-agent candidate without
+another provider turn. Change only reset lift [1,3] to [3,5] mm, based on the
+engine's measured 1.31 mm added penetration; submit the full source through
+`cadex script --set --replace`, explicitly retiring the accepted motor probe.
+The complete 24-solid mechanism passes acceptance and 84 retained fit checks,
+with catalog inventory and proxy relations recorded. The persistent dashboard
+now inspects Robin's accepted artifacts. No product code or dependency changes.
+
+A subsequent section command refuses restore because the rebuilt digest differs.
+Keep the refusal: accepted artifacts remain evidence of that acceptance, not
+proof of reopen. Training must follow a repair of this blocker. The receipt
+[`docs/probes/ot6/robin/ACCEPTED.md`](probes/ot6/robin/ACCEPTED.md) distinguishes
+original authorship, the literal repair, measured fits, source-derived dimensions
+and unverified physical retention. D7 stays open.

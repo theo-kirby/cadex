@@ -2,6 +2,8 @@
 
 Verified against source: 2026-09-14. [Cadex-new]
 
+Historical attempt receipt. Current result: [complete candidate accepted after reset repair; reopen blocked](ACCEPTED.md).
+
 **No balancer was accepted.** The product agent started from the empty external
 project `ot6-robin`, accepted a catalog probe, then failed to accept the proposed
 mechanism. [design-attempt.json](design-attempt.json) records the identities,

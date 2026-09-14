@@ -1,0 +1,22 @@
+{
+ "revision": "71709063d6af7ee357d5bb5b409e3332730a1465e0caa62f92f93535ec04cd84",
+ "components": 24,
+ "visits": [
+  {
+   "width": 1400,
+   "selected": "accepted",
+   "overflow": false,
+   "status": "accepted model at revision 71709063d6af \u00b7 24 component(s), 57044 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids",
+   "accepted": "accepted now: revision 71709063d6af \u00b7 digest 806ab1343b7c \u00b7 updated 2026-09-14T02:01:57Z \u00b7 0 run(s)",
+   "proxy_status": "accepted model at revision 71709063d6af \u00b7 24 component(s), 57044 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids with collision proxies (9 outlines from the accepted attempt's robin_model (assembly.mjcf export at the accepted revision))"
+  },
+  {
+   "width": 400,
+   "selected": "accepted",
+   "overflow": false,
+   "status": "accepted model at revision 71709063d6af \u00b7 24 component(s), 57044 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids",
+   "accepted": "accepted now: revision 71709063d6af \u00b7 digest 806ab1343b7c \u00b7 updated 2026-09-14T02:01:57Z \u00b7 0 run(s)",
+   "proxy_status": "accepted model at revision 71709063d6af \u00b7 24 component(s), 57044 triangles \u00b7 from the accepted attempt's tessellation (display/*.tess), linked to each output by sha256 \u00b7 placements: declared component placements \u00b7 showing: tessellated solids with collision proxies (9 outlines from the accepted attempt's robin_model (assembly.mjcf export at the accepted revision))"
+  }
+ ]
+}

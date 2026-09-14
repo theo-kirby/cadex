@@ -2,6 +2,8 @@
 
 Verified against source: 2026-09-14. [Cadex-new]
 
+Historical attempt receipt. Current result: [complete candidate accepted after reset repair; reopen blocked](ACCEPTED.md).
+
 **Robin still has no accepted balancer.** All three recovery attempts through
 the product CLI's existing `--model` option returned the provider's session
 limit before producing a repaired design. The selections were `opus`, `sonnet`
