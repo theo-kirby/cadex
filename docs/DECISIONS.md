@@ -24722,3 +24722,44 @@ with the connector order reversed reports the same overlap and contact. The
 hinge fixture pins the undeclared-step, open-ended and cylindrical reasons.
 The packaged lifecycle test publishes and restores a slider sweep beside the
 hinge one.
+
+
+## ADR-352 — Smoke the accepted design without accepting it again (2026-09-14)
+
+**Decision.** `cadex smoke --out DIR` copies the retained accepted artifacts
+under the project lock, runs stock MuJoCo with zero action or position-actuator
+hold, and measures every exact BREP component pair at the sampled poses in a
+trusted FreeCAD child. This uses the CLI export adapter's existing process
+seam: the child reads detached solids and numeric poses, never project source.
+No protocol or tool-surface change, shell change, dependency or training.
+Source placements compose with absolute component poses; first-frame distance
+and common volume must agree with published static measurements. Missing solids
+or disagreement cannot produce a passing receipt.
+
+**Why.** A smoke must not call `rebuild`: it is an accepting operation.
+MuJoCo contacts also cannot certify component fit: excluded pairs and parts
+without collision proxies are invisible. The uncommitted draft present at the
+start of iteration 15 did both. Its falling-arm fixture passed the contact
+check but intersected the base under exact measurement. The completed command
+uses the retained revision and exact solids, while floor penetration and
+support remain explicitly collision-proxy measurements.
+
+**Contract.** A full measurement exits zero and records a pass/fail verdict,
+accepted identity, failing checks and all exact pair maxima. Finite state is
+checked each solver step, with warning counters retained; geometry and floor
+checks sample at a declared rate, including first and last frames. Actual
+solver times are recorded, with duration rounded up by less than one step.
+The trace cap is 15,000 requested intervals. Simulation and exact measurement
+share at most 300 wall seconds; timeout kills the child. This is sampled
+collision checking, not a continuous-motion guarantee. Missing evidence is a
+command error. No receipt claims successful completion before both children
+finish. Accepted state is unchanged even when the working script is broken.
+
+**Evidence.** `cli/tests/test_smoke.py` includes a known 400 mm³ overlap with
+no collision geoms, a falling arm that reaches overlap after a clear initial
+pose, grounded and floor-supported passing designs, a block starting 2 mm
+below the floor, no floor, unstable dynamics, hold versus zero action, task
+termination, non-integral sampling intervals, timeout, manifest preservation
+with edited working source, and tampered MJCF rejection. Tolerances are finite
+and nonnegative. See this unit's graph record for full-suite and packaged
+verification results; no engine source changed, so no build was required.

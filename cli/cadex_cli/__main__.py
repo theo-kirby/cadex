@@ -14,6 +14,7 @@ Nine subcommands over one project, of which exactly two spend tokens::
     cadex link --from ../sensorA --output sensor
     cadex asset --put walk.cxpolicy --put walk-task.json
     cadex train --out ./run --iterations 200 --envs 64 --put
+    cadex smoke --out ./smoke
 
 That asymmetry is the whole design. An expensive turn authors a *parametric*
 script once; after that a sweep is ``set_params`` and a re-export, with no
@@ -53,7 +54,7 @@ from .agent import (
 from .bridge import Bridge, BridgeState, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine, source_comparison
-from .export import ExportError, export_blueprints, export_outputs, parse_formats
+from .export import ExportedOutput, ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, write_inventory
 from .render import acquire_snapshot, write_render
 from .section import write_section
@@ -110,6 +111,25 @@ from .train import (
 )
 from .review_record import manifest_identity, write_run_record
 from .review_server import serve as serve_review
+from .smoke import (
+    DEFAULT_FPS,
+    DEFAULT_MODE,
+    DEFAULT_PENETRATION_MM,
+    DEFAULT_REST_SPEED_MM_S,
+    DEFAULT_SECONDS,
+    DEFAULT_TIMEOUT_S,
+    MAXIMUM_TIMEOUT_S,
+    RECEIPT_NAME,
+    SmokeError,
+    find_model,
+    find_optional_task,
+    run_smoke,
+    retained_bundle,
+    check_geometry,
+    smoke_cell,
+    smoke_command,
+    smoke_interpreter,
+)
 from .tools import STANDARD_DISPLAY
 from .walk import (
     DEFAULT_LEG_TIMEOUT_S,
@@ -407,6 +427,58 @@ def build_parser() -> argparse.ArgumentParser:
         "Does not verify or store a policy; --out must be inside the project.",
     )
     _remote_flags(train_parser)
+
+    smoke_parser = subparsers.add_parser(
+        "smoke",
+        help="Read the accepted artifacts into --out and "
+        "run a short bounded stock-MuJoCo rollout of it: hold the solved "
+        "pose (or apply zero action) and report whether the state stayed "
+        "finite, exact components did not overlap beyond tolerance, the design rests "
+        "on the environment floor or holds its grounded base, and no "
+        "declared termination fired. No AI, no tokens, no trainer.",
+    )
+    _common(smoke_parser, inherit=True)
+    smoke_parser.add_argument(
+        "--seconds", type=float, default=DEFAULT_SECONDS,
+        help="Simulated duration (default %(default)g s).",
+    )
+    smoke_parser.add_argument(
+        "--mode", choices=("hold", "zero"), default=DEFAULT_MODE,
+        help="hold: position actuators hold the solved pose; zero: every "
+        "actuator gets zero command (default %(default)s).",
+    )
+    smoke_parser.add_argument(
+        "--penetration-mm", dest="penetration_mm", type=float,
+        default=DEFAULT_PENETRATION_MM,
+        help="Deepest floor-proxy penetration of the environment floor (default %(default)g mm).",
+    )
+    smoke_parser.add_argument("--max-common-volume-mm3", type=float, default=1e-6,
+                              help="Maximum exact component common volume (default %(default)g mm³).")
+    smoke_parser.add_argument(
+        "--rest-speed-mm-s", dest="rest_speed_mm_s", type=float,
+        default=DEFAULT_REST_SPEED_MM_S,
+        help="A free base moving slower than this at the end is at rest "
+        "(default %(default)g mm/s).",
+    )
+    smoke_parser.add_argument(
+        "--fps", type=int, default=DEFAULT_FPS,
+        help="Samples per simulated second at which the checks look "
+        "(default %(default)d).",
+    )
+    smoke_parser.add_argument(
+        "--timeout", type=float, default=DEFAULT_TIMEOUT_S, metavar="SECONDS",
+        help="Kill the rollout after this much wall time and fail; at most "
+        f"{MAXIMUM_TIMEOUT_S:g} (default %(default)g).",
+    )
+    smoke_parser.add_argument(
+        "--model", dest="model_name", default="", metavar="NAME",
+        help="Which exported MJCF model, when the script exports more than one.",
+    )
+    smoke_parser.add_argument(
+        "--task", dest="task_name", default="", metavar="NAME",
+        help="Which exported task supplies the termination rules, when the "
+        "script exports more than one.",
+    )
     walk_parser = subparsers.add_parser(
         "walk",
         help="The lifecycle walk as one command: optional design turns, an "
@@ -1475,6 +1547,98 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     return EXIT_OK
 
 
+def command_smoke(args: argparse.Namespace, report: RunReport) -> int:
+    """Simulate retained accepted artifacts, then measure exact posed solids.
+
+    Exit zero means a complete measurement; read the verdict for its result.
+    The command never restores, rebuilds or accepts a project script.
+    """
+
+    if not args.out:
+        report.error = "smoke needs --out: the model and the receipt land there."
+        return EXIT_USAGE
+    if not (0.0 < float(args.seconds) <= MAXIMUM_TIMEOUT_S):
+        report.error = f"--seconds must be within (0, {MAXIMUM_TIMEOUT_S:g}]."
+        return EXIT_USAGE
+    if not (0.0 < float(args.timeout) <= MAXIMUM_TIMEOUT_S):
+        report.error = (
+            f"--timeout must be within (0, {MAXIMUM_TIMEOUT_S:g}] seconds: a "
+            "smoke rollout is bounded to five minutes."
+        )
+        return EXIT_USAGE
+    if float(args.penetration_mm) < 0.0 or float(args.rest_speed_mm_s) < 0.0:
+        report.error = "--penetration-mm and --rest-speed-mm-s must be nonnegative."
+        return EXIT_USAGE
+    if int(args.fps) < 1 or args.seconds * args.fps > 15000:
+        report.error = "--fps must be at least 1 and --seconds × --fps at most 15000."
+        return EXIT_USAGE
+
+    import time
+    import math
+    if any(not math.isfinite(v) or v < 0 for v in
+           (args.penetration_mm, args.rest_speed_mm_s, args.max_common_volume_mm3)):
+        report.error = "smoke tolerances must be finite and nonnegative."
+        return EXIT_USAGE
+    deadline = time.monotonic() + float(args.timeout)
+    with _engine_session(args, report, restore=False) as (engine, client):
+        report.out_dir = str(Path(args.out).expanduser().resolve())
+        state, items, display = retained_bundle(Path(report.project_root), Path(report.out_dir))
+        report.accepted_revision = report.revision = state["accepted_revision"]
+        report.digest = state["accepted_digest"]
+        report.outputs = [
+            ExportedOutput(name=name, kind=entry["artifact_kind"],
+                           files={Path(entry["artifact_path"]).suffix.lstrip("."): entry["artifact_path"]})
+            for name, entry in display.items() if entry["artifact_kind"] != "brep"
+        ]
+        try:
+            model = find_model(report.outputs, args.model_name)
+            task = find_optional_task(report.outputs, args.task_name)
+        except SmokeError as exc:
+            report.error = str(exc)
+            return EXIT_REJECTED
+        python = smoke_interpreter(engine)
+        receipt_path = Path(report.out_dir) / RECEIPT_NAME
+        dynamics_path = receipt_path.with_name("smoke-dynamics.json")
+        command = smoke_command(
+            python, model=model.files["xml"], task=task.files["json"] if task else None,
+            out=dynamics_path, seconds=float(args.seconds), mode=str(args.mode),
+            penetration_mm=float(args.penetration_mm),
+            rest_speed_mm_s=float(args.rest_speed_mm_s), fps=int(args.fps),
+        )
+        _progress(f" · smoke  {model.name}  {float(args.seconds):g} s {args.mode}  ({python})")
+        receipt_path.unlink(missing_ok=True)
+        for filename in ("smoke-trace.json", "smoke-geometry.json"):
+            (Path(report.out_dir) / filename).unlink(missing_ok=True)
+        dynamics = run_smoke(command, receipt=dynamics_path, timeout=max(0.001, deadline - time.monotonic()))
+        geometry = check_geometry(
+            engine, items=items, display=display, model_name=model.name,
+            out=Path(report.out_dir), timeout=deadline - time.monotonic(),
+            maximum_volume=args.max_common_volume_mm3,
+        )
+        report.smoke = dynamics
+        report.smoke["schema"] = "cadex-smoke-v1"
+        report.smoke["checks"]["components"] = geometry
+        report.smoke["accepted_revision"] = report.accepted_revision
+        report.smoke["accepted_digest"] = report.digest
+        for pair in geometry["failing"]:
+            report.smoke["failing"].append(
+                f"components: {pair['first']} ∩ {pair['second']} "
+                f"{pair['common_volume_mm3']:.6g} mm³ at {pair['time_s']:.3f} s")
+        if not geometry["pass"]:
+            report.smoke["verdict"] = "fail"
+        receipt_path.write_text(json.dumps(report.smoke, indent=2, allow_nan=False) + "\n")
+        report.smoke["receipt"] = str(receipt_path)
+        report.notes.append(
+            "smoke {:s}: {:s}{:s}; {:s}.".format(
+                str(report.smoke["verdict"]), model.name,
+                f" with task {task.name}" if task else " (no task exported)",
+                str(receipt_path),
+            )
+        )
+        report.ok = True
+        return EXIT_OK
+
+
 def _remote_usage_error(args: argparse.Namespace) -> str:
     """What is wrong with ``--remote``'s company, or nothing (ADR-200).
 
@@ -2072,13 +2236,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_asset(args, report)
         elif command == "train":
             code = command_train(args, report)
+        elif command == "smoke":
+            code = command_smoke(args, report)
         elif command == "walk":
             code = command_walk(args, report)
         elif command == "review":
             code = command_review(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
-    except (ValueError, ExportError, InventoryError, TrainError, WalkError) as exc:
+    except (ValueError, ExportError, InventoryError, TrainError, SmokeError, WalkError) as exc:
         report.error = str(exc)
         code = EXIT_USAGE if isinstance(exc, ValueError) else EXIT_FAILURE
     except (EngineError, ClaudeUnavailable, ProjectBusy, CadexdError) as exc:
@@ -2158,6 +2324,12 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         return "walk {:d} it × {:d} envs → {:s}{:s}".format(
             int(args.iterations), int(args.envs), label,
             " (detached; pending)" if getattr(args, "detach", False) else "",
+        )
+    if command == "smoke":
+        return "smoke {:g} s {:s} → {:s} ({:s})".format(
+            float(args.seconds), str(args.mode),
+            str(report.smoke.get("verdict") or "?"),
+            str(Path(str(report.out_dir or args.out)).name),
         )
     if command == "train":
         if report.training.get("state") == "pending":
@@ -2285,7 +2457,8 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             what=_progress_what(command, args, report),
             revision=report.accepted_revision,
             digest=report.digest,
-            numbers=("pending; no policy verified"
+            numbers=(smoke_cell(report.smoke) if command == "smoke" else
+                     "pending; no policy verified"
                      if report.training.get("state") == "pending" else (
                 _clearance_cell(report.walk["review"]["clearance"], previous)
                 + _motion_cell(report.walk["review"].get("motion") or {}, previous)

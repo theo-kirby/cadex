@@ -2829,3 +2829,8 @@ field, and every client gets it through the surface it already reads.
       missed contacts, insufficient gaps and world geometry reach the agent.
       Failing fit still accepts, with real-kernel defect fixtures and accepted
       identity preserved across reopen. Swept fit remains a separate frontier.
+
+- [x] Bounded accepted-design smoke command (ADR-352, ot7 F8): retained
+  artifacts, finite-state and support checks, exact BREP overlaps at sampled
+  dynamics poses, known passing/failing CLI fixtures, and a shared five-minute
+  simulation/measurement bound. No acceptance or project-script execution.

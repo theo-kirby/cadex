@@ -75,6 +75,10 @@ class RunReport:
     #: (ADR-346): verdict, counts and every failing pair by name. Read from
     #: the engine's published clearance measurements, never from stdout.
     fit: dict[str, Any] = field(default_factory=dict)
+    #: ``cadex smoke`` (ADR-352): the bounded stock-MuJoCo rollout's receipt
+    #: as measured — verdict, the checks and every failing
+    #: line — plus ``receipt``, where it landed. Not re-derived here.
+    smoke: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
@@ -107,6 +111,8 @@ class RunReport:
             payload["walk"] = dict(self.walk)
         if self.fit:
             payload["fit"] = dict(self.fit)
+        if self.smoke:
+            payload["smoke"] = dict(self.smoke)
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -230,6 +236,18 @@ def human_lines(report: RunReport) -> list[str]:
                     str(pair.get("first") or ""), str(pair.get("second") or ""),
                     str(pair.get("status") or ""), _measure(pair.get("distance_mm")),
                     _measure(pair.get("common_volume_mm3"))))
+    if report.smoke:
+        checks = report.smoke.get("checks") or {}
+        lines.append("smoke  {:s}  {:g} s {:s}  {:s}".format(
+            str(report.smoke.get("verdict") or ""),
+            float(report.smoke.get("seconds") or 0.0),
+            str(report.smoke.get("mode") or ""),
+            "  ".join(
+                f"{name}:{'ok' if (check or {}).get('pass') else 'FAIL'}"
+                for name, check in checks.items()),
+        ))
+        for line in report.smoke.get("failing") or []:
+            lines.append(f"  {line}")
     for leg in report.walk.get("legs") or []:
         lines.append(
             "leg    {:<8s} exit {:d}  {:.1f} s".format(

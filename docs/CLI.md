@@ -59,6 +59,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. With `--dry-run`, report the plan — the files the leg would touch and the steps it would take, in either mode — and train nothing. | no |
+| `cadex smoke --out DIR` | Simulate retained accepted artifacts with zero action or held position actuators, check finite state, exact component overlaps and floor support, and write `smoke.json` (ADR-352; details below). No rebuild or acceptance. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
 | `cadex review --host ADDR --port N` | Serve **this one project's** review dashboard to a browser, read-only (ADR-286): the accepted identity now, every recorded run labelled current/historical, its parameters and specs as recorded, training and rollout figures, retained artifacts, document snapshots, and the model in an orbit/zoom WebGL view — a run's own rollout meshes at its own revision, or the accepted attempt's tessellation. Opens no engine, rebuilds nothing, writes nothing, adds no `PROGRESS.md` row. Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/REVIEW-DESIGN.md`. | no |
 
@@ -71,8 +72,9 @@ Flags, valid on either side of the subcommand:
 | `--format step,stl` | Any of `step`, `stl`, `brep`. Default `step,stl`. |
 | `--offset-mm N` | `section`: where along the plane normal to cut. **Omit it** to derive the offset from the accepted bounds (ADR-275); the old default was the constant 0.0, which on a mechanism standing off that plane draws an empty page and calls it `empty`. |
 | `--sweep` | `clearance`: write published joint sweep coverage and measurements to `docs/clearance-sweep.md`, without rebuilding (ADR-350). |
+| `--seconds S`, `--mode hold\|zero`, `--penetration-mm N`, `--rest-speed-mm-s N`, `--fps N`, `--timeout S` | `smoke` (ADR-352): the simulated duration (default 2 s), the command (hold the solved pose, or zero action), the deepest floor-proxy penetration (default 0.5 mm), the speed under which a free base counts as resting at the end (default 10 mm/s), the samples per simulated second at which the checks look (default 50), and the wall-time bound (default and maximum 300 s). `--model NAME` and `--task NAME` pick among several exported models or tasks. |
 | `--min-clearance-mm N` | `clearance`: flag distances strictly below N (default 0.1 mm). |
-| `--max-common-volume-mm3 N` | `clearance`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
+| `--max-common-volume-mm3 N` | `clearance` and `smoke`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
 | `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output to inventory. A project publishes at most one, so this is only ever a check that you are looking at it. |
 | `--blueprints` | `export` only: also copy the project's stored blueprint sheets into `--out`, store filenames kept (ADR-150) — which since ADR-157 means `0007-gearbox-overview-v1.png` for a **named** sheet rather than a revision prefix. Read-only — the shell renders them; this only reaches the store through `inspect scope=blueprint`. |
 | `--engine ROOT` | A staged engine payload. Default: `$CADEX_ENGINE_ROOT`, then the dev tree. |
@@ -2309,3 +2311,52 @@ To acquire measurements, explicitly build a script declaring
 `assembly.assembly(..., sweep_step_mm=...)`. Legacy projects keep their
 accepted identity. The existing inspect arguments and generic paged response
 contract are unchanged; shell clients continue to pass the scope value through.
+
+## Bounded smoke rollout (ADR-352)
+
+```bash
+./cadex smoke --project ./mechanism --out ./mechanism/smoke1 --seconds 2 --json
+```
+
+`smoke` copies the retained accepted MJCF, optional task and detached BREP
+artifacts into the output directory and holds the project lock through measurement. It never runs
+`script.py`, restores the working script, or changes accepted state. The
+receipt pins the accepted revision and digest. Model/task hashes are checked
+when present in the retained report; tasks must match the selected model.
+The child uses stock MuJoCo, without a policy or trainer. `hold` holds each
+position actuator at its solved joint coordinate; other actuators receive
+zero. `zero` sends zero to every actuator.
+
+The command checks:
+
+- Finite position, velocity, acceleration, actuator state and controls, at
+  every solver step, with MuJoCo warning counters retained across resets.
+- Exact BREP common volume for every component pair at every sampled pose,
+  including pairs excluded from physics contact and parts with no collision
+  proxy. The default limit is `--max-common-volume-mm3 0.000001`. Each pair's
+  maximum volume and its time are retained. At the first frame, distances
+  and common volumes must agree with published static clearance; a missing
+  solid or disagreement is a measurement error, never a pass.
+- Floor-proxy penetration no deeper than `--penetration-mm 0.5`, and a free
+  base touching the environment floor at the end with linear speed at most
+  `--rest-speed-mm-s 10`. Grounded bodies hold by construction. Floor support
+  uses the model's collision proxies; component fit uses exact solids.
+- Any termination conditions in the selected task, without applying task
+  randomisation, disturbances or a trained policy.
+
+Sampling defaults to 50 Hz, always includes the initial and final poses, and
+records actual solver times. Duration rounds up by less than one solver step.
+The trace budget is 15,000 requested intervals. This is a sampled check, not
+continuous collision detection. `--timeout` shares a wall-time budget across
+simulation and exact geometry measurement, capped at 300 seconds; a timed-out
+child is killed and no complete smoke receipt is claimed.
+
+`smoke-dynamics.json` is the intermediate physics result, not a complete smoke.
+`smoke-trace.json` holds the numeric component poses; `smoke-geometry.json`
+holds exact pair measurements; `smoke.json` combines all checks and identifies
+the accepted design. Reusing an output directory overwrites these artifacts.
+The CLI envelope and the project's `PROGRESS.md` carry the verdict and failing
+checks. Exit zero means a complete measurement, **not a passing design**: read
+`smoke.verdict`. A measured failure never changes acceptance. Missing artifacts,
+missing geometry, model/task disagreement or timeout make the command fail.
+No STEP/STL conversion, new dependency, protocol op or shell change is involved.

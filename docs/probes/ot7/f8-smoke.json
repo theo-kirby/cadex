@@ -1,0 +1,156 @@
+{
+  "criterion": "F8",
+  "decision": "ADR-352",
+  "evidence_project": "ot7-f8-checks",
+  "artifact_directory": "evidence",
+  "source_sha256": {
+    "cli/cadex_cli/__main__.py": "6d203d47e633aaf427addbf3822bde0ba9f4fb142807daf522849b50d8e3cc05",
+    "cli/cadex_cli/report.py": "6deea423565bda2d6d56c0a891fe47fffa853e23ac6abfea590859940a038ec6",
+    "cli/cadex_cli/smoke.py": "0213ad90c55b42f49c50d99463860a54a1325aca37b2d96084c0b8115b19e6b6",
+    "cli/cadex_cli/smoke_runner.py": "df765e012eeaae333bc0d1a1e1e133b537d52b102a6b528813b4a0f2c24ac252",
+    "cli/cadex_cli/smoke_geometry.py": "edbff6f7affc7a20079bfab1ff69d480e23958dd50fbbc916b5876386ab48fce",
+    "cli/tests/test_smoke.py": "edc558c3ea76f4aae45a9270604a8471927b5412ee687852d1abfa4578de33ab"
+  },
+  "verification": {
+    "engine": {
+      "command": "pixi run test-engine",
+      "passed": 2127,
+      "skipped": 53,
+      "seconds": 314.19
+    },
+    "cli": {
+      "command": "pixi run python -m pytest cli/tests",
+      "passed": 666,
+      "skipped": 1,
+      "seconds": 532.81
+    },
+    "packaged": {
+      "command": "CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-linux-x64 pixi run python -m pytest src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py cli/tests/test_smoke.py",
+      "passed": 43,
+      "skipped": 0,
+      "seconds": 22.42
+    },
+    "focused": {
+      "command": "pixi run python -m pytest cli/tests/test_smoke.py -q --disable-warnings",
+      "passed": 25,
+      "skipped": 0,
+      "seconds": 10.98
+    }
+  },
+  "artifacts": {
+    "cli.log": {
+      "path": "evidence/cli.log",
+      "sha256": "d70cff02005d8b3ff9a5f6b9014a950e734ffb561f4c98699f95617a580caec4",
+      "bytes": 2911
+    },
+    "engine.log": {
+      "path": "evidence/engine.log",
+      "sha256": "36eda583d22da9a2f37304d0ce4f74abbebe8f2ea72826f2c69af9bb3c656fd0",
+      "bytes": 12664
+    },
+    "falling-fail.json": {
+      "path": "evidence/falling-fail.json",
+      "sha256": "65b59e7f25c0cb60e2365377066ebf659a7884bda78801f27790c4f31dfc5312",
+      "bytes": 2160
+    },
+    "focused.log": {
+      "path": "evidence/focused.log",
+      "sha256": "380be60cb01e107649ebaedc2cb72d95f68b14ba7d8a3895fc0a61af90ef289a",
+      "bytes": 100
+    },
+    "grounded-pass.json": {
+      "path": "evidence/grounded-pass.json",
+      "sha256": "7832ef0fb6b27d503a7ff8a683a309fc1dce41b14f0253b861c7d17b66e51707",
+      "bytes": 1889
+    },
+    "known-volume.json": {
+      "path": "evidence/known-volume.json",
+      "sha256": "b6c66a35302a688dc1af94be8c366005e8cb293c6a5f26669fe1aad3327f1a06",
+      "bytes": 1717
+    },
+    "packaged.log": {
+      "path": "evidence/packaged.log",
+      "sha256": "179f17f623d7a7da30fbd69f60a6a0eaf105112986353b2ffc986457113ae838",
+      "bytes": 430
+    }
+  },
+  "fixtures": {
+    "grounded-pass": {
+      "verdict": "pass",
+      "components": {
+        "pass": true,
+        "source": "exact BREP solids at sampled MuJoCo poses",
+        "initial_pose_agrees": true,
+        "samples": 101,
+        "pairs_checked": 1,
+        "maximum_volume_mm3": 1e-06,
+        "failing": [],
+        "pairs": [
+          {
+            "first": "base",
+            "second": "swing",
+            "common_volume_mm3": 0.0,
+            "time_s": 0.0
+          }
+        ]
+      }
+    },
+    "falling-fail": {
+      "verdict": "fail",
+      "components": {
+        "pass": false,
+        "source": "exact BREP solids at sampled MuJoCo poses",
+        "initial_pose_agrees": true,
+        "samples": 101,
+        "pairs_checked": 1,
+        "maximum_volume_mm3": 1e-06,
+        "failing": [
+          {
+            "first": "base",
+            "second": "swing",
+            "common_volume_mm3": 1463.7845106574737,
+            "time_s": 1.6400000000000012
+          }
+        ],
+        "pairs": [
+          {
+            "first": "base",
+            "second": "swing",
+            "common_volume_mm3": 1463.7845106574737,
+            "time_s": 1.6400000000000012
+          }
+        ]
+      }
+    },
+    "known-volume": {
+      "verdict": "pass",
+      "components": {
+        "pass": true,
+        "source": "exact BREP solids at sampled MuJoCo poses",
+        "initial_pose_agrees": true,
+        "samples": 2,
+        "pairs_checked": 1,
+        "maximum_volume_mm3": 401.0,
+        "failing": [],
+        "pairs": [
+          {
+            "first": "base",
+            "second": "block",
+            "common_volume_mm3": 399.9999999999999,
+            "time_s": 0.0
+          }
+        ]
+      },
+      "note": "The fixture first asserts failure at 1e-6 mm\u00b3, then repeats at 401 mm\u00b3 to assert the threshold effect; the retained receipt is the second call."
+    }
+  },
+  "limits": [
+    "Exact component geometry is checked at declared samples, not continuously.",
+    "Floor penetration and support use collision proxies.",
+    "No non-BREP fallback; missing geometry or initial-pose disagreement is an error.",
+    "Simulation and geometry measurement share a maximum 300-second wall budget."
+  ],
+  "new_dependencies": [],
+  "full_builds": 0,
+  "product_agent_design_turns": 0
+}
