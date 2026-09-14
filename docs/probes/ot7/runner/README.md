@@ -3,8 +3,8 @@
 Verified against source: 2026-09-14. [Cadex-new]
 
 This is the critic-requested F5–F7 fallback while F4's provider is unavailable
-(ADR-354). Its frozen arm and balancer dispatches were refused by the provider; see
-[the F5 and F6 attempt receipts](../attempts/README.md). The documented provider reset
+(ADR-354). Its frozen arm, balancer and biped dispatches were refused by the provider; see
+[the F5–F7 attempt receipts](../attempts/README.md). The documented provider reset
 is 2026-09-14 at 20:20 America/New_York. F4 remains open and its seed and
 repair prompt are unchanged.
 

@@ -70,3 +70,37 @@ Validation: all eleven artifact hashes and sizes matched the manifest; the
 portable receipt is 3,435 bytes; all 33 collector tests passed in 0.35 seconds.
 This evidence/documentation unit changed no product code, protocol or payload;
 no build or full suite was run.
+
+## F7 biped
+
+Iteration 35 dispatched the frozen Plover create prompt once in the fresh
+external project `cadex-projects/ot7-plover`, using `runner/run.py plover`
+with `--model claude-fable-5`, as requested by the critic. The provider
+refused in **3.273 seconds**, reporting the session limit and 20:20
+America/New_York reset. The CLI exited 1; the collector exited 0 after
+retaining evidence. There was one provider dispatch, **zero completed design
+turns**, zero continuations, zero actor design edits and no accepted revision.
+
+[The biped receipt](plover-refusal.json) retains timings and hashes for all
+eleven artifacts and the original manifest. Raw evidence remains in the
+external project's `evidence/` directory. The frozen create prompt SHA-256 is
+`b95f98b77ba7180140d873e3615a24a0802e9645671664c2e7277c465d8457aa`;
+the provider transcript SHA-256 is
+`b5b359ec0d0f5465cd1e8520701e3d7c17285881823ed028b03e13996434ea59`.
+
+Static fit, swept fit and inventory are **unavailable**. Zero measured pairs
+and zero reported failures do not establish passing geometry. The smoke
+command exited 1 in 0.114 seconds because `script.json` does not exist;
+no simulation ran. ot6 has no product-agent biped baseline: Finch was
+actor-authored. This attempt produced no geometry for comparison, and F7
+remains open with refusal evidence.
+
+No retry, continuation or substitute design edit followed. The arm and
+balancer were not retried, and F4's repair slot remains untouched. All three
+refused create attempts must appear in closing-report accounting, with
+unavailable measurements distinguished from passes.
+
+Validation: all eleven artifact hashes and sizes matched the manifest;
+the portable receipt is below 16 KB; all 33 collector tests passed in
+0.36 seconds. This evidence/documentation unit changed no product code,
+protocol or payload; no build or full suite was run.
