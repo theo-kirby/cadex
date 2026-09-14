@@ -1,0 +1,115 @@
+{
+  "schema": "ot7-design-evidence-v1",
+  "design": "heron",
+  "project": "ot7-heron",
+  "model": "claude-fable-5",
+  "actor_design_edits": 0,
+  "turns": [
+    {
+      "index": 0,
+      "continuations_used": 0,
+      "prompt": {
+        "path": "heron.create.prompt.txt",
+        "bytes": 9648,
+        "sha256": "bcda5af55c50459968d87d4651cf0123e7f996227c6c80895365078860514e37"
+      },
+      "status": "completed",
+      "turn": {
+        "exit_code": 1,
+        "elapsed_seconds": 1.9173185140825808
+      },
+      "measurement": {
+        "exit_code": 0,
+        "elapsed_seconds": 0.11395344883203506
+      },
+      "static_fit": {
+        "verdict": "unavailable",
+        "failing_count": 0,
+        "pairs_checked": 0
+      },
+      "artifacts": [
+        {
+          "path": "clearance.json",
+          "bytes": 83,
+          "sha256": "4c1379dc79864eff816a4e7e2b6400e8a74876bacfe673621164ba261638da0e"
+        },
+        {
+          "path": "fit.json",
+          "bytes": 787,
+          "sha256": "3d3e63f1ca203446227bcfcc7b8c0d4e61c14c616a7f07b790d54b6c39b842c7"
+        },
+        {
+          "path": "heron.create.prompt.txt",
+          "bytes": 9648,
+          "sha256": "bcda5af55c50459968d87d4651cf0123e7f996227c6c80895365078860514e37"
+        },
+        {
+          "path": "inventory.json",
+          "bytes": 83,
+          "sha256": "4c1379dc79864eff816a4e7e2b6400e8a74876bacfe673621164ba261638da0e"
+        },
+        {
+          "path": "measurement.stderr.txt",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "measurement.stdout.json",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "transcript.jsonl",
+          "bytes": 6452,
+          "sha256": "813e77ee6c0183c17e4a54dec380f83524ae4183ce763f0bfe7aab3ee9c0dedb"
+        },
+        {
+          "path": "turn.stderr.txt",
+          "bytes": 66,
+          "sha256": "3129a282accd591370a712118bb85970706917fe3ea7a70d4ed9095f069f6349"
+        },
+        {
+          "path": "turn.stdout.json",
+          "bytes": 767,
+          "sha256": "c756c1f91ac98fdf910d0163e13c18c45ea9bd5cc3dd96b1d40c39cac0051c8a"
+        }
+      ]
+    }
+  ],
+  "status": "interrupted",
+  "smoke": {
+    "exit_code": 1,
+    "elapsed_seconds": 0.11365662701427937,
+    "artifacts": [
+      {
+        "path": "smoke.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "smoke.stdout.json",
+        "bytes": 591,
+        "sha256": "f4c0dc3f52d8f168ef0d03dd5dc931daa34ec773c80cec314d84e5be25ff5e99"
+      }
+    ]
+  },
+  "interpretation": {
+    "outcome": "provider_session_limit_refusal",
+    "provider_message": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)",
+    "completed_design_turns": 0,
+    "provider_dispatches": 1,
+    "continuations_used": 0,
+    "accepted_revision": null,
+    "static_fit": "unavailable",
+    "swept_fit": "unavailable",
+    "inventory": "unavailable",
+    "smoke": "not run: no accepted script",
+    "f4_repair_dispatched": false
+  },
+  "evidence_root": "cadex-projects/ot7-heron/evidence",
+  "manifest": {
+    "path": "attempt.json",
+    "bytes": 2760,
+    "sha256": "13fd151f875288416529f18ea6b794994a18a6e68bc9676e484cda0057a35a80"
+  }
+}

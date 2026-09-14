@@ -3,9 +3,10 @@
 Verified against source: 2026-09-14. [Cadex-new]
 
 This is the critic-requested F5–F7 fallback while F4's provider is unavailable
-(ADR-354). It has **not run a design attempt**. The documented provider reset
-is 2026-09-14 at 20:20 America/New_York; this unit began at 17:44, before it.
-F4 remains open and its seed and repair prompt are unchanged.
+(ADR-354). Its first frozen arm dispatch was refused by the provider; see
+[the F5 attempt receipt](../attempts/README.md). The documented provider reset
+is 2026-09-14 at 20:20 America/New_York. F4 remains open and its seed and
+repair prompt are unchanged.
 
 Run one design, in a new external project, using the existing pixi environment:
 
