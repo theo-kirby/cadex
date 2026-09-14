@@ -278,3 +278,51 @@ def test_measurement_child_keeps_late_failures_and_sweep_evidence(tmp_path, monk
     assert calls == [('clearance', '', 0), ('clearance', '/pairs', 0),
                      ('clearance', '/pairs', 1), ('clearance', '/clearance_sweep', 0),
                      ('inventory', '', 0)]
+
+
+def test_measurement_child_keeps_later_nested_sweep_pages(tmp_path, monkeypatch):
+    """A later joint's later pair page carries the worst swept collision."""
+    from contextlib import contextmanager
+    from cadex_cli import __main__ as cli
+
+    calls = []
+    clear = {'first': 'base', 'second': 'link', 'minimum_distance_mm': 1.0,
+             'maximum_common_volume_mm3': 0.0, 'first_contact_degrees': None}
+    worst = {'first': 'thigh', 'second': 'shin', 'minimum_distance_mm': 0.0,
+             'maximum_common_volume_mm3': 12.0, 'first_contact_degrees': 30.0}
+    first_joint = {'joint': 'hip', 'elapsed_seconds': 0.5, 'pairs': [clear]}
+    later_joint = {'joint': 'knee', 'elapsed_seconds': 1.25, 'pairs': [clear, worst]}
+    joints_path = '/clearance_sweep/joints'
+    pairs_path = joints_path + '/1/pairs'
+    pages = {
+        ('clearance', '', 0): ({'available': True, 'revision': 'accepted', 'pairs': [],
+            'clearance_sweep': {'status': 'complete', 'joints': {
+                'type': 'array', 'inspect_path': joints_path}}}, None),
+        ('clearance', joints_path, 0): ([first_joint], 1),
+        ('clearance', joints_path, 1): ([{**later_joint, 'pairs': {
+            'type': 'array', 'inspect_path': pairs_path}}], None),
+        ('clearance', pairs_path, 0): ([clear], 1),
+        ('clearance', pairs_path, 1): ([worst], None),
+        ('inventory', '', 0): ({'components': []}, None),
+    }
+
+    class Client:
+        def request(self, op, args):
+            assert op == 'inspect' and args['target'] == ''
+            key = (args['scope'], args['path'], args['offset'])
+            calls.append(key)
+            value, next_offset = pages[key]
+            return {'ok': True, 'value': value, 'page': {'next_offset': next_offset}}
+
+    @contextmanager
+    def session(args, report, *, restore):
+        assert restore is False
+        yield None, Client()
+
+    monkeypatch.setattr(cli, '_engine_session', session)
+    assert runner.child_measure(tmp_path, tmp_path) == 0
+    raw = json.loads((tmp_path / 'clearance.json').read_text())
+    assert raw['clearance_sweep'] == {
+        'status': 'complete', 'joints': [first_joint, later_joint]}
+    assert raw['clearance_sweep']['joints'][1]['pairs'][1] == worst
+    assert calls == list(pages)

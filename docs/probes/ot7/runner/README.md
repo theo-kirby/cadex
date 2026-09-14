@@ -116,3 +116,11 @@ on the later page must raise without writing a partial fit report. The session
 must use `restore=False` and issue only inspect requests. These are synthetic
 collector tests, not measurements of Heron or an F4 repair result. The provider
 reset was still ahead at 18:17 New York time; no provider call was made.
+
+Iteration 28 adds a nested-pagination fixture: the swept joint array has two
+pages, and the joint on its later page has a two-page pair array. Only the last
+pair page carries the worst overlap (12 mm³) and first contact (30 degrees).
+The real collector must preserve both joint rows, both pair rows, their exact
+extrema and timings in `clearance.json`. This is synthetic collection evidence,
+not a design result. At 18:29 New York time the reset remained ahead, so this
+unit made no provider call.
