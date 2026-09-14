@@ -1,0 +1,38 @@
+{
+ "url_source": "argv (private address, not committed)",
+ "width": 1400,
+ "height": 900,
+ "fresh_selection": "RUN heron1-final",
+ "selected": "RUN heron1-final",
+ "status": "model of run heron1-final at revision 0c8c64c92252 \u00b7 15 component(s), 53620 triangles \u00b7 from runs/heron1-final/rollout/*.stl (the rollout leg's exports at this run's revision) \u00b7 placements: rollout trace, first frame \u00b7 showing: tessellated solids",
+ "showing": "solids",
+ "camera_before": {
+  "yaw": 0.8,
+  "pitch": 0.5,
+  "distance": 223.43567093502185,
+  "target": [
+   19.99967350589577,
+   -8.825000762939453,
+   67.92499923706055
+  ]
+ },
+ "camera_after": {
+  "yaw": -1.2,
+  "pitch": 0.34999999999999987,
+  "distance": 223.43567093502185,
+  "target": [
+   19.99967350589577,
+   -8.825000762939453,
+   67.92499923706055
+  ]
+ },
+ "drag_px": [
+  200,
+  -15
+ ],
+ "rad_per_px": 0.01,
+ "looking_from": "the -Y side (servo cases, tab plates and horns outboard of the cheeks), slightly +X",
+ "png": "servo-view-1400.png",
+ "png_sha256": "ad9f0f85cf2ef6d26e3a662dfaf472a4ab7bed49997c9db3c6b1982186a1eadf",
+ "png_bytes": 103718
+}

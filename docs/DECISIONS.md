@@ -24360,3 +24360,68 @@ script's stdout is a claim, the retained clearance pairs are the evidence, and
 a fit check reads only the latter. Receipt:
 [`docs/probes/ot6/heron/README.md`](probes/ot6/heron/README.md). No product
 code, protocol or dependency changed. Training is D8's next unit.
+
+## ADR-340 — Heron trains: one bounded run at the default rate completed, and the arm it measured reaches on every seed (2026-09-14)
+
+**Context.** ADR-339 accepted Heron, the product-agent two-DoF MG90S arm, and
+left D8's training half open: one bounded run with checkpoint and final videos
+in the D3 look and the reach measured over seeds 0–9. Robin's driver, evaluator
+and receipt writer (ADR-338) were the precedent, with Robin's facts baked in
+(24 components, a chassis and its pitch, a fall threshold). Iteration 25 wrote
+Heron's copies and launched the run; the trainer was still at update 139 when
+that iteration ended, so no receipt existed and the critic rejected it.
+
+**Decision.**
+
+1. *Finish the run that was launched rather than start another.* The trainer
+   and its driver were alive under their own 3600 s timeout; iteration 26
+   waited for them, then evaluated, reported and assessed. One project, one
+   bounded run; nothing was re-launched and no retained artifact was rewritten.
+2. *The evaluator and receipt writer are Heron's own copies*
+   (`docs/probes/ot6/heron/train.py`, `evaluate.py`, `report_training.py`,
+   `servo_view.py`): 15 components, the measured body `comp_forearm` whose
+   frame the agent authored at the tip, the termination read from the retained
+   task bundle's rule on `tip_z`, the target and tolerance from the run's own
+   recorded effective parameters, and per seed the reach error at episode end
+   and over the final second, the smallest error, the first time within
+   tolerance, successes and terminations. Success is the script's stated bar:
+   within `reach_tol` at the end and over the whole final second, unterminated.
+3. *The trainer's episode-length metric is reported as what it is.* It is
+   unroll × environments over endings in the unroll, so on a task whose only
+   endings are the synchronized time limit it alternates between 20 480 and
+   20.0; the assessment says so instead of reading it as an episode length.
+4. *A servo-side viewport frame is part of the evidence.* The dashboard's
+   default view is from the bearing side; `servo_view.py` orbits the persistent
+   dashboard's viewport by one pointer drag to the −Y side and keeps the frame
+   with its camera before and after, so the receipt shows the servo cases,
+   tab plates and horns rather than asserting they are there.
+
+**Evidence.** `docs/probes/ot6/heron/training.json` (15.1 KB), the two decoded
+frames and the servo-side viewport frame beside it, and `TRAINING.md`'s
+assessment, pinned by
+`test_heron_training_receipt_measures_the_arm_reach_in_the_new_look`.
+`heron1` exited 0 after 619.6 s (240 updates on 1024 environments at the
+default 3e-4, `done` on `gpu`; host peak 7.08 GB under `MemoryMax=20G`, GPU
+peak 15 137 MiB; plain updates median 1.067 s, checkpoint steps 25.8–26.8 s).
+Reward per step −0.154 → 0.595, best at the last update. Over seeds 0–9:
+**checkpoint 20 reached on 0 / 10** — it folds the arm back to (−6, 0, 148)
+and holds it at the joint limits, never nearer the target than its 67.08 mm
+start; **the final policy reached on 10 / 10** — within 10 mm by 0.1 s on
+every seed, nearest 0.36–1.85 mm, ending 2.96–5.19 mm away, never further
+than 9.60 mm over the final second after the two pushes; no seed terminated.
+The hold sits about 3 mm below the target and oscillates within the tolerance
+(final-second maximum 8.3–9.6 mm against a mean of 4.9–6.2 mm). Both videos
+are `cadex-prototype-dark-v1`, name `tessellated solids of the accepted
+revision; collision proxies not drawn`, and were browser-checked on the
+persistent dashboard, the checkpoint's with the trainer active (the 13.2 s
+render fell across plain updates 23–35: median 1.072 s during against 1.071 s
+before and 1.070 s after) and the final's after `done`, where a fresh visit
+selects `heron1-final`. The observer saw six trainer updates each reach the
+page within 1.1 s.
+
+**Consequences.** No engine, protocol or product-code change; no new
+dependency. D8 has both halves evidenced pending the owner's tick. The
+policy meets the task's bar and is not a stationary hold: a tighter
+tolerance or a heavier tip-speed term is a design decision recorded in the
+project's `DECISIONS.md` for the next turn on Heron, not taken here. The 3 mm
+low bias is observed, not diagnosed.

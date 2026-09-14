@@ -7,8 +7,8 @@ agent from [one prompt](design.json) in the
 fresh external project `ot6-heron`, corrected three times by the same agent
 against **measurements** the actor put in front of it, accepted at revision
 `9c1f2fe7ea19…` (digest `f9be3985bc55…`), reopened in five fresh processes, and
-served on the persistent operator dashboard at both charter widths. Nothing
-here is trained: training is D8's next unit. [design.json](design.json) is the
+served on the persistent operator dashboard at both charter widths. Its
+training half is [TRAINING.md](TRAINING.md) (ADR-340). [design.json](design.json) is the
 identity receipt (prompt digests, the four turns' timings and exit codes, the
 eight-entry script history, the three defects and where each was corrected);
 [fit.json](fit.json) the inventory and fit check; [reopen.json](reopen.json)
@@ -127,6 +127,6 @@ screws at the joints. `cli/tests/test_review_design.py` pins these receipts.
 
 No product code, protocol or dependency changed. The section tool's refusal of
 a cut through a tessellation edge (`unsupported`) is pre-existing behaviour,
-worked around by offset, not changed. D8's remaining half is one bounded
-training run with checkpoint and final videos in the D3 look and the reach
-measured over seeds 0–9.
+worked around by offset, not changed. D8's training half — one bounded run,
+checkpoint and final videos in the D3 look, the reach measured over seeds 0–9
+— is [TRAINING.md](TRAINING.md) and `training.json` (ADR-340).
