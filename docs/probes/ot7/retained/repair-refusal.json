@@ -1,0 +1,332 @@
+{
+  "criterion": "F4",
+  "outcome": "provider session-limit refusal; no repair",
+  "project": "ot7-heron-repair",
+  "seed": {
+    "source_project": "ot6-heron",
+    "source_commit": "14bc75f7c9b0e39aee9960d11368095479592e0a",
+    "accepted_revision": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+    "accepted_attempt": {
+      "attempt_id": "1789357781899-0ee9f3cfc99c",
+      "revision": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+      "staging": "script_artifacts/7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475/attempt-1789357781899-0ee9f3cfc99c"
+    },
+    "script_sha256": "3339a1786d4d2bbcb69de9b4410ee325aed9ea73a327cd7703848484a677389d",
+    "metadata_sha256": "ac1afc0b65200dbfdd352327f716e6f62bb3339eeaf54cd484df661e6031ad68",
+    "prompt_sha256": "5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904",
+    "artifacts_available": false,
+    "note": "Historical accepted attempt was not retained in ot6-heron; snapshot extracted verbatim from first project commit. No accepted-state edits."
+  },
+  "timing": {
+    "started_unix": 1789418875.2969465,
+    "elapsed_seconds": 4.090246677398682,
+    "exit_code": 1,
+    "fresh_session": true,
+    "model": "claude-fable-5",
+    "prompt_count": 1
+  },
+  "session_id": "c87c271a-d37a-4a57-8004-83e6d623876f",
+  "completed_design_turns": 0,
+  "actor_design_edits": 0,
+  "before_fit": "unavailable: accepted attempt directory missing",
+  "after_fit": {
+    "verdict": "fail",
+    "source": "engine measurements of the exact solids at the solved pose, published with the accepted revision (inspect scope=clearance). Not the script's stdout; not a swept-motion check.",
+    "revision": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+    "assembly": "heron_assembly",
+    "pose": "initial solved pose (not swept motion)",
+    "thresholds": {
+      "minimum_clearance_mm": 0.1,
+      "maximum_common_volume_mm3": 1e-06
+    },
+    "pairs_checked": 105,
+    "counts": {
+      "clear": 85,
+      "intersection": 8,
+      "below clearance": 12,
+      "unknown": 0,
+      "world geometry": 1
+    },
+    "failing_count": 21,
+    "failing": [
+      {
+        "first": "comp_base",
+        "second": "comp_servo_shoulder",
+        "status": "intersection",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 248.20162986795066,
+        "fit_failures": [
+          "intersection",
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_base",
+        "second": "comp_bearing_shoulder",
+        "status": "below clearance",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_base",
+        "second": "comp_tabscrew_shoulder_0",
+        "status": "intersection",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 4.071504079052369,
+        "fit_failures": [
+          "intersection",
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_base",
+        "second": "comp_tabscrew_shoulder_1",
+        "status": "intersection",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 4.071504079052367,
+        "fit_failures": [
+          "intersection",
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_upper_arm",
+        "second": "comp_servo_elbow",
+        "status": "intersection",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 248.20162986795046,
+        "fit_failures": [
+          "intersection",
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_upper_arm",
+        "second": "comp_bearing_shoulder",
+        "status": "below clearance",
+        "distance_mm": 0.09999999999999952,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_upper_arm",
+        "second": "comp_bearing_elbow",
+        "status": "below clearance",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_upper_arm",
+        "second": "comp_tabscrew_elbow_0",
+        "status": "intersection",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 4.071504079052383,
+        "fit_failures": [
+          "intersection",
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_upper_arm",
+        "second": "comp_tabscrew_elbow_1",
+        "status": "intersection",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 4.071504079052412,
+        "fit_failures": [
+          "intersection",
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_upper_arm",
+        "second": "comp_centrescrew_shoulder",
+        "status": "below clearance",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_forearm",
+        "second": "comp_bearing_elbow",
+        "status": "below clearance",
+        "distance_mm": 0.09999999999999039,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_forearm",
+        "second": "comp_centrescrew_elbow",
+        "status": "below clearance",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_servo_shoulder",
+        "second": "comp_horn_shoulder",
+        "status": "below clearance",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_servo_shoulder",
+        "second": "comp_tabscrew_shoulder_0",
+        "status": "below clearance",
+        "distance_mm": 0.09999999999999787,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_servo_shoulder",
+        "second": "comp_tabscrew_shoulder_1",
+        "status": "below clearance",
+        "distance_mm": 0.09999999999999928,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_servo_shoulder",
+        "second": "comp_centrescrew_shoulder",
+        "status": "intersection",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 9.424777960769386,
+        "fit_failures": [
+          "intersection",
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_servo_elbow",
+        "second": "comp_horn_elbow",
+        "status": "below clearance",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_servo_elbow",
+        "second": "comp_tabscrew_elbow_0",
+        "status": "below clearance",
+        "distance_mm": 0.09999999999999432,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_servo_elbow",
+        "second": "comp_tabscrew_elbow_1",
+        "status": "below clearance",
+        "distance_mm": 0.09999999999996666,
+        "common_volume_mm3": 0.0,
+        "fit_failures": [
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_servo_elbow",
+        "second": "comp_centrescrew_elbow",
+        "status": "intersection",
+        "distance_mm": 0.0,
+        "common_volume_mm3": 9.424777960769378,
+        "fit_failures": [
+          "intersection",
+          "below clearance"
+        ]
+      },
+      {
+        "first": "comp_base",
+        "second": "",
+        "status": "world geometry",
+        "distance_mm": null,
+        "common_volume_mm3": null,
+        "error": "collision plane declared on design component"
+      }
+    ]
+  },
+  "after_accepted_attempt": {
+    "attempt_id": "1789418875390-f7af6a8b3e1f",
+    "revision": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+    "staging": "script_artifacts/7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475/attempt-1789418875390-f7af6a8b3e1f"
+  },
+  "accepted_revision_and_digest_unchanged": true,
+  "script_unchanged": true,
+  "normal_restore_replaced_attempt_pointer": true,
+  "artifacts": {
+    "evidence/after-static.json": {
+      "sha256": "f4e5eac8604b64d97ea4a276457291a1b82d89c88bd97b2f0631662d4960268a",
+      "bytes": 1300
+    },
+    "evidence/after-sweep.json": {
+      "sha256": "07cef4d35c09494ebe16e7998b46a66520c13f3860ca3fb715b5a5c38f806e06",
+      "bytes": 1333
+    },
+    "evidence/after.clearance.json": {
+      "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803",
+      "bytes": 48856
+    },
+    "evidence/after.fit.json": {
+      "sha256": "3a55cf48ebf8dec95bded4cd16f5c3ae93084bd966d1dbaf1a0d5487f88df84a",
+      "bytes": 6028
+    },
+    "evidence/before-static.json": {
+      "sha256": "4d67651c8e85e46a4d8794c1c0ae39d0fc3b1d050f7563c5ff9516f64948eb06",
+      "bytes": 1310
+    },
+    "evidence/before-static.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "evidence/before-sweep.json": {
+      "sha256": "576b3ca2eeb7fb418ec9484b33998279f5bab0149de97db5af3506efdd1bc094",
+      "bytes": 1236
+    },
+    "evidence/before-sweep.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "evidence/seed.json": {
+      "sha256": "46aa5e9caeb856ffe924735b31e13e51db5dcf4a164860a4bdbc1c558475a248",
+      "bytes": 932
+    },
+    "evidence/turn1.envelope.json": {
+      "sha256": "c0eb132c035e3a1d4dfb2dd9b65b3063cc061844de77b1f0fe9a5374c268e400",
+      "bytes": 1454
+    },
+    "evidence/turn1.stderr.txt": {
+      "sha256": "3129a282accd591370a712118bb85970706917fe3ea7a70d4ed9095f069f6349",
+      "bytes": 66
+    },
+    "evidence/turn1.timing.json": {
+      "sha256": "258be9d3b6448c3fe9174e51dd95e9a30ad1e4baa7e8bcb656479910fca277cf",
+      "bytes": 174
+    },
+    "evidence/turn1.transcript.jsonl": {
+      "sha256": "7f4238888d0925e0fb3a5d2810843a3d01a7103a4155b3ea0ec0a7f07f4bd455",
+      "bytes": 35795
+    }
+  }
+}
