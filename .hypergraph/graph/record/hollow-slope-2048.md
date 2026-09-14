@@ -18,7 +18,7 @@ The critic's message carried two instructions at once: a runner template ("exhau
 ## Method
 
 1. Read `.ouroboros/AGENTS.md`, `config.yml` (`on_done_accepted: 2`) and the loop log: iteration 29 `done_rejected`, iteration 30 `done_accepted` — one of the two acceptances that end the run.
-2. Verified the persistent dashboard before touching anything: `systemctl --user status cadex-operator-review` active since 00:05 EDT, serving `/home/theo/cadex-projects/ot6-heron` on port 8765 at the operator's private address (read from the unit, not written here); `GET /api/project` → project `ot6-heron`, accepted revision `0c8c64c92252711b` (working revision the same, updated 2026-09-14T04:31), three runs all `ok`; `GET /` → 200, the page naming `heron1-final`. Same state D9 measured [rec: bold-arbor-2078].
+2. Verified the persistent dashboard before touching anything: `systemctl --user status cadex-operator-review` active since 00:05 EDT, serving the project `ot6-heron` (under the operator's cadex-projects directory) on port 8765 at the operator's private address (read from the unit, not written here); `GET /api/project` → project `ot6-heron`, accepted revision `0c8c64c92252711b` (working revision the same, updated 2026-09-14T04:31), three runs all `ok`; `GET /` → 200, the page naming `heron1-final`. Same state D9 measured [rec: bold-arbor-2078].
 3. Rewrote the one paragraph of §D10; kept every `[rec: …]`, link and ADR the test holds; ran the report, receipt and caps tests; committed.
 4. Nothing else re-run: no page, script, environment module or product code changed, so the browser and engine suites stand as D9 left them.
 
