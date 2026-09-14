@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**`cadex smoke --out DIR` is a documented no-token check of the accepted design (ADR-352).** It retains accepted identity, reads pinned artifacts under the project lock without restore, rebuild or acceptance, and writes project-local trace/geometry receipts and a complete measured verdict. Finite-state checks, exact sampled component overlaps, and proxy floor support or a grounded base share a wall-time bound capped at 300 seconds. Unsupported solids and initial-measurement mismatches cannot pass. No protocol/payload change or new dependency [rec: lean-fountain-9707].
+
 **Build replies and turn reports carry measured fit (ADR-346).** Each successful modelling reply reads published clearance under the bridge lock. `ToolCall.fit` and `BridgeState.last_fit` expose the block; the prompt turn's `--json` envelope carries the last accepted build's `fit`, and prose prints a line per failing pair. The extra store-backed inspect read per build has not been timed on large assemblies [rec: happy-dawn-1960]. Every failing pair is included after the forty-pair limit was removed; full CLI verification at `f2bf2c83` is 636 passed, 1 skipped [rec: steady-quartz-9854].
 
 **The recorder handles Finch's real tessellation (ADR-336).** It fetches each retained solid through the loopback server and computes per-frame bounds and the follow track in the shared scene module. The triangle cap is 500 000 (formerly 20 000); `test_video.py` pins a 27 652-triangle run, and Finch's 29 solids total 95 212 triangles. The persistent dashboard serves `ot6-finch` at accepted revision `b68622345563…` and selects `finch1-final` on a fresh visit; checkpoint and final videos use the dark environment and identify tessellated solids. Full CLI suite: 557 passed, 1 skipped [rec: tiny-tooth-8197]. The preceding free-base re-accept kept the unit running with 29 components and 20 proxies; the worldbody floor is not a proxy. That unit's CLI run had 548 passes, 1 skip and one video timeout under concurrent suites, which passed alone in 19 s [rec: loyal-canyon-4623].
@@ -203,3 +205,5 @@ Walk sections share the named-view snapshot, retain explicit outcomes and rollou
 - tiny-tooth-8197 — ADR-336 retained-solid fetching, scene-side bounds/follow track, larger tested cap and full CLI verification
 - happy-dawn-1960 — ADR-346 measured fit in build replies, parent state and turn reports; large-assembly read cost unmeasured
 - steady-quartz-9854 — complete failing-pair replies and full CLI verification replace the initial bounded list
+
+- lean-fountain-9707 — documented no-token accepted-artifact smoke command and measured receipts

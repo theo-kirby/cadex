@@ -7,15 +7,17 @@ parents:
 - mild-ledge-7157
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-Charter criterion: **F8. A smoke rollout is one command.** A short bounded simulation of an accepted design, zero-action or holding its initial pose for a declared duration, passes when state stays finite, no component pair interpenetrates beyond tolerance over the trace, and the design rests on the environment floor or holds its grounded base. Evidence: CLI tests with a passing and a failing fixture, and the receipts F5–F7 cite. Declared target `gap-f8-smoke-rollout-one-command`; a record may say "ticks F8" when its evidence exists, and the human owns the checkbox edit [rec: kind-dusk-1609].
+**F8's bounded smoke command is implemented and fixture-verified (ADR-352), pending owner/critic review.** `cadex smoke --out DIR` reads pinned accepted artifacts under the project lock without restore, rebuild or acceptance, preserves accepted identity, and writes trace/geometry receipts and a complete measured verdict. Zero action or held position actuators run within a shared wall-time deadline capped at 300 seconds. Finite state is checked every solver step; exact posed BREP checks cover all component pairs at sampled times, including parts without collision proxies. Initial measurements must agree with published clearance; missing solids or disagreement cannot pass [rec: lean-fountain-9707].
 
-The nearest existing behaviour: Finch's ungrounded re-acceptance (ADR-335) was checked by hand in stock MuJoCo — held standing 2 s, a shove made it fall onto and never through the environment floor (`dusty-otter-7562`). Every check ships with a fixture whose right answer is known in advance and a test that fails on the old code; each rollout is bounded to five minutes. [rec: kind-dusk-1609]
+Known-answer evidence includes a grounded pass across 101 poses, a falling arm whose proxies pass but exact solids overlap by 1,463.7845106574737 mm³ at 1.64 s, and analytic overlapping boxes at 400 mm³. Fixtures also cover floor support/burial, missing floor, instability, hold versus zero action, termination, sampling, timeouts, stale receipts, tampering and preservation of accepted state with a broken working script. Focused smoke: 25 passed; staged lifecycle plus smoke: 43 passed. Evidence index: `docs/probes/ot7/f8-smoke.json` [rec: lean-fountain-9707].
 
-Reconcile judgement: `open` — declared by the ot7 directive with no evidence yet; flips to `working` only when a record carries the criterion's evidence, on the reading ot5 and ot6 used (evidenced pending the owner's tick) [rec: kind-dusk-1609].
+Limits: component checks are sampled, not continuous; floor penetration/support use collision proxies; unsupported non-BREP components cannot pass. No new dependency or protocol/payload change [rec: lean-fountain-9707].
+
+Charter criterion: one bounded accepted-design smoke command checks finite state, component interpenetration and floor support or a grounded base, with passing/failing fixtures and receipts cited by F5–F7 [rec: kind-dusk-1609]. Reconcile judgement: `working` for the implementation and known-answer evidence explicitly reported as ticking F8; this does not supply the still-outstanding unassisted-design receipts or edit the owner's checkbox [rec: lean-fountain-9707].
 
 ## Negative knowledge
 
@@ -24,3 +26,5 @@ None yet.
 ## Provenance
 
 - kind-dusk-1609 — the ot7 directive (ADR-341) declared this criterion as gap `gap-f8-smoke-rollout-one-command`
+
+- lean-fountain-9707 — ADR-352 accepted-artifact smoke, exact sampled BREP checks, bounded execution, fixtures and staged verification
