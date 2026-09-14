@@ -847,3 +847,32 @@ def test_final_regression_receipt_shows_everything_ot5_proved_still_holds():
     for behaviour in OT5_BEHAVIOURS:
         assert behaviour in text, f"the assessment does not name {behaviour!r}"
     assert "Verified against source: 2026-" in text
+
+
+REPORT = REPO / "docs/probes/ot6/REPORT.md"
+RECORDS = REPO / ".hypergraph/graph/record"
+
+
+def test_closing_report_links_every_criterion_to_committed_evidence():
+    """D10: the closing report has a section per criterion and an open-items
+    section, every relative link resolves to a committed file, every record it
+    cites exists in the record graph, every ADR it names exists in the log, and
+    it names no private address (the caps test above holds it under 16 KB)."""
+
+    text = REPORT.read_text()
+    assert re.search(r"^Verified against source: \d{4}-\d{2}-\d{2}\.", text, re.M)
+    for n in range(1, 11):
+        assert re.search(rf"^## D{n}\. ", text, re.M), f"D{n} has no section"
+    assert "## What remains open" in text
+    for link in re.findall(r"\]\(([^)]+)\)", text):
+        assert (REPORT.parent / link).is_file(), link
+    slugs = set(re.findall(r"\[rec: ([a-z]+-[a-z]+-\d{4})\]", text))
+    assert len(slugs) >= 15
+    for slug in slugs:
+        assert (RECORDS / f"{slug}.md").is_file(), slug
+    decisions = (REPO / "docs/DECISIONS.md").read_text()
+    adrs = set(re.findall(r"ADR-(\d{3})", text))
+    assert {"328", "329", "330", "331", "332", "333", "334", "335", "336", "337", "338", "339", "340"} <= adrs
+    for adr in adrs:
+        assert f"## ADR-{adr} " in decisions, adr
+    assert not PRIVATE_ADDRESS.search(text) and socket.gethostname() not in text
