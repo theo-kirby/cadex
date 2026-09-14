@@ -229,7 +229,18 @@ This page is the closing report. It claims nothing a record does not carry;
 `test_closing_report_links_every_criterion_to_committed_evidence` in
 `cli/tests/test_review_design.py` holds every relative link to an existing
 file, every `[rec: …]` to an existing record node, and the page to the 16 KB
-receipt cap. The record for this unit claims done for the critic's review.
+receipt cap. The report unit [rec: frosty-path-5235] claimed done; the
+critic rejected that claim because the completion impacts were still
+unreconciled, the reconcile pass [rec: sharp-cedar-0014] folded them and
+claimed again, and **the critic accepted done** on that iteration (verdict
+`done_accepted`: "the reconciliation resolves the previous completion blocker,
+the checker passes with no unreconciled state records, and the closing report
+supports D1–D10"). The verdict lives in the run's loop log, which never leaves
+the machine; the record that follows `sharp-cedar-0014` in the record graph
+carries it, together with the last dashboard check of the run: the
+`cadex-operator-review` user unit still serving `ot6-heron` on port 8765,
+accepted revision `0c8c64c92252…`, three runs listed, `heron1-final` current,
+the page answering 200 — the same state D9 measured, unchanged by this page.
 
 ## What remains open
 
