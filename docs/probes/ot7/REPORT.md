@@ -8,17 +8,16 @@ calls were refused at the session limit, with zero completed design turns.
 F4–F7 remain open. This report advances F10's document requirement, but does
 not claim successful completion or critic acceptance of done.
 
-Updated for the critic-requested iteration-39 F4 dispatch. Full evidence stays
-in external `cadex-projects/ot7-*` directories; receipts carry relative paths,
-sizes and digests. Unavailable measurements never count as passes.
+**Terminal outcome: incomplete. This run exhausted its authorized experiments
+without establishing F4–F7 or successful completion.** Provider refusals cannot
+justify done acceptance. No further dispatch, collector-slot reset, repeated
+measurement or unrelated horizon work is authorized by this handoff.
 
 ## Design outcomes
 
-The frozen create prompts and all three continuation prompts are
-linked in the [prompt manifest](prompts/README.md), with full hashes and the
-original ot6 provenance. Every create attempt used `claude-fable-5`, stopped
-on CLI exit 1, and used **zero of three continuations**. No actor design edits
-occurred in any of the attempts below.
+The [prompt manifest](prompts/README.md) retains frozen prompts, hashes and ot6
+provenance. Creates used `claude-fable-5`, exited 1, and consumed **zero of
+three continuations**. No actor edited a design.
 
 | Design / criterion | Prompt and attempts | Completed turns / continuations used | Fit failures per dispatch; final static / swept | Inventory / smoke | ot6 comparison |
 |---|---|---|---|---|---|
@@ -35,9 +34,7 @@ The historical provider reset message does not authorize retries.
 
 ### Refusal receipts and transcript identity
 
-All six calls are retained here, including the two earlier F4 invocations
-that preceded the exclusive-slot repair collector. Its iteration-39 dispatch
-was also refused; the collector slot is now consumed.
+All six calls, including both pre-collector F4 refusals, are retained below.
 
 | Dispatch | Receipt | Transcript SHA-256 | Causal record |
 |---|---|---|---|
@@ -185,10 +182,9 @@ for this run's smoke receipts; no policy training occurred in ot7.
 
 ## F10 and what remains open
 
-This page supplies the closing evidence index requested by the critic. F1–F3
-and F8 have implemented, fixture-verified checks within the limits above;
-F9 has its recorded regression evidence. **F4–F7 remain open**, with refusal
-evidence rather than successful or failed geometric design attempts.
+F1–F3 and F8 have fixture-verified checks within the limits above; F9 has
+recorded regression evidence. **F4–F7 remain open**: refusals establish no
+geometric design outcome.
 
 F10's requirement that the critic accepted done is also **unmet**. This report
 makes no done claim. The critic-requested F4 collector call was refused.
@@ -196,3 +192,8 @@ F5–F7 were not restarted, and no extra continuation, collector scaffolding,
 training, dashboard change or broader horizon work occurred. All scheduled
 collector slots are consumed. The run's successful-completion prerequisites
 are not established by the existing evidence.
+
+The requested reconciliation of `blue-slope-0916` was not executed: this
+dispatch forbids reconciliation and state/view edits. The record tail retains
+the refusal and terminal outcome for a separately authorized pass. Folding
+records cannot establish F4–F7. This run returns an incomplete outcome.
