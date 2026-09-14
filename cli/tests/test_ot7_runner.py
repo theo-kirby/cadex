@@ -151,6 +151,11 @@ def test_repair_preserves_seed_and_collects_one_frozen_fresh_turn(tmp_path, monk
     assert report['seed'] == before == report['turns'][0]['accepted_after']
     assert report['before']['seed_unchanged']
     assert report['turns'][0]['static_fit']['failing_count'] == 0
+    assert report['turns'][0]['repair_assessment']['status'] == 'unknown'
+    assert report['before']['repair_assessment']['status'] == 'unknown'
+    artifacts = {a['path']: a for a in report['turns'][0]['artifacts']}
+    assessment_path = target / 'evidence/f4-repair/turn-0/repair-assessment.json'
+    assert artifacts['repair-assessment.json'] == runner.digest(assessment_path)
     assert report['turns'][0]['continuations_used'] == 1
     assert [Path(cmd[-2]).name for cmd, _ in calls if '--child-turn' in cmd] == ['repair.prompt.txt']
     assert [Path(cmd[-1]).name for cmd, _ in calls if '--child-measure' in cmd] == ['before', 'turn-0']
@@ -326,3 +331,88 @@ def test_measurement_child_keeps_later_nested_sweep_pages(tmp_path, monkeypatch)
         'status': 'complete', 'joints': [first_joint, later_joint]}
     assert raw['clearance_sweep']['joints'][1]['pairs'][1] == worst
     assert calls == list(pages)
+
+
+def repair_geometry(gap=0.0, volume=0.0):
+    return {'available': True, 'revision': 'accepted', 'world_geometry': [],
+            'pairs': [{'first': first, 'second': second, 'distance_mm': gap,
+                       'common_volume_mm3': volume}
+                      for first, second in runner.REPAIR_ATTACHMENTS]}
+
+
+def test_repair_assessment_catches_unflagged_original_horn_gaps():
+    from cadex_cli.clearance import fit_summary
+    value = repair_geometry(gap=0.2)
+    assert fit_summary(value)['failing_count'] == 0
+    result = runner.repair_assessment(value, 'accepted')
+    assert result['status'] == 'fail'
+    assert [r['reason'] for r in result['attachments']] == ['missed contact'] * 2
+    assert [r['distance_mm'] for r in result['attachments']] == [0.2, 0.2]
+    assert [r['common_volume_mm3'] for r in result['attachments']] == [0.0, 0.0]
+
+
+def test_repair_assessment_pass_requires_static_fit_and_both_contacts():
+    value = repair_geometry(gap=0.001)
+    for row in value['pairs']:
+        row['intent'] = {'kind': 'contact'}
+        row['first'], row['second'] = row['second'], row['first']
+    assert runner.repair_assessment(value, 'accepted')['status'] == 'pass'
+    value['world_geometry'] = [{'component': 'floor', 'reason': 'world plane'}]
+    assert runner.repair_assessment(value, 'accepted')['status'] == 'fail'
+    value['world_geometry'] = []
+    value['pairs'].append({'first': 'servo', 'second': 'cheek', 'distance_mm': 0.0,
+                           'common_volume_mm3': 248.2})
+    result = runner.repair_assessment(value, 'accepted')
+    assert result['status'] == 'fail'
+    assert result['static_fit']['failing'][0]['common_volume_mm3'] == 248.2
+
+
+@pytest.mark.parametrize('change', ['missing', 'renamed', 'duplicate', 'nan', 'error',
+                                  'revision', 'unavailable', 'world_missing'])
+def test_repair_assessment_missing_attachment_evidence_is_unknown(change):
+    value = repair_geometry()
+    for row in value['pairs']:
+        row['intent'] = {'kind': 'contact'}
+    # Static summary passes; attachment evidence must still be present and valid.
+    if change == 'missing':
+        value['pairs'].pop()
+    elif change == 'renamed':
+        value['pairs'][0]['first'] = 'replacement_horn'
+    elif change == 'duplicate':
+        value['pairs'].append(dict(value['pairs'][0]))
+    elif change == 'nan':
+        value['pairs'][0]['distance_mm'] = float('nan')
+    elif change == 'error':
+        value['pairs'][0]['error'] = 'kernel failed'
+    elif change == 'revision':
+        value['revision'] = 'stale'
+    elif change == 'unavailable':
+        value['available'] = False
+    else:
+        del value['world_geometry']
+    result = runner.repair_assessment(value, 'accepted')
+    assert result['status'] != 'pass'
+    assert any(row['status'] == 'unknown' for row in result['attachments'])
+
+
+def test_repair_assessment_overlap_cannot_count_as_contact():
+    result = runner.repair_assessment(repair_geometry(volume=0.002), 'accepted')
+    assert result['status'] == 'fail'
+    assert all(row['reason'] == 'intersection' for row in result['attachments'])
+
+
+def test_repair_assessment_failed_measurement_ignores_leftover_report(tmp_path):
+    runner.write(tmp_path / 'clearance.json', repair_geometry())
+    result = runner.retain_repair_assessment(tmp_path, 'accepted', False)
+    assert result['status'] == 'unknown'
+    assert json.loads((tmp_path / 'repair-assessment.json').read_text()) == result
+
+
+def test_repair_assessment_retains_unknown_nonfinite_measurements(tmp_path):
+    value = repair_geometry()
+    value['pairs'][0]['distance_mm'] = float('nan')
+    (tmp_path / 'clearance.json').write_text(json.dumps(value))
+    result = runner.retain_repair_assessment(tmp_path, 'accepted', True)
+    assert result['attachments'][0]['status'] == 'unknown'
+    assert result['attachments'][0]['distance_mm'] is None
+    assert json.loads((tmp_path / 'repair-assessment.json').read_text()) == result

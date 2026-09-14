@@ -153,3 +153,30 @@ no provider call or design edit occurred, and `evidence/f4-repair/` remains
 unconsumed. After reset, use the repair command above and compare its guarded
 before-read with this retained baseline; dispatch only the frozen repair
 prompt. F4 remains open, and earlier refusals remain part of its accounting.
+
+## Repair geometry assessment (iteration 31)
+
+The repair collector now writes and hashes `repair-assessment.json` alongside
+both the before and after measurements. It recomputes the product static fit
+from `clearance.json` and additionally requires contact for the original
+`comp_horn_shoulder` / `comp_upper_arm` and `comp_horn_elbow` / `comp_forearm`
+pairs, regardless of their declared intent. Contact uses the product's
+0.001 mm distance tolerance and 0.000001 mm³ overlap tolerance. The report
+retains each distance, common volume and reason. This is evidence assessment;
+it does not add contact declarations to the design or alter the prompt.
+
+A passing geometry assessment requires passing static fit and both attachments.
+Missing, duplicate, renamed or replaced pairs, failed measurement reads,
+unavailable reports, missing world-geometry evidence, or a revision differing
+from the accepted metadata cannot pass. Those attachments are **unknown**;
+any known failure still makes the overall result fail. Renamed or redesigned
+attachments need separate evidence connecting them to the original function;
+the collector does not guess that mapping. A pass assesses the static geometry
+only, not whether the provider completed a repair, nor swept fit.
+
+Fixtures cover a zero-failure summary with both original 0.2 mm gaps, actual
+contact, world geometry, 248.2 mm³ servo overlap, missing evidence, and failed
+reads. The collected assessment and its digest are pinned in the repair-run
+fixture. At 18:45 New York time the documented reset was still ahead; this
+unit made no provider call and left the seed and frozen prompts untouched.
+F4 still needs its real frozen repair turn and before/after evidence.

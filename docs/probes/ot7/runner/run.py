@@ -103,6 +103,63 @@ def execute(command, out, stem, timeout):
     return {'exit_code': code, 'elapsed_seconds': time.monotonic() - start}
 
 
+REPAIR_ATTACHMENTS = (
+    ('comp_horn_shoulder', 'comp_upper_arm'),
+    ('comp_horn_elbow', 'comp_forearm'),
+)
+
+
+def repair_assessment(value, expected_revision):
+    """Assess original attachments even when the seed declares no contact intent.
+
+    This is evidence interpretation, never a design declaration or acceptance.
+    Renamed/replaced components require separate evidence; do not infer identity.
+    """
+    from cadex_cli.clearance import fit_summary, pair_status, MAXIMUM_COMMON_VOLUME_MM3
+
+    value = value if isinstance(value, dict) else {}
+    valid = (bool(expected_revision) and value.get('revision') == expected_revision
+             and value.get('available') is True and isinstance(value.get('pairs'), list)
+             and bool(value['pairs']) and isinstance(value.get('world_geometry'), list))
+    summary = fit_summary(value) if valid else None
+    static = summary['verdict'] if summary else 'unknown'
+    attachments = []
+    for first, second in REPAIR_ATTACHMENTS:
+        rows = [row for row in value.get('pairs', []) if isinstance(row, dict)
+                and {row.get('first'), row.get('second')} == {first, second}] if valid else []
+        item = {'first': first, 'second': second, 'status': 'unknown',
+                'reason': 'Missing, duplicate, or unverified accepted pair evidence.'}
+        if len(rows) == 1:
+            row = rows[0]
+            status = pair_status(dict(row, intent={'kind': 'contact'}),
+                                 0.1, MAXIMUM_COMMON_VOLUME_MM3)
+            item.update(status='pass' if status == 'clear' else
+                        'unknown' if status == 'unknown' else 'fail', reason=status,
+                        distance_mm=row.get('distance_mm'),
+                        common_volume_mm3=row.get('common_volume_mm3'))
+        attachments.append(item)
+    statuses = [static] + [item['status'] for item in attachments]
+    return {'revision': value.get('revision'), 'expected_revision': expected_revision,
+            'status': 'fail' if 'fail' in statuses else
+                      'pass' if all(s == 'pass' for s in statuses) else 'unknown',
+            'static_fit': summary, 'attachments': attachments,
+            'contact_tolerance_mm': 0.001,
+            'maximum_common_volume_mm3': MAXIMUM_COMMON_VOLUME_MM3,
+            'scope': 'Static geometry only; not proof of an agent repair or swept fit.'}
+
+
+def retain_repair_assessment(out, revision, measurement_ok):
+    try:
+        value = json.loads((out / 'clearance.json').read_text()) if measurement_ok else None
+    except (OSError, ValueError):
+        value = None
+    assessment = repair_assessment(value, revision)
+    # Unknown numeric evidence stays in the raw report; receipt JSON remains finite.
+    assessment = json.loads(json.dumps(assessment), parse_constant=lambda _: None)
+    write(out / 'repair-assessment.json', assessment)
+    return assessment
+
+
 def run(design, project, model, execute_call=execute):
     names = frozen(design)
     project = project.resolve()
@@ -129,6 +186,8 @@ def run(design, project, model, execute_call=execute):
         receipt['before'] = execute_call(
             [sys.executable, str(Path(__file__).resolve()), '--child-measure', str(project), str(before)],
             before, 'measurement', 300)
+        receipt['before']['repair_assessment'] = retain_repair_assessment(
+            before, seed['metadata']['accepted_revision'], receipt['before']['exit_code'] == 0)
         receipt['before']['artifacts'] = [digest(p) for p in sorted(before.iterdir()) if p.is_file()]
         # Measurement must preserve the complete metadata and script bytes.
         receipt['before']['seed_unchanged'] = seed_identity(project) == seed
@@ -158,6 +217,9 @@ def run(design, project, model, execute_call=execute):
         row['status'] = 'completed'
         if repair:
             row['accepted_after'] = seed_identity(project)
+            row['repair_assessment'] = retain_repair_assessment(
+                out, row['accepted_after']['metadata'].get('accepted_revision'),
+                row['measurement']['exit_code'] == 0)
         row['artifacts'] = [digest(p) for p in sorted(out.iterdir()) if p.is_file()]
         save()
         # Provider failures and ambiguous interrupted turns stop this attempt.

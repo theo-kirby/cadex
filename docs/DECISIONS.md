@@ -24822,3 +24822,13 @@ smoke, additional prompt or product behavior change. Known-answer fixtures
 pin seed preservation, seven-to-zero evidence collection, identity rejection,
 fresh prompting and failed-before stops. This is the critic's requested
 fallback before the recorded provider reset, not a repair result.
+
+**F4 assessment extension (iteration 31, 2026-09-14).** Repair evidence now
+checks the original shoulder-horn/upper-arm and elbow-horn/forearm contacts
+from published pair distances and common volumes, independently of declared
+intent. Zero static failures alone cannot establish a repair: the old seed's
+0.2 mm gaps pass the default clearance rule. Missing or renamed attachments
+remain unknown; static failures still fail. Before/after assessment artifacts
+are hashed alongside the measurements, with accepted-revision and successful
+read guards. Fixture-backed evidence interpretation only; no design, prompt,
+acceptance, dependency, or protocol change. F4 remains open.
