@@ -159,3 +159,46 @@ in 530.16 s; focused replay **3 passed**. The deliberate old-threshold replay
 fails as expected. Log digests are in the second refusal receipt. No engine,
 protocol or payload implementation changed, so no full build or packaged gate
 was rerun.
+
+## Packaged restore and reopen (iteration 20)
+
+[restore-open.json](restore-open.json) records two fresh packaged-engine opens
+with `restore=True` for each of `ot7-open-finch`, `ot7-open-robin` and
+`ot7-open-heron`. These new copies contain the retained script, metadata,
+accepted attempt and policy assets. Source projects remained read-only. The
+engine’s 56 top-level Python modules match the source tree; the receipt pins
+its manifest and executable hashes separately. No build was needed.
+
+| Design | Restore / reopen seconds | Pairs per open | Published / rebuilt pair differences | Fit failures |
+|---|---:|---:|---:|---:|
+| Finch | 7.335 / 7.175 | 406 | 0 / 0 | 44 |
+| Robin | 5.156 / 5.105 | 276 | 0 / 0 | 39 |
+| Heron | 2.252 / 2.254 | 105 | 0 / 0 | 20 |
+
+All six replies report `performed=true` and `matches_accepted=true`. Each
+accepted revision, digest, contract and attempt pointer remains unchanged,
+as do script bytes, parameter values and the pinned accepted result. Only
+`latest_candidate` and `updated_at` change during normal restore. The probe
+also hashes every source asset and artifact before and after: none changed.
+No design, parameter or accepted state was edited, and no explicit acceptance
+operation was issued.
+
+The public clearance scope reads the pinned accepted artifact. To avoid
+mistaking that read for rebuild evidence, the probe separately compares every
+pair in each **new restore candidate's result.json** with the portable fixture.
+Both the published reports and all six newly rebuilt pair tables match exactly:
+no changed distance, common volume, missing pair or added pair. The restored
+digests match the accepted digests. The only fit-classification differences
+from ot6 remain the previously explained contact/thread policies and ADR-353's
+two Heron threshold corrections. No new defect was found to require a regression.
+All designs still fail static fit, have no reported world geometry, and have
+unavailable sweep coverage; successful restoration is not a fit pass.
+
+The reproducible probes, full replies, metadata snapshots, pair comparisons and
+fit reports live under `cadex-projects/ot7-retained-open/evidence/`; their
+relative paths and SHA-256 digests are in the receipt. This closes F9's retained
+restore/open evidence. Full-suite evidence remains the preceding engine
+**2,142 passed / 53 skipped** and CLI **684 passed / 1 skipped** runs; this
+experiment changes documentation only and does not claim new full-suite runs.
+The current packaged lifecycle gate was rerun: **18 passed in 11.52 s**;
+its command and log digest are in the receipt.
