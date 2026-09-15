@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -22,6 +23,13 @@ sys.path.insert(0, str(REPO / 'cli'))
 #: interruption, not a turn that ended on its own (ADR-356).
 TURN_BOUND_SECONDS = 1800
 MEASUREMENT_BOUND_SECONDS = 300
+#: A frozen prompt is dispatched only while the five-hour window reads at or
+#: under this, in percent (ADR-358): one completed turn moved a window from
+#: 8 % to 57 % and another from 8 % to 63 %, so a turn that starts above about
+#: 45 % is cut off by the session limit and void.
+WINDOW_BOUND_PERCENT = 45
+WINDOW_PROBE_BOUND_SECONDS = 120
+WINDOW_PROBE_TEXT = 'Reply with the single word ok.'
 
 
 def write(path, value):
@@ -97,6 +105,46 @@ def child_measure(project, out):
         write(out / 'fit.json', fit_summary(value))
         write(out / 'inventory.json', _read_path(client, {'scope': 'inventory', 'target': ''}, ''))
     return 0
+
+
+def window_reading(execute_call, out, stem, model):
+    """Read the five-hour window from a one-word probe's first ``rate_limit_event``
+    frame (ADR-358). The probe carries no project, no tools and no MCP server,
+    so it is not a product-agent call and spends no slot; its stream is kept
+    beside the receipt. A reading with no frame, or a rejected one, is not
+    evidence of room, and ``dispatch`` treats it as no room."""
+    from cadex_cli.agent import ClaudeUnavailable, find_claude
+    try:
+        binary = find_claude('')
+    except ClaudeUnavailable as exc:
+        return {'probe': None, 'error': str(exc), 'status': None, 'five_hour_percent': None,
+                'resets_at': None, 'frame': None}
+    command = [binary, '-p', WINDOW_PROBE_TEXT, '--output-format', 'stream-json', '--verbose',
+               '--model', model, '--tools', '', '--system-prompt', WINDOW_PROBE_TEXT]
+    reading = {'probe': execute_call(command, out, stem, WINDOW_PROBE_BOUND_SECONDS),
+               'status': None, 'five_hour_percent': None, 'resets_at': None, 'frame': None}
+    for frame in read_frames(out / f'{stem}.stdout.json'):
+        if frame.get('type') != 'rate_limit_event':
+            continue
+        info = frame.get('rate_limit_info') or {}
+        window = (info.get('unifiedWindows') or {}).get('five_hour') or {}
+        utilization = window.get('utilization')
+        if utilization is None and info.get('rateLimitType') == 'five_hour':
+            utilization = info.get('utilization')
+        resets = window.get('resetsAt') or info.get('resetsAt')
+        reading.update(
+            status=info.get('status'), frame=info,
+            five_hour_percent=None if utilization is None else round(float(utilization) * 100),
+            resets_at=None if resets is None else datetime.fromtimestamp(resets, timezone.utc).isoformat())
+        break
+    return reading
+
+
+def window_has_room(reading, bound_percent):
+    """Only a frame the provider allowed, read at or under the bound, is room."""
+    return (reading.get('status') in ('allowed', 'allowed_warning')
+            and reading.get('five_hour_percent') is not None
+            and reading['five_hour_percent'] <= bound_percent)
 
 
 LIMIT_TEXT = re.compile(r"hit your [a-z ]*limit|session limit|usage limit|rate limit|"
@@ -315,12 +363,16 @@ def retain_repair_assessment(out, revision, measurement_ok):
     return assessment
 
 
-def run(design, project, model, execute_call=execute, turns=None):
+def run(design, project, model, execute_call=execute, turns=None, window_bound=None):
     """Start an attempt: create the project (or validate the seed), then
     dispatch up to ``turns`` frozen prompts. A design attempt dispatches its
     whole schedule by default; a repair dispatches the repair prompt alone,
     because one completed turn uses about half a five-hour window, and its
-    continuations follow one per window through ``resume``."""
+    continuations follow one per window through ``resume``. With a
+    ``window_bound`` (percent), every prompt is preceded by a window probe and
+    is dispatched only while the reading shows room (ADR-358); ``None`` reads
+    nothing, for fixtures that fake the provider, and the command line always
+    passes a bound."""
     names = frozen(design)
     project = project.resolve()
     if project.is_relative_to(REPO) or project.parent.name != 'cadex-projects' or not project.name.startswith('ot7-'):
@@ -362,7 +414,7 @@ def run(design, project, model, execute_call=execute, turns=None):
             save()
             return receipt
         save()
-    return dispatch(receipt, project, evidence, execute_call, turns)
+    return dispatch(receipt, project, evidence, execute_call, turns, window_bound)
 
 
 def evidence_dir(project, repair):
@@ -391,7 +443,7 @@ def remaining(receipt):
             'next_prompt': unspent[0] if unspent else None, 'closed': closed}
 
 
-def dispatch(receipt, project, evidence, execute_call, turns):
+def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None):
     names = frozen(receipt['design'])
     repair = receipt['design'] == 'repair'
     left = remaining(receipt)
@@ -402,13 +454,37 @@ def dispatch(receipt, project, evidence, execute_call, turns):
     receipt['status'] = 'running'
     for index in range(first, min(first + turns, len(names))):
         name = names[index]
+        reading = None
+        if window_bound is not None:
+            # ADR-358: the window is read before the slot is persisted and the
+            # turn directory exists, so a deferral leaves nothing to resume
+            # around. The probe's stream stays beside the receipt.
+            probes = evidence / 'window'
+            probes.mkdir(exist_ok=True)
+            readings = receipt.setdefault('window_readings', [])
+            reading = window_reading(execute_call, probes, f'turn-{index}-probe-{len(readings)}',
+                                     receipt['model'])
+            reading.update(prompt=name, bound_percent=window_bound,
+                           read_at=datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                           dispatched=window_has_room(reading, window_bound))
+            readings.append(reading)
+            if not reading['dispatched']:
+                receipt['status'] = 'paused'
+                receipt['deferred'] = {'rule': 'ADR-355/ADR-358', 'prompt': name,
+                                       'five_hour_percent': reading['five_hour_percent'],
+                                       'resets_at': reading['resets_at'],
+                                       'note': 'Design turns wait for the product agent: the window '
+                                               'showed no room, so the prompt was not sent and no '
+                                               'slot was touched. Resume after the reset.'}
+                break
+            receipt.pop('deferred', None)
         out = evidence / f'turn-{index}'
         out.mkdir()
         prompt = out / name
         prompt.write_bytes((PROMPTS / name).read_bytes())
         counts = index > 0  # the create or repair prompt is not a continuation
         row = {'index': index, 'continuations_used': continuations + counts,
-               'prompt': digest(prompt), 'status': 'started'}
+               'prompt': digest(prompt), 'status': 'started', 'window': reading}
         receipt['turns'].append(row)
         write(evidence / 'attempt.json', receipt)  # Persist the slot before launching the provider; a void call gives it back.
         row['turn'] = execute_call([sys.executable, str(Path(__file__).resolve()), '--child-turn',
@@ -487,7 +563,7 @@ def dispatch(receipt, project, evidence, execute_call, turns):
     return receipt
 
 
-def resume(project, execute_call=execute, turns=1):
+def resume(project, execute_call=execute, turns=1, window_bound=None):
     """Dispatch the next frozen continuation on a project whose every earlier
     turn ended on its own, without replaying any of them (ADR-357). Refuses a
     project closed by a void, interrupted or failed call (those retry on a
@@ -505,14 +581,16 @@ def resume(project, execute_call=execute, turns=1):
                          f"retry on a fresh copy ({retry_project_name(project.name)})")
     if not left['next_prompt']:
         raise ValueError('exhausted: the first prompt and all three continuations reached the model')
-    last = receipt['turns'][-1]
+    # A deferred first prompt (ADR-358) has a receipt and no rows yet; there
+    # is no snapshot to hold the design against until a turn has run.
+    last = receipt['turns'][-1] if receipt['turns'] else {}
     if last.get('accepted_after') and design_identity(project) != last['accepted_after']:
         raise ValueError('the design changed since its last turn; only a product-agent turn may change it')
     if receipt['status'] == 'exhausted':
         receipt['ruling'] = ('ADR-357: status "exhausted" was written under the superseded one-slot '
                              'repair rule; the first prompt is not a continuation and the schedule '
                              'holds three continuations after it.')
-    return dispatch(receipt, project, evidence, execute_call, turns)
+    return dispatch(receipt, project, evidence, execute_call, turns, window_bound)
 
 
 def design_identity(project):
@@ -552,20 +630,34 @@ if __name__ == '__main__':
         print(json.dumps(classify(*sys.argv[2:5]), indent=2))
         sys.exit(0)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('design', choices=['heron', 'robin', 'plover', 'repair', 'resume', 'remaining'],
+    parser.add_argument('design', choices=['heron', 'robin', 'plover', 'repair', 'resume', 'remaining', 'window'],
                         help='a frozen design to start; `resume` dispatches the next continuation '
-                             'on an existing project; `remaining` only reads what its schedule holds')
-    parser.add_argument('project', type=Path)
+                             'on an existing project; `remaining` only reads what its schedule holds; '
+                             '`window` only reads the five-hour window and dispatches nothing')
+    parser.add_argument('project', type=Path, nargs='?')
     parser.add_argument('--model', default='claude-fable-5')
     parser.add_argument('--turns', type=int, default=None,
                         help='prompts to dispatch in this invocation (default: the whole schedule '
                              'for a design, one for a repair or a resume)')
+    parser.add_argument('--window-bound', type=int, default=WINDOW_BOUND_PERCENT, metavar='PERCENT',
+                        help='dispatch a prompt only while a probe reads the five-hour window at or '
+                             f'under this (default {WINDOW_BOUND_PERCENT}); the reading is kept in the receipt')
     args = parser.parse_args()
-    if args.design == 'remaining':
+    if args.design == 'window':
+        out = Path(os.environ.get('TMPDIR', '/tmp')) / f'ot7-window-{os.getpid()}'
+        out.mkdir()
+        reading = window_reading(execute, out, 'probe', args.model)
+        reading['room'] = window_has_room(reading, args.window_bound)
+        print(json.dumps({k: v for k, v in reading.items() if k != 'frame'}, indent=2))
+    elif args.project is None:
+        parser.error(f'{args.design} needs a project')
+    elif args.design == 'remaining':
         evidence = next(d for d in (args.project / 'evidence' / 'f4-repair', args.project / 'evidence')
                         if (d / 'attempt.json').is_file())
         print(json.dumps(remaining(json.loads((evidence / 'attempt.json').read_text())), indent=2))
     elif args.design == 'resume':
-        print(json.dumps(resume(args.project, turns=args.turns or 1), indent=2))
+        print(json.dumps(resume(args.project, turns=args.turns or 1,
+                                window_bound=args.window_bound), indent=2))
     else:
-        print(json.dumps(run(args.design, args.project, args.model, turns=args.turns), indent=2))
+        print(json.dumps(run(args.design, args.project, args.model, turns=args.turns,
+                             window_bound=args.window_bound), indent=2))

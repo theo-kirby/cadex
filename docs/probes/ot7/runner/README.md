@@ -373,9 +373,49 @@ continuations and resumes through all three without replaying the repair
 prompt, the legacy `exhausted` receipt resuming with its ruling, the three
 refusals, a create paused per window and resumed to its smoke, and that a
 continuation child passes `--resume`. The continuations are dispatched only
-while the product agent is available, which the first `rate_limit_event`
-frame decides, not a probe: at 74 % of the window a turn of the observed
-size does not fit. Iteration 51 resumed `continue-1` on that project two
+while the product agent is available, which a `rate_limit_event` frame
+decides, not the fact that a probe answered: at 74 % of the window a turn
+of the observed size does not fit. Iteration 51 resumed `continue-1` on that project two
 minutes after the reset, at 8 %; the turn completed on its own in 738.5 s,
 took the window to 63 %, and the runner paused with `continue-2` next
 ([receipt](../retained/repair-continue-1-d.json)).
+
+## Reading the window before every prompt (iteration 52, ADR-358)
+
+Until iteration 51 the dispatch decision was the operator's: read the first
+`rate_limit_event` frame of a one-word turn, compare it with what one
+completed turn costs, and only then run the collector. The void call on
+`ot7-heron-repair-c` is what that costs when it is skipped: an answering probe
+was taken as room, the window stood at 95 %, and the model was cut off after
+six reads. The runner now does the reading itself, and keeps it:
+
+- **A probe before every frozen prompt.** `dispatch()` runs a one-word
+  `claude -p` turn with no project, no MCP server and no tools (so it is not
+  a product-agent call and spends no slot), parses the first
+  `rate_limit_event` frame (`unifiedWindows.five_hour.utilization`, or the
+  older flat `utilization` on a `five_hour` frame), and appends the reading to
+  the receipt's `window_readings` with the prompt it was read for, the bound,
+  the time and whether the prompt was sent. The probe's stream is kept under
+  `evidence/window/`. A dispatched row carries its reading as `window`, so a
+  receipt says at what utilization each turn started.
+- **No room, nothing sent.** Room is a frame the provider allowed, read at or
+  under `--window-bound` (default 45 %, from the two measured turns: 8 → 57 %
+  and 8 → 63 %). Above it, a rejected frame, no frame, or no `claude` binary,
+  the runner writes `status: paused` with a `deferred` block naming the prompt
+  and the reset time, and stops before the slot is persisted or the turn
+  directory exists, so `resume` picks the same prompt up after the reset. A
+  whole-schedule design dispatch therefore pauses by itself at the first
+  prompt that no longer fits. `run.py window` only reads and prints the
+  reading.
+- **Fixtures read nothing.** The function default (`window_bound=None`)
+  skips the probe so the provider-faking fixtures stay hermetic; the command
+  line always passes a bound.
+
+Fixtures in `cli/tests/test_ot7_runner.py` pin the real probe frame of
+2026-09-15 15:45 UTC (84 %, no room) against 8 % (room), the parse of both
+frame shapes, a create deferred on each no-room shape and resumed from its
+create prompt after the reset, a schedule that pauses mid-way when the window
+fills, a repair that measures the seed and sends nothing, and that the
+default reads no window. On the live account at 15:49 UTC `run.py window`
+read 93 % (`allowed_warning`, reset 20:20 UTC): no room, nothing dispatched,
+`continue-2` still next on `ot7-heron-repair-d`.

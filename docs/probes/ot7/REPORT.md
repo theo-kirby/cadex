@@ -389,6 +389,21 @@ names it. This turn fixed what its own tools reported, the inventory contract
 and the world geometry, and nothing they did not. Two continuations remain
 unspent and follow through `resume`, one per window.
 
+## Iteration 52: the window read by the runner, no dispatch (ADR-358)
+
+No design turn: the five-hour window read **84 %** at 15:45 UTC and **93 %**
+(`allowed_warning`) at 15:49 UTC, reset 20:20 UTC, against a bound of 45 %
+from the two measured turns. `continue-2` stays next on `ot7-heron-repair-d`
+with two continuations unspent; nothing in that project was touched. The unit
+moved the dispatch decision into the collector: `run.py` now probes the
+window before every frozen prompt, records the reading in the receipt
+(`window_readings`, and `window` on each dispatched row), and without room
+writes `status: paused` with a `deferred` block before any slot is persisted,
+so the same prompt resumes after the reset. `run.py window` only reads.
+Fixtures pin the real 84 % frame as no room and 8 % as room, the deferred
+create and repair, the schedule that pauses mid-way, and the hermetic default
+([runner README](runner/README.md#reading-the-window-before-every-prompt-iteration-52-adr-358)).
+
 ## Implemented checks and evidence for F1–F9
 
 | Criterion | What exists | Evidence and limits |
@@ -472,7 +487,8 @@ geometric design outcome, and they spent nothing.
 
 F10's requirement that the critic accepted done is **unmet**. This report
 makes no done claim. What remains is the agent half of the charter, in this
-order: F4's two remaining continuations on `ot7-heron-repair-d`, one per window;
+order: F4's two remaining continuations on `ot7-heron-repair-d`, one per window,
+each sent only when the runner's own window reading shows room (ADR-358);
 then the arm, balancer and biped creates in fresh suffixed projects
 (F5–F7), each through
 its continuations as its fit report requires, each with its smoke rollout,

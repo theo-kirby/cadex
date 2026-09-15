@@ -848,3 +848,144 @@ def test_all_six_ot7_calls_are_classified_void():
         '01566753ac81f189b21cc565b300fc00f8d63e4cf63d985989d3663b6b490674',
         'b5b359ec0d0f5465cd1e8520701e3d7c17285881823ed028b03e13996434ea59'}
     assert sum(1 for call in receipt['calls'] if call['criterion'] == 'F4') == 3
+
+
+# ADR-358: the window is read before every frozen prompt, and a prompt is
+# sent only while the reading shows room. The frames below are the shape the
+# real probe returned on 2026-09-15 at 15:45 UTC, when the window read 84 %.
+def limit_frame(utilization, status='allowed'):
+    return {'type': 'rate_limit_event', 'rate_limit_info': {
+        'status': status, 'resetsAt': 1789503600, 'rateLimitType': 'five_hour',
+        'unifiedWindows': {'five_hour': {'utilization': utilization, 'resetsAt': 1789503600},
+                           'seven_day': {'utilization': 0.45, 'resetsAt': 1789538400}}}}
+
+
+def windowed_executor(calls, readings, monkeypatch):
+    """Answers each probe with the next reading; None means no frame at all."""
+    from cadex_cli import agent
+    monkeypatch.setattr(agent, 'find_claude', lambda _: '/fixture/claude')
+    fake = executor(calls)
+    def execute(command, out, stem, timeout):
+        if out.name == 'window':
+            calls.append((command, timeout))
+            frames = readings.pop(0)
+            (out / f'{stem}.stdout.json').write_text(
+                '' if frames is None else '\n'.join(json.dumps(f) for f in frames) + '\n')
+            return {'exit_code': 0, 'elapsed_seconds': 0.01}
+        return fake(command, out, stem, timeout)
+    return execute
+
+
+def test_real_probe_frame_at_84_percent_is_no_room_and_at_8_percent_is_room(tmp_path):
+    reading = {'status': 'allowed', 'five_hour_percent': 84}
+    assert not runner.window_has_room(reading, 45)
+    assert runner.window_has_room({'status': 'allowed', 'five_hour_percent': 8}, 45)
+    assert runner.window_has_room({'status': 'allowed_warning', 'five_hour_percent': 45}, 45)
+    assert not runner.window_has_room({'status': 'rejected', 'five_hour_percent': 8}, 45)
+    assert not runner.window_has_room({'status': None, 'five_hour_percent': None}, 45)
+
+
+def test_window_reading_parses_the_first_frame_and_keeps_the_probe_stream(tmp_path, monkeypatch):
+    calls, out = [], tmp_path / 'window'
+    out.mkdir()
+    execute = windowed_executor(calls, [[{'type': 'system'}, limit_frame(0.84),
+                                         limit_frame(0.88, 'allowed_warning')]], monkeypatch)
+    reading = runner.window_reading(execute, out, 'turn-0-probe-0', 'fixture')
+    assert reading['five_hour_percent'] == 84 and reading['status'] == 'allowed'
+    assert reading['resets_at'] == '2026-09-15T20:20:00+00:00'
+    assert (out / 'turn-0-probe-0.stdout.json').is_file()
+    [(command, timeout)] = calls
+    # The probe is not a product-agent call: no project, no MCP server, no tools.
+    assert command[:3] == ['/fixture/claude', '-p', runner.WINDOW_PROBE_TEXT]
+    assert '--tools' in command and '--mcp-config' not in command and '--project' not in command
+    assert timeout == runner.WINDOW_PROBE_BOUND_SECONDS
+    # An older frame shape without unifiedWindows still reads.
+    execute = windowed_executor(calls, [[{'type': 'rate_limit_event', 'rate_limit_info': {
+        'status': 'allowed', 'rateLimitType': 'five_hour', 'utilization': 0.5, 'resetsAt': 1789503600}}]],
+        monkeypatch)
+    assert runner.window_reading(execute, out, 'p1', 'fixture')['five_hour_percent'] == 50
+
+
+@pytest.mark.parametrize('no_room', [[limit_frame(0.84)], [limit_frame(0.08, 'rejected')], None, []])
+def test_prompt_is_not_sent_without_room_and_resumes_after_the_reset(tmp_path, monkeypatch, no_room):
+    target = project(tmp_path)
+    calls = []
+    report = runner.run('heron', target, 'fixture', windowed_executor(calls, [no_room], monkeypatch),
+                        window_bound=45)
+    assert report['status'] == 'paused' and report['turns'] == [] and report['slots_spent'] == 0
+    assert report['deferred']['prompt'] == 'heron.create.prompt.txt'
+    assert report['window_readings'][-1]['dispatched'] is False
+    assert not any('--child-turn' in cmd for cmd, _ in calls)
+    assert not (target / 'evidence/turn-0').exists()
+    assert report['remaining'] == {'completed': 0, 'continuations_used': 0, 'continuations_unspent': 3,
+                                   'next_prompt': 'heron.create.prompt.txt', 'closed': None}
+    # After the reset, the same project resumes from its create prompt.
+    report = runner.resume(target, windowed_executor(calls, [[limit_frame(0.08)]], monkeypatch),
+                           window_bound=45)
+    assert 'deferred' not in report and report['status'] == 'paused'
+    [row] = report['turns']
+    assert row['status'] == 'completed' and row['window']['five_hour_percent'] == 8
+    assert row['window']['dispatched'] is True and row['window']['prompt'] == 'heron.create.prompt.txt'
+    assert [r['dispatched'] for r in report['window_readings']] == [False, True]
+    probes = [cmd for cmd, _ in calls if cmd[1:2] == ['-p'] and cmd[2] == runner.WINDOW_PROBE_TEXT]
+    turns = [cmd for cmd, _ in calls if '--child-turn' in cmd]
+    assert len(probes) == 2 and len(turns) == 1
+    assert calls.index((probes[1], runner.WINDOW_PROBE_BOUND_SECONDS)) < calls.index((turns[0], runner.TURN_BOUND_SECONDS))
+
+
+def test_schedule_pauses_mid_way_when_the_window_fills(tmp_path, monkeypatch):
+    """A whole-schedule design dispatch stops at the first prompt without room."""
+    target = project(tmp_path)
+    calls = []
+    execute = windowed_executor(calls, [[limit_frame(0.08)], [limit_frame(0.63)]], monkeypatch)
+    report = runner.run('heron', target, 'fixture', execute, window_bound=45)
+    assert report['status'] == 'paused' and report['slots_spent'] == 1
+    assert report['deferred'] == {'rule': 'ADR-355/ADR-358', 'prompt': 'continue-1.prompt.txt',
+                                  'five_hour_percent': 63, 'resets_at': '2026-09-15T20:20:00+00:00',
+                                  'note': report['deferred']['note']}
+    assert report['remaining']['next_prompt'] == 'continue-1.prompt.txt'
+    assert [Path(cmd[-2]).name for cmd, _ in calls if '--child-turn' in cmd] == ['heron.create.prompt.txt']
+    assert not (target / 'evidence/turn-1').exists()
+    saved = json.loads((target / 'evidence/attempt.json').read_text())
+    assert saved['deferred']['five_hour_percent'] == 63 and len(saved['window_readings']) == 2
+    report = runner.resume(target, windowed_executor(calls, [[limit_frame(0.05)]], monkeypatch),
+                           window_bound=45)
+    assert report['turns'][1]['status'] == 'completed' and 'deferred' not in report
+    assert report['remaining']['next_prompt'] == 'continue-2.prompt.txt'
+
+
+def test_repair_without_room_measures_the_seed_and_sends_nothing(tmp_path, monkeypatch):
+    target = repair_seed(tmp_path, monkeypatch)
+    before = runner.seed_identity(target)
+    calls = []
+    report = runner.run('repair', target, 'fixture', windowed_executor(calls, [[limit_frame(0.84)]], monkeypatch),
+                        window_bound=45)
+    assert report['status'] == 'paused' and report['turns'] == []
+    assert report['before']['seed_unchanged'] and runner.seed_identity(target) == before
+    assert report['deferred']['prompt'] == 'repair.prompt.txt'
+    assert not any('--child-turn' in cmd for cmd, _ in calls)
+    report = runner.resume(target, windowed_executor(calls, [[limit_frame(0.08)]], monkeypatch),
+                           window_bound=45)
+    assert report['turns'][0]['status'] == 'completed' and report['turns'][0]['continuations_used'] == 0
+    assert report['remaining']['next_prompt'] == 'continue-1.prompt.txt'
+
+
+def test_window_reading_without_a_claude_binary_is_no_room(tmp_path, monkeypatch):
+    from cadex_cli import agent
+    def missing(_):
+        raise agent.ClaudeUnavailable('none')
+    monkeypatch.setattr(agent, 'find_claude', missing)
+    calls = []
+    reading = runner.window_reading(executor(calls), tmp_path, 'p', 'fixture')
+    assert reading['error'] == 'none' and calls == []
+    assert not runner.window_has_room(reading, 45)
+
+
+def test_fixtures_without_a_bound_read_no_window(tmp_path):
+    """The function default reads nothing, so the provider-faking fixtures above
+    stay hermetic; the command line always passes a bound."""
+    target = project(tmp_path)
+    calls = []
+    report = runner.run('heron', target, 'fixture', executor(calls))
+    assert 'window_readings' not in report and all(r['window'] is None for r in report['turns'])
+    assert not any(cmd[2:3] == [runner.WINDOW_PROBE_TEXT] for cmd, _ in calls)

@@ -24977,3 +24977,38 @@ without replay, the legacy receipt's ruling, the three refusals, a create
 paused per window, and the `--resume` flag on a continuation child. F5–F7
 gain the same per-window dispatch for free, which the window measurement of
 iteration 48 said they would need.
+
+## ADR-358 — The ot7 runner reads the window before every prompt (2026-09-15)
+
+**Context.** The amended charter (ADR-355) says a design turn is dispatched
+only while the product agent's harness is available, and never a frozen
+prompt while it is limited. The runner enforced the schedule (ADR-357) but
+left that reading to the operator: read the first `rate_limit_event` frame
+of a probe turn, compare it with what one completed turn costs (8 → 57 % and
+8 → 63 % of a five-hour window), then dispatch. `ot7-heron-repair-c` is what
+skipping it costs: an answering probe was taken as room at 95 %, and the
+model was cut off after six reads. Every record since has repeated the same
+manual rule, and the critic asks for current evidence of capacity before
+each continuation.
+
+**Decision.** `docs/probes/ot7/runner/run.py` reads the window itself before
+every frozen prompt and keeps the reading in the receipt. The probe is a
+one-word `claude -p` turn with no project, tools or MCP server, so it is not
+a product-agent call and spends no slot; its first `rate_limit_event` frame
+gives the five-hour utilization and reset time. Room is a frame the provider
+allowed at or under `--window-bound` (default 45 %). Without room the runner
+writes `status: paused` with a `deferred` block and stops before the slot is
+persisted or the turn directory exists, so `resume` sends the same prompt
+after the reset; a rejected frame, no frame or no binary is no room. Each
+dispatched row records the reading it started at. `run.py window` only reads.
+The function default reads nothing so provider-faking fixtures stay hermetic;
+the command line always passes a bound.
+
+**Consequences.** The evidence the critic asks for before each dispatch is
+now in the receipt rather than in a record's prose, and a whole-schedule
+design attempt pauses by itself at the first prompt that does not fit, which
+is the one-turn-per-window rule made mechanical. The bound is a number from
+two measured turns, not a contract with the provider; a turn that starts
+under it can still be cut off, and that call is void as before. Fixtures pin
+the real 84 % frame of 2026-09-15 15:45 UTC as no room. No prompt byte, no
+design and no product code outside the runner changed.
