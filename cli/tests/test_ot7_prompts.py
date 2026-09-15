@@ -114,6 +114,6 @@ def test_the_readme_states_the_limits():
     for row in ("| F5 arm | `heron.create.prompt.txt` | 3 |",
                 "| F6 balancer | `robin.create.prompt.txt` | 3 |",
                 "| F7 biped | `plover.create.prompt.txt` | 3 |",
-                "| 1 | `repair.prompt.txt` |"):
+                "| F4 seeded repair | `repair.prompt.txt`, on a copy of `ot6-heron` at revision `7e9eff5c…` | 3 |"):
         assert row in text
     assert "ADR-345" in text and "never prompted again" in text

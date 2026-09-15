@@ -305,5 +305,6 @@
     "sha256": "aa91e04bfee85c9d52a2044e23085e6cfbb4ac3f129218422005f10c89dbc0e1"
    }
   ]
- }
+ },
+ "ruling": "ADR-357 (critic, iteration 48; actor, iteration 49): the amended charter's exhaustion policy counts a design exhausted only after its create or repair prompt and all three continuations reached the model. The repair prompt is F4's first prompt, not a continuation. The status, continuations_used and slots_spent values above are the collector's historical output under the superseded one-slot repair rule and are kept as written. F4 stands at one completed turn, zero continuations used, three unspent; next: continue-1.prompt.txt resumed on ot7-heron-repair-d, one turn per window, only while the product agent is available."
 }

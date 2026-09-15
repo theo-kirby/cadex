@@ -103,7 +103,11 @@ the agent cut spline bores into them; a 400 × 400 × 8 mm bench slab replaces
 the collision plane; the joint ranges are narrowed to the swept first
 contacts. The closing report's iteration 48 section reads the three ot6
 defects against this: two resolved, one declared away. The seed
-`ot7-heron-repair` and the b and c copies are untouched.
+`ot7-heron-repair` and the b and c copies are untouched. The receipt's
+`status: exhausted`, `slots_spent: 1` and `continuations_used: 1` are the
+collector's output under the superseded one-slot repair rule and carry a
+`ruling` field (ADR-357): the repair prompt is F4's first prompt, three
+continuations remain unspent, and they resume on `ot7-heron-repair-d`.
 
 ## F9: unchanged retained measurements through the product scope
 

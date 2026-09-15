@@ -27,7 +27,9 @@ Use `robin` or `plover` for the other frozen designs. The runner checks all
 four prompt digests against the freeze before creating the project. The create
 prompt and the three continuations are the complete schedule. Each slot is
 persisted before dispatch. Existing projects are refused, including interrupted
-ones: this command does not resume attempts or reset a consumed budget.
+ones: this command does not reset a consumed budget. `resume` (below,
+ADR-357) continues a project whose every turn ended on its own, and
+`--turns N` bounds how many prompts one invocation dispatches.
 
 Each design change is made by the ordinary product-agent turn. The collector
 uses the CLI's turn-factory seam to write the provider stream to
@@ -169,7 +171,7 @@ prompt.
 
 Iteration 25 added `repair` while the documented reset was still ahead
 (18:02 New York time; ADR-354). No provider call was made in that unit.
-After the reset, collect the single frozen repair call on the preserved seed:
+After the reset, collect the frozen repair call on the preserved seed:
 
 ```bash
 pixi run python docs/probes/ot7/runner/run.py repair \
@@ -196,8 +198,9 @@ the repair slot as spent only when the call ends on its own, the provider
 stream, elapsed time, after-fit report and before/after accepted metadata and
 script hashes. The before artifacts are
 relative to `before/`, and turn artifacts to `turn-0/`, within `f4-repair/`.
-A refusal still retains after measurements. No smoke or additional continuation
-is run for F4. Missing evidence never means passing fit, and CLI exit status
+A refusal still retains after measurements. No smoke is run for F4; the three
+frozen continuations follow through `resume`, one per invocation (ADR-357,
+below). Missing evidence never means passing fit, and CLI exit status
 alone does not establish a completed design turn or a successful repair.
 
 Known-answer fixtures preserve a seed through collection, supply seven before
@@ -316,8 +319,10 @@ dispatched into a window the first `rate_limit_event` frame showed at 95 %,
 and the session limit cut it off after six reads: the runner classified it
 void, spent no slot, kept the whole stream, and named `ot7-heron-repair-d`.
 That copy, dispatched after the reset, is the first repair call to end on
-its own: `status: exhausted` with `slots_spent: 1`, `continuations_used: 1`
-and a completed turn of 1,461.9 s, after-read static fit 0 of 120 failing,
+its own: a completed turn of 1,461.9 s (the receipt's `status: exhausted`,
+`slots_spent: 1` and `continuations_used: 1` are the collector's output under
+the superseded one-slot repair rule, ADR-357 below), after-read static fit
+0 of 120 failing,
 sweep complete, attachment assessment still failing on both horn-to-link
 pairs. The receipts are
 [`repair-void-c.json`](../retained/repair-void-c.json) and
@@ -327,3 +332,47 @@ about the window, so read the first `rate_limit_event` frame instead; and
 one completed repair turn moved the five-hour window from 8 % to 57 %, so a
 create-plus-three-continuations schedule for F5–F7 will not fit in one
 window alongside the actor.
+
+## Resuming after a completed turn (iteration 49, ADR-357)
+
+The collector of iteration 48 carried the repair prompt as F4's whole
+schedule and wrote `status: exhausted` after the one turn on
+`ot7-heron-repair-d`. The amended charter (ADR-355) says otherwise: a design
+is exhausted only after "its create or repair prompt and all three
+continuations have reached the model", so the repair prompt is F4's first
+prompt, not a continuation, and three continuations remain. The critic of
+iteration 48 ruled the same. Three things changed, none of them a prompt byte
+(`frozen()` still verifies every digest against the manifest):
+
+- **The schedule.** `frozen('repair')` is `repair.prompt.txt` followed by
+  `continue-1`, `continue-2` and `continue-3`, the same three as every
+  design. The first prompt of any schedule counts no continuation, so a
+  completed repair row now reads `continuations_used: 0`.
+- **One turn per window.** A completed turn uses about half a five-hour
+  window, so `run.py repair` dispatches the repair prompt alone and pauses
+  (`status: paused`, with a `remaining` block naming the next prompt), and
+  `run.py resume PROJECT` dispatches exactly the next continuation, with
+  `--resume` into the agent's own session, without replaying anything that
+  came before. `--turns N` sets how many prompts either command dispatches;
+  a design attempt still dispatches all four by default. `run.py remaining
+  PROJECT` only reads the schedule. The smoke runs when a design attempt
+  exhausts or fails, whichever invocation gets there.
+- **What `resume` refuses.** A project closed by a void, interrupted or
+  failed call (those retry on a fresh copy, as before); an exhausted one; a
+  project with no attempt; and a project whose script or metadata differ
+  from the snapshot the last turn took (`accepted_after`, now on every row),
+  because the actor never edits a design. A receipt written under the old
+  rule, `exhausted` with fewer than four completed rows, resumes and gains a
+  `ruling` field saying so; its historical `continuations_used` value is
+  kept as written, and the schedule is read from the rows.
+
+On `ot7-heron-repair-d`, `remaining` reads: 1 completed, 0 continuations
+used, 3 unspent, next `continue-1.prompt.txt`, not closed. Fixtures in
+`cli/tests/test_ot7_runner.py` pin a repair that pauses with three
+continuations and resumes through all three without replaying the repair
+prompt, the legacy `exhausted` receipt resuming with its ruling, the three
+refusals, a create paused per window and resumed to its smoke, and that a
+continuation child passes `--resume`. The continuations are dispatched only
+while the product agent is available, which the first `rate_limit_event`
+frame decides, not a probe: at 74 % of the window a turn of the observed
+size does not fit.

@@ -21,7 +21,7 @@ name, or a part or defect word.
 | `continue-1.prompt.txt` | first continuation, any design | 756 | `80d725d2961e7ca44a56fed391745d6df551741c6545a837e815ca3ae0b7f4d0` |
 | `continue-2.prompt.txt` | second continuation, any design | 611 | `9a78ff9d417594db72696e1de98311b2aee05470043f496307e0a1d9b0334a78` |
 | `continue-3.prompt.txt` | third and last continuation, any design | 732 | `0814d73f6874e009adfe55cb4d038a22b6632af4033fb275c5021d6a1d500e88` |
-| `repair.prompt.txt` | F4, the seeded repair: the one continuation | 830 | `5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904` |
+| `repair.prompt.txt` | F4, the seeded repair: the first prompt on the seed | 830 | `5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904` |
 
 **Provenance of the two ot6 prompts.** Heron's digest is
 `turns[0].prompt_sha256` in `docs/probes/ot6/heron/design.json`, and the bytes
@@ -76,7 +76,7 @@ of the part and defect words `servo`, `horn`, `bearing`, `screw`, `bolt`,
 | F5 arm | `heron.create.prompt.txt` | 3 | `continue-1`, `continue-2`, `continue-3` |
 | F6 balancer | `robin.create.prompt.txt` | 3 | the same three, in order |
 | F7 biped | `plover.create.prompt.txt` | 3 | the same three, in order |
-| F4 seeded repair | none: the project is a copy of `ot6-heron` at revision `7e9eff5c…` | 1 | `repair.prompt.txt` |
+| F4 seeded repair | `repair.prompt.txt`, on a copy of `ot6-heron` at revision `7e9eff5c…` | 3 | the same three, in order (ADR-357: the repair prompt is the first prompt, not a continuation) |
 
 A continuation is spent only after a turn that built and accepted with failing
 fit checks still reported, and only in the order above. A design that still

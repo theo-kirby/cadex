@@ -34,8 +34,11 @@ def digest(path):
 
 
 def frozen(design):
-    names = (['repair.prompt.txt'] if design == 'repair' else
-             [f'{design}.create.prompt.txt'] + [f'continue-{i}.prompt.txt' for i in range(1, 4)])
+    # The first prompt is the create prompt, or the repair prompt on the
+    # preserved seed; each is followed by the same three continuations
+    # (ADR-357: the repair prompt is not itself a continuation).
+    first = 'repair.prompt.txt' if design == 'repair' else f'{design}.create.prompt.txt'
+    names = [first] + [f'continue-{i}.prompt.txt' for i in range(1, 4)]
     table = dict(re.findall(r'\| `([^`]+\.prompt\.txt)` \| .*? \| \d+ \| `([a-f0-9]{64})`',
                             (PROMPTS / 'README.md').read_text()))
     for name in names:
@@ -312,19 +315,26 @@ def retain_repair_assessment(out, revision, measurement_ok):
     return assessment
 
 
-def run(design, project, model, execute_call=execute):
+def run(design, project, model, execute_call=execute, turns=None):
+    """Start an attempt: create the project (or validate the seed), then
+    dispatch up to ``turns`` frozen prompts. A design attempt dispatches its
+    whole schedule by default; a repair dispatches the repair prompt alone,
+    because one completed turn uses about half a five-hour window, and its
+    continuations follow one per window through ``resume``."""
     names = frozen(design)
     project = project.resolve()
     if project.is_relative_to(REPO) or project.parent.name != 'cadex-projects' or not project.name.startswith('ot7-'):
         raise ValueError('Use a new ot7-* project in the external cadex-projects directory.')
     repair = design == 'repair'
+    if turns is None:
+        turns = 1 if repair else len(names)
     if repair:
         seed = seed_identity(project)
         validate_seed(seed)
     else:
         project.mkdir()
     # Exclusive evidence creation guards the preserved seed against redispatch.
-    evidence = project / 'evidence' / 'f4-repair' if repair else project / 'evidence'
+    evidence = evidence_dir(project, repair)
     evidence.mkdir()
     receipt = {'schema': 'ot7-design-evidence-v1', 'design': design, 'project': project.name,
                'model': model, 'actor_design_edits': 0, 'turns': [], 'status': 'running',
@@ -352,19 +362,57 @@ def run(design, project, model, execute_call=execute):
             save()
             return receipt
         save()
-    continuations = 0
-    for index, name in enumerate(names):
+    return dispatch(receipt, project, evidence, execute_call, turns)
+
+
+def evidence_dir(project, repair):
+    return project / 'evidence' / 'f4-repair' if repair else project / 'evidence'
+
+
+def remaining(receipt):
+    """What the frozen schedule still holds for a receipt: only turns that
+    ended on their own spend a slot, the first prompt is not a continuation,
+    and a void, interrupted or failed row closes the project (ADR-355,
+    ADR-356). Computed from the rows, never from the receipt's status, so a
+    receipt written under the superseded one-slot repair rule reads right."""
+    names = frozen(receipt['design'])
+    rows = receipt['turns']
+    completed = [row for row in rows if row['status'] == 'completed']
+    closed = None
+    if rows and rows[-1]['status'] != 'completed':
+        closed = rows[-1]['status']
+    elif receipt['status'] in ('failed', 'before_unavailable'):
+        closed = receipt['status']
+    elif len(completed) != len(rows):
+        closed = 'unfinished'
+    unspent = names[len(rows):] if closed is None else []
+    return {'completed': len(completed), 'continuations_used': max(len(completed) - 1, 0),
+            'continuations_unspent': len(unspent) - (1 if unspent and not rows else 0),
+            'next_prompt': unspent[0] if unspent else None, 'closed': closed}
+
+
+def dispatch(receipt, project, evidence, execute_call, turns):
+    names = frozen(receipt['design'])
+    repair = receipt['design'] == 'repair'
+    left = remaining(receipt)
+    if left['closed'] or not left['next_prompt']:
+        raise ValueError(f"nothing to dispatch: {left['closed'] or 'exhausted'}")
+    continuations = left['continuations_used']
+    first = names.index(left['next_prompt'])
+    receipt['status'] = 'running'
+    for index in range(first, min(first + turns, len(names))):
+        name = names[index]
         out = evidence / f'turn-{index}'
         out.mkdir()
         prompt = out / name
         prompt.write_bytes((PROMPTS / name).read_bytes())
-        counts = repair or index > 0  # the create prompt is not a continuation
+        counts = index > 0  # the create or repair prompt is not a continuation
         row = {'index': index, 'continuations_used': continuations + counts,
                'prompt': digest(prompt), 'status': 'started'}
         receipt['turns'].append(row)
-        save()  # Persist the slot before launching the provider; a void call gives it back.
+        write(evidence / 'attempt.json', receipt)  # Persist the slot before launching the provider; a void call gives it back.
         row['turn'] = execute_call([sys.executable, str(Path(__file__).resolve()), '--child-turn',
-                                   str(project), str(out), str(prompt), model], out, 'turn',
+                                   str(project), str(out), str(prompt), receipt['model']], out, 'turn',
                                   TURN_BOUND_SECONDS)
         row['void'] = void_reason(out / 'transcript.jsonl', out / 'turn.stdout.json', out / 'turn.stderr.txt')
         row['interruption'] = None if row['void'] else interruption(row['turn'], out / 'transcript.jsonl')
@@ -395,13 +443,15 @@ def run(design, project, model, execute_call=execute):
             row['slot_consumed'] = True
             continuations += counts
             receipt['slots_spent'] += 1
+        # The design identity after the turn, so a resume can prove nothing
+        # but a product-agent turn changed the design in between.
+        row['accepted_after'] = seed_identity(project) if repair else design_identity(project)
         if repair:
-            row['accepted_after'] = seed_identity(project)
             row['repair_assessment'] = retain_repair_assessment(
                 out, row['accepted_after']['metadata'].get('accepted_revision'),
                 row['measurement']['exit_code'] == 0)
         row['artifacts'] = [digest(p) for p in sorted(out.iterdir()) if p.is_file()]
-        save()
+        write(evidence / 'attempt.json', receipt)
         if row['void'] or row['interruption']:
             receipt['status'] = 'void' if row['void'] else 'interrupted'
             receipt['retry'] = {'rule': 'ADR-355' if row['void'] else 'ADR-356', 'prompt': name,
@@ -415,9 +465,16 @@ def run(design, project, model, execute_call=execute):
             receipt['status'] = 'failed'
             break
     else:
-        receipt['status'] = 'exhausted'
-    if repair or receipt['status'] in ('void', 'interrupted'):
-        save()
+        left = remaining(receipt)
+        if left['next_prompt']:
+            # This invocation's turns are done and the schedule is not: the
+            # next continuation goes through ``resume``, in a later window.
+            receipt['status'] = 'paused'
+        else:
+            receipt['status'] = 'exhausted'
+    receipt['remaining'] = remaining(receipt)
+    if repair or receipt['status'] not in ('exhausted', 'failed'):
+        write(evidence / 'attempt.json', receipt)
         return receipt
     # One bounded smoke, even on a failing fit; it never modifies the design.
     smoke = evidence / 'smoke'
@@ -426,8 +483,43 @@ def run(design, project, model, execute_call=execute):
                                     '--out', str(smoke), '--seconds', '1', '--timeout', '240', '--json'],
                                    smoke, 'smoke', MEASUREMENT_BOUND_SECONDS)
     receipt['smoke']['artifacts'] = [digest(p) for p in sorted(smoke.iterdir()) if p.is_file()]
-    save()
+    write(evidence / 'attempt.json', receipt)
     return receipt
+
+
+def resume(project, execute_call=execute, turns=1):
+    """Dispatch the next frozen continuation on a project whose every earlier
+    turn ended on its own, without replaying any of them (ADR-357). Refuses a
+    project closed by a void, interrupted or failed call (those retry on a
+    fresh copy), an exhausted one, and one whose design changed since its
+    last turn (the actor never edits a design)."""
+    project = project.resolve()
+    evidence = next((d for d in (project / 'evidence' / 'f4-repair', project / 'evidence')
+                     if (d / 'attempt.json').is_file()), None)
+    if evidence is None:
+        raise ValueError('no attempt to resume: start one with the design name')
+    receipt = json.loads((evidence / 'attempt.json').read_text())
+    left = remaining(receipt)
+    if left['closed']:
+        raise ValueError(f"cannot resume a project closed by a {left['closed']} call; "
+                         f"retry on a fresh copy ({retry_project_name(project.name)})")
+    if not left['next_prompt']:
+        raise ValueError('exhausted: the first prompt and all three continuations reached the model')
+    last = receipt['turns'][-1]
+    if last.get('accepted_after') and design_identity(project) != last['accepted_after']:
+        raise ValueError('the design changed since its last turn; only a product-agent turn may change it')
+    if receipt['status'] == 'exhausted':
+        receipt['ruling'] = ('ADR-357: status "exhausted" was written under the superseded one-slot '
+                             'repair rule; the first prompt is not a continuation and the schedule '
+                             'holds three continuations after it.')
+    return dispatch(receipt, project, evidence, execute_call, turns)
+
+
+def design_identity(project):
+    """The seed identity when the project has a script, else None (a design
+    attempt that never built has no script to snapshot)."""
+    return (seed_identity(project) if (project / 'script.py').is_file()
+            and (project / 'script.json').is_file() else None)
 
 
 def seed_identity(project):
@@ -460,8 +552,20 @@ if __name__ == '__main__':
         print(json.dumps(classify(*sys.argv[2:5]), indent=2))
         sys.exit(0)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('design', choices=['heron', 'robin', 'plover', 'repair'])
+    parser.add_argument('design', choices=['heron', 'robin', 'plover', 'repair', 'resume', 'remaining'],
+                        help='a frozen design to start; `resume` dispatches the next continuation '
+                             'on an existing project; `remaining` only reads what its schedule holds')
     parser.add_argument('project', type=Path)
     parser.add_argument('--model', default='claude-fable-5')
+    parser.add_argument('--turns', type=int, default=None,
+                        help='prompts to dispatch in this invocation (default: the whole schedule '
+                             'for a design, one for a repair or a resume)')
     args = parser.parse_args()
-    print(json.dumps(run(args.design, args.project, args.model), indent=2))
+    if args.design == 'remaining':
+        evidence = next(d for d in (args.project / 'evidence' / 'f4-repair', args.project / 'evidence')
+                        if (d / 'attempt.json').is_file())
+        print(json.dumps(remaining(json.loads((evidence / 'attempt.json').read_text())), indent=2))
+    elif args.design == 'resume':
+        print(json.dumps(resume(args.project, turns=args.turns or 1), indent=2))
+    else:
+        print(json.dumps(run(args.design, args.project, args.model, turns=args.turns), indent=2))

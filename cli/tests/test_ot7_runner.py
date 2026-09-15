@@ -271,7 +271,12 @@ def test_repair_preserves_seed_and_collects_one_frozen_fresh_turn(tmp_path, monk
     artifacts = {a['path']: a for a in report['turns'][0]['artifacts']}
     assessment_path = target / 'evidence/f4-repair/turn-0/repair-assessment.json'
     assert artifacts['repair-assessment.json'] == runner.digest(assessment_path)
-    assert report['turns'][0]['continuations_used'] == 1
+    # ADR-357: the repair prompt is the first prompt, not a continuation, and
+    # one invocation dispatches it alone; three continuations remain.
+    assert report['turns'][0]['continuations_used'] == 0
+    assert report['status'] == 'paused' and report['slots_spent'] == 1
+    assert report['remaining'] == {'completed': 1, 'continuations_used': 0, 'continuations_unspent': 3,
+                                   'next_prompt': 'continue-1.prompt.txt', 'closed': None}
     assert [Path(cmd[-2]).name for cmd, _ in calls if '--child-turn' in cmd] == ['repair.prompt.txt']
     assert [Path(cmd[-1]).name for cmd, _ in calls if '--child-measure' in cmd] == ['before', 'turn-0']
     assert all('smoke' not in cmd for cmd, _ in calls)
@@ -279,6 +284,118 @@ def test_repair_preserves_seed_and_collects_one_frozen_fresh_turn(tmp_path, monk
     with pytest.raises(FileExistsError):
         runner.run('repair', target, 'fixture', execute)
     assert len(calls) == 3
+
+
+def test_completed_repair_keeps_three_continuations_and_resumes_without_replaying(tmp_path, monkeypatch):
+    """ADR-357: after the repair prompt ends on its own, the three frozen
+    continuations remain, and each resume dispatches exactly the next one."""
+    target = repair_seed(tmp_path, monkeypatch)
+    calls = []
+    report = runner.run('repair', target, 'fixture', executor(calls))
+    assert report['status'] == 'paused' and report['remaining']['continuations_unspent'] == 3
+    receipt = target / 'evidence/f4-repair/attempt.json'
+    assert json.loads(receipt.read_text())['status'] == 'paused'
+    for index, expected in enumerate(['continue-1.prompt.txt', 'continue-2.prompt.txt',
+                                      'continue-3.prompt.txt'], start=1):
+        # The agent's turn accepted a new revision; a resume must accept that.
+        runner.write(target / 'script.json', {**json.loads((target / 'script.json').read_text()),
+                                              'accepted_revision': f'revision-{index}'})
+        with pytest.raises(ValueError, match='design changed'):
+            runner.resume(target, executor(calls))
+        # ...but only a change the previous turn's after-snapshot did not see is refused;
+        # restore the recorded identity to stand in for "nothing but that turn changed it".
+        rows = json.loads(receipt.read_text())['turns']
+        runner.write(target / 'script.json', rows[-1]['accepted_after']['metadata'])
+        report = runner.resume(target, executor(calls))
+        turns = [Path(cmd[-2]).name for cmd, _ in calls if '--child-turn' in cmd]
+        assert turns == ['repair.prompt.txt'] + ['continue-1.prompt.txt', 'continue-2.prompt.txt',
+                                                 'continue-3.prompt.txt'][:index]
+        assert [r['continuations_used'] for r in report['turns']] == list(range(index + 1))
+        assert report['slots_spent'] == index + 1 and report['turns'][-1]['index'] == index
+        assert (target / f'evidence/f4-repair/turn-{index}' / expected).read_bytes() == \
+            (runner.PROMPTS / expected).read_bytes()
+        assert report['turns'][-1]['repair_assessment']['status'] == 'unknown'
+        assert report['remaining']['continuations_unspent'] == 3 - index
+    assert report['status'] == 'exhausted' and report['remaining']['next_prompt'] is None
+    assert not any('smoke' in cmd for cmd, _ in calls)  # the repair mode never smokes
+    with pytest.raises(ValueError, match='exhausted'):
+        runner.resume(target, executor(calls))
+    assert len([cmd for cmd, _ in calls if '--child-turn' in cmd]) == 4
+
+
+def test_receipt_written_under_the_one_slot_rule_resumes_with_a_ruling(tmp_path, monkeypatch):
+    """The ot7-heron-repair-d receipt says `exhausted` with one completed
+    row and `continuations_used: 1`; the schedule reads from the rows."""
+    target = repair_seed(tmp_path, monkeypatch)
+    calls = []
+    runner.run('repair', target, 'fixture', executor(calls))
+    receipt = target / 'evidence/f4-repair/attempt.json'
+    legacy = json.loads(receipt.read_text())
+    legacy['status'] = 'exhausted'
+    legacy['turns'][0]['continuations_used'] = 1
+    del legacy['remaining']
+    runner.write(receipt, legacy)
+    assert runner.remaining(legacy) == {'completed': 1, 'continuations_used': 0,
+                                        'continuations_unspent': 3,
+                                        'next_prompt': 'continue-1.prompt.txt', 'closed': None}
+    report = runner.resume(target, executor(calls))
+    assert 'ADR-357' in report['ruling'] and report['status'] == 'paused'
+    assert [Path(cmd[-2]).name for cmd, _ in calls if '--child-turn' in cmd] == \
+        ['repair.prompt.txt', 'continue-1.prompt.txt']
+    assert [r['continuations_used'] for r in report['turns']] == [1, 1]  # the historical value stays
+    assert report['remaining']['continuations_unspent'] == 2
+
+
+@pytest.mark.parametrize('closer', ['void', 'interrupted', 'failed'])
+def test_resume_refuses_a_project_closed_by_a_call_that_did_not_complete(tmp_path, monkeypatch, closer):
+    target = repair_seed(tmp_path, monkeypatch)
+    calls = []
+    if closer == 'void':
+        report = runner.run('repair', target, 'fixture', limited_executor(calls))
+    elif closer == 'interrupted':
+        fake = executor(calls)
+        def execute(command, out, stem, timeout):
+            result = fake(command, out, stem, timeout)
+            if stem == 'turn':
+                frames_file(out / 'transcript.jsonl', [SPOKE])
+                result['exit_code'] = 'timeout'
+            return result
+        report = runner.run('repair', target, 'fixture', execute)
+    else:
+        report = runner.run('repair', target, 'fixture', executor(calls, turn_code=1))
+    assert report['status'] == closer and report['remaining']['closed'] == closer
+    with pytest.raises(ValueError, match=f'{closer} call; retry on a fresh copy \\(ot7-heron-b\\)'):
+        runner.resume(target, executor(calls))
+    assert len([cmd for cmd, _ in calls if '--child-turn' in cmd]) == 1
+
+
+def test_design_attempt_can_pause_per_window_and_resume_to_its_smoke(tmp_path):
+    """`--turns 1` dispatches one prompt per invocation for a create too."""
+    target = project(tmp_path)
+    calls = []
+    report = runner.run('heron', target, 'fixture', executor(calls), turns=1)
+    assert report['status'] == 'paused' and 'smoke' not in report
+    assert report['remaining'] == {'completed': 1, 'continuations_used': 0, 'continuations_unspent': 3,
+                                   'next_prompt': 'continue-1.prompt.txt', 'closed': None}
+    report = runner.resume(target, executor(calls), turns=2)
+    assert report['status'] == 'paused' and report['remaining']['next_prompt'] == 'continue-3.prompt.txt'
+    report = runner.resume(target, executor(calls))
+    assert report['status'] == 'exhausted' and report['smoke']['artifacts'][0]['path'] == 'smoke.json'
+    assert [Path(cmd[-2]).name for cmd, _ in calls if '--child-turn' in cmd] == runner.frozen('heron')
+    assert [r['continuations_used'] for r in report['turns']] == [0, 1, 2, 3]
+    with pytest.raises(ValueError, match='exhausted'):
+        runner.resume(target, executor(calls))
+    with pytest.raises(ValueError, match='no attempt to resume'):
+        runner.resume(tmp_path / 'cadex-projects' / 'ot7-nothing', executor(calls))
+
+
+def test_continuation_child_resumes_the_agent_session(tmp_path, monkeypatch):
+    from cadex_cli import __main__ as cli
+    seen = []
+    monkeypatch.setattr(cli, 'main', lambda args: seen.extend(args) or 0)
+    assert runner.child_turn(tmp_path, tmp_path, runner.PROMPTS / 'continue-1.prompt.txt', 'fixture') == 0
+    assert '--resume' in seen
+    assert seen[seen.index('-p') + 1] == (runner.PROMPTS / 'continue-1.prompt.txt').read_text()
 
 
 @pytest.mark.parametrize('change', ['script', 'accepted_revision', 'accepted_digest', 'param_values'])

@@ -24930,3 +24930,50 @@ the repair, frame-by-frame capture across a mid-stream kill, and that a limit
 seen before a kill is void rather than interrupted; `cli/tests/test_commands.py`
 pins the effort pin, the cap, their overrides and their refusals. `docs/CLI.md`
 §2 documents the two variables.
+
+## ADR-357 — The repair prompt is F4's first prompt, not its only one; the runner resumes (2026-09-15)
+
+**Context.** The ot7 evidence collector (`docs/probes/ot7/runner/run.py`)
+carried `repair.prompt.txt` as F4's whole schedule, counted it as a
+continuation, and wrote `status: exhausted` after the one turn that completed
+on `ot7-heron-repair-d` (iteration 48). The closing report repeated that F4's
+slot was spent, in a table whose next column granted every other design
+three continuations. The amended charter (ADR-355) is explicit: "A design is
+exhausted only after its create or repair prompt and all three continuations
+have reached the model." The critic of iteration 48 ruled the report's totals
+contradictory and F4 open, with three continuations after the repair prompt.
+
+**Decision.** Three things, none of which touches a frozen prompt or a design.
+
+1. **The schedule.** `frozen('repair')` is the repair prompt followed by the
+   same three continuations every design gets. The first prompt of any
+   schedule is not a continuation, so a completed repair row reads
+   `continuations_used: 0`. The prompt manifest's limits table says so; the
+   prompt digests are unchanged and still verified before every dispatch.
+2. **One turn per window, and resume.** A completed turn moved the five-hour
+   window from 8 % to 57 %, so a repair dispatches its first prompt alone
+   and pauses (`status: paused`, a `remaining` block naming the next prompt),
+   and `run.py resume PROJECT` dispatches exactly the next continuation into
+   the agent's own session without replaying earlier turns. `--turns N`
+   bounds either command; a design attempt still dispatches all four by
+   default and runs its smoke when it exhausts or fails. Every row now
+   snapshots the design identity after its turn (`accepted_after`), and a
+   resume refuses a project whose design differs from that snapshot, a
+   project closed by a void, interrupted or failed call (those still retry on
+   a fresh copy), and an exhausted one. A receipt written under the old rule
+   resumes from its rows and gains a `ruling` field.
+3. **The record is corrected forward.** `REPORT.md`, the runner README, the
+   retained index and `repair-completed-d.json` (a `ruling` field, as the
+   iteration 44 receipt carries decision #44) say F4 stands at one completed
+   turn, zero continuations used, three unspent, next `continue-1` on
+   `ot7-heron-repair-d`. The completed experiment and its receipts are
+   preserved as written. The record node that declared the slot spent is
+   superseded by the iteration 49 record's impact, not edited.
+
+**Consequences.** F4 remains open with three continuations, dispatched one
+per window only while the first `rate_limit_event` frame shows room. Fixtures
+in `cli/tests/test_ot7_runner.py` pin the paused repair, the three resumes
+without replay, the legacy receipt's ruling, the three refusals, a create
+paused per window, and the `--resume` flag on a continuation child. F5–F7
+gain the same per-window dispatch for free, which the window measurement of
+iteration 48 said they would need.
