@@ -375,4 +375,7 @@ refusals, a create paused per window and resumed to its smoke, and that a
 continuation child passes `--resume`. The continuations are dispatched only
 while the product agent is available, which the first `rate_limit_event`
 frame decides, not a probe: at 74 % of the window a turn of the observed
-size does not fit.
+size does not fit. Iteration 51 resumed `continue-1` on that project two
+minutes after the reset, at 8 %; the turn completed on its own in 738.5 s,
+took the window to 63 %, and the runner paused with `continue-2` next
+([receipt](../retained/repair-continue-1-d.json)).

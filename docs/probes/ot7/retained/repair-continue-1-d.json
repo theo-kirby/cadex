@@ -1,0 +1,295 @@
+{
+ "criterion": "F4",
+ "iteration": 51,
+ "project": "ot7-heron-repair-d",
+ "seed": "the same ot7-heron-repair-d project, resumed into the agent's own session after the completed repair turn (ADR-357); no actor edit",
+ "evidence_directory": "evidence/f4-repair",
+ "model": "claude-fable-5",
+ "prompt": {
+  "path": "continue-1.prompt.txt",
+  "bytes": 756,
+  "sha256": "80d725d2961e7ca44a56fed391745d6df551741c6545a837e815ca3ae0b7f4d0"
+ },
+ "turn_index": 1,
+ "runner_status_after": "paused",
+ "remaining_after": {
+  "completed": 2,
+  "continuations_used": 1,
+  "continuations_unspent": 2,
+  "next_prompt": "continue-2.prompt.txt",
+  "closed": null
+ },
+ "turn_status": "completed",
+ "void": null,
+ "interruption": null,
+ "slot_consumed": true,
+ "continuations_used": 1,
+ "slots_spent": 2,
+ "void_calls_this_project": 0,
+ "interrupted_calls_this_project": 0,
+ "turn": {
+  "exit_code": 0,
+  "elapsed_seconds": 738.5099870958365,
+  "runner_transcript": {
+   "path": "transcript.jsonl",
+   "bytes": 687076,
+   "sha256": "062bb7b6e3db61e8aa6117c46c08d66a2ae4be6d522e20f97bfe7f4607fd326b"
+  },
+  "captured": "frame by frame as it arrived (ADR-356)",
+  "frames": {
+   "system": 243,
+   "assistant": 43,
+   "user": 20,
+   "rate_limit_event": 14,
+   "tool_progress": 4,
+   "result": 1
+  },
+  "first_frame_utc": "2026-09-15T15:23:36.055Z",
+  "last_frame_utc": "2026-09-15T15:35:12.627Z",
+  "api_messages": 43,
+  "synthetic_error_messages": 0,
+  "tool_uses": 20,
+  "tools": {
+   "mcp__cadex__inspect": 14,
+   "mcp__cadex__edit_script": 4,
+   "mcp__cadex__write_script": 2
+  },
+  "submit_calls": 0,
+  "text_output": 1,
+  "rate_limit_window_at_first_event": {
+   "status": "allowed_warning",
+   "five_hour": {
+    "utilization": 0.08,
+    "resetsAt": 1789503600
+   },
+   "seven_day": {
+    "utilization": 0.41,
+    "resetsAt": 1789538400
+   }
+  },
+  "rate_limit_window_at_last_event": {
+   "status": "allowed_warning",
+   "five_hour": {
+    "utilization": 0.63,
+    "resetsAt": 1789503600
+   },
+   "seven_day": {
+    "utilization": 0.44,
+    "resetsAt": 1789538400
+   }
+  },
+  "rate_limit_events": 14,
+  "result_frame": {
+   "subtype": "success",
+   "is_error": false,
+   "api_error_status": null,
+   "result": "Verification is complete against the accepted revision `f03054d6`: rest-pose fit **verdict pass, 105/105 pairs, zero failing**; the published 5\u00b0 sweep is **complete** over shoulder [\u221290\u00b0, +65\u00b0] and elbow [\u2212100\u00b0, +25\u00b0] with `maximum_common_volume 0.0` on all 210 swept pair rows \u2014 the only 0 mm minima are the declared coaxial contacts (press fits, screw seats, horn-on-spline) present unchanged at every sample; `inspect scope=inventory` again certifies every purchased part by catalog row (`servo/mg90s \u00d72, servo_horn \u00d72, bearing/mr128 \u00d72, bolt/m2x6 \u00d74, bolt/m2x16 \u00d72`) with `uncatalogued_sources` exactly the three printed parts (base, upper_arm, forearm); and `world_geometry` is empty \u2014 nothing from the world remains in the design, the bench being pure environment whose only trace is the measured +75\u00b0 first contact recorded as the provenance of the `shoulder_fwd` clamp. The mechanism, joints,",
+   "duration_ms": 703062,
+   "num_turns": 21
+  },
+  "usage": {
+   "input_tokens": 30,
+   "cache_creation_input_tokens": 384264,
+   "cache_read_input_tokens": 4461687,
+   "output_tokens": 56472,
+   "output_tokens_details": {
+    "thinking_tokens": 14196
+   }
+  }
+ },
+ "measurement": {
+  "exit_code": 0,
+  "elapsed_seconds": 0.16377223888412118
+ },
+ "static_fit": {
+  "verdict": "pass",
+  "failing_count": 0,
+  "pairs_checked": 105
+ },
+ "accepted_after": {
+  "script_sha256": "59ff7c9509289eebea1d148f0dfbde8773d2cc12231eb8a42cd3f62480c075c2",
+  "accepted_revision": "f03054d6c8fe023d25d6913a8fdd4feb16049421a58825dd5251edc19d197703",
+  "accepted_digest": "bf167b329965d81d1f72a2a60e9aa4d4ccc895ef22315dd4a24332f558acd94b",
+  "working_revision": "f03054d6c8fe023d25d6913a8fdd4feb16049421a58825dd5251edc19d197703",
+  "updated_at": "2026-09-15T15:34:12Z"
+ },
+ "artifacts": [
+  {
+   "path": "clearance.json",
+   "bytes": 102413,
+   "sha256": "ed31b2e1348335955243932a51ec8dfca5d2f52ea75ece344b7fa140afd8058d"
+  },
+  {
+   "path": "continue-1.prompt.txt",
+   "bytes": 756,
+   "sha256": "80d725d2961e7ca44a56fed391745d6df551741c6545a837e815ca3ae0b7f4d0"
+  },
+  {
+   "path": "fit.json",
+   "bytes": 641,
+   "sha256": "9a0c13ae9f5b34349a51259dfd91990a65d31ae9870859e5b7c14fe7a790845d"
+  },
+  {
+   "path": "inventory.json",
+   "bytes": 19182,
+   "sha256": "f468f05d32607799b8ca8dc492655179b93087a52c58f21fb00d339ee22772ad"
+  },
+  {
+   "path": "repair-assessment.json",
+   "bytes": 1487,
+   "sha256": "ab70a42b649c1c74c713061da2fe51a7c423716ebe178847793e627696c6a515"
+  },
+  {
+   "path": "transcript.jsonl",
+   "bytes": 687076,
+   "sha256": "062bb7b6e3db61e8aa6117c46c08d66a2ae4be6d522e20f97bfe7f4607fd326b"
+  },
+  {
+   "path": "turn.stderr.txt",
+   "bytes": 6345,
+   "sha256": "2737b7f7992369b16e7675127fb3fa6bdf57413a200ef0c496dea8d36c40bbe3"
+  },
+  {
+   "path": "turn.stdout.json",
+   "bytes": 15015,
+   "sha256": "af7e87d6f2ca00998495ff5f2aedf9d36aa2401dc9f9944a1d1f5411c1ba7d28"
+  }
+ ],
+ "accepted_before": {
+  "script_sha256": "27680dc06ff49251bbc1c8c4ac92b19c83b630cd71276f0e2c687045ab8a92d9",
+  "accepted_revision": "252e73b5c2d6b9d80f87b121dab3a0bd4270eaf032fbdd8906536ee67fe25f79",
+  "note": "the design identity after turn-0 (repair-completed-d.json); resume verified it before dispatch"
+ },
+ "edits": {
+  "calls": 6,
+  "accepted": 2,
+  "rejected": 4,
+  "sequence": [
+   {
+    "tool": "edit_script",
+    "result": "rejected DOMAIN_CANDIDATE_FAILED: name c_bench is not defined"
+   },
+   {
+    "tool": "edit_script",
+    "result": "rejected REPLACEMENT_NOT_UNIQUE: malformed replacement (empty key)"
+   },
+   {
+    "tool": "edit_script",
+    "result": "rejected DOMAIN_PUBLICATION_FAILED: cannot retire output bench while its component link exists"
+   },
+   {
+    "tool": "write_script",
+    "result": "rejected DOMAIN_PUBLICATION_FAILED: same retirement refusal"
+   },
+   {
+    "tool": "write_script",
+    "result": "accepted a95405bb\u2026, static fit pass 105 pairs 0 failing"
+   },
+   {
+    "tool": "edit_script",
+    "result": "accepted f03054d6\u2026, static fit pass 105 pairs 0 failing"
+   }
+  ],
+  "failing_count_by_accepted_revision": [
+   0,
+   0
+  ],
+  "script_lines": {
+   "before": 578,
+   "after": 557,
+   "diff_lines": 75
+  }
+ },
+ "swept_fit": {
+  "status": "complete",
+  "step_degrees": 5.0,
+  "elapsed_seconds": 30.638672467088327,
+  "joints": [
+   {
+    "joint": "joint_shoulder",
+    "range_degrees": [
+     -90.0,
+     65.0
+    ],
+    "sample_count": 32,
+    "elapsed_seconds": 20.349988147849217,
+    "solved_pose_agreement": true,
+    "zero_distance_pairs": 18,
+    "maximum_common_volume_mm3": 0.0,
+    "first_contacts": 0
+   },
+   {
+    "joint": "joint_elbow",
+    "range_degrees": [
+     -100.0,
+     25.0
+    ],
+    "sample_count": 26,
+    "elapsed_seconds": 10.286275564925745,
+    "solved_pose_agreement": true,
+    "zero_distance_pairs": 18,
+    "maximum_common_volume_mm3": 0.0,
+    "first_contacts": 0
+   }
+  ],
+  "pairs_per_joint": 105
+ },
+ "inventory": {
+  "component_count": 15,
+  "catalog_counts": {
+   "bearing/mr128": 2,
+   "bolt/m2x16-socket": 2,
+   "bolt/m2x6-socket": 4,
+   "servo/mg90s": 2,
+   "servo_horn/mg90s-single_arm": 2
+  },
+  "uncatalogued_sources": [
+   "base",
+   "forearm",
+   "upper_arm"
+  ],
+  "world_geometry": [],
+  "bench_component": "removed (ADR-013 in the project)"
+ },
+ "static_zero_distance_pairs": {
+  "count": 16,
+  "all_declared_contact": true
+ },
+ "project_decisions_added": [
+  "ADR-011 servos restored to unmodified catalog bodies",
+  "ADR-012 centre screws retracted to tip-face contact",
+  "ADR-013 bench removed from the design entirely"
+ ],
+ "assessment": {
+  "status_before": "fail",
+  "status_after": "fail",
+  "attachments_after": [
+   {
+    "first": "comp_horn_shoulder",
+    "second": "comp_upper_arm",
+    "status": "fail",
+    "reason": "missed contact",
+    "distance_mm": 0.19999999999999732,
+    "common_volume_mm3": 0.0
+   },
+   {
+    "first": "comp_horn_elbow",
+    "second": "comp_forearm",
+    "status": "fail",
+    "reason": "missed contact",
+    "distance_mm": 0.19999999999993,
+    "common_volume_mm3": 0.0
+   }
+  ],
+  "contact_tolerance_mm": 0.001,
+  "note": "the collector's ot6-informed attachment assessment, not a product check; the product's static and swept checks both pass"
+ },
+ "actor_design_edits": 0,
+ "smoke": "not requested for F4",
+ "window": {
+  "five_hour_at_first_event": 0.08,
+  "five_hour_at_last_event": 0.63,
+  "resets_utc": "2026-09-15T20:20:00Z",
+  "note": "one continuation turn used about 55 % of a five-hour window"
+ }
+}

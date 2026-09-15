@@ -109,6 +109,22 @@ collector's output under the superseded one-slot repair rule and carry a
 `ruling` field (ADR-357): the repair prompt is F4's first prompt, three
 continuations remain unspent, and they resume on `ot7-heron-repair-d`.
 
+## F4: the first continuation on d (iteration 51)
+
+[repair-continue-1-d.json](repair-continue-1-d.json): `continue-1.prompt.txt`
+resumed on `ot7-heron-repair-d` into the agent's own session two minutes after
+the window reset (8 % at the first frame, 63 % at the last). The turn ended on
+its own at 738.5 s with 20 tool calls, four rejected edits and two accepted
+revisions, ending at `f03054d6…`. The after-read, taken by the collector from
+the published measurements: static fit **pass, 105 pairs, 0 failing**; swept
+fit **complete** at 5° on both joints, zero common volume and no first contact
+anywhere; inventory with all five catalog families at full count and only the
+three printed parts uncatalogued; `world_geometry` empty. The bench slab and
+the spline bores in the servo bodies from the repair turn are gone.
+Attachment assessment **fail**, unchanged: both horns still 0.2 mm from their
+links, declared as 0.05 mm clearances. The runner paused with `continue-2`
+next and two continuations unspent.
+
 ## F9: unchanged retained measurements through the product scope
 
 [comparison.json](comparison.json) contains every failing pair by name and its
