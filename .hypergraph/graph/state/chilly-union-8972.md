@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**Every product-agent turn is effort-pinned and output-capped (ADR-356).** `ClaudeTurn` in `cli/cadex_cli/agent.py` launches each turn with `--effort` (`$CADEX_EFFORT`, default `high`, the harness's own default) and passes `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (`$CADEX_MAX_OUTPUT_TOKENS`, default 32,000) in the child's environment, the harness's documented per-message cap on thinking and text together; a bad value in either variable refuses the turn with a `ValueError` naming it. `docs/CLI.md` §2 documents both; `test_commands.py` pins the pin, the cap, their overrides and their refusals; full CLI suite 738 passed, 1 skipped. The cap bounds one message, not a turn: a model can still spend the 30-minute turn bound across many capped messages, and the runner's 30-minute bound is unchanged [rec: sunny-chart-3499]. In the first real turn under it, no message reached the cap [rec: stormy-snow-5452].
+
 **`cadex smoke --out DIR` is a documented no-token check of the accepted design (ADR-352).** It retains accepted identity, reads pinned artifacts under the project lock without restore, rebuild or acceptance, and writes project-local trace/geometry receipts and a complete measured verdict. Finite-state checks, exact sampled component overlaps, and proxy floor support or a grounded base share a wall-time bound capped at 300 seconds. Unsupported solids and initial-measurement mismatches cannot pass. No protocol/payload change or new dependency [rec: lean-fountain-9707].
 
 **Build replies and turn reports carry measured fit (ADR-346).** Each successful modelling reply reads published clearance under the bridge lock. `ToolCall.fit` and `BridgeState.last_fit` expose the block; the prompt turn's `--json` envelope carries the last accepted build's `fit`, and prose prints a line per failing pair. The extra store-backed inspect read per build has not been timed on large assemblies [rec: happy-dawn-1960]. Every failing pair is included after the forty-pair limit was removed; full CLI verification at `f2bf2c83` is 636 passed, 1 skipped [rec: steady-quartz-9854].
@@ -207,3 +209,5 @@ Walk sections share the named-view snapshot, retain explicit outcomes and rollou
 - steady-quartz-9854 — complete failing-pair replies and full CLI verification replace the initial bounded list
 
 - lean-fountain-9707 — documented no-token accepted-artifact smoke command and measured receipts
+- sunny-chart-3499 — ADR-356: ClaudeTurn effort-pinned and output-capped per message, overrides and refusals pinned; full CLI suite 738 passed
+- stormy-snow-5452 — first real turn under the cap: no message at 32,000 tokens, 80,451 output tokens over 39 messages
