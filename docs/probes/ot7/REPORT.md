@@ -3,23 +3,27 @@
 Verified against source: 2026-09-15. [Cadex-new]
 
 **The measured-fit tools are implemented, and the agent has now completed
-two turns from measurements alone on `ot7-heron-repair-d` (F4): the repair
-prompt in iteration 48 and the first frozen continuation in iteration 51.
-Both accepted a revision the product's checker passes at zero failing pairs,
-static and swept; the continuation restored the two servos to untouched
-catalog bodies and removed the bench slab, so every purchased part is
-catalogued again and no world geometry remains. The collector's attachment
-assessment still fails on both horn-to-link pairs at 0.2 mm, which no report
-the agent reads names as failing** (see [Iteration 48](#iteration-48-the-repair-turn-that-completed)
-and [Iteration 51](#iteration-51-the-first-continuation-completed)).
+three turns from measurements alone on `ot7-heron-repair-d` (F4): the repair
+prompt in iteration 48, the first frozen continuation in iteration 51 and
+the second in iteration 52. The first two accepted revisions the product's
+checker passes at zero failing pairs, static and swept; the first
+continuation restored the two servos to untouched catalog bodies and removed
+the bench slab, so every purchased part is catalogued again and no world
+geometry remains. The second continuation, told that failing checks remain,
+re-read every measurement, found none failing, re-accepted the unchanged
+script and overruled the prompt in a recorded decision. The collector's
+attachment assessment still fails on both horn-to-link pairs at 0.2 mm,
+which no report the agent reads names as failing** (see [Iteration 48](#iteration-48-the-repair-turn-that-completed),
+[Iteration 51](#iteration-51-the-first-continuation-completed) and
+[Iteration 52](#iteration-52-the-window-read-by-the-runner-then-continue-2-completed-adr-358)).
 The two earlier calls that reached a model were an interrupted execution
 (iteration 44) and a void call (iteration 48 on `ot7-heron-repair-c`). All six
 product-agent calls dispatched before the restart ended on the provider's
 session limit in two to four seconds. Under the amended charter (ADR-355) **those six calls are
 void**: no model saw a prompt, none spent a create, continuation or repair
 slot, and none is a design result. F5–F7 remain open with every slot unspent;
-F4 has spent its repair prompt and one continuation and holds two, which
-resume on `ot7-heron-repair-d` one per window (ADR-357, [Iteration 49](#iteration-49-the-slot-totals-corrected-adr-357)).
+F4 has spent its repair prompt and two continuations and holds one, which
+resumes on `ot7-heron-repair-d` in a fresh window (ADR-357, [Iteration 49](#iteration-49-the-slot-totals-corrected-adr-357)).
 This report is written forward from the restart; it claims no design outcome
 and no critic acceptance of done.
 
@@ -37,7 +41,7 @@ below match it. What each design has left:
 
 | Design / criterion | Void calls (not attempts) | Attempts that reached the model | Create or repair prompt | Continuations unspent | Retry project |
 |---|---|---|---|---|---|
-| Heron repair / F4 | 4: three pre-restart, and iteration 48 on `ot7-heron-repair-c` (cut off by the five-hour limit after 6 reads, [receipt](retained/repair-void-c.json)); and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound (decision #44: not a turn, no slot) | 2, both on `ot7-heron-repair-d`: iteration 48, the repair prompt, completed in 1,461.9 s with six accepted revisions ([receipt](retained/repair-completed-d.json)); iteration 51, `continue-1`, completed in 738.5 s with two accepted revisions ([receipt](retained/repair-continue-1-d.json)) | spent: the repair prompt, completed on `ot7-heron-repair-d` | 2 of 3 (`continue-1` spent; ADR-357: the repair prompt is the first prompt, not a continuation) | none needed: `continue-2` resumes on `ot7-heron-repair-d`, one turn per window |
+| Heron repair / F4 | 4: three pre-restart, and iteration 48 on `ot7-heron-repair-c` (cut off by the five-hour limit after 6 reads, [receipt](retained/repair-void-c.json)); and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound (decision #44: not a turn, no slot) | 3, all on `ot7-heron-repair-d`: iteration 48, the repair prompt, completed in 1,461.9 s with six accepted revisions ([receipt](retained/repair-completed-d.json)); iteration 51, `continue-1`, completed in 738.5 s with two accepted revisions ([receipt](retained/repair-continue-1-d.json)); iteration 52, `continue-2`, completed in 128.7 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-2-d.json)) | spent: the repair prompt, completed on `ot7-heron-repair-d` | 1 of 3 (`continue-1` and `continue-2` spent; ADR-357: the repair prompt is the first prompt, not a continuation) | none needed: `continue-3` resumes on `ot7-heron-repair-d` in a fresh window |
 | Heron arm / F5 | 1 | 0 | unspent | 3 of 3 | `ot7-heron-b` |
 | Robin balancer / F6 | 1 | 0 | unspent | 3 of 3 | `ot7-robin-b` |
 | Plover biped / F7 | 1 | 0 | unspent | 3 of 3 | `ot7-plover-b` |
@@ -389,20 +393,60 @@ names it. This turn fixed what its own tools reported, the inventory contract
 and the world geometry, and nothing they did not. Two continuations remain
 unspent and follow through `resume`, one per window.
 
-## Iteration 52: the window read by the runner, no dispatch (ADR-358)
+## Iteration 52: the window read by the runner, then continue-2 completed (ADR-358)
 
-No design turn: the five-hour window read **84 %** at 15:45 UTC and **93 %**
-(`allowed_warning`) at 15:49 UTC, reset 20:20 UTC, against a bound of 45 %
-from the two measured turns. `continue-2` stays next on `ot7-heron-repair-d`
-with two continuations unspent; nothing in that project was touched. The unit
-moved the dispatch decision into the collector: `run.py` now probes the
-window before every frozen prompt, records the reading in the receipt
-(`window_readings`, and `window` on each dispatched row), and without room
-writes `status: paused` with a `deferred` block before any slot is persisted,
-so the same prompt resumes after the reset. `run.py window` only reads.
-Fixtures pin the real 84 % frame as no room and 8 % as room, the deferred
-create and repair, the schedule that pauses mid-way, and the hermetic default
+This iteration ran twice. Its first attempt, while the five-hour window read
+**84 %** at 15:45 UTC and **93 %** (`allowed_warning`) at 15:49 UTC against
+a bound of 45 % from the two measured turns, dispatched nothing and moved the
+dispatch decision into the collector: `run.py` now probes the window before
+every frozen prompt, records the reading in the receipt (`window_readings`,
+and `window` on each dispatched row), and without room writes
+`status: paused` with a `deferred` block before any slot is persisted, so the
+same prompt resumes after the reset. `run.py window` only reads. Fixtures pin
+the real 84 % frame as no room and 8 % as room, the deferred create and
+repair, the schedule that pauses mid-way, and the hermetic default
 ([runner README](runner/README.md#reading-the-window-before-every-prompt-iteration-52-adr-358)).
+That attempt was itself cut off by the actor's session limit before it could
+commit; the second attempt, after the 20:20 UTC reset, verified and committed
+it (68 runner tests passing) and then used it.
+
+`continue-2.prompt.txt` (611 bytes, digest unchanged) was resumed on
+`ot7-heron-repair-d` through `run.py resume` at 20:23 UTC. The runner's own
+probe read **6 %** (`allowed`, reset 01:20 UTC) and dispatched; the turn's
+first `rate_limit_event` frame read 7 %. No actor edited any design. The turn
+ended on its own after **128.7 s** with 17 model messages and 8 tool calls:
+7 `inspect` reads of the clearance scope (the summary, all 105 pairs over
+three pages, the sweep and each joint's swept table) and 1 `rebuild`, which
+reproduced the accepted digest `bf167b32…` bit for bit
+([receipt](retained/repair-continue-2-d.json)). It made **no edit and no
+write**: the frozen prompt states that the report still names failing
+checks, the agent wrote down the measured value at every tight pair, found
+`failing_count 0` at the rest pose and `maximum_common_volume 0.0` on all
+210 swept rows, re-ran the unchanged script through acceptance (same
+revision `f03054d6…`, same digest), and recorded ADR-014 in the project:
+"the claim of remaining failures is overruled by the engine's published
+measurements". Usage was 3,486 output tokens (1,563 thinking) and 2.40 M
+cache-read input tokens; the five-hour window went from 7 % to 28 %, the
+actor's own session sharing it. The runner paused with `continue-3` next.
+
+What the after-read measures, unchanged from iteration 51 because the script
+is unchanged (`59ff7c95…`, 557 lines): static fit **pass, 105 pairs, 0
+failing**, 16 pairs at 0 mm all declared contacts, `world_geometry` empty;
+swept fit **complete** at 5° on both joints (31.0 s in all), zero common
+volume and no first contact beyond the declared contacts present from each
+lower limit; inventory with all five catalog families at full count and only
+the three printed parts uncatalogued; the collector's attachment assessment
+**fail**, `comp_horn_shoulder`/`comp_upper_arm` and `comp_horn_elbow`/
+`comp_forearm` at 0.2 mm, declared as 0.05 mm clearances.
+
+**Against F4's bar.** "Accepts with zero failing fit checks": met a third
+time on the product's static and swept checks. "Resolves all three defects":
+still not met, two of three. This turn is the run's clearest measurement of
+the charter's premise: with every product check passing, a continuation
+prompt that asserts failures without naming one does not move the agent,
+which trusts the measurements over the prompt, exactly as its instructions
+say to. The horn gap stays a declared clearance because nothing the agent
+reads calls it anything else. One continuation remains unspent.
 
 ## Implemented checks and evidence for F1–F9
 
@@ -411,7 +455,7 @@ create and repair, the schedule that pauses mid-way, and the hermetic default
 | F1 | Build replies include published static fit counts and every named failing pair; `clearance` inspect is exposed; instructions distinguish stdout claims from measurements | [Implementation](../../../.hypergraph/graph/record/happy-dawn-1960.md), [complete-list correction](../../../.hypergraph/graph/record/steady-quartz-9854.md), [real pager regression](../../../.hypergraph/graph/record/tidy-journey-9462.md), [CLI contract](../../CLI.md). A script printing “no overlap” returns its measured 100 mm³ intersection. Later-page failures and read errors are pinned |
 | F2 | Contact and minimum-clearance declarations; overlaps, missed contact, insufficient clearance and world geometry are advisory findings | [Known-answer fixtures](FIT-INTENT.md), [record](../../../.hypergraph/graph/record/crisp-ember-0302.md), [numerical correction](../../../.hypergraph/graph/record/hidden-lodge-4550.md), [script contract](../../XSCRIPT.md). Solid world geometry needs explicit intent; grounding alone does not imply a floor |
 | F3 | Published bounded exact-solid hinge and slider sweeps, agent inspection and `cadex clearance --sweep` | [Producer](../../../.hypergraph/graph/record/misty-spark-6372.md), [consumer](../../../.hypergraph/graph/record/green-river-3790.md), [slider fixtures](../../../.hypergraph/graph/record/curious-cedar-4881.md), [Finch product measurement](../../../.hypergraph/graph/record/kind-flint-2780.md), [sweep receipt](sweep/README.md). Discrete samples, unsupported or undeclared coverage explicitly incomplete; details below |
-| F4 | Four void calls (ADR-355), one interrupted call (decision #44, ADR-356), and **two completed turns** on `ot7-heron-repair-d`: the repair prompt (1,461.9 s, 46 tool calls, six accepted revisions, static fit 0 of 120 pairs failing, swept complete at 5°, servo bodies uncatalogued, a bench slab added, joint ranges narrowed) and `continue-1` (738.5 s, 20 tool calls, two accepted revisions, static fit 0 of 105 pairs failing, swept complete at 5° with zero common volume, both servos back to untouched catalog bodies, the bench removed, no world geometry); the collector's attachment assessment still fails on both horn-to-link pairs at 0.2 mm, declared as clearance | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [classification](attempts/void-calls.json), [interrupted call](retained/repair-timeout-b.json), [void call c](retained/repair-void-c.json), [completed turn d](retained/repair-completed-d.json), [assessment](#iteration-48-the-repair-turn-that-completed), [continue-1 on d](retained/repair-continue-1-d.json), [its assessment](#iteration-51-the-first-continuation-completed). **Measured: zero failing product checks after both turns; two of three defects resolved, the horn gap declared rather than closed. Two continuations unspent; next `continue-2` on `ot7-heron-repair-d`** |
+| F4 | Four void calls (ADR-355), one interrupted call (decision #44, ADR-356), and **three completed turns** on `ot7-heron-repair-d`: the repair prompt (1,461.9 s, 46 tool calls, six accepted revisions, static fit 0 of 120 pairs failing, swept complete at 5°, servo bodies uncatalogued, a bench slab added, joint ranges narrowed), `continue-1` (738.5 s, 20 tool calls, two accepted revisions, static fit 0 of 105 pairs failing, swept complete at 5° with zero common volume, both servos back to untouched catalog bodies, the bench removed, no world geometry) and `continue-2` (128.7 s, 8 tool calls, no edit, the unchanged script re-accepted at the same digest after every measurement was re-read and none failed); the collector's attachment assessment still fails on both horn-to-link pairs at 0.2 mm, declared as clearance | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [classification](attempts/void-calls.json), [interrupted call](retained/repair-timeout-b.json), [void call c](retained/repair-void-c.json), [completed turn d](retained/repair-completed-d.json), [assessment](#iteration-48-the-repair-turn-that-completed), [continue-1 on d](retained/repair-continue-1-d.json), [its assessment](#iteration-51-the-first-continuation-completed), [continue-2 on d](retained/repair-continue-2-d.json), [its assessment](#iteration-52-the-window-read-by-the-runner-then-continue-2-completed-adr-358). **Measured: zero failing product checks after all three turns; two of three defects resolved, the horn gap declared rather than closed, and a continuation that names no failure leaves the design unchanged. One continuation unspent; next `continue-3` on `ot7-heron-repair-d`** |
 | F5 | One void arm create, zero attempts; frozen prompt, transcript and unavailable reports retained | [Record](../../../.hypergraph/graph/record/quiet-dew-5243.md), [receipt](attempts/heron-refusal.json). **Open: create prompt and all continuations unspent** |
 | F6 | One void balancer create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/keen-chart-9070.md), [receipt](attempts/robin-refusal.json). **Open: create prompt and all continuations unspent** |
 | F7 | New frozen biped prompt; one void create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/red-hawk-4600.md), [receipt](attempts/plover-refusal.json). **Open: create prompt and all continuations unspent** |
@@ -479,16 +523,17 @@ for this run's smoke receipts; no policy training occurred in ot7.
 
 F1–F3 and F8 have fixture-verified checks within the limits above; F9 has
 recorded regression evidence. **F4 has its measured results and F5–F7 remain
-open.** F4's repair prompt and first continuation have each been spent on a
-completed turn: zero failing product checks after both, every purchased part
-catalogued and no world geometry after the second, two of three defects
-resolved, the horn gap declared as clearance rather than closed. F5–F7 are untried. Void calls establish no
+open.** F4's repair prompt and first two continuations have each been spent
+on a completed turn: zero failing product checks after all three, every
+purchased part catalogued and no world geometry after the second, the design
+left unchanged by the third, two of three defects resolved, the horn gap
+declared as clearance rather than closed. F5–F7 are untried. Void calls establish no
 geometric design outcome, and they spent nothing.
 
 F10's requirement that the critic accepted done is **unmet**. This report
 makes no done claim. What remains is the agent half of the charter, in this
-order: F4's two remaining continuations on `ot7-heron-repair-d`, one per window,
-each sent only when the runner's own window reading shows room (ADR-358);
+order: F4's last continuation on `ot7-heron-repair-d`, sent only when the
+runner's own window reading shows room (ADR-358);
 then the arm, balancer and biped creates in fresh suffixed projects
 (F5–F7), each through
 its continuations as its fit report requires, each with its smoke rollout,

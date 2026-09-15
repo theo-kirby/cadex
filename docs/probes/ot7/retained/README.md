@@ -125,6 +125,23 @@ Attachment assessment **fail**, unchanged: both horns still 0.2 mm from their
 links, declared as 0.05 mm clearances. The runner paused with `continue-2`
 next and two continuations unspent.
 
+## F4: the second continuation on d (iteration 52)
+
+[repair-continue-2-d.json](repair-continue-2-d.json): `continue-2.prompt.txt`
+resumed on `ot7-heron-repair-d` through the runner's own window gate
+(ADR-358: probe 6 %, dispatched; 7 % at the first frame, 28 % at the last,
+the actor's session sharing the window). The turn ended on its own at
+128.7 s with 8 tool calls, 7 clearance reads and 1 rebuild, no edit and no
+write: told that failing checks remain, the agent found none in the
+measurements, re-accepted the unchanged script at the same revision
+`f03054d6…` and digest, and recorded the project's ADR-014 overruling the
+prompt. The after-read is therefore iteration 51's: static fit **pass, 105
+pairs, 0 failing**; swept fit **complete** at 5° on both joints, zero common
+volume, no first contact beyond the declared contacts; inventory unchanged;
+`world_geometry` empty; attachment assessment **fail**, both horns 0.2 mm
+from their links, declared as 0.05 mm clearances. The runner paused with
+`continue-3` next and one continuation unspent.
+
 ## F9: unchanged retained measurements through the product scope
 
 [comparison.json](comparison.json) contains every failing pair by name and its

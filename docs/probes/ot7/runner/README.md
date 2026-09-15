@@ -419,3 +419,10 @@ fills, a repair that measures the seed and sends nothing, and that the
 default reads no window. On the live account at 15:49 UTC `run.py window`
 read 93 % (`allowed_warning`, reset 20:20 UTC): no room, nothing dispatched,
 `continue-2` still next on `ot7-heron-repair-d`.
+
+The gate's first live dispatch was `continue-2` on `ot7-heron-repair-d` at
+20:23 UTC, three minutes after the reset: the probe read 6 % (`allowed`) and
+the prompt was sent; the receipt's row carries that reading and
+`window_readings` holds it with the time and the bound. The turn completed in
+128.7 s and the runner paused with `continue-3` next
+([receipt](../retained/repair-continue-2-d.json)).
