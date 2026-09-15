@@ -1,6 +1,6 @@
 # Retained designs: repair refusal and checker comparison
 
-Verified against source: 2026-09-14. [Cadex-new]
+Verified against source: 2026-09-15. [Cadex-new]
 
 Current F9 assessment: [the regression receipt](../REGRESSION.md) consolidates
 the green gates, six preserved opens and explained fit differences, completing
@@ -52,6 +52,27 @@ collision plane. Both child/horn gaps are **0.2 mm**, but these are *not*
 failures without declared contact: 0.2 exceeds the default 0.1 mm minimum.
 Swept coverage is unavailable because this script declares no sweep step.
 These limitations remain visible to a future repair turn; F4 is open.
+
+## F4: the call that reached the model (iteration 44)
+
+[repair-timeout-b.json](repair-timeout-b.json) is the first F4 call a model
+saw. `ot7-heron-repair-b` is a fresh copy of the seed above (its `evidence/`,
+`agent.json` and CLI lock excluded), validated by the runner against the
+original receipt's script hash, accepted revision, digest and empty
+overrides. The guarded before-read reproduced the retained baseline: 105
+pairs, 15 failures, both horn attachments at 0.2 mm, the 248.2 mm³
+servo/cheek overlap and the plane on `comp_base`.
+
+The model read clearance, script and API for the whole 30-minute bound, hit
+the provider's 64,000-token output cap on one thinking-only message, and was
+killed by the runner at 1,800.0 s without calling submit. Script hash,
+accepted revision and the 15-failure report are identical after the call.
+The runner's own stream capture was lost to the kill; the provider stream
+was recovered unmodified from the harness session store and its digest is in
+the receipt. This is a measured result and not a void call: no limit
+appeared. The runner's rule counts the repair slot as consumed; whether a
+runner-bound kill is a turn that "ended on its own" is the owner's ruling,
+and no retry was dispatched on it.
 
 ## F9: unchanged retained measurements through the product scope
 

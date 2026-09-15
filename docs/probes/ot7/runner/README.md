@@ -238,3 +238,26 @@ reads. The collected assessment and its digest are pinned in the repair-run
 fixture. At 18:45 New York time the documented reset was still ahead; this
 unit made no provider call and left the seed and frozen prompts untouched.
 F4 still needs its real frozen repair turn and before/after evidence.
+
+## The fresh-copy repair dispatch (iteration 44)
+
+The first repair call that reached a model ran on `ot7-heron-repair-b`, a
+copy of the seed without its `evidence/`, `agent.json` or CLI lock, made by
+the operator role and validated by `validate_seed` before dispatch. The
+outcome is in [`repair-timeout-b.json`](../retained/repair-timeout-b.json):
+the turn was killed at the 30-minute bound with no submission, the after-read
+matched the before-read exactly, and the runner reported `interrupted` with
+the slot consumed, as this README's timeout rule says. Two collector limits
+showed up and are not yet fixed:
+
+- **A killed turn loses the stream.** `CapturedTurn.run` writes
+  `transcript.jsonl` only after `ClaudeTurn.run` returns, so a timeout kill
+  leaves no transcript and an empty envelope. The provider stream was
+  recovered from the harness's own session store for the project directory;
+  the receipt names it as recovered, with its digest. The fix is to write
+  frames as they arrive.
+- **The turn has a wall-clock bound but the model has no output bound.** The
+  CLI passes no thinking or output limit, and one message of 63,999 thinking
+  tokens took 16.5 minutes of the 30. A per-message bound, or a longer turn
+  bound with a per-message one, is a product decision to make before the next
+  design turn.

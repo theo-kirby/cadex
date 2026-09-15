@@ -3,7 +3,8 @@
 Verified against source: 2026-09-15. [Cadex-new]
 
 **The measured-fit tools are implemented; the agent's ability to repair or
-create fitting mechanisms has not yet been tried.** All six product-agent
+create fitting mechanisms has been tried once, for F4, and that call ran out
+of time before it submitted anything** (see [Iteration 44](#iteration-44-the-first-call-that-reached-the-model)). All six product-agent
 calls dispatched before the restart ended on the provider's session limit in
 two to four seconds. Under the amended charter (ADR-355) **those six calls are
 void**: no model saw a prompt, none spent a create, continuation or repair
@@ -25,7 +26,7 @@ below match it. What each design has left:
 
 | Design / criterion | Void calls (not attempts) | Attempts that reached the model | Create or repair prompt | Continuations unspent | Retry project |
 |---|---|---|---|---|---|
-| Heron repair / F4 | 3 | 0 | unspent | 3 of 3 | `ot7-heron-repair-b`, a fresh copy of the seed |
+| Heron repair / F4 | 3 | 1: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound with no submission | consumed under the runner's timeout rule; the charter does not say whether a runner-bound kill is a turn that ended on its own | 3 of 3 | none dispatched; an owner ruling on the timeout decides whether `ot7-heron-repair-c` gets the same prompt |
 | Heron arm / F5 | 1 | 0 | unspent | 3 of 3 | `ot7-heron-b` |
 | Robin balancer / F6 | 1 | 0 | unspent | 3 of 3 | `ot7-robin-b` |
 | Plover biped / F7 | 1 | 0 | unspent | 3 of 3 | `ot7-plover-b` |
@@ -142,6 +143,55 @@ the external project. The transcript contains a rate-limit event and no tool
 use. Collector exit 0 means evidence collection completed, not repair success.
 No successful after-repair report exists; F4 stays open.
 
+## Iteration 44: the first call that reached the model
+
+With Claude available (a one-word probe with the runner's model name
+answered in 5.4 s), the frozen repair prompt was dispatched once through the
+runner on `ot7-heron-repair-b`, a fresh copy of the seed with the earlier
+evidence, session pointer and CLI lock left out. The runner validated the
+seed identity, and its guarded before-read reproduced the baseline exactly:
+**105 pairs, 15 failures**, both horn attachments 0.2 mm short of contact,
+the servo/cheek overlap and the collision plane on `comp_base`. The
+[receipt](retained/repair-timeout-b.json) carries every number and digest.
+
+The model saw the prompt and worked for the whole bound. Its tool calls, in
+order: the clearance scope four times (the summary, then the pairs in three
+pages of 50), the script, the authoring contract, seven pages of the assembly
+and library API, the script source in two pages, then the library and part
+exports. After the fifteenth read, at 05:12:25 UTC, it produced one message
+of **64,000 output tokens, 63,999 of them thinking**, that ended on the
+provider's output cap at 05:29:03 with no text and no tool call. It made two
+more reads and was generating again when the runner killed the process group
+at **1,800.0 s**. It never called submit. **Zero design edits, zero
+revisions, zero acceptances**: the script hash and accepted revision are
+byte-identical before and after, the after-read measures the same 15
+failures, and only the ordinary restore fields (`latest_candidate`,
+`updated_at`) changed in the metadata.
+
+Two evidence limits, both the runner's. The CLI envelope is empty and the
+runner's `transcript.jsonl` is missing, because the collector writes the
+stream only after the turn returns and the kill came first. The provider
+stream was recovered unmodified from the harness's own session store for the
+project directory (698,175 bytes, SHA-256 `56e81011…`, retained under
+`evidence/f4-repair/recovered/`), and the receipt's per-message stop reasons,
+token counts and tool sequence come from it. Its usage total is 82,904 output
+tokens over 16 API messages.
+
+What this is and is not. It is the first measured product-agent result of the
+run: given measured fit and the repair prompt, the agent read the right
+things first and then spent 16.5 of its 30 minutes inside one thinking burst
+that produced nothing. It is not a void call: no usage, session or credit
+limit appeared anywhere in the stream. Under the runner's documented rule a
+timeout is `interrupted` and keeps its consumed slot, so the runner reports
+the repair slot spent. The charter voids only provider limits and counts
+"a turn that reached the model and ended on its own"; a runner-bound kill is
+neither, and that ruling belongs to the owner. No retry was dispatched.
+
+The tooling gaps this exposes are recorded, not fixed, in this unit: the
+CLI passes no thinking or output bound to the provider, so one silent burst
+can consume most of a 30-minute turn; and the collector loses the stream on
+a kill. Both are named as the next tooling units in the record.
+
 ## Implemented checks and evidence for F1–F9
 
 | Criterion | What exists | Evidence and limits |
@@ -149,7 +199,7 @@ No successful after-repair report exists; F4 stays open.
 | F1 | Build replies include published static fit counts and every named failing pair; `clearance` inspect is exposed; instructions distinguish stdout claims from measurements | [Implementation](../../../.hypergraph/graph/record/happy-dawn-1960.md), [complete-list correction](../../../.hypergraph/graph/record/steady-quartz-9854.md), [real pager regression](../../../.hypergraph/graph/record/tidy-journey-9462.md), [CLI contract](../../CLI.md). A script printing “no overlap” returns its measured 100 mm³ intersection. Later-page failures and read errors are pinned |
 | F2 | Contact and minimum-clearance declarations; overlaps, missed contact, insufficient clearance and world geometry are advisory findings | [Known-answer fixtures](FIT-INTENT.md), [record](../../../.hypergraph/graph/record/crisp-ember-0302.md), [numerical correction](../../../.hypergraph/graph/record/hidden-lodge-4550.md), [script contract](../../XSCRIPT.md). Solid world geometry needs explicit intent; grounding alone does not imply a floor |
 | F3 | Published bounded exact-solid hinge and slider sweeps, agent inspection and `cadex clearance --sweep` | [Producer](../../../.hypergraph/graph/record/misty-spark-6372.md), [consumer](../../../.hypergraph/graph/record/green-river-3790.md), [slider fixtures](../../../.hypergraph/graph/record/curious-cedar-4881.md), [Finch product measurement](../../../.hypergraph/graph/record/kind-flint-2780.md), [sweep receipt](sweep/README.md). Discrete samples, unsupported or undeclared coverage explicitly incomplete; details below |
-| F4 | Three void calls (ADR-355), zero attempts; before/after fit and both attachment assessments retained | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [collector](retained/repair-refusal-iteration39.json), [classification](attempts/void-calls.json). **Open: repair prompt and all continuations unspent** |
+| F4 | Three void calls (ADR-355); one call that reached the model and timed out at the runner's 30-minute bound with 17 reads, one 63,999-token thinking burst capped at the output limit, and no submission; before/after fit and both attachment assessments retained, unchanged | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [collector](retained/repair-refusal-iteration39.json), [classification](attempts/void-calls.json), [timed-out call](retained/repair-timeout-b.json). **Open: no repair; the seed is unrepaired at 15 failures** |
 | F5 | One void arm create, zero attempts; frozen prompt, transcript and unavailable reports retained | [Record](../../../.hypergraph/graph/record/quiet-dew-5243.md), [receipt](attempts/heron-refusal.json). **Open: create prompt and all continuations unspent** |
 | F6 | One void balancer create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/keen-chart-9070.md), [receipt](attempts/robin-refusal.json). **Open: create prompt and all continuations unspent** |
 | F7 | New frozen biped prompt; one void create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/red-hawk-4600.md), [receipt](attempts/plover-refusal.json). **Open: create prompt and all continuations unspent** |
@@ -216,7 +266,8 @@ for this run's smoke receipts; no policy training occurred in ot7.
 ## F10 and what remains open
 
 F1–F3 and F8 have fixture-verified checks within the limits above; F9 has
-recorded regression evidence. **F4–F7 remain open and untried**: void calls
+recorded regression evidence. **F4–F7 remain open.** F4 has been tried once
+and the call timed out before any submission; F5–F7 are untried. Void calls
 establish no geometric design outcome, and they spent nothing.
 
 F10's requirement that the critic accepted done is **unmet**. This report

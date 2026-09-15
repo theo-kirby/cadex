@@ -1,0 +1,417 @@
+{
+ "criterion": "F4",
+ "iteration": 44,
+ "project": "ot7-heron-repair-b",
+ "seed": "fresh copy of ot7-heron-repair, excluding evidence/, agent.json and the CLI lock; identity validated by the runner before dispatch",
+ "evidence_directory": "evidence/f4-repair",
+ "model": "claude-fable-5",
+ "prompt": {
+  "path": "repair.prompt.txt",
+  "bytes": 830,
+  "sha256": "5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904"
+ },
+ "dispatched_utc": "2026-09-15T05:07:22Z",
+ "runner_exit_code": 0,
+ "outcome": "The turn reached the model and was killed by the runner at its 30-minute bound before any script was submitted; no design edit, no revision, no acceptance.",
+ "collector_status": "interrupted",
+ "turn_status": "completed",
+ "void": null,
+ "slot_consumed": true,
+ "continuations_used": 1,
+ "slots_spent": 1,
+ "void_calls_this_project": 0,
+ "slot_rule": "Runner rule (README): a timeout is interrupted and retains its consumed slot. The charter voids only provider usage, session or credit limits; whether a runner-bound kill counts as a turn that ended on its own is left to the owner.",
+ "turn": {
+  "exit_code": "timeout",
+  "elapsed_seconds": 1800.0025342309382,
+  "fresh_session": true,
+  "session_id": "e813a990-4241-4de8-8c4a-8d7ae8d771b1",
+  "cli_envelope": "empty: the CLI was killed before writing it",
+  "runner_transcript": "missing: transcript.jsonl is written only after the turn returns, and the child was killed first",
+  "recovered_session_log": {
+   "path": "recovered/session-e813a990.jsonl",
+   "bytes": 698175,
+   "sha256": "56e8101172d23fa3d6beafc4a2718592ceae62071fb6fe1d6ac94b5c413d25ca"
+  },
+  "recovered_from": "the Claude Code session store for this project directory, copied unmodified after the kill",
+  "first_frame_utc": "2026-09-15T05:07:25Z",
+  "last_frame_utc": "2026-09-15T05:29:13Z",
+  "api_messages": 16,
+  "tool_uses": 17,
+  "submit_calls": 0,
+  "text_output": 0,
+  "usage_totals": {
+   "output_tokens": 82904,
+   "cache_read_input_tokens": 746388,
+   "cache_creation_input_tokens": 94540
+  },
+  "messages": [
+   {
+    "at": "05:07:30",
+    "stop_reason": "tool_use",
+    "output_tokens": 143,
+    "thinking_tokens": 31
+   },
+   {
+    "at": "05:07:34",
+    "stop_reason": "tool_use",
+    "output_tokens": 104,
+    "thinking_tokens": 0
+   },
+   {
+    "at": "05:07:38",
+    "stop_reason": "tool_use",
+    "output_tokens": 126,
+    "thinking_tokens": 0
+   },
+   {
+    "at": "05:07:42",
+    "stop_reason": "tool_use",
+    "output_tokens": 126,
+    "thinking_tokens": 0
+   },
+   {
+    "at": "05:08:03",
+    "stop_reason": "tool_use",
+    "output_tokens": 1435,
+    "thinking_tokens": 1399
+   },
+   {
+    "at": "05:08:09",
+    "stop_reason": "tool_use",
+    "output_tokens": 254,
+    "thinking_tokens": 170
+   },
+   {
+    "at": "05:08:13",
+    "stop_reason": "tool_use",
+    "output_tokens": 86,
+    "thinking_tokens": 0
+   },
+   {
+    "at": "05:08:17",
+    "stop_reason": "tool_use",
+    "output_tokens": 210,
+    "thinking_tokens": 101
+   },
+   {
+    "at": "05:08:22",
+    "stop_reason": "tool_use",
+    "output_tokens": 237,
+    "thinking_tokens": 63
+   },
+   {
+    "at": "05:09:15",
+    "stop_reason": "tool_use",
+    "output_tokens": 3439,
+    "thinking_tokens": 3362
+   },
+   {
+    "at": "05:09:20",
+    "stop_reason": "tool_use",
+    "output_tokens": 101,
+    "thinking_tokens": 0
+   },
+   {
+    "at": "05:12:14",
+    "stop_reason": "tool_use",
+    "output_tokens": 11888,
+    "thinking_tokens": 11811
+   },
+   {
+    "at": "05:12:25",
+    "stop_reason": "tool_use",
+    "output_tokens": 503,
+    "thinking_tokens": 399
+   },
+   {
+    "at": "05:29:03",
+    "stop_reason": "max_tokens",
+    "output_tokens": 64000,
+    "thinking_tokens": 63999
+   },
+   {
+    "at": "05:29:09",
+    "stop_reason": "tool_use",
+    "output_tokens": 146,
+    "thinking_tokens": 62
+   },
+   {
+    "at": "05:29:13",
+    "stop_reason": "tool_use",
+    "output_tokens": 106,
+    "thinking_tokens": 0
+   }
+  ],
+  "tool_use_sequence": [
+   "05:07:31 inspect clearance",
+   "05:07:31 inspect script",
+   "05:07:34 inspect clearance /pairs",
+   "05:07:38 inspect clearance /pairs",
+   "05:07:42 inspect clearance /pairs",
+   "05:08:03 describe_api",
+   "05:08:10 inspect api /domains/assembly",
+   "05:08:13 inspect api /domains/assembly/notes",
+   "05:08:17 inspect api /domains/assembly/exports",
+   "05:08:22 inspect api /domains/assembly/exports/0",
+   "05:08:23 inspect api /domains/assembly/exports/2",
+   "05:09:15 inspect script /source",
+   "05:09:20 inspect script /source",
+   "05:12:14 inspect api /library",
+   "05:12:25 inspect api /library/exports",
+   "05:29:09 inspect api /library/exports/14",
+   "05:29:13 inspect api /domains/part/exports"
+  ]
+ },
+ "completed_design_turns": 0,
+ "actor_design_edits": 0,
+ "before_measurement_seconds": 0.16369626391679049,
+ "after_measurement_seconds": 0.16403446695767343,
+ "before_read_seed_unchanged": true,
+ "script_sha256_before": "3339a1786d4d2bbcb69de9b4410ee325aed9ea73a327cd7703848484a677389d",
+ "script_sha256_after": "3339a1786d4d2bbcb69de9b4410ee325aed9ea73a327cd7703848484a677389d",
+ "accepted_revision_before": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+ "accepted_revision_after": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+ "metadata_changed_fields": [
+  "latest_candidate",
+  "updated_at"
+ ],
+ "before_fit": {
+  "verdict": "fail",
+  "failing_count": 15,
+  "pairs_checked": 105
+ },
+ "after_fit": {
+  "verdict": "fail",
+  "failing_count": 15,
+  "pairs_checked": 105
+ },
+ "after_failing": [
+  {
+   "first": "comp_base",
+   "second": "comp_servo_shoulder",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 248.20162986795066
+  },
+  {
+   "first": "comp_base",
+   "second": "comp_bearing_shoulder",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_base",
+   "second": "comp_tabscrew_shoulder_0",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052369
+  },
+  {
+   "first": "comp_base",
+   "second": "comp_tabscrew_shoulder_1",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052367
+  },
+  {
+   "first": "comp_upper_arm",
+   "second": "comp_servo_elbow",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 248.20162986795046
+  },
+  {
+   "first": "comp_upper_arm",
+   "second": "comp_bearing_elbow",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_upper_arm",
+   "second": "comp_tabscrew_elbow_0",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052383
+  },
+  {
+   "first": "comp_upper_arm",
+   "second": "comp_tabscrew_elbow_1",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052412
+  },
+  {
+   "first": "comp_upper_arm",
+   "second": "comp_centrescrew_shoulder",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_forearm",
+   "second": "comp_centrescrew_elbow",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_servo_shoulder",
+   "second": "comp_horn_shoulder",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_servo_shoulder",
+   "second": "comp_centrescrew_shoulder",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 9.424777960769386
+  },
+  {
+   "first": "comp_servo_elbow",
+   "second": "comp_horn_elbow",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_servo_elbow",
+   "second": "comp_centrescrew_elbow",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 9.424777960769378
+  },
+  {
+   "first": "comp_base",
+   "second": "",
+   "status": "world geometry",
+   "distance_mm": null,
+   "common_volume_mm3": null
+  }
+ ],
+ "before_attachments": [
+  {
+   "first": "comp_horn_shoulder",
+   "second": "comp_upper_arm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999999732,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_horn_elbow",
+   "second": "comp_forearm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999993,
+   "common_volume_mm3": 0.0
+  }
+ ],
+ "after_attachments": [
+  {
+   "first": "comp_horn_shoulder",
+   "second": "comp_upper_arm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999999732,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_horn_elbow",
+   "second": "comp_forearm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999993,
+   "common_volume_mm3": 0.0
+  }
+ ],
+ "assessment_status_before": "fail",
+ "assessment_status_after": "fail",
+ "sweep": "unavailable on this accepted revision (no sweep step declared)",
+ "smoke": "not requested for F4",
+ "artifacts": {
+  "before": [
+   {
+    "path": "clearance.json",
+    "bytes": 48856,
+    "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803"
+   },
+   {
+    "path": "fit.json",
+    "bytes": 4488,
+    "sha256": "63c8f7722485ec542fa91eb728158acfeb9fb6f0fa46512b6fd36d95d1fd4b30"
+   },
+   {
+    "path": "inventory.json",
+    "bytes": 19242,
+    "sha256": "8115e34ae52612f4ee6462cae503a3d3cc9b45e539e6ac9e99176b17caa61811"
+   },
+   {
+    "path": "measurement.stderr.txt",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "measurement.stdout.json",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "repair-assessment.json",
+    "bytes": 5650,
+    "sha256": "95f7e3239f7d5558890c67c09d7c5b2f02e4fce78341016074ebe7c05144878f"
+   }
+  ],
+  "turn-0": [
+   {
+    "path": "clearance.json",
+    "bytes": 48856,
+    "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803"
+   },
+   {
+    "path": "fit.json",
+    "bytes": 4488,
+    "sha256": "63c8f7722485ec542fa91eb728158acfeb9fb6f0fa46512b6fd36d95d1fd4b30"
+   },
+   {
+    "path": "inventory.json",
+    "bytes": 19242,
+    "sha256": "8115e34ae52612f4ee6462cae503a3d3cc9b45e539e6ac9e99176b17caa61811"
+   },
+   {
+    "path": "measurement.stderr.txt",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "measurement.stdout.json",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "repair-assessment.json",
+    "bytes": 5650,
+    "sha256": "95f7e3239f7d5558890c67c09d7c5b2f02e4fce78341016074ebe7c05144878f"
+   },
+   {
+    "path": "repair.prompt.txt",
+    "bytes": 830,
+    "sha256": "5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904"
+   },
+   {
+    "path": "turn.stderr.txt",
+    "bytes": 342,
+    "sha256": "007023c8a16af497bd4cf6e0fa2543d08ed8236eeb3803d34cda6cf5055bc3fd"
+   },
+   {
+    "path": "turn.stdout.json",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   }
+  ]
+ }
+}
