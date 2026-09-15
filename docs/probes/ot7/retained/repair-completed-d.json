@@ -1,0 +1,309 @@
+{
+ "criterion": "F4",
+ "iteration": 48,
+ "project": "ot7-heron-repair-d",
+ "seed": "fresh copy of ot7-heron-repair, excluding evidence/, agent.json and the CLI lock; identity validated by the runner before dispatch",
+ "evidence_directory": "evidence/f4-repair",
+ "model": "claude-fable-5",
+ "prompt": {
+  "path": "repair.prompt.txt",
+  "bytes": 830,
+  "sha256": "5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904"
+ },
+ "dispatched_utc": "2026-09-15T10:24:40Z",
+ "runner_exit_code": null,
+ "outcome": null,
+ "collector_status": "exhausted",
+ "turn_status": "completed",
+ "void": null,
+ "interruption": null,
+ "slot_consumed": true,
+ "continuations_used": 1,
+ "slots_spent": 1,
+ "void_calls_this_project": 0,
+ "interrupted_calls_this_project": 0,
+ "slot_rule": null,
+ "retry": null,
+ "turn": {
+  "exit_code": 0,
+  "elapsed_seconds": 1461.8828215710819,
+  "runner_transcript": {
+   "path": "turn-0/transcript.jsonl",
+   "bytes": 1384115,
+   "sha256": "43d63ef81c446fe04269912969f7adedaf2512686dc0c09c2186c4beb4e52314"
+  },
+  "captured": "frame by frame as it arrived (ADR-356)",
+  "frames": {
+   "system": 965,
+   "rate_limit_event": 27,
+   "assistant": 89,
+   "user": 46,
+   "tool_progress": 8,
+   "result": 1
+  },
+  "first_frame_utc": "2026-09-15T10:24:45.891Z",
+  "last_frame_utc": "2026-09-15T10:49:02.043Z",
+  "api_messages": 39,
+  "synthetic_error_messages": 0,
+  "tool_uses": 46,
+  "submit_calls": 0,
+  "text_output": 1,
+  "rate_limit_window_at_first_event": {
+   "status": "allowed",
+   "five_hour": {
+    "utilization": 0.08,
+    "resetsAt": 1789485600
+   },
+   "seven_day": {
+    "utilization": 0.34,
+    "resetsAt": 1789538400
+   }
+  },
+  "rate_limit_window_at_last_event": {
+   "status": "allowed",
+   "five_hour": {
+    "utilization": 0.57,
+    "resetsAt": 1789485600
+   },
+   "seven_day": {
+    "utilization": 0.37,
+    "resetsAt": 1789538400
+   }
+  },
+  "rate_limit_events": 27,
+  "result_frame": {
+   "subtype": "success",
+   "is_error": false,
+   "api_error_status": null,
+   "result": "Repair complete and re-accepted at revision `252e73b5`, digest reproducing on rebuild. The measured evidence: rest-pose fit **verdict pass \u2014 120/120 pairs, zero failing**; swept motion **complete** at 5\u00b0 over shoulder [\u221290\u00b0, +65\u00b0] and elbow [\u2212100\u00b0, +25\u00b0] with zero common volume at every sample, all 0 mm minima being the declared intended contacts. The mechanism is unchanged in kind \u2014 same two MG90S servos, two single-arm horns, two MR128 bearings, four M2\u00d76 and two M2\u00d716 catalog screws placed as separate components, same printed base/upper-arm/forearm, same joints, actuators, 12 observation channels and reach task (target IK sits at shoulder +35.5\u00b0, elbow +4.6\u00b0, inside the clamped travel). Sweepable parameters as before, plus the new `shoulder_fwd` and `elbow_fold` travel clamps.\n\nDECISION: Servo tab pockets \u2014 the measured base\u2229servo overlap (248.2 mm\u00b3 each joint, exactly two tabs minus their holes) proved the catalog MG90S tab plate spans [y_co, y_co+2.4] INTO the parent cheek, not outboard of it; each cheek now cuts a form pocket whose floor the screws clamp the tabs against, and the tab-screw heads seat at the cheek outer face, resolving both intersections to declared contact at [\u2026]",
+   "num_turns": 47,
+   "duration_ms": 1458201,
+   "duration_api_ms": 1145984,
+   "stop_reason": "end_turn",
+   "terminal_reason": "completed",
+   "result_truncated": "first 1,200 characters; the full text is in the retained transcript and CLI envelope"
+  },
+  "usage_totals": {
+   "output_tokens": 80451,
+   "thinking_tokens": 65887,
+   "cache_read_input_tokens": 5451760,
+   "cache_creation_input_tokens": 252864
+  },
+  "tool_use_sequence": [
+   "10:24:45 inspect clearance",
+   "10:24:45 inspect script",
+   "10:24:47 inspect clearance /pairs",
+   "10:24:49 inspect clearance /pairs",
+   "10:24:52 inspect clearance /pairs",
+   "10:24:52 inspect script /source",
+   "10:25:24 describe_api",
+   "10:25:24 inspect script /source",
+   "10:25:32 inspect api /domains/assembly",
+   "10:25:33 inspect api /domains/assembly/exports",
+   "10:25:36 inspect api /domains/assembly/notes",
+   "10:25:41 inspect api /domains/assembly/exports/0",
+   "10:25:41 inspect api /domains/assembly/exports/2",
+   "10:25:42 inspect api /domains/assembly/exports/3",
+   "10:27:25 inspect api /library",
+   "10:31:28 inspect output",
+   "10:31:30 inspect output /facts",
+   "10:33:11 inspect api /library/exports",
+   "10:33:14 inspect api /library/exports/14",
+   "10:37:54 edit_script",
+   "10:39:17 edit_script",
+   "10:40:48 edit_script",
+   "10:40:58 edit_script",
+   "10:41:42 edit_script",
+   "10:41:54 edit_script",
+   "10:43:00 edit_script",
+   "10:44:01 edit_script",
+   "10:44:46 inspect clearance /clearance_sweep",
+   "10:44:48 inspect clearance /clearance_sweep/joints/0",
+   "10:44:52 inspect clearance /clearance_sweep/joints/0/pairs",
+   "10:44:56 inspect clearance /clearance_sweep/joints/0/pairs",
+   "10:44:58 inspect clearance /clearance_sweep/joints/0/pairs",
+   "10:45:32 inspect clearance /clearance_sweep/joints/1",
+   "10:45:34 inspect clearance /clearance_sweep/joints/1/pairs",
+   "10:45:41 inspect clearance /clearance_sweep/joints/1/pairs",
+   "10:45:43 inspect clearance /clearance_sweep/joints/1/pairs",
+   "10:45:46 inspect clearance /clearance_sweep/joints/1/pairs",
+   "10:46:44 edit_script",
+   "10:47:22 inspect clearance /clearance_sweep",
+   "10:47:22 inspect inventory",
+   "10:47:42 inspect clearance /clearance_sweep/joints/0",
+   "10:47:42 inspect clearance /clearance_sweep/joints/1",
+   "10:47:47 inspect clearance /clearance_sweep/joints/0/pairs",
+   "10:47:48 inspect clearance /clearance_sweep/joints/1/pairs",
+   "10:47:54 inspect clearance /clearance_sweep/joints/1/pairs",
+   "10:48:01 rebuild"
+  ]
+ },
+ "completed_design_turns": 1,
+ "actor_design_edits": 0,
+ "before_measurement_seconds": 0.16375225502997637,
+ "after_measurement_seconds": 0.1638013378251344,
+ "before_read_seed_unchanged": true,
+ "script_sha256_before": "3339a1786d4d2bbcb69de9b4410ee325aed9ea73a327cd7703848484a677389d",
+ "script_sha256_after": "27680dc06ff49251bbc1c8c4ac92b19c83b630cd71276f0e2c687045ab8a92d9",
+ "accepted_revision_before": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+ "accepted_revision_after": "252e73b5c2d6b9d80f87b121dab3a0bd4270eaf032fbdd8906536ee67fe25f79",
+ "metadata_changed_fields": [
+  "accepted_attempt",
+  "accepted_contract",
+  "accepted_digest",
+  "accepted_revision",
+  "latest_candidate",
+  "param_specs",
+  "updated_at",
+  "working_revision"
+ ],
+ "before_fit": {
+  "verdict": "fail",
+  "failing_count": 15,
+  "pairs_checked": 105,
+  "counts": {
+   "clear": 91,
+   "intersection": 8,
+   "below clearance": 6,
+   "unknown": 0,
+   "world geometry": 1
+  }
+ },
+ "after_fit": {
+  "verdict": "pass",
+  "failing_count": 0,
+  "pairs_checked": 120,
+  "counts": {
+   "clear": 120,
+   "intersection": 0,
+   "below clearance": 0,
+   "unknown": 0
+  }
+ },
+ "after_failing": [],
+ "before_attachments": [
+  {
+   "first": "comp_horn_shoulder",
+   "second": "comp_upper_arm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999999732,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_horn_elbow",
+   "second": "comp_forearm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999993,
+   "common_volume_mm3": 0.0
+  }
+ ],
+ "after_attachments": [
+  {
+   "first": "comp_horn_shoulder",
+   "second": "comp_upper_arm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999999732,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_horn_elbow",
+   "second": "comp_forearm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999993,
+   "common_volume_mm3": 0.0
+  }
+ ],
+ "assessment_status_before": "fail",
+ "assessment_status_after": "fail",
+ "smoke": "not requested for F4",
+ "artifacts": {
+  "before": [
+   {
+    "path": "clearance.json",
+    "bytes": 48856,
+    "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803"
+   },
+   {
+    "path": "fit.json",
+    "bytes": 4488,
+    "sha256": "63c8f7722485ec542fa91eb728158acfeb9fb6f0fa46512b6fd36d95d1fd4b30"
+   },
+   {
+    "path": "inventory.json",
+    "bytes": 19242,
+    "sha256": "8115e34ae52612f4ee6462cae503a3d3cc9b45e539e6ac9e99176b17caa61811"
+   },
+   {
+    "path": "measurement.stderr.txt",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "measurement.stdout.json",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "repair-assessment.json",
+    "bytes": 5650,
+    "sha256": "95f7e3239f7d5558890c67c09d7c5b2f02e4fce78341016074ebe7c05144878f"
+   }
+  ],
+  "turn-0": [
+   {
+    "path": "clearance.json",
+    "bytes": 113390,
+    "sha256": "4a692ba7d6db04a21720ae07fed114649a130c93fbec94a819f98bb7dfc53ad5"
+   },
+   {
+    "path": "fit.json",
+    "bytes": 641,
+    "sha256": "a567235932c430d822a56a0b4037ea943e01e4e6b4d814b3b8b80e4d1be94522"
+   },
+   {
+    "path": "inventory.json",
+    "bytes": 20119,
+    "sha256": "755a61cdafaa8b176ccf5f598b3beb3ea30514c3d364b0d6808fc21876ba045a"
+   },
+   {
+    "path": "measurement.stderr.txt",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "measurement.stdout.json",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "repair-assessment.json",
+    "bytes": 1487,
+    "sha256": "b610b61c0ef2bb7159352f0f9fb500f8eee66fa84e50d77c9a45cbbf8fd87ff3"
+   },
+   {
+    "path": "repair.prompt.txt",
+    "bytes": 830,
+    "sha256": "5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904"
+   },
+   {
+    "path": "transcript.jsonl",
+    "bytes": 1384115,
+    "sha256": "43d63ef81c446fe04269912969f7adedaf2512686dc0c09c2186c4beb4e52314"
+   },
+   {
+    "path": "turn.stderr.txt",
+    "bytes": 12105,
+    "sha256": "1a9573abaccd9ea80cde23e92c6017f4d526c9c2e576335bafb28efc134f3bea"
+   },
+   {
+    "path": "turn.stdout.json",
+    "bytes": 16547,
+    "sha256": "aa91e04bfee85c9d52a2044e23085e6cfbb4ac3f129218422005f10c89dbc0e1"
+   }
+  ]
+ }
+}

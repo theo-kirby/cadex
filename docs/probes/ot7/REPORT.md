@@ -2,11 +2,16 @@
 
 Verified against source: 2026-09-15. [Cadex-new]
 
-**The measured-fit tools are implemented; the agent's ability to repair or
-create fitting mechanisms has been tried once, for F4, and that call ran out
-of time before it submitted anything** (see [Iteration 44](#iteration-44-the-first-call-that-reached-the-model)). All six product-agent
-calls dispatched before the restart ended on the provider's session limit in
-two to four seconds. Under the amended charter (ADR-355) **those six calls are
+**The measured-fit tools are implemented, and the agent has now completed
+one repair turn from measurements alone (F4, iteration 48 on
+`ot7-heron-repair-d`): it accepted a revision the product's checker passes at
+zero failing pairs, static and swept, but the collector's attachment
+assessment still fails, because the horn-to-link gap was declared an intended
+clearance rather than closed** (see [Iteration 48](#iteration-48-the-repair-turn-that-completed)).
+The two earlier calls that reached a model were an interrupted execution
+(iteration 44) and a void call (iteration 48 on `ot7-heron-repair-c`). All six
+product-agent calls dispatched before the restart ended on the provider's
+session limit in two to four seconds. Under the amended charter (ADR-355) **those six calls are
 void**: no model saw a prompt, none spent a create, continuation or repair
 slot, and none is a design result. F4–F7 remain open with every slot unspent.
 This report is written forward from the restart; it claims no design outcome
@@ -26,7 +31,7 @@ below match it. What each design has left:
 
 | Design / criterion | Void calls (not attempts) | Attempts that reached the model | Create or repair prompt | Continuations unspent | Retry project |
 |---|---|---|---|---|---|
-| Heron repair / F4 | 3, and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, reached the model, killed at the runner's 30-minute bound with no submission; decision #44 rules it not a turn and no slot | 0 | unspent | 3 of 3 | `ot7-heron-repair-c`, under the corrected collector (ADR-356) |
+| Heron repair / F4 | 4: three pre-restart, and iteration 48 on `ot7-heron-repair-c` (cut off by the five-hour limit after 6 reads, [receipt](retained/repair-void-c.json)); and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound (decision #44: not a turn, no slot) | 1: iteration 48 on `ot7-heron-repair-d`, completed in 1,461.9 s with six accepted revisions ([receipt](retained/repair-completed-d.json)) | spent: the repair mode's single slot | none in the repair mode: F4 is one frozen prompt | none: the repair slot is spent and its result is measured |
 | Heron arm / F5 | 1 | 0 | unspent | 3 of 3 | `ot7-heron-b` |
 | Robin balancer / F6 | 1 | 0 | unspent | 3 of 3 | `ot7-robin-b` |
 | Plover biped / F7 | 1 | 0 | unspent | 3 of 3 | `ot7-plover-b` |
@@ -208,6 +213,93 @@ budget has no effect, so this is the only hard per-message bound available.
 No frozen prompt changed. The next design turn is the same repair prompt on
 `ot7-heron-repair-c`, dispatched only while the product agent is available.
 
+## Iteration 48: the repair turn that completed
+
+Two calls, both on fresh copies of the seed validated by the runner, both
+under the corrected collector (ADR-356), both with the unchanged frozen repair
+prompt (`5d846901…`, 830 bytes). No actor edited any design.
+
+**`ot7-heron-repair-c` is void** ([receipt](retained/repair-void-c.json)).
+Dispatched at 06:07 UTC into a five-hour window the stream's first
+`rate_limit_event` frame already showed at 95 % utilization, the model made
+six reads in 80 s (the clearance summary, the script, three pages of pairs,
+the script source) and was cut off mid-turn by the session limit, 429, at
+101 %. The collector classified it void with no slot spent; the before and
+after reads both show the seed's 15 failures and the script and accepted
+revision unchanged. The stream was written frame by frame, so this void call
+is the first whose transcript (216,946 bytes) survived in the runner's own
+capture. The probe that preceded it answered "ok", so an answering probe is
+not evidence of room in the window; the first `rate_limit_event` frame is.
+
+**`ot7-heron-repair-d` completed** ([receipt](retained/repair-completed-d.json)).
+Dispatched at 10:24:40 UTC, four minutes after the window reset (first frame
+at 8 % utilization), the turn ended on its own after **1,461.9 s** with 39
+model messages and 46 tool calls: 35 inspects, 9 script edits, one
+`describe_api`, one rebuild. Six edits were accepted and three rejected (two
+malformed replacement calls and one MuJoCo refusal of a collision plane on a
+non-static body). The longest silent thinking gap was 254 s; usage was
+80,451 output tokens (65,887 thinking) and 5.45 M cache-read input tokens,
+and the five-hour window went from 8 % to 57 % in this one turn. The turn
+read clearance first and after every accepted edit, then the script, the
+API, the outputs and, at the end, the inventory. The accepted revision
+sequence by failing count is 15 → 2 → 1 → 2 → 1 → 0 → 0, ending at
+`252e73b5…`, script `27680dc0…`, digest reproduced on rebuild.
+
+What the after-read measures, independently of the agent's printed claims:
+
+- **Static fit: pass, 120 pairs, 0 failing** (from 105 pairs and 15). The
+  eight intersections and six below-clearance pairs are gone; the world
+  geometry row is gone.
+- **Swept fit: complete** at 5°, shoulder [−90°, +65°] in 32 samples (20.9 s)
+  and elbow [−100°, +25°] in 26 samples (10.5 s), 31.3 s in all, solved-pose
+  agreement true on both joints, maximum common volume 0 on every pair at
+  every sample; the 19 pairs at 0 mm are all declared contacts.
+- **The collector's attachment assessment: fail.** `comp_horn_shoulder` to
+  `comp_upper_arm` is still 0.19999999999999732 mm and `comp_horn_elbow` to
+  `comp_forearm` still 0.19999999999993 mm, exactly the seed's values. The
+  agent declared both pairs as *clearance, minimum 0.05 mm* rather than as
+  contact, so the product's checker passes them.
+- **Inventory:** catalog counts unchanged (2 MR128 bearings, 2 M2×16 and 4
+  M2×6 screws, 2 single-arm horns), but `servo_shoulder` and `servo_elbow`
+  are now `uncatalogued_sources`: the agent cut a spline screw bore into each
+  catalog servo body so the centre screw's 9.42 mm³ overlap measures as
+  contact.
+
+How the three ot6 defects fared, in the agent's own five recorded decisions
+(ADR-006 to ADR-010 in the project's `DECISIONS.md`):
+
+1. **The floor plane** is gone from the base. In its place the agent added a
+   grounded 400 × 400 × 8 mm `bench` slab as an ordinary component with a
+   declared base contact, after MuJoCo refused the plane on a non-static
+   body and the checker reported it as world geometry. The checker now
+   measures every bench pair. The design carries a bench.
+2. **The buried servo tab** (248.2 mm³ on each joint) is resolved by a form
+   pocket in each cheek; the tab pairs now measure contact at zero volume.
+   The screw overlaps (4.07 mm³ per tab screw, 9.42 mm³ per centre screw)
+   are resolved by cutting the holes at shank diameter, which the agent
+   describes as modelling the thread-formed state.
+3. **The horn 0.2 mm from its link** is **not** closed. Neither the seed nor
+   the product's report ever named it: 0.2 mm exceeds the 0.1 mm default
+   minimum, so it was a clear pair on every page the agent read, and the
+   agent chose to declare it a running clearance. The only reader that flags
+   it is the collector's attachment assessment, which carries ot6's knowledge
+   that a horn attaches to its link.
+
+Two further changes the prompt did not ask for: the joint ranges are narrowed
+from symmetric ±90° and ±100° to the swept first contacts less 5° (shoulder
++65°, elbow +25°), mirrored into the servo command limits; and `sweep_step_degrees=5.0`
+is declared so the swept report publishes. Both are the agent's design
+decisions and are recorded as such.
+
+**Against F4's bar.** "Accepts with zero failing fit checks": met, on the
+product's static and swept checks. "Resolves all three defects": not met;
+two are resolved and the third is declared away. This is F4's measured
+result, from the one frozen prompt the repair mode carries, and it is a
+product finding as much as an agent one: fit intent (F2) is only as good as
+what a script declares, and an attachment nobody declared is invisible to
+measurements alone. No smoke rollout ran; the repair mode does not request
+one.
+
 ## Implemented checks and evidence for F1–F9
 
 | Criterion | What exists | Evidence and limits |
@@ -215,7 +307,7 @@ No frozen prompt changed. The next design turn is the same repair prompt on
 | F1 | Build replies include published static fit counts and every named failing pair; `clearance` inspect is exposed; instructions distinguish stdout claims from measurements | [Implementation](../../../.hypergraph/graph/record/happy-dawn-1960.md), [complete-list correction](../../../.hypergraph/graph/record/steady-quartz-9854.md), [real pager regression](../../../.hypergraph/graph/record/tidy-journey-9462.md), [CLI contract](../../CLI.md). A script printing “no overlap” returns its measured 100 mm³ intersection. Later-page failures and read errors are pinned |
 | F2 | Contact and minimum-clearance declarations; overlaps, missed contact, insufficient clearance and world geometry are advisory findings | [Known-answer fixtures](FIT-INTENT.md), [record](../../../.hypergraph/graph/record/crisp-ember-0302.md), [numerical correction](../../../.hypergraph/graph/record/hidden-lodge-4550.md), [script contract](../../XSCRIPT.md). Solid world geometry needs explicit intent; grounding alone does not imply a floor |
 | F3 | Published bounded exact-solid hinge and slider sweeps, agent inspection and `cadex clearance --sweep` | [Producer](../../../.hypergraph/graph/record/misty-spark-6372.md), [consumer](../../../.hypergraph/graph/record/green-river-3790.md), [slider fixtures](../../../.hypergraph/graph/record/curious-cedar-4881.md), [Finch product measurement](../../../.hypergraph/graph/record/kind-flint-2780.md), [sweep receipt](sweep/README.md). Discrete samples, unsupported or undeclared coverage explicitly incomplete; details below |
-| F4 | Three void calls (ADR-355); one interrupted call (decision #44, ADR-356: not a turn, no slot consumed) that reached the model and was killed at the runner's 30-minute bound with 17 reads, one 63,999-token thinking burst capped at the output limit, and no submission; before/after fit and both attachment assessments retained, unchanged; repair prompt and all three continuations unspent | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [collector](retained/repair-refusal-iteration39.json), [classification](attempts/void-calls.json), [timed-out call](retained/repair-timeout-b.json). **Open: no repair; the seed is unrepaired at 15 failures** |
+| F4 | Four void calls (ADR-355), one interrupted call (decision #44, ADR-356), and **one completed turn**: `ot7-heron-repair-d`, 1,461.9 s, 46 tool calls, six accepted revisions, final static fit 0 of 120 pairs failing, swept fit complete at 5° with zero common volume, but the collector's attachment assessment still fails on both horn-to-link pairs at 0.2 mm, declared as clearance; servo bodies now uncatalogued; a bench slab added; joint ranges narrowed | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [classification](attempts/void-calls.json), [interrupted call](retained/repair-timeout-b.json), [void call c](retained/repair-void-c.json), [completed turn d](retained/repair-completed-d.json), [assessment](#iteration-48-the-repair-turn-that-completed). **Measured: zero failing product checks; two of three defects resolved, the horn gap declared rather than closed** |
 | F5 | One void arm create, zero attempts; frozen prompt, transcript and unavailable reports retained | [Record](../../../.hypergraph/graph/record/quiet-dew-5243.md), [receipt](attempts/heron-refusal.json). **Open: create prompt and all continuations unspent** |
 | F6 | One void balancer create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/keen-chart-9070.md), [receipt](attempts/robin-refusal.json). **Open: create prompt and all continuations unspent** |
 | F7 | New frozen biped prompt; one void create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/red-hawk-4600.md), [receipt](attempts/plover-refusal.json). **Open: create prompt and all continuations unspent** |
@@ -282,14 +374,16 @@ for this run's smoke receipts; no policy training occurred in ot7.
 ## F10 and what remains open
 
 F1–F3 and F8 have fixture-verified checks within the limits above; F9 has
-recorded regression evidence. **F4–F7 remain open.** F4 has been tried once
-and the call timed out before any submission; F5–F7 are untried. Void calls
-establish no geometric design outcome, and they spent nothing.
+recorded regression evidence. **F4 has its measured result and F5–F7 remain
+open.** F4's single frozen prompt has been spent on a completed turn: zero
+failing product checks, two of three defects resolved, the horn gap declared
+as clearance rather than closed. F5–F7 are untried. Void calls establish no
+geometric design outcome, and they spent nothing.
 
 F10's requirement that the critic accepted done is **unmet**. This report
 makes no done claim. What remains is the agent half of the charter, in this
-order: the seeded repair on a fresh copy of the seed (F4), then the arm,
-balancer and biped creates in fresh suffixed projects (F5–F7), each through
+order: the arm, balancer and biped creates in fresh suffixed projects
+(F5–F7), each through
 its continuations as its fit report requires, each with its smoke rollout,
 and each dispatched only while the product agent's harness is available. A
 design that does not reach zero failing checks within its three continuations

@@ -82,6 +82,29 @@ the repair prompt and all three continuations are unspent, and the retry is
 the same frozen prompt on the next fresh seed copy, `ot7-heron-repair-c`,
 dispatched only while the product agent is available.
 
+## F4: the void call on c and the completed turn on d (iteration 48)
+
+[repair-void-c.json](repair-void-c.json): the same frozen prompt on
+`ot7-heron-repair-c`, a fresh validated seed copy, dispatched into a window
+already at 95 %; six reads in 80 s, then the session limit mid-turn. Void
+under ADR-355, no slot spent, seed unchanged at 15 failures before and after,
+and the first void call whose full stream (216,946 bytes) the runner itself
+retained.
+
+[repair-completed-d.json](repair-completed-d.json): the same prompt on
+`ot7-heron-repair-d`, dispatched four minutes after the window reset. The turn
+ended on its own at 1,461.9 s with 46 tool calls and six accepted revisions.
+The after-read, taken by the collector from the published measurements and
+not from the agent's text: static fit **pass, 120 pairs, 0 failing**; swept
+fit **complete** at 5° on both joints with zero common volume everywhere;
+attachment assessment **fail**, both horns still 0.2 mm from their links,
+now declared as 0.05 mm clearances. The servo bodies are uncatalogued after
+the agent cut spline bores into them; a 400 × 400 × 8 mm bench slab replaces
+the collision plane; the joint ranges are narrowed to the swept first
+contacts. The closing report's iteration 48 section reads the three ot6
+defects against this: two resolved, one declared away. The seed
+`ot7-heron-repair` and the b and c copies are untouched.
+
 ## F9: unchanged retained measurements through the product scope
 
 [comparison.json](comparison.json) contains every failing pair by name and its

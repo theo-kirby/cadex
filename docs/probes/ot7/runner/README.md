@@ -308,3 +308,22 @@ up in that call, and iteration 46 fixed both:
   One message of 63,999 thinking tokens took 16.5 minutes of the 30. The CLI
   now pins the effort level and passes the harness's documented per-message
   output cap (ADR-356, above).
+
+## The void call on c and the completed turn on d (iteration 48)
+
+Both ran under the collector as amended above. `ot7-heron-repair-c` was
+dispatched into a window the first `rate_limit_event` frame showed at 95 %,
+and the session limit cut it off after six reads: the runner classified it
+void, spent no slot, kept the whole stream, and named `ot7-heron-repair-d`.
+That copy, dispatched after the reset, is the first repair call to end on
+its own: `status: exhausted` with `slots_spent: 1`, `continuations_used: 1`
+and a completed turn of 1,461.9 s, after-read static fit 0 of 120 failing,
+sweep complete, attachment assessment still failing on both horn-to-link
+pairs. The receipts are
+[`repair-void-c.json`](../retained/repair-void-c.json) and
+[`repair-completed-d.json`](../retained/repair-completed-d.json). Two
+operator lessons the runner cannot enforce: an answering probe says nothing
+about the window, so read the first `rate_limit_event` frame instead; and
+one completed repair turn moved the five-hour window from 8 % to 57 %, so a
+create-plus-three-continuations schedule for F5–F7 will not fit in one
+window alongside the actor.
