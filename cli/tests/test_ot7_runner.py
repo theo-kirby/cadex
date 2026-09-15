@@ -57,14 +57,124 @@ def test_fourth_continuation_is_impossible_even_after_restart(tmp_path):
     assert len([cmd for cmd, _ in calls if '--child-turn' in cmd]) == 4
 
 
-@pytest.mark.parametrize('code', [1, 'timeout', 'launch_failed'])
-def test_provider_failure_stops_without_spending_continuations(tmp_path, code):
+def test_provider_failure_the_call_returned_on_its_own_spends_its_slot(tmp_path):
+    """A nonzero exit with a stream is a failed turn, not an interruption (ADR-355, ADR-356)."""
     calls = []
-    report = runner.run('heron', project(tmp_path), 'fixture', executor(calls, code))
-    assert report['status'] == 'interrupted'
+    report = runner.run('heron', project(tmp_path), 'fixture', executor(calls, 1))
+    assert report['status'] == 'failed'
     assert len(report['turns']) == 1
     assert report['turns'][0]['continuations_used'] == 0
-    assert calls[-1][1] == 300 and '--timeout' in calls[-1][0]
+    assert report['turns'][0]['interruption'] is None and report['turns'][0]['slot_consumed']
+    assert report['slots_spent'] == 1 and report['interrupted_calls'] == 0 and 'retry' not in report
+    assert calls[-1][1] == 300 and '--timeout' in calls[-1][0]  # the smoke still runs
+
+
+@pytest.mark.parametrize('code,kind', [('timeout', 'runner_timeout'), ('launch_failed', 'launch_failed')])
+def test_runner_bound_kill_is_interrupted_and_returns_the_slot(tmp_path, code, kind):
+    """Decision #44 / ADR-356: a call the runner cut off did not end on its own."""
+    calls = []
+    report = runner.run('heron', project(tmp_path), 'fixture', executor(calls, code))
+    assert report['status'] == 'interrupted' and len(report['turns']) == 1
+    row = report['turns'][0]
+    assert row['status'] == 'interrupted' and row['slot_consumed'] is False and row['void'] is None
+    assert row['interruption']['kind'] == kind and row['interruption']['slot_consumed'] is False
+    assert row['interruption']['rule'] == 'ADR-356'
+    assert row['interruption']['bound_seconds'] == (1800 if code == 'timeout' else None)
+    assert row['continuations_used'] == 0
+    assert report['slots_spent'] == 0 and report['void_calls'] == 0 and report['interrupted_calls'] == 1
+    assert report['retry'] == {'rule': 'ADR-356', 'prompt': 'heron.create.prompt.txt', 'project': 'ot7-heron-b',
+                               'note': 'Same frozen prompt, fresh project or fresh seed copy, '
+                                       'only while the product agent is available.'}
+    # The measurement is still read and hashed; no smoke runs; nothing else is dispatched.
+    assert [Path(c[-1]).name for c, _ in calls if '--child-measure' in c] == ['turn-0']
+    assert all('smoke' not in c for c, _ in calls) and row['static_fit']['failing_count'] == 7
+    assert calls[0][1] == 1800 == report['turn_bound_seconds']
+    with pytest.raises(FileExistsError):
+        runner.run('heron', project(tmp_path), 'fixture', executor(calls, code))
+
+
+def test_runner_timeout_on_a_continuation_keeps_the_completed_turns_and_returns_only_its_slot(tmp_path):
+    calls = []
+    fake = executor(calls)
+    def execute(command, out, stem, timeout):
+        result = fake(command, out, stem, timeout)
+        if stem == 'turn' and out.name == 'turn-2':
+            frames_file(out / 'transcript.jsonl', [SPOKE, SPOKE, SPOKE])  # killed mid-stream, no result
+            result['exit_code'] = 'timeout'
+            result['elapsed_seconds'] = 1800.0
+        return result
+    report = runner.run('heron', project(tmp_path), 'fixture', execute)
+    assert [r['status'] for r in report['turns']] == ['completed', 'completed', 'interrupted']
+    assert [r['continuations_used'] for r in report['turns']] == [0, 1, 1]
+    assert report['slots_spent'] == 2 and report['interrupted_calls'] == 1 and report['void_calls'] == 0
+    assert report['turns'][2]['interruption']['model_messages_before_kill'] == 3
+    assert report['turns'][2]['interruption']['elapsed_seconds'] == 1800.0
+    assert report['status'] == 'interrupted' and report['retry']['prompt'] == 'continue-2.prompt.txt'
+    assert report['retry']['project'] == 'ot7-heron-b'
+    assert len([c for c, _ in calls if '--child-turn' in c]) == 3
+
+
+def test_runner_timeout_on_repair_spends_nothing_and_preserves_the_seed(tmp_path, monkeypatch):
+    target = repair_seed(tmp_path, monkeypatch)
+    before = runner.seed_identity(target)
+    calls = []
+    fake = executor(calls)
+    def execute(command, out, stem, timeout):
+        result = fake(command, out, stem, timeout)
+        if stem == 'turn':
+            frames_file(out / 'transcript.jsonl', [SPOKE])
+            result['exit_code'] = 'timeout'
+        return result
+    report = runner.run('repair', target, 'fixture', execute)
+    assert runner.seed_identity(target) == before == report['turns'][0]['accepted_after']
+    row = report['turns'][0]
+    assert row['status'] == 'interrupted' and row['slot_consumed'] is False and row['continuations_used'] == 0
+    assert report['slots_spent'] == 0 and report['interrupted_calls'] == 1 and report['status'] == 'interrupted'
+    assert report['retry'] == {'rule': 'ADR-356', 'prompt': 'repair.prompt.txt', 'project': 'ot7-heron-b',
+                               'note': 'Same frozen prompt, fresh project or fresh seed copy, '
+                                       'only while the product agent is available.'}
+    assert row['repair_assessment']['status'] == 'unknown'  # after-measurement still retained
+    classified = runner.classify(target / 'evidence/f4-repair/turn-0/transcript.jsonl')
+    assert classified['void'] is None and classified['interruption']['kind'] == 'runner_timeout'
+    assert classified['interruption']['model_messages_before_kill'] == 1
+
+
+def test_interruption_is_not_a_limit_and_a_limit_is_not_an_interruption(tmp_path):
+    assert runner.interruption({'exit_code': 0}, tmp_path / 'none.jsonl') is None
+    assert runner.interruption({'exit_code': 3}, tmp_path / 'none.jsonl') is None
+    assert runner.interruption({'exit_code': 1}, tmp_path / 'none.jsonl') is None
+    # A limit that lands before the kill is void (ADR-355), which the runner checks first.
+    calls = []
+    report = runner.run('heron', project(tmp_path), 'fixture',
+                        limited_executor(calls, void_at=0, mid_turn=True, exit_code='timeout'))
+    assert report['status'] == 'void' and report['void_calls'] == 1 and report['interrupted_calls'] == 0
+    assert report['turns'][0]['interruption'] is None
+
+
+def test_captured_turn_keeps_every_frame_that_arrived_before_the_kill(tmp_path, monkeypatch):
+    """The transcript is written frame by frame, so a kill mid-turn loses nothing received (ADR-356)."""
+    from cadex_cli import __main__ as cli
+    from cadex_cli import agent
+    monkeypatch.setattr(agent, 'find_claude', lambda _: '/fixture/claude')
+    monkeypatch.setattr(agent.ClaudeTurn, '__init__',
+                        lambda self, **kwargs: setattr(self, 'session_id', '') or setattr(self, 'on_text', None))
+    frames = [{'type': 'system', 'subtype': 'init', 'session_id': 's1'}, SPOKE, SPOKE]
+    def provider(self, text, *, resume):
+        result = agent.TurnResult()
+        for frame in frames:
+            result.frames.append(frame)
+            self._absorb(frame, result)
+        raise SystemExit('killed before the stream ended')  # SIGKILL never returns here
+    monkeypatch.setattr(agent.ClaudeTurn, '_run_once', provider)
+    def command(args, report, turn_factory):
+        with pytest.raises(SystemExit):
+            turn_factory().run('frozen')
+        return 1
+    monkeypatch.setattr(cli, 'command_prompt', command)
+    monkeypatch.setattr(cli, 'main', lambda args: cli.command_prompt(None, None))
+    runner.child_turn(tmp_path, tmp_path, runner.PROMPTS / 'heron.create.prompt.txt', 'fixture')
+    assert runner.read_frames(tmp_path / 'transcript.jsonl') == frames
+    assert runner.model_messages(tmp_path / 'transcript.jsonl') == 2
 
 
 @pytest.mark.parametrize('design,name', [('heron', 'continue-3.prompt.txt'),
@@ -87,11 +197,16 @@ def test_unfrozen_automatic_nudge_cannot_reach_provider(tmp_path, monkeypatch):
     from cadex_cli import agent
     seen = []
     monkeypatch.setattr(agent, 'find_claude', lambda _: '/fixture/claude')
-    monkeypatch.setattr(agent.ClaudeTurn, '__init__', lambda self, **kwargs: None)
-    def provider(self, text):
+    monkeypatch.setattr(agent.ClaudeTurn, '__init__',
+                        lambda self, **kwargs: setattr(self, 'session_id', '') or setattr(self, 'on_text', None))
+    def provider(self, text, *, resume):
         seen.append(text)
-        return agent.TurnResult(ok=True, frames=[{'type': 'result'}])
-    monkeypatch.setattr(agent.ClaudeTurn, 'run', provider)
+        result = agent.TurnResult(ok=True)
+        for frame in [{'type': 'result'}]:  # the real loop absorbs each frame as it arrives
+            result.frames.append(frame)
+            self._absorb(frame, result)
+        return result
+    monkeypatch.setattr(agent.ClaudeTurn, '_run_once', provider)
     def command(args, report, turn_factory):
         turn = turn_factory()
         assert turn.run('frozen').ok
@@ -512,7 +627,7 @@ def test_usage_limit_on_repair_is_void_and_preserves_seed(tmp_path, monkeypatch)
 
 
 def test_limit_warning_and_ordinary_errors_are_not_void(tmp_path):
-    """A near-limit warning is not a limit; an unrelated provider error is interrupted."""
+    """A near-limit warning is not a limit; an unrelated provider error is a failed turn, not void."""
     calls = []
     fake = executor(calls)
     def execute(command, out, stem, timeout):
@@ -562,7 +677,7 @@ def test_synthetic_error_frame_without_limit_evidence_is_not_void(tmp_path):
             result['exit_code'] = 1
         return result
     report = runner.run('heron', project(tmp_path), 'fixture', execute)
-    assert report['status'] != 'void' and report['void_calls'] == 0
+    assert report['status'] == 'failed' and report['void_calls'] == 0 and report['interrupted_calls'] == 0
     assert report['turns'][0]['void'] is None and report['turns'][0]['slot_consumed'] is True
     assert report['slots_spent'] == 1 and 'retry' not in report
     # An untagged synthetic frame that does carry limit text is still a limit.

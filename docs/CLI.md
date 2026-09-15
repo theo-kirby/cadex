@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-14. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-15. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -88,6 +88,21 @@ project's `agent.json.model`, then `claude-fable-5` (ADR-249, ADR-276).
 The recorded model applies with or without `--resume`; that flag controls
 conversation continuity. A machine can override project choices once through
 its environment, and an explicit flag wins over both.
+
+Every turn is launched at an explicit **effort level** and with a hard
+**per-message output cap** (ADR-356). The effort level is `high`, the
+harness's own default, or `$CADEX_EFFORT` (`low`, `medium`, `high`, `xhigh`,
+`max`); it reaches the harness as `--effort`, so a headless turn does not
+inherit whatever level an interactive session on the same account last
+saved. The cap is 32,000 tokens, or `$CADEX_MAX_OUTPUT_TOKENS`, passed to the
+harness as its documented `CLAUDE_CODE_MAX_OUTPUT_TOKENS`; it bounds one
+model message, thinking and text together, and is the reason a turn can no
+longer spend half its wall-clock bound inside a single silent thinking
+message. On the adaptive-reasoning models the CLI defaults to, the harness
+documents that its fixed thinking budget (`MAX_THINKING_TOKENS`) has no
+effect, so the effort level is the documented soft control and the output
+cap the only hard one. A bad value in either variable refuses the turn with
+a `ValueError` naming it. Neither setting changes the prompt.
 `script --set` also takes `--replace`, which is you saying you mean to drop
 an output the accepted revision declares — without it such a script is
 refused, because `write_script` replaces *the whole* script and losing an

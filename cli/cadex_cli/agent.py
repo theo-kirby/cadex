@@ -58,6 +58,53 @@ def default_model(project_model: str = "") -> str:
 
     return os.environ.get(MODEL_ENV, "").strip() or project_model or DEFAULT_MODEL
 
+
+#: Every turn is launched at an explicit effort level (ADR-356). On the
+#: adaptive-reasoning models the CLI defaults to, effort is Claude Code's
+#: documented per-step thinking control; its fixed ``MAX_THINKING_TOKENS``
+#: budget is documented as having no effect on them. Pinning the level
+#: keeps a headless turn from inheriting whatever an interactive session on
+#: the same account last saved. ``high`` is the harness's own default.
+EFFORT_ENV = "CADEX_EFFORT"
+DEFAULT_EFFORT = "high"
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+#: The hard per-message bound: the request's max output tokens, which caps
+#: thinking and text together (ADR-356). The one F4 turn that reached a
+#: model spent 16.5 of its 30 minutes on a single 64,000-token thinking
+#: message that ended on the provider's cap and produced nothing. 32,000
+#: halves that worst case and still leaves a 30 KB script submission room
+#: after 20,000 tokens of thinking. Reaches the harness as its documented
+#: ``CLAUDE_CODE_MAX_OUTPUT_TOKENS`` variable.
+MAX_OUTPUT_TOKENS_ENV = "CADEX_MAX_OUTPUT_TOKENS"
+DEFAULT_MAX_OUTPUT_TOKENS = 32000
+HARNESS_MAX_OUTPUT_TOKENS_ENV = "CLAUDE_CODE_MAX_OUTPUT_TOKENS"
+
+
+def default_effort() -> str:
+    """The effort level a turn is launched at: ``$CADEX_EFFORT`` or ``high``."""
+
+    level = os.environ.get(EFFORT_ENV, "").strip() or DEFAULT_EFFORT
+    if level not in EFFORT_LEVELS:
+        raise ValueError(
+            f"${EFFORT_ENV}={level!r} is not an effort level; use one of "
+            + ", ".join(EFFORT_LEVELS)
+        )
+    return level
+
+
+def default_max_output_tokens() -> int:
+    """The per-message output cap: ``$CADEX_MAX_OUTPUT_TOKENS`` or 32,000."""
+
+    text = os.environ.get(MAX_OUTPUT_TOKENS_ENV, "").strip()
+    if not text:
+        return DEFAULT_MAX_OUTPUT_TOKENS
+    if not text.isdigit() or int(text) <= 0:
+        raise ValueError(
+            f"${MAX_OUTPUT_TOKENS_ENV}={text!r} is not a positive token count"
+        )
+    return int(text)
+
 MCP_SERVER_NAME = "cadex"
 
 _CLAUDE_CANDIDATES = (
@@ -294,9 +341,13 @@ class ClaudeTurn:
         session_id: str = "",
         on_text: TextCallback | None = None,
         cwd: str | Path | None = None,
+        effort: str = "",
+        max_output_tokens: int = 0,
     ) -> None:
         self.claude_path = claude_path
         self.model = model
+        self.effort = effort or default_effort()
+        self.max_output_tokens = int(max_output_tokens or default_max_output_tokens())
         self.system_prompt_text = system_prompt_text
         self.socket_path = str(socket_path)
         self.token = token
@@ -347,6 +398,8 @@ class ClaudeTurn:
             "--verbose",
             "--model",
             self.model,
+            "--effort",
+            self.effort,
             "--mcp-config",
             str(self._config_path),
             "--strict-mcp-config",
@@ -366,6 +419,11 @@ class ClaudeTurn:
         if resume and self.session_id:
             command.extend(["--resume", self.session_id])
         return command
+
+    def _environment(self) -> dict[str, str]:
+        """The child's environment: ours, plus the per-message output cap."""
+
+        return {**os.environ, HARNESS_MAX_OUTPUT_TOKENS_ENV: str(self.max_output_tokens)}
 
     def run(self, prompt: str) -> TurnResult:
         """Run the turn, falling back to a fresh conversation if resume fails."""
@@ -399,6 +457,7 @@ class ClaudeTurn:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=self._cwd,
+                env=self._environment(),
                 text=True,
                 encoding="utf-8",
                 errors="replace",

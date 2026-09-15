@@ -26,7 +26,7 @@ below match it. What each design has left:
 
 | Design / criterion | Void calls (not attempts) | Attempts that reached the model | Create or repair prompt | Continuations unspent | Retry project |
 |---|---|---|---|---|---|
-| Heron repair / F4 | 3 | 1: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound with no submission | consumed under the runner's timeout rule; the charter does not say whether a runner-bound kill is a turn that ended on its own | 3 of 3 | none dispatched; an owner ruling on the timeout decides whether `ot7-heron-repair-c` gets the same prompt |
+| Heron repair / F4 | 3, and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, reached the model, killed at the runner's 30-minute bound with no submission; decision #44 rules it not a turn and no slot | 0 | unspent | 3 of 3 | `ot7-heron-repair-c`, under the corrected collector (ADR-356) |
 | Heron arm / F5 | 1 | 0 | unspent | 3 of 3 | `ot7-heron-b` |
 | Robin balancer / F6 | 1 | 0 | unspent | 3 of 3 | `ot7-robin-b` |
 | Plover biped / F7 | 1 | 0 | unspent | 3 of 3 | `ot7-plover-b` |
@@ -181,16 +181,32 @@ What this is and is not. It is the first measured product-agent result of the
 run: given measured fit and the repair prompt, the agent read the right
 things first and then spent 16.5 of its 30 minutes inside one thinking burst
 that produced nothing. It is not a void call: no usage, session or credit
-limit appeared anywhere in the stream. Under the runner's documented rule a
-timeout is `interrupted` and keeps its consumed slot, so the runner reports
-the repair slot spent. The charter voids only provider limits and counts
-"a turn that reached the model and ended on its own"; a runner-bound kill is
-neither, and that ruling belongs to the owner. No retry was dispatched.
+limit appeared anywhere in the stream. The collector of that day reported
+the repair slot spent under its timeout rule. **Decision #44** (the critic,
+iteration 44) ruled instead that the call is an **interrupted execution**:
+it did not end on its own, so it is not a turn, it consumed no frozen-prompt
+slot, and it is recorded apart from provider-limit void calls. The receipt's
+`slot_consumed`, `slots_spent` and `continuations_used` values stay as the
+collector's historical output, marked by its `ruling` field; the repair
+prompt and all three continuations are unspent. No retry was dispatched in
+that iteration.
 
-The tooling gaps this exposes are recorded, not fixed, in this unit: the
-CLI passes no thinking or output bound to the provider, so one silent burst
-can consume most of a 30-minute turn; and the collector loses the stream on
-a kill. Both are named as the next tooling units in the record.
+## Iteration 46: decision #44 carried into the collector and the CLI
+
+Two collector defects the interrupted call exposed are fixed (ADR-356). The
+collector now writes the provider stream frame by frame as it arrives, so a
+kill loses nothing received, and it applies decision #44 itself: a call
+whose child exited on the runner's bound or never launched is `interrupted`,
+returns its slot, is counted in `interrupted_calls` apart from `void_calls`
+and `slots_spent`, keeps its measurement, and names the fresh retry project.
+Fixtures pin a kill on a create, on a continuation after two completed turns,
+and on the repair, plus the frame-by-frame capture. The CLI now launches
+every turn at an explicit effort level and passes the harness its documented
+per-message output cap of 32,000 tokens, which caps thinking and text
+together; the harness documents that on Fable models its fixed thinking
+budget has no effect, so this is the only hard per-message bound available.
+No frozen prompt changed. The next design turn is the same repair prompt on
+`ot7-heron-repair-c`, dispatched only while the product agent is available.
 
 ## Implemented checks and evidence for F1–F9
 
@@ -199,7 +215,7 @@ a kill. Both are named as the next tooling units in the record.
 | F1 | Build replies include published static fit counts and every named failing pair; `clearance` inspect is exposed; instructions distinguish stdout claims from measurements | [Implementation](../../../.hypergraph/graph/record/happy-dawn-1960.md), [complete-list correction](../../../.hypergraph/graph/record/steady-quartz-9854.md), [real pager regression](../../../.hypergraph/graph/record/tidy-journey-9462.md), [CLI contract](../../CLI.md). A script printing “no overlap” returns its measured 100 mm³ intersection. Later-page failures and read errors are pinned |
 | F2 | Contact and minimum-clearance declarations; overlaps, missed contact, insufficient clearance and world geometry are advisory findings | [Known-answer fixtures](FIT-INTENT.md), [record](../../../.hypergraph/graph/record/crisp-ember-0302.md), [numerical correction](../../../.hypergraph/graph/record/hidden-lodge-4550.md), [script contract](../../XSCRIPT.md). Solid world geometry needs explicit intent; grounding alone does not imply a floor |
 | F3 | Published bounded exact-solid hinge and slider sweeps, agent inspection and `cadex clearance --sweep` | [Producer](../../../.hypergraph/graph/record/misty-spark-6372.md), [consumer](../../../.hypergraph/graph/record/green-river-3790.md), [slider fixtures](../../../.hypergraph/graph/record/curious-cedar-4881.md), [Finch product measurement](../../../.hypergraph/graph/record/kind-flint-2780.md), [sweep receipt](sweep/README.md). Discrete samples, unsupported or undeclared coverage explicitly incomplete; details below |
-| F4 | Three void calls (ADR-355); one call that reached the model and timed out at the runner's 30-minute bound with 17 reads, one 63,999-token thinking burst capped at the output limit, and no submission; before/after fit and both attachment assessments retained, unchanged | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [collector](retained/repair-refusal-iteration39.json), [classification](attempts/void-calls.json), [timed-out call](retained/repair-timeout-b.json). **Open: no repair; the seed is unrepaired at 15 failures** |
+| F4 | Three void calls (ADR-355); one interrupted call (decision #44, ADR-356: not a turn, no slot consumed) that reached the model and was killed at the runner's 30-minute bound with 17 reads, one 63,999-token thinking burst capped at the output limit, and no submission; before/after fit and both attachment assessments retained, unchanged; repair prompt and all three continuations unspent | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [collector](retained/repair-refusal-iteration39.json), [classification](attempts/void-calls.json), [timed-out call](retained/repair-timeout-b.json). **Open: no repair; the seed is unrepaired at 15 failures** |
 | F5 | One void arm create, zero attempts; frozen prompt, transcript and unavailable reports retained | [Record](../../../.hypergraph/graph/record/quiet-dew-5243.md), [receipt](attempts/heron-refusal.json). **Open: create prompt and all continuations unspent** |
 | F6 | One void balancer create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/keen-chart-9070.md), [receipt](attempts/robin-refusal.json). **Open: create prompt and all continuations unspent** |
 | F7 | New frozen biped prompt; one void create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/red-hawk-4600.md), [receipt](attempts/plover-refusal.json). **Open: create prompt and all continuations unspent** |

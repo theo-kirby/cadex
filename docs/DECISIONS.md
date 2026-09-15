@@ -24878,3 +24878,55 @@ requires explicit limit evidence on that frame: `error: rate_limit`, or limit
 text in its content. A negative fixture pins the authentication case as an
 ordinary provider failure with the slot spent; the six retained calls, which
 all carry `error: rate_limit`, classify unchanged.
+
+## ADR-356 — A runner-bound kill spends no slot; every turn is bounded per message (2026-09-15)
+
+**Context.** The first F4 product-agent call that reached a model
+(`ot7-heron-repair-b`, iteration 44) was killed by the ot7 evidence collector
+at its 30-minute bound after 17 reads and one 64,000-token message that was
+63,999 tokens of thinking, ended on the provider's output cap, and produced
+nothing. The collector of that day counted the repair slot as spent, and it
+lost the provider stream because it wrote `transcript.jsonl` only after the
+turn returned. The charter (ADR-355) counts only "a turn that reached the
+model and ended on its own"; a kill is neither a completed turn nor a
+provider limit. The critic ruled it (decision #44, iteration 44): an
+interrupted execution, zero frozen-prompt slots consumed, recorded apart from
+void calls.
+
+**Decision.** Three things, none of which touches a frozen prompt.
+
+1. **The collector applies decision #44.** In `docs/probes/ot7/runner/run.py`
+   a turn whose child exited `timeout` or `launch_failed`, and that is not
+   void, is `interrupted`: its slot is returned, `continuations_used` stays
+   at the count before the call, the receipt's `interrupted_calls` counts it
+   apart from `void_calls` and `slots_spent`, the measurement is still read
+   and hashed, no smoke runs, and `retry` names the next letter-suffixed
+   project. A provider error the call returned on its own (a nonzero exit
+   with a stream) is now `failed` rather than `interrupted`, and keeps its
+   slot, so the word means one thing. `--classify` reports interruptions
+   from the sibling `attempt.json`.
+2. **The stream is written as it arrives.** `CapturedTurn` appends each
+   frame in `_absorb`, so a kill loses nothing received; a stale-session
+   retry appends after the first attempt.
+3. **The CLI bounds every model message.** `ClaudeTurn` launches with
+   `--effort` (`$CADEX_EFFORT`, default `high`, the harness's own default)
+   and passes `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (`$CADEX_MAX_OUTPUT_TOKENS`,
+   default 32,000) in the child's environment. The installed harness (Claude
+   Code 2.1.271) documents both: effort is the per-step thinking control on
+   adaptive-reasoning models, and the output cap bounds thinking and text
+   together. It also documents that its fixed `MAX_THINKING_TOKENS` budget
+   has no effect on Fable models, which is why that variable is *not* the
+   bound chosen. 32,000 halves the observed worst case and still leaves a
+   30 KB script submission (about 10,000 tokens) room after 20,000 tokens of
+   thinking; 16,000 would not.
+
+**Consequences.** The iteration 44 receipt keeps its `slot_consumed: true`,
+`slots_spent: 1` and `continuations_used: 1` as historical collector output,
+with a `ruling` field carrying the decision; F4's repair prompt and all three
+continuations are unspent, and the retry is `ot7-heron-repair-c`. The
+30-minute turn bound is unchanged. Fixtures in `cli/tests/test_ot7_runner.py`
+pin a kill on a create, on a continuation after two completed turns and on
+the repair, frame-by-frame capture across a mid-stream kill, and that a limit
+seen before a kill is void rather than interrupted; `cli/tests/test_commands.py`
+pins the effort pin, the cap, their overrides and their refusals. `docs/CLI.md`
+§2 documents the two variables.

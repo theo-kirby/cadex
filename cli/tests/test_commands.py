@@ -434,3 +434,55 @@ def test_the_machine_can_name_the_turn_model_once(monkeypatch) -> None:
 
     monkeypatch.setenv(MODEL_ENV, "   ")
     assert default_model() == DEFAULT_MODEL
+
+
+def test_every_turn_pins_its_effort_and_bounds_each_model_message(monkeypatch, tmp_path) -> None:
+    """ADR-356: the harness's documented per-step thinking control is the
+    effort level, and its hard per-message bound is the request's max
+    output tokens. Both are set on every turn, machine-overridable, and
+    neither touches the prompt."""
+
+    from cadex_cli import agent
+
+    monkeypatch.delenv(agent.EFFORT_ENV, raising=False)
+    monkeypatch.delenv(agent.MAX_OUTPUT_TOKENS_ENV, raising=False)
+    monkeypatch.setenv("UNRELATED", "kept")
+
+    def turn(**overrides):
+        return agent.ClaudeTurn(
+            claude_path="/fixture/claude", model="m", system_prompt_text="s",
+            socket_path=str(tmp_path / "sock"), token="t", cwd=tmp_path, **overrides,
+        )
+
+    default = turn()
+    try:
+        command = default._command("frozen prompt", resume=False)
+        assert command[command.index("--effort") + 1] == "high" == agent.DEFAULT_EFFORT
+        assert command[command.index("-p") + 1] == "frozen prompt"
+        environment = default._environment()
+        assert environment[agent.HARNESS_MAX_OUTPUT_TOKENS_ENV] == "32000"
+        assert environment["UNRELATED"] == "kept"
+    finally:
+        default.cleanup()
+
+    monkeypatch.setenv(agent.EFFORT_ENV, " medium ")
+    monkeypatch.setenv(agent.MAX_OUTPUT_TOKENS_ENV, "24000")
+    machine = turn()
+    try:
+        assert "medium" in machine._command("p", resume=False)
+        assert machine._environment()[agent.HARNESS_MAX_OUTPUT_TOKENS_ENV] == "24000"
+    finally:
+        machine.cleanup()
+    explicit = turn(effort="low", max_output_tokens=8000)
+    try:
+        assert "low" in explicit._command("p", resume=False)
+        assert explicit._environment()[agent.HARNESS_MAX_OUTPUT_TOKENS_ENV] == "8000"
+    finally:
+        explicit.cleanup()
+
+    monkeypatch.setenv(agent.EFFORT_ENV, "ultracode")
+    with pytest.raises(ValueError, match="effort level"):
+        agent.default_effort()
+    monkeypatch.setenv(agent.MAX_OUTPUT_TOKENS_ENV, "0")
+    with pytest.raises(ValueError, match="positive"):
+        agent.default_max_output_tokens()

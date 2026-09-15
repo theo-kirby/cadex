@@ -30,11 +30,14 @@ persisted before dispatch. Existing projects are refused, including interrupted
 ones: this command does not resume attempts or reset a consumed budget.
 
 Each design change is made by the ordinary product-agent turn. The collector
-uses the CLI's turn-factory seam to save the provider stream and suppress the
-CLI's automatic no-tool follow-up, whose text is outside the frozen schedule.
-A blocked follow-up stops the attempt. The ordinary stale-session recovery may
-retry the same frozen text; its returned stream is preserved by the CLI.
-No script, parameter or accepted-state writer exists in this runner.
+uses the CLI's turn-factory seam to write the provider stream to
+`transcript.jsonl` **frame by frame as it arrives** (ADR-356), so a call
+killed at the runner's bound keeps every frame it had produced, and to
+suppress the CLI's automatic no-tool follow-up, whose text is outside the
+frozen schedule. A blocked follow-up stops the attempt. The ordinary
+stale-session recovery may retry the same frozen text; both streams are
+appended in order. No script, parameter or accepted-state writer exists in
+this runner.
 
 Under `evidence/`, `attempt.json` records the design, model, prompt digests,
 continuation counts, elapsed time and process status. Each `turn-N/` retains:
@@ -58,14 +61,20 @@ second swept checker and claims no design passes. The final report author must
 assess the retained swept extrema against intent and account for missing
 coverage. Provider errors, timeouts and launch failures stop further prompts;
 an ordinary rejected design (CLI exit 3) can receive the next frozen
-continuation. A usage limit is not a provider error: it is void, and the
-section below says what that means. Interrupted attempts retain their
-consumed slots and evidence; missing transcript or measurement files mean
-unavailable evidence, never zero failures. The runner must not be restarted
-against another project to hide such an attempt.
+continuation. Three outcomes end an attempt early and mean different things:
+a provider error the call returned on its own (a nonzero exit with a stream,
+such as an authentication failure) is a **failed** turn that keeps its
+consumed slot; a usage limit is **void** (ADR-355, below); and a call the
+runner cut off at its bound, or whose child never launched, is
+**interrupted** (decision #44, ADR-356, below) and returns its slot. Missing
+transcript or measurement files mean unavailable evidence, never zero
+failures. The runner must not be restarted against another project to hide
+a failed attempt.
 
-Each model call has a 30-minute process bound; each measurement read has a
-five-minute bound. Timeout kills the child process group. One final one-second
+Each model call has a 30-minute process bound (`TURN_BOUND_SECONDS`, written
+into the receipt); each measurement read has a five-minute bound. Timeout
+kills the child process group, and a call killed there is an interruption,
+not a spent slot (ADR-356). One final one-second
 holding smoke is attempted even for failing designs, with a 240-second internal
 budget and a 300-second process bound. Its full receipts and logs stay in
 `evidence/smoke/`. A process exit of zero alone is not a passing smoke: read the
@@ -73,10 +82,14 @@ receipt's verdict. No policy is trained. The collector does not change engine,
 CLI, protocol, acceptance or dashboard behavior.
 
 `cli/tests/test_ot7_runner.py` exercises a permanently failing design through
-all four slots, refuses a restart before any fifth dispatch, checks refusal and
-timeout stops, rejects changed prompts, blocks the automatic follow-up, checks
-evidence hashes and kills a timed-out child. These are runner fixtures, not
-F5–F7 design results.
+all four slots, refuses a restart before any fifth dispatch, checks that a
+failed turn stops with its slot spent, rejects changed prompts, blocks the
+automatic follow-up, checks evidence hashes and kills a timed-out child. Its
+interruption fixtures pin a runner-bound kill on a create, on a continuation
+after two completed turns, and on the repair, each returning only its own
+slot and naming the retry project; frame-by-frame capture that keeps every
+frame received before a kill; and that a limit seen before the kill is void,
+not interrupted. These are runner fixtures, not F5–F7 design results.
 
 ## Void calls (ADR-355)
 
@@ -125,6 +138,33 @@ still `interrupted`, a synthetic `authentication_failed` frame that spends
 its slot (a `<synthetic>` model name alone is never limit evidence), the
 retry naming, and the six-call receipt.
 
+## Interrupted calls (decision #44, ADR-356)
+
+A call the runner killed at its 30-minute bound did not end on its own, so
+under the charter it is not a turn. The critic ruled this for the iteration
+44 call (decision #44): an **interrupted execution**, zero frozen-prompt
+slots consumed, recorded apart from provider-limit void calls. The runner
+applies that rule itself, after the void check: a turn whose child exited
+`timeout` or `launch_failed` carries an `interruption` block (`kind`,
+`bound_seconds`, `elapsed_seconds`, `model_messages_before_kill`), its row is
+`interrupted` with `slot_consumed` false and `continuations_used` unchanged,
+the receipt's `interrupted_calls` counts it apart from `void_calls` and
+`slots_spent`, the measurement is still read and hashed, no smoke runs, and
+the receipt's `retry` names the fresh project the same frozen prompt goes to
+next, exactly as for a void call. A limit that landed before the kill is
+void, not interrupted. `run.py --classify` reports `interruption` too, from
+the exit code in the sibling `attempt.json`.
+
+The bound stays at 30 minutes. What changed beside the accounting is the
+turn itself: since ADR-356 the CLI launches every turn at an explicit effort
+level (`high`, or `$CADEX_EFFORT`) and passes the harness its documented
+per-message output cap (`CLAUDE_CODE_MAX_OUTPUT_TOKENS`, 32,000 by default,
+or `$CADEX_MAX_OUTPUT_TOKENS`), which caps thinking and text together. On
+Fable models the harness documents that its fixed `MAX_THINKING_TOKENS`
+budget has no effect, so this is the only hard per-message bound available;
+the effort level is the documented soft control. Neither touches a frozen
+prompt.
+
 ## Seeded repair (F4)
 
 Iteration 25 added `repair` while the documented reset was still ahead
@@ -142,7 +182,8 @@ digest, working revision, and empty parameter/board/cage/mount/net overrides.
 It neither copies nor writes a design. It exclusively creates
 `evidence/f4-repair/`; an existing directory refuses redispatch, including an
 interrupted call. A void repair call (ADR-355) leaves that directory as its
-receipt and is retried on a fresh copy of the seed, `ot7-heron-repair-b`.
+receipt and is retried on a fresh copy of the seed, `ot7-heron-repair-b`; an
+interrupted one (ADR-356) likewise, on the next copy, `ot7-heron-repair-c`.
 Earlier void calls remain in their original evidence directories and are
 listed in the final accounting apart from the design's attempts.
 
@@ -151,8 +192,9 @@ retaining `before/clearance.json`, `before/fit.json` and their hashes. A failed
 read, missing report or changed script/metadata stops before any provider call.
 It then dispatches only `repair.prompt.txt`, without `--resume`, under the same
 30-minute bound and automatic-follow-up guard as design attempts. It records
-one consumed continuation, the provider stream, elapsed time, after-fit report
-and before/after accepted metadata and script hashes. The before artifacts are
+the repair slot as spent only when the call ends on its own, the provider
+stream, elapsed time, after-fit report and before/after accepted metadata and
+script hashes. The before artifacts are
 relative to `before/`, and turn artifacts to `turn-0/`, within `f4-repair/`.
 A refusal still retains after measurements. No smoke or additional continuation
 is run for F4. Missing evidence never means passing fit, and CLI exit status
@@ -246,18 +288,23 @@ copy of the seed without its `evidence/`, `agent.json` or CLI lock, made by
 the operator role and validated by `validate_seed` before dispatch. The
 outcome is in [`repair-timeout-b.json`](../retained/repair-timeout-b.json):
 the turn was killed at the 30-minute bound with no submission, the after-read
-matched the before-read exactly, and the runner reported `interrupted` with
-the slot consumed, as this README's timeout rule says. Two collector limits
-showed up and are not yet fixed:
+matched the before-read exactly, and the runner of that day reported
+`interrupted` with the slot consumed. **Decision #44 (the critic, iteration
+44) ruled otherwise: an interrupted execution, zero frozen-prompt slots
+consumed, recorded apart from void calls.** The receipt keeps its
+`slot_consumed: true`, `slots_spent: 1` and `continuations_used: 1` as the
+collector's historical output under the superseded rule, with a `ruling`
+field saying so; the design's repair prompt and all three continuations are
+unspent, and the retry is `ot7-heron-repair-c`. Two collector limits showed
+up in that call, and iteration 46 fixed both:
 
-- **A killed turn loses the stream.** `CapturedTurn.run` writes
-  `transcript.jsonl` only after `ClaudeTurn.run` returns, so a timeout kill
-  leaves no transcript and an empty envelope. The provider stream was
-  recovered from the harness's own session store for the project directory;
-  the receipt names it as recovered, with its digest. The fix is to write
-  frames as they arrive.
-- **The turn has a wall-clock bound but the model has no output bound.** The
-  CLI passes no thinking or output limit, and one message of 63,999 thinking
-  tokens took 16.5 minutes of the 30. A per-message bound, or a longer turn
-  bound with a per-message one, is a product decision to make before the next
-  design turn.
+- **A killed turn lost the stream.** `CapturedTurn` wrote `transcript.jsonl`
+  only after the turn returned, so the kill left no transcript and an empty
+  envelope; the provider stream was recovered from the harness's own session
+  store, and the receipt names it as recovered, with its digest. The
+  collector now writes each frame as it arrives, and a fixture kills a fake
+  provider mid-stream and finds every frame it had sent.
+- **The turn had a wall-clock bound but the model had no per-message bound.**
+  One message of 63,999 thinking tokens took 16.5 minutes of the 30. The CLI
+  now pins the effort level and passes the harness's documented per-message
+  output cap (ADR-356, above).

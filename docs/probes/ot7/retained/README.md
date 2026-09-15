@@ -70,9 +70,17 @@ accepted revision and the 15-failure report are identical after the call.
 The runner's own stream capture was lost to the kill; the provider stream
 was recovered unmodified from the harness session store and its digest is in
 the receipt. This is a measured result and not a void call: no limit
-appeared. The runner's rule counts the repair slot as consumed; whether a
-runner-bound kill is a turn that "ended on its own" is the owner's ruling,
-and no retry was dispatched on it.
+appeared. **Decision #44** (the critic, iteration 44) ruled it an
+**interrupted execution**: it did not end on its own, so it is not a turn,
+it consumed no frozen-prompt slot, and it is recorded apart from
+provider-limit void calls. The receipt's `slot_consumed: true`,
+`slots_spent: 1` and `continuations_used: 1` are the collector's historical
+output under the timeout rule of that day, kept as written; its `ruling`
+field carries the decision. Under the corrected collector (ADR-356), which
+returns the slot on a runner-bound kill and writes the stream frame by frame,
+the repair prompt and all three continuations are unspent, and the retry is
+the same frozen prompt on the next fresh seed copy, `ot7-heron-repair-c`,
+dispatched only while the product agent is available.
 
 ## F9: unchanged retained measurements through the product scope
 

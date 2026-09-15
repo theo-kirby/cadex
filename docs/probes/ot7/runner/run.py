@@ -18,6 +18,11 @@ REPO = Path(__file__).resolve().parents[4]
 PROMPTS = REPO / 'docs/probes/ot7/prompts'
 sys.path.insert(0, str(REPO / 'cli'))
 
+#: The wall-clock bound on one product-agent call. A call killed here is an
+#: interruption, not a turn that ended on its own (ADR-356).
+TURN_BOUND_SECONDS = 1800
+MEASUREMENT_BOUND_SECONDS = 300
+
 
 def write(path, value):
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
@@ -51,16 +56,20 @@ def child_turn(project, out, prompt, model):
             super().__init__(**kwargs)
             self.invoked = False
 
+        def _absorb(self, frame, result):
+            # Written as each frame arrives, so a call killed at the runner's
+            # bound keeps every frame it had produced (ADR-356). A stale-session
+            # retry appends its stream after the first attempt's.
+            with (out / 'transcript.jsonl').open('a') as stream:
+                stream.write(json.dumps(frame) + '\n')
+            super()._absorb(frame, result)
+
         def run(self, text):
             if self.invoked:
                 write(out / 'blocked-followup.json', {'reason': 'Only the frozen prompt is authorized.'})
                 return TurnResult(error='unfrozen automatic follow-up blocked')
             self.invoked = True
-            result = super().run(text)
-            with (out / 'transcript.jsonl').open('w') as stream:
-                for frame in result.frames:
-                    stream.write(json.dumps(frame) + '\n')
-            return result
+            return super().run(text)
 
     cli.command_prompt = lambda args, report: original(args, report, turn_factory=CapturedTurn)
     args = ['--project', str(project), '--json', '--model', model,
@@ -174,6 +183,33 @@ def void_reason(transcript, envelope=None, stderr=None):
             'signals': signals}
 
 
+def model_messages(transcript):
+    """How many assistant frames the model itself produced (synthetic ones are the CLI's)."""
+    return sum(1 for frame in read_frames(transcript) if frame.get('type') == 'assistant'
+               and (frame.get('message') or {}).get('model') != '<synthetic>')
+
+
+def interruption(turn, transcript, bound_seconds=TURN_BOUND_SECONDS):
+    """Why a call did not end on its own, or None when it did (ADR-356).
+
+    A call the runner killed at its wall-clock bound, or one whose child never
+    launched, is an interrupted execution: no frozen-prompt slot is consumed,
+    the evidence stays, and the same prompt is retried in a fresh project or
+    seed copy. It is recorded apart from a provider usage limit (ADR-355),
+    which is void for a different reason. A provider error that the call
+    returned on its own (a nonzero exit with a stream) is neither: it is a
+    failed turn and spends its slot.
+    """
+    code = turn.get('exit_code')
+    if code not in ('timeout', 'launch_failed'):
+        return None
+    return {'kind': 'runner_timeout' if code == 'timeout' else 'launch_failed',
+            'rule': 'ADR-356', 'slot_consumed': False,
+            'bound_seconds': bound_seconds if code == 'timeout' else None,
+            'elapsed_seconds': turn.get('elapsed_seconds'),
+            'model_messages_before_kill': model_messages(transcript)}
+
+
 def retry_project_name(name):
     """The fresh, letter-suffixed project a void call is retried in (ADR-355)."""
     match = re.fullmatch(r'(.*)-([a-y])', name)
@@ -186,7 +222,21 @@ def classify(transcript, envelope=None, stderr=None):
         envelope = transcript.parent / 'turn.stdout.json'
     if stderr is None and (transcript.parent / 'turn.stderr.txt').is_file():
         stderr = transcript.parent / 'turn.stderr.txt'
-    return {'transcript': digest(transcript), 'void': void_reason(transcript, envelope, stderr)}
+    void = void_reason(transcript, envelope, stderr)
+    cut_off = None
+    if not void:
+        # The runner's own exit code lives in the attempt receipt beside the
+        # turn directory; without it a call can only be classified void or not.
+        turn = {}
+        try:
+            receipt = json.loads((transcript.parent.parent / 'attempt.json').read_text())
+            index = int(transcript.parent.name.split('-')[-1])
+            turn = receipt['turns'][index].get('turn') or {}
+        except (OSError, ValueError, KeyError, IndexError, TypeError):
+            turn = {}
+        cut_off = interruption(turn, transcript) if turn else None
+    return {'transcript': digest(transcript) if transcript.is_file() else None,
+            'void': void, 'interruption': cut_off}
 
 
 def execute(command, out, stem, timeout):
@@ -278,7 +328,8 @@ def run(design, project, model, execute_call=execute):
     evidence.mkdir()
     receipt = {'schema': 'ot7-design-evidence-v1', 'design': design, 'project': project.name,
                'model': model, 'actor_design_edits': 0, 'turns': [], 'status': 'running',
-               'slots_spent': 0, 'void_calls': 0}
+               'slots_spent': 0, 'void_calls': 0, 'interrupted_calls': 0,
+               'turn_bound_seconds': TURN_BOUND_SECONDS}
     save = lambda: write(evidence / 'attempt.json', receipt)
     save()
     if repair:
@@ -288,7 +339,7 @@ def run(design, project, model, execute_call=execute):
         before.mkdir()
         receipt['before'] = execute_call(
             [sys.executable, str(Path(__file__).resolve()), '--child-measure', str(project), str(before)],
-            before, 'measurement', 300)
+            before, 'measurement', MEASUREMENT_BOUND_SECONDS)
         receipt['before']['repair_assessment'] = retain_repair_assessment(
             before, seed['metadata']['accepted_revision'], receipt['before']['exit_code'] == 0)
         receipt['before']['artifacts'] = [digest(p) for p in sorted(before.iterdir()) if p.is_file()]
@@ -313,10 +364,13 @@ def run(design, project, model, execute_call=execute):
         receipt['turns'].append(row)
         save()  # Persist the slot before launching the provider; a void call gives it back.
         row['turn'] = execute_call([sys.executable, str(Path(__file__).resolve()), '--child-turn',
-                                   str(project), str(out), str(prompt), model], out, 'turn', 1800)
+                                   str(project), str(out), str(prompt), model], out, 'turn',
+                                  TURN_BOUND_SECONDS)
         row['void'] = void_reason(out / 'transcript.jsonl', out / 'turn.stdout.json', out / 'turn.stderr.txt')
+        row['interruption'] = None if row['void'] else interruption(row['turn'], out / 'transcript.jsonl')
         row['measurement'] = execute_call([sys.executable, str(Path(__file__).resolve()), '--child-measure',
-                                          str(project), str(out)], out, 'measurement', 300)
+                                          str(project), str(out)], out, 'measurement',
+                                         MEASUREMENT_BOUND_SECONDS)
         if (out / 'fit.json').exists():
             fit = json.loads((out / 'fit.json').read_text())
             row['static_fit'] = {key: fit[key] for key in ('verdict', 'failing_count', 'pairs_checked')}
@@ -328,6 +382,14 @@ def run(design, project, model, execute_call=execute):
             row['slot_consumed'] = False
             row['continuations_used'] = continuations
             receipt['void_calls'] += 1
+        elif row['interruption']:
+            # ADR-356: the runner cut the call off, so it did not end on its
+            # own. The slot is unspent and the call is counted apart from
+            # void calls.
+            row['status'] = 'interrupted'
+            row['slot_consumed'] = False
+            row['continuations_used'] = continuations
+            receipt['interrupted_calls'] += 1
         else:
             row['status'] = 'completed'
             row['slot_consumed'] = True
@@ -340,19 +402,21 @@ def run(design, project, model, execute_call=execute):
                 row['measurement']['exit_code'] == 0)
         row['artifacts'] = [digest(p) for p in sorted(out.iterdir()) if p.is_file()]
         save()
-        if row['void']:
-            receipt['status'] = 'void'
-            receipt['retry'] = {'rule': 'ADR-355', 'prompt': name, 'project': retry_project_name(project.name),
+        if row['void'] or row['interruption']:
+            receipt['status'] = 'void' if row['void'] else 'interrupted'
+            receipt['retry'] = {'rule': 'ADR-355' if row['void'] else 'ADR-356', 'prompt': name,
+                                'project': retry_project_name(project.name),
                                 'note': 'Same frozen prompt, fresh project or fresh seed copy, '
                                         'only while the product agent is available.'}
             break
-        # Provider failures and ambiguous interrupted turns stop this attempt.
+        # A provider failure the call returned on its own, or a blocked
+        # follow-up, ends this attempt with its slot spent.
         if row['turn']['exit_code'] not in (0, 3) or (out / 'blocked-followup.json').exists():
-            receipt['status'] = 'interrupted'
+            receipt['status'] = 'failed'
             break
     else:
         receipt['status'] = 'exhausted'
-    if repair or receipt['status'] == 'void':
+    if repair or receipt['status'] in ('void', 'interrupted'):
         save()
         return receipt
     # One bounded smoke, even on a failing fit; it never modifies the design.
@@ -360,7 +424,7 @@ def run(design, project, model, execute_call=execute):
     smoke.mkdir()
     receipt['smoke'] = execute_call([str(REPO / 'cadex'), 'smoke', '--project', str(project),
                                     '--out', str(smoke), '--seconds', '1', '--timeout', '240', '--json'],
-                                   smoke, 'smoke', 300)
+                                   smoke, 'smoke', MEASUREMENT_BOUND_SECONDS)
     receipt['smoke']['artifacts'] = [digest(p) for p in sorted(smoke.iterdir()) if p.is_file()]
     save()
     return receipt
@@ -390,8 +454,9 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--child-measure':
         sys.exit(child_measure(Path(sys.argv[2]), Path(sys.argv[3])))
     if len(sys.argv) > 1 and sys.argv[1] == '--classify':
-        # Read-only: is a retained call void under ADR-355? Takes a transcript
-        # and, optionally, the CLI envelope and stderr beside it.
+        # Read-only: is a retained call void under ADR-355, or interrupted
+        # under ADR-356? Takes a transcript and, optionally, the CLI envelope
+        # and stderr beside it; the exit code comes from attempt.json.
         print(json.dumps(classify(*sys.argv[2:5]), indent=2))
         sys.exit(0)
     parser = argparse.ArgumentParser(description=__doc__)
