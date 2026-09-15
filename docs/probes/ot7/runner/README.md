@@ -121,7 +121,9 @@ was cut off mid-turn. The fixtures in `cli/tests/test_ot7_runner.py` pin a
 void create, a void mid-turn continuation with exit code 0, a void repair that
 leaves the seed untouched, both transcript shapes and the text-only shapes, a
 near-limit warning that is *not* void, an unrelated provider error that is
-still `interrupted`, the retry naming, and the six-call receipt.
+still `interrupted`, a synthetic `authentication_failed` frame that spends
+its slot (a `<synthetic>` model name alone is never limit evidence), the
+retry naming, and the six-call receipt.
 
 ## Seeded repair (F4)
 

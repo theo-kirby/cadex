@@ -107,14 +107,26 @@ def read_frames(path):
     return frames
 
 
+def frame_text(message):
+    """The text blocks of an assistant message, joined; empty when there are none."""
+    content = message.get('content')
+    if isinstance(content, str):
+        return content
+    return ' '.join(block.get('text', '') for block in (content or [])
+                    if isinstance(block, dict) and block.get('type') == 'text')
+
+
 def void_reason(transcript, envelope=None, stderr=None):
     """Why a call is void under ADR-355, or None when it reached the model and ended on its own.
 
     A provider usage, session or credit limit is recognised from any of the
     shapes the retained ot7 calls carry: a rejected ``rate_limit_event``, a
-    synthetic assistant frame tagged ``rate_limit``, an HTTP 429 error result,
-    or limit text in the CLI envelope or stderr. A limit that lands after the
-    model has already spoken is still void: the turn did not end on its own.
+    synthetic assistant frame tagged ``error: rate_limit`` (or, untagged,
+    carrying limit text), an HTTP 429 error result, or limit text in the CLI
+    envelope or stderr. A synthetic frame alone is not evidence: an
+    ``authentication_failed`` frame is an ordinary failure and spends its slot.
+    A limit that lands after the model has already spoken is still void: the
+    turn did not end on its own.
     """
     signals, spoke = [], 0
     for frame in read_frames(transcript):
@@ -125,10 +137,16 @@ def void_reason(transcript, envelope=None, stderr=None):
                 signals.append({'frame': 'rate_limit_event', 'status': 'rejected',
                                 'limit': info.get('rateLimitType'), 'resets_at': info.get('resetsAt')})
         elif kind == 'assistant':
-            if frame.get('error') == 'rate_limit' or (frame.get('message') or {}).get('model') == '<synthetic>':
+            message = frame.get('message') or {}
+            synthetic = message.get('model') == '<synthetic>'
+            # A synthetic frame is the CLI speaking, not the model, so it never
+            # counts as a model message; but only explicit limit evidence makes
+            # it a limit. An authentication or other synthetic error is an
+            # ordinary provider failure and spends its slot (ADR-355).
+            if frame.get('error') == 'rate_limit' or (synthetic and LIMIT_TEXT.search(frame_text(message))):
                 signals.append({'frame': 'assistant', 'error': frame.get('error'),
-                                'model': (frame.get('message') or {}).get('model')})
-            else:
+                                'model': message.get('model')})
+            elif not synthetic:
                 spoke += 1 if not signals else 0
         elif kind == 'result' and frame.get('is_error'):
             text = frame.get('result') if isinstance(frame.get('result'), str) else ''

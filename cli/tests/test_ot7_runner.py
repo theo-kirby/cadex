@@ -535,6 +535,45 @@ def test_limit_warning_and_ordinary_errors_are_not_void(tmp_path):
                               unrelated / 'turn.stderr.txt') is None
 
 
+AUTH_FAILED = {'type': 'assistant', 'error': 'authentication_failed', 'is_api_error_message': True,
+               'message': {'model': '<synthetic>', 'role': 'assistant',
+                           'content': [{'type': 'text', 'text': 'Invalid API key · Please run /login'}]}}
+AUTH_RESULT = {'type': 'result', 'subtype': 'success', 'is_error': True, 'api_error_status': 401,
+               'terminal_reason': 'api_error', 'result': 'Invalid API key · Please run /login'}
+
+
+def test_synthetic_error_frame_without_limit_evidence_is_not_void(tmp_path):
+    """A `<synthetic>` frame is the CLI speaking, not a limit: an authentication failure spends its slot."""
+    transcript, envelope, stderr = tmp_path / 't.jsonl', tmp_path / 'e.json', tmp_path / 's.txt'
+    frames_file(transcript, [{'type': 'system', 'subtype': 'init'}, AUTH_FAILED, AUTH_RESULT])
+    runner.write(envelope, {'ok': False, 'error': 'Invalid API key · Please run /login'})
+    stderr.write_text('Invalid API key · Please run /login\n')
+    assert runner.void_reason(transcript, envelope, stderr) is None
+    assert runner.classify(transcript, envelope, stderr)['void'] is None
+    # ...and through the runner it is an ordinary provider failure: the slot is spent, nothing is refunded.
+    calls = []
+    fake = executor(calls)
+    def execute(command, out, stem, timeout):
+        result = fake(command, out, stem, timeout)
+        if stem == 'turn':
+            frames_file(out / 'transcript.jsonl', [AUTH_FAILED, AUTH_RESULT])
+            runner.write(out / 'turn.stdout.json', {'ok': False, 'error': 'Invalid API key · Please run /login'})
+            (out / 'turn.stderr.txt').write_text('Invalid API key · Please run /login\n')
+            result['exit_code'] = 1
+        return result
+    report = runner.run('heron', project(tmp_path), 'fixture', execute)
+    assert report['status'] != 'void' and report['void_calls'] == 0
+    assert report['turns'][0]['void'] is None and report['turns'][0]['slot_consumed'] is True
+    assert report['slots_spent'] == 1 and 'retry' not in report
+    # An untagged synthetic frame that does carry limit text is still a limit.
+    untagged = {'type': 'assistant', 'message': {'model': '<synthetic>', 'role': 'assistant',
+                                                 'content': [{'type': 'text', 'text': LIMIT_TEXT}]}}
+    frames_file(transcript, [untagged])
+    assert runner.void_reason(transcript)['signals'] == [{'frame': 'assistant', 'error': None,
+                                                          'model': '<synthetic>'}]
+    assert runner.void_reason(transcript)['model_messages_before_limit'] == 0
+
+
 @pytest.mark.parametrize('shape', ['stream', 'legacy', 'envelope_only', 'stderr_only'])
 def test_void_reason_recognises_every_retained_limit_shape(tmp_path, shape):
     """The six ot7 calls came in two transcript shapes; the classifier reads both, and the text alone."""

@@ -24870,3 +24870,11 @@ so classified are `docs/probes/ot7/attempts/void-calls.json`, and
 `cli/tests/test_ot7_runner.py` pins the rule with known-answer fixtures. The
 runner README, the attempts narrative and `docs/probes/ot7/REPORT.md` are
 rewritten forward; their 2026-09-14 wording is kept and marked superseded.
+
+**Correction (2026-09-15, critic-found).** The first cut also voided any
+synthetic assistant frame by its `<synthetic>` model name alone, so an
+`authentication_failed` frame would have refunded its slot. The rule now
+requires explicit limit evidence on that frame: `error: rate_limit`, or limit
+text in its content. A negative fixture pins the authentication case as an
+ordinary provider failure with the slot spent; the six retained calls, which
+all carry `error: rate_limit`, classify unchanged.
