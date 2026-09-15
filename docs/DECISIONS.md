@@ -25012,3 +25012,47 @@ two measured turns, not a contract with the provider; a turn that starts
 under it can still be cut off, and that call is void as before. Fixtures pin
 the real 84 % frame of 2026-09-15 15:45 UTC as no room. No prompt byte, no
 design and no product code outside the runner changed.
+
+## ADR-359 — describe_api fits one tool result; the ot7 collector dispatches at medium effort (2026-09-15)
+
+**Context.** The first ot7 create call that reached a model (iteration 55,
+`ot7-heron-b`) was interrupted at the runner's 30-minute bound with no
+design written. Two measured causes. `describe_api`'s reply, 163,200
+characters, exceeded the agent harness's MCP tool-result cap (25,000 tokens
+by default); the harness wrote it to a file the product agent has no tool
+to read, and the agent paged the contract through 44 `inspect scope=api`
+reads in 3 min 35 s. Then, at the CLI's default effort `high`, three
+consecutive thinking-only messages each hit the 32,000-token per-message
+output cap (ADR-356) and were auto-resumed, 24 minutes in all: the cap
+bounds a message, not a turn's thinking.
+
+**Decision.** Two changes, one in the product and one in the collector.
+
+1. **The bridge cuts `describe_api` to the size of one tool result.**
+   `cadex_cli.bridge.api_view` keeps every domain and library export's name
+   and full signature and the first paragraph of its description, and adds
+   a `descriptions` line naming the `inspect scope=api` path that holds the
+   full text. The engine's reply and the protocol are untouched; the trim
+   is the model's view only. `API_VIEW_CHAR_BUDGET` is 90,000 characters, a
+   margin under the harness's cap, and a live-engine test in
+   `cli/tests/test_client.py` holds the real contract under it (82,194
+   characters today, from 163,200), so growth past the cap fails a test
+   rather than a design turn. A fixture in `cli/tests/test_mcp_protocol.py`
+   pins the trim, the retained signatures and the note.
+2. **The ot7 collector launches every turn of an attempt at `medium`.**
+   The CLI's own default stays `high`. `run.py` passes `--effort` to each
+   child turn, which sets `CADEX_EFFORT` before the CLI starts, records the
+   effective settings (`effort`, `max_output_tokens`, `turn_bound_seconds`)
+   in the receipt and on every row, and reuses the receipt's level on
+   `resume`. The output cap and the 30-minute bound are unchanged. This is
+   the documented soft control (ADR-356) and changes no prompt byte; it is
+   reversible per attempt with `--effort`.
+
+**Consequences.** The F5 retry on `ot7-heron-c` sends the unchanged frozen
+create prompt at `medium`, after the window resets and only when the
+runner's probe reads room (ADR-358). Whether `medium` fits the bound is a
+measurement the retry makes; a further change of level is another recorded
+decision, and a changed prompt would be a new attempt. `docs/CLI.md` and
+the runner README document both changes. REPORT.md's F5 and F4 rows were
+corrected in the same unit (two of three probe scripts accepted; four
+completed F4 turns).

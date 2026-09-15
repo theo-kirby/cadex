@@ -82,7 +82,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "program schema, the globals a script may use, and every domain's "
         "exported functions with their signatures. Call this before writing "
         "your first script, and again whenever you need an exact signature. "
-        "Never write an xscript API from memory."
+        "Never write an xscript API from memory. Each export carries its full "
+        "signature and the first paragraph of its documentation; the reply's "
+        "`descriptions` line says which inspect scope=api path holds the rest."
     ),
     "write_script": (
         "Replace the whole project script and rebuild. The engine parses, "

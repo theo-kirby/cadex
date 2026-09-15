@@ -29,6 +29,13 @@ MEASUREMENT_BOUND_SECONDS = 300
 #: 45 % is cut off by the session limit and void.
 WINDOW_BOUND_PERCENT = 45
 WINDOW_PROBE_BOUND_SECONDS = 120
+#: The effort level every turn of an attempt is launched at (ADR-359). The
+#: CLI's own default is `high`; a create turn at `high` spent 24 of its 30
+#: minutes in three thinking-only messages that each hit the per-message
+#: output cap, so the collector dispatches at `medium` unless told otherwise.
+#: Recorded in the receipt with the cap and the bound, and reused by every
+#: continuation of the same attempt.
+EFFORT_LEVEL = 'medium'
 WINDOW_PROBE_TEXT = 'Reply with the single word ok.'
 
 
@@ -55,9 +62,18 @@ def frozen(design):
     return names
 
 
-def child_turn(project, out, prompt, model):
+def settings(effort=EFFORT_LEVEL):
+    """The effective per-turn settings, as the receipt records them."""
+    from cadex_cli.agent import default_max_output_tokens
+    return {'effort': effort, 'max_output_tokens': default_max_output_tokens(),
+            'turn_bound_seconds': TURN_BOUND_SECONDS}
+
+
+def child_turn(project, out, prompt, model, effort=EFFORT_LEVEL):
     from cadex_cli import __main__ as cli
-    from cadex_cli.agent import ClaudeTurn, TurnResult, find_claude
+    from cadex_cli.agent import EFFORT_ENV, ClaudeTurn, TurnResult, find_claude
+
+    os.environ[EFFORT_ENV] = effort
 
     original = cli.command_prompt
 
@@ -363,7 +379,8 @@ def retain_repair_assessment(out, revision, measurement_ok):
     return assessment
 
 
-def run(design, project, model, execute_call=execute, turns=None, window_bound=None):
+def run(design, project, model, execute_call=execute, turns=None, window_bound=None,
+        effort=EFFORT_LEVEL):
     """Start an attempt: create the project (or validate the seed), then
     dispatch up to ``turns`` frozen prompts. A design attempt dispatches its
     whole schedule by default; a repair dispatches the repair prompt alone,
@@ -372,7 +389,8 @@ def run(design, project, model, execute_call=execute, turns=None, window_bound=N
     ``window_bound`` (percent), every prompt is preceded by a window probe and
     is dispatched only while the reading shows room (ADR-358); ``None`` reads
     nothing, for fixtures that fake the provider, and the command line always
-    passes a bound."""
+    passes a bound. ``effort`` is the level every turn of the attempt is
+    launched at (ADR-359); the receipt's ``settings`` records it."""
     names = frozen(design)
     project = project.resolve()
     if project.is_relative_to(REPO) or project.parent.name != 'cadex-projects' or not project.name.startswith('ot7-'):
@@ -391,7 +409,7 @@ def run(design, project, model, execute_call=execute, turns=None, window_bound=N
     receipt = {'schema': 'ot7-design-evidence-v1', 'design': design, 'project': project.name,
                'model': model, 'actor_design_edits': 0, 'turns': [], 'status': 'running',
                'slots_spent': 0, 'void_calls': 0, 'interrupted_calls': 0,
-               'turn_bound_seconds': TURN_BOUND_SECONDS}
+               'turn_bound_seconds': TURN_BOUND_SECONDS, 'settings': settings(effort)}
     save = lambda: write(evidence / 'attempt.json', receipt)
     save()
     if repair:
@@ -487,9 +505,14 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
                'prompt': digest(prompt), 'status': 'started', 'window': reading}
         receipt['turns'].append(row)
         write(evidence / 'attempt.json', receipt)  # Persist the slot before launching the provider; a void call gives it back.
+        # Every turn of an attempt runs at the effort its receipt records
+        # (ADR-359); a receipt written before that field existed ran at the
+        # CLI's own default.
+        effort = receipt.setdefault('settings', settings('high'))['effort']
+        row['settings'] = dict(receipt['settings'])
         row['turn'] = execute_call([sys.executable, str(Path(__file__).resolve()), '--child-turn',
-                                   str(project), str(out), str(prompt), receipt['model']], out, 'turn',
-                                  TURN_BOUND_SECONDS)
+                                   '--effort', effort, str(project), str(out), str(prompt),
+                                   receipt['model']], out, 'turn', TURN_BOUND_SECONDS)
         row['void'] = void_reason(out / 'transcript.jsonl', out / 'turn.stdout.json', out / 'turn.stderr.txt')
         row['interruption'] = None if row['void'] else interruption(row['turn'], out / 'transcript.jsonl')
         row['measurement'] = execute_call([sys.executable, str(Path(__file__).resolve()), '--child-measure',
@@ -620,7 +643,10 @@ def validate_seed(seed):
 
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--child-turn':
-        sys.exit(child_turn(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5]))
+        effort = [EFFORT_LEVEL]
+        if sys.argv[2:3] == ['--effort']:
+            effort, sys.argv[2:4] = [sys.argv[3]], []
+        sys.exit(child_turn(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], *effort))
     if len(sys.argv) > 1 and sys.argv[1] == '--child-measure':
         sys.exit(child_measure(Path(sys.argv[2]), Path(sys.argv[3])))
     if len(sys.argv) > 1 and sys.argv[1] == '--classify':
@@ -636,6 +662,9 @@ if __name__ == '__main__':
                              '`window` only reads the five-hour window and dispatches nothing')
     parser.add_argument('project', type=Path, nargs='?')
     parser.add_argument('--model', default='claude-fable-5')
+    parser.add_argument('--effort', default=EFFORT_LEVEL, choices=['low', 'medium', 'high', 'xhigh', 'max'],
+                        help=f'the effort level every turn of a new attempt is launched at (default '
+                             f'{EFFORT_LEVEL}, ADR-359); a resume reuses what its receipt records')
     parser.add_argument('--turns', type=int, default=None,
                         help='prompts to dispatch in this invocation (default: the whole schedule '
                              'for a design, one for a repair or a resume)')
@@ -660,4 +689,4 @@ if __name__ == '__main__':
                                 window_bound=args.window_bound), indent=2))
     else:
         print(json.dumps(run(args.design, args.project, args.model, turns=args.turns,
-                             window_bound=args.window_bound), indent=2))
+                             window_bound=args.window_bound, effort=args.effort), indent=2))

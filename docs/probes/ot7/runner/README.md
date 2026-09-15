@@ -444,13 +444,14 @@ killed at the 30-minute bound with no design written
 `interruption_analysis` has the timeline. Two collector facts the call
 exposed, neither of them a runner defect:
 
-- **`describe_api` does not fit the harness's tool-result cap.** Its
+- **`describe_api` did not fit the harness's tool-result cap.** Its
   163,200-character reply was refused and written to a file the product
   agent has no tool to read (`Grep`, `Read`, `Bash` and `Agent` are disabled
   in that session), so the agent paged the contract through 44
-  `inspect scope=api` reads instead, in 3 min 35 s. That is a product
-  finding about the tool surface, recorded for the next unit, not changed
-  here.
+  `inspect scope=api` reads instead, in 3 min 35 s. Fixed in iteration 56
+  (ADR-359, below): the bridge's view keeps every signature and the first
+  paragraph of each description, under a 90,000-character budget a
+  live-engine test holds.
 - **The 32,000-token output cap does not bound a turn's thinking.** Three
   consecutive thinking-only messages each hit the cap and were auto-resumed
   by the harness ("Output token limit hit. Resume directly…"), 24 minutes in
@@ -458,3 +459,40 @@ exposed, neither of them a runner defect:
   the documented soft control (`CADEX_EFFORT`, ADR-356), and a lower one is
   the reversible change to try before the retry; that is a recorded decision,
   not a prompt change.
+
+## Effort for the retry, and the contract that fits (iteration 56, ADR-359)
+
+Two reversible tooling changes before `ot7-heron-c`, neither touching a
+frozen prompt byte or a design:
+
+- **Every turn of an attempt is launched at `medium` effort.** The CLI's
+  own default stays `high` (ADR-356); the collector passes
+  `--child-turn --effort <level>` to each child, which sets `CADEX_EFFORT`
+  before the CLI starts, and records the effective settings in the receipt
+  (`settings`: `effort`, `max_output_tokens`, `turn_bound_seconds`) and on
+  every row. `run.py <design> --effort LEVEL` overrides it for a new
+  attempt; `resume` reuses what the receipt records, so an attempt cannot
+  change level between its turns. A receipt written before this field
+  existed resumes at `high`, which is what its turns ran at. The 32,000-token
+  output cap and the 30-minute bound are unchanged. The reason is the
+  iteration 55 timeline: at `high`, a create turn spent 24 of its 30 minutes
+  in three thinking-only messages that each hit the cap, and the effort
+  level is the documented soft control on that.
+- **`describe_api` now fits one tool result.** The bridge trims each
+  export's description to its first paragraph and says where the rest is
+  (`docs/CLI.md`). The four minutes iteration 55 spent paging the contract
+  should not recur; the receipt's transcript will show whether the first
+  `describe_api` call is accepted by the harness.
+
+Dispatch, after the 02:20 UTC reset and only when `run.py window` reads
+room:
+
+```bash
+pixi run python docs/probes/ot7/runner/run.py heron \
+  "$PROJECTS/ot7-heron-c" --model claude-fable-5 --turns 1
+```
+
+Fixtures in `cli/tests/test_ot7_runner.py` pin the recorded setting on the
+receipt and every row, the flag on the child command, the resume reusing
+the receipt's level, the legacy receipt at `high`, and the child setting
+`CADEX_EFFORT` before the CLI starts.

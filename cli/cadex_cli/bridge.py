@@ -233,7 +233,7 @@ class Bridge:
             tool, args, ok, summary, str(reply.get("failure_code") or ""), fit
         )
         self._record(call)
-        view = _model_view(reply, args)
+        view = _model_view(tool, reply, args)
         if fit is not None:
             view["fit"] = fit
         return _content(
@@ -291,7 +291,76 @@ def _content(text: str, *, is_error: bool = False) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": text}], "is_error": bool(is_error)}
 
 
-def _model_view(reply: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
+#: The most characters a ``describe_api`` reply may be, as the model sees it
+#: (ADR-359). The agent harness refuses an MCP tool result over its own
+#: token cap (25,000 tokens by default, which it estimates from the
+#: character count) and writes it to a file the product agent has no tool
+#: to read; on 2026-09-15 the live contract was 163,200 characters and the
+#: agent spent four minutes paging it through ``inspect scope=api`` instead.
+#: Held with a margin under that cap by a live-engine test, so the contract
+#: can grow without silently crossing it again.
+API_VIEW_CHAR_BUDGET = 90_000
+
+#: The one line that says where the trimmed text went.
+API_VIEW_DESCRIPTIONS_NOTE = (
+    "Every export's `description` here is the first paragraph of its "
+    "documentation, beside its full `signature`. The whole text of export N "
+    "of domain D (N counting from 0 in this order) is one read away: "
+    "inspect scope=api path=/domains/D/exports/N/description, or "
+    "/library/exports/N/description for a lib export."
+)
+
+
+def _first_paragraph(text: Any) -> str:
+    """The summary paragraph of a docstring, whitespace-normalised."""
+
+    head = str(text or "").strip().split("\n\n", 1)[0]
+    return " ".join(head.split())
+
+
+def _summarised_exports(exports: Any) -> Any:
+    if not isinstance(exports, list):
+        return exports
+    return [
+        {**item, "description": _first_paragraph(item.get("description"))}
+        if isinstance(item, dict) and "description" in item
+        else item
+        for item in exports
+    ]
+
+
+def api_view(reply: dict[str, Any]) -> dict[str, Any]:
+    """A ``describe_api`` reply cut to fit one tool result (ADR-359).
+
+    Every domain and library export keeps its name and full signature and
+    loses all but the first paragraph of its description; nothing else in
+    the contract changes. The engine's reply is untouched and its full
+    text stays readable through ``inspect scope=api``, which the note in
+    ``descriptions`` says how to reach.
+    """
+
+    view = dict(reply)
+    domains = reply.get("domains")
+    if isinstance(domains, dict):
+        view["domains"] = {
+            name: {**domain, "exports": _summarised_exports(domain.get("exports"))}
+            if isinstance(domain, dict)
+            else domain
+            for name, domain in domains.items()
+        }
+    library = reply.get("library")
+    if isinstance(library, dict):
+        view["library"] = {
+            **library,
+            "exports": _summarised_exports(library.get("exports")),
+        }
+    view["descriptions"] = API_VIEW_DESCRIPTIONS_NOTE
+    return view
+
+
+def _model_view(
+    tool: str, reply: dict[str, Any], args: dict[str, Any]
+) -> dict[str, Any]:
     """The reply as the model should see it.
 
     ``display`` is dropped: it is a page of artifact paths and triangle
@@ -299,10 +368,13 @@ def _model_view(reply: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
     thing in the frame. Everything the model reasons with — the digest, the
     per-output facts, the script's own stdout, the failure envelope — stays.
     ``expected_revision`` is added back so the guard the bridge supplied is
-    visible rather than merely absent.
+    visible rather than merely absent. A ``describe_api`` reply is cut to
+    the size of one tool result by :func:`api_view`.
     """
 
     view = {key: value for key, value in reply.items() if key not in {"display", "id"}}
+    if tool == "describe_api" and reply.get("ok") is True:
+        view = api_view(view)
     if "expected_revision" in args:
         view["expected_revision_used"] = args["expected_revision"]
     return view

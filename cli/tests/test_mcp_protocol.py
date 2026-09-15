@@ -535,3 +535,62 @@ def test_tools_list_reports_an_unreachable_bridge_rather_than_hanging() -> None:
         stream,
     )
     assert json.loads(stream.getvalue())["error"]["code"] == -32000
+
+
+def _contract(description: str) -> dict[str, Any]:
+    """A ``describe_api`` reply whose exports carry whole docstrings."""
+
+    export = {"name": "collision", "signature": "(self, kind: 'str')", "description": description}
+    return {
+        "ok": True,
+        "domain": "project",
+        "domains": {"assembly": {"exports": [export, {"name": "bare"}], "notes": "keep"}},
+        "engine": "fake",
+        "instructions": "i",
+        "program_schema": "s",
+        "result_contract": "r",
+        "revision_rule": "v",
+        "source_globals": ["part"],
+        "parameters": {},
+        "connections": {},
+        "boards": {},
+        "mounts": {},
+        "cages": {},
+        "library": {"exports": [dict(export, name="bearing")], "catalog": {"bearings": {}}},
+        "mutation_selection": {},
+    }
+
+
+def test_describe_api_reaches_the_model_one_paragraph_per_export() -> None:
+    """The contract must fit one tool result (ADR-359).
+
+    On 2026-09-15 the live reply was 163,200 characters, the harness refused
+    it as over its tool-result cap, and the product agent, with no file tool
+    to read the overflow, paged the contract through 44 ``inspect
+    scope=api`` reads. The bridge now keeps every name and signature and
+    the first paragraph of each description, and says where the rest is.
+    """
+
+    from cadex_cli.bridge import API_VIEW_DESCRIPTIONS_NOTE
+
+    long = "Declare what one body\nmay touch.\n\nSeven kinds, in two groups.\n\n" + "x" * 5000
+    client = FakeCadexd(replies={"describe_api": _contract(long)})
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        result = _rpc(bridge, "tools/call", {"name": "describe_api", "arguments": {}})
+    view = json.loads(result["result"]["content"][0]["text"])
+
+    exports = view["domains"]["assembly"]["exports"]
+    assert exports[0] == {
+        "name": "collision",
+        "signature": "(self, kind: 'str')",
+        "description": "Declare what one body may touch.",
+    }
+    assert exports[1] == {"name": "bare"}
+    assert view["library"]["exports"][0]["description"] == "Declare what one body may touch."
+    assert view["library"]["catalog"] == {"bearings": {}}
+    assert view["domains"]["assembly"]["notes"] == "keep"
+    assert view["descriptions"] == API_VIEW_DESCRIPTIONS_NOTE
+    assert "inspect scope=api path=/domains/D/exports/N/description" in view["descriptions"]
+    assert "xxxx" not in result["result"]["content"][0]["text"]
+    # The engine's own reply is what it was: the trim is the model's view only.
+    assert client.replies["describe_api"]["domains"]["assembly"]["exports"][0]["description"] == long

@@ -989,3 +989,49 @@ def test_fixtures_without_a_bound_read_no_window(tmp_path):
     report = runner.run('heron', target, 'fixture', executor(calls))
     assert 'window_readings' not in report and all(r['window'] is None for r in report['turns'])
     assert not any(cmd[2:3] == [runner.WINDOW_PROBE_TEXT] for cmd, _ in calls)
+
+
+def test_every_turn_of_an_attempt_runs_at_the_recorded_effort(tmp_path, monkeypatch):
+    """ADR-359: the receipt records the effort, and every child turn gets it."""
+    monkeypatch.setenv('CADEX_MAX_OUTPUT_TOKENS', '32000')
+    target = project(tmp_path)
+    calls = []
+    report = runner.run('heron', target, 'fixture', executor(calls), turns=1)
+    assert report['settings'] == {'effort': 'medium', 'max_output_tokens': 32000,
+                                  'turn_bound_seconds': runner.TURN_BOUND_SECONDS}
+    assert report['turns'][0]['settings'] == report['settings']
+    (create,) = [cmd for cmd, _ in calls if '--child-turn' in cmd]
+    assert create[2:5] == ['--child-turn', '--effort', 'medium']
+    assert Path(create[-2]).name == 'heron.create.prompt.txt'
+    # A resume reuses the attempt's own setting rather than the current default.
+    monkeypatch.setattr(runner, 'EFFORT_LEVEL', 'xhigh')
+    resumed = runner.resume(target, executor(calls), turns=1)
+    assert resumed['turns'][1]['settings']['effort'] == 'medium'
+    assert [cmd for cmd, _ in calls if '--child-turn' in cmd][1][3:5] == ['--effort', 'medium']
+
+
+def test_an_explicit_effort_is_recorded_and_a_legacy_receipt_ran_at_high(tmp_path):
+    target = project(tmp_path)
+    calls = []
+    report = runner.run('heron', target, 'fixture', executor(calls), turns=1, effort='low')
+    assert report['turns'][0]['settings']['effort'] == 'low'
+    # A receipt written before ADR-359 has no settings: its turns ran at the
+    # CLI's default, and a resume says so rather than inventing a level.
+    receipt = json.loads((target / 'evidence/attempt.json').read_text())
+    receipt.pop('settings')
+    runner.write(target / 'evidence/attempt.json', receipt)
+    resumed = runner.resume(target, executor(calls), turns=1)
+    assert resumed['settings']['effort'] == 'high'
+    assert [cmd for cmd, _ in calls if '--child-turn' in cmd][1][3:5] == ['--effort', 'high']
+
+
+def test_child_turn_launches_the_cli_at_the_given_effort(tmp_path, monkeypatch):
+    from cadex_cli import __main__ as cli
+    from cadex_cli.agent import default_effort
+    seen = {}
+    monkeypatch.delenv('CADEX_EFFORT', raising=False)
+    monkeypatch.setattr(cli, 'main', lambda args: seen.update(effort=default_effort()) or 0)
+    assert runner.child_turn(tmp_path, tmp_path, runner.PROMPTS / 'heron.create.prompt.txt', 'fixture', 'medium') == 0
+    assert seen['effort'] == 'medium'
+    assert runner.child_turn(tmp_path, tmp_path, runner.PROMPTS / 'heron.create.prompt.txt', 'fixture') == 0
+    assert seen['effort'] == runner.EFFORT_LEVEL

@@ -193,3 +193,34 @@ def test_the_lock_is_released_when_the_block_ends(tmp_path) -> None:
 def test_two_different_projects_do_not_block_each_other(tmp_path) -> None:
     with project_lock(tmp_path / "a"), project_lock(tmp_path / "b"):
         pass
+
+
+def test_the_live_contract_fits_one_tool_result(client, tmp_path) -> None:
+    """The model's view of ``describe_api`` stays under the harness cap (ADR-359).
+
+    The bound is the bridge's budget, held with a margin under the harness's
+    default 25,000-token tool-result cap. Every export keeps its signature;
+    what the view loses is documentation beyond the first paragraph, which
+    stays one ``inspect scope=api`` read away.
+    """
+
+    import json
+
+    from cadex_cli.bridge import API_VIEW_CHAR_BUDGET, api_view
+
+    open_project(client, tmp_path / "project")
+    api = client.request("describe_api")
+    raw = {key: value for key, value in api.items() if key != "id"}
+
+    rendered = json.dumps(api_view(raw), indent=2, sort_keys=True, default=str)
+    assert len(rendered) <= API_VIEW_CHAR_BUDGET, len(rendered)
+    assert len(rendered) < len(json.dumps(raw, indent=2, sort_keys=True, default=str))
+
+    def signatures(contract):
+        return sorted(
+            (domain, export["name"], export["signature"])
+            for domain, listing in contract["domains"].items()
+            for export in listing["exports"]
+        )
+
+    assert signatures(api_view(raw)) == signatures(raw) and signatures(raw)

@@ -2017,6 +2017,18 @@ vocabulary to reconcile; a third vocabulary would be a third thing to keep
 in sync. The input schemas are **generated from `OP_ARG_SPECS`**, so they
 cannot drift from the protocol — only the prose is hand-written.
 
+`describe_api` reaches the model cut to one tool result (ADR-359): every
+domain and library export keeps its name and full signature and the first
+paragraph of its documentation, and the reply's `descriptions` line names
+the `inspect scope=api` path that holds the rest. The engine's reply is
+untouched. The harness refuses an MCP tool result over its own token cap
+(25,000 tokens by default) and writes it to a file the product agent has no
+tool to read; the live contract was 163,200 characters on 2026-09-15, and
+the agent's only route to it was paging `inspect scope=api`. The bridge's
+`API_VIEW_CHAR_BUDGET` (90,000 characters) is held by a live-engine test in
+`cli/tests/test_client.py`, so the contract cannot grow past the cap again
+without a test saying so.
+
 `display` and `expected_revision` are removed from the schemas: both are
 injected by the bridge, never asked of the model. The revision comes from
 the last reply; `display` is the constant standard request (`quality:
