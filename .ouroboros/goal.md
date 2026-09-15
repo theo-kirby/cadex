@@ -1,10 +1,29 @@
 # Goal: the agent designs it right
 
-Verified against source: 2026-09-14. Owner-directed charter revision (ADR-341),
+Verified against source: 2026-09-15. Owner-directed charter revision (ADR-341),
 replacing the ot6 charter (ADR-328), whose D1, D2 and D4–D10 the owner ticked on
 2026-09-14 (record `nimble-wing-3050`). D3, the rendered look, went to the
-owner's own manual work and does not carry.
+owner's own manual work and does not carry. Amended 2026-09-15 for the ot7
+restart (ADR-355): usage-limit failures are void, design turns wait for the
+product agent, and no role stops or starts the run.
 The human owns this file; unattended roles do not edit it.
+
+## Restart
+
+ot7 stopped itself on 2026-09-14 at 23:24 UTC, after 40 iterations. The
+tooling half landed with evidence (F1–F3, F8, F9). The agent half, F4–F7, was
+never tried. Claude's five-hour window was spent, the actor had fallen back to
+Codex, and all six product-agent calls it dispatched, three F4 repairs and one
+each for F5, F6 and F7, failed in two to four seconds with "You've hit your
+session limit". The critic counted those as spent attempts, ruled the run
+exhausted, and told the actor to stop it, which it did.
+
+**Those six calls are void.** No model saw a prompt. They consumed no create,
+continuation or repair slot and are not design results. The "exhausted" and
+"terminal incomplete" handoffs in `docs/probes/ot7/REPORT.md` and its records
+are superseded by this amendment. Fix them forward, and do not delete them.
+Every F4–F7 design still has its create or repair prompt and all three
+continuations unspent. This restart continues run ot7 on the same branch.
 
 ## Mission
 
@@ -122,6 +141,14 @@ Granularity, not elapsed time. The critic selects the next unit after each actor
 turn; this ladder is the starting plan, not a fixed implementation sequence.
 
 - **short-term:**
+  R1. Teach `docs/probes/ot7/runner/run.py` to recognise a usage-limit exit,
+      mark the receipt void, and stop without spending another slot. A
+      fixture pins it. Rewrite the runner README and REPORT.md forward: the
+      six calls are void and nothing is exhausted.
+  R2. With Claude available, dispatch the F4 repair on a fresh seed copy, then
+      F5, F6 and F7 in fresh suffixed projects, each through its continuations
+      as its fit report requires. Items 0–4 below have landed, and so has the
+      regression half of item 7.
   0. Freeze the prompts: commit the arm, balancer and new biped create prompts
      and the continuation prompts under `docs/probes/ot7/prompts/`, before any
      design turn (F5–F7).
@@ -192,6 +219,26 @@ turn; this ladder is the starting plan, not a fixed implementation sequence.
   names no part, number or defect ("Read the measured fit report and resolve
   every failing check." is the shape). A changed prompt starts a new attempt,
   and every attempt is reported.
+- **A usage limit is not an attempt.** A product-agent call that ends on a
+  provider usage, session or credit limit is void. This includes a call cut
+  off partway through a turn. A void call consumes no slot and is not a design
+  result. Only a turn that reached the model and ended on its own counts. The
+  void call's project or evidence directory stays as a receipt. The retry
+  sends the same frozen prompt in a fresh project, or to a fresh copy of the
+  seed, with a letter suffix (`ot7-heron-b`, `ot7-heron-repair-b`). The report
+  lists every void call apart from the design's attempts.
+- **Design turns wait for the product agent.** The product agent runs on the
+  same Claude account as the actor, so a spent Claude window stops both.
+  Dispatch a design turn only while that harness is available, and never from
+  a fallback harness while Claude is limited. If a call is void anyway, record
+  it and move to tooling, tests or reconcile. Do not dispatch again until the
+  window has reset.
+- **No role stops, starts or restarts the run.** This covers the actor, the
+  critic and any process either of them launches. No `ouroboros stop`,
+  `ouroboros run` or signal to the loop, whether detached or not. The run ends
+  only through its configured stop rules or the owner. A role that believes the
+  run is finished says so in its verdict or record, then works the
+  highest-ranked open criterion or makes no change.
 - **Failing fit is reported, never refused.** Acceptance behaviour for existing
   scripts does not change; old projects keep opening and accepting.
 - **The dashboard and the look are the owner's.** No edits to
@@ -215,9 +262,11 @@ Resolve routine choices autonomously: choose the smallest reversible change
 advancing the highest-ranked open F criterion, use code as truth and update its
 docs, and record assumptions. Never guess a measurement or report a design as
 passing without its fit report. Report pre-existing gate failures against the
-baseline. When the product agent cannot run, choose an unblocked tooling or
-test unit rather than waiting. Scope expansion requires an owner charter
-revision, not an actor interpretation.
+baseline. When the product agent's harness is limited, choose an unblocked
+tooling, test or reconcile unit. When none is left, make no change and let the
+loop wait for the reset. Never spend a frozen prompt while the harness is
+limited. Scope expansion requires an owner charter revision, not an actor
+interpretation.
 
 ## Exhaustion policy
 
@@ -227,6 +276,10 @@ criterion's evidence is present in a record; the run stops after the runner's
 `stop.on_done_accepted` count. A design that failed after its allowed
 continuation prompts is evidence, not a reason to keep prompting. Do not add a
 fourth design, start a long-term rung or repeat an attempt to fill the run.
+Void calls never exhaust a design. A design is exhausted only after its create
+or repair prompt and all three continuations have reached the model. "No
+authorized experiment remaining" is not true while any design has an unspent
+slot, and a verdict or record may not rest on it.
 
 ## Quality bar
 

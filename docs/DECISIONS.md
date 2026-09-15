@@ -24832,3 +24832,28 @@ remain unknown; static failures still fail. Before/after assessment artifacts
 are hashed alongside the measurements, with accepted-revision and successful
 read guards. Fixture-backed evidence interpretation only; no design, prompt,
 acceptance, dependency, or protocol change. F4 remains open.
+
+## ADR-355 — Usage-limit failures are void; restart ot7 (2026-09-15)
+
+Run ot7 stopped itself at 23:24 UTC on 2026-09-14, after 40 iterations. The
+tooling half of its charter (ADR-341) landed with evidence (F1–F3, F8, F9).
+The agent half, F4–F7, was never tried. The product agent runs on the same
+Claude account as the actor. Once that account's five-hour window was spent,
+the loop fell back to a Codex actor, and it dispatched all six frozen design
+calls into the limit. Each failed in two to four seconds with "You've hit your
+session limit". The run recorded them as provider refusals, the ot7 runner
+(ADR-354) consumed their slots, and the critic ruled the run out of authorized
+experiments. It told the actor to end the run, and the actor did so with a
+detached `ouroboros stop`.
+
+The owner amends the charter (`.ouroboros/goal.md`) with three rules. A call
+that ends on a usage, session or credit limit is void: it spends no slot, is
+not a design result, and is retried with the same frozen prompt in a fresh,
+suffixed project. Design turns are dispatched only while the product agent's
+harness is available. No role stops, starts or restarts the run. The six ot7
+calls are declared void, and the report's "exhausted" handoff is superseded
+and fixed forward. The actor loses its Codex fallback, so a spent Claude window
+makes the loop sleep until the reset instead of carrying on without the product
+agent. The critic keeps its own chain.
+
+This restart continues run ot7 on its branch. It claims nothing about F4–F7.

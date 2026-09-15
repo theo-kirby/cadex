@@ -17,8 +17,11 @@ roles:
     model: claude-fable-5-1
     timeout: 90m
     resume_for: 1
-    fallback:
-      - { harness: codex, model: gpt-6-astra }   # while Claude is out of usage; back to Claude when it resets
+    fallback: []          # none (ADR-355). The product agent runs on this Claude account,
+                          # so a spent window stops design turns too. ot7's Codex fallback
+                          # dispatched six design calls into the limit, counted them as
+                          # spent attempts, and stopped the run. With no fallback the
+                          # loop sleeps until the reset, and that wait is not "stuck".
   critic:
     harness: codex        # a Codex critic on Claude work is a real second opinion.
                           # ot5: its read-only sandbox (bubblewrap) could not start under
