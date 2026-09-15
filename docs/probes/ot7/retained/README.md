@@ -142,6 +142,27 @@ volume, no first contact beyond the declared contacts; inventory unchanged;
 from their links, declared as 0.05 mm clearances. The runner paused with
 `continue-3` next and one continuation unspent.
 
+## F4: the third continuation on d (iteration 53)
+
+[repair-continue-3-d.json](repair-continue-3-d.json): `continue-3.prompt.txt`
+resumed on `ot7-heron-repair-d` through the runner's window gate (ADR-358:
+probe 44 %, one point under the bound, dispatched; 46 % at the first frame,
+48 % at the last). The turn ended on its own at 104.9 s with 4 tool calls,
+3 clearance reads and 1 rebuild, no edit and no write: the last correction
+prompt asked for every failing check to be resolved, none was named, and the
+agent re-accepted the unchanged script at the same revision `f03054d6…` and
+digest, then wrote the `DECISION:` line (the project's ADR-015) and two
+`NOTE design_specs:` lines the prompt asked for, counting 105 rest-pose and
+210 swept checks passed and 0 failed, with its own fit-intent ledger listing
+the horn pockets among four declared clearances at 0.0999999–0.2 mm. The
+after-read is therefore iteration 51's: static fit **pass, 105 pairs, 0
+failing**; swept fit **complete** at 5° on both joints, zero common volume,
+no first contact beyond the declared contacts; inventory unchanged;
+`world_geometry` empty; attachment assessment **fail**, both horns 0.2 mm
+from their links, declared as 0.05 mm clearances. The runner wrote
+`status: exhausted`: the repair prompt and all three continuations have
+reached the model, and F4 has no slot left.
+
 ## F9: unchanged retained measurements through the product scope
 
 [comparison.json](comparison.json) contains every failing pair by name and its

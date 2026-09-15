@@ -426,3 +426,10 @@ the prompt was sent; the receipt's row carries that reading and
 `window_readings` holds it with the time and the bound. The turn completed in
 128.7 s and the runner paused with `continue-3` next
 ([receipt](../retained/repair-continue-2-d.json)).
+
+Its second was `continue-3` on the same project at 20:34 UTC, in the same
+window: the probe read 44 %, one point under the bound, and dispatched. The
+turn completed in 104.9 s, reading only, and moved the window from 46 % to
+48 %; the runner wrote `status: exhausted` with `slots_spent: 4` and
+`next_prompt: null`, so `resume` on this project now refuses with
+"exhausted" ([receipt](../retained/repair-continue-3-d.json)).
