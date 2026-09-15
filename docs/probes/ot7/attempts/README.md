@@ -1,6 +1,18 @@
-# Frozen design attempts: provider refusals
+# Frozen design attempts: the three void create calls
 
-Verified against source: 2026-09-14. [Cadex-new]
+Verified against source: 2026-09-15. [Cadex-new]
+
+**Amended for the restart (ADR-355).** The three calls below are **void**,
+not attempts: each ended on the provider session limit before any model saw
+the prompt, so each spent nothing. Heron, Robin and Plover each still have
+their create prompt and all three continuations unspent, and their retries go
+to fresh suffixed projects (`ot7-heron-b`, `ot7-robin-b`, `ot7-plover-b`)
+with the same frozen prompts, only while the product agent is available.
+[`void-calls.json`](void-calls.json) classifies all six pre-restart calls,
+these three and the three F4 repair calls, from their retained transcripts
+with the runner's own rule. The narrative below is kept as written on
+2026-09-14; where it says a receipt "does not authorize another attempt" or
+that a refusal is an attempt, the amendment supersedes it.
 
 ## F5 arm
 

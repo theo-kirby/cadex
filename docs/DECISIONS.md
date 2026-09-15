@@ -24857,3 +24857,16 @@ makes the loop sleep until the reset instead of carrying on without the product
 agent. The critic keeps its own chain.
 
 This restart continues run ot7 on its branch. It claims nothing about F4–F7.
+
+**Implemented in the runner (2026-09-15).** `docs/probes/ot7/runner/run.py`
+now classifies every turn from its retained transcript, CLI envelope and
+stderr: a rejected `rate_limit_event`, a synthetic assistant frame tagged
+`rate_limit`, an HTTP 429 error result, or limit text in the envelope marks
+the call void, including a limit that lands mid-turn. A void row spends no
+slot, keeps its measurement and hashes, runs no smoke, stops further dispatch
+from that project, and names the fresh suffixed project the retry goes to.
+`run.py --classify` applies the same rule read-only; the six pre-restart calls
+so classified are `docs/probes/ot7/attempts/void-calls.json`, and
+`cli/tests/test_ot7_runner.py` pins the rule with known-answer fixtures. The
+runner README, the attempts narrative and `docs/probes/ot7/REPORT.md` are
+rewritten forward; their 2026-09-14 wording is kept and marked superseded.

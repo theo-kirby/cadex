@@ -1,23 +1,52 @@
-# ot7 closing report — measured checks, unproven agent outcomes
+# ot7 closing report — measured checks, agent outcomes not yet tried
 
-Verified against source: 2026-09-14. [Cadex-new]
+Verified against source: 2026-09-15. [Cadex-new]
 
 **The measured-fit tools are implemented; the agent's ability to repair or
-create fitting mechanisms remains unproven.** All six recorded F4–F7 provider
-calls were refused at the session limit, with zero completed design turns.
-F4–F7 remain open. This report advances F10's document requirement, but does
-not claim successful completion or critic acceptance of done.
+create fitting mechanisms has not yet been tried.** All six product-agent
+calls dispatched before the restart ended on the provider's session limit in
+two to four seconds. Under the amended charter (ADR-355) **those six calls are
+void**: no model saw a prompt, none spent a create, continuation or repair
+slot, and none is a design result. F4–F7 remain open with every slot unspent.
+This report is written forward from the restart; it claims no design outcome
+and no critic acceptance of done.
 
-**Terminal outcome: incomplete. This run exhausted its authorized experiments
-without establishing F4–F7 or successful completion.** Provider refusals cannot
-justify done acceptance. No further dispatch, collector-slot reset, repeated
-measurement or unrelated horizon work is authorized by this handoff.
+## Amendment: the restart (ADR-355)
 
-## Design outcomes
+The 2026-09-14 version of this report declared the run exhausted and its
+outcome terminal and incomplete. That handoff is **superseded**: a usage-limit
+call is not an attempt, so nothing was exhausted. The runner now classifies
+such calls itself, spends no slot on them, keeps their evidence and stops
+further dispatch from that project ([runner README](runner/README.md#void-calls-adr-355)).
+The six pre-restart calls, classified by that rule from their retained
+transcripts, envelopes and stderr, are in [`attempts/void-calls.json`](attempts/void-calls.json):
+none was cut off mid-turn, and the six transcript digests in the table
+below match it. What each design has left:
+
+| Design / criterion | Void calls (not attempts) | Attempts that reached the model | Create or repair prompt | Continuations unspent | Retry project |
+|---|---|---|---|---|---|
+| Heron repair / F4 | 3 | 0 | unspent | 3 of 3 | `ot7-heron-repair-b`, a fresh copy of the seed |
+| Heron arm / F5 | 1 | 0 | unspent | 3 of 3 | `ot7-heron-b` |
+| Robin balancer / F6 | 1 | 0 | unspent | 3 of 3 | `ot7-robin-b` |
+| Plover biped / F7 | 1 | 0 | unspent | 3 of 3 | `ot7-plover-b` |
+
+Retries send the same frozen prompts and are dispatched only while the
+product agent's harness is available; no role stops or starts the run. The
+sections below are the 2026-09-14 text, kept as the record of what happened.
+Where they call a refusal an attempt, a slot consumed, or the run exhausted,
+this amendment supersedes them.
+
+> *Superseded on 2026-09-15:* "Terminal outcome: incomplete. This run
+> exhausted its authorized experiments without establishing F4–F7 or
+> successful completion. No further dispatch, collector-slot reset, repeated
+> measurement or unrelated horizon work is authorized by this handoff."
+
+## Design outcomes as recorded on 2026-09-14
 
 The [prompt manifest](prompts/README.md) retains frozen prompts, hashes and ot6
 provenance. Creates used `claude-fable-5`, exited 1, and consumed **zero of
-three continuations**. No actor edited a design.
+three continuations**. No actor edited a design. The table's "attempts" and
+"collector slot consumed" wording predates ADR-355; every row is a void call.
 
 | Design / criterion | Prompt and attempts | Completed turns / continuations used | Fit failures per dispatch; final static / swept | Inventory / smoke | ot6 comparison |
 |---|---|---|---|---|---|
@@ -32,9 +61,11 @@ not find `script.json`; no finite-state, collision or support check ran.
 The collector's exit 0 means it retained the refusal, not that a design passed.
 The historical provider reset message does not authorize retries.
 
-### Refusal receipts and transcript identity
+### Void-call receipts and transcript identity
 
 All six calls, including both pre-collector F4 refusals, are retained below.
+Each is classified void in [`attempts/void-calls.json`](attempts/void-calls.json)
+by the same digest.
 
 | Dispatch | Receipt | Transcript SHA-256 | Causal record |
 |---|---|---|---|
@@ -90,7 +121,9 @@ It dispatched the frozen prompt once in a fresh `claude-fable-5` session and
 received the same provider session-limit refusal (CLI exit 1) in **4.171 s**.
 There were zero completed design turns and zero actor edits. This is the
 **third F4 invocation**, including the earlier 4.090 s and 4.020 s refusals.
-The exclusive `evidence/f4-repair/` slot is now consumed.
+The exclusive `evidence/f4-repair/` directory is now written. *Amended
+2026-09-15:* that directory is the void call's receipt, not a consumed slot;
+the repair prompt is retried on a fresh seed copy, `ot7-heron-repair-b`.
 
 The guarded before read took **0.164 s**, preserved the seed, and measured
 **105 pairs / 15 failures**. The after read took **0.164 s** and retained
@@ -116,10 +149,10 @@ No successful after-repair report exists; F4 stays open.
 | F1 | Build replies include published static fit counts and every named failing pair; `clearance` inspect is exposed; instructions distinguish stdout claims from measurements | [Implementation](../../../.hypergraph/graph/record/happy-dawn-1960.md), [complete-list correction](../../../.hypergraph/graph/record/steady-quartz-9854.md), [real pager regression](../../../.hypergraph/graph/record/tidy-journey-9462.md), [CLI contract](../../CLI.md). A script printing “no overlap” returns its measured 100 mm³ intersection. Later-page failures and read errors are pinned |
 | F2 | Contact and minimum-clearance declarations; overlaps, missed contact, insufficient clearance and world geometry are advisory findings | [Known-answer fixtures](FIT-INTENT.md), [record](../../../.hypergraph/graph/record/crisp-ember-0302.md), [numerical correction](../../../.hypergraph/graph/record/hidden-lodge-4550.md), [script contract](../../XSCRIPT.md). Solid world geometry needs explicit intent; grounding alone does not imply a floor |
 | F3 | Published bounded exact-solid hinge and slider sweeps, agent inspection and `cadex clearance --sweep` | [Producer](../../../.hypergraph/graph/record/misty-spark-6372.md), [consumer](../../../.hypergraph/graph/record/green-river-3790.md), [slider fixtures](../../../.hypergraph/graph/record/curious-cedar-4881.md), [Finch product measurement](../../../.hypergraph/graph/record/kind-flint-2780.md), [sweep receipt](sweep/README.md). Discrete samples, unsupported or undeclared coverage explicitly incomplete; details below |
-| F4 | Three refused frozen calls; before/after fit and both attachment assessments retained | [First refusal](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second refusal](../../../.hypergraph/graph/record/keen-quill-2265.md), [collector refusal](retained/repair-refusal-iteration39.json). **Open: no completed repair** |
-| F5 | One refused arm create; frozen prompt, transcript and unavailable reports retained | [Record](../../../.hypergraph/graph/record/quiet-dew-5243.md), [receipt](attempts/heron-refusal.json). **Open: no accepted design or fit/smoke result** |
-| F6 | One refused balancer create; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/keen-chart-9070.md), [receipt](attempts/robin-refusal.json). **Open: no accepted design or fit/smoke result** |
-| F7 | New frozen biped prompt; one refused create; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/red-hawk-4600.md), [receipt](attempts/plover-refusal.json). **Open: no accepted design or fit/smoke result** |
+| F4 | Three void calls (ADR-355), zero attempts; before/after fit and both attachment assessments retained | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [collector](retained/repair-refusal-iteration39.json), [classification](attempts/void-calls.json). **Open: repair prompt and all continuations unspent** |
+| F5 | One void arm create, zero attempts; frozen prompt, transcript and unavailable reports retained | [Record](../../../.hypergraph/graph/record/quiet-dew-5243.md), [receipt](attempts/heron-refusal.json). **Open: create prompt and all continuations unspent** |
+| F6 | One void balancer create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/keen-chart-9070.md), [receipt](attempts/robin-refusal.json). **Open: create prompt and all continuations unspent** |
+| F7 | New frozen biped prompt; one void create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/red-hawk-4600.md), [receipt](attempts/plover-refusal.json). **Open: create prompt and all continuations unspent** |
 | F8 | One-command bounded smoke over accepted artifacts; passing and failing known-answer fixtures | [Record](../../../.hypergraph/graph/record/lean-fountain-9707.md), [receipt](f8-smoke.json). Implementation verified; F5–F7 have no executed simulation receipts |
 | F9 | Green recorded suites and packaged gate; retained ot6 copies restore/reopen, all measurement differences explained | [Closure record](../../../.hypergraph/graph/record/narrow-valley-3317.md), [regression receipt](REGRESSION.md), [restore record](../../../.hypergraph/graph/record/still-raven-7629.md). Carried evidence, not a fresh run for this report |
 
@@ -183,17 +216,21 @@ for this run's smoke receipts; no policy training occurred in ot7.
 ## F10 and what remains open
 
 F1–F3 and F8 have fixture-verified checks within the limits above; F9 has
-recorded regression evidence. **F4–F7 remain open**: refusals establish no
-geometric design outcome.
+recorded regression evidence. **F4–F7 remain open and untried**: void calls
+establish no geometric design outcome, and they spent nothing.
 
-F10's requirement that the critic accepted done is also **unmet**. This report
-makes no done claim. The critic-requested F4 collector call was refused.
-F5–F7 were not restarted, and no extra continuation, collector scaffolding,
-training, dashboard change or broader horizon work occurred. All scheduled
-collector slots are consumed. The run's successful-completion prerequisites
-are not established by the existing evidence.
+F10's requirement that the critic accepted done is **unmet**. This report
+makes no done claim. What remains is the agent half of the charter, in this
+order: the seeded repair on a fresh copy of the seed (F4), then the arm,
+balancer and biped creates in fresh suffixed projects (F5–F7), each through
+its continuations as its fit report requires, each with its smoke rollout,
+and each dispatched only while the product agent's harness is available. A
+design that does not reach zero failing checks within its three continuations
+is a valid measured result and will be reported as such. This report is then
+rewritten with one row per design.
 
-The requested reconciliation of `blue-slope-0916` was not executed: this
-dispatch forbids reconciliation and state/view edits. The record tail retains
-the refusal and terminal outcome for a separately authorized pass. Folding
-records cannot establish F4–F7. This run returns an incomplete outcome.
+> *Superseded on 2026-09-15:* "All scheduled collector slots are consumed.
+> The run's successful-completion prerequisites are not established by the
+> existing evidence. ... This run returns an incomplete outcome." The
+> reconciliation the earlier handoff deferred was folded by the restart
+> (`4505e21f`); the outcome is open, not terminal.

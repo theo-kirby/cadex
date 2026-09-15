@@ -1,14 +1,19 @@
 # Frozen-design evidence runner
 
-Verified against source: 2026-09-14. [Cadex-new]
+Verified against source: 2026-09-15. [Cadex-new]
 
-This is the critic-requested F5–F7 fallback while F4's provider is unavailable
-(ADR-354). Its frozen arm, balancer and biped dispatches were refused by the provider; see
-[the F5–F7 attempt receipts](../attempts/README.md). The documented provider reset
-is 2026-09-14 at 20:20 America/New_York. F4 remains open: the iteration-39 repair collector was also refused. Its
-exclusive slot is consumed; see the [actual outcome](../REPORT.md#iteration-39-frozen-collector-outcome).
-Its seed and repair prompt are unchanged. Historical setup notes follow; they
-do not authorize redispatch.
+This is the F4–F7 evidence collector (ADR-354), amended for the ot7 restart
+(ADR-355). **Every product-agent call ot7 dispatched before the restart was
+void**: all six ended on the provider's session limit in two to four seconds,
+no model saw a prompt, and none spent a create, continuation or repair slot.
+The runner now recognises that outcome itself; see [Void calls](#void-calls-adr-355)
+below and the [classified receipt](../attempts/void-calls.json). Nothing is
+exhausted. Every design still has its create or repair prompt and all three
+continuations unspent, and the retry is the same frozen prompt in a fresh
+letter-suffixed project, dispatched only while the product agent's harness is
+available. Earlier wording in this file and in the receipts that called a slot
+"consumed" after a refusal is superseded by that amendment and is kept as
+history, not deleted.
 
 Run one design, in a new external project, using the existing pixi environment:
 
@@ -53,10 +58,11 @@ second swept checker and claims no design passes. The final report author must
 assess the retained swept extrema against intent and account for missing
 coverage. Provider errors, timeouts and launch failures stop further prompts;
 an ordinary rejected design (CLI exit 3) can receive the next frozen
-continuation. Interrupted attempts retain their consumed slots and evidence;
-missing transcript or measurement files mean unavailable evidence, never zero
-failures. The runner must not be restarted against another project to hide
-such an attempt.
+continuation. A usage limit is not a provider error: it is void, and the
+section below says what that means. Interrupted attempts retain their
+consumed slots and evidence; missing transcript or measurement files mean
+unavailable evidence, never zero failures. The runner must not be restarted
+against another project to hide such an attempt.
 
 Each model call has a 30-minute process bound; each measurement read has a
 five-minute bound. Timeout kills the child process group. One final one-second
@@ -71,6 +77,51 @@ all four slots, refuses a restart before any fifth dispatch, checks refusal and
 timeout stops, rejects changed prompts, blocks the automatic follow-up, checks
 evidence hashes and kills a timed-out child. These are runner fixtures, not
 F5–F7 design results.
+
+## Void calls (ADR-355)
+
+A product-agent call that ends on a provider usage, session or credit limit
+is **void**: it spends no slot, it is not a design result, and its evidence
+directory stays as a receipt. The runner classifies every turn after the
+child exits, from three things it already retains, and reads them in this
+order:
+
+- the provider stream in `transcript.jsonl`: a `rate_limit_event` frame with
+  status `rejected`, a synthetic assistant frame tagged `error: rate_limit`,
+  or an error result frame with HTTP status 429 or limit text;
+- the CLI envelope `turn.stdout.json`: its `error` field, which is empty on
+  an ordinary turn;
+- `turn.stderr.txt`, only when no envelope was written.
+
+A limit that lands after the model has already spoken is still void: the
+turn did not end on its own. The row records `cut_off_mid_turn` and how many
+model messages preceded the limit. The classification does not depend on the
+child's exit code.
+
+On a void call the row's status is `void`, `slot_consumed` is false,
+`continuations_used` stays at the count before the call, the measurement is
+still read and hashed, no smoke runs, and nothing further is dispatched from
+that project: the receipt's status is `void` and its `retry` names the fresh
+project the same frozen prompt goes to next (`ot7-heron` → `ot7-heron-b`,
+`ot7-heron-repair` → `ot7-heron-repair-b`). The receipt also carries
+`slots_spent` and `void_calls`. The runner still refuses an existing project,
+so the retry is never a resume: a design whose continuation went void is
+retried from its create prompt in the fresh project, and the completed turns
+before the void stay in the earlier project's receipt as that attempt's
+evidence. Dispatch the retry only while the product agent's harness is
+available; the runner cannot see the window, so that rule is the operator's.
+
+`run.py --classify TRANSCRIPT [ENVELOPE] [STDERR]` applies the same rule to a
+retained call without dispatching anything; siblings named `turn.stdout.json`
+and `turn.stderr.txt` are found automatically. The six pre-restart calls,
+classified that way, are in [`attempts/void-calls.json`](../attempts/void-calls.json):
+the two hand-copied F4 transcripts carry only the synthetic assistant frame
+and the envelope text, the other four carry all three stream frames, and none
+was cut off mid-turn. The fixtures in `cli/tests/test_ot7_runner.py` pin a
+void create, a void mid-turn continuation with exit code 0, a void repair that
+leaves the seed untouched, both transcript shapes and the text-only shapes, a
+near-limit warning that is *not* void, an unrelated provider error that is
+still `interrupted`, the retry naming, and the six-call receipt.
 
 ## Seeded repair (F4)
 
@@ -88,8 +139,10 @@ accepted revision against the original refusal receipt, the preserved accepted
 digest, working revision, and empty parameter/board/cage/mount/net overrides.
 It neither copies nor writes a design. It exclusively creates
 `evidence/f4-repair/`; an existing directory refuses redispatch, including an
-interrupted call. Earlier provider refusals remain in their original evidence
-directories and must be included in the final accounting.
+interrupted call. A void repair call (ADR-355) leaves that directory as its
+receipt and is retried on a fresh copy of the seed, `ot7-heron-repair-b`.
+Earlier void calls remain in their original evidence directories and are
+listed in the final accounting apart from the design's attempts.
 
 The runner first reads all accepted clearance pages with `restore=False`,
 retaining `before/clearance.json`, `before/fit.json` and their hashes. A failed

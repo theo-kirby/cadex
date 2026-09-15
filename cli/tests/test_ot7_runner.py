@@ -416,3 +416,164 @@ def test_repair_assessment_retains_unknown_nonfinite_measurements(tmp_path):
     assert result['attachments'][0]['status'] == 'unknown'
     assert result['attachments'][0]['distance_mm'] is None
     assert json.loads((tmp_path / 'repair-assessment.json').read_text()) == result
+
+
+# ADR-355: a provider usage, session or credit limit is void — no slot spent,
+# evidence kept, nothing further dispatched from that project.
+
+LIMIT_TEXT = "You've hit your session limit · resets 8:20pm (America/New_York)"
+REJECTED = {'type': 'rate_limit_event', 'rate_limit_info': {
+    'status': 'rejected', 'resetsAt': 1789431600, 'rateLimitType': 'five_hour',
+    'overageStatus': 'rejected', 'overageDisabledReason': 'out_of_credits'}}
+SYNTHETIC = {'type': 'assistant', 'error': 'rate_limit', 'is_api_error_message': True,
+             'message': {'model': '<synthetic>', 'role': 'assistant',
+                         'content': [{'type': 'text', 'text': LIMIT_TEXT}]}}
+LIMIT_RESULT = {'type': 'result', 'subtype': 'success', 'is_error': True, 'api_error_status': 429,
+                'terminal_reason': 'api_error', 'total_cost_usd': 0, 'result': LIMIT_TEXT}
+SPOKE = {'type': 'assistant', 'message': {'model': 'claude-fable-5', 'role': 'assistant',
+                                          'content': [{'type': 'tool_use', 'name': 'mcp__cadex__rebuild'}]}}
+CLEAN_RESULT = {'type': 'result', 'subtype': 'success', 'is_error': False, 'result': 'done'}
+
+
+def frames_file(path, frames):
+    path.write_text(''.join(json.dumps(f) + '\n' for f in frames))
+
+
+def limited_executor(calls, void_at=0, mid_turn=False, exit_code=1):
+    fake = executor(calls)
+    def execute(command, out, stem, timeout):
+        result = fake(command, out, stem, timeout)
+        index = int(out.name.split('-')[-1]) if out.name.startswith('turn-') else -1
+        if stem == 'turn' and index == void_at:
+            frames_file(out / 'transcript.jsonl',
+                        ([SPOKE, SPOKE] if mid_turn else []) + [REJECTED, SYNTHETIC, LIMIT_RESULT])
+            runner.write(out / 'turn.stdout.json', {'ok': False, 'error': LIMIT_TEXT, 'schema': 'cadex-cli-v1'})
+            (out / 'turn.stderr.txt').write_text(LIMIT_TEXT + '\n')
+            result['exit_code'] = exit_code
+        return result
+    return execute
+
+
+def test_usage_limit_on_create_is_void_and_spends_nothing(tmp_path):
+    target = project(tmp_path)
+    calls = []
+    report = runner.run('heron', target, 'fixture', limited_executor(calls))
+    assert report['status'] == 'void'
+    assert report['slots_spent'] == 0 and report['void_calls'] == 1
+    assert report['retry'] == {'rule': 'ADR-355', 'prompt': 'heron.create.prompt.txt',
+                               'project': 'ot7-heron-b', 'note': report['retry']['note']}
+    [row] = report['turns']
+    assert row['status'] == 'void' and row['slot_consumed'] is False
+    assert row['continuations_used'] == 0
+    assert row['void']['kind'] == 'usage_limit' and row['void']['cut_off_mid_turn'] is False
+    assert {s['frame'] for s in row['void']['signals']} == {'rate_limit_event', 'assistant', 'result', 'envelope'}
+    # One provider dispatch, the measurement still read, no smoke, evidence kept.
+    assert len([cmd for cmd, _ in calls if '--child-turn' in cmd]) == 1
+    assert len([cmd for cmd, _ in calls if '--child-measure' in cmd]) == 1
+    assert not any('smoke' in cmd for cmd, _ in calls) and 'smoke' not in report
+    artifacts = {a['path']: a for a in row['artifacts']}
+    assert artifacts['transcript.jsonl'] == runner.digest(target / 'evidence/turn-0/transcript.jsonl')
+    assert json.loads((target / 'evidence/attempt.json').read_text())['status'] == 'void'
+    # The receipt stays; the retry is a fresh suffixed project, never a resume.
+    with pytest.raises(FileExistsError):
+        runner.run('heron', target, 'fixture', limited_executor(calls))
+    assert len([cmd for cmd, _ in calls if '--child-turn' in cmd]) == 1
+
+
+def test_usage_limit_mid_turn_on_a_continuation_is_void(tmp_path):
+    calls = []
+    report = runner.run('heron', project(tmp_path), 'fixture',
+                        limited_executor(calls, void_at=2, mid_turn=True, exit_code=0))
+    assert report['status'] == 'void'
+    assert [r['status'] for r in report['turns']] == ['completed', 'completed', 'void']
+    assert [r['continuations_used'] for r in report['turns']] == [0, 1, 1]
+    assert [r['slot_consumed'] for r in report['turns']] == [True, True, False]
+    assert report['slots_spent'] == 2 and report['void_calls'] == 1
+    assert report['turns'][2]['void']['cut_off_mid_turn'] is True
+    assert report['turns'][2]['void']['model_messages_before_limit'] == 2
+    assert report['retry']['prompt'] == 'continue-2.prompt.txt'
+    assert len([cmd for cmd, _ in calls if '--child-turn' in cmd]) == 3
+    assert not any('smoke' in cmd for cmd, _ in calls)
+
+
+def test_usage_limit_on_repair_is_void_and_preserves_seed(tmp_path, monkeypatch):
+    target = repair_seed(tmp_path, monkeypatch)
+    before = runner.seed_identity(target)
+    calls = []
+    report = runner.run('repair', target, 'fixture', limited_executor(calls))
+    assert report['status'] == 'void'
+    assert runner.seed_identity(target) == before == report['turns'][0]['accepted_after']
+    assert report['turns'][0]['status'] == 'void'
+    assert report['turns'][0]['continuations_used'] == 0 and report['slots_spent'] == 0
+    assert report['retry']['project'] == 'ot7-heron-b'
+    assert report['turns'][0]['repair_assessment']['status'] == 'unknown'
+    assert 'repair-assessment.json' in {a['path'] for a in report['turns'][0]['artifacts']}
+    assert [Path(cmd[-2]).name for cmd, _ in calls if '--child-turn' in cmd] == ['repair.prompt.txt']
+
+
+def test_limit_warning_and_ordinary_errors_are_not_void(tmp_path):
+    """A near-limit warning is not a limit; an unrelated provider error is interrupted."""
+    calls = []
+    fake = executor(calls)
+    def execute(command, out, stem, timeout):
+        result = fake(command, out, stem, timeout)
+        if stem == 'turn':
+            warning = dict(REJECTED, rate_limit_info=dict(REJECTED['rate_limit_info'], status='allowed_warning'))
+            frames_file(out / 'transcript.jsonl', [warning, SPOKE, CLEAN_RESULT])
+            runner.write(out / 'turn.stdout.json', {'ok': True, 'error': ''})
+            (out / 'turn.stderr.txt').write_text('note: the rate limit window is 80% used\n')
+        return result
+    report = runner.run('heron', project(tmp_path), 'fixture', execute)
+    assert report['status'] == 'exhausted' and report['slots_spent'] == 4
+    assert all(r['void'] is None and r['slot_consumed'] for r in report['turns'])
+    unrelated = tmp_path / 'unrelated'
+    unrelated.mkdir()
+    frames_file(unrelated / 'transcript.jsonl',
+                [{'type': 'result', 'is_error': True, 'result': 'Could not start the claude CLI'}])
+    runner.write(unrelated / 'turn.stdout.json', {'ok': False, 'error': 'Could not start the claude CLI'})
+    assert runner.void_reason(unrelated / 'transcript.jsonl', unrelated / 'turn.stdout.json',
+                              unrelated / 'turn.stderr.txt') is None
+
+
+@pytest.mark.parametrize('shape', ['stream', 'legacy', 'envelope_only', 'stderr_only'])
+def test_void_reason_recognises_every_retained_limit_shape(tmp_path, shape):
+    """The six ot7 calls came in two transcript shapes; the classifier reads both, and the text alone."""
+    transcript, envelope, stderr = tmp_path / 't.jsonl', tmp_path / 'e.json', tmp_path / 's.txt'
+    if shape == 'stream':
+        frames_file(transcript, [{'type': 'system', 'subtype': 'init'}, REJECTED, SYNTHETIC, LIMIT_RESULT])
+    elif shape == 'legacy':
+        frames_file(transcript, [{'type': 'user'}, {'type': 'attachment'}, SYNTHETIC, {'type': 'last-prompt'}])
+    elif shape == 'envelope_only':
+        frames_file(transcript, [])
+        runner.write(envelope, {'ok': False, 'error': LIMIT_TEXT})
+        stderr.write_text('irrelevant\n')
+    else:
+        frames_file(transcript, [])
+        stderr.write_text("Usage limit reached for this account\n")
+    reason = runner.void_reason(transcript, envelope, stderr)
+    assert reason['kind'] == 'usage_limit' and reason['rule'] == 'ADR-355'
+    assert reason['slot_consumed'] is False and reason['cut_off_mid_turn'] is False
+    assert runner.classify(transcript, envelope, stderr)['void'] == reason
+
+
+@pytest.mark.parametrize('name,expected', [('ot7-heron', 'ot7-heron-b'), ('ot7-heron-b', 'ot7-heron-c'),
+                                           ('ot7-heron-repair', 'ot7-heron-repair-b'),
+                                           ('ot7-heron-repair-b', 'ot7-heron-repair-c')])
+def test_retry_project_name(name, expected):
+    assert runner.retry_project_name(name) == expected
+
+
+def test_all_six_ot7_calls_are_classified_void():
+    receipt = json.loads((PATH.parents[1] / 'attempts/void-calls.json').read_text())
+    assert receipt['rule'] == 'ADR-355' and len(receipt['calls']) == 6
+    assert all(call['void']['kind'] == 'usage_limit' and call['void']['slot_consumed'] is False
+               for call in receipt['calls'])
+    assert all(call['void']['cut_off_mid_turn'] is False for call in receipt['calls'])
+    assert {call['transcript']['sha256'] for call in receipt['calls']} == {
+        '7f4238888d0925e0fb3a5d2810843a3d01a7103a4155b3ea0ec0a7f07f4bd455',
+        '5c41384de5d7c3b129467c5a63b9d6980de88507f02cd31ce7a4a6fed09cf19e',
+        '75cedbfd888448b5568bc17abf8bd7afe36b8905ffdf34869ad95cc28465323e',
+        '813e77ee6c0183c17e4a54dec380f83524ae4183ce763f0bfe7aab3ee9c0dedb',
+        '01566753ac81f189b21cc565b300fc00f8d63e4cf63d985989d3663b6b490674',
+        'b5b359ec0d0f5465cd1e8520701e3d7c17285881823ed028b03e13996434ea59'}
+    assert sum(1 for call in receipt['calls'] if call['criterion'] == 'F4') == 3

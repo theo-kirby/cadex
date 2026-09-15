@@ -87,6 +87,90 @@ def child_measure(project, out):
     return 0
 
 
+LIMIT_TEXT = re.compile(r"hit your [a-z ]*limit|session limit|usage limit|rate limit|"
+                        r"out of credits|credit balance|insufficient credits", re.I)
+
+
+def read_frames(path):
+    frames = []
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return frames
+    for line in lines:
+        try:
+            frame = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(frame, dict):
+            frames.append(frame)
+    return frames
+
+
+def void_reason(transcript, envelope=None, stderr=None):
+    """Why a call is void under ADR-355, or None when it reached the model and ended on its own.
+
+    A provider usage, session or credit limit is recognised from any of the
+    shapes the retained ot7 calls carry: a rejected ``rate_limit_event``, a
+    synthetic assistant frame tagged ``rate_limit``, an HTTP 429 error result,
+    or limit text in the CLI envelope or stderr. A limit that lands after the
+    model has already spoken is still void: the turn did not end on its own.
+    """
+    signals, spoke = [], 0
+    for frame in read_frames(transcript):
+        kind = frame.get('type')
+        if kind == 'rate_limit_event':
+            info = frame.get('rate_limit_info') or {}
+            if info.get('status') == 'rejected':
+                signals.append({'frame': 'rate_limit_event', 'status': 'rejected',
+                                'limit': info.get('rateLimitType'), 'resets_at': info.get('resetsAt')})
+        elif kind == 'assistant':
+            if frame.get('error') == 'rate_limit' or (frame.get('message') or {}).get('model') == '<synthetic>':
+                signals.append({'frame': 'assistant', 'error': frame.get('error'),
+                                'model': (frame.get('message') or {}).get('model')})
+            else:
+                spoke += 1 if not signals else 0
+        elif kind == 'result' and frame.get('is_error'):
+            text = frame.get('result') if isinstance(frame.get('result'), str) else ''
+            if frame.get('api_error_status') == 429 or LIMIT_TEXT.search(text):
+                signals.append({'frame': 'result', 'api_error_status': frame.get('api_error_status'),
+                                'text': text[:200]})
+    # The CLI envelope's error field is empty on an ordinary turn; stderr is
+    # consulted only when no envelope was written, so progress output that
+    # happens to mention a limit cannot void a completed turn.
+    text = None
+    if envelope is not None and Path(envelope).is_file():
+        try:
+            text = str(json.loads(Path(envelope).read_text()).get('error') or '')
+        except (ValueError, AttributeError):
+            text = None
+    if text is None and stderr is not None and Path(stderr).is_file():
+        text = '\n'.join(Path(stderr).read_text(errors='replace').strip().splitlines()[-20:])
+    if text and LIMIT_TEXT.search(text):
+        signals.append({'frame': 'envelope' if envelope and Path(envelope).is_file() else 'stderr',
+                        'text': text.strip()[:200]})
+    if not signals:
+        return None
+    return {'kind': 'usage_limit', 'rule': 'ADR-355', 'slot_consumed': False,
+            'cut_off_mid_turn': spoke > 0, 'model_messages_before_limit': spoke,
+            'signals': signals}
+
+
+def retry_project_name(name):
+    """The fresh, letter-suffixed project a void call is retried in (ADR-355)."""
+    match = re.fullmatch(r'(.*)-([a-y])', name)
+    return f'{match.group(1)}-{chr(ord(match.group(2)) + 1)}' if match else f'{name}-b'
+
+
+def classify(transcript, envelope=None, stderr=None):
+    transcript = Path(transcript)
+    if envelope is None and (transcript.parent / 'turn.stdout.json').is_file():
+        envelope = transcript.parent / 'turn.stdout.json'
+    if stderr is None and (transcript.parent / 'turn.stderr.txt').is_file():
+        stderr = transcript.parent / 'turn.stderr.txt'
+    return {'transcript': digest(transcript), 'void': void_reason(transcript, envelope, stderr)}
+
+
 def execute(command, out, stem, timeout):
     start = time.monotonic()
     with (out / f'{stem}.stdout.json').open('w') as stdout, (out / f'{stem}.stderr.txt').open('w') as stderr:
@@ -175,7 +259,8 @@ def run(design, project, model, execute_call=execute):
     evidence = project / 'evidence' / 'f4-repair' if repair else project / 'evidence'
     evidence.mkdir()
     receipt = {'schema': 'ot7-design-evidence-v1', 'design': design, 'project': project.name,
-               'model': model, 'actor_design_edits': 0, 'turns': [], 'status': 'running'}
+               'model': model, 'actor_design_edits': 0, 'turns': [], 'status': 'running',
+               'slots_spent': 0, 'void_calls': 0}
     save = lambda: write(evidence / 'attempt.json', receipt)
     save()
     if repair:
@@ -198,23 +283,38 @@ def run(design, project, model, execute_call=execute):
             save()
             return receipt
         save()
+    continuations = 0
     for index, name in enumerate(names):
         out = evidence / f'turn-{index}'
         out.mkdir()
         prompt = out / name
         prompt.write_bytes((PROMPTS / name).read_bytes())
-        row = {'index': index, 'continuations_used': 1 if repair else index,
+        counts = repair or index > 0  # the create prompt is not a continuation
+        row = {'index': index, 'continuations_used': continuations + counts,
                'prompt': digest(prompt), 'status': 'started'}
         receipt['turns'].append(row)
-        save()  # Persist the consumed slot before launching the provider.
+        save()  # Persist the slot before launching the provider; a void call gives it back.
         row['turn'] = execute_call([sys.executable, str(Path(__file__).resolve()), '--child-turn',
                                    str(project), str(out), str(prompt), model], out, 'turn', 1800)
+        row['void'] = void_reason(out / 'transcript.jsonl', out / 'turn.stdout.json', out / 'turn.stderr.txt')
         row['measurement'] = execute_call([sys.executable, str(Path(__file__).resolve()), '--child-measure',
                                           str(project), str(out)], out, 'measurement', 300)
         if (out / 'fit.json').exists():
             fit = json.loads((out / 'fit.json').read_text())
             row['static_fit'] = {key: fit[key] for key in ('verdict', 'failing_count', 'pairs_checked')}
-        row['status'] = 'completed'
+        if row['void']:
+            # ADR-355: no model saw the prompt, or the turn did not end on its
+            # own. The slot is unspent, the evidence stays, and nothing else is
+            # dispatched from this project.
+            row['status'] = 'void'
+            row['slot_consumed'] = False
+            row['continuations_used'] = continuations
+            receipt['void_calls'] += 1
+        else:
+            row['status'] = 'completed'
+            row['slot_consumed'] = True
+            continuations += counts
+            receipt['slots_spent'] += 1
         if repair:
             row['accepted_after'] = seed_identity(project)
             row['repair_assessment'] = retain_repair_assessment(
@@ -222,13 +322,19 @@ def run(design, project, model, execute_call=execute):
                 row['measurement']['exit_code'] == 0)
         row['artifacts'] = [digest(p) for p in sorted(out.iterdir()) if p.is_file()]
         save()
+        if row['void']:
+            receipt['status'] = 'void'
+            receipt['retry'] = {'rule': 'ADR-355', 'prompt': name, 'project': retry_project_name(project.name),
+                                'note': 'Same frozen prompt, fresh project or fresh seed copy, '
+                                        'only while the product agent is available.'}
+            break
         # Provider failures and ambiguous interrupted turns stop this attempt.
         if row['turn']['exit_code'] not in (0, 3) or (out / 'blocked-followup.json').exists():
             receipt['status'] = 'interrupted'
             break
     else:
         receipt['status'] = 'exhausted'
-    if repair:
+    if repair or receipt['status'] == 'void':
         save()
         return receipt
     # One bounded smoke, even on a failing fit; it never modifies the design.
@@ -265,6 +371,11 @@ if __name__ == '__main__':
         sys.exit(child_turn(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5]))
     if len(sys.argv) > 1 and sys.argv[1] == '--child-measure':
         sys.exit(child_measure(Path(sys.argv[2]), Path(sys.argv[3])))
+    if len(sys.argv) > 1 and sys.argv[1] == '--classify':
+        # Read-only: is a retained call void under ADR-355? Takes a transcript
+        # and, optionally, the CLI envelope and stderr beside it.
+        print(json.dumps(classify(*sys.argv[2:5]), indent=2))
+        sys.exit(0)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('design', choices=['heron', 'robin', 'plover', 'repair'])
     parser.add_argument('project', type=Path)
