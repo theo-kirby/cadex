@@ -1,0 +1,291 @@
+{
+ "criterion": "F5",
+ "iteration": 55,
+ "project": "ot7-heron-b",
+ "design": "heron",
+ "seed": "a fresh, empty project; the frozen create prompt is the first prompt (ADR-345); no actor edit",
+ "evidence_directory": "evidence",
+ "model": "claude-fable-5",
+ "prompt": {
+  "path": "heron.create.prompt.txt",
+  "bytes": 9648,
+  "sha256": "bcda5af55c50459968d87d4651cf0123e7f996227c6c80895365078860514e37"
+ },
+ "turn_index": 0,
+ "runner_status_after": "interrupted",
+ "remaining_after": {
+  "completed": 0,
+  "continuations_used": 0,
+  "continuations_unspent": 0,
+  "next_prompt": null,
+  "closed": "interrupted"
+ },
+ "turn_status": "interrupted",
+ "void": null,
+ "interruption": {
+  "kind": "runner_timeout",
+  "rule": "ADR-356",
+  "slot_consumed": false,
+  "bound_seconds": 1800,
+  "elapsed_seconds": 1800.0027668769471,
+  "model_messages_before_kill": 68
+ },
+ "slot_consumed": false,
+ "continuations_used": 0,
+ "slots_spent": 0,
+ "void_calls_this_project": 0,
+ "interrupted_calls_this_project": 1,
+ "turn": {
+  "exit_code": "timeout",
+  "elapsed_seconds": 1800.0027668769471,
+  "runner_transcript": {
+   "path": "transcript.jsonl",
+   "bytes": 1023332,
+   "sha256": "28ea5aeb469e5eca71bd6cd3b53e7feb01b0126ec7bd48fc0b9f85cc14c707e6"
+  },
+  "captured": "frame by frame as it arrived (ADR-356)",
+  "frames": {
+   "system": 1390,
+   "rate_limit_event": 16,
+   "assistant": 68,
+   "user": 55
+  },
+  "first_frame_utc": "2026-09-15T21:28:02.969Z",
+  "last_frame_utc": "2026-09-15T21:56:46.973Z",
+  "api_messages": 68,
+  "synthetic_error_messages": 0,
+  "tool_uses": 52,
+  "tools": {
+   "describe_api": 1,
+   "Grep": 1,
+   "Read": 1,
+   "Bash": 1,
+   "Agent": 1,
+   "inspect": 44,
+   "write_script": 3
+  },
+  "submit_calls": 0,
+  "text_output": 0,
+  "rate_limit_window_at_first_event": {
+   "status": "allowed",
+   "five_hour": {
+    "utilization": 0.13,
+    "resetsAt": 1789525200
+   },
+   "seven_day": {
+    "utilization": 0.24,
+    "resetsAt": 1789671600
+   }
+  },
+  "rate_limit_window_at_last_event": {
+   "status": "allowed",
+   "five_hour": {
+    "utilization": 0.51,
+    "resetsAt": 1789525200
+   },
+   "seven_day": {
+    "utilization": 0.26,
+    "resetsAt": 1789671600
+   }
+  },
+  "rate_limit_events": 16,
+  "result_frame": {
+   "subtype": null,
+   "is_error": null,
+   "api_error_status": null,
+   "result": "",
+   "duration_ms": null,
+   "num_turns": null
+  },
+  "usage": {
+   "input_tokens": null,
+   "cache_creation_input_tokens": null,
+   "cache_read_input_tokens": null,
+   "output_tokens": null,
+   "output_tokens_details": null
+  }
+ },
+ "measurement": {
+  "exit_code": 0,
+  "elapsed_seconds": 0.11387381702661514
+ },
+ "static_fit": {
+  "verdict": "unavailable",
+  "failing_count": 0,
+  "pairs_checked": 0
+ },
+ "accepted_after": {
+  "script_sha256": "11109efec4622908f4ec7c7851ce2edc801e6ac8701f3d6d92e92b893f1432f8",
+  "script_lines": 12,
+  "accepted_revision": "544ea74eeb9ff737682a6f3221dcc87551b96c476517c57fb2de406cdc126870",
+  "accepted_digest": "46311d1fd18e27f576734330b453c753c8046b9d23971ad0c0e72b257f306457",
+  "working_revision": "544ea74eeb9ff737682a6f3221dcc87551b96c476517c57fb2de406cdc126870",
+  "updated_at": "2026-09-15T21:31:50Z"
+ },
+ "artifacts": [
+  {
+   "path": "clearance.json",
+   "bytes": 461,
+   "sha256": "ea3217dd8c1636b05084b6f350131e0a0a59615c15f659c61a4502ce988702de"
+  },
+  {
+   "path": "fit.json",
+   "bytes": 889,
+   "sha256": "b3716b1307cb952d50488ffd9d5f589fa6c6561660bb68dd52e2ab10230cbc82"
+  },
+  {
+   "path": "heron.create.prompt.txt",
+   "bytes": 9648,
+   "sha256": "bcda5af55c50459968d87d4651cf0123e7f996227c6c80895365078860514e37"
+  },
+  {
+   "path": "inventory.json",
+   "bytes": 676,
+   "sha256": "c19595d6017e96309ae76098a5e7f16e71f594cfcc20e644faf0f31eb1fe592c"
+  },
+  {
+   "path": "measurement.stderr.txt",
+   "bytes": 0,
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "measurement.stdout.json",
+   "bytes": 0,
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "transcript.jsonl",
+   "bytes": 1023332,
+   "sha256": "28ea5aeb469e5eca71bd6cd3b53e7feb01b0126ec7bd48fc0b9f85cc14c707e6"
+  },
+  {
+   "path": "turn.stderr.txt",
+   "bytes": 1032,
+   "sha256": "16e2812fe1e5bcf1fc23c1507849ffa199f51e01ae1f30ec19dd3215b0433b95"
+  },
+  {
+   "path": "turn.stdout.json",
+   "bytes": 0,
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+ ],
+ "edits": {
+  "calls": 3,
+  "accepted": 2,
+  "rejected": 1,
+  "sequence": [
+   {
+    "tool": "write_script",
+    "result": "rejected : XScript source policy violation: line 1: imports are not allowed"
+   },
+   {
+    "tool": "write_script",
+    "result": "accepted 0068956d…, static fit unavailable 0 pairs 0 failing"
+   },
+   {
+    "tool": "write_script",
+    "result": "accepted 544ea74e…, static fit unavailable 0 pairs 0 failing"
+   }
+  ],
+  "failing_count_by_accepted_revision": [
+   0,
+   0
+  ]
+ },
+ "swept_fit": {
+  "status": "unavailable",
+  "step_degrees": null,
+  "elapsed_seconds": null,
+  "joints": [],
+  "pairs_per_joint": 0,
+  "missing": null,
+  "coverage": null
+ },
+ "static_failing_pairs": null,
+ "inventory": {
+  "component_count": 0,
+  "catalog_counts": {},
+  "uncatalogued_sources": [],
+  "world_geometry": []
+ },
+ "static_zero_distance_pairs": {
+  "count": 0,
+  "all_declared_contact": true
+ },
+ "actor_design_edits": 0,
+ "smoke": "not run: the runner runs no smoke on an interrupted call",
+ "window": {
+  "runner_probe_before_dispatch": {
+   "five_hour_percent": 13,
+   "status": "allowed",
+   "read_at": "2026-09-15T21:28:00+00:00",
+   "bound_percent": 45
+  },
+  "five_hour_at_first_event": 0.13,
+  "five_hour_at_last_event": 0.51,
+  "seven_day_at_first_event": 0.24,
+  "seven_day_at_last_event": 0.26,
+  "five_hour_after_kill_probe": {
+   "five_hour_percent": 67,
+   "status": "allowed",
+   "read_at": "2026-09-15T22:00 UTC (approx.)",
+   "room": false,
+   "note": "the runner’s probe after the kill; the actor’s own session shares the window"
+  }
+ },
+ "ruling": null,
+ "retry": {
+  "rule": "ADR-356",
+  "prompt": "heron.create.prompt.txt",
+  "project": "ot7-heron-c",
+  "note": "Same frozen prompt, fresh project, only while the product agent is available; the create prompt and all three continuations remain unspent."
+ },
+ "interruption_analysis": {
+  "timeline_utc": {
+   "dispatched": "21:28:00",
+   "first_frame": "21:28:02",
+   "last_tool_call": "21:48:54 (inspect output probe_horn /facts/face_details)",
+   "last_frame": "21:56:46",
+   "killed": "21:58:02",
+   "reading_phase": "21:28:02-21:31:53 (49 tool calls)",
+   "thinking_only_phase": "21:31:53-21:56:46 (1 tool call)"
+  },
+  "output_cap_hits": [
+   {
+    "message_ended_utc": "21:39:52",
+    "estimated_thinking_tokens": 31950,
+    "span_seconds": 479
+   },
+   {
+    "message_ended_utc": "21:48:06",
+    "estimated_thinking_tokens": 31950,
+    "span_seconds": 494
+   },
+   {
+    "message_ended_utc": "21:56:46",
+    "estimated_thinking_tokens": 31900,
+    "span_seconds": 472
+   }
+  ],
+  "output_cap_tokens": 32000,
+  "output_cap_rule": "ADR-356: CLAUDE_CODE_MAX_OUTPUT_TOKENS, thinking and text together",
+  "harness_auto_resume_text": "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.",
+  "thinking_content_in_stream": "redacted by the harness (empty thinking blocks); sizes are the stream’s own thinking_tokens estimates",
+  "thinking_blocks_estimated_total": 113630,
+  "thinking_blocks": 13,
+  "describe_api_overflow": {
+   "characters": 163200,
+   "lines": 1188,
+   "harness_reply": "result exceeds maximum allowed tokens; output saved to a tool-results file",
+   "disabled_tool_attempts": [
+    "Grep",
+    "Read",
+    "Bash",
+    "Agent"
+   ],
+   "fallback": "44 paged inspect scope=api reads over 3 min 35 s"
+  },
+  "design_state": "three probe scripts (one rejected for an import, two accepted: catalog servo body, flange and horn solids as part outputs); no assembly.component, no joint, no printed part; fit, sweep and inventory unavailable by construction",
+  "what_this_measures": "a create turn under the ADR-356 settings (effort high, 32,000-token output cap): the model read for 4 minutes, then spent 24 minutes in three thinking-only messages that each hit the cap and were auto-resumed, and never wrote the design; a fourth would have started at 21:56:46 and the bound fell at 21:58:02"
+ }
+}

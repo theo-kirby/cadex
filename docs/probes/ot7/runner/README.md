@@ -433,3 +433,28 @@ turn completed in 104.9 s, reading only, and moved the window from 46 % to
 48 %; the runner wrote `status: exhausted` with `slots_spent: 4` and
 `next_prompt: null`, so `resume` on this project now refuses with
 "exhausted" ([receipt](../retained/repair-continue-3-d.json)).
+
+## The first create call, interrupted (iteration 55)
+
+`run.py heron … --turns 1` on the fresh project `ot7-heron-b` is the first
+design-attempt dispatch under the gate: probe 13 %, dispatched at 21:28 UTC,
+killed at the 30-minute bound with no design written
+([receipt](../retained/heron-interrupted-b.json)). The runner classified it
+`interrupted`, spent no slot and named `ot7-heron-c`; the receipt's
+`interruption_analysis` has the timeline. Two collector facts the call
+exposed, neither of them a runner defect:
+
+- **`describe_api` does not fit the harness's tool-result cap.** Its
+  163,200-character reply was refused and written to a file the product
+  agent has no tool to read (`Grep`, `Read`, `Bash` and `Agent` are disabled
+  in that session), so the agent paged the contract through 44
+  `inspect scope=api` reads instead, in 3 min 35 s. That is a product
+  finding about the tool surface, recorded for the next unit, not changed
+  here.
+- **The 32,000-token output cap does not bound a turn's thinking.** Three
+  consecutive thinking-only messages each hit the cap and were auto-resumed
+  by the harness ("Output token limit hit. Resume directly…"), 24 minutes in
+  all; the cap converts one long thought into several. The effort level is
+  the documented soft control (`CADEX_EFFORT`, ADR-356), and a lower one is
+  the reversible change to try before the retry; that is a recorded decision,
+  not a prompt change.

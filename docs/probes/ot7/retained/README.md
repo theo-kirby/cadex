@@ -163,6 +163,27 @@ from their links, declared as 0.05 mm clearances. The runner wrote
 `status: exhausted`: the repair prompt and all three continuations have
 reached the model, and F4 has no slot left.
 
+## F5: the arm create call interrupted at the bound (iteration 55)
+
+[heron-interrupted-b.json](heron-interrupted-b.json): `heron.create.prompt.txt`
+dispatched on the fresh, empty project `ot7-heron-b` through the runner's
+window gate (ADR-358: probe 13 %, dispatched; 13 % at the first frame, 51 %
+at the last). **The turn did not end on its own**: the runner killed it at
+the 30-minute bound (ADR-356: `interrupted`, no slot spent, retry
+`ot7-heron-c`). 68 model messages and 52 tool calls: `describe_api` once,
+whose 163,200-character reply the harness refused and wrote to a file; four
+attempts at disabled harness tools on that file; 44 paged `inspect scope=api`
+reads; three `write_script` calls, one rejected for an import and two
+accepted as probes of the catalog servo body, flange and horn (three `part`
+outputs, no assembly). Then three consecutive thinking-only messages of about
+31,950 estimated tokens each, every one ending on the 32,000-token output
+cap and auto-resumed by the harness, 24 minutes in all with one read between
+them. The after-read: static fit **unavailable, 0 pairs**, sweep unavailable,
+inventory empty, `world_geometry` empty, all by construction of a project
+with no components. No design result; the create prompt and all three
+continuations remain unspent. The receipt's `interruption_analysis` carries
+the timeline, the three cap hits and the `describe_api` overflow.
+
 ## F9: unchanged retained measurements through the product scope
 
 [comparison.json](comparison.json) contains every failing pair by name and its
