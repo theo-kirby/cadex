@@ -586,6 +586,36 @@ stream frame and 56 % after the measurement, over the 45 % bound, so
 frames also carried the seven-day window at 90–94 % as `allowed_warning`;
 the runner's bound reads only the five-hour figure.
 
+## The last continuation completed, and F5 exhausted (iteration 72)
+
+```bash
+pixi run python docs/probes/ot7/runner/run.py resume "$PROJECTS/ot7-heron-c"
+```
+
+Dispatched at 13:51:42 UTC with the probe at 7 %, at `medium`, into the
+same session; the first dispatch after the owner refreshed the account
+(ADR-361), which moved the five-hour reset from 17:20 to 18:50 UTC and
+left the seven-day window at 0 %. The turn ended on its own in 142.9 s:
+12 model messages, 5 thinking blocks, no output-cap hit, 6 tool calls
+(5 `inspect`, all the clearance scope, 1 `rebuild`), no edit. The third
+continuation slot is spent and the runner wrote `status: exhausted`,
+`slots_spent: 4`, `next_prompt: null`, then ran its own smoke into
+`evidence/smoke` (exit 0, 14.6 s, verdict pass). `resume` on this project
+now refuses with "exhausted". The receipt is
+`retained/heron-continue-3-c.json`; the assessment is REPORT.md's iteration
+72 section.
+
+The measured result: the design byte-identical to the end of continue-2,
+re-accepted at the same revision and digest; static fit **0 of 105
+failing**, `world_geometry` empty; the sweep **complete on both joints at
+5°** with 0 mm³ on every pair; the inventory still listing both servos and
+both horns as uncatalogued while the closing message calls all twelve
+purchased parts catalog parts. F5 is exhausted with that result: every
+count of its bar met except catalog hardware for every purchased part. The
+window read 38 % at the last stream frame and 41 % after the measurement,
+so the next design turn, F6's create on `ot7-robin-b`, waits for the 18:50
+UTC reset.
+
 ## The window closed, and describe_api paged (iteration 60, ADR-360)
 
 No design turn. The probe read 52 % at 07:40 UTC, above the 45 % bound
