@@ -1249,7 +1249,7 @@ measured 9×10⁻⁶ ° standing). F5's arm is grounded and reads none of this; 
 and F7 are the two designs whose failure mode is falling over, so their smoke
 results are measured across this change.
 
-**ADR-378** (`__COMMIT__`) closes the same hole in the swept fit that ADR-377
+**ADR-378** (`6ce89fff`) closes the same hole in the swept fit that ADR-377
 closed in the smoke: a measurement taken and judged against nothing. The swept
 block could fail a pair on interpenetration or on an unmeasured pair, and on
 nothing else — so the minimum distance it measured through a joint's range,
