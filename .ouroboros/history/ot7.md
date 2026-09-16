@@ -1,40 +1,42 @@
 ---
 run: ot7
 machine: sb1x
-started: 2026-09-16T09:50:46
-ended: 2026-09-16T14:28:00+00:00
-hours: 0.6
+started: 2026-09-16T10:28:36
+ended: 2026-09-16T15:00:15+00:00
+hours: 0.3
 state: killed
-iterations: 75
-commits: 94
+iterations: 76
+commits: 98
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 10
 merged: no
 branch: ouroboros/ot7
 memory: hypergraph
-actor: claude:claude-fable-5-1
+actor: claude:claude-opus-5
 ---
 
 # Run ot7
 
-75 iterations in 0.6h on `sb1x`, killed (2 stuck verdict(s) in a row). Branch `ouroboros/ot7`, not merged.
+76 iterations in 0.3h on `sb1x`, killed (-). Branch `ouroboros/ot7`, not merged.
 
 ## The numbers
 
 | | |
 |---|---|
-| iterations | 75 (changed 68, recorded 46) |
-| commits | 94 — 164 files changed, 18961 insertions(+), 82 deletions(-) |
+| iterations | 76 (changed 69, recorded 47) |
+| commits | 98 — 167 files changed, 19460 insertions(+), 86 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 10 checked at the tip |
 | reverts | 0 |
-| verdicts | answer 5, continue 56, looping 4, reject 3, stuck 7 |
+| verdicts | answer 5, continue 57, looping 4, reject 3, stuck 7 |
 | loop detector | no firing |
-| roles | actor claude:claude-fable-5-1, critic codex:gpt-6-astra |
-| usage | claude seven_day 3% -> 51% (+48 this run); claude seven_day_overage_included 5% -> 100% (+95 this run); claude five_hour 51% -> 0% (-51 this run); codex seven_day 54% |
+| roles | actor claude:claude-opus-5, critic codex:gpt-6-astra |
+| usage | claude seven_day 51%; claude five_hour 3%; codex seven_day 55% |
 
 ## What landed
 
+- A refused window probe is no room, whatever the window reads (ADR-364)
+- Switch Ouroboros Claude roles to Opus 5
 - Every build reply carries the published catalog identity, advisory (ADR-362)
 - F5 continue-3 on ot7-heron-c completed: no edit, static 0 of 105, sweep clean, smoke passing, servos and horns uncatalogued; F5 exhausted
 - Restore actor fallback and document account refresh (ADR-361)
@@ -58,9 +60,7 @@ actor: claude:claude-fable-5-1
 - ot7 runner: a synthetic frame alone is not a usage limit; auth failures spend their slot (ADR-355)
 - ot7 runner: usage-limit calls are void; classify the six pre-restart calls (ADR-355)
 - ot7 charter: usage-limit failures are void; restart (ADR-355)
-- docs: hand off ot7 as exhausted and incomplete
-- Record frozen F4 collector refusal and unchanged fit evidence
-- ... and 27 more
+- ... and 29 more
 
 ## Decisions the critic made
 

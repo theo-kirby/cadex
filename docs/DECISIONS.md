@@ -25224,11 +25224,22 @@ probe on the same account, twenty minutes later, returned `status: allowed`,
 `rateLimitType: five_hour` and five-hour at 2 %, and was refused just the
 same. The pre-ADR-364 gate reads that second frame as room and sends the
 prompt — verified against the retained stream. A fixture built from the real
-frames proves the consequence on the old code: F6's create prompt **and all
-three continuations** dispatch into a model the provider will not run, and
-the schedule ends `exhausted`
-with four slots spent on calls no model ever saw — the ADR-355 loss arriving
-through the gate written to prevent it.
+frames proves that dispatch on the old code: F6's create prompt **and all
+three continuations** go into a model the provider will not run.
+
+**Corrected 2026-09-16 (iteration 78).** That fixture's design calls are the
+suite's ordinary mocked-successful ones, so the four spent slots it ends with
+are the fixtures answering, not the provider. This ADR first read them as the
+real cost, and they are not: ADR-355 sits underneath, and a design call the
+provider refuses is void. Measured against the same Fable refusal frames
+(`test_a_room_reading_before_a_refused_model_costs_one_void_dispatch`), the
+old gate costs **one** dispatch, its receipt and a burned project name — the
+attempt goes void on its first turn, `slots_spent` stays 0 and the retry moves
+to `ot7-robin-c` — with all four frozen slots intact. So this gate is the
+earlier of two guards rather than the only one. It is still worth having: it
+spends no provider call, it leaves the frozen prompt in the project the report
+can still name, and it turns a refusal into a pause rather than into a retry
+chain of suffixed projects.
 
 The probe is a real model call on the product agent's model, so it is read as
 one. Its stream is classified by `void_reason`, the same ADR-355 rule a design
@@ -25248,11 +25259,13 @@ window, so the classifier runs only on a probe that did **not** answer. A
 probe that reached the model and returned its own result is room, stray frames
 and all.
 
-Evidence: five fixtures in `cli/tests/test_ot7_runner.py` (the refused probe
+Evidence: six fixtures in `cli/tests/test_ot7_runner.py` (the refused probe
 at 1 % with `status: allowed`, the named windows, an allowed probe keeping its
-room, the whole schedule pausing with zero slots spent, and an answered probe
-keeping its room despite a stray rejected overage frame), the first four
-failing on the old code, 76 passed; the receipt
+room, the whole schedule pausing with zero slots spent, an answered probe
+keeping its room despite a stray rejected overage frame, and — added by the
+correction above — a room reading in front of a refused model costing one void
+dispatch and no slot), the first four failing on the old code and the sixth
+holding on both, 77 passed; the receipt
 `docs/probes/ot7/attempts/f6-window-refusal.json`; `docs/probes/ot7/runner/README.md`.
 
 F6's four slots are unspent and no `ot7-robin-b` exists. The product agent's
@@ -25260,3 +25273,37 @@ model stays `claude-fable-5` — ADR-363 moved the Ouroboros roles to
 `claude-opus-5` and deliberately left the experiment's model alone, so F6 and
 F7 stay comparable with F5 — so F6 waits for that account's Fable capacity
 rather than for a five-hour reset.
+
+## ADR-365 — The Ouroboros reporter block is the operator's, not a role's (2026-09-16)
+
+Iteration 77's loop commit `ad774438` carries a 33-line addition to
+`.ouroboros/config.yml` — a `roles.reporter` entry (Codex first, a Claude
+fallback) and a commented `report:` block — that no unit in this run asked
+for and no record explains. Recording where it came from, since an
+unexplained configuration change on an unattended branch is the kind of thing
+a later reader has to treat as suspect.
+
+It is the operator's. The loop was sent SIGTERM at 14:28:00 UTC and continued
+at 14:28:36 (`.ouroboros/runs/ot7/loop.log`), which is when the phone reporter
+was started beside it; `.ouroboros/config.yml` was then modified at 14:37:05,
+in the middle of iteration 77's actor turn. The resolved snapshot the restart
+wrote, `.ouroboros/runs/ot7/run.yml`, has the identical `report:` values and
+**no** `roles.reporter` at all, so the block documents the configuration the
+run is already using — the `report:` half restating the CLI defaults in the
+config that `ouroboros watch` reads, and the reporter role naming the harness
+its digests should use. Its stated reason is that a digest must never compete
+with the actor for the Claude window.
+
+No unattended role authored it: the iteration-77 actor found the file dirty,
+ran `git diff` on it, described it as an unexpected change and deliberately
+left it unstaged — its own commit `02f6b246` does not contain it. The loop's
+end-of-iteration commit then swept the working tree, which is how an operator
+edit ended up inside `ouroboros #77`. Scanning the actor transcripts of
+iterations 75–77 for any write to that path returns nothing.
+
+Consequences: the run is unaffected — the reporter is an observer outside the
+loop, and the block changes no role the loop calls. The general point is that
+the loop's iteration commit is a working-tree sweep, so an operator edit made
+during a turn lands under the actor's commit message with the actor's
+attribution. When that happens, the provenance goes in an ADR rather than
+being left to look like unattributed drift.

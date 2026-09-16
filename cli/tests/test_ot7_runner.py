@@ -1100,7 +1100,14 @@ def test_an_allowed_probe_keeps_its_room_and_carries_no_refusal(tmp_path, monkey
 
 
 def test_a_refused_probe_pauses_the_schedule_without_spending_a_slot(tmp_path, monkeypatch):
-    """The whole point: F6's create prompt survives a model the provider will not run."""
+    """The whole point: F6's create prompt is not sent to a model the provider will not run.
+
+    The design calls here are the ordinary mocked-successful ones, so what the
+    pre-ADR-364 gate fails on is the *dispatch*: it runs the whole schedule and
+    spends four slots against fixtures that answer. A real refused model does
+    not answer, and the slot cost of that is measured separately in
+    `test_a_room_reading_before_a_refused_model_costs_one_void_dispatch`.
+    """
     target = project(tmp_path)
     calls = []
     # One reading per prompt in the schedule, so a gate that wrongly dispatches
@@ -1135,3 +1142,35 @@ def test_a_probe_that_answered_is_room_despite_a_stray_rejected_overage_frame(tm
                                     out, 'probe', 'claude-fable-5')
     assert reading['refused'] is None and reading['five_hour_percent'] == 8
     assert runner.window_has_room(reading, 45)
+
+
+def test_a_room_reading_before_a_refused_model_costs_one_void_dispatch(tmp_path, monkeypatch):
+    """What the pre-ADR-364 gate actually cost, measured rather than assumed.
+
+    ADR-364's schedule fixture mocks design calls that succeed, so it proves the
+    old gate dispatches into a model the provider will not run — not that the
+    four frozen slots are lost. ADR-355 is the backstop underneath: here the
+    probe reads ordinary room and every design call is refused the way
+    `claude-fable-5` refused on 2026-09-16, and the attempt goes **void** on its
+    first turn with every slot intact. The measured cost of the old gate is one
+    wasted dispatch, its receipt, and a burned project name.
+    """
+    from cadex_cli import agent
+    monkeypatch.setattr(agent, 'find_claude', lambda _: '/fixture/claude')
+    target = project(tmp_path).with_name('ot7-robin-b')
+    calls = []
+    limited = limited_executor(calls)
+    def execute(command, out, stem, timeout):
+        if out.name == 'window':
+            calls.append((command, timeout))
+            frames_file(out / f'{stem}.stdout.json', [limit_frame(0.01)])
+            return {'exit_code': 0, 'elapsed_seconds': 0.01}
+        return limited(command, out, stem, timeout)
+    report = runner.run('robin', target, 'claude-fable-5', execute, window_bound=45)
+    assert report['window_readings'][0]['dispatched'] is True
+    assert report['status'] == 'void' and report['void_calls'] == 1
+    assert report['slots_spent'] == 0 and report['turns'][0]['continuations_used'] == 0
+    assert report['retry'] == {'rule': 'ADR-355', 'prompt': 'robin.create.prompt.txt',
+                               'project': 'ot7-robin-c', 'note': report['retry']['note']}
+    # One dispatch, not four: the attempt stops at the first refusal.
+    assert len([cmd for cmd, _ in calls if '--child-turn' in cmd]) == 1

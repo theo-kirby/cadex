@@ -662,10 +662,21 @@ Both probes are in the receipt.
 
 The fixture in `cli/tests/test_ot7_runner.py` runs that frame against the old
 gate, and the old code dispatches Robin's create prompt **and all three
-continuations** into a model the provider will not run, ending `exhausted`
-with four slots spent on calls no model ever saw. That is the ADR-355 loss
-arriving through the very gate written to prevent it, and today it was two
-minutes of luck away from happening.
+continuations** into a model the provider will not run.
+
+**Corrected in iteration 78.** That fixture's design calls are the suite's
+ordinary mocked-successful ones, so the four spent slots it ends with are the
+fixtures answering — not the provider, and not a measured loss. This file and
+ADR-364 first wrote them up as the cost of the old gate; they are not.
+ADR-355 is underneath it, and a refused design call is void. Measured against
+the same Fable frames — `test_a_room_reading_before_a_refused_model_costs_one_void_dispatch`,
+where the probe reads ordinary room and every design call is refused — the old
+gate costs **one** dispatch, its receipt and a burned project name: the attempt
+goes void on turn 0, `slots_spent` stays 0, and the retry moves to
+`ot7-robin-c` with all four frozen slots intact. The gate below is the earlier
+of two guards, not the only one. It still earns its place — it spends no
+provider call, keeps the frozen prompt in the project the report names, and
+turns a refusal into a pause instead of a chain of suffixed retry projects.
 
 So the probe is now read as what it is — a real model call on the product
 agent's model:
