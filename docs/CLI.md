@@ -2029,7 +2029,10 @@ output types, every export's name, full signature and the first paragraph
 of its documentation, the whole catalog for the library, and a
 `descriptions` line naming the `inspect scope=api` path that holds the rest
 of any docstring. A section the contract lacks is refused with
-`NO_SUCH_SECTION` and the list of sections, without reaching the engine.
+`NO_SUCH_SECTION` and the list of sections. That refusal is decided
+**after** the engine has answered: the bridge sends the argument-free
+request first, because the section names come from the reply, and only
+the `section` argument itself never reaches the engine.
 The harness refuses an MCP tool result over its own token cap and writes
 it to a file the product agent has no tool to read; the cap is not
 published in characters, so the bridge's `API_VIEW_CHAR_BUDGET` (21,500

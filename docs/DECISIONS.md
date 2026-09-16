@@ -25084,8 +25084,10 @@ be another guess.
    first-paragraph description, the whole catalog for the library, and a
    `descriptions` line naming the `inspect scope=api` path that holds the
    rest of any docstring. A section the contract lacks is refused with
-   `NO_SUCH_SECTION` and the list of sections, without reaching the
-   engine.
+   `NO_SUCH_SECTION` and the list of sections, after the engine has
+   answered the argument-free request: the section names come from that
+   reply, so the refusal cannot be decided before it. Only the `section`
+   argument itself never reaches the engine.
 2. **`section` is the bridge's argument, not the protocol's.** The engine's
    op still takes nothing and returns the whole contract; the protocol, the
    reply, the goldens and the shell client are untouched. The CLI's tool
