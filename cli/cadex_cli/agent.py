@@ -229,7 +229,7 @@ component and put the cut in the printed part that receives it. \
 is the published exact-solid sweep of every limited joint, with its own \
 `verdict`, the coverage, one row per joint (minimum distance, maximum \
 common volume, first contact in the joint's own `unit`) and every pair \
-that interpenetrates anywhere in a range. Declare `sweep_step_degrees` \
+that fails anywhere in a range. Declare `sweep_step_degrees` \
 (limited hinges) and `sweep_step_mm` (limited sliders) on the assembly to \
 acquire it; a limited joint whose step is undeclared comes back \
 `incomplete` with that reason even when the assembly declares no step at \
@@ -240,9 +240,12 @@ limited joint to sweep, and `coverage` `unavailable` means an older engine \
 accepted this revision and published no sweep, so rebuild to get one. \
 None of these is a pass: a joint \
 that was not swept has been checked at one pose only, and static fit does \
-not prove motion fit. The swept verdict judges overlap only -- declared \
-contacts and clearance minima are checked at the solved pose -- so read the \
-joint rows against your own intent as well. \
+not prove motion fit. A swept pair fails on `intersection`, on `below \
+clearance` -- its minimum through the range misses the minimum you declared \
+for it, or 0.1 mm if you declared none -- or on a measurement the engine \
+could not take. A pair you declared a contact, or welded with a fixed \
+joint, is not held to a gap here, and a pair the solved pose already fails \
+is named in the static list instead of twice. \
 `inspect scope=clearance path=/clearance_sweep` reads the whole published \
 report, including per-joint timings.
 - The engine validates the geometry itself and refuses what it cannot build, \

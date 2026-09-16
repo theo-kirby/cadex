@@ -1918,8 +1918,8 @@ carried to the model (§4, ADR-346) — `verdict`, counts and every failing
 pair by name, with the swept `sweep` half inside it (ADR-366) — and the
 prose report prints it as a `fit` line with one line per failing pair,
 followed by a `sweep` line with one line per unswept joint and per
-overlapping pair. The same run adds `inventory`, the catalog-identity
-block that reply carried (ADR-362) — `component_count`,
+failing pair, each carrying its status. The same run adds `inventory`,
+the catalog-identity block that reply carried (ADR-362) — `component_count`,
 `catalogued_count`, `uncatalogued_count`, the `catalog_counts` roll-up and
 every `uncatalogued_sources` name — printed as an `inventory` line with one
 line per uncatalogued source. An `asset` run adds
@@ -2131,18 +2131,37 @@ The `fit` block's `verdict` is the solved pose and stays that. Inside it,
      "minimum_distance_mm": null, "maximum_common_volume_mm3": null,
      "reason": "sweep_step_mm is not declared on the assembly, so this limited slider joint was not swept"}
   ],
-  "failing_count": 1,
+  "failing_count": 2,
   "failing": [{"joint": "knee", "first": "thigh", "second": "shin", "status": "intersection",
                "minimum_distance_mm": 0.0, "maximum_common_volume_mm3": 42.5,
-               "first_contact_degrees": -55.0}]
+               "first_contact_degrees": -55.0},
+              {"joint": "knee", "first": "thigh", "second": "cover", "status": "below clearance",
+               "minimum_distance_mm": 0.04, "maximum_common_volume_mm3": 0.0,
+               "minimum_mm": 0.1, "distance_mm": 10.75, "first_contact_degrees": null}]
 }
 ```
 
-`verdict` is `pass` only when every limited joint was swept to completion
-and no pair interpenetrates anywhere in its range. `fail` names **every**
-overlapping pair, with the joint it is through and the joint value it first
-touched at, on the same never-cut-short terms as the static list — and it
-does not hide missing coverage, which stays in the joint rows beside it.
+`verdict` is `pass` only when every limited joint was swept to completion,
+no pair interpenetrates anywhere in its range **and no pair closes below its
+minimum there** (ADR-378). `fail` names **every** failing pair, with the
+joint it is through and the joint value it first touched at, on the same
+never-cut-short terms as the static list — and it does not hide missing
+coverage, which stays in the joint rows beside it.
+
+A `below clearance` row is a gap the motion closed: the pair's own minimum —
+its declared `clearances=` value, or `minimum_clearance_mm` for a pair with
+nothing declared — not met somewhere in the range, with `distance_mm` beside
+it saying what the solved pose measured. Before ADR-378 the block held the
+minimum it measured against nothing, so a hinge that took two parts from
+10.75 mm apart to 0.04 mm — a quarter of the gap the static block holds the
+same undeclared pair to — printed that 0.04 mm beside `verdict: pass`. The
+rule is the narrowest one that closes it, so the swept block stays strictly
+additive to the static one: only a pair **this joint moves** is judged, only
+a pair the static block calls **clear** is judged (one that already fails at
+the solved pose is named there, once), and a pair declared `contact` or
+carrying a fixed joint's implied `attached` intent (ADR-372) is exempt here
+exactly as it is there. On every ot7 receipt retained before this change the
+new rule adds no failure.
 `incomplete` means a joint the engine could not sweep, carrying the engine's
 own reason. `unavailable` is the verdict when there is no joint row to judge
 at all, and it covers **two** different facts that `coverage` beside it tells
@@ -2162,10 +2181,12 @@ repeats its solved-pose measurement at every sample. Rolling it in would pin
 the joint's minimum at the weld's 0.0 mm and name first contact at the bottom
 of the range, where the sweep merely started, which is the weld and not the
 motion; the gap under a weld is the `attachments` block's fact, measured at
-the pose where it means something. `failing` is unchanged and still spans
-every pair, because an overlap is an overlap. A pair row from a revision
+the pose where it means something. `failing` spans every pair that
+overlaps, because an overlap is an overlap. A pair row from a revision
 accepted before ADR-374 carries no `relative_motion` flag and counts as
-moving, so an older receipt reads as it always did.
+moving, so an older receipt reads as it always did — including under
+ADR-378, whose three narrowing rules are what keep a flagless rigid row from
+failing: it repeats a solved-pose number the static block already judged.
 
 None of these is a pass: a joint that was not swept has been checked at one pose
 only. The block is advisory like the static one — a failing swept fit is

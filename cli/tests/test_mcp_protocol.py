@@ -241,7 +241,17 @@ def test_a_clear_build_says_pass_and_a_partless_build_says_unavailable() -> None
          "status": "complete", "pairs": [
              {"first": "a", "second": "b", "minimum_distance_mm": 0.0,
               "maximum_common_volume_mm3": 8.0, "first_contact_degrees": -20.0}]}]},
-     "sweep fail: 1 overlapping pair(s) over 1 of 1 joint(s) swept"),
+     "sweep fail: 1 failing pair(s) over 1 of 1 joint(s) swept"),
+    # A gap the motion closes, with nothing overlapping anywhere (ADR-378):
+    # `b`/`c` is `_CLEAR`'s pair, 10 mm apart at the solved pose, and the
+    # hinge takes it to 0.04 mm. Before this the phrase was `sweep pass`.
+    ({"status": "complete", "joints": [
+        {"joint": "knee", "kind": "revolute", "unit": "degrees",
+         "status": "complete", "pairs": [
+             {"first": "b", "second": "c", "relative_motion": True,
+              "minimum_distance_mm": 0.04,
+              "maximum_common_volume_mm3": 0.0, "first_contact_degrees": None}]}]},
+     "sweep fail: 1 failing pair(s) over 1 of 1 joint(s) swept"),
     ({"status": "incomplete", "joints": [
         {"joint": "knee", "kind": "revolute", "unit": "degrees",
          "status": "incomplete", "reason": "sweep_step_degrees is not declared"}]},

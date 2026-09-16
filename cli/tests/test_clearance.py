@@ -233,9 +233,10 @@ def test_the_prose_report_prints_the_fit_and_each_failing_pair():
                 {'joint': 'rail', 'kind': 'slider', 'unit': 'mm',
                  'status': 'incomplete', 'reason': 'sweep_step_mm is not declared'}]}}))
     printed = human_lines(swept)
-    assert 'sweep  fail  1 of 2 joint(s) swept  1 overlapping pair(s)' in printed
+    assert 'sweep  fail  1 of 2 joint(s) swept  1 failing pair(s)' in printed
     assert '  rail unswept: sweep_step_mm is not declared' in printed
-    assert '  thigh ∩ shin through knee: min 0 mm  max common 42.5 mm³' in printed
+    assert ('  thigh ∩ shin through knee: intersection  '
+            'min 0 mm  max common 42.5 mm³') in printed
     assert swept.to_json()['fit']['sweep']['failing_count'] == 1
 
 
@@ -1014,3 +1015,116 @@ def test_an_unbounded_wheel_is_missing_coverage_beside_a_hinge_that_swept_clean(
     # And the empty sweep no longer offers an unlimited joint as a reason it
     # found nothing to check, because such a joint now has a row of its own.
     assert 'welded or suppressed' in SWEEP_NO_JOINTS and 'unlimited' not in SWEEP_NO_JOINTS
+
+
+#: The hinge of ADR-378's reproduction, measured on real OCCT solids by
+#: `cadex_tests/test_joint_fit_sweep.py`'s grazing fixture: two unit spheres,
+#: the fixed centre 12.04 mm from the hinge axis and the moving centre 10 mm
+#: from it, swept from the solved 20 degrees to 90 degrees at 1 degree. The
+#: centres meet at 90 degrees exactly 2.04 mm apart, so the surfaces close to
+#: 0.04 mm and never touch. The solved pose is 10.7516 mm clear.
+_GRAZE_STATIC = 10.751593998165479
+_GRAZE_MINIMUM = 0.03999999999999915
+
+
+def _graze_value(pair_row, *, joint_pair=None, **row):
+    """One hinge, one pair, the grazing numbers -- the shape a build reply reads."""
+
+    first, second = pair_row['first'], pair_row['second']
+    swept = {'first': joint_pair[0] if joint_pair else first,
+             'second': joint_pair[1] if joint_pair else second,
+             'relative_motion': True,
+             'minimum_distance_mm': _GRAZE_MINIMUM,
+             'maximum_common_volume_mm3': 0.0,
+             'first_contact_degrees': None, **row}
+    return {'available': True, 'revision': 'graze', 'assembly': 'asm',
+            'pose': 'initial solved pose', 'pairs': [pair_row],
+            'clearance_sweep': {
+                'status': 'complete', 'step_degrees': 1, 'step_mm': None,
+                'joints': [{'joint': 'hinge', 'kind': 'revolute',
+                            'unit': 'degrees', 'status': 'complete', 'step': 1,
+                            'sample_count': 71, 'range_degrees': [20, 90],
+                            'initial_degrees': 20.0, 'pairs': [swept]}]}}
+
+
+def test_a_gap_the_motion_closes_fails_the_swept_check():
+    """Known answer: clear at the solved pose, 0.04 mm through the range.
+
+    The measurement is the engine's, from the real-solid fixture named above.
+    Before ADR-378 the swept block could only fail on interpenetration or an
+    unmeasured pair, so it printed this 0.04 mm beside `verdict: pass` -- a
+    quarter of the 0.1 mm gap the solved-pose block holds the very same
+    undeclared pair to, at a pose the solved-pose block cannot see.
+    """
+
+    row = {'first': 'fixed', 'second': 'moving',
+           'distance_mm': _GRAZE_STATIC, 'common_volume_mm3': 0.0}
+    fit = fit_summary(_graze_value(row))
+    # The solved pose is genuinely clear: this failure exists only because
+    # the sweep looked somewhere else.
+    assert fit['verdict'] == 'pass' and fit['failing_count'] == 0
+    block = fit['sweep']
+    assert block['verdict'] == 'fail'
+    assert block['thresholds']['minimum_clearance_mm'] == 0.1
+    (bad,) = block['failing']
+    assert (bad['joint'], bad['first'], bad['second'], bad['status']) == (
+        'hinge', 'fixed', 'moving', 'below clearance')
+    assert bad['minimum_distance_mm'] == _GRAZE_MINIMUM
+    assert bad['maximum_common_volume_mm3'] == 0.0
+    # Both numbers, so the reply says what closed and from where.
+    assert bad['minimum_mm'] == 0.1 and bad['distance_mm'] == _GRAZE_STATIC
+    assert 'intent' not in bad
+    # The joint's own row is unchanged by the verdict.
+    assert block['joints'][0]['minimum_distance_mm'] == _GRAZE_MINIMUM
+
+
+def test_the_swept_minimum_is_the_one_the_solved_pose_held_the_pair_to():
+    """A declared `clearances=` minimum travels with the pair into the sweep."""
+
+    base = {'first': 'fixed', 'second': 'moving',
+            'distance_mm': _GRAZE_STATIC, 'common_volume_mm3': 0.0}
+    # Declared at 0.02 mm, so 0.04 mm through the range is what the design
+    # asked for and nothing fails.
+    loose = dict(base, intent={'kind': 'clearance', 'minimum_mm': 0.02})
+    assert fit_summary(_graze_value(loose))['sweep']['verdict'] == 'pass'
+    # Declared at 2 mm, and the motion closes to a fiftieth of it.
+    tight = dict(base, intent={'kind': 'clearance', 'minimum_mm': 2.0})
+    block = fit_summary(_graze_value(tight))['sweep']
+    assert block['verdict'] == 'fail'
+    (bad,) = block['failing']
+    assert bad['minimum_mm'] == 2.0
+    assert bad['intent'] == {'kind': 'clearance', 'minimum_mm': 2.0}
+    # ...and the caller's own default moves it too, the way it moves the
+    # solved-pose block's.
+    assert fit_summary(_graze_value(base), minimum=0.01)['sweep']['verdict'] == 'pass'
+
+
+def test_the_swept_check_adds_to_the_solved_pose_check_and_never_repeats_it():
+    """Four pairs the sweep must leave alone, each for its own reason."""
+
+    base = {'first': 'fixed', 'second': 'moving',
+            'distance_mm': _GRAZE_STATIC, 'common_volume_mm3': 0.0}
+    # A pair the design declares as touching is not held to a gap here
+    # either -- exactly as at the solved pose.
+    for intent in ({'kind': 'contact'},
+                   {'kind': 'attached', 'minimum_mm': 0.0, 'joints': ['weld']}):
+        touching = dict(base, distance_mm=0.0, intent=intent)
+        assert fit_summary(_graze_value(touching))['sweep']['verdict'] == 'pass', intent
+    # A pair this joint does not move repeats its solved-pose number at every
+    # sample (ADR-374); that number is the solved-pose block's to judge.
+    rigid = _graze_value(base, relative_motion=False)
+    assert fit_summary(rigid)['sweep']['verdict'] == 'pass'
+    # A pair that already fails at the solved pose is named there, once.
+    failing = dict(base, distance_mm=0.05)
+    whole = fit_summary(_graze_value(failing))
+    assert whole['verdict'] == 'fail' and whole['failing_count'] == 1
+    assert whole['sweep']['verdict'] == 'pass'
+    # An overlap through the motion is still an overlap, and outranks this.
+    overlapping = _graze_value(base, maximum_common_volume_mm3=5.0,
+                               first_contact_degrees=80.0)
+    (bad,) = fit_summary(overlapping)['sweep']['failing']
+    assert bad['status'] == 'intersection' and bad['first_contact_degrees'] == 80.0
+    # A swept pair with no solved-pose row has no intent and no verdict to
+    # read, so it is judged by none of this.
+    orphan = _graze_value(base, joint_pair=('other', 'part'))
+    assert fit_summary(orphan)['sweep']['verdict'] == 'pass'

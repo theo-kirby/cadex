@@ -418,3 +418,69 @@ def test_a_joint_that_can_move_and_declares_no_limits_is_named_as_missing_covera
                                            'parked': joint('revolute', suppressed=True)},
                                   [], {'sweep_step_degrees': 5}, True)
     assert quiet['status'] == 'complete' and quiet['joints'] == []
+
+
+_GRAZE_DRIVER = r'''
+import json, sys
+import FreeCAD as App
+import Part
+sys.path.insert(0, sys.argv[-1])
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps
+D = App.newDocument('Graze')
+fixed = D.addObject('Part::Feature','fixed')
+fixed.Shape = Part.makeSphere(1, App.Vector(0, 12.04, 0))
+moving = D.addObject('Part::Feature','moving')
+moving.Shape = Part.makeSphere(1, App.Vector(10, 0, 0))
+moving.Placement = App.Placement(App.Vector(), App.Rotation(App.Vector(0,0,1), 20))
+D.recompute()
+components = {'fixed': fixed, 'moving': moving}
+data = {'fixed': {'grounded': True}, 'moving': {'grounded': False}}
+joints = {'hinge': {'kind':'revolute','suppressed':False,'parameters':{},
+  'angle_limits_degrees':[20,90],'length_limits_mm':None,
+  'connectors':[{'component_output':'fixed','local_frame':{'matrix':list(App.Matrix().A)}},
+                {'component_output':'moving','local_frame':{'matrix':list(App.Matrix().A)}}]}}
+baseline = _measure_clearance(components)
+report = _measure_joint_sweeps(components, data, joints, baseline,
+                               {'sweep_step_degrees': 1}, True)
+print('CLEARANCE-FRAME ' + json.dumps(dict(baseline=baseline, report=report)))
+'''
+
+
+@pytest.mark.skipif(kernel.FREECADCMD is None, reason='Needs real OCCT')
+def test_a_hinge_that_grazes_closes_a_gap_the_solved_pose_cannot_see(tmp_path, monkeypatch):
+    """Known answer: 10.7516 mm clear at the solved pose, 0.04 mm in the range.
+
+    Two unit spheres. The fixed centre sits 12.04 mm from the hinge axis and
+    the moving centre 10 mm from it, so at 90 degrees the centres are exactly
+    2.04 mm apart and the surfaces close to 0.04 mm without ever touching.
+    The solved pose is 20 degrees, where they are 10.7516 mm apart -- clear by
+    two orders of magnitude.
+
+    This is the measurement ADR-378's check reads. Nothing here judges it:
+    the engine reports the minimum and the client holds it against the pair's
+    minimum, which is the split ADR-366 set up. What the fixture pins is that
+    a real sweep produces a close approach with *zero* common volume, so a
+    block that can only fail on interpenetration is blind to it by
+    construction rather than by accident.
+    """
+
+    monkeypatch.setattr(kernel, '_FRAME_DRIVER', _GRAZE_DRIVER)
+    result = kernel._drive_frame(tmp_path)
+    (solved,) = result['baseline']
+    assert solved['common_volume_mm3'] == 0
+    assert solved['distance_mm'] == pytest.approx(
+        math.hypot(10 * math.cos(math.radians(20)) - 0,
+                   10 * math.sin(math.radians(20)) - 12.04) - 2, abs=1e-9)
+    assert solved['distance_mm'] == pytest.approx(10.751594, abs=1e-6)
+    report = result['report']
+    assert report['status'] == 'complete'
+    (joint,) = report['joints']
+    assert joint['status'] == 'complete' and joint['sample_count'] == 71
+    assert joint['range_degrees'] == [20, 90]
+    (pair,) = joint['pairs']
+    assert pair['relative_motion'] is True
+    assert pair['minimum_distance_mm'] == pytest.approx(0.04, abs=1e-9)
+    # Never touching, so the sweep names no first contact and the pair has no
+    # common volume anywhere in the range.
+    assert pair['maximum_common_volume_mm3'] == 0
+    assert pair['first_contact_degrees'] is None

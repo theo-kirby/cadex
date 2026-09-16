@@ -251,7 +251,7 @@ def human_lines(report: RunReport) -> list[str]:
                 sweep.get("reason") or sweep.get("note") or ""))
         else:
             lines.append(
-                "sweep  {:s}  {:d} of {:d} joint(s) swept  {:d} overlapping pair(s)".format(
+                "sweep  {:s}  {:d} of {:d} joint(s) swept  {:d} failing pair(s)".format(
                     verdict, int(sweep.get("joints_complete") or 0),
                     int(sweep.get("joints_checked") or 0),
                     int(sweep.get("failing_count") or 0)))
@@ -260,10 +260,14 @@ def human_lines(report: RunReport) -> list[str]:
                     lines.append("  {:s} unswept: {:s}".format(
                         str(joint.get("joint") or ""), str(joint.get("reason") or "")))
             for pair in sweep.get("failing") or []:
+                # The status, the way the static block's pair lines carry it:
+                # a swept failure is an intersection, a gap the motion closed
+                # below its minimum (ADR-378), or a pair with no measurement,
+                # and the numbers alone do not say which.
                 lines.append(
-                    "  {:s} ∩ {:s} through {:s}: min {:s} mm  max common {:s} mm³".format(
+                    "  {:s} ∩ {:s} through {:s}: {:s}  min {:s} mm  max common {:s} mm³".format(
                         str(pair.get("first") or ""), str(pair.get("second") or ""),
-                        str(pair.get("joint") or ""),
+                        str(pair.get("joint") or ""), str(pair.get("status") or ""),
                         _measure(pair.get("minimum_distance_mm")),
                         _measure(pair.get("maximum_common_volume_mm3"))))
     if report.inventory:

@@ -26013,3 +26013,72 @@ accepted on its side and holding: absolute tilt 90°, tilt from its keyframe
 This is a checker correction, not a design result: no `ot7-*` design was
 edited, no frozen prompt was spent, and Robin's copy is `ot7-robin-smoke`, not
 the retained project.
+
+## ADR-378 — A gap the motion closes is a failing fit (2026-09-16)
+
+**Status.** Accepted. Extends the swept fit block `fit.sweep` got in ADR-366;
+CLI only — no engine, protocol, payload or shell change.
+
+**Context.** F2 gives the checker four things to report: an overlap on any
+pair, a declared contact that is not touching, a declared clearance below its
+minimum, and an undeclared pair closer than the default 0.1 mm. F3 sweeps
+every limited joint and measures, per pair, the minimum distance, the maximum
+common volume and the joint value of first contact. The two were never joined.
+`sweep_summary` could fail a swept pair on exactly two things: a common volume
+over the threshold, and a pair the engine could not measure. The minimum
+distance it measured — the whole point of sweeping — was reported and held
+against nothing, so F2's third and fourth checks existed at one pose only.
+
+Reproduced on real OCCT solids, not argued from the code. Two unit spheres on
+a hinge: the fixed centre 12.04 mm from the axis, the moving centre 10 mm from
+it, swept from the solved 20° to 90° at 1°. At the solved pose they are
+**10.751594 mm** apart; at 90° the centres are exactly 2.04 mm apart, so the
+surfaces close to **0.04 mm** and never touch — zero common volume at every
+one of the 71 samples. The static block reads `pass, 0 failing`, correctly:
+the solved pose is clear by two orders of magnitude. The swept block reads
+`pass, 0 failing` and prints the 0.04 mm beside it. That gap is a quarter of
+what the same undeclared pair is held to at the solved pose, and a block that
+can only fail on interpenetration is blind to it by construction. F6 and F7,
+the two designs left, are judged on "zero failing static and swept fit
+checks".
+
+**Decision.** A swept pair fails `below clearance` when its minimum distance
+through the range misses the pair's own minimum — its declared `clearances=`
+value, or `minimum_clearance_mm` for a pair with nothing declared — by more
+than the ADR-353 slack. The row carries `minimum_mm` and the solved pose's
+`distance_mm` beside the swept extrema, so the reply says what closed and from
+where. `sweep_summary` takes `minimum` and publishes it in `thresholds`.
+
+The rule is the narrowest one that closes the hole, so the swept block stays
+strictly additive to the static one:
+
+- Only a pair **this joint moves** is judged (ADR-374). A rigid pair repeats
+  its solved-pose number, which the static block already judged.
+- Only a pair the static block calls **clear** is judged. A pair that already
+  fails at the solved pose is named there, once; repeating it here would say
+  nothing about the motion.
+- A pair declared `contact`, or welded by a fixed joint and so carrying the
+  implied `attached` intent (ADR-372), is exempt exactly as it is at the
+  solved pose. Parts a design asks to touch are not held to a gap.
+
+Those three together are why **no retained ot7 receipt changes**: replayed
+over all twenty-one retained `clearance.json` files, the new rule adds zero
+failures. The phrase `sweep fail: N overlapping pair(s)` becomes `N failing
+pair(s)` in the progress line and the prose report, and each swept pair line
+now carries its status, because "overlapping" is no longer the only way to
+fail.
+
+**Consequences.** Two known-answer fixtures. The engine one
+(`test_joint_fit_sweep.py`) is the grazing hinge above on real OCCT solids,
+pinning that a real sweep produces a close approach with zero common volume.
+The CLI ones (`test_clearance.py`) carry those measured numbers through
+`fit_summary`: static `pass`, sweep `fail` at 0.04 mm against 0.1 mm; a
+declared 0.02 mm minimum passing and a declared 2 mm minimum failing on the
+same geometry; and the four pairs the rule must leave alone. The first two are
+red on the previous module. `docs/CLI.md` and `docs/XSCRIPT.md` carry the
+check. CLI suite green; engine suite green.
+
+This is a checker correction, not a design result: no `ot7-*` design was
+edited and no frozen prompt was spent. The product-agent harness was refused
+again on the same organisation-level setting (`org_level_disabled`, sixth
+refusal), so no F6 dispatch was possible.

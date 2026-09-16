@@ -1139,12 +1139,12 @@ landed in the meantime is one more difference separating F6 and F7 from F5.
 No unattended role may extend, stop or restart a run, and neither this
 subsection nor the record behind it does. This is a measurement for the owner.
 
-**Product version.** F6 and F7 run on a product **eleven** changes newer than
+**Product version.** F6 and F7 run on a product **twelve** changes newer than
 the one F5 ran on, every frozen prompt unchanged: ADR-362, ADR-366, ADR-367,
-ADR-368, ADR-370, ADR-371, ADR-372, ADR-373, ADR-374, ADR-375 and ADR-377.
-Eight of them change the measured fit surface a design reads; two more are the
-inventory block beside it and the repair wording in the agent's own prompt;
-the eleventh is the smoke rollout their bar ends on. Each is listed
+ADR-368, ADR-370, ADR-371, ADR-372, ADR-373, ADR-374, ADR-375, ADR-377 and
+ADR-378. Nine of them change the measured fit surface a design reads; two more
+are the inventory block beside it and the repair wording in the agent's own
+prompt; the twelfth is the smoke rollout their bar ends on. Each is listed
 below with what it publishes, because a difference in an F6 or F7
 row that lands on a fact one of these changes publishes is a difference across
 that change and not a difference in the agent.
@@ -1249,7 +1249,27 @@ measured 9×10⁻⁶ ° standing). F5's arm is grounded and reads none of this; 
 and F7 are the two designs whose failure mode is falling over, so their smoke
 results are measured across this change.
 
-F5 is not re-run and no frozen prompt changed for any of the eleven. Every
+**ADR-378** (`__COMMIT__`) closes the same hole in the swept fit that ADR-377
+closed in the smoke: a measurement taken and judged against nothing. The swept
+block could fail a pair on interpenetration or on an unmeasured pair, and on
+nothing else — so the minimum distance it measured through a joint's range,
+which is the whole reason for sweeping, was printed and not checked. F2's
+third and fourth checks (a declared clearance below its minimum, an undeclared
+pair closer than the default) existed at the solved pose only. Reproduced on
+real OCCT solids: a hinge that takes two unit spheres from **10.751594 mm**
+apart at the solved pose to **0.04 mm** at 90°, never touching, zero common
+volume at all 71 samples — static `pass, 0 failing`, correctly, and swept
+`pass, 0 failing` with the 0.04 mm printed beside it, against the 0.1 mm the
+same undeclared pair is held to at rest. A swept pair now fails `below
+clearance` against its own minimum, under three narrowing rules that keep the
+block additive to the static one: only a pair the joint moves, only a pair the
+static block calls clear, and never a declared contact or a welded pair.
+Replayed over all twenty-one retained ot7 `clearance.json` files the new rule
+adds **zero** failures, so no number in this report moves. F6 and F7 are
+judged on "zero failing static and swept fit checks", and until this change
+the swept half of that bar could only be failed by an overlap.
+
+F5 is not re-run and no frozen prompt changed for any of the twelve. Every
 number in the F6 and F7 rows is therefore measured on this product, and the
 ot6 and F5 comparisons in this report are read across these changes.
 

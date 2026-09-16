@@ -100,7 +100,8 @@ SWEEP_NO_JOINTS = (
 
 
 def sweep_summary(
-    value: Any, *, maximum_volume: float = MAXIMUM_COMMON_VOLUME_MM3,
+    value: Any, *, minimum: float = MINIMUM_CLEARANCE_MM,
+    maximum_volume: float = MAXIMUM_COMMON_VOLUME_MM3,
 ) -> dict[str, Any]:
     """The swept fit as a build reply carries it (ADR-366).
 
@@ -117,13 +118,45 @@ def sweep_summary(
     the sweep repeats its solved-pose measurement at every sample: a welded
     horn touching its link would otherwise hold the joint's minimum at
     0.0 mm and claim first contact at the bottom of the range, which is the
-    weld rather than anything the motion did. ``failing`` is unchanged and
-    still spans every pair, because an overlap is an overlap.
+    weld rather than anything the motion did. ``failing`` spans every pair
+    that overlaps, because an overlap is an overlap.
+
+    **A gap the motion closes fails here too** (ADR-378). Before this the
+    block measured every pair's minimum distance through the range and held
+    it against nothing: only interpenetration and an unmeasured pair could
+    fail, so a hinge that drives two parts from 10.75 mm apart to 0.04 mm --
+    a quarter of the gap the solved-pose block holds every undeclared pair
+    to -- read ``pass`` with the 0.04 mm printed beside it. The four checks
+    the charter asks for were applied at one pose and the sweep reported
+    numbers nobody judged. A swept row now fails ``below clearance`` when
+    the pair's own minimum -- its declared ``clearances=`` value, or
+    ``minimum`` for a pair with nothing declared -- is not met somewhere in
+    the range.
+
+    The rule is deliberately the narrowest one that closes the hole, so the
+    swept block stays strictly additive to the static one and no count it
+    ever published moves:
+
+    - Only a pair this joint moves is judged. A rigid pair repeats its
+      solved-pose number, which the static block already judged.
+    - Only a pair the static block calls **clear** is judged. A pair that
+      already fails at the solved pose is named there; repeating it here
+      would say nothing new about the motion.
+    - A pair declared ``contact``, or welded by a fixed joint and so carrying
+      the implied ``attached`` intent (ADR-372), is exempt, exactly as it is
+      at the solved pose: parts a design asks to touch are not held to a gap.
+
+    A swept pair with no solved-pose row is judged by none of this, because
+    there is no intent and no solved verdict to read. On a published value
+    that cannot happen -- the engine builds every swept row from the same
+    baseline it publishes as ``pairs`` -- so it only reaches a caller that
+    hands this function a sweep on its own.
 
     ``verdict`` is ``pass`` only when every limited joint was swept to
-    completion and no pair overlaps anywhere in its range. A joint the engine
-    could not sweep -- most often because the assembly declares no step for
-    its kind -- is ``incomplete`` and carries the engine's own reason.
+    completion and no pair overlaps or closes below its minimum anywhere in
+    its range. A joint the engine could not sweep -- most often because the
+    assembly declares no step for its kind -- is ``incomplete`` and carries
+    the engine's own reason.
 
     A ``skipped`` joint row is a **suppressed** joint (ADR-371), which is not
     a coverage hole: the solver ignores it, so it has no range to be swept
@@ -154,6 +187,16 @@ def sweep_summary(
             "reason": SWEEP_NO_PUBLISHED,
         }
     coverage = str(published.get("status") or "unavailable")
+    # The solved-pose rows of the same published value, keyed by pair. They
+    # carry the intent the engine resolved -- a declared `clearances=`
+    # minimum, a declared contact, or the `attached` a fixed joint implies
+    # (ADR-372) -- and the verdict the static block reached, which is what
+    # keeps the swept check below strictly additive to it (ADR-378).
+    static: dict[frozenset[str], dict[str, Any]] = {}
+    for row in value.get("pairs") or []:
+        if isinstance(row, dict):
+            static[frozenset((str(row.get("first") or ""),
+                              str(row.get("second") or "")))] = row
     joints: list[dict[str, Any]] = []
     failing: list[dict[str, Any]] = []
     complete = skipped = 0
@@ -232,6 +275,32 @@ def sweep_summary(
                 if contact_key:
                     overlap[contact_key] = contact
                 failing.append(overlap)
+            elif moves:
+                # A gap the motion closes (ADR-378). The pair's own minimum
+                # is whatever the solved pose held it to, so the two blocks
+                # cannot disagree about what "clear" means; the only new fact
+                # is the pose it was measured at.
+                solved = static.get(frozenset((first, second)))
+                intent = (solved.get("intent") or {}) if solved else {}
+                exempt = intent.get("kind") in {"contact", "attached"}
+                clear = bool(solved) and pair_status(
+                    solved, minimum, maximum_volume) == "clear"
+                floor = float(intent.get("minimum_mm", minimum))
+                if (clear and not exempt
+                        and floor - distance > MINIMUM_COMPARISON_SLACK_MM):
+                    closed: dict[str, Any] = {
+                        "joint": name, "first": first, "second": second,
+                        "status": "below clearance",
+                        "minimum_distance_mm": float(distance),
+                        "maximum_common_volume_mm3": float(volume),
+                        "minimum_mm": floor,
+                        "distance_mm": solved.get("distance_mm"),
+                    }
+                    if intent:
+                        closed["intent"] = intent
+                    if contact_key:
+                        closed[contact_key] = contact
+                    failing.append(closed)
         # Counted apart so `pairs_measured - pairs_moving` is answerable, the
         # way `joints_skipped` sits beside `joints_complete` (ADR-371): the
         # three numbers below are read over these pairs and no others.
@@ -267,7 +336,8 @@ def sweep_summary(
         # the coverage that is actually missing (ADR-371).
         "joints_skipped": skipped,
         "joints": joints,
-        "thresholds": {"maximum_common_volume_mm3": float(maximum_volume)},
+        "thresholds": {"minimum_clearance_mm": float(minimum),
+                       "maximum_common_volume_mm3": float(maximum_volume)},
         "failing_count": len(failing),
         "failing": failing,
     }
@@ -462,7 +532,8 @@ def fit_summary(
         # The swept half, from the same published value (ADR-366). It keeps
         # its own verdict: `verdict` above is the solved pose and stays that,
         # so a number read from either block means one thing only.
-        "sweep": sweep_summary(value, maximum_volume=maximum_volume),
+        "sweep": sweep_summary(value, minimum=minimum,
+                               maximum_volume=maximum_volume),
         # ...and what the fixed joints hold, from the same value (ADR-370).
         # Its own verdict too: a gap under a weld is a measured fact about
         # the design, not one of the four checks `verdict` above counts.

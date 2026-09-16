@@ -1565,8 +1565,13 @@ Minimum-clearance comparisons allow an absolute **1e-9 mm** numerical slack
 (ADR-353): a deficit must exceed that slack to fail. There is no relative
 tolerance and no rounding of published distances or volumes. This is comparison
 noise allowance, not the 0.001 mm contact tolerance or a manufacturing allowance.
-Swept reports retain raw minima and maxima without threshold verdicts; apply the
-same slack when comparing a swept minimum with a declared or default minimum.
+Swept reports retain raw minima and maxima without threshold verdicts, because
+the engine publishes measurements and the client reaches the verdict. Since
+ADR-378 the CLI's `fit.sweep` block does compare them: a pair the joint moves,
+which the solved pose found clear and which declares no contact and carries no
+weld, fails `below clearance` when its minimum through the range misses its
+declared or default minimum by more than that slack. Apply the same slack in
+any other reader.
 An unmeasured pair remains unknown. A row can fail more than one check.
 These are advisory findings: a failing fit still builds and accepts.
 

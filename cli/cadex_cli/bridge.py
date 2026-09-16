@@ -602,7 +602,9 @@ def _sweep_line(sweep: dict[str, Any]) -> str:
             return "sweep unavailable: every limited joint suppressed ({:d})".format(skipped)
         return "sweep unavailable: no limited joint"
     if verdict == "fail":
-        return "sweep fail: {:d} overlapping pair(s) over {:d} of {:d} joint(s) swept{:s}".format(
+        # "failing", not "overlapping": since ADR-378 a pair can fail this
+        # block by closing below its minimum without ever interpenetrating.
+        return "sweep fail: {:d} failing pair(s) over {:d} of {:d} joint(s) swept{:s}".format(
             int(sweep.get("failing_count") or 0), complete, checked - skipped, suppressed
         )
     if verdict == "incomplete":
