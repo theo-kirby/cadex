@@ -28,11 +28,6 @@ def pair_status(row: dict[str, Any], minimum: float, maximum_volume: float) -> s
     if volume > maximum_volume:
         return "intersection"
     intent = row.get("intent") or {}
-    if intent.get("kind") == "clearance" and intent.get("joints"):
-        # A declaration the design's own weld contradicts (ADR-379). The
-        # engine publishes the welding joints beside the declared minimum
-        # for exactly this reader, and no measured gap makes both true.
-        return "clearance under weld"
     if intent.get("kind") == "contact":
         return "missed contact" if distance > 1e-3 else "clear"
     if intent.get("kind") == "attached":
@@ -47,22 +42,6 @@ def pair_status(row: dict[str, Any], minimum: float, maximum_volume: float) -> s
     if intent.get("minimum_mm", minimum) - distance > MINIMUM_COMPARISON_SLACK_MM:
         return "below clearance"
     return "clear"
-
-
-#: Said in the fit block whenever a pair is welded and declared a running
-#: clearance at the same time (ADR-379): the failing check is the
-#: contradiction, so no measured gap resolves it and neither repair is a
-#: wider gap.
-WELDED_CLEARANCE_NOTE = (
-    "A pair listed as `clearance under weld` is declared two ways at once: "
-    "an unsuppressed fixed joint says the components are one rigid body, "
-    "and a clearances= declaration says they run with a gap. The measured "
-    "distance does not settle it -- what holds the parts together is the "
-    "joint and not the geometry. Either close the gap and declare the pair "
-    "with contacts=, or stop welding two components that are meant to stay "
-    "apart. Removing only the declaration leaves the gap, reported by "
-    "fit.attachments instead."
-)
 
 
 #: Where the fit block's numbers come from, said in the block itself so the
@@ -484,15 +463,15 @@ def fit_summary(
     assembly welds carries the ``attached`` intent the engine published for
     it (ADR-372) and is not held to ``minimum``: flush-mounted hardware is
     what a fixed joint asks for, and the gap under a weld is the
-    ``attachments`` block's fact rather than a failing check here. The
-    A pair the assembly welds **and** declares a running clearance on is
-    failing here, as ``clearance under weld`` (ADR-379): the two
-    declarations contradict each other and no measured gap makes both
-    true. The charter (ADR-341) asks for every failing pair in the reply
-    itself, and
-    a pointer at the scope is not the same thing: an agent that has to page
-    through a second tool to learn its 41st failure will not. A pair the engine
-    could not measure is failing here too -- an unknown is not a fit -- and
+    ``attachments`` block's fact rather than a failing check here. A welded
+    pair the design *also* gives a ``clearances=`` minimum is judged by
+    that minimum, exactly as an unwelded pair is (ADR-380): a fixed joint
+    holds a relative pose and does not require the solids to touch, so
+    "rigidly held, and at least 0.5 mm apart" is one coherent design.
+    The charter (ADR-341) asks for every failing pair in the reply itself,
+    and a pointer at the scope is not the same thing: an agent that has to
+    page through a second tool to learn its 41st failure will not. A pair
+    the engine could not measure is failing here too -- an unknown is not a fit -- and
     carries the engine's reason. ``verdict`` is ``pass`` only when every
     pair was measured and every pair is clear; ``unavailable`` when the
     accepted revision publishes no assembly at all, which is a script with
@@ -564,8 +543,6 @@ def fit_summary(
         # the design, not one of the four checks `verdict` above counts.
         "attachments": attachment_summary(value),
     }
-    if any(item["status"] == "clearance under weld" for item in failing):
-        summary["note"] = WELDED_CLEARANCE_NOTE
     if verdict == "unavailable":
         summary["note"] = (
             "No published assembly with pair measurements: fit is measured "
@@ -676,8 +653,6 @@ def write_clearance(
         text += (f"| {component(row, 'first')} | {component(row, 'second')} | "
                  f"{distance if distance is not None else '—'} | {volume if volume is not None else '—'} | "
                  f"{row['status']} | {_cell(detail)} |\n")
-    if any(row["status"] == "clearance under weld" for row in value["pairs"]):
-        text += "\n" + WELDED_CLEARANCE_NOTE + "\n"
     for world in value.get("world_geometry", []):
         text += f"\nWorld geometry: {_cell(world['component'])} — {_cell(world['reason'])}.\n"
     # What the fixed joints hold (ADR-370), beside the four checks and never

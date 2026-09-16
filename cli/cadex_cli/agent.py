@@ -205,14 +205,15 @@ nothing has been checked. A pair your design **welds** with an unsuppressed \
 `fixed` joint is not held to the undeclared-pair gap: mount hardware flush \
 against what carries it and do not add a `contacts=` declaration to repeat a \
 weld. Whether the welded solids actually meet is `fit.attachments`, a \
-separate measured fact. NEVER DECLARE A `clearances=` GAP ON A PAIR YOU \
-WELD. The weld says the two parts are one rigid body and the declaration \
-says they run apart; both cannot be true, so the pair fails \
-`clearance under weld` at any gap and the declared minimum is not \
-consulted. The repair is to close the gap and declare the pair with \
-`contacts=`, or to stop welding two components that are meant to stay \
-apart -- never a wider gap, and never just deleting the declaration, which \
-leaves the parts held together by a joint and not by geometry. A running \
+separate measured fact and not one of the four checks -- READ IT ANYWAY. A \
+weld reported `not touching` holds its two parts at a fixed pose across a \
+gap that no geometry closes, so unless a standoff or a captive fastener \
+spans that gap it is a connection your design does not actually make, and \
+declaring a clearance across it does not make it one. A weld may still \
+carry a `clearances=` declaration where the design means the two rigidly \
+held parts to stay apart -- a board over its standoffs, a shroud around a \
+pulley -- and it is checked against the minimum you declared exactly as an \
+unwelded pair is. A running \
 gap your design *means* to be narrower \
 than the 0.1 mm undeclared-pair default -- a bearing seat, a sliding fit -- \
 is neither a weld nor a defect, and widening it would be the wrong repair: \

@@ -539,30 +539,39 @@ the agent and it uses them, and a defect the checks do not name is not
 repaired. No slot remains; a further prompt would be a new attempt under a
 changed prompt, which the charter forbids for this design.
 
-### The checker correction F4's result produced (ADR-379)
+### The defect F4's result left in the open, and the rule that did not fix it (ADR-379, ADR-380)
 
 F4's measured result stands exactly as recorded above: the numbers in this
 section are what the accepting engine published, and nothing here rebuilds or
-re-accepts that design. What it produced is a defect in the checker, found in
-its own last paragraph.
+re-accepts that design. What its last paragraph names is a defect no check
+reports.
 
 Both horn pairs are welded — `weld_horn_shoulder` joins `comp_horn_shoulder`
 to `comp_upper_arm`, `weld_horn_elbow` joins `comp_horn_elbow` to
 `comp_forearm` — and both carry `{"kind": "clearance", "minimum_mm": 0.05}`
-from the same script. ADR-372 had said an explicit declaration "outranks the
-joint", so the 0.2 mm measured gap cleared its declared 0.05 mm and every fit
-check passed. The design says the horn is one rigid body with its link and
-also that it runs 0.05 mm clear of it; both cannot be true, and what holds the
-horn on is the joint rather than the geometry. Three prompts asking for every
-failing check to be resolved found none named, which is why two continuations
-correctly changed nothing.
+from the same script. The 0.2 mm measured gap clears that declared 0.05 mm, so
+every fit check passes. Three prompts asking for every failing check to be
+resolved found none named on those pairs, which is why two continuations
+correctly changed nothing. The horn really is floating: nothing spans the
+0.2 mm, and what reports it is `fit.attachments`, which names the pair `not
+touching` with its joint — beside the four checks and never one of them
+(ADR-370).
 
-ADR-379 makes the contradiction the failing check, `clearance under weld`, at
-any measured gap. A rebuild of `ot7-heron-repair-d` would now report two
-failing pairs where it reported none — the horn gap, nameable at last. No
-retained receipt moves: none publishes `joints` on a clearance intent, because
-none was accepted by an engine that wrote one. No `ot7-*` design was edited and
-no frozen prompt was spent.
+ADR-379 tried to close that by failing the *declaration*: a welded pair
+carrying a `clearances=` minimum became the failing check `clearance under
+weld`, at any gap. **ADR-380 withdrew it the same day.** A fixed joint fixes a
+relative pose and does not require the solids to touch, and a declared minimum
+is a floor on a distance rather than a claim of motion — so a board rigidly
+held over its standoffs is welded *and* meant to stay apart, and ADR-379 would
+have failed it and every design like it. A rebuild of `ot7-heron-repair-d`
+therefore reports what it reported: zero failing checks, and the horn gap in
+`attachments`. The agent's instructions now tell it to read that block and
+treat a `not touching` weld as a connection the geometry does not make unless
+a standoff or fastener spans it. Whether that should become a check of its own
+is open and undecided; it needs a way for a design to declare the spanner.
+
+No retained receipt moves under either decision: none carries an `intent` key
+at all. No `ot7-*` design was edited and no frozen prompt was spent.
 
 ## Iteration 55: the arm create call interrupted at the bound
 

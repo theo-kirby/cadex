@@ -203,17 +203,16 @@ def test_the_retained_receipts_publish_no_sweep_to_roll_up(name):
 
 
 @pytest.mark.parametrize('name', ['finch', 'robin', 'heron'])
-def test_adr_379_moves_no_retained_number(name):
-    """A retained row carries no intent at all, so the weld contradiction cannot fire.
+def test_the_weld_rule_moves_no_retained_number(name):
+    """A retained row carries no intent at all, so no weld rule reaches it.
 
-    ADR-379 fails a pair that is welded *and* declares a running clearance,
-    and it reads that from the `joints` the engine publishes on such a
-    declaration. A retained receipt is the measurement the accepting engine
-    published: these three carry no `intent` key on any row, so every count
-    in `docs/probes/ot7/REPORT.md` is untouched by construction rather than
-    by luck. The twenty `clearance.json` receipts in the operator's `ot7-*`
-    projects carry no such row either, measured while the rule landed, but
-    they are outside this checkout and are not replayed here.
+    ADR-379 failed a pair that was welded *and* declared a running clearance,
+    reading that from the `joints` the engine publishes on such a
+    declaration; ADR-380 withdrew the verdict and kept the publication. A
+    retained receipt is the measurement the accepting engine published: these
+    three carry no `intent` key on any row, so every count in
+    `docs/probes/ot7/REPORT.md` is untouched by either decision, by
+    construction rather than by luck.
     """
     value = json.loads((RECEIPTS / f'{name}.measurements.json').read_text())
     components = value.pop('components')

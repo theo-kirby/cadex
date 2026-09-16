@@ -26085,7 +26085,18 @@ refusal), so no F6 dispatch was possible.
 
 ## ADR-379 — A weld and a declared gap on the same pair contradict each other (2026-09-16)
 
-**Status.** Accepted. Narrows ADR-372's "an explicit declaration still wins".
+> **Superseded by ADR-380 (2026-09-16).** The premise below — that a weld and
+> a declared running gap cannot both be true of one pair — is wrong. A fixed
+> joint fixes a *relative pose* and does not require the solids to touch, and
+> a declared minimum is a floor on a distance rather than a claim that the
+> pair moves. The rule and the `clearance under weld` status it introduced
+> were withdrawn the same day; the entry stays as the record of what was
+> tried and why it was wrong. Its reading of F4's measured numbers still
+> stands: the horn really is 0.2 mm off its link, and what names that is the
+> `attachments` report, not a fit check.
+
+**Status.** Superseded by ADR-380. Narrowed ADR-372's "an explicit
+declaration still wins".
 Engine `_check_fit` plus the CLI blocks that read its rows; no new op, no
 `OP_ARG_SPECS` change, no payload or `shell/` change.
 
@@ -26169,3 +26180,72 @@ committed retained receipts, which carry no `intent` key at all.
 No `ot7-*` design was edited and no frozen prompt was spent: this is a checker
 correction found in F4's own measured result. The product-agent harness stayed
 refused on the organisation-level setting, so no F6 dispatch was possible.
+
+## ADR-380 — A fixed joint holds a pose; it does not require touching (2026-09-16)
+
+**Status.** Accepted. Withdraws ADR-379 and restores ADR-372's rule that an
+explicit declaration outranks the joint. Engine `_check_fit` plus the CLI
+blocks that read its rows; no new op, no `OP_ARG_SPECS` change, no payload or
+`shell/` change.
+
+**Context.** ADR-379, landed hours earlier, read a pair that is welded by an
+unsuppressed `fixed` joint *and* declared a running `clearances=` minimum as a
+self-contradiction, and made the contradiction itself the failing check —
+`clearance under weld`, at any measured gap, with `minimum_mm` never
+consulted. Its argument was "no measured gap makes 'one rigid body' and 'a
+running gap' both true".
+
+**Decision.** The argument does not hold, and the rule is withdrawn. A fixed
+joint fixes the **relative pose** of two components; it does not assert that
+their solids meet — which is exactly why ADR-370 made "does this weld's gap
+close?" a separate advisory fact rather than a check, "because a standoff or a
+captive fastener between them is a legitimate design and only the design knows
+which it is". And a declared minimum clearance is a floor on a distance, not a
+claim that the pair is in relative motion. A board rigidly held 2 mm over its
+standoffs, a shroud around a pulley, a magnet over its sensor: each is one
+rigid body *and* meant to stay apart, and the `clearances=` declaration is the
+only place the design can say by how much. ADR-379 would have failed every one
+of them at every gap, and told the author to repair a design that has nothing
+wrong with it.
+
+So a `clearances=` declaration on a welded pair is judged by the minimum it
+declares, exactly as an unwelded pair's is. The `clearance under weld` status
+is gone from the engine, from `pair_status`, from the walk's offending set and
+from the agent's instructions.
+
+**What is kept.** The publication, not the verdict: a welded pair carrying a
+`clearances=` declaration still publishes `{"kind": "clearance",
+"minimum_mm": …, "joints": [...]}`, so a reader sees both facts about the pair
+on one row and `cadex clearance` still writes `declared minimum <n> mm, and
+welded by <joint names>` as its detail. That is a join, not a judgement, and
+it is what a person needs to tell a standoff from a floating horn. The
+`joints` key rides on a `clearance` intent only where an unsuppressed fixed
+joint welds the pair.
+
+**What this leaves of F4's defect.** The floating horn on
+`ot7-heron-repair-d` is real and unrepaired: `weld_horn_shoulder` holds the
+horn 0.2 mm off its link, and nothing spans that gap. It is named by
+`fit.attachments` as `not touching` with its joint — reported beside the four
+checks, never counted among them (ADR-370) — and the agent's instructions now
+say to read that block and treat a `not touching` weld as a connection the
+geometry does not make unless a standoff or fastener spans it. Whether an
+unspanned weld gap should become a check of its own is a real question and is
+**not** decided here; it would need a way for a design to declare the spanner,
+and ADR-370 deliberately left it advisory for that reason. What is decided is
+that punishing the *declaration* was the wrong way to reach it.
+
+**Evidence.** The real-OCCT fixture in `test_fit_intent.py` reads
+`fit_failures == []` on Heron's horn pair again, with its published intent
+carrying both the declared 0.05 mm and `weld_horn`. Nine parametrised engine
+cases now cover the corrected rule, including the regression this entry exists
+for — two components rigidly separated by 2.0 mm with a declared 0.5 mm
+minimum fail nothing — and the paired negative, the same shape at 0.02 mm
+failing `below clearance`; both were red under ADR-379, which failed them
+alike. On the CLI side `test_a_clearance_declared_on_a_welded_pair_is_judged_by_its_minimum`
+and `test_a_welded_pair_that_meets_its_declared_minimum_reaches_the_reply_clear`
+pin the reader and the written report, and the end-to-end weld rig is back to
+`verdict == 'pass'` with its attachment row unchanged. No retained receipt
+moves under either decision: none carries an `intent` key at all, which
+`test_the_weld_rule_moves_no_retained_number` holds.
+
+No `ot7-*` design was edited and no frozen prompt was spent.

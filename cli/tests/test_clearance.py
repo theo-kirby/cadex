@@ -772,16 +772,15 @@ result = {"block": block, "a": a, "b": b, "c": c, "asm": asm, "diag": diag,
 '''
 
 
-def test_a_weld_holding_nothing_is_reported_and_its_declaration_is_the_failure(
-        engine, tmp_path):
-    """Heron's third ot6 defect, as its own design declared it (ADR-370, ADR-379).
+def test_a_weld_holding_nothing_is_reported_while_every_fit_check_passes(engine, tmp_path):
+    """Heron's third ot6 defect, as its own design declared it (ADR-370).
 
-    A pair welded rigidly together, declared a clearance and measured apart.
-    The script prints that everything fits; the reply carries the gap under
-    the weld with the joint that asserts it, and — since ADR-379 — names the
-    declaration that contradicts that joint as the failing check. Before
-    ADR-379 all four fit checks passed here, which is what let the same shape
-    survive F4's four repair turns on `ot7-heron-repair-d`.
+    A pair welded rigidly together, declared a clearance and measured apart:
+    the declaration is met, so all four fit checks pass and the script prints
+    that everything fits — and the reply still carries the gap under the weld
+    with the joint that asserts it, which is where that defect is nameable.
+    ADR-379 briefly failed this pair for the declaration itself; ADR-380
+    withdrew that, because a weld fixes a pose without requiring contact.
     """
 
     root = tmp_path / 'weld'
@@ -792,18 +791,9 @@ def test_a_weld_holding_nothing_is_reported_and_its_declaration_is_the_failure(
         payload = json.loads(reply['content'][0]['text'])
         assert payload['ok'], payload
         fit = payload['fit']
-        # Reported, never refused: the contradiction accepts and builds.
-        assert fit['verdict'] == 'fail' and fit['failing_count'] == 1
-        failure, = fit['failing']
-        assert (failure['first'], failure['second']) == ('a', 'b')
-        assert failure['status'] == 'clearance under weld'
-        assert failure['distance_mm'] == pytest.approx(1.2)
-        assert failure['intent'] == {'kind': 'clearance', 'minimum_mm': 0.5,
-                                     'joints': ['weld_gap']}
-        assert failure['fit_failures'] == ['clearance under weld']
-        # The weld that touches, and the contact declared across it, agree.
-        assert fit['counts']['clear'] == 2
-        assert 'stop welding' in fit['note']
+        # Rigidly separated by 1.2 mm and declared to stay 0.5 mm clear: the
+        # pair satisfies what it declared and fails nothing (ADR-380).
+        assert fit['verdict'] == 'pass' and fit['failing'] == []
         attachments = fit['attachments']
         assert attachments['verdict'] == 'reported'
         assert attachments['pairs_checked'] == 2 and attachments['reported_count'] == 1
@@ -818,8 +808,14 @@ def test_a_weld_holding_nothing_is_reported_and_its_declaration_is_the_failure(
         report = path.read_text()
         assert 'Fixed-joint attachments: 2 pair(s) measured, 1 not touching' in report
         assert 'weld_gap): not touching, 1.2' in report.replace('1.1999999999999993', '1.2')
-        assert '| clearance under weld |' in report
+        # Both facts about the pair are published, and the detail cell joins
+        # them: rigidly held by this joint, and declared to run 0.5 mm clear.
+        assert '| clear |' in report
         assert 'declared minimum 0.5 mm, and welded by weld_gap' in report
+        pair, = [r for r in value['pairs'] if {r['first'], r['second']} == {'a', 'b'}]
+        assert pair['intent'] == {'kind': 'clearance', 'minimum_mm': 0.5,
+                                  'joints': ['weld_gap']}
+        assert pair['fit_failures'] == []
         assert fit_summary(value)['attachments'] == attachments
         assert fit_summary(value)['failing'] == fit['failing']
 
@@ -1149,26 +1145,30 @@ def test_the_swept_check_adds_to_the_solved_pose_check_and_never_repeats_it():
 
 
 @pytest.mark.parametrize('intent,status', [
-    # ADR-379: the two declarations contradict each other, and no measured
-    # gap settles it -- the same verdict at 0.2 mm, at 0.0 mm and at 5 mm.
-    ({'kind': 'clearance', 'minimum_mm': 0.05, 'joints': ['weld_horn']},
-     'clearance under weld'),
-    # The same declaration on a pair nothing welds is judged by its minimum,
-    # exactly as before: 0.2 mm clears 0.05 mm.
+    # Rigidly held by a weld and declared to run 0.05 mm clear: two facts
+    # about one pair, both true, and the declared minimum is what judges it
+    # (ADR-380, withdrawing ADR-379). 0.2 mm clears 0.05 mm.
+    ({'kind': 'clearance', 'minimum_mm': 0.05, 'joints': ['weld_horn']}, 'clear'),
+    # The declared minimum is really consulted: a wider one fails.
+    ({'kind': 'clearance', 'minimum_mm': 0.5, 'joints': ['weld_horn']},
+     'below clearance'),
+    # The same declaration on a pair nothing welds reads exactly the same.
     ({'kind': 'clearance', 'minimum_mm': 0.05}, 'clear'),
-    # A contact declaration agrees with the weld, so the weld's joints on it
+    ({'kind': 'clearance', 'minimum_mm': 0.5}, 'below clearance'),
+    # A contact declaration means touching, so the weld's joints on it
     # change nothing.
     ({'kind': 'contact', 'joints': ['weld_horn']}, 'missed contact'),
     ({'kind': 'attached', 'minimum_mm': 0.0, 'joints': ['weld_horn']}, 'clear'),
 ])
-def test_a_clearance_declared_on_a_welded_pair_fails_at_any_gap(intent, status):
-    """Heron's floating horn, as F4's last turn left it (ADR-379).
+def test_a_clearance_declared_on_a_welded_pair_is_judged_by_its_minimum(intent, status):
+    """A weld fixes a relative pose; it does not require contact (ADR-380).
 
     `comp_horn_shoulder` is welded to `comp_upper_arm` by `weld_horn_shoulder`
     and declared a 0.05 mm clearance in the same script; the solids measure
-    0.2 mm apart. Every check passed, the agent's own ledger called the gap
-    "a declared clearance", and ot6's floating-horn defect survived four
-    repair turns whose prompt asked for every failing check to be resolved.
+    0.2 mm apart. ADR-379 called that a contradiction and failed it at every
+    gap. It is not one — a board rigidly held over its standoffs is welded
+    and meant to stay apart — so the reader is back to the declared minimum,
+    and what names a horn floating off its link is `attachments`.
     """
 
     from cadex_cli.clearance import MAXIMUM_COMMON_VOLUME_MM3, MINIMUM_CLEARANCE_MM, pair_status
@@ -1179,46 +1179,50 @@ def test_a_clearance_declared_on_a_welded_pair_fails_at_any_gap(intent, status):
         return pair_status({**row, **changes}, MINIMUM_CLEARANCE_MM,
                            MAXIMUM_COMMON_VOLUME_MM3)
     assert status_of() == status
-    if status == 'clearance under weld':
-        # The declared minimum is never consulted: it fails below it and above.
-        assert status_of(distance_mm=0.0) == status
-        assert status_of(distance_mm=5.0) == status
+    if intent['kind'] == 'clearance':
+        # Rigidly separated well beyond the minimum, or right down on it:
+        # a declaration that is met is met, welded or not.
+        assert status_of(distance_mm=5.0) == 'clear'
     # Overlap is still overlap, and an unmeasured pair is still unknown.
     assert status_of(common_volume_mm3=4.07) == 'intersection'
     assert status_of(distance_mm=None, common_volume_mm3=None,
                      error='unmeasured') == 'unknown'
 
 
-def test_the_welded_clearance_reaches_the_reply_and_the_report(tmp_path):
-    """The failing pair, its count and the repair are all in what the agent reads."""
+def test_a_welded_pair_that_meets_its_declared_minimum_reaches_the_reply_clear(tmp_path):
+    """The regression ADR-380 exists for, in the block the agent actually reads.
 
-    from cadex_cli.clearance import (WELDED_CLEARANCE_NOTE, fit_summary,
-                                     write_clearance)
+    Two components a fixed joint holds rigidly 2 mm apart, declared to keep
+    0.5 mm: no failing check, and the report joins both facts on the row —
+    the joint that holds them and the minimum they were given. Beside it, the
+    same shape below its minimum still fails `below clearance`.
+    """
+
+    from cadex_cli.clearance import fit_summary, write_clearance
     value = {
         'available': True, 'revision': 'f03054d6', 'assembly': 'heron_assembly',
         'pose': 'initial solved pose (not swept motion)',
         'pairs': [
-            {'first': 'comp_horn_shoulder', 'second': 'comp_upper_arm',
+            {'first': 'comp_board', 'second': 'comp_deck',
+             'distance_mm': 2.0, 'common_volume_mm3': 0.0,
+             'intent': {'kind': 'clearance', 'minimum_mm': 0.5,
+                        'joints': ['weld_standoff']},
+             'fit_failures': []},
+            {'first': 'comp_shroud', 'second': 'comp_pulley',
              'distance_mm': 0.2, 'common_volume_mm3': 0.0,
-             'intent': {'kind': 'clearance', 'minimum_mm': 0.05,
-                        'joints': ['weld_horn_shoulder']},
-             'fit_failures': ['clearance under weld']},
-            {'first': 'comp_servo_shoulder', 'second': 'comp_horn_shoulder',
-             'distance_mm': 0.0, 'common_volume_mm3': 0.0,
-             'intent': {'kind': 'contact'}, 'fit_failures': []},
+             'intent': {'kind': 'clearance', 'minimum_mm': 0.5,
+                        'joints': ['weld_shroud']},
+             'fit_failures': ['below clearance']},
         ],
     }
     fit = fit_summary(value)
     assert fit['verdict'] == 'fail' and fit['failing_count'] == 1
-    assert fit['counts']['clearance under weld'] == 1 and fit['counts']['clear'] == 1
+    assert fit['counts']['clear'] == 1 and fit['counts']['below clearance'] == 1
     failure, = fit['failing']
-    assert failure['first'] == 'comp_horn_shoulder' and failure['second'] == 'comp_upper_arm'
-    assert failure['status'] == 'clearance under weld'
-    assert failure['distance_mm'] == 0.2
-    assert failure['intent']['joints'] == ['weld_horn_shoulder']
-    # The block says which two repairs there are, because neither is a gap.
-    assert fit['note'] == WELDED_CLEARANCE_NOTE
-    assert 'contacts=' in fit['note'] and 'stop welding' in fit['note']
+    assert (failure['first'], failure['second']) == ('comp_shroud', 'comp_pulley')
+    assert failure['status'] == 'below clearance'
+    # No note: there is no contradiction to explain, only a gap to close.
+    assert 'note' not in fit
 
     class _OnePage:
         def request(self, op, arguments):
@@ -1227,6 +1231,6 @@ def test_the_welded_clearance_reaches_the_reply_and_the_report(tmp_path):
 
     path, _ = write_clearance(_OnePage(), root=tmp_path, sweep=False)
     report = path.read_text()
-    assert '| clearance under weld |' in report
-    assert 'declared minimum 0.05 mm, and welded by weld_horn_shoulder' in report
-    assert WELDED_CLEARANCE_NOTE in report
+    assert 'clearance under weld' not in report
+    assert 'declared minimum 0.5 mm, and welded by weld_standoff' in report
+    assert '| clear |' in report and '| below clearance |' in report

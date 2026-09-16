@@ -1556,25 +1556,27 @@ asks for rather than a gap that has closed. The row carries the implied intent
 reader reaches the same verdict the engine did. The implication is the weakest
 one available — it exempts the pair from the gap and asserts nothing else:
 common volume above 1e-6 mm³ still fails, an unmeasured pair still fails, and
-an explicit `contacts=` entry on the same pair is checked as written, because
-a declared contact agrees with the weld. Whether the weld's solids actually
-meet stays the `attachments` fact below. A *suppressed* fixed joint is not an
-edge of the mechanism and grants no exemption.
+an explicit `contacts=` or `clearances=` entry on the same pair still wins.
+Whether the weld's solids actually meet stays the `attachments` fact below. A
+*suppressed* fixed joint is not an edge of the mechanism and grants no
+exemption.
 
-A **`clearances=` entry on a welded pair does not win; it contradicts the
-weld, and the contradiction is the failing check** (ADR-379). One declaration
-says the two components are one rigid body and the other says they run with a
-gap between them, and what holds the parts together is then the joint and not
-the geometry. The row fails `clearance under weld` and carries
-`{"kind": "clearance", "minimum_mm": …, "joints": [...]}` — the welding joints
-published beside the declared minimum so a reader reaches the same verdict.
-The minimum is not consulted: no measured gap makes both declarations true, so
-the pair fails below it and above it alike. The two repairs are to close the
-gap and declare the pair with `contacts=`, or to stop welding two components
-that are meant to stay apart; removing only the declaration leaves the gap,
-reported by `attachments` instead. A suppressed weld grants no exemption and
-raises no contradiction, so a clearance declared across one is judged by its
-minimum exactly as an unwelded pair's is.
+A **`clearances=` entry on a welded pair is judged by the minimum it
+declares**, exactly as an unwelded pair's is (ADR-380, withdrawing ADR-379).
+A fixed joint fixes the *relative pose* of two components and says nothing
+about whether their solids touch, and a declared minimum is a floor on a
+distance rather than a claim that the pair moves — so a board rigidly held
+2 mm over its standoffs, a shroud around a pulley or a magnet over its sensor
+is welded *and* meant to stay apart, and the declaration is the only place
+the design can say by how much. The row carries
+`{"kind": "clearance", "minimum_mm": …, "joints": [...]}`, the welding joints
+published beside the declared minimum as a fact a reader can join rather than
+a verdict; the `joints` key rides on a `clearance` intent only where an
+unsuppressed fixed joint welds the pair. ADR-379 briefly read that pair as a
+self-contradiction and failed it at every gap, as `clearance under weld`;
+that status no longer exists. What names a weld whose solids do not meet — a
+horn floating 0.2 mm off its link — is the `attachments` report below, beside
+the checks and never one of them.
 
 Minimum-clearance comparisons allow an absolute **1e-9 mm** numerical slack
 (ADR-353): a deficit must exceed that slack to fail. There is no relative

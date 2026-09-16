@@ -2085,10 +2085,8 @@ block to the reply the model sees, beside the script's `stdout`:
 
 `verdict` is `pass` only when every pair was measured and every pair is
 clear at the `cadex clearance` defaults; `fail` names **every** pair that
-is not — an intersection, a distance below the minimum, a pair welded and
-declared a running clearance at the same time (`clearance under weld`,
-ADR-379), or a pair the engine could not measure, with its reason — however
-many there are. The
+is not — an intersection, a distance below the minimum, or a pair the
+engine could not measure, with its reason — however many there are. The
 list is never cut short: sixty failing pairs are sixty entries, each with
 its own distance and volume, and nothing in the block points elsewhere
 for the rest. `unavailable` means the revision places no assembly
@@ -2506,23 +2504,20 @@ minimum applies to (ADR-372), including a `--min-clearance-mm` override. Its
 verdict is `clear` unless it interpenetrates or could not be measured, and
 `cadex clearance` writes `welded by <joint names>` as its detail.
 
-A `contacts=` entry on a welded pair agrees with the joint and is checked as
-written. **A `clearances=` entry on one contradicts it, and that is the
-failing check** (ADR-379): the row's status is `clearance under weld`, its
-`intent` carries the welding joints beside the declared minimum, and the
-minimum is not consulted — no measured gap makes "one rigid body" and "a
-running gap" both true, so the pair fails below it and above it alike. The
-`fit` block carries a `note` naming the two repairs — close the gap and
-declare the pair with `contacts=`, or stop welding two components meant to
-stay apart — because neither repair is a wider gap; removing only the
-declaration leaves the gap, reported by `attachments` instead. `cadex
+An explicit `contacts=` or `clearances=` entry on a welded pair still wins,
+and a `clearances=` one is judged by the minimum it declares exactly as an
+unwelded pair's is (ADR-380, withdrawing ADR-379): a fixed joint fixes a
+relative pose without requiring the solids to touch, and a declared minimum
+is a floor on a distance rather than a claim that the pair moves, so
+"rigidly held, and at least 0.5 mm apart" is one coherent design. Such a row
+carries the welding joints beside its declared minimum, and `cadex
 clearance` writes `declared minimum <n> mm, and welded by <joint names>` as
-the detail and repeats the note under the table. A *suppressed* weld raises
-no contradiction, so a clearance declared across one is judged by its
-minimum exactly as an unwelded pair's is. This is why F4's seeded repair of
-Heron reported zero failing checks with its horn 0.2 mm from its link across
-all four turns: the declaration outranked the weld, and the run's own ledger
-called the gap a passing clearance.
+the detail — a fact to join, not a verdict. ADR-379 briefly made that pair a
+failing check of its own, `clearance under weld`, on the reading that a weld
+and a gap contradict each other; that status no longer exists. What names a
+weld whose solids do not meet — F4's Heron horn, 0.2 mm off its link through
+all four repair turns — is the `attachments` report, beside the four checks
+and never one of them.
 
 A clearance
 deficit must exceed an absolute 1e-9 mm comparison slack to fail (ADR-353),

@@ -2144,9 +2144,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     }
     pairs = clearance["pairs"]
     available = bool(clearance.get("available"))
-    offending = [row for row in pairs
-                 if row["status"] in ("intersection", "below clearance",
-                                      "clearance under weld")]
+    offending = [row for row in pairs if row["status"] in ("intersection", "below clearance")]
     unknown = [row for row in pairs if row["status"] == "unknown"]
     review["clearance"] = {
         "available": available,
