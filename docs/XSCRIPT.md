@@ -1547,6 +1547,20 @@ At the initial solved pose, the published `clearance` rows carry `intent` and
 `fit_failures`. The checker reports common volume above 1e-6 mm³ on **every**
 pair, including intended contacts; contact distance above 0.001 mm; declared
 clearance below its minimum in mm; and undeclared distance below 0.1 mm.
+
+A pair joined by an **unsuppressed `fixed` joint is not an undeclared pair**
+(ADR-372) and is exempt from that 0.1 mm: welding two components is the design
+declaring them one rigid body, so meeting face to face is what the declaration
+asks for rather than a gap that has closed. The row carries the implied intent
+`{"kind": "attached", "minimum_mm": 0.0, "joints": [...]}`, published so a
+reader reaches the same verdict the engine did. The implication is the weakest
+one available — it exempts the pair from the gap and asserts nothing else:
+common volume above 1e-6 mm³ still fails, an unmeasured pair still fails, and
+an explicit `contacts=` or `clearances=` entry on the same pair still wins.
+Whether the weld's solids actually meet stays the `attachments` fact below. A
+*suppressed* fixed joint is not an edge of the mechanism and grants no
+exemption.
+
 Minimum-clearance comparisons allow an absolute **1e-9 mm** numerical slack
 (ADR-353): a deficit must exceed that slack to fail. There is no relative
 tolerance and no rounding of published distances or volumes. This is comparison

@@ -30,6 +30,15 @@ def pair_status(row: dict[str, Any], minimum: float, maximum_volume: float) -> s
     intent = row.get("intent") or {}
     if intent.get("kind") == "contact":
         return "missed contact" if distance > 1e-3 else "clear"
+    if intent.get("kind") == "attached":
+        # A pair an unsuppressed fixed joint welds (ADR-372). The default gap
+        # is for two parts that merely stand near each other, and these two
+        # are declared one rigid body: meeting face to face is the
+        # declaration, not a clearance that has closed. Whether the weld's
+        # solids meet at all is the attachment block's own fact, never this
+        # one's. The engine publishes `minimum_mm` 0.0 beside the kind, so a
+        # reader that predates this reaches the same verdict.
+        return "clear"
     if intent.get("minimum_mm", minimum) - distance > MINIMUM_COMPARISON_SLACK_MM:
         return "below clearance"
     return "clear"
@@ -351,7 +360,11 @@ def fit_summary(
 
     ``value`` is an ``inspect scope=clearance`` value. The block is the
     check counts and **every** pair that is not clear, by name, with its
-    minimum distance and common volume -- never a prefix of them. The
+    minimum distance and common volume -- never a prefix of them. A pair the
+    assembly welds carries the ``attached`` intent the engine published for
+    it (ADR-372) and is not held to ``minimum``: flush-mounted hardware is
+    what a fixed joint asks for, and the gap under a weld is the
+    ``attachments`` block's fact rather than a failing check here. The
     charter (ADR-341) asks for every failing pair in the reply itself, and
     a pointer at the scope is not the same thing: an agent that has to page
     through a second tool to learn its 41st failure will not. A pair the engine
@@ -526,6 +539,8 @@ def write_clearance(
         intent = row.get("intent") or {}
         detail = row.get("error") or (
             "contact within 0.001 mm" if intent.get("kind") == "contact" else
+            "welded by " + ", ".join(intent.get("joints") or ["a fixed joint"])
+            if intent.get("kind") == "attached" else
             f"declared minimum {intent['minimum_mm']:g} mm" if intent else ""
         )
         text += (f"| {component(row, 'first')} | {component(row, 'second')} | "

@@ -1304,8 +1304,11 @@ class AssemblyDomainAPI:
         Every listed component and joint must also be returned exactly once as
         its own declared output. ``contacts=[(a, b)]`` requires touching within
         0.001 mm; ``clearances=[(a, c, 0.5)]`` requires at least 0.5 mm.
-        Undeclared pairs require 0.1 mm. Common volume above 1e-6 mm³ always
-        fails, even for contacts. These checks report, never refuse acceptance.
+        Undeclared pairs require 0.1 mm, except a pair an unsuppressed
+        ``fixed`` joint welds: that is already the design declaring one rigid
+        body, so it is exempt from the gap and needs no ``contacts=`` entry
+        repeating it. Common volume above 1e-6 mm³ always fails, even for
+        contacts. These checks report, never refuse acceptance.
         A pair may have only one declaration. World geometry belongs in the
         environment; collision planes on design bodies are reported separately.
         ``sweep_step_degrees`` samples every limited hinge and ``sweep_step_mm``

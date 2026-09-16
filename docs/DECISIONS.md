@@ -25634,3 +25634,77 @@ its phrase, the all-suppressed case reads `unavailable` with its own reason,
 and `cadex clearance --sweep` writes that sentence beside its coverage line.
 `pixi run test-engine` and `pixi run python -m pytest cli/tests` are green.
 `docs/XSCRIPT.md`, `docs/CLI.md` and `docs/INTEGRATION.md` carry the contract.
+
+## ADR-372 — A welded pair is not an undeclared pair (2026-09-16)
+
+**Decision.** A component pair joined by an **unsuppressed `fixed` joint** is
+exempt from the default 0.1 mm minimum the fit checker holds an undeclared
+pair to. `_check_fit` publishes the implied intent
+`{"kind": "attached", "minimum_mm": 0.0, "joints": [...]}` on the row, and
+`cli/cadex_cli/clearance.py`'s `pair_status` reads it as `clear`.
+
+**Why.** The undeclared-pair minimum is the rule for two parts that merely
+stand near each other. A fixed joint is the design saying these two components
+are *one rigid body*, so their solids meeting face to face is what the
+declaration asks for, not a gap that has closed. Without the exemption the
+checker punished correct design: mounting hardware flush against what carries
+it — a servo on its bracket, a horn on its link, a screw against the tab it
+clamps — failed `below clearance` at 0.0 mm, and the only escape was a
+`contacts=` declaration that repeated the weld the script had already written.
+It also contradicted ADR-370 one iteration old: that report names a weld whose
+solids *never meet* as a finding, while this check failed the same pair for
+meeting. Measured on the retained ot6 biped: Finch's 44 failing rows include
+**32 `below clearance`**, and **16 of them are a `fix_*` weld** between a host
+and the part mounted flush on it, every one at 0.0 mm — a servo, a bearing, a
+horn or a centre screw doing exactly what its joint asked. That is the reading
+a design turn was asked to repair.
+
+The other 16 are outside this rule and stay failing, which is the boundary
+worth naming: 12 are two *purchased* parts at 0.0 mm that share a host but are
+welded only to it (a servo against the screws through its tabs, a servo against
+the horn on its output), and rigidity is not inferred transitively through a
+common host; 4 are the 0.05 mm bearing seats between a thigh and the bearing it
+turns on, which is a running clearance the design should declare rather than a
+weld. A design that means either can say so with `contacts=`.
+
+**How.** `_fixed_joint_pairs` is factored out of `_check_attachments` so one
+reading of "these two are welded" serves both checks, suppressed joints
+excluded from it the way ADR-371 excludes them from the sweep. `_check_fit`
+takes `joint_data` and `assembly_output` and applies the implication only when
+the pair has **no** explicit declaration.
+
+**What it does not do.** The implication is the weakest one available: it
+exempts the pair from the gap and asserts nothing else.
+
+- Common volume above 1e-6 mm³ still fails, so Heron's buried servo tab is
+  still an `intersection`.
+- An unmeasured pair still fails as `unknown`.
+- An explicit `contacts=` or `clearances=` entry on the same pair still wins —
+  the author saying "0.5 mm here" outranks the joint.
+- A welded pair that does **not** touch is still not a fit failure: whether a
+  weld's solids meet stays the ADR-370 attachment report's separate advisory
+  fact, because a standoff, a shim or a captive fastener between two welded
+  parts is a legitimate design and only the design knows which it is.
+- A **suppressed** fixed joint grants no exemption: the solver ignores it, so
+  it is not an edge of the mechanism (ADR-371).
+
+**Consequences.** No protocol op, argument or response shape changed; `intent`
+is an existing advisory row field. Acceptance behaviour is unchanged — a
+failing fit was never refused and still is not. A revision accepted before this
+ADR keeps the rows it published, so the F9 regression floor and every retained
+ot6/ot7 receipt are untouched until a design is rebuilt; Finch rebuilt on this
+engine would report **16 fewer** failing pairs, 44 → 28, which is the defect
+being removed rather than a measurement changing; re-read today with the
+unchanged CLI it still reports 362 clear, 12 intersections, 32 below clearance
+and 44 failing, because every retained row carries `intent: null`. Publishing `minimum_mm: 0.0` beside the new
+kind means a reader that predates the `attached` branch reaches the same
+verdict from the number alone. `joints` names every weld on the pair, sorted.
+Tests that fail on the old code: `cadex_tests/test_fit_intent.py` gains
+`test_welded_pair_is_not_held_to_the_undeclared_gap` (the six pairs that are
+*not* exempt, beside the one that is) and a welded flush pair measured by the
+real kernel in the Heron-defect driver; `cli/tests/test_clearance.py` gains the
+same rig built and accepted twice, once with the weld and once without, and the
+`pair_status` table including the pre-ADR reader. The agent's system prompt in
+`cli/cadex_cli/agent.py` says the rule and tells it not to declare a contact
+that repeats a weld. `docs/XSCRIPT.md`, `docs/CLI.md` and `docs/INTEGRATION.md`
+carry the contract.

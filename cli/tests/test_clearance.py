@@ -840,3 +840,78 @@ def test_the_progress_line_says_what_the_welds_hold(attachments, phrase):
     if attachments is not None:
         fit['attachments'] = attachments
     assert _fit_line(fit) == 'fit pass: 0 failing of 105 pair(s)' + phrase
+
+
+FLUSH_RIG = '''
+block = part.box(10, 10, 10)
+a = assembly.component(block, grounded=True)
+b = assembly.component(block, placement=[10, 0, 0])
+joints = [assembly.joint(
+    "fixed",
+    assembly.connector(a, "origin"),
+    assembly.connector(b, "origin", offset={"position": [-10.0, 0, 0]}),
+    label="fix_ab")] if WELDED else []
+asm = assembly.assembly([a, b], joints)
+diag = assembly.solve(asm)
+result = {"block": block, "a": a, "b": b, "asm": asm, "diag": diag}
+if joints:
+    result["fix_ab"] = joints[0]
+'''
+
+
+def test_a_welded_pair_mounted_flush_is_not_a_failing_fit_check(engine, tmp_path):
+    """Finch's 32 ot6 "below clearance" rows, in miniature (ADR-372).
+
+    Two components an unsuppressed fixed joint welds together, mounted face
+    to face and declaring nothing: before this the default 0.1 mm undeclared
+    gap failed them at 0.0 mm for doing what the joint asked, and the only
+    escape was a `contacts=` declaration repeating the weld. The same rig
+    without the joint still fails, which is what says the joint is the
+    difference and not the distance.
+    """
+
+    reports = {}
+    for welded in (True, False):
+        root = tmp_path / ('welded' if welded else 'loose')
+        with CadexdClient(engine) as client:
+            open_project(client, root)
+            with Bridge(client, initial_revision='') as bridge:
+                reply = bridge.call('write_script', {
+                    'source': f'WELDED = {welded}\n' + FLUSH_RIG})
+            payload = json.loads(reply['content'][0]['text'])
+            assert payload['ok'], payload
+            path, value = write_clearance(client, root)
+            reports[welded] = (payload['fit'], path.read_text(), fit_summary(value))
+    fit, report, reread = reports[True]
+    assert fit['verdict'] == 'pass' and fit['failing'] == []
+    assert fit['counts'] == {'clear': 1, 'intersection': 0, 'below clearance': 0, 'unknown': 0}
+    assert fit['attachments']['verdict'] == 'touching'
+    assert 'welded by fix_ab' in report
+    assert reread == fit
+    fit, report, _ = reports[False]
+    assert fit['verdict'] == 'fail'
+    failure, = fit['failing']
+    assert failure['status'] == 'below clearance'
+    assert failure['distance_mm'] == 0.0 and 'intent' not in failure
+    assert fit['attachments']['verdict'] == 'none'
+    assert 'welded by' not in report
+
+
+@pytest.mark.parametrize('intent,status', [
+    ({'kind': 'attached', 'minimum_mm': 0.0, 'joints': ['fix_ab']}, 'clear'),
+    # An older reader has no `attached` branch; the published minimum is what
+    # makes it reach the same verdict anyway.
+    ({'kind': 'attached'}, 'clear'),
+    ({'kind': 'contact'}, 'clear'),
+    ({}, 'below clearance'),
+])
+def test_an_attached_pair_is_clear_at_zero_and_still_fails_on_overlap(intent, status):
+    from cadex_cli.clearance import MAXIMUM_COMMON_VOLUME_MM3, MINIMUM_CLEARANCE_MM, pair_status
+    row = {'first': 'a', 'second': 'b', 'distance_mm': 0.0, 'common_volume_mm3': 0.0,
+           'intent': intent}
+    assert pair_status(row, MINIMUM_CLEARANCE_MM, MAXIMUM_COMMON_VOLUME_MM3) == status
+    assert pair_status({**row, 'common_volume_mm3': 4.07}, MINIMUM_CLEARANCE_MM,
+                       MAXIMUM_COMMON_VOLUME_MM3) == 'intersection'
+    assert pair_status({**row, 'distance_mm': None, 'common_volume_mm3': None,
+                        'error': 'unmeasured'}, MINIMUM_CLEARANCE_MM,
+                       MAXIMUM_COMMON_VOLUME_MM3) == 'unknown'

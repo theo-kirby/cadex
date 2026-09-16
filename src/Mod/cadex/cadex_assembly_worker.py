@@ -5818,15 +5818,45 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
 # Absolute comparison slack in mm, not a geometry/contact tolerance (ADR-353).
 _FIT_MINIMUM_SLACK_MM = 1e-9
 
+#: What two components with nothing declared between them are held apart by.
+_FIT_DEFAULT_MINIMUM_MM = 0.1
 
-def _check_fit(rows, components, properties, component_outputs, raw_result=None):
-    """Annotate measured facts with advisory intent; never refuse a fit failure."""
+
+def _check_fit(rows, components, properties, component_outputs, raw_result=None,
+               joint_data=None, assembly_output=None):
+    """Annotate measured facts with advisory intent; never refuse a fit failure.
+
+    An undeclared pair is held to :data:`_FIT_DEFAULT_MINIMUM_MM`, which is
+    the rule for two parts that merely stand near each other. **A pair the
+    assembly welds is not that pair** (ADR-372): an unsuppressed fixed joint
+    is the design saying these two components are one rigid body, so meeting
+    face to face is what the declaration means rather than a gap that has
+    closed. Before this, flush-mounted hardware -- a servo against its
+    bracket, a horn against its link, a screw against the tab it clamps --
+    failed ``below clearance`` at 0.0 mm for doing exactly what the fixed
+    joint asked, and the only escape was to declare a contact that repeated
+    the joint. Its implied intent is ``attached`` with no minimum, published
+    on the row so a reader reaches the same verdict the engine did.
+
+    The implication is the weakest one available: it exempts the pair from
+    the default gap and asserts nothing else. Interpenetration still fails,
+    an unmeasured pair still fails, and an explicit ``contacts=`` or
+    ``clearances=`` declaration on the same pair still wins -- the author
+    saying "0.5 mm here" outranks the joint. Whether a weld's solids
+    actually meet stays the attachment report's separate advisory fact
+    (ADR-370), because a standoff or a captive fastener between them is a
+    legitimate design and only the design knows which it is.
+    """
     intents = {}
     for intent in properties.get("fit_intent", ()):
         key = tuple(sorted(component_outputs[id(intent[side])] for side in ("first", "second")))
         intents[key] = {k: v for k, v in intent.items() if k not in {"first", "second"}}
+    welded = _fixed_joint_pairs(joint_data or {}, assembly_output)
     for row in rows:
         intent = intents.get(tuple(sorted((row["first"], row["second"]))), {})
+        joints = welded.get(frozenset((row["first"], row["second"])))
+        if not intent and joints:
+            intent = {"kind": "attached", "minimum_mm": 0.0, "joints": sorted(joints)}
         row["intent"] = intent
         distance, volume = row["distance_mm"], row["common_volume_mm3"]
         failures = []
@@ -5838,7 +5868,7 @@ def _check_fit(rows, components, properties, component_outputs, raw_result=None)
             if intent.get("kind") == "contact":
                 if distance > 1e-3:
                     failures.append("missed contact")
-            elif intent.get("minimum_mm", 0.1) - distance > _FIT_MINIMUM_SLACK_MM:
+            elif intent.get("minimum_mm", _FIT_DEFAULT_MINIMUM_MM) - distance > _FIT_MINIMUM_SLACK_MM:
                 failures.append("below clearance")
         row["fit_failures"] = failures
     plane_components = set()
@@ -5887,6 +5917,31 @@ def _check_fit(rows, components, properties, component_outputs, raw_result=None)
 _ATTACHMENT_CONTACT_MM = 1e-3
 
 
+def _fixed_joint_pairs(joint_data, assembly_output):
+    """The component pairs this assembly welds, mapped to the joints that weld them.
+
+    One reading of "these two are one rigid body", shared by the two checks
+    that need it: the attachment report (ADR-370), which measures whether the
+    welded solids meet, and the fit check (ADR-372), which stops holding a
+    welded pair to the gap an unrelated pair is held to. A **suppressed**
+    fixed joint is not an edge of the mechanism and is not here, the same
+    rule the swept report applies (ADR-371).
+    """
+
+    pairs = {}
+    for name, joint in joint_data.items():
+        if joint.get("assembly_output") != assembly_output or joint.get("kind") != "fixed":
+            continue
+        if joint.get("suppressed"):
+            continue
+        components = {connector.get("component_output")
+                      for connector in joint.get("connectors") or ()}
+        if len(components) != 2 or None in components:
+            continue
+        pairs.setdefault(frozenset(components), []).append(str(name))
+    return pairs
+
+
 def _check_attachments(rows, joint_data, assembly_output):
     """Measure whether each fixed-joint pair's solids actually touch (ADR-370).
 
@@ -5900,17 +5955,7 @@ def _check_attachments(rows, joint_data, assembly_output):
     """
 
     measured = {frozenset((row["first"], row["second"])): row for row in rows}
-    pairs = {}
-    for name, joint in joint_data.items():
-        if joint.get("assembly_output") != assembly_output or joint.get("kind") != "fixed":
-            continue
-        if joint.get("suppressed"):
-            continue
-        components = {connector.get("component_output")
-                      for connector in joint.get("connectors") or ()}
-        if len(components) != 2 or None in components:
-            continue
-        pairs.setdefault(frozenset(components), []).append(str(name))
+    pairs = _fixed_joint_pairs(joint_data, assembly_output)
     report = []
     for pair in sorted(pairs, key=lambda key: sorted(key)):
         first, second = sorted(pair)
@@ -6412,7 +6457,8 @@ def validate_and_solve_assembly(
         )
 
     clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
-    world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result)
+    world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result,
+                                joint_data, assembly_output)
     attachments = _check_attachments(clearance, joint_data, assembly_output)
     sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
                    if assembly_properties.get(key) is not None}

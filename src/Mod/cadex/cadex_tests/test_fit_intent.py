@@ -57,6 +57,8 @@ near = box("near", (300, 0, 0))
 other = box("other", (310.05, 0, 0)) # undeclared 0.05 mm
 wide = box("wide", (400, 0, 0))
 mate = box("mate", (410.4, 0, 0)) # declared 0.5 mm, actual 0.4
+mount = box("mount", (600, 0, 0))
+stud = box("stud", (610, 0, 0)) # welded flush, nothing declared: 0.0 mm
 floor = box("floor_face", (500, 0, 0))
 components["floor_face"].Shape = Part.makePlane(20, 20, App.Vector(500, 0, 0), App.Vector(1, 1, 1))
 asm = api.assembly(list(values.values()), contacts=[(base, bearing), (tab, cheek)],
@@ -72,11 +74,14 @@ joint_data = {
                         "connectors": [{"component_output": "near"}, {"component_output": "other"}]},
     "hinge": {"assembly_output": "asm", "kind": "revolute", "suppressed": False,
               "connectors": [{"component_output": "wide"}, {"component_output": "mate"}]},
+    "weld_mount": {"assembly_output": "asm", "kind": "fixed", "suppressed": False,
+                   "connectors": [{"component_output": "mount"}, {"component_output": "stud"}]},
 }
 body = api.body(base, density_kg_m3=1000, collision=[api.collision("plane", size_mm=[500, 500, 50])])
 doc.recompute()
 rows = _measure_clearance(components)
-world = _check_fit(rows, components, asm.properties, {id(v): k for k, v in values.items()}, {"body": body})
+world = _check_fit(rows, components, asm.properties, {id(v): k for k, v in values.items()}, {"body": body},
+                   joint_data, "asm")
 attachments = _check_attachments(rows, joint_data, "asm")
 print("CLEARANCE-FRAME " + json.dumps({"pairs": rows, "world": world, "attachments": attachments}))
 '''
@@ -96,12 +101,22 @@ def test_heron_defects_measured_by_real_kernel(tmp_path, monkeypatch):
     # this pair passes and the gap under the weld is what reports it (ADR-370).
     assert pair('horn', 'link')['fit_failures'] == []
     assert pair('base', 'bearing')['fit_failures'] == []
+    assert pair('base', 'bearing')['intent']['kind'] == 'contact'
+    # Welded flush with nothing declared: the fixed joint is the declaration
+    # and 0.0 mm is what it asked for (ADR-372).
+    assert pair('mount', 'stud')['distance_mm'] == 0.0
+    assert pair('mount', 'stud')['fit_failures'] == []
+    assert pair('mount', 'stud')['intent'] == {'kind': 'attached', 'minimum_mm': 0.0,
+                                               'joints': ['weld_mount']}
+    # ...and a *suppressed* weld is no weld: this pair keeps the default gap.
     assert pair('near', 'other')['distance_mm'] == pytest.approx(0.05)
+    assert pair('near', 'other')['intent'] == {}
     assert pair('near', 'other')['fit_failures'] == ['below clearance']
     assert pair('wide', 'mate')['distance_mm'] == pytest.approx(0.4)
     assert pair('wide', 'mate')['fit_failures'] == ['below clearance']
-    bearing, horn_gap = report['attachments']
-    assert [item['first'] for item in report['attachments']] == ['base', 'horn']
+    bearing, horn_gap, mount_weld = report['attachments']
+    assert mount_weld['status'] == 'touching'
+    assert [item['first'] for item in report['attachments']] == ['base', 'horn', 'mount']
     assert bearing == {'first': 'base', 'second': 'bearing', 'joints': ['weld_bearing'],
                        'status': 'touching', 'distance_mm': 0.0, 'common_volume_mm3': 0.0}
     assert horn_gap['status'] == 'not touching' and horn_gap['joints'] == ['weld_horn']
@@ -214,3 +229,48 @@ def test_attachments_report_only_unsuppressed_fixed_joint_pairs():
     assert report[2]['reason'] == 'No published measurement; rebuild the project.'
     assert report[3]['distance_mm'] is None
     assert _check_attachments(rows, {}, 'asm') == []
+
+
+def test_welded_pair_is_not_held_to_the_undeclared_gap():
+    """A fixed joint is the design declaring two components one rigid body,
+    so their solids meeting is the declaration rather than a closed gap
+    (ADR-372). The implication is the weakest one available: it exempts the
+    pair from the default 0.1 mm and asserts nothing else."""
+
+    from cadex_assembly_worker import _check_fit
+
+    def joint(first, second, *, kind='fixed', suppressed=False, assembly='asm'):
+        return {'assembly_output': assembly, 'kind': kind, 'suppressed': suppressed,
+                'connectors': [{'component_output': first}, {'component_output': second}]}
+
+    def check(distance, volume=0.0, *, joints=None, declared=None, error=None):
+        first, second = object(), object()
+        outputs = {id(first): 'a', id(second): 'b'}
+        properties = {'fit_intent': [dict(declared, first=first, second=second)]} if declared else {}
+        row = {'first': 'a', 'second': 'b', 'distance_mm': distance,
+               'common_volume_mm3': volume, **({'error': error} if error else {})}
+        assert _check_fit([row], {}, properties, outputs, None, joints or {}, 'asm') == []
+        return row
+
+    flush = check(0.0, joints={'fix_servo': joint('b', 'a')})
+    assert flush['fit_failures'] == []
+    assert flush['intent'] == {'kind': 'attached', 'minimum_mm': 0.0, 'joints': ['fix_servo']}
+    # Two joints welding the same pair are both named, in a stable order.
+    assert check(0.0, joints={'fix_b': joint('a', 'b'), 'fix_a': joint('b', 'a')},
+                 )['intent']['joints'] == ['fix_a', 'fix_b']
+    # Interpenetration is still a failure, and so is an unmeasured pair.
+    assert check(0.0, 4.07, joints={'fix': joint('a', 'b')})['fit_failures'] == ['intersection']
+    assert check(None, None, joints={'fix': joint('a', 'b')},
+                 error='Component has no measurable shape')['fit_failures'] == ['unknown']
+    # The author's own declaration outranks the joint, either way round.
+    assert check(0.2, joints={'fix': joint('a', 'b')},
+                 declared={'kind': 'clearance', 'minimum_mm': 0.5})['fit_failures'] == ['below clearance']
+    assert check(0.2, joints={'fix': joint('a', 'b')},
+                 declared={'kind': 'contact'})['fit_failures'] == ['missed contact']
+    # Nothing welds these two: the default gap is unchanged by this rule.
+    for joints in ({}, {'fix': joint('a', 'b', suppressed=True)},
+                   {'fix': joint('a', 'b', kind='revolute')},
+                   {'fix': joint('a', 'b', assembly='other')},
+                   {'fix': joint('a', 'c')}):
+        assert check(0.0, joints=joints)['fit_failures'] == ['below clearance']
+        assert check(0.0, joints=joints)['intent'] == {}

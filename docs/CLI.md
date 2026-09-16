@@ -2449,7 +2449,12 @@ Identical video bytes are deduplicated. Old entries lacking a style are labelled
 The published clearance scope includes each pair's `intent` and `fit_failures`,
 plus `world_geometry` findings by component name. Build-reply fit summaries and
 `cadex clearance` respect declared contacts (0.001 mm tolerance) and declared
-minimum clearances; undeclared pairs use the default 0.1 mm. A clearance
+minimum clearances; undeclared pairs use the default 0.1 mm — except a pair an
+unsuppressed `fixed` joint welds, which the engine publishes with the implied
+intent `{"kind": "attached", "minimum_mm": 0.0, "joints": [...]}` and which no
+minimum applies to (ADR-372), including a `--min-clearance-mm` override. Its
+verdict is `clear` unless it interpenetrates or could not be measured, and
+`cadex clearance` writes `welded by <joint names>` as its detail. A clearance
 deficit must exceed an absolute 1e-9 mm comparison slack to fail (ADR-353),
 including when `--min-clearance-mm` overrides the default. Published measurements remain
 unrounded. Swept reports publish raw extrema without threshold verdicts; the

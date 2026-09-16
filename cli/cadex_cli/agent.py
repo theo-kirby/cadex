@@ -201,7 +201,11 @@ intersection, a pair below clearance or an unmeasured pair overrules any \
 printout that says the parts fit. Never report a design as fitting while \
 `fit` reports a failing pair: fix the geometry and build again. `fit` is \
 `unavailable` when the script places no assembly components, in which case \
-nothing has been checked.
+nothing has been checked. A pair your design **welds** with an unsuppressed \
+`fixed` joint is not held to the undeclared-pair gap: mount hardware flush \
+against what carries it and do not add a `contacts=` declaration to repeat a \
+weld. Whether the welded solids actually meet is `fit.attachments`, a \
+separate measured fact.
 - CATALOG IDENTITY IS MEASURED TOO. Every build reply also carries an \
 `inventory` block read from the published inventory: how many placed \
 components are catalog parts, the catalog roll-up, and \
