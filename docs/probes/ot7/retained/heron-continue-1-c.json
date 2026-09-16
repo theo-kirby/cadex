@@ -1,0 +1,146 @@
+{
+  "criterion": "F5",
+  "iteration": 59,
+  "project": "ot7-heron-c",
+  "seed": "the same ot7-heron-c project, resumed into the agent's own session after the completed create turn (ADR-357); no actor edit",
+  "evidence_directory": "evidence/turn-1",
+  "model": "claude-fable-5",
+  "settings": {"effort": "medium", "max_output_tokens": 32000, "turn_bound_seconds": 1800},
+  "prompt": {"path": "continue-1.prompt.txt", "bytes": 756, "sha256": "80d725d2961e7ca44a56fed391745d6df551741c6545a837e815ca3ae0b7f4d0"},
+  "turn_index": 1,
+  "dispatched_at": "2026-09-16T07:22:36Z",
+  "ended_at": "2026-09-16T07:32:47Z",
+  "window": {
+    "before_dispatch_percent": 5,
+    "bound_percent": 45,
+    "stream_first_percent": 5,
+    "stream_last_percent": 35,
+    "after_measurement_percent": 38,
+    "resets_at": "2026-09-16T12:20:00+00:00"
+  },
+  "turn": {"exit_code": 0, "elapsed_seconds": 610.6037900911178},
+  "turn_status": "completed",
+  "void": null,
+  "interruption": null,
+  "slot_consumed": true,
+  "continuations_used": 1,
+  "slots_spent": 2,
+  "void_calls_this_project": 0,
+  "interrupted_calls_this_project": 0,
+  "runner_status_after": "paused",
+  "remaining_after": {"completed": 2, "continuations_used": 1, "continuations_unspent": 2, "next_prompt": "continue-2.prompt.txt", "closed": null},
+  "actor_design_edits": 0,
+  "stream": {
+    "bytes": 556279,
+    "sha256": "d38864d8fc3a247a48642f60b549a1f545a296ed7ae597af932e4ce25e4590fd",
+    "frames": {"system": 340, "assistant": 41, "user": 19, "rate_limit_event": 9, "tool_progress": 2, "result": 1},
+    "first_frame_utc": "2026-09-16T07:27:37Z",
+    "last_frame_utc": "2026-09-16T07:32:46Z",
+    "assistant_messages": 41,
+    "thinking_blocks": 18,
+    "output_cap_hits": 0,
+    "tool_calls": 19,
+    "tool_calls_by_name": {"inspect": 13, "edit_script": 6},
+    "inspect_scopes": {"clearance": 10, "other": 3},
+    "note": "five minutes passed between the runner's dispatch and the first stream frame, which is the end of the first message; the first tool call is one second after it"
+  },
+  "timeline_utc": [
+    "07:22:36 dispatched through resume, probe 5 %",
+    "07:27:38 inspect scope=clearance: the accepted revision's static report and its unavailable sweep",
+    "07:28:13-07:28:38 three edit_script calls rejected: a replacement's old text not found (REPLACEMENT_NOT_UNIQUE)",
+    "07:29:09 edit accepted ae1020d4: screw holes bored to the M2 nominal over the screwed length and the six screw pairs declared contacts, bench collision plane replaced by a box, sweep_step_degrees=5.0 declared, shoulder and elbow limits changed to [-90, 65] and [-100, 40] through two new parameters; 120 pairs, 1 failing (bench, world geometry)",
+    "07:30:16 edit rejected: api.mjcf bodies[0] gives mass to a component not listed in this assembly",
+    "07:30:26-07:31:22 nine inspect scope=clearance reads: the static pairs and both joints' sweeps, paged",
+    "07:31:44 edit accepted 1779112b: printout wording only (the script diff between ae1020d4 and 1779112b changes four print lines); 120 pairs, 1 failing",
+    "07:32:46 closing message with four DECISION lines and one NOTE; project DECISIONS.md gains ADR-007 to ADR-010, docs/design-specs.md written"
+  ],
+  "edits": {
+    "calls": 6,
+    "accepted": 2,
+    "rejected": 4,
+    "failing_count_by_accepted_design_revision": [1, 1],
+    "script_lines_after": 505,
+    "script_sha256_after": "b94f7e957c20351cd439365d9024c4eaee0286416614da24dbcb486d25ca08ba",
+    "what_changed_from_512c157c": [
+      "tab-screw and centre-screw holes bored to the 2.0 mm M2 nominal over the screwed length (1.6 mm tap-drill pilots kept past the screw tip), so no screw pair overlaps; the six screw pairs added as declared contacts (11 -> 17)",
+      "the bench's plane collision replaced by a box collision matching the slab; the bench keeps world=True and stays a component welded to the base by fix_bench",
+      "sweep_step_degrees=5.0 declared on the assembly",
+      "joint limits made asymmetric through new parameters shoulder_fwd_limit=65 and elbow_down_limit=40: shoulder [-90, 90] -> [-90, 65], elbow [-100, 100] -> [-100, 40]; actuator command limits matched",
+      "printout reworded from 'expected engagement (annulus)' to 'thread engagement ... displaces' and 'every screw pair must MEASURE as contact'"
+    ]
+  },
+  "accepted_before": {"revision": "512c157cb2134a04e686b53c2f37242f30b9ba7dba7012fa06f180eade92037f", "static_failing": 7, "pairs": 120, "sweep": "unavailable"},
+  "accepted_after": {"revision": "1779112b4de94a463fd25c7b2f74653c6fae16a626709d05874328f4c394c81a", "digest": "d7a9cb05cd3804059e23f3bdcf9488a18d67a66236f09d9fbad74645795ecaef"},
+  "static_fit": {
+    "verdict": "fail",
+    "failing_count": 1,
+    "pairs_checked": 120,
+    "counts": {"clear": 120, "intersection": 0, "below clearance": 0, "unknown": 0, "world geometry": 1},
+    "pose": "initial solved pose (not swept motion)",
+    "thresholds": {"minimum_clearance_mm": 0.1, "maximum_common_volume_mm3": 1e-06},
+    "declared_contacts": 17,
+    "declared_clearances": 0,
+    "zero_distance_pairs": 15,
+    "zero_distance_pairs_all_declared_contacts": true
+  },
+  "static_failing": [
+    {"first": "bench", "second": "", "status": "world geometry", "distance_mm": null, "common_volume_mm3": null, "error": "declared world geometry"}
+  ],
+  "swept_fit": {
+    "status": "complete",
+    "step_degrees": 5.0,
+    "elapsed_seconds": 31.05,
+    "per_joint_bound_seconds": 90.0,
+    "joints": [
+      {"joint": "joint_shoulder", "range_degrees": [-90.0, 65.0], "sample_count": 32, "elapsed_seconds": 20.25, "solved_pose_agreement": true, "pairs": 120, "maximum_common_volume_mm3_over_all_pairs": 0.0, "first_contact_pairs": 17, "first_contact_note": "every first-contact pair is a declared contact touching from the first sample"},
+      {"joint": "joint_elbow", "range_degrees": [-100.0, 40.0], "sample_count": 29, "elapsed_seconds": 10.79, "solved_pose_agreement": true, "pairs": 120, "maximum_common_volume_mm3_over_all_pairs": 0.0, "first_contact_pairs": 17, "first_contact_note": "the same 17 declared contacts"}
+    ],
+    "closest_moving_pairs_mm": {"upper_arm-bearing_shoulder": 0.15, "forearm-bearing_elbow": 0.15, "forearm-horn_elbow": 0.25, "upper_arm-forearm": 1.0, "base-upper_arm": 1.0, "bench-forearm": 9.806},
+    "failing": [],
+    "note": "the sweep is clean over the ranges the agent narrowed to; its own DECISION line says the previous symmetric limits collided at shoulder +70.8 deg (forearm tip into the bench) and elbow +43.9 deg (forearm beam into the elbow yoke), which is the swept check doing what F3 asked"
+  },
+  "world_geometry": [{"component": "bench", "reason": "declared world geometry", "status": "world geometry"}],
+  "inventory": {
+    "component_count": 16,
+    "catalog_counts": {"bearing/mr128": 2, "bolt/m2x16-socket": 2, "bolt/m2x6-socket": 4},
+    "uncatalogued_sources": ["base_solid", "bench_slab", "forearm_solid", "horn_elbow_solid", "horn_shoulder_solid", "servo_elbow_solid", "servo_shoulder_solid", "upper_arm_solid"],
+    "note": "unchanged from the create turn: both servos carry cut bores and both horns are re-clocked, so two purchased families are still uncatalogued while bearings and screws keep catalog identity; the agent's closing message claims 'the same catalog hardware (2 MG90S, 2 horns, ...)'"
+  },
+  "smoke": {
+    "command": "./cadex smoke --project PROJECT --out evidence/turn-1/smoke --seconds 1 --timeout 240 --json",
+    "run_by": "the actor after the turn, as the runner does at exhaustion; it reads retained artifacts and changes no design",
+    "verdict": "pass",
+    "mode": "hold",
+    "simulated_seconds": 1.0,
+    "samples": 51,
+    "mujoco_version": "3.10.0",
+    "checks": {"finite": true, "penetration": {"pass": true, "breaches": 0, "tolerance_mm": 0.5}, "support": {"pass": true, "kind": "grounded", "grounded": ["base"]}, "termination": {"pass": true, "fired": []}, "components": {"pass": true, "pairs_checked": 120, "failing": 0, "initial_pose_agrees": true}},
+    "command_wall_seconds": 15.1,
+    "dynamics_wall_seconds": 0.0135,
+    "artifacts": {"smoke.json": "cb735610f47f2a43bfba94a0862c52c3519463aad5c855c470a9e5c42aba6952", "smoke-trace.json": "722606820f7ebf7f56288c4f8f8fc6e2cfe243ed775ccf0085f10514f4f0cea3", "smoke-geometry.json": "fbaeb3ddecfcd87241593221e6c8790442ef8357a8a8df5a26420861a9e0cf30"}
+  },
+  "project_decisions_added": ["ADR-007 screw holes bored to nominal over the screwed length, pairs declared contacts", "ADR-008 bench plane collision replaced by a box, world=True kept", "ADR-009 sweep_step_degrees=5.0 declared", "ADR-010 asymmetric joint limits from the sweep's geometry: shoulder forward 65 deg, elbow down 40 deg"],
+  "agent_claims_versus_measurement": {
+    "agrees": ["0 intersections, 0 below clearance at rest (measured 0 and 0)", "sweep complete for both hinges at 5 deg with 0 mm3 overlap (measured complete, 0.0 on every pair)", "smoke starts contact-free (measured pass)"],
+    "disagrees": ["'no world geometry in the design': the F2 check reports bench as declared world geometry and the bench is a design component welded to the base", "'the same catalog hardware (2 MG90S, 2 horns ...)': the inventory lists both servos and both horns under uncatalogued_sources"]
+  },
+  "assessment": {
+    "against_f5": {
+      "zero_failing_static": false,
+      "static_failing": 1,
+      "zero_failing_swept": true,
+      "zero_actor_edits": true,
+      "continuations_used_of_three": 1,
+      "catalog_hardware_for_every_purchased_part": false,
+      "smoke_passing": true
+    },
+    "remaining_counts": ["world geometry in the design (bench)", "servos and horns uncatalogued"],
+    "next": "continue-2 through resume; the probe read 38 % after the measurement, under the 45 % bound, so it is dispatchable before the 12:20 UTC reset"
+  },
+  "measurements": {
+    "fit.json": "807e86688f4469cee7d95dbfddf0b21b08aca50bc067bd6e64fe4e373a1076dc",
+    "clearance.json": "5efd7a9afe5eb0d432360d5c0393649390a20d8e7b4243da1f3ae78cd2102fcd",
+    "inventory.json": "131b38d31049713bd9cdf80c0f64ef5976368ef5fd9559fe001e3d65d75b0f05",
+    "turn.stdout.json": "f945fe387e641a3597fae3545c489418951aea3e63d3678680719864334ace1d"
+  }
+}

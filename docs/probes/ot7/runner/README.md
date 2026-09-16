@@ -530,3 +530,30 @@ iteration made:
 - **`medium` fits the bound.** One thinking message of about 30,000
   estimated tokens ended on its own; iteration 55's three cap-limited
   messages did not recur.
+
+## The first continuation completed (iteration 59)
+
+```bash
+pixi run python docs/probes/ot7/runner/run.py resume "$PROJECTS/ot7-heron-c"
+```
+
+Dispatched at 07:22:36 UTC, two minutes after the reset, with the probe at
+5 %, into the create turn's own session at the receipt's `medium`. The turn
+ended on its own in 610.6 s: 41 model messages, 18 thinking blocks, no
+output-cap hit, 19 tool calls (13 `inspect`, ten of them the clearance
+scope, and 6 `edit_script`, two accepted). The first continuation slot is
+spent; two remain, and the runner paused with `continue-2` next. The
+receipt is `retained/heron-continue-1-c.json`; the assessment is
+REPORT.md's iteration 59 section. Five minutes passed between the dispatch
+and the first stream frame, which is the end of the first message; the
+first read came one second later.
+
+The measured result: static fit **1 of 120 failing**, the bench's world
+geometry row, with zero intersections and zero below-clearance pairs; the
+sweep **complete on both joints at 5°** with 0 mm³ on every pair; the
+inventory unchanged, servos and horns still uncatalogued. The smoke was run
+by the actor after the turn with the runner's own command into
+`evidence/turn-1/smoke`, as the runner does at exhaustion, and passed. The
+window read 35 % at the last stream frame and 38 % after the measurement,
+under the 45 % bound, so `continue-2` is dispatchable before the 12:20 UTC
+reset.
