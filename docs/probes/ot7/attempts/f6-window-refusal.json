@@ -1,0 +1,49 @@
+{
+  "rule": "ADR-364",
+  "what": "The F6 window probe that blocked the Robin create dispatch on 2026-09-16.",
+  "read_at": "2026-09-16T14:29:07Z",
+  "model": "claude-fable-5",
+  "probe": {
+    "text": "Reply with the single word ok.",
+    "exit_code": 1,
+    "elapsed_seconds": 2.369,
+    "spends_a_slot": false
+  },
+  "verdict": {
+    "room": false,
+    "bound_percent": 45,
+    "reason": "the probe itself was refused on a limit (ADR-364), so the five-hour number is not evidence of room"
+  },
+  "windows_percent": {
+    "five_hour": 1,
+    "seven_day": 51,
+    "seven_day_overage_included": 100
+  },
+  "rate_limit_type": "seven_day_overage_included",
+  "overage": {
+    "status": "rejected",
+    "disabled_reason": "org_level_disabled",
+    "in_use": false
+  },
+  "provider_text": "You've reached your Fable limit. Switch to another model, or manage usage credits at claude.ai/settings/usage?from=cc_cli_limit_message, to continue.",
+  "api_error_status": 429,
+  "consequence": "F6's create prompt and all three continuations remain unspent; no ot7-robin-b project was created. The product agent's model is unchanged at claude-fable-5: ADR-363 moved the Ouroboros roles to claude-opus-5 and deliberately left the experiment's model alone, so F6 and F7 stay comparable with F5.",
+  "probe_stream_sha256": "68fb28f158d9cf0a9088cbc79a135ad09a58fc4595eb5d209ec8868bca4e302e",
+  "probe_stream_bytes": 10260,
+  "second_probe": {
+    "read_at": "2026-09-16T14:50:00Z",
+    "why_it_matters": "The same account, twenty minutes later, returned the frame the fixture was built to describe: status 'allowed', rateLimitType 'five_hour', five_hour at 2 % \u2014 and the call refused anyway. The pre-ADR-364 gate reads room here and dispatches F6's create prompt. The first probe's 'rejected' status was luck, and it did not repeat.",
+    "status": "allowed",
+    "rate_limit_type": "five_hour",
+    "windows_percent": {
+      "five_hour": 2,
+      "seven_day": 51
+    },
+    "exit_code": 1,
+    "elapsed_seconds": 2.069,
+    "pre_adr_364_gate_says_room": true,
+    "adr_364_gate_says_room": false,
+    "probe_stream_sha256": "eab1632ce4baf8becc83e9526d095909c86ccd7f3a8d0593e54e9397ba928e03",
+    "probe_stream_bytes": 11013
+  }
+}

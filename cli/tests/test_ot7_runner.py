@@ -1035,3 +1035,103 @@ def test_child_turn_launches_the_cli_at_the_given_effort(tmp_path, monkeypatch):
     assert seen['effort'] == 'medium'
     assert runner.child_turn(tmp_path, tmp_path, runner.PROMPTS / 'heron.create.prompt.txt', 'fixture') == 0
     assert seen['effort'] == runner.EFFORT_LEVEL
+
+# ADR-364: the probe is a real model call on the product agent's model, so its
+# own refusal is the reading. These frames are the ones `claude-fable-5`
+# returned on 2026-09-16 at 14:29 UTC, when the five-hour window read 1 % and
+# the call was refused anyway: `seven_day_overage_included` was full with
+# overage disabled at the organisation level.
+def fable_limit_frames(status='rejected'):
+    return [
+        {'type': 'rate_limit_event', 'rate_limit_info': {
+            'status': status, 'resetsAt': 1789740000,
+            'rateLimitType': 'seven_day_overage_included',
+            'overageStatus': 'rejected', 'overageDisabledReason': 'org_level_disabled',
+            'unifiedWindows': {
+                'five_hour': {'utilization': 0.01, 'resetsAt': 1789586400},
+                'seven_day': {'utilization': 0.51, 'resetsAt': 1789740000},
+                'seven_day_overage_included': {'utilization': 1, 'resetsAt': 1789740000}}}},
+        {'type': 'assistant', 'error': 'rate_limit', 'message': {
+            'model': '<synthetic>', 'role': 'assistant', 'content': [{'type': 'text', 'text':
+                "You've reached your Fable limit. Switch to another model, or manage usage "
+                "credits at claude.ai/settings/usage, to continue."}]}},
+        {'type': 'result', 'is_error': True, 'api_error_status': 429, 'subtype': 'success',
+         'result': "You've reached your Fable limit. Switch to another model, or manage "
+                   "usage credits at claude.ai/settings/usage, to continue."},
+    ]
+
+
+def test_a_refused_probe_is_no_room_however_low_the_five_hour_window_reads(tmp_path, monkeypatch):
+    """The five-hour number is a forecast; the probe's own outcome is the reading.
+
+    With the top-level status reading `allowed`, every pre-ADR-364 term of the
+    gate says room at 1 %, and the frozen slot would be spent on a call that
+    cannot reach the model.
+    """
+    calls, out = [], tmp_path / 'window'
+    out.mkdir()
+    execute = windowed_executor(calls, [fable_limit_frames(status='allowed')], monkeypatch)
+    reading = runner.window_reading(execute, out, 'probe', 'claude-fable-5')
+    assert reading['five_hour_percent'] == 1 and reading['status'] == 'allowed'
+    assert not runner.window_has_room(reading, 45)
+    assert reading['refused']['kind'] == 'usage_limit'
+
+
+def test_the_reading_names_which_window_is_full_and_which_limit_refused(tmp_path, monkeypatch):
+    """A receipt saying `five_hour 1 %, no room` is unreadable without the rest."""
+    calls, out = [], tmp_path / 'window'
+    out.mkdir()
+    execute = windowed_executor(calls, [fable_limit_frames()], monkeypatch)
+    reading = runner.window_reading(execute, out, 'probe', 'claude-fable-5')
+    assert reading['windows'] == {'five_hour': 1, 'seven_day': 51,
+                                  'seven_day_overage_included': 100}
+    assert reading['rate_limit_type'] == 'seven_day_overage_included'
+    assert not runner.window_has_room(reading, 45)
+
+
+def test_an_allowed_probe_keeps_its_room_and_carries_no_refusal(tmp_path, monkeypatch):
+    """ADR-364 narrows the gate and must not close it: an ordinary probe still passes."""
+    calls, out = [], tmp_path / 'window'
+    out.mkdir()
+    execute = windowed_executor(calls, [[limit_frame(0.08)]], monkeypatch)
+    reading = runner.window_reading(execute, out, 'probe', 'fixture')
+    assert reading['refused'] is None and reading['windows'] == {'five_hour': 8, 'seven_day': 45}
+    assert runner.window_has_room(reading, 45)
+
+
+def test_a_refused_probe_pauses_the_schedule_without_spending_a_slot(tmp_path, monkeypatch):
+    """The whole point: F6's create prompt survives a model the provider will not run."""
+    target = project(tmp_path)
+    calls = []
+    # One reading per prompt in the schedule, so a gate that wrongly dispatches
+    # runs the whole schedule and fails on the spent slots, not on a dry fixture.
+    readings = [fable_limit_frames(status='allowed')] * 4
+    report = runner.run('robin', target, 'claude-fable-5',
+                        windowed_executor(calls, readings, monkeypatch), window_bound=45)
+    assert report['status'] == 'paused' and report['turns'] == [] and report['slots_spent'] == 0
+    assert report['window_readings'][-1]['dispatched'] is False
+
+
+def test_a_probe_that_answered_is_room_despite_a_stray_rejected_overage_frame(tmp_path, monkeypatch):
+    """The guard against the opposite error: ADR-364 must not close the gate for good.
+
+    An organisation with overage disabled emits a rejected
+    `seven_day_overage_included` frame beside an ordinary allowed window. On a
+    call that reached the model and answered, that frame means "no overage is
+    available", not "no room" — and reading it as a refusal would strand every
+    remaining frozen prompt.
+    """
+    calls, out = [], tmp_path / 'window'
+    out.mkdir()
+    frames = [limit_frame(0.08),
+              {'type': 'rate_limit_event', 'rate_limit_info': {
+                  'status': 'rejected', 'rateLimitType': 'seven_day_overage_included',
+                  'overageDisabledReason': 'org_level_disabled',
+                  'unifiedWindows': {'five_hour': {'utilization': 0.08}}}},
+              {'type': 'assistant', 'message': {'model': 'claude-fable-5', 'role': 'assistant',
+                                                'content': [{'type': 'text', 'text': 'ok'}]}},
+              {'type': 'result', 'is_error': False, 'subtype': 'success', 'result': 'ok'}]
+    reading = runner.window_reading(windowed_executor(calls, [frames], monkeypatch),
+                                    out, 'probe', 'claude-fable-5')
+    assert reading['refused'] is None and reading['five_hour_percent'] == 8
+    assert runner.window_has_room(reading, 45)

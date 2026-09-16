@@ -25207,3 +25207,56 @@ continued on the same branch to load the model configuration; its original
 deadline remains. A manual refresh is queued for the new process.
 This is an orchestration-model change; the product-agent experiment model
 settings and frozen prompts are unchanged.
+
+## ADR-364 — A refused window probe is no room, whatever the window reads (2026-09-16)
+
+The ot7 evidence collector dispatches a frozen prompt only while a one-word
+probe reads the five-hour window at or under 45 % (ADR-358). On 2026-09-16 at
+14:29 UTC that probe, on the product agent's `claude-fable-5`, was **refused
+in 2.369 s with the five-hour window at 1 %**: the binding limit was
+`seven_day_overage_included` at 100 % with `overageDisabledReason:
+org_level_disabled`, and the provider said "You've reached your Fable limit."
+The five-hour window was nearly empty and entirely beside the point.
+
+The gate returned no room, but only because that frame's top-level `status`
+happened to carry the overage rejection, and that did not repeat: the next
+probe on the same account, twenty minutes later, returned `status: allowed`,
+`rateLimitType: five_hour` and five-hour at 2 %, and was refused just the
+same. The pre-ADR-364 gate reads that second frame as room and sends the
+prompt — verified against the retained stream. A fixture built from the real
+frames proves the consequence on the old code: F6's create prompt **and all
+three continuations** dispatch into a model the provider will not run, and
+the schedule ends `exhausted`
+with four slots spent on calls no model ever saw — the ADR-355 loss arriving
+through the gate written to prevent it.
+
+The probe is a real model call on the product agent's model, so it is read as
+one. Its stream is classified by `void_reason`, the same ADR-355 rule a design
+call's stream gets, and `window_has_room` returns false on any refusal before
+it considers a number: the five-hour percentage forecasts what a turn will
+*cost*, while the probe's outcome measures whether one can *start*. The
+reading also keeps every `unifiedWindows` entry as a percentage beside
+`rate_limit_type` and the refusal, because a receipt reading `five_hour 1 %,
+no room` names no cause. The bound, the probe text, the one-probe-per-prompt
+schedule and the pause behaviour are unchanged, and an allowed probe still
+passes.
+
+The opposite error is guarded too, because closing this gate for good would
+strand every remaining frozen prompt: an organisation with overage disabled
+emits a rejected `seven_day_overage_included` frame beside an ordinary allowed
+window, so the classifier runs only on a probe that did **not** answer. A
+probe that reached the model and returned its own result is room, stray frames
+and all.
+
+Evidence: five fixtures in `cli/tests/test_ot7_runner.py` (the refused probe
+at 1 % with `status: allowed`, the named windows, an allowed probe keeping its
+room, the whole schedule pausing with zero slots spent, and an answered probe
+keeping its room despite a stray rejected overage frame), the first four
+failing on the old code, 76 passed; the receipt
+`docs/probes/ot7/attempts/f6-window-refusal.json`; `docs/probes/ot7/runner/README.md`.
+
+F6's four slots are unspent and no `ot7-robin-b` exists. The product agent's
+model stays `claude-fable-5` — ADR-363 moved the Ouroboros roles to
+`claude-opus-5` and deliberately left the experiment's model alone, so F6 and
+F7 stay comparable with F5 — so F6 waits for that account's Fable capacity
+rather than for a five-hour reset.

@@ -128,37 +128,70 @@ def window_reading(execute_call, out, stem, model):
     frame (ADR-358). The probe carries no project, no tools and no MCP server,
     so it is not a product-agent call and spends no slot; its stream is kept
     beside the receipt. A reading with no frame, or a rejected one, is not
-    evidence of room, and ``dispatch`` treats it as no room."""
+    evidence of room, and ``dispatch`` treats it as no room.
+
+    The probe is itself a model call on the product agent's model, so its own
+    outcome is the direct reading and the five-hour number is only a forecast
+    (ADR-364). Every unified window the provider names is kept, because the
+    binding limit is often not the five-hour one: on 2026-09-16 at 14:29 UTC
+    ``claude-fable-5`` refused this probe outright with ``five_hour`` at 1 %,
+    because ``seven_day_overage_included`` was at 100 % with overage disabled
+    at the organisation level.
+    """
     from cadex_cli.agent import ClaudeUnavailable, find_claude
+    blank = {'status': None, 'five_hour_percent': None, 'resets_at': None,
+             'frame': None, 'windows': {}, 'rate_limit_type': None, 'refused': None}
     try:
         binary = find_claude('')
     except ClaudeUnavailable as exc:
-        return {'probe': None, 'error': str(exc), 'status': None, 'five_hour_percent': None,
-                'resets_at': None, 'frame': None}
+        return dict(blank, probe=None, error=str(exc))
     command = [binary, '-p', WINDOW_PROBE_TEXT, '--output-format', 'stream-json', '--verbose',
                '--model', model, '--tools', '', '--system-prompt', WINDOW_PROBE_TEXT]
-    reading = {'probe': execute_call(command, out, stem, WINDOW_PROBE_BOUND_SECONDS),
-               'status': None, 'five_hour_percent': None, 'resets_at': None, 'frame': None}
-    for frame in read_frames(out / f'{stem}.stdout.json'):
+    stream = out / f'{stem}.stdout.json'
+    reading = dict(blank, probe=execute_call(command, out, stem, WINDOW_PROBE_BOUND_SECONDS))
+    for frame in read_frames(stream):
         if frame.get('type') != 'rate_limit_event':
             continue
         info = frame.get('rate_limit_info') or {}
-        window = (info.get('unifiedWindows') or {}).get('five_hour') or {}
+        unified = info.get('unifiedWindows') or {}
+        window = unified.get('five_hour') or {}
         utilization = window.get('utilization')
         if utilization is None and info.get('rateLimitType') == 'five_hour':
             utilization = info.get('utilization')
         resets = window.get('resetsAt') or info.get('resetsAt')
         reading.update(
-            status=info.get('status'), frame=info,
+            status=info.get('status'), frame=info, rate_limit_type=info.get('rateLimitType'),
+            windows={name: round(float(each['utilization']) * 100)
+                     for name, each in unified.items()
+                     if isinstance(each, dict) and each.get('utilization') is not None},
             five_hour_percent=None if utilization is None else round(float(utilization) * 100),
             resets_at=None if resets is None else datetime.fromtimestamp(resets, timezone.utc).isoformat())
         break
+    # The probe's own stream is classified by the same rule as a design call's
+    # (ADR-355): a probe the provider refused on a limit is a refusal whatever
+    # any window frame says about headroom. A probe that answered is never a
+    # refusal, so a stray rejected frame — an organisation with overage
+    # disabled emits one beside an ordinary allowed window — cannot close the
+    # gate on an account that in fact has room.
+    reading['refused'] = None if probe_answered(reading['probe'], stream) else void_reason(stream)
     return reading
 
 
+def probe_answered(probe, stream):
+    """Whether the probe call reached the model and returned its own answer."""
+    if (probe or {}).get('exit_code') != 0:
+        return False
+    results = [f for f in read_frames(stream) if f.get('type') == 'result']
+    return bool(results) and not any(f.get('is_error') for f in results)
+
+
 def window_has_room(reading, bound_percent):
-    """Only a frame the provider allowed, read at or under the bound, is room."""
-    return (reading.get('status') in ('allowed', 'allowed_warning')
+    """Only a frame the provider allowed, read at or under the bound, is room —
+    and only when the probe call itself was not refused on a limit (ADR-364).
+    A per-model or longer-window limit refuses the call with the five-hour
+    number still low, so the number alone is not evidence of room."""
+    return (not reading.get('refused')
+            and reading.get('status') in ('allowed', 'allowed_warning')
             and reading.get('five_hour_percent') is not None
             and reading['five_hour_percent'] <= bound_percent)
 
