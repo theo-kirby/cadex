@@ -5765,6 +5765,9 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
 
     A limited joint whose kind's step is undeclared, or whose kind is not
     sweepable, is reported ``incomplete`` with the reason, never skipped.
+    ``steps`` may be empty, which is the assembly that declared no step at
+    all: every limited joint is then named unswept and no geometry is
+    touched (ADR-367).
     """
     import time
     report = {"status": "complete",
@@ -6341,13 +6344,18 @@ def validate_and_solve_assembly(
 
     clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
     world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result)
-    clearance_sweep = None
     sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
                    if assembly_properties.get(key) is not None}
-    if sweep_steps:
-        clearance_sweep = _measure_joint_sweeps(
-            components, component_data, joint_data, clearance,
-            sweep_steps, diagnostics["status"] == "solved")
+    # Coverage is reported even when neither step is declared (ADR-367). The
+    # per-joint loop already names a limited joint whose kind's step is
+    # missing, so the assembly that declares nothing learns *which* joints
+    # went unswept instead of only that a sweep is absent. It costs nothing:
+    # with no step to sweep at, every joint short-circuits before any
+    # geometry call, and an assembly with no limited joint reports complete
+    # coverage of an empty set.
+    clearance_sweep = _measure_joint_sweeps(
+        components, component_data, joint_data, clearance,
+        sweep_steps, diagnostics["status"] == "solved")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
     if simulation_contract is not None:
@@ -6602,8 +6610,7 @@ def validate_and_solve_assembly(
         )
     if exploded_view_summaries:
         diagnostics["exploded_views"] = exploded_view_summaries
-    if clearance_sweep is not None:
-        by_name[assembly_output]["clearance_sweep"] = clearance_sweep
+    by_name[assembly_output]["clearance_sweep"] = clearance_sweep
     by_name[assembly_output]["clearance"] = clearance
     by_name[assembly_output]["world_geometry"] = world_geometry
     by_name[assembly_output]["assembly_data"] = {

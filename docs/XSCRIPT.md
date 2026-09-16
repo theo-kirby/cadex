@@ -1576,12 +1576,16 @@ sweep of every limited hinge when the assembly builds, and
 `assembly.assembly(..., sweep_step_mm=1)` the same for every limited slider;
 either or both may be declared. The optional declarations enter the definition;
 omitting both preserves legacy definitions. The producer stores `clearance_sweep`
-on the assembly output in the accepted result. Opening a retained result does
+on the assembly output in the accepted result **whether or not a step is
+declared** (ADR-367), so coverage is always reported: an assembly that declares
+neither step names every limited joint `incomplete` with the declaration it is
+missing, and one with no limited joint at all reports complete coverage of an
+empty set. Neither case touches geometry. Opening a retained result does
 not recompute it. `inspect(scope="clearance", path="/clearance_sweep")` and
 `cadex clearance --sweep` read it unchanged (ADR-350), and the CLI's build
 replies carry it summarised as `fit.sweep` beside the static block, with its
-own verdict (ADR-366, `docs/CLI.md`); omitting both steps makes that verdict
-`unavailable`, which is never a pass.
+own verdict (ADR-366, `docs/CLI.md`); neither `incomplete` nor an empty
+`complete` is a pass.
 
 For each limited, unsuppressed revolute or slider joint in a rigid tree, the
 producer moves its descendant solids about, or along, the solved connector +Z
@@ -1599,7 +1603,8 @@ first agree with static clearance within 0.0001 mm and 0.001 mm³.
 A limited joint whose kind's step is undeclared (a slider under
 `sweep_step_degrees` alone, or a hinge under `sweep_step_mm` alone) is
 reported `incomplete` with that reason, never silently skipped, so a design
-that declares one step still learns which limited joints went unswept. An
+that declares one step, or neither (ADR-367), still learns which limited
+joints went unswept. An
 open-ended limit (one endpoint `None`) has no bound to sweep and is reported
 the same way.
 

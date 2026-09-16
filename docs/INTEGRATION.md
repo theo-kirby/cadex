@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-09-14
+Verified against source: 2026-09-16
 
 **Optional Blender recipe runtime (ADR-185).** A shell-owned cadexd child
 receives `CADEX_BLENDER_EXECUTABLE` naming the shell's own binary. The engine
@@ -580,7 +580,12 @@ is the first sample from the lower limit within 0.001 mm; other joints stay at
 their solved pose. Missing data returns `status: unavailable` with a reason;
 unsupported joints, a limited joint whose step is undeclared, and budget
 exhaustion retain `status: incomplete` and their reasons.
-Complete coverage means measurements exist, **not** that fit passes.
+Complete coverage means measurements exist, **not** that fit passes: an
+assembly with no limited joint publishes complete coverage of an empty set.
+Since ADR-367 the sweep is published whether or not a step is declared, so an
+assembly declaring neither names every limited joint `incomplete` with the
+missing declaration instead of publishing nothing; a revision accepted by an
+older engine still has no sweep and reads `unavailable`.
 
 `cadex clearance --sweep` writes these facts and the accepted revision to
 `docs/clearance-sweep.md`. Exit 0 means the report was written, including when

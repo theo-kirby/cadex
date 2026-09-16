@@ -2143,17 +2143,21 @@ touched at, on the same never-cut-short terms as the static list — and it
 does not hide missing coverage, which stays in the joint rows beside it.
 `incomplete` means a joint the engine could not sweep, carrying the engine's
 own reason; `unavailable` means the accepted revision published no sweep at
-all, which is what a design whose assembly declares no `sweep_step_degrees`
-or `sweep_step_mm` gets, with the engine's reason naming the declaration it
-is missing. Neither is a pass: a joint that was not swept has been checked
-at one pose only. The block is advisory like the static one — a failing
-swept fit is reported, never refused — and the prose report prints it as a
-`sweep` line under the `fit` line.
+all, which since ADR-367 only a revision accepted by an older engine does.
+Neither is a pass: a joint that was not swept has been checked at one pose
+only. The block is advisory like the static one — a failing swept fit is
+reported, never refused — and the prose report prints it as a `sweep` line
+under the `fit` line.
 
-The engine publishes no row for a limited joint when the assembly declares
-no step of that joint's kind at all, because it runs no sweep in that case;
-the block then says `unavailable` with the reason rather than counting the
-joints, which is one call it does not make to say so.
+An assembly that declares **neither** step is the case ot7's F5 create turn
+measured, and since ADR-367 it is `incomplete` rather than `unavailable`:
+the engine publishes coverage either way, so every limited joint is named
+with the declaration it is missing (`sweep incomplete: 2 of 2 joint(s)
+unswept`) instead of the reply saying only that a sweep is absent. It costs
+no measurement — with no step to sweep at, no geometry is touched. An
+assembly with no limited joint at all reports complete coverage of an empty
+set, which the block reads as `unavailable` with its own reason: there is no
+motion to check, and that is a different statement from a swept mechanism.
 
 ### Every build reply carries the published catalog identity (ADR-362)
 

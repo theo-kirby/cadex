@@ -320,9 +320,16 @@ def write_clearance(
             "reason": "No published sweep for this accepted revision.",
         }
         value["clearance_sweep"] = published
+        coverage = str(published.get("status", "unavailable"))
+        # Complete coverage of nothing is not the same statement as a swept
+        # mechanism, and since ADR-367 it is what an assembly with no limited
+        # joint publishes. Say which one this is, the way the reply's block
+        # already does, so the two surfaces cannot disagree.
+        if coverage == "complete" and not published.get("joints"):
+            coverage += ". " + SWEEP_NO_JOINTS.rstrip(".")
         text = ("# Swept clearance measurements\n\n"
                 f"Accepted revision `{value['revision']}`, assembly `{value['assembly']}`.\n\n"
-                f"Coverage: {published.get('status', 'unavailable')}.\n\n"
+                f"Coverage: {coverage}.\n\n"
                 "Complete coverage means measurements exist, not that fit passes. "
                 "Missing or incomplete coverage is not a passing check. "
                 "Other joints stay at the solved pose; first contact is the first "

@@ -2224,3 +2224,59 @@ def test_joint_sweep_is_published_and_restore_does_not_recompute(tmp_path, kind,
         assert json.loads(state_path.read_bytes())["accepted_attempt"] == accepted
     finally:
         _stop(client)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="Needs built engine")
+@pytest.mark.parametrize("limits, expected", [
+    ("angle_limits_degrees=[0, 10]", "incomplete"),
+    ("", "complete"),
+])
+def test_an_assembly_declaring_no_step_still_publishes_its_sweep_coverage(
+    tmp_path, limits, expected,
+):
+    """The gap ot7's F5 create turn measured, closed (ADR-367).
+
+    That turn accepted an arm whose two hinges declared limits and whose
+    assembly declared no ``sweep_step_degrees``, so the producer was never
+    called and nothing enumerated the joints that went unchecked. Coverage
+    is now published either way. A limited joint with no step for its kind
+    is named ``incomplete`` with that reason; an assembly with no limited
+    joint at all reports complete coverage of an empty set, which is the
+    honest answer to "what was swept" and is not the same statement.
+    """
+
+    source = JOINT_SCRIPT.replace(
+        'assembly.connector(swing, "origin"))',
+        'assembly.connector(swing, "origin")%s)' % (", " + limits if limits else ""))
+    client = _spawn_cadexd()
+    try:
+        assert client.request('open_project', {'project_root': str(tmp_path)})['ok']
+        written = client.request('write_script', {'source': source, 'expected_revision': ''})
+        assert written['ok'], written
+        accepted = json.loads((tmp_path / 'script.json').read_text())['accepted_attempt']
+        outputs = {o['name']: o for o in json.loads(
+            (tmp_path / accepted['staging'] / 'result.json').read_text())['outputs']}
+        sweep = outputs['asm']['clearance_sweep']
+        assert sweep['status'] == expected, sweep
+        # Neither step was declared, so neither is claimed and no geometry
+        # ran: the whole report is the enumeration.
+        assert sweep['step_degrees'] is None and sweep['step_mm'] is None
+        assert sweep['elapsed_seconds'] < 1.0, sweep
+        if limits:
+            (joint,) = sweep['joints']
+            assert (joint['joint'], joint['kind'], joint['unit']) == ('j', 'revolute', 'degrees')
+            assert joint['status'] == 'incomplete'
+            assert 'sweep_step_degrees is not declared' in joint['reason']
+            assert 'pairs' not in joint
+        else:
+            assert sweep['joints'] == []
+        # The agent reaches the same enumeration through the scope it
+        # already has, with no rebuild.
+        inspected = client.request('inspect', {'scope': 'clearance',
+            'path': '/clearance_sweep', 'limit': 50})
+        assert inspected['ok'], inspected
+        from CadexInspection import _bounded_page
+        assert inspected['value'] == _bounded_page({'clearance_sweep': sweep}, {
+            'path': '/clearance_sweep', 'limit': 50})['value']
+    finally:
+        _stop(client)

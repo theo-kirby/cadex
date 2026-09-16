@@ -25364,3 +25364,57 @@ Evidence: `cli/cadex_cli/clearance.py` (`sweep_summary`, folded into
 `cli/tests/test_clearance.py`, all six red on the previous code — two live
 against the real engine on one hinge built with and without its step, which
 is the F5 shape with its static verdict passing either way.
+
+## ADR-367 — Coverage is published whether or not a step is declared (2026-09-16)
+
+ADR-366 named what it did not do and said it was a separate unit "if a
+design turn shows the reason alone is not enough". A design turn already
+had. F5's create turn on `ot7-heron-c` (record `flat-cove-2253`) accepted
+an arm whose two revolute joints declared limits and whose assembly
+declared no `sweep_step_degrees`; the agent found the gap one continuation
+later (`easy-otter-0439`), spending a slot on it. This is that unit.
+
+The whole defect was one guard. `_measure_joint_sweeps` has always reported
+a limited joint whose kind's step is undeclared as `incomplete`, naming the
+joint and the missing declaration — that path is how a design declaring
+`sweep_step_mm` alone learns about its hinges. It was simply never reached
+when **neither** step was declared, because the dispatch site in
+`cadex_assembly_worker.py` guarded the call with `if sweep_steps:`.
+
+- **The guard is gone; `clearance_sweep` is published on every assembly.**
+  With no step to sweep at, every joint short-circuits on the step check
+  before any geometry call, so the report is an enumeration and nothing
+  else. Measured on the lifecycle fixture: `elapsed_seconds` under 1 ms.
+- **An assembly that declares neither step is now `incomplete`**, with one
+  row per limited joint naming it, its kind, its unit and the declaration
+  it is missing. The reply's line reads `sweep incomplete: 2 of 2 joint(s)
+  unswept` instead of `sweep unavailable`, so the agent is told *which*
+  joints went unchecked rather than only that a sweep is absent.
+- **An assembly with no limited joint reports complete coverage of an empty
+  set**, which is the honest answer to "what was swept" and is not the same
+  statement as a swept mechanism. `sweep_summary` already read that as
+  `unavailable` with its own reason (ADR-366), and `cadex clearance --sweep`
+  now says the same thing in its coverage line rather than printing a bare
+  "complete" a reader could take for a checked mechanism.
+- **`unavailable` keeps exactly one meaning**: a revision accepted by an
+  older engine, which published no sweep. The `CadexInspection` fallback is
+  unchanged and retained projects read as they did.
+
+No protocol change: no op, no argument and no page contract moves, the
+response is an additional key on an assembly output, and the shell passes
+the scope value through untouched. Acceptance is unchanged and advisory
+throughout — a limited joint nobody swept is reported, never refused — and
+the assembly *definition* is untouched, so omitting both steps still
+preserves legacy definitions and accepted identity.
+
+Evidence: two lifecycle tests (`test_cadexd_lifecycle.py`), both red on the
+previous code with `KeyError: 'clearance_sweep'`, covering the limited-joint
+and no-joint cases against a real build and through the `clearance` inspect
+scope; the live CLI test that builds the F5 shape both ways
+(`test_clearance.py`) now asserts the named joint and the `sweep incomplete:
+1 of 1 joint(s) unswept` line; and the legacy-project sweep report asserts
+its new coverage sentence. `pixi run test-engine` 2,144 passed, 53 skipped;
+`pixi run python -m pytest cli/tests` 783 passed, 1 skipped; the packaged
+gate `CADEX_ENGINE_ROOT=<payload> pytest test_cadexd_lifecycle.py` 20 passed
+against a freshly staged payload. `docs/XSCRIPT.md`, `docs/CLI.md` and
+`docs/INTEGRATION.md` move with it.

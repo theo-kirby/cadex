@@ -221,8 +221,9 @@ common volume, first contact in the joint's own `unit`) and every pair \
 that interpenetrates anywhere in a range. Declare `sweep_step_degrees` \
 (limited hinges) and `sweep_step_mm` (limited sliders) on the assembly to \
 acquire it; a limited joint whose step is undeclared comes back \
-`incomplete` with that reason, and `fit.sweep.verdict` is `unavailable` \
-when the revision published no sweep at all. Neither is a pass: a joint \
+`incomplete` with that reason even when the assembly declares no step at \
+all, and `fit.sweep.verdict` is `unavailable` when the accepted assembly \
+declares no limited joint to sweep. Neither is a pass: a joint \
 that was not swept has been checked at one pose only, and static fit does \
 not prove motion fit. The swept verdict judges overlap only -- declared \
 contacts and clearance minima are checked at the solved pose -- so read the \

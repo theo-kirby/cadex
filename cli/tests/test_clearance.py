@@ -4,7 +4,7 @@ import json
 import pytest
 from cadex_cli.__main__ import main
 from cadex_cli.client import CadexdClient, open_project
-from cadex_cli.bridge import Bridge
+from cadex_cli.bridge import Bridge, _sweep_line
 from cadex_cli.clearance import (
     bounds_agreement, fit_summary, pair_status, write_clearance,
 )
@@ -430,7 +430,12 @@ def test_sweep_command_on_legacy_project_keeps_accepted_identity(engine, tmp_pat
     attempts = {p: p.read_bytes() for p in root.rglob('result.json')}
     assert main(['clearance', '--sweep', '--project', str(root), '--json']) == 0
     assert json.loads(capsys.readouterr().out)['ok']
-    assert 'Coverage: unavailable' in (root / 'docs/clearance-sweep.md').read_text()
+    # RIG has no joint at all, so since ADR-367 the engine publishes complete
+    # coverage of an empty set. The report must not let that read as a swept
+    # mechanism: it says which of the two it is, in the coverage line.
+    report = (root / 'docs/clearance-sweep.md').read_text()
+    assert 'Coverage: complete. The accepted assembly declares no limited joint' in report
+    assert 'angle_limits_degrees or length_limits_mm for a swept check to exist.' in report
     assert (root / 'script.json').read_bytes() == before
     assert {p: p.read_bytes() for p in root.rglob('result.json')} == attempts
 
@@ -492,7 +497,7 @@ result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
 
 
 @pytest.mark.parametrize('step,verdict', [
-    (', sweep_step_degrees=5', 'pass'), ('', 'unavailable'),
+    (', sweep_step_degrees=5', 'pass'), ('', 'incomplete'),
 ])
 def test_build_reply_carries_the_published_joint_sweep(
     engine, tmp_path, step, verdict,
@@ -534,12 +539,20 @@ def test_build_reply_carries_the_published_joint_sweep(
             assert joint['maximum_common_volume_mm3'] == 0
             assert 'first_contact' not in joint and 'note' not in sweep
         else:
-            # The F5 shape exactly: a limited hinge, no declared step, so the
-            # engine published no sweep at all. The reply carries the engine's
-            # own reason, which names the declaration the design is missing.
-            assert sweep['coverage'] == 'unavailable' and sweep['joints'] == []
-            assert 'sweep_step_degrees' in sweep['reason']
+            # The F5 shape exactly: a limited hinge and no declared step.
+            # Since ADR-367 the engine still publishes coverage, so the reply
+            # names *which* joint went unchecked and why, rather than only
+            # that a sweep is absent.
+            assert sweep['coverage'] == 'incomplete'
+            assert (sweep['joints_checked'], sweep['joints_complete']) == (1, 0)
+            (joint,) = sweep['joints']
+            assert (joint['joint'], joint['kind'], joint['status']) == (
+                'j', 'revolute', 'incomplete')
+            assert 'sweep_step_degrees is not declared' in joint['reason']
+            assert joint['pairs_measured'] == 0
+            assert sweep['step_degrees'] is None and 'reason' not in sweep
             assert sweep['note'].startswith('Coverage means measurements exist')
+            assert _sweep_line(sweep) == 'sweep incomplete: 1 of 1 joint(s) unswept'
         # The same block the progress line and the turn report read.
         assert call.fit == fit
         _, value = write_clearance(client, root, sweep=True)
