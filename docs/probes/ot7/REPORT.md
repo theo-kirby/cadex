@@ -28,16 +28,19 @@ slot, and none is a design result. F5–F7 remain open with every slot unspent;
 F4 has spent its repair prompt and all three continuations on
 `ot7-heron-repair-d` (ADR-357, [Iteration 49](#iteration-49-the-slot-totals-corrected-adr-357)),
 and its measured result is two of three ot6 defects resolved.
-**F5 has had its first call that reached a model, and it was interrupted**:
-iteration 55 dispatched the frozen arm create prompt on `ot7-heron-b` at 13 %
-of the window, and the runner killed the turn at its 30-minute bound with no
-design written: four minutes of reading, then three thinking-only messages
-that each hit the 32,000-token output cap and were auto-resumed by the
-harness (see [Iteration 55](#iteration-55-the-arm-create-call-interrupted-at-the-bound)).
-Under decision #44 and ADR-356 that is an interrupted execution: no slot
-spent, the create prompt and all three continuations unspent, retry on
-`ot7-heron-c`. This report is written forward from the restart; it claims
-no design outcome and no critic acceptance of done.
+**F5 has had its first completed turn**: iteration 57 dispatched the
+frozen arm create prompt on `ot7-heron-c` at 5 % of the window, at effort
+`medium` (ADR-359), and the turn ended on its own in 1,530.4 s with an
+accepted two-DoF arm whose measured static fit **fails 7 of 120 checks**:
+six screw intersections the agent calls thread engagement, and the bench it
+added as a world-marked slab (see
+[Iteration 57](#iteration-57-the-arm-create-turn-completed)). The create
+slot is spent, all three continuations are unspent, and the next prompt is
+`continue-1` through `resume`, when the window reads room. Iteration 55's
+call on `ot7-heron-b` was interrupted at the 30-minute bound and spent
+nothing (see [Iteration 55](#iteration-55-the-arm-create-call-interrupted-at-the-bound)).
+This report is written forward from the restart; it claims no design
+outcome for F5 yet and no critic acceptance of done.
 
 ## Amendment: the restart (ADR-355)
 
@@ -54,7 +57,7 @@ below match it. What each design has left:
 | Design / criterion | Void calls (not attempts) | Attempts that reached the model | Create or repair prompt | Continuations unspent | Retry project |
 |---|---|---|---|---|---|
 | Heron repair / F4 | 4: three pre-restart, and iteration 48 on `ot7-heron-repair-c` (cut off by the five-hour limit after 6 reads, [receipt](retained/repair-void-c.json)); and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound (decision #44: not a turn, no slot) | 4, all on `ot7-heron-repair-d`: iteration 48, the repair prompt, completed in 1,461.9 s with six accepted revisions ([receipt](retained/repair-completed-d.json)); iteration 51, `continue-1`, completed in 738.5 s with two accepted revisions ([receipt](retained/repair-continue-1-d.json)); iteration 52, `continue-2`, completed in 128.7 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-2-d.json)); iteration 53, `continue-3`, completed in 104.9 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-3-d.json)) | spent: the repair prompt, completed on `ot7-heron-repair-d` | 0 of 3 (all three spent; ADR-357: the repair prompt is the first prompt, not a continuation) | none: F4 is exhausted and its measured result stands |
-| Heron arm / F5 | 1 (pre-restart); and 1 **interrupted** call apart from it: iteration 55 on `ot7-heron-b`, killed at the runner's 30-minute bound after 68 model messages with no design written ([receipt](retained/heron-interrupted-b.json)) | 0 | unspent | 3 of 3 | `ot7-heron-c` |
+| Heron arm / F5 | 1 (pre-restart); and 1 **interrupted** call apart from it: iteration 55 on `ot7-heron-b`, killed at the runner's 30-minute bound after 68 model messages with no design written ([receipt](retained/heron-interrupted-b.json)) | 1, on `ot7-heron-c`: iteration 57, the create prompt, completed in 1,530.4 s with three accepted design revisions, static fit 7 of 120 failing at the last ([receipt](retained/heron-create-c.json)) | spent: the create prompt, completed on `ot7-heron-c` | 3 of 3 | none needed: `ot7-heron-c` continues through `resume` |
 | Robin balancer / F6 | 1 | 0 | unspent | 3 of 3 | `ot7-robin-b` |
 | Plover biped / F7 | 1 | 0 | unspent | 3 of 3 | `ot7-plover-b` |
 
@@ -563,6 +566,85 @@ same effort and cap, or under a lower effort level (the CLI's documented
 `CADEX_EFFORT` control, no prompt byte changed), is the decision the next
 unit has to make and record before it spends the window again.
 
+## Iteration 57: the arm create turn completed
+
+The first F5 turn that ended on its own. `heron.create.prompt.txt` (9,648
+bytes, digest `bcda5af5…`, unchanged) was dispatched on the fresh, empty
+project `ot7-heron-c` through `run.py heron … --turns 1` at 02:22:53 UTC,
+two minutes after the reset, at effort `medium` with the 32,000-token cap and
+the 30-minute bound unchanged (ADR-359). The runner's probe read **5 %** and
+dispatched; the stream's first `rate_limit_event` read 5 %, its last 62 %,
+and the probe after the measurement read 64 %. No actor edited any design.
+**The turn completed** in 1,530.4 s (exit 0, 123 model messages, 35 thinking
+blocks, no output-cap hit, 82 tool calls), the slot is spent, and the runner
+left the attempt `paused` with `continue-1` next and all three continuations
+unspent ([receipt](retained/heron-create-c.json), 1,492,517-byte stream,
+digest `4bd8071a…`, in the project).
+
+Where the 25.5 minutes went, from the stream's timestamps:
+
+- **02:22:56–02:25:36, reading (44 calls).** The first call, `describe_api`,
+  returned the ADR-359 view, **82,523 characters, and the harness refused
+  it** as over its tool-result cap, writing it to a file the agent has no
+  tool to read. The largest tool result the harness accepted in this turn
+  was 20,717 characters, so the cap lies between those two numbers and the
+  90,000-character budget does not reach it. The agent paged the contract
+  through 43 `inspect scope=api` reads in 2 min 40 s, against 3 min 51 s
+  and 44 reads at 163,200 characters in iteration 55.
+- **02:25:36–02:26:30, two probe scripts.** Catalog specs, then the servo
+  and horn bodies, accepted as `part` outputs with no assembly.
+- **02:26:30–02:38:20, one thinking message** of about 30,000 estimated
+  tokens that ended on its own under the cap: the effort level did what
+  ADR-359 said it would, one thought in place of iteration 55's three.
+- **02:38:20–02:40:40, the design.** 280 lines rejected on `import math`;
+  469 lines accepted as `c186fe25…`: a printed base, upper arm and forearm,
+  two MG90S, two single-arm horns, two MR128 bearings, four M2×6 and two
+  M2×16 screws as 15 fixed components, shoulder and elbow revolute joints
+  with ±90° and ±100° limits, eleven declared contacts, an MJCF model and a
+  reach task. The reply's fit summary: **105 pairs, 8 failing**, six screw
+  intersections and two declared horn-to-screw contacts missed by 0.55 mm.
+- **02:43:10, the first repair from the reply.** One accepted edit
+  (`9f7b39c4…`) restored the catalog horn's through-bore and resolved both
+  missed contacts: 105 pairs, 6 failing.
+- **02:44:00–02:45:50, the bench.** The agent then added the floor it had
+  reasoned MuJoCo needs, three ways: a plane (rejected, no solid), a slab
+  marked `world=True` (rejected by MuJoCo, plane only in static bodies) and
+  that slab welded to the grounded base, accepted as `512c157c…`, which the
+  F2 check reports as **world geometry** on `bench`: 120 pairs, 7 failing.
+- **02:46:00–02:48:22, the close.** The agent read `inspect scope=clearance`
+  in full, the inventory, rebuilt to the identical digest and wrote five
+  `DECISION:` lines and three `NOTE` lines into the project. Its closing
+  message says "the only measured intersections are the six thread
+  engagements, matching the analytic values exactly", 4.0715 mm³ per tab
+  screw and 18.096 mm³ per centre screw, and that the bench "is the
+  environment's plane … reported as world geometry".
+
+**What this measures.** The product's fit report reached the agent in every
+build reply and the agent acted on it inside the create turn: eight failing
+checks became six by a measurement-led edit, with no continuation prompt
+spent. What it did not do is treat the report as the bar. It accepted six
+intersections it can explain and a world component it knows is reported, and
+declared eleven contacts but no clearances and no sweep step, so **the swept
+check is unavailable** for this revision ("declare `sweep_step_degrees` …
+and explicitly rebuild") and F5's swept half is unmeasured. Its inventory
+lists the servos and horns under `uncatalogued_sources`: the servo solid has
+a tap-drill bore cut into its shaft and the horns are re-clocked, so two of
+the four purchased families lost catalog identity, while the bearings and
+all six screws keep it. Against F5's bar this revision fails on three
+counts: 7 failing static checks, no swept measurement, and two purchased
+parts not catalogued. The continuation prompt, frozen, asks for exactly
+these three things by measurement alone. The turn cost 59 points of the
+five-hour window (5 % to 64 %), so `continue-1` waits for the 07:20 UTC
+reset, dispatched through `run.py resume` only when the probe reads room.
+
+Against ot6: Heron's first accepted ot6 revision had a floor plane in the
+design, 248.2 mm³ of servo tab buried in a cheek, and a horn 0.2 mm from its
+link, none of them visible to the agent. Here the bench is reported by name
+as world geometry, the servo tabs seat at 0 mm and 0 mm³, and the horns sit
+in declared contact, measured; the six intersections are 4.07 and 18.10 mm³
+screw engagements, and the agent's printed claim and the product's
+measurement agree on their size and disagree on whether they count.
+
 ## Implemented checks and evidence for F1–F9
 
 | Criterion | What exists | Evidence and limits |
@@ -571,7 +653,7 @@ unit has to make and record before it spends the window again.
 | F2 | Contact and minimum-clearance declarations; overlaps, missed contact, insufficient clearance and world geometry are advisory findings | [Known-answer fixtures](FIT-INTENT.md), [record](../../../.hypergraph/graph/record/crisp-ember-0302.md), [numerical correction](../../../.hypergraph/graph/record/hidden-lodge-4550.md), [script contract](../../XSCRIPT.md). Solid world geometry needs explicit intent; grounding alone does not imply a floor |
 | F3 | Published bounded exact-solid hinge and slider sweeps, agent inspection and `cadex clearance --sweep` | [Producer](../../../.hypergraph/graph/record/misty-spark-6372.md), [consumer](../../../.hypergraph/graph/record/green-river-3790.md), [slider fixtures](../../../.hypergraph/graph/record/curious-cedar-4881.md), [Finch product measurement](../../../.hypergraph/graph/record/kind-flint-2780.md), [sweep receipt](sweep/README.md). Discrete samples, unsupported or undeclared coverage explicitly incomplete; details below |
 | F4 | Four void calls (ADR-355), one interrupted call (decision #44, ADR-356), and **four completed turns** on `ot7-heron-repair-d`: the repair prompt (1,461.9 s, 46 tool calls, six accepted revisions, static fit 0 of 120 pairs failing, swept complete at 5°, servo bodies uncatalogued, a bench slab added, joint ranges narrowed), `continue-1` (738.5 s, 20 tool calls, two accepted revisions, static fit 0 of 105 pairs failing, swept complete at 5° with zero common volume, both servos back to untouched catalog bodies, the bench removed, no world geometry) `continue-2` (128.7 s, 8 tool calls, no edit, the unchanged script re-accepted at the same digest after every measurement was re-read and none failed) and `continue-3` (104.9 s, 4 tool calls, no edit, the unchanged script re-accepted again, and the prompt's `DECISION:` and `NOTE design_specs:` lines written with 105 rest-pose and 210 swept checks passed, 0 failed); the collector's attachment assessment still fails on both horn-to-link pairs at 0.2 mm, declared as clearance | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [classification](attempts/void-calls.json), [interrupted call](retained/repair-timeout-b.json), [void call c](retained/repair-void-c.json), [completed turn d](retained/repair-completed-d.json), [assessment](#iteration-48-the-repair-turn-that-completed), [continue-1 on d](retained/repair-continue-1-d.json), [its assessment](#iteration-51-the-first-continuation-completed), [continue-2 on d](retained/repair-continue-2-d.json), [its assessment](#iteration-52-the-window-read-by-the-runner-then-continue-2-completed-adr-358), [continue-3 on d](retained/repair-continue-3-d.json), [its assessment](#iteration-53-the-last-continuation-completed-and-f4-exhausted). **Measured, and final: zero failing product checks after all four turns; two of three defects resolved, the horn gap declared rather than closed, and two continuations that name no failure leave the design unchanged. F4 is exhausted: no slot remains** |
-| F5 | One void arm create (pre-restart) and one **interrupted** create on `ot7-heron-b` (iteration 55: killed at the 30-minute bound after 4 min of reading and three thinking-only messages that each hit the 32,000-token output cap; three probe scripts written, two accepted, no assembly, no design); zero attempts | [Record](../../../.hypergraph/graph/record/quiet-dew-5243.md), [void receipt](attempts/heron-refusal.json), [interrupted receipt](retained/heron-interrupted-b.json), [its assessment](#iteration-55-the-arm-create-call-interrupted-at-the-bound). **Open: create prompt and all continuations unspent; retry on `ot7-heron-c` after the reset, at effort `medium` (ADR-359, iteration 56), the same frozen prompt** |
+| F5 | One void arm create (pre-restart), one **interrupted** create on `ot7-heron-b` (iteration 55: killed at the 30-minute bound after 4 min of reading and three thinking-only messages that each hit the 32,000-token output cap; three probe scripts written, two accepted, no assembly, no design), and **one completed create turn** on `ot7-heron-c` (iteration 57, effort `medium`: 1,530.4 s, 82 tool calls, three accepted design revisions, static fit 8 then 6 then 7 of 120 failing: six screw intersections of 4.07 and 18.10 mm³ and the bench as world geometry; sweep unavailable, no step declared; servos and horns uncatalogued after modification, bearings and screws catalogued; `describe_api` at 82,523 characters still refused by the harness) | [Record](../../../.hypergraph/graph/record/quiet-dew-5243.md), [void receipt](attempts/heron-refusal.json), [interrupted receipt](retained/heron-interrupted-b.json), [its assessment](#iteration-55-the-arm-create-call-interrupted-at-the-bound), [completed create receipt](retained/heron-create-c.json), [its assessment](#iteration-57-the-arm-create-turn-completed). **Open: create slot spent, all three continuations unspent; `continue-1` next on `ot7-heron-c` through `resume` when the window reads room** |
 | F6 | One void balancer create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/keen-chart-9070.md), [receipt](attempts/robin-refusal.json). **Open: create prompt and all continuations unspent** |
 | F7 | New frozen biped prompt; one void create, zero attempts; equivalent retained evidence | [Record](../../../.hypergraph/graph/record/red-hawk-4600.md), [receipt](attempts/plover-refusal.json). **Open: create prompt and all continuations unspent** |
 | F8 | One-command bounded smoke over accepted artifacts; passing and failing known-answer fixtures | [Record](../../../.hypergraph/graph/record/lean-fountain-9707.md), [receipt](f8-smoke.json). Implementation verified; F5–F7 have no executed simulation receipts |
@@ -644,18 +726,20 @@ four, every purchased part catalogued and no world geometry after the
 second, the design left unchanged by the third and fourth, two of three
 defects resolved, the horn gap declared as clearance rather than closed.
 F5 has had one interrupted create call on `ot7-heron-b` (iteration 55), which
-reached the model and produced no design before the bound; F6 and F7 are
-untried. Void and interrupted calls establish no geometric design outcome,
-and they spent nothing.
+reached the model and produced no design before the bound, and one completed
+create turn on `ot7-heron-c` (iteration 57): an accepted arm with 7 of 120
+static checks failing, no swept measurement and two purchased families
+uncatalogued, its create slot spent and all three continuations unspent. F6
+and F7 are untried. Void and interrupted calls establish no geometric design
+outcome, and they spent nothing.
 
 F10's requirement that the critic accepted done is **unmet**. This report
 makes no done claim. What remains is the agent half of the charter, in this
 order: the arm, balancer and biped creates in fresh suffixed projects
 (F5–F7), each through its continuations as its fit report requires, each
 with its smoke rollout, and each dispatched only when the runner's own
-window reading shows room (ADR-358), the arm now on `ot7-heron-c` and after a
-recorded decision on the effort level and output cap the interrupted call
-measured against. A
+window reading shows room (ADR-358), the arm now on `ot7-heron-c` from its
+`continue-1` prompt, at the effort level ADR-359 recorded. A
 design that does not reach zero failing checks within its three continuations
 is a valid measured result and will be reported as such. This report is then
 rewritten with one row per design.

@@ -478,11 +478,12 @@ frozen prompt byte or a design:
   iteration 55 timeline: at `high`, a create turn spent 24 of its 30 minutes
   in three thinking-only messages that each hit the cap, and the effort
   level is the documented soft control on that.
-- **`describe_api` now fits one tool result.** The bridge trims each
-  export's description to its first paragraph and says where the rest is
-  (`docs/CLI.md`). The four minutes iteration 55 spent paging the contract
-  should not recur; the receipt's transcript will show whether the first
-  `describe_api` call is accepted by the harness.
+- **`describe_api` now fits under the bridge's budget, and measured on
+  `ot7-heron-c` (iteration 57, below) it still does not fit the harness.**
+  The bridge trims each export's description to its first paragraph and
+  says where the rest is (`docs/CLI.md`); the 82,523-character reply was
+  refused, and the agent paged the contract in 2 min 40 s instead of 3 min
+  51 s.
 
 Dispatch, after the 02:20 UTC reset and only when `run.py window` reads
 room:
@@ -496,3 +497,36 @@ Fixtures in `cli/tests/test_ot7_runner.py` pin the recorded setting on the
 receipt and every row, the flag on the child command, the resume reusing
 the receipt's level, the legacy receipt at `high`, and the child setting
 `CADEX_EFFORT` before the CLI starts.
+
+## The create turn that completed (iteration 57)
+
+```bash
+pixi run python docs/probes/ot7/runner/run.py heron \
+  "$PROJECTS/ot7-heron-c" --model claude-fable-5 --turns 1
+```
+
+Dispatched at 02:22:53 UTC with the probe at 5 %, at `medium`. The turn
+ended on its own in 1,530.4 s: 123 model messages, 35 thinking blocks, no
+output-cap hit, 82 tool calls, three accepted design revisions, the last
+`512c157c…` with static fit 7 of 120 failing, the sweep unavailable (no
+`sweep_step_degrees` declared), and the slot spent. The receipt is
+`retained/heron-create-c.json`; the assessment is REPORT.md's iteration 57
+section. The window read 64 % afterwards, so the schedule's next prompt
+waits for the 07:20 UTC reset:
+
+```bash
+pixi run python docs/probes/ot7/runner/run.py resume "$PROJECTS/ot7-heron-c"
+```
+
+Two facts the turn measured about the tooling, neither a change this
+iteration made:
+
+- **`describe_api` at 82,523 characters is still refused** by the harness
+  ("exceeds maximum allowed tokens"), and the largest tool result it
+  accepted in the turn was 20,717 characters. The cap is somewhere between
+  those two numbers; ADR-359's 90,000-character budget does not reach it,
+  and a further cut is a separate recorded decision. The agent recovered by
+  paging `inspect scope=api`, as in iteration 55, in less time.
+- **`medium` fits the bound.** One thinking message of about 30,000
+  estimated tokens ended on its own; iteration 55's three cap-limited
+  messages did not recur.

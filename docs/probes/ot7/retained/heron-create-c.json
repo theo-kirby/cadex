@@ -1,0 +1,283 @@
+{
+ "criterion": "F5",
+ "iteration": 57,
+ "project": "ot7-heron-c",
+ "evidence_directory": "evidence/turn-0",
+ "model": "claude-fable-5",
+ "settings": {
+  "effort": "medium",
+  "max_output_tokens": 32000,
+  "turn_bound_seconds": 1800
+ },
+ "prompt": {
+  "path": "heron.create.prompt.txt",
+  "bytes": 9648,
+  "sha256": "bcda5af55c50459968d87d4651cf0123e7f996227c6c80895365078860514e37"
+ },
+ "turn_index": 0,
+ "dispatched_at": "2026-09-16T02:22:53Z",
+ "ended_at": "2026-09-16T02:48:23Z",
+ "window": {
+  "before_dispatch_percent": 5,
+  "bound_percent": 45,
+  "stream_first_percent": 5,
+  "stream_last_percent": 62,
+  "after_measurement_percent": 64,
+  "resets_at": "2026-09-16T07:20:00+00:00"
+ },
+ "turn": {
+  "exit_code": 0,
+  "elapsed_seconds": 1530.4086101381108
+ },
+ "turn_status": "completed",
+ "void": null,
+ "interruption": null,
+ "slot_consumed": true,
+ "continuations_used": 0,
+ "slots_spent": 1,
+ "void_calls_this_project": 0,
+ "interrupted_calls_this_project": 0,
+ "runner_status_after": "paused",
+ "remaining_after": {
+  "completed": 1,
+  "continuations_used": 0,
+  "continuations_unspent": 3,
+  "next_prompt": "continue-1.prompt.txt",
+  "closed": null
+ },
+ "actor_design_edits": 0,
+ "stream": {
+  "bytes": 1492517,
+  "sha256": "4bd8071aba3c8ee89d20506c57363dc335eb6bae2890f63e73c3aa067d8cbb8a",
+  "assistant_messages": 123,
+  "thinking_blocks": 35,
+  "output_cap_hits": 0,
+  "tool_calls": 82,
+  "tool_calls_by_name": {
+   "describe_api": 1,
+   "inspect": 68,
+   "write_script": 6,
+   "edit_script": 6,
+   "rebuild": 1
+  }
+ },
+ "describe_api": {
+  "characters": 82523,
+  "lines": 1189,
+  "harness_result": "refused: exceeds maximum allowed tokens; written to a file the agent has no tool to read",
+  "largest_accepted_tool_result_characters": 20717,
+  "agent_fallback": "paged the contract through inspect scope=api (library, catalog families, assembly and part exports, five full descriptions, assembly notes) in 2 min 40 s"
+ },
+ "timeline_utc": [
+  "02:22:56-02:25:36 reading: describe_api refused, 43 inspect scope=api reads",
+  "02:25:36-02:26:30 two probe scripts accepted (catalog specs, servo body, horn body), no assembly",
+  "02:26:30-02:38:20 one thinking message of about 30,000 estimated tokens, ended on its own under the cap",
+  "02:38:20 design of 280 lines rejected: import math (xscript forbids imports)",
+  "02:40:40 design of 469 lines accepted c186fe25: 15 components, 2 revolute joints, 11 declared contacts, 105 pairs, 8 failing",
+  "02:43:10 edit accepted 9f7b39c4: horn bore restored to the catalog annulus, the two missed contacts resolved, 6 failing",
+  "02:44:00-02:45:50 bench: a plane rejected (no solid), a slab rejected by MuJoCo (plane only in static bodies), a slab welded to the base accepted 512c157c, reported as world geometry, 120 pairs, 7 failing",
+  "02:46:00-02:48:22 clearance scope read in full, inventory read, rebuild to the same revision, closing message with five DECISION lines"
+ ],
+ "edits": {
+  "calls": 12,
+  "accepted": 5,
+  "rejected": 7,
+  "sequence": [
+   {
+    "tool": "write_script",
+    "result": "rejected: a project script must return at least one output"
+   },
+   {
+    "tool": "write_script",
+    "result": "accepted 4025e326: catalog-spec probe, one part output, no assembly"
+   },
+   {
+    "tool": "write_script",
+    "result": "rejected: drops an output the accepted revision declares (replace not passed)"
+   },
+   {
+    "tool": "write_script",
+    "result": "accepted 119fdbba: servo and horn body probes, no assembly"
+   },
+   {
+    "tool": "write_script",
+    "result": "rejected: XScript source policy violation, line 48: imports are not allowed"
+   },
+   {
+    "tool": "write_script",
+    "result": "accepted c186fe25 (replace=true): static fit fail, 105 pairs, 8 failing (6 intersection, 2 missed contact)"
+   },
+   {
+    "tool": "edit_script",
+    "result": "rejected: replacements[0] must contain exactly old and new"
+   },
+   {
+    "tool": "edit_script",
+    "result": "accepted 9f7b39c4: static fit fail, 105 pairs, 6 failing (6 intersection)"
+   },
+   {
+    "tool": "edit_script",
+    "result": "rejected: component reference must contain at least one valid solid (bench as a plane)"
+   },
+   {
+    "tool": "edit_script",
+    "result": "rejected: old must occur exactly once; found 0"
+   },
+   {
+    "tool": "edit_script",
+    "result": "rejected: MuJoCo refused the model: plane only allowed in static bodies (bench slab, world=True)"
+   },
+   {
+    "tool": "edit_script",
+    "result": "accepted 512c157c: bench slab world=True welded to the base; static fit fail, 120 pairs, 7 failing (6 intersection, 1 world geometry)"
+   },
+   {
+    "tool": "rebuild",
+    "result": "accepted 512c157c again, identical digest, 7 failing"
+   }
+  ],
+  "failing_count_by_accepted_design_revision": [
+   8,
+   6,
+   7
+  ],
+  "script_lines_after": 480,
+  "script_sha256_after": "45705934f918d0573598c81d255c5515295433ebca117fb3965ec2e9b614062d"
+ },
+ "accepted_after": {
+  "revision": "512c157cb2134a04e686b53c2f37242f30b9ba7dba7012fa06f180eade92037f",
+  "digest": "1830ca577a1a396bc79abdeb3657db685ef6480557add3d3583f73f744e8cce3"
+ },
+ "static_fit": {
+  "verdict": "fail",
+  "failing_count": 7,
+  "pairs_checked": 120,
+  "counts": {
+   "clear": 114,
+   "intersection": 6,
+   "below clearance": 0,
+   "unknown": 0,
+   "world geometry": 1
+  },
+  "pose": "initial solved pose (not swept motion)",
+  "thresholds": {
+   "minimum_clearance_mm": 0.1,
+   "maximum_common_volume_mm3": 1e-06
+  }
+ },
+ "static_failing": [
+  {
+   "first": "base",
+   "second": "tabscrew_shoulder_0",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052374
+  },
+  {
+   "first": "base",
+   "second": "tabscrew_shoulder_1",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052378
+  },
+  {
+   "first": "upper_arm",
+   "second": "tabscrew_elbow_0",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052364
+  },
+  {
+   "first": "upper_arm",
+   "second": "tabscrew_elbow_1",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.0715040790524215
+  },
+  {
+   "first": "servo_shoulder",
+   "second": "centrescrew_shoulder",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 18.095573684677234
+  },
+  {
+   "first": "servo_elbow",
+   "second": "centrescrew_elbow",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 18.09557368467717
+  },
+  {
+   "first": "bench",
+   "second": "",
+   "status": "world geometry",
+   "distance_mm": null,
+   "common_volume_mm3": null,
+   "error": "collision plane declared on design component"
+  }
+ ],
+ "agent_claim_for_the_six_intersections": "thread engagements matching analytic values (tab screws pi*0.36*3.6 = 4.0715 mm3; centre screws pi*0.36*16 = 18.096 mm3), stated in the closing message; the product check reports them as intersections because no declaration exempts an overlap",
+ "swept_fit": {
+  "status": "unavailable",
+  "reason": "No published sweep for this accepted revision. Declare sweep_step_degrees (hinges) and/or sweep_step_mm (sliders) on the assembly and explicitly rebuild.",
+  "note": "the script declares limits on both revolute joints but no sweep_step_degrees, so no sweep was published; F5 swept checks are unmeasured for this revision"
+ },
+ "world_geometry": [
+  {
+   "component": "bench",
+   "reason": "collision plane declared on design component",
+   "status": "world geometry"
+  }
+ ],
+ "inventory": {
+  "component_count": 16,
+  "catalog_counts": {
+   "bearing/mr128": 2,
+   "bolt/m2x16-socket": 2,
+   "bolt/m2x6-socket": 4
+  },
+  "uncatalogued_sources": [
+   "base_solid",
+   "bench_slab",
+   "forearm_solid",
+   "horn_elbow_solid",
+   "horn_shoulder_solid",
+   "servo_elbow_solid",
+   "servo_shoulder_solid",
+   "upper_arm_solid"
+  ],
+  "note": "servos carry a cut tap-drill bore and horns are re-clocked on the spline, so both purchased families lost catalog identity; bearings and all six screws keep it"
+ },
+ "declared_contacts": 11,
+ "declared_clearances": 0,
+ "joint_limits_degrees": {
+  "shoulder": [
+   -90,
+   90
+  ],
+  "elbow": [
+   -100,
+   100
+  ]
+ },
+ "project_decisions_added": [
+  "ADR-002 servo on the parent cheek, horn on the child, MR128 on the opposite cheek",
+  "ADR-003 horn hub annulus and the centre screw seated on the spline end face with the shaft tap-drill bore cut into the servo solid",
+  "ADR-004 forearm frame at the tip",
+  "ADR-005 reach task shape",
+  "ADR-006 the bench as a world-marked slab welded to the base"
+ ],
+ "measurement_artifacts": {
+  "fit.json": "dd1a41217e1e9ca69e2388f084400ae037645960bbdc81f00de7a07b708fd983",
+  "clearance.json": "1d0233ea155ec2f8c3f60ef3a2bf01547dbcda2c9e06595034ba8cee9769bf5e",
+  "inventory.json": "73787e5a763ca657b4eba41b543ebaf15fedf451efa79b8aa05d55da73fd8c21"
+ },
+ "smoke": "not run: the runner runs one smoke only when the schedule is exhausted or failed; the attempt is paused with continue-1 next",
+ "next": {
+  "prompt": "continue-1.prompt.txt",
+  "sha256": "80d725d2961e7ca44a56fed391745d6df551741c6545a837e815ca3ae0b7f4d0",
+  "command": "run.py resume $PROJECTS/ot7-heron-c",
+  "condition": "only when run.py window reads at or under 45 %; it read 64 % after this turn, reset 07:20 UTC"
+ }
+}
