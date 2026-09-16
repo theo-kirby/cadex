@@ -119,9 +119,12 @@ def test_weld_exemption_would_clear_exactly_these(name, failing, exempt):
     engine that accepted them and carry no intent, which is why the numbers
     above this test are stable. This pins the *other* half, the one
     `docs/probes/ot7/REGRESSION.md` states — what the same measurements say
-    under today's checker, by handing `fit_summary` the `attached` intent the
-    engine now implies for a welded pair. Overlap under a weld still fails,
-    and a pair that merely shares a host is not welded to anything.
+    under ADR-372's weld exemption alone, by handing `fit_summary` the
+    `attached` intent the engine now implies for a welded pair. Overlap under
+    a weld still fails, and a pair that merely shares a host is not welded to
+    anything. This models no other checker change and is not a fresh-build
+    verdict: nothing here rebuilds a design, so ADR-370's attachment block and
+    ADR-371's sweep coverage are outside it.
     """
     value = json.loads((RECEIPTS / f'{name}.measurements.json').read_text())
     components = value.pop('components')
@@ -146,3 +149,32 @@ def test_weld_exemption_would_clear_exactly_these(name, failing, exempt):
     assert all(frozenset(p) in welds for p in cleared
                if p not in ROUNDING_PAIRS) and summary['counts']['intersection'] == {
         'finch': 12, 'robin': 8, 'heron': 6}[name]
+
+
+@pytest.mark.parametrize('name,welded,not_touching,distances', [
+    ('finch', 24, 0, {}),
+    ('robin', 21, 10, {0.3: 2, 0.6: 8}),
+    ('heron', 12, 0, {}),
+])
+def test_welded_pairs_that_do_not_meet(name, welded, not_touching, distances):
+    """What ADR-370's block would say about these three, if they had one.
+
+    `docs/probes/ot7/REGRESSION.md` states this as the reason its
+    weld-exemption table is not a fresh-build verdict: the exemption reads a
+    weld as *these two are one body*, and on Robin ten of those welds hold
+    nothing — the chassis stands 0.3 mm off each motor and 0.6 mm off each
+    board and clamp screw. The retained receipts publish no `attachments` key,
+    so nothing in them reports it; a rebuild would. Same tolerance ADR-370
+    uses for `touching`.
+    """
+    value = json.loads((RECEIPTS / f'{name}.measurements.json').read_text())
+    components = value['components']
+    welds = _welded_pairs(name, components)
+    assert 'attachments' not in value
+    measured = [(components[a], components[b], d) for a, b, d, _
+                in value['measurements']
+                if frozenset((components[a], components[b])) in welds]
+    assert len(measured) == welded == len(welds)
+    apart = [row for row in measured if row[2] > 0.001]
+    assert len(apart) == not_touching
+    assert Counter(round(d, 3) for _, _, d in apart) == Counter(distances)

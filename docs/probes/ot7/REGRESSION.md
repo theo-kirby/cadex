@@ -61,10 +61,10 @@ measurement the accepting engine published, it carries no intent, and reading
 it back never recomputes one. These retained scripts declare no fit intent of
 their own either.
 
-**What the same measurements say under today's checker**, with the welds each
-script already declares — Finch's `purchase()` helper, Robin's chassis welding
-everything but its two wheels, Heron's twelve `weld()` calls — supplied as the
-`attached` intent the engine now implies for them:
+**What the same measurements say under ADR-372's weld exemption**, with the
+welds each script already declares — Finch's `purchase()` helper, Robin's
+chassis welding everything but its two wheels, Heron's twelve `weld()` calls —
+supplied as the `attached` intent the engine now implies for them:
 
 | Design | Failing as retained | Cleared by the weld exemption | Would remain |
 |---|---:|---:|---:|
@@ -76,11 +76,7 @@ Every cleared pair is a zero-volume gap under the default; no overlap is
 silenced (12 / 8 / 6 intersections stand), and a pair that merely shares a host
 with another — Finch's servo against the tab screws beside it, Robin's board
 against its own inserts — is not welded to *it* and still fails, because
-ADR-372 implies no transitivity through a common host. These three rows are
-not a re-measurement and not a rebuild: they are what a *new* design putting
-the same solids in the same places would be told, and the gap between the two
-columns is the four checker changes (ADR-370 – ADR-373) that landed after
-these designs were accepted. The [portable
+ADR-372 implies no transitivity through a common host. The [portable
 regression](../../../cli/tests/test_retained_fit.py) computes both
 columns from the retained receipts through `fit_summary`, so neither can drift
 from the product without a red test. The [pair-by-pair explanation and
@@ -90,6 +86,39 @@ ot6 probe links](retained/README.md#f9-unchanged-retained-measurements-through-t
 complete failing sets and exact numbers. The regression permits precisely the
 two Heron threshold corrections and fails under the old threshold, as recorded
 in [its validation](../../../.hypergraph/graph/record/keen-quill-2265.md).
+
+**What that table models, and what it does not.** The two columns differ by
+**ADR-372's weld exemption alone**. The second is the first recomputed by
+`fit_summary` over the *same* retained rows, with the `attached` intent the
+engine now implies supplied for the pairs each script already welds, and
+nothing else varied. It is neither a re-measurement nor a rebuild, and it is
+**not a fresh-build verdict** for these three designs: no retained project was
+rebuilt or re-accepted to produce it, and the geometry behind both columns is
+one retained measurement set. Three of the four checker changes that landed
+after these designs were accepted are outside it, and stay outside it:
+
+- **ADR-370's attachment block** is not modelled. It is reported, never
+  failed, so it moves no count in either column — but a rebuild would publish
+  it, and on these very rows it would have something to say. Of the welded
+  pairs measured here (Finch 24, Robin 21, Heron 12), Finch's and Heron's all
+  meet within the 0.001 mm tolerance, and **ten of Robin's do not**: its
+  chassis stands 0.3 mm from each of its two motors and 0.6 mm from each of
+  its eight board and clamp screws. The retained revisions predate the block
+  and publish no `attachments` key at all, which reads `unavailable`, not
+  empty, so no column here counts or shows that. Those counts are pinned by
+  `test_welded_pairs_that_do_not_meet` in the same [portable
+  regression](../../../cli/tests/test_retained_fit.py).
+- **ADR-371's sweep-coverage rule** is not modelled, because there is nothing
+  here for it to read: every retained receipt's `clearance_sweep` reads
+  `unavailable`, with the reason *No published sweep for this accepted
+  revision*, and missing coverage is never a pass. A rebuilt design's swept
+  verdict is unknown from this table.
+- **ADR-373** governs how far a declared clearance may be widened, and these
+  three scripts declare no fit intent of their own.
+
+So read the third column as *what the weld exemption leaves standing on these
+measurements*, not as what today's engine would say end to end about a fresh
+build of Finch, Robin or Heron.
 
 None of these three retained revisions has unknown measurements or world
 geometry. Their swept reports remain unavailable. F9 requires compatibility
