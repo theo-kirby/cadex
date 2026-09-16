@@ -1205,7 +1205,7 @@ minimum, so the weld won every time. The per-pair rows, the `failing` list and
 every threshold are unchanged. It is the second change in a row that reaches
 F6's and F7's own hardware directly.
 
-**ADR-375** (`ebbcf73d`) stops the swept report passing over a joint that can
+**ADR-375** (`18492813`) stops the swept report passing over a joint that can
 move and declares no limits. Such a joint reached no row at all, so coverage
 read `complete` while a continuously rotating wheel, a free spinner or a
 loop-closure hinge had been measured at the solved pose and nowhere else; it
