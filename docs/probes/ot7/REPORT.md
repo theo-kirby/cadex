@@ -1094,6 +1094,20 @@ direction.**
   prompts could have been withheld from a model that would have answered them,
   under a `deferred` block citing an overage window's reset. It changes no
   product behaviour, no frozen prompt and no slot accounting.
+- **The refusal still held at 22:40 UTC, and the fixed gate read it correctly.**
+  A fifth probe, an hour after the fourth, was refused on the same
+  `org_level_disabled` setting with `seven_day_overage_included` at 100 %, the
+  five-hour window at 18 % and the seven-day window at 57 %
+  (`attempts/f6-window-refusal.json`, `fifth_probe`). It spent no slot. The
+  provider sent its frames in the order that broke the third probe — the
+  allowed `five_hour` frame first, the rejected `seven_day_overage_included`
+  frame second — and the gate named the rejecting frame anyway, so this is
+  ADR-369's fix confirmed live rather than on a fixture. Nothing was changed
+  in the product for it. It also fixes the two ways out in the provider's own
+  words: the refusal text names `claude.ai/settings/usage`, so **the owner
+  enabling usage credits for this organisation is not bound by any window
+  schedule and could lift the refusal at any moment**; the only other exit is
+  the window reset below, which falls after this run ends.
 - **This run's stop.** `.ouroboros/runs/ot7/run.yml` sets
   `stop.until: 2026-09-17T00:25:13`, a naive local timestamp the runner
   compares against local time (`should_stop` in `ouroboros/budget.py`), so it

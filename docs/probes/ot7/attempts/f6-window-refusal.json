@@ -27,7 +27,7 @@
   },
   "provider_text": "You've reached your Fable limit. Switch to another model, or manage usage credits at claude.ai/settings/usage?from=cc_cli_limit_message, to continue.",
   "api_error_status": 429,
-  "consequence": "F6's create prompt and all three continuations remain unspent; no ot7-robin-b project was created. The product agent's model is unchanged at claude-fable-5: ADR-363 moved the Ouroboros roles to claude-opus-5 and deliberately left the experiment's model alone, so F6 and F7 stay comparable with F5. Re-probed at 2026-09-16T17:02 UTC and still refused: F6's four slots and F7's four remain unspent, and no ot7-robin-b exists. Re-probed at 2026-09-16T21:37 UTC and still refused; see fourth_probe, which also records the ADR-376 gate defect found while F6 waited. F6's four slots and F7's four remain unspent, and no ot7-robin-b exists.",
+  "consequence": "F6's create prompt and all three continuations remain unspent; no ot7-robin-b project was created. The product agent's model is unchanged at claude-fable-5: ADR-363 moved the Ouroboros roles to claude-opus-5 and deliberately left the experiment's model alone, so F6 and F7 stay comparable with F5. Re-probed at 2026-09-16T17:02 UTC and still refused: F6's four slots and F7's four remain unspent, and no ot7-robin-b exists. Re-probed at 2026-09-16T21:37 UTC and still refused; see fourth_probe, which also records the ADR-376 gate defect found while F6 waited. F6's four slots and F7's four remain unspent, and no ot7-robin-b exists. Re-probed at 2026-09-16T22:40 UTC and still refused; see fifth_probe. F6's four slots and F7's four remain unspent, and no ot7-robin-b exists.",
   "probe_stream_sha256": "68fb28f158d9cf0a9088cbc79a135ad09a58fc4595eb5d209ec8868bca4e302e",
   "probe_stream_bytes": 10260,
   "second_probe": {
@@ -133,5 +133,46 @@
         "test_a_stray_rejected_frame_in_front_still_dispatches_the_frozen_prompt"
       ]
     }
+  },
+  "fifth_probe": {
+    "read_at": "2026-09-16T22:40:00Z",
+    "why_it_matters": "Still refused, an hour after the fourth probe, on the same org_level_disabled setting: F6 cannot be dispatched, and the run's configured stop (2026-09-17T04:25:13Z) falls more than a day before this window's scheduled reset. This is also the first live reading taken with the ADR-369/ADR-376 gate in place on the frame order that broke the third probe: the provider put the allowed five_hour frame first and the rejected seven_day_overage_included frame second, and the gate named the rejecting frame anyway.",
+    "status": "rejected",
+    "rate_limit_type": "seven_day_overage_included",
+    "frame_order": [
+      "allowed five_hour 18%",
+      "rejected seven_day_overage_included 100%"
+    ],
+    "windows_percent": {
+      "five_hour": 18,
+      "seven_day": 57,
+      "seven_day_overage_included": 100
+    },
+    "overage": {
+      "status": "rejected",
+      "disabled_reason": "org_level_disabled",
+      "in_use": false
+    },
+    "resets_at": "2026-09-18T14:00:00+00:00",
+    "provider_text": "You've reached your Fable limit. Switch to another model, or manage usage credits at claude.ai/settings/usage?from=cc_cli_limit_message, to continue.",
+    "api_error_status": 429,
+    "exit_code": 1,
+    "elapsed_seconds": 2.269,
+    "adr_364_gate_says_room": false,
+    "adr_369_reading_named": {
+      "rate_limit_type": "seven_day_overage_included",
+      "status": "rejected"
+    },
+    "pre_adr_369_reading_would_have_named": {
+      "rate_limit_type": "five_hour",
+      "status": "allowed",
+      "five_hour_percent": 18
+    },
+    "probe_stream_sha256": "4c91847fbcd3952b12390d9dd96d61929e730e8e7217d572552c1c1f1a962ec9",
+    "probe_stream_bytes": 11781,
+    "unblocks_only_by": [
+      "the owner enabling usage credits for this organisation (the provider's own refusal text names claude.ai/settings/usage), which is not bound by any window schedule",
+      "the seven_day_overage_included window resetting at 2026-09-18T14:00:00Z, which is after this run's configured stop"
+    ]
   }
 }
