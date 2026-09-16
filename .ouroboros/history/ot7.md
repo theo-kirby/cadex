@@ -1,12 +1,12 @@
 ---
 run: ot7
 machine: sb1x
-started: 2026-09-14T13:23:33
-ended: 2026-09-14T23:24:07+00:00
-hours: 6.0
+started: 2026-09-15T00:25:13
+ended: 2026-09-16T13:49:28+00:00
+hours: 32.4
 state: killed
-iterations: 40
-commits: 44
+iterations: 70
+commits: 88
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 10
@@ -18,49 +18,49 @@ actor: claude:claude-fable-5-1
 
 # Run ot7
 
-40 iterations in 6.0h on `sb1x`, killed (-). Branch `ouroboros/ot7`, not merged.
+70 iterations in 32.4h on `sb1x`, killed (limit resets in 271 min: You've hit your session limit · resets 1:20pm (America/New_York)). Branch `ouroboros/ot7`, not merged.
 
 ## The numbers
 
 | | |
 |---|---|
-| iterations | 40 (changed 40, recorded 27) |
-| commits | 44 — 121 files changed, 9818 insertions(+), 60 deletions(-) |
+| iterations | 70 (changed 65, recorded 44) |
+| commits | 88 — 157 files changed, 17885 insertions(+), 82 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 10 checked at the tip |
 | reverts | 0 |
-| verdicts | answer 2, continue 34, looping 3, reject 1 |
+| verdicts | answer 5, continue 53, looping 4, reject 3, stuck 5 |
 | loop detector | no firing |
 | roles | actor claude:claude-fable-5-1, critic codex:gpt-6-astra |
-| usage | claude seven_day 9% -> 21% (+12 this run); claude five_hour 20% -> 100% (+80 this run); codex seven_day 12% -> 47% (+35 this run) |
+| usage | claude seven_day 22% -> 50% (+28 this run); claude five_hour 9% -> 100% (+91 this run); codex seven_day 47% -> 53% (+6 this run) |
 
 ## What landed
 
+- REPORT.md: F5 attempts cell reads 3, all (three completed turns on ot7-heron-c)
+- F5 continue-2 on ot7-heron-c completed: bench deleted by the agent, static fit 0 of 105, sweep complete with zero overlap, smoke passing, servos and horns still uncatalogued (receipt, REPORT.md, runner README)
+- ADR-360 correction: an unknown describe_api section is refused after the argument-free engine request has been answered; only the section argument never reaches the engine (docs/CLI.md, ADR-360, slender-union-6486)
+- ADR-360: describe_api reaches the model as an index and per-section pages under a measured 21,500-character budget; section is the bridge's argument, never the engine's; no design turn, window 52 % against the 45 % bound
+- F5: continue-1 completed on ot7-heron-c — static fit 1 of 120 failing (bench as world geometry), sweep complete on both joints with zero overlap, servos and horns still uncatalogued, smoke passing; continue-2 next
+- F5: the arm create turn completed on ot7-heron-c — static fit 7 of 120 failing, no sweep declared, servos and horns uncatalogued; describe_api still refused at 82,523 characters; continue-1 next after the reset
+- ADR-359: describe_api fits one tool result; the ot7 collector dispatches at medium effort
+- ot7 report: F5 row counts two accepted probe scripts of three written, F4 row counts four completed turns
+- F5: the arm create call on ot7-heron-b interrupted at the 30-minute bound — no design written, no slot spent, retry ot7-heron-c
+- F4: continue-3 completed on ot7-heron-repair-d — no edit, unchanged script re-accepted at f03054d6, DECISION and NOTE design_specs lines written, F4 exhausted
+- F4: continue-2 completed on ot7-heron-repair-d — no failing check named, no edit, unchanged script re-accepted; one continuation left
+- ot7 runner: read the five-hour window before every frozen prompt, pause without room (ADR-358)
+- F4: continue-1 completed on ot7-heron-repair-d — zero failing product checks static and swept, catalog servos restored, bench removed, horn gap still declared as clearance; two continuations left
+- ot7 runner: the repair prompt is F4's first prompt, not its only one; resume the next continuation without replay (ADR-357)
+- F4: the frozen repair prompt completed on ot7-heron-repair-d — zero failing product checks, two of three defects resolved, horn gap declared not closed; repair-c void
+- ouroboros #46: no record
+- F4: frozen repair prompt reached the model on ot7-heron-repair-b; timed out at the 30-minute bound, no submission
+- ot7 runner: a synthetic frame alone is not a usage limit; auth failures spend their slot (ADR-355)
+- ot7 runner: usage-limit calls are void; classify the six pre-restart calls (ADR-355)
+- ot7 charter: usage-limit failures are void; restart (ADR-355)
 - docs: hand off ot7 as exhausted and incomplete
 - Record frozen F4 collector refusal and unchanged fit evidence
 - docs: report ot7 checks and refused agent outcomes
 - docs(ot7): retain frozen biped provider refusal
 - docs(ot7): retain frozen balancer provider refusal
-- Record frozen F5 arm attempt provider refusal
-- Assess original F4 horn contacts from accepted measurements
-- docs(ot7): verify real F4 seed measurement integration
-- test: retain collision evidence across nested sweep pages
-- test(ot7): pin complete paginated fit evidence collection
-- Collect frozen F4 repair evidence from the preserved seed
-- docs: close F9 regression evidence for ot7
-- Add bounded evidence runner for frozen ot7 designs
-- test(cli): pin complete paged fit replies and late read failures
-- docs: verify retained designs restore with packaged engine
-- test: pin retained ot6 fit comparisons after F4 provider refusal
-- Fix numerical noise at declared and default clearance minima
-- Record frozen repair refusal and retained fit comparisons for F9
-- Add bounded smoke checks for accepted designs
-- Measure the product swept checker on a Finch copy through one agent turn
-- ouroboros #12: no record
-- Expose published joint sweeps through clearance inspection and CLI
-- Publish bounded exact-solid hinge sweep measurements
-- Measure bounded real-solid joint sweeps on retained Finch
-- Report declared static fit intent against measured geometry (ADR-347)
-- ... and 4 more
+- ... and 24 more
 
 ## Decisions the critic made
 
@@ -70,6 +70,15 @@ actor: claude:claude-fable-5-1
 - #38 looping: The authorized reconcile is sound, but twelve iterations without frontier movement require returning to the outstanding real F4 experiment.
 - #39 looping: The requested dispatch was recorded honestly, but six provider refusals and thirteen iterations without frontier movement leave no authorized experiment remaining.
 - #40 answer: The report honestly records exhaustion, and further iterations cannot establish the missing design outcomes within the remaining authorization.
+- #42 reject: The classifier treats every synthetic assistant error as a usage limit, contradicting its documented rule and incorrectly refunding unrelated failures.
+- #44 answer: The iteration preserves useful experimental evidence honestly, but the interrupted call requires a charter-based slot ruling and collector fixes.
+- #45 answer: The scheduled reconcile preserves evidence but omits the explicit slot ruling already issued in decision #44.
+- #47 stuck: Iteration 47 changed nothing and left iteration 46's verification and causal record unfinished.
+- #48 reject: The completed repair provides real evidence, but declaring F4 exhausted after one prompt contradicts the charter and gives its state impact an incorrect outcome.
+- #55 answer: The interrupted experiment is recorded honestly and spends no slot, but its measured thinking overhead warrants lowering effort before retrying.
+- #63 looping: The iteration added only a waiting record and prescribed repeating it, despite the explicit instruction to make no change while limited.
+- #64 stuck: No change was made because the product-agent window remains limited; the charter explicitly permits waiting without manufacturing work.
+- #65 stuck: The iteration made no change while honoring the explicit waiting instruction, which the charter permits during a limited product-agent window.
 
 <!-- notes: everything below this line is yours; a rewrite keeps it -->
 

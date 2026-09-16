@@ -25117,3 +25117,24 @@ yet seen and would be recorded. The bound is reversible per measurement:
 if a later transcript accepts a larger result, the budget can rise to it
 under the same test. The runner's collector and the retained receipts are
 unchanged; `docs/CLI.md` documents the page shapes and the budget.
+
+## ADR-361 — Restore actor fallback and refresh account limits (2026-09-16)
+
+The owner requests restoring the actor's Codex fallback and a command to
+recheck accounts after changing login or restoring credits. This supersedes
+ADR-355's removal of actor fallback, not its design-attempt rules:
+usage-limit calls remain void and product-agent dispatch still requires
+Claude availability as checked by the collector.
+
+The actor chain is Claude Fable 5.1 followed by Codex gpt-6-astra; the critic,
+maintainer and planner retain their configured fallback chains. The local
+Ouroboros runner now accepts `ouroboros refresh` and `ouroboros --refresh`.
+It queues no-tool account probes, wakes backoff within one second, and waits
+for active calls to finish. Failed probes retain existing cooldowns.
+Configuration changes still require a restart; ot7 is continued on its
+existing branch after a controlled stop while sleeping.
+
+Validation: Ouroboros's full suite passes, 310 tests, including fresh account
+readings, CLI aliases, old-runner refusal and a refresh arriving during backoff.
+The runner checkout already contained automatic role-transition refresh
+changes; these were preserved. The installed tool uses that editable checkout.

@@ -57,9 +57,15 @@ edit applies at the next iteration boundary; the current actor and critic finish
 under their original charter. Save edits atomically and check loop.log for
 "charter reloaded". Config changes still require a restart. To watch:
 
+    ouroboros refresh         # after switching accounts or restoring credits
     ouroboros status          # one shot
     ouroboros top             # the live view, in a window of its own
     <prefix> n                # tmux: the loop's own log is the next window over
+
+After switching a harness login or restoring credits, `ouroboros refresh`
+(alias `ouroboros --refresh`) rechecks configured providers and wakes backoff.
+Active turns finish first. It uses small no-tool availability probes; failed
+probes retain cooldowns. This does not reload configuration.
 
 **5. Reading it.** Use the `ouroboros-checkup` skill. It works mid-run and after,
 and it leads with the question the numbers hide: is this moving, or going in
