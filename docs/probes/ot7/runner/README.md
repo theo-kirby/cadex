@@ -694,6 +694,19 @@ agent's model:
   `unifiedWindows` entry is kept as a percentage, beside `rate_limit_type`
   and the refusal. A receipt saying `five_hour 1 %, no room` is unreadable;
   `seven_day_overage_included 100 %, org_level_disabled` is a reason.
+- **On a refused probe, the frame that rejected is the reading** (ADR-369).
+  A stream carries several `rate_limit_event` frames and their order is the
+  provider's: at 14:29 UTC on 2026-09-16 the rejected frame came first, and
+  at 17:02 UTC the same account put an allowed five-hour frame in front of
+  it. Reading the first frame alone reported `five_hour, allowed, resets
+  19:20Z` on a call the seven-day overage window refused, and dropped the
+  100 % that was the reason. The chosen frame is authoritative for every
+  window it names and the others fill in the names it omits, so the full
+  window that refused reaches the receipt either way. `resets_at` is the
+  reset of the window `rate_limit_type` names, and on a refusal
+  `resets_at_is` says so in words — it is the schedule of a usage window and
+  dates nothing about the account or organisation setting that refused, in
+  either direction.
 - **A probe that answered is never a refusal.** An organisation with overage
   disabled emits a rejected `seven_day_overage_included` frame beside an
   ordinary allowed window; on a call that reached the model and returned its

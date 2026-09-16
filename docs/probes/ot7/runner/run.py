@@ -137,10 +137,21 @@ def window_reading(execute_call, out, stem, model):
     ``claude-fable-5`` refused this probe outright with ``five_hour`` at 1 %,
     because ``seven_day_overage_included`` was at 100 % with overage disabled
     at the organisation level.
+
+    A stream carries more than one ``rate_limit_event`` frame and their order
+    is the provider's, not ours (ADR-369): at 14:29 UTC the rejected frame
+    came first, and at 17:02 UTC the same account put an *allowed* five-hour
+    frame in front of it. So the windows are merged across every frame, and
+    on a probe the provider refused the named limit, its status and its reset
+    are taken from the frame that did the rejecting. ``resets_at`` is the
+    schedule of the window ``rate_limit_type`` names and dates nothing else —
+    an account or organisation setting is not bound by it in either
+    direction.
     """
     from cadex_cli.agent import ClaudeUnavailable, find_claude
     blank = {'status': None, 'five_hour_percent': None, 'resets_at': None,
-             'frame': None, 'windows': {}, 'rate_limit_type': None, 'refused': None}
+             'frame': None, 'windows': {}, 'rate_limit_type': None, 'refused': None,
+             'disabled_reason': None, 'resets_at_is': None}
     try:
         binary = find_claude('')
     except ClaudeUnavailable as exc:
@@ -149,24 +160,6 @@ def window_reading(execute_call, out, stem, model):
                '--model', model, '--tools', '', '--system-prompt', WINDOW_PROBE_TEXT]
     stream = out / f'{stem}.stdout.json'
     reading = dict(blank, probe=execute_call(command, out, stem, WINDOW_PROBE_BOUND_SECONDS))
-    for frame in read_frames(stream):
-        if frame.get('type') != 'rate_limit_event':
-            continue
-        info = frame.get('rate_limit_info') or {}
-        unified = info.get('unifiedWindows') or {}
-        window = unified.get('five_hour') or {}
-        utilization = window.get('utilization')
-        if utilization is None and info.get('rateLimitType') == 'five_hour':
-            utilization = info.get('utilization')
-        resets = window.get('resetsAt') or info.get('resetsAt')
-        reading.update(
-            status=info.get('status'), frame=info, rate_limit_type=info.get('rateLimitType'),
-            windows={name: round(float(each['utilization']) * 100)
-                     for name, each in unified.items()
-                     if isinstance(each, dict) and each.get('utilization') is not None},
-            five_hour_percent=None if utilization is None else round(float(utilization) * 100),
-            resets_at=None if resets is None else datetime.fromtimestamp(resets, timezone.utc).isoformat())
-        break
     # The probe's own stream is classified by the same rule as a design call's
     # (ADR-355): a probe the provider refused on a limit is a refusal whatever
     # any window frame says about headroom. A probe that answered is never a
@@ -174,6 +167,38 @@ def window_reading(execute_call, out, stem, model):
     # disabled emits one beside an ordinary allowed window — cannot close the
     # gate on an account that in fact has room.
     reading['refused'] = None if probe_answered(reading['probe'], stream) else void_reason(stream)
+    infos = [frame.get('rate_limit_info') or {} for frame in read_frames(stream)
+             if frame.get('type') == 'rate_limit_event']
+    if not infos:
+        return reading
+    # On a refused probe the frame that rejected is the one that bound the
+    # call; on any other, the first frame is the reading, as before (ADR-369).
+    rejected = [info for info in infos if info.get('status') == 'rejected']
+    info = rejected[-1] if (reading['refused'] and rejected) else infos[0]
+    # The reading's own frame is authoritative for every window it names; the
+    # others only contribute the names it leaves out, which is how the full
+    # window that refused reaches a receipt whose frame does not list it.
+    windows = {}
+    for each in [other for other in infos if other is not info] + [info]:
+        windows.update({name: round(float(value['utilization']) * 100)
+                        for name, value in (each.get('unifiedWindows') or {}).items()
+                        if isinstance(value, dict) and value.get('utilization') is not None})
+    percent = windows.get('five_hour')
+    if percent is None and info.get('rateLimitType') == 'five_hour' and info.get('utilization') is not None:
+        percent = round(float(info['utilization']) * 100)
+    named = (info.get('unifiedWindows') or {}).get(info.get('rateLimitType')) or {}
+    resets = named.get('resetsAt') or info.get('resetsAt')
+    reading.update(
+        status=info.get('status'), frame=info, rate_limit_type=info.get('rateLimitType'),
+        windows=windows, five_hour_percent=percent,
+        disabled_reason=info.get('overageDisabledReason'),
+        resets_at=None if resets is None else datetime.fromtimestamp(resets, timezone.utc).isoformat())
+    if reading['refused'] and reading['resets_at']:
+        cause = reading['disabled_reason']
+        reading['resets_at_is'] = (
+            f"the schedule of the {reading['rate_limit_type']} usage window"
+            + (f", not a date for the {cause} setting that refused this probe" if cause
+               else ', not a date for the refusal'))
     return reading
 
 

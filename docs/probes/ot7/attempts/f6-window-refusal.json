@@ -27,7 +27,7 @@
   },
   "provider_text": "You've reached your Fable limit. Switch to another model, or manage usage credits at claude.ai/settings/usage?from=cc_cli_limit_message, to continue.",
   "api_error_status": 429,
-  "consequence": "F6's create prompt and all three continuations remain unspent; no ot7-robin-b project was created. The product agent's model is unchanged at claude-fable-5: ADR-363 moved the Ouroboros roles to claude-opus-5 and deliberately left the experiment's model alone, so F6 and F7 stay comparable with F5.",
+  "consequence": "F6's create prompt and all three continuations remain unspent; no ot7-robin-b project was created. The product agent's model is unchanged at claude-fable-5: ADR-363 moved the Ouroboros roles to claude-opus-5 and deliberately left the experiment's model alone, so F6 and F7 stay comparable with F5. Re-probed at 2026-09-16T17:02 UTC and still refused: F6's four slots and F7's four remain unspent, and no ot7-robin-b exists.",
   "probe_stream_sha256": "68fb28f158d9cf0a9088cbc79a135ad09a58fc4595eb5d209ec8868bca4e302e",
   "probe_stream_bytes": 10260,
   "second_probe": {
@@ -45,5 +45,41 @@
     "adr_364_gate_says_room": false,
     "probe_stream_sha256": "eab1632ce4baf8becc83e9526d095909c86ccd7f3a8d0593e54e9397ba928e03",
     "probe_stream_bytes": 11013
+  },
+  "third_probe": {
+    "read_at": "2026-09-16T17:02:44Z",
+    "why_it_matters": "Still refused, two hours after the second probe, on the same org_level_disabled setting \u2014 and the frames arrived in the other order: an allowed five_hour frame in front of the rejected seven_day_overage_included one. The reading took the first frame, so the receipt said `five_hour, allowed, resets 2026-09-16T19:20Z` beside `room: false`, and dropped the 100 % overage window that is the reason for the refusal. ADR-369 reads the frame that rejected.",
+    "status": "allowed",
+    "rate_limit_type": "five_hour",
+    "windows_percent": {
+      "five_hour": 18,
+      "seven_day": 53,
+      "seven_day_overage_included": 100
+    },
+    "overage": {
+      "status": "rejected",
+      "disabled_reason": "org_level_disabled",
+      "in_use": false
+    },
+    "exit_code": 1,
+    "elapsed_seconds": 1.869,
+    "adr_364_gate_says_room": false,
+    "pre_adr_369_reading_named": {
+      "rate_limit_type": "five_hour",
+      "status": "allowed",
+      "resets_at": "2026-09-16T19:20:00+00:00",
+      "windows_percent": {
+        "five_hour": 18,
+        "seven_day": 53
+      }
+    },
+    "adr_369_reading_names": {
+      "rate_limit_type": "seven_day_overage_included",
+      "status": "rejected",
+      "resets_at": "2026-09-18T14:00:00+00:00",
+      "resets_at_is": "the schedule of the seven_day_overage_included usage window, not a date for the org_level_disabled setting that refused this probe"
+    },
+    "probe_stream_sha256": "fe66d832c8b9fd5593b99f9088cb73275c4b8e4419bcb33ec04b89ac48d1cd3a",
+    "probe_stream_bytes": 11356
   }
 }

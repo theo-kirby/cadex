@@ -25454,3 +25454,51 @@ wording and one phrase. Acceptance is untouched and the block stays advisory
 empty-sweep test now pins the coverage and the phrase for all three cases
 and fails on the old code; `pixi run python -m pytest cli/tests` is the
 evidence.
+
+## ADR-369 — A refused probe reads the frame that rejected (2026-09-16)
+
+**Context.** ADR-364 made the window probe's own outcome the reading: a probe
+the provider refused is no room, whatever the five-hour number says. It left
+the *description* of the refusal reading the first `rate_limit_event` frame in
+the stream, and the order of those frames is the provider's, not ours. On
+2026-09-16 at 14:29 UTC the rejected `seven_day_overage_included` frame came
+first, so the receipt named it. At 17:02 UTC the same account, still refused
+for the same `org_level_disabled` reason, put an **allowed** five-hour frame
+in front of it. The reading then printed `rate_limit_type: five_hour`,
+`status: allowed`, `resets_at: 2026-09-16T19:20:00Z` beside `room: false`, and
+its `windows` lost the `seven_day_overage_included: 100` that was the whole
+cause. A receipt that pairs a refusal with an unrelated window's reset is the
+raw material for exactly the inference two records in this run had to retract
+(`sage-isle-3511`, `soft-journey-2954`): that the gate opens when that clock
+strikes.
+
+**Decision.** In `window_reading` (`docs/probes/ot7/runner/run.py`):
+
+- **The binding frame is the one that rejected, on a refused probe only.**
+  Refusal is classified first, as before; if the probe was refused and any
+  frame carries `status: rejected`, that frame supplies `status`,
+  `rate_limit_type` and `resets_at`. A probe that answered still reads its
+  first frame, so the ADR-364 invariant holds unchanged — an organisation with
+  overage disabled emits a rejected frame beside an ordinary allowed window,
+  and that must never close the gate on an account with room.
+- **Windows merge, with the reading's own frame authoritative.** The chosen
+  frame wins for every window it names; the other frames contribute only the
+  names it omits. The window that refused therefore reaches the receipt
+  whichever frame carried it.
+- **`resets_at` is the reset of the window `rate_limit_type` names**, and on a
+  refusal the new `resets_at_is` says what that is in words: the schedule of
+  that usage window, *not* a date for the setting that refused. `disabled_reason`
+  is carried beside it.
+
+No gate arithmetic changes: `window_has_room` is untouched and still returns
+false on any refusal before it looks at a number. No slot is spent by any of
+this, no design call is affected, and no prompt moved.
+
+**Evidence.** Two tests in `cli/tests/test_ot7_runner.py` that fail on the old
+code: one on the measured 17:02 UTC frame order, asserting the refusing limit,
+its reset, the three windows and the `resets_at_is` sentence; one pinning that
+an answered probe with a stray rejected frame keeps its first frame, its
+`allowed` status and its room. `pixi run python -m pytest cli/tests` is green.
+The third probe is recorded in `docs/probes/ot7/attempts/f6-window-refusal.json`
+with both readings, old and new, and `docs/probes/ot7/runner/README.md` and
+`docs/probes/ot7/REPORT.md` carry the rule and the measurement.

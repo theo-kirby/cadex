@@ -1097,6 +1097,69 @@ def test_the_reading_names_which_window_is_full_and_which_limit_refused(tmp_path
     assert not runner.window_has_room(reading, 45)
 
 
+def fable_allowed_frame_first():
+    """The 2026-09-16 17:02 UTC ordering: the allowed five-hour frame arrives
+    ahead of the frame that rejected, on the same refused call."""
+    frames = fable_limit_frames()
+    unified = frames[0]['rate_limit_info']['unifiedWindows']
+    unified['five_hour']['utilization'] = 0.18
+    unified['seven_day']['utilization'] = 0.53
+    allowed = {'type': 'rate_limit_event', 'rate_limit_info': {
+        'status': 'allowed', 'resetsAt': 1789586400, 'rateLimitType': 'five_hour',
+        'overageStatus': 'rejected', 'overageDisabledReason': 'org_level_disabled',
+        'unifiedWindows': {'five_hour': {'utilization': 0.18, 'resetsAt': 1789586400},
+                           'seven_day': {'utilization': 0.53, 'resetsAt': 1789740000}}}}
+    return [allowed] + frames
+
+
+def test_a_refused_reading_names_the_frame_that_rejected_not_the_one_in_front(tmp_path, monkeypatch):
+    """Frame order is the provider's, and the first frame is not the binding one.
+
+    Reading only the first frame reports `five_hour, allowed, resets 19:20Z`
+    on a call the seven-day overage window refused, loses the 100 % that is
+    the whole reason for the refusal, and pairs `room: false` with a reset
+    that has nothing to do with it (ADR-369).
+    """
+    calls, out = [], tmp_path / 'window'
+    out.mkdir()
+    execute = windowed_executor(calls, [fable_allowed_frame_first()], monkeypatch)
+    reading = runner.window_reading(execute, out, 'probe', 'claude-fable-5')
+    assert reading['status'] == 'rejected'
+    assert reading['rate_limit_type'] == 'seven_day_overage_included'
+    assert reading['resets_at'] == '2026-09-18T14:00:00+00:00'
+    assert reading['windows'] == {'five_hour': 18, 'seven_day': 53,
+                                  'seven_day_overage_included': 100}
+    assert reading['five_hour_percent'] == 18
+    assert reading['disabled_reason'] == 'org_level_disabled'
+    assert reading['resets_at_is'] == ('the schedule of the seven_day_overage_included usage '
+                                       'window, not a date for the org_level_disabled setting '
+                                       'that refused this probe')
+    assert not runner.window_has_room(reading, 45)
+
+
+def test_an_answered_probe_keeps_the_first_frame_and_its_room(tmp_path, monkeypatch):
+    """The rejected frame is read only on a probe the provider refused.
+
+    An organisation with overage disabled emits one beside an ordinary
+    allowed window; letting it supply the status would strand every remaining
+    frozen prompt on an account that has room.
+    """
+    calls, out = [], tmp_path / 'window'
+    out.mkdir()
+    frames = [limit_frame(0.08), {'type': 'rate_limit_event', 'rate_limit_info': {
+        'status': 'rejected', 'resetsAt': 1789740000,
+        'rateLimitType': 'seven_day_overage_included',
+        'unifiedWindows': {'seven_day_overage_included': {'utilization': 1,
+                                                          'resetsAt': 1789740000}}}},
+              {'type': 'result', 'is_error': False, 'subtype': 'success', 'result': 'ok'}]
+    reading = runner.window_reading(windowed_executor(calls, [frames], monkeypatch),
+                                    out, 'probe', 'fixture')
+    assert reading['refused'] is None and reading['status'] == 'allowed'
+    assert reading['rate_limit_type'] == 'five_hour' and reading['resets_at_is'] is None
+    assert reading['windows']['seven_day_overage_included'] == 100
+    assert runner.window_has_room(reading, 45)
+
+
 def test_an_allowed_probe_keeps_its_room_and_carries_no_refusal(tmp_path, monkeypatch):
     """ADR-364 narrows the gate and must not close it: an ordinary probe still passes."""
     calls, out = [], tmp_path / 'window'

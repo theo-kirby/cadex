@@ -1054,6 +1054,17 @@ direction.**
   account showed once already when the owner refreshed it mid-run (ADR-361).
   Only an **unrefused** probe is evidence the refusal has lifted, and only a
   fresh refused probe is evidence it still holds.
+- **The refusal still held at 17:02 UTC.** A third probe, two hours after the
+  second, was refused on the same `org_level_disabled` setting with
+  `seven_day_overage_included` at 100 % and the five-hour window at 18 %
+  (`attempts/f6-window-refusal.json`, `third_probe`). It spent no slot; F6's
+  four and F7's four are all still unspent. It also arrived with its frames in
+  the other order — an allowed five-hour frame in front of the one that
+  rejected — which the reading took at face value, printing `five_hour,
+  allowed, resets 2026-09-16T19:20Z` beside `room: false` and dropping the
+  100 % window that caused the refusal. ADR-369 reads the frame that rejected,
+  and labels its `resets_at` as the schedule of that window rather than a date
+  for the setting.
 - **The scheduled window reset.** `seven_day_overage_included` resets at epoch
   `1789740000`, which is **2026-09-18T14:00:00Z**. That is the rejected
   window's own `resets_at`, and the runner reads the same epoch for the Claude
