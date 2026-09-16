@@ -25195,3 +25195,15 @@ measured and no prompt is spent on it. F6 and F7 run on the product with
 it. Their frozen prompts are unchanged, so the comparison between F5 and
 F6/F7 on the catalog count is a comparison across this one product change,
 and the closing report says so.
+
+## ADR-363 — Ouroboros Claude roles use Opus 5 (2026-09-16)
+
+At the owner's request after switching Claude accounts, all Claude entries
+in the Ouroboros role configuration use `claude-opus-5`: actor,
+critic fallback, and the inactive maintainer/planner roles. Codex remains
+the critic and actor fallback. A no-tool live probe returned OK and reported
+`claude-opus-5` in model usage. The loop was stopped during backoff and
+continued on the same branch to load the model configuration; its original
+deadline remains. A manual refresh is queued for the new process.
+This is an orchestration-model change; the product-agent experiment model
+settings and frozen prompts are unchanged.

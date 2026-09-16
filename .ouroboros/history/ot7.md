@@ -1,12 +1,12 @@
 ---
 run: ot7
 machine: sb1x
-started: 2026-09-15T00:25:13
-ended: 2026-09-16T13:49:28+00:00
-hours: 32.4
+started: 2026-09-16T09:50:46
+ended: 2026-09-16T14:28:00+00:00
+hours: 0.6
 state: killed
-iterations: 70
-commits: 88
+iterations: 75
+commits: 94
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 10
@@ -18,23 +18,26 @@ actor: claude:claude-fable-5-1
 
 # Run ot7
 
-70 iterations in 32.4h on `sb1x`, killed (limit resets in 271 min: You've hit your session limit · resets 1:20pm (America/New_York)). Branch `ouroboros/ot7`, not merged.
+75 iterations in 0.6h on `sb1x`, killed (2 stuck verdict(s) in a row). Branch `ouroboros/ot7`, not merged.
 
 ## The numbers
 
 | | |
 |---|---|
-| iterations | 70 (changed 65, recorded 44) |
-| commits | 88 — 157 files changed, 17885 insertions(+), 82 deletions(-) |
+| iterations | 75 (changed 68, recorded 46) |
+| commits | 94 — 164 files changed, 18961 insertions(+), 82 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 10 checked at the tip |
 | reverts | 0 |
-| verdicts | answer 5, continue 53, looping 4, reject 3, stuck 5 |
+| verdicts | answer 5, continue 56, looping 4, reject 3, stuck 7 |
 | loop detector | no firing |
 | roles | actor claude:claude-fable-5-1, critic codex:gpt-6-astra |
-| usage | claude seven_day 22% -> 50% (+28 this run); claude five_hour 9% -> 100% (+91 this run); codex seven_day 47% -> 53% (+6 this run) |
+| usage | claude seven_day 3% -> 51% (+48 this run); claude seven_day_overage_included 5% -> 100% (+95 this run); claude five_hour 51% -> 0% (-51 this run); codex seven_day 54% |
 
 ## What landed
 
+- Every build reply carries the published catalog identity, advisory (ADR-362)
+- F5 continue-3 on ot7-heron-c completed: no edit, static 0 of 105, sweep clean, smoke passing, servos and horns uncatalogued; F5 exhausted
+- Restore actor fallback and document account refresh (ADR-361)
 - REPORT.md: F5 attempts cell reads 3, all (three completed turns on ot7-heron-c)
 - F5 continue-2 on ot7-heron-c completed: bench deleted by the agent, static fit 0 of 105, sweep complete with zero overlap, smoke passing, servos and horns still uncatalogued (receipt, REPORT.md, runner README)
 - ADR-360 correction: an unknown describe_api section is refused after the argument-free engine request has been answered; only the section argument never reaches the engine (docs/CLI.md, ADR-360, slender-union-6486)
@@ -57,10 +60,7 @@ actor: claude:claude-fable-5-1
 - ot7 charter: usage-limit failures are void; restart (ADR-355)
 - docs: hand off ot7 as exhausted and incomplete
 - Record frozen F4 collector refusal and unchanged fit evidence
-- docs: report ot7 checks and refused agent outcomes
-- docs(ot7): retain frozen biped provider refusal
-- docs(ot7): retain frozen balancer provider refusal
-- ... and 24 more
+- ... and 27 more
 
 ## Decisions the critic made
 
