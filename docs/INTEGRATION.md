@@ -591,7 +591,17 @@ measurements: the solver ignores it, so it holds no range to sweep, no
 subprocess runs for it and it does not make the assembly's coverage
 `incomplete`. A revision accepted before ADR-371 carries it as `incomplete`
 with an unsupported-kind reason instead; no response shape or op argument
-changed either way.
+changed either way. Since ADR-374 each pair row also carries
+`relative_motion`: true when exactly one side of the pair sits inside the
+swept joint's moving subtree, which is the only case that joint can change.
+A pair with `relative_motion: false` is one rigid body for this sweep and
+repeats its solved-pose measurement at every sample, so a reader rolling a
+joint row up reads its minimum distance, maximum common volume and first
+contact over the moving pairs alone — otherwise a horn welded flush against
+the link it turns with reports 0.0 mm at every value and takes first contact
+at the bottom of the range. Per-pair rows are unchanged and every pair is
+still published. The key is **absent** on a revision accepted before ADR-374,
+which a reader counts as moving so an older receipt reads as it always did.
 
 `cadex clearance --sweep` writes these facts and the accepted revision to
 `docs/clearance-sweep.md`. Exit 0 means the report was written, including when

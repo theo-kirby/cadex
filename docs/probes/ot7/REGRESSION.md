@@ -94,7 +94,7 @@ engine now implies supplied for the pairs each script already welds, and
 nothing else varied. It is neither a re-measurement nor a rebuild, and it is
 **not a fresh-build verdict** for these three designs: no retained project was
 rebuilt or re-accepted to produce it, and the geometry behind both columns is
-one retained measurement set. Three of the four checker changes that landed
+one retained measurement set. Four of the five checker changes that landed
 after these designs were accepted are outside it, and stay outside it:
 
 - **ADR-370's attachment block** is not modelled. It is reported, never
@@ -115,6 +115,16 @@ after these designs were accepted are outside it, and stay outside it:
   verdict is unknown from this table.
 - **ADR-373** governs how far a declared clearance may be widened, and these
   three scripts declare no fit intent of their own.
+- **ADR-374's swept roll-up** is outside it for the same reason ADR-371 is: it
+  reads a joint row's minimum distance, maximum common volume and first
+  contact over the pairs that joint moves, and there is no joint row here to
+  read. Every retained receipt's `clearance_sweep` is `unavailable`, so
+  `sweep_summary` returns no joint row, no `pairs_moving` and the verdict
+  `unavailable` on all three designs — which is what
+  `test_the_retained_receipts_publish_no_sweep_to_roll_up` in the same
+  [portable regression](../../../cli/tests/test_retained_fit.py) pins. Neither
+  column can move by it in any case: ADR-374 changes what a swept joint row
+  rolls up and never a static row's status.
 
 So read the third column as *what the weld exemption leaves standing on these
 measurements*, not as what today's engine would say end to end about a fresh

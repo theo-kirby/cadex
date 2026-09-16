@@ -25794,7 +25794,10 @@ guarded by it and `pairs_moving` is counted, the way ADR-371 counted
 `joints_skipped` apart from `joints_complete`. A row with no flag — a revision
 accepted before this — counts as moving, so an older receipt reads exactly as
 it did. No protocol op, no threshold, no acceptance behaviour and no
-`shell/` diff.
+`shell/` diff. *Added 2026-09-16:* the key is an additive field inside an
+existing advisory scope value, and `docs/INTEGRATION.md`'s published-sweep
+section names it — the rule, and its absence on a revision accepted before
+this — which that commit should have carried and did not.
 
 **Evidence.**
 `src/Mod/cadex/cadex_tests/test_joint_fit_sweep.py::test_welded_pair_is_marked_as_holding_still_through_the_sweep`

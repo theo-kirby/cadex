@@ -1120,51 +1120,94 @@ landed in the meantime is one more difference separating F6 and F7 from F5.
 No unattended role may extend, stop or restart a run, and neither this
 subsection nor the record behind it does. This is a measurement for the owner.
 
-**Product version.** F6 and F7 run on a product three changes newer than the
-one F5 ran on: ADR-362, ADR-366 and ADR-367, each listed below. After F5's exhaustion the critic asked that the published
-inventory's catalog counts and uncatalogued sources reach the agent beside
-the design-turn fit summary, and ADR-362 landed that: every build reply now
-carries an advisory `inventory` block (component, catalogued and
-uncatalogued counts, the catalog roll-up and every uncatalogued source by
-name), the system prompt says to read it before claiming catalog hardware,
-and the `--json` envelope carries it as `inventory`. F5's four turns had no
-such block, which is why its agent could report every purchased part as
-catalog hardware while the inventory listed its servos and horns as
-uncatalogued. F5 is not re-run and no frozen prompt changed; the catalog
-count in the F6 and F7 rows is measured on the newer product, and a
-difference from F5 on that count is a difference across that change.
+**Product version.** F6 and F7 run on a product **nine** changes newer than
+the one F5 ran on, every frozen prompt unchanged: ADR-362, ADR-366, ADR-367,
+ADR-368, ADR-370, ADR-371, ADR-372, ADR-373 and ADR-374. Seven of them change
+the measured fit surface a design reads; the other two are the inventory block
+beside it and the repair wording in the agent's own prompt. Each is listed
+below with what it publishes, because a difference in an F6 or F7
+row that lands on a fact one of these changes publishes is a difference across
+that change and not a difference in the agent.
 
-The second change is ADR-366, landed for the same reason on the other half
-of F5's bar. F5's create turn accepted an arm whose two hinges declared
-limits and whose assembly declared no `sweep_step_degrees`, so the engine
-published no sweep and the reply said nothing about it; the agent found the
-gap a continuation later. Every build reply now carries `fit.sweep` beside
-the static verdict — coverage, one row per limited joint with its minimum
+**ADR-362** (`fd3b3643`) is the inventory. After F5's exhaustion the critic
+asked that the published inventory's catalog counts and uncatalogued sources
+reach the agent beside the design-turn fit summary, and every build reply now
+carries an advisory `inventory` block — component, catalogued and uncatalogued
+counts, the catalog roll-up and every uncatalogued source by name — the system
+prompt says to read it before claiming catalog hardware, and the `--json`
+envelope carries it as `inventory`. F5's four turns had no such block, which
+is why its agent could report every purchased part as catalog hardware while
+the inventory listed its servos and horns as uncatalogued. The catalog count
+in the F6 and F7 rows is measured on the newer product.
+
+**ADR-366** (`b65ec710`) landed for the same reason on the other half of F5's
+bar. F5's create turn accepted an arm whose two hinges declared limits and
+whose assembly declared no `sweep_step_degrees`, so the engine published no
+sweep and the reply said nothing about it; the agent found the gap a
+continuation later. Every build reply now carries `fit.sweep` beside the
+static verdict — coverage, one row per limited joint with its minimum
 distance, maximum common volume and first-contact value, and every pair that
 interpenetrates anywhere in a range — computed from the same published
 measurements with no second engine call, and the runner's attempt rows carry
-it as `swept_fit`. F5's four turns had no such block. Swept coverage in the
-F6 and F7 rows is therefore measured on the newer product, and a difference
-from F5 on when the design acquired its sweep is a difference across that
-change.
+it as `swept_fit`. Swept coverage in the F6 and F7 rows is therefore measured
+on the newer product.
 
-The third change is ADR-367, landed for the same reason on the half ADR-366
-had left: F5's create turn accepted an arm whose two limited hinges declared
-no step, the engine published no sweep at all, and the reply could only say
-`sweep unavailable`. The engine now publishes coverage on every assembly, so
-an assembly that declares neither step reads `incomplete` with one row per
-limited joint naming the declaration it is missing — an enumeration that
-touches no geometry and measured under 1 ms on the lifecycle fixture. F5's
-create turn spent a continuation discovering that gap; on the product F6 and
-F7 run, the first build reply names it. Its wording follow-up, ADR-368, made
-the two causes of a sweep `verdict: unavailable` distinguishable in the block
-(`coverage`), in the reply's progress phrase and in the agent's instructions:
-a revision accepted by an older engine, versus an assembly with no limited
-joint at all.
+**ADR-367** (`d6a52b02`) landed on the half ADR-366 left: F5's create turn
+accepted an arm whose two limited hinges declared no step, the engine
+published no sweep at all, and the reply could only say `sweep unavailable`.
+The engine now publishes coverage on every assembly, so an assembly that
+declares neither step reads `incomplete` with one row per limited joint naming
+the declaration it is missing — an enumeration that touches no geometry and
+measured under 1 ms on the lifecycle fixture. F5's create turn spent a
+continuation discovering that gap; on the product F6 and F7 run, the first
+build reply names it.
 
-F5 is not re-run and no frozen prompt changed for any of the three. Each
-difference in the F6 and F7 rows that lands on a fact one of these changes
-publishes is a difference across that change, not a difference in the agent.
+**ADR-368** (`3cd8905e`) is its wording follow-up, and made the two causes of
+a sweep `verdict: unavailable` distinguishable in the block (`coverage`), in
+the reply's progress phrase and in the agent's instructions: a revision
+accepted by an older engine, versus an assembly with no limited joint at all.
+
+**ADR-370** (`3b27f62e`) added the attachment rows. Every pair welded by an
+unsuppressed `fixed` joint is measured at the solved pose and reported as
+touching, not touching or unknown, beside the four fit checks and never
+counted among them — a fixed joint asserts one rigid body, and a gap between
+the solids is a connection the geometry does not make. It reaches F6 and F7
+directly, because a balancer and a biped weld horns, bearings and fasteners to
+their links.
+
+**ADR-371** (`45a2fe2c`) stops a **suppressed** limited joint counting as
+missing swept coverage: the solver ignores it, so it holds no range to sweep,
+it costs no child process, and its row is `skipped` rather than a coverage
+hole that no declaration could ever fill.
+
+**ADR-372** (`43dfe452`) exempts a pair welded by an unsuppressed `fixed`
+joint from the 0.1 mm undeclared-pair minimum. Without it, mounting hardware
+flush against what carries it failed `below clearance` at 0.0 mm for doing
+what the joint asked. Measured on the retained ot6 biped, 16 of Finch's 32
+`below clearance` rows were welds at 0.0 mm, so this reaches F6 and F7 on
+exactly the hardware they will weld.
+
+**ADR-373** (`64b59cee`) tells the agent, in its own prompt, to declare an
+intended gap narrower than the default with `clearances=[(a, b, 0.05)]`
+rather than widen a seat that was already right, and says what `contacts=` is
+not — it holds a pair to 0.001 mm, so it fails a 0.05 mm running fit as a
+`missed contact` rather than clearing it. Finch's four 0.05 mm bearing seats
+are the case it names.
+
+**ADR-374** (`65cbe3ca`) makes the swept half of the fit read its minimum
+distance, maximum common volume and first contact over the pairs the swept
+joint actually moves, counted as `pairs_moving` beside `pairs_measured`. A
+pair the joint cannot move repeats its solved-pose measurement at every
+sample, so a horn welded flush against the link it turns with — correct design
+under ADR-372, and what a balancer does — read 0.0 mm at every angle and took
+first contact at the bottom of the declared range, and the roll-up took the
+minimum, so the weld won every time. The per-pair rows, the `failing` list and
+every threshold are unchanged. It is the second change in a row that reaches
+F6's and F7's own hardware directly.
+
+F5 is not re-run and no frozen prompt changed for any of the nine. Every
+number in the F6 and F7 rows is therefore measured on this product, and the
+ot6 and F5 comparisons in this report are read across these changes.
 
 > *Superseded on 2026-09-15:* "All scheduled collector slots are consumed.
 > The run's successful-completion prerequisites are not established by the

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from cadex_cli.clearance import fit_summary
+from cadex_cli.clearance import fit_summary, sweep_summary
 
 RECEIPTS = Path(__file__).resolve().parents[2] / 'docs/probes/ot7/retained'
 ROUNDING_PAIRS = {
@@ -178,3 +178,25 @@ def test_welded_pairs_that_do_not_meet(name, welded, not_touching, distances):
     apart = [row for row in measured if row[2] > 0.001]
     assert len(apart) == not_touching
     assert Counter(round(d, 3) for _, _, d in apart) == Counter(distances)
+
+
+@pytest.mark.parametrize('name', ['finch', 'robin', 'heron'])
+def test_the_retained_receipts_publish_no_sweep_to_roll_up(name):
+    """Why ADR-371 and ADR-374 are outside the weld-exemption table.
+
+    `docs/probes/ot7/REGRESSION.md` says both swept-side changes are outside
+    its two columns because there is no joint row here for either of them to
+    read. ADR-374 reads a joint row's three numbers over the pairs that joint
+    moves and counts them as `pairs_moving`; a receipt with no joint row has
+    no such number to move, in either direction. Pin that through the product
+    surface rather than the raw key, so the receipt's claim and
+    `sweep_summary` cannot drift apart.
+    """
+    value = json.loads((RECEIPTS / f'{name}.measurements.json').read_text())
+    summary = sweep_summary(value)
+    assert summary['verdict'] == 'unavailable'
+    assert summary['coverage'] == 'unavailable'
+    assert summary['joints'] == [] and summary['joints_checked'] == 0
+    assert summary['failing'] == [] and summary['failing_count'] == 0
+    assert not any('pairs_moving' in row for row in summary['joints'])
+    assert 'No published sweep' in summary['reason']
