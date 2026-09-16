@@ -1,6 +1,6 @@
 # Frozen-design evidence runner
 
-Verified against source: 2026-09-15. [Cadex-new]
+Verified against source: 2026-09-16. [Cadex-new]
 
 This is the F4–F7 evidence collector (ADR-354), amended for the ot7 restart
 (ADR-355). **Every product-agent call ot7 dispatched before the restart was
@@ -558,6 +558,33 @@ by the actor after the turn with the runner's own command into
 window read 35 % at the last stream frame and 38 % after the measurement,
 under the 45 % bound, so `continue-2` is dispatchable before the 12:20 UTC
 reset.
+
+## The second continuation completed (iteration 66)
+
+```bash
+pixi run python docs/probes/ot7/runner/run.py resume "$PROJECTS/ot7-heron-c"
+```
+
+Dispatched at 12:22:51 UTC, three minutes after the reset, with the probe
+at 7 %, into the same session at the receipt's `medium`. The turn ended on
+its own in 482.4 s: 36 model messages, 12 thinking blocks, no output-cap
+hit, 19 tool calls (13 `inspect`, eleven of them the clearance scope, 4
+`edit_script` with two accepted, 1 `write_script` rejected, 1 `rebuild`).
+The second continuation slot is spent; one remains, and the runner paused
+with `continue-3` next. The receipt is `retained/heron-continue-2-c.json`;
+the assessment is REPORT.md's iteration 66 section. One minute passed
+between the dispatch and the first stream frame.
+
+The measured result: the bench deleted from the model in two accepted
+revisions, static fit **0 of 105 failing** with `world_geometry` empty; the
+sweep **complete on both joints at 5°** with 0 mm³ on every pair; the
+inventory still listing both servos and both horns as uncatalogued. The
+smoke was run by the actor after the turn with the runner's own command
+into `evidence/turn-2/smoke` and passed. The window read 50 % at the last
+stream frame and 56 % after the measurement, over the 45 % bound, so
+`continue-3` waits for the 17:20 UTC reset. The stream's `rate_limit_event`
+frames also carried the seven-day window at 90–94 % as `allowed_warning`;
+the runner's bound reads only the five-hour figure.
 
 ## The window closed, and describe_api paged (iteration 60, ADR-360)
 
