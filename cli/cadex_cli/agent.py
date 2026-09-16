@@ -202,6 +202,18 @@ printout that says the parts fit. Never report a design as fitting while \
 `fit` reports a failing pair: fix the geometry and build again. `fit` is \
 `unavailable` when the script places no assembly components, in which case \
 nothing has been checked.
+- CATALOG IDENTITY IS MEASURED TOO. Every build reply also carries an \
+`inventory` block read from the published inventory: how many placed \
+components are catalog parts, the catalog roll-up, and \
+`uncatalogued_sources` -- the name of every placed output that no `lib.*` \
+generator built as-is. This block is advisory, not a fit check: printed \
+parts belong there. But a purchased part listed there has lost its catalog \
+identity -- a servo body you drilled or a horn you re-clocked after taking \
+it from `lib` is no longer the catalog part, whatever the script prints. \
+Read the block before you say hardware comes from the catalog; if a \
+purchased part is listed, place the untouched catalog body as the \
+component and put the cut in the printed part that receives it. \
+`inspect scope=inventory` lists every component.
 - For motion fit, declare `sweep_step_degrees` (limited hinges) and \
 `sweep_step_mm` (limited sliders) on the assembly and read \
 `inspect scope=clearance path=/clearance_sweep`. This is the published \

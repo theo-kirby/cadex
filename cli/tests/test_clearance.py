@@ -163,7 +163,12 @@ def test_build_reply_resolves_late_fit_pages_or_reports_unavailable(
                 return {'ok': True, 'accepted_revision': 'accepted',
                         'model_state': {'next_write_expected_revision': 'accepted'},
                         'stdout': 'all parts fit'}
-            assert op == 'inspect' and arguments['scope'] == 'clearance'
+            assert op == 'inspect'
+            if arguments['scope'] == 'inventory':
+                return _bounded_page({'revision': 'accepted', 'assembly': 'asm',
+                                      'components': [], 'catalog_counts': {},
+                                      'uncatalogued_sources': []}, arguments)
+            assert arguments['scope'] == 'clearance'
             if (late_read_failure and arguments['path'] == '/pairs'
                     and arguments['offset'] > 0):
                 return {'ok': False, 'error': 'late measurement page unreadable'}

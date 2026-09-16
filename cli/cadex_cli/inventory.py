@@ -163,6 +163,82 @@ def _read_path(client: Any, base: Mapping[str, Any], path: str) -> Any:
         offset = next_offset
 
 
+#: Where the inventory block's counts come from, said in the block itself
+#: so the agent reading it cannot mistake it for the script's own claim
+#: about which parts it took from the catalog.
+INVENTORY_SOURCE = (
+    "the published inventory of the accepted revision (inspect "
+    "scope=inventory): one row per placed assembly component, with a catalog "
+    "row only where the placed output is what a lib.* generator built. Not "
+    "the script's stdout. Advisory, not a fit check: a printed part is "
+    "expected here, a purchased part is not."
+)
+
+
+def inventory_summary(value: Any) -> dict[str, Any]:
+    """The catalog identity of a build as its reply carries it (ADR-362).
+
+    ``value`` is an ``inspect scope=inventory`` value. The block is the
+    component count, how many components place a catalog part, the catalog
+    roll-up by ``family/part_number``, and the name of **every** placed
+    output that no ``lib.*`` generator built as-is -- a hand-modelled
+    bracket, but also a servo body the script drilled after taking it from
+    the catalog, since a cut catalog body is no longer the catalog part.
+    The block is advisory: it names no failure and refuses nothing. What
+    it removes is the blind spot ot7's F5 measured over four turns, an
+    agent that reported every purchased part as catalog hardware while
+    the published inventory listed its servos and horns as uncatalogued,
+    because nothing in its reply carried catalog identity. ``available``
+    is false when the accepted revision publishes no assembly.
+    """
+
+    if not isinstance(value, Mapping):
+        value = {}
+    components = [
+        row for row in list(value.get("components") or []) if isinstance(row, Mapping)
+    ]
+    counts = {
+        str(key): int(count)
+        for key, count in dict(value.get("catalog_counts") or {}).items()
+    }
+    catalogued = sum(counts.values())
+    uncatalogued = sorted({
+        str(item) for item in list(value.get("uncatalogued_sources") or [])
+    })
+    assembly = str(value.get("assembly") or "")
+    summary: dict[str, Any] = {
+        "available": bool(assembly),
+        "source": INVENTORY_SOURCE,
+        "revision": str(value.get("revision") or ""),
+        "assembly": assembly,
+        "component_count": len(components),
+        "catalogued_count": catalogued,
+        "uncatalogued_count": max(len(components) - catalogued, 0),
+        "catalog_counts": dict(sorted(counts.items())),
+        "uncatalogued_sources": uncatalogued,
+    }
+    if not assembly:
+        summary["note"] = (
+            "No published assembly: catalog identity is read per placed "
+            "assembly component, and this revision places none."
+        )
+    elif uncatalogued:
+        summary["note"] = (
+            "Each name under uncatalogued_sources is a placed output no lib.* "
+            "generator built as-is. Printed parts belong here. A purchased "
+            "part listed here has lost its catalog identity -- usually "
+            "because the script cut, drilled or re-clocked the catalog body "
+            "-- and is not catalog hardware whatever the script prints."
+        )
+    return summary
+
+
+def read_inventory_summary(client: Any, *, target: str = "") -> dict[str, Any]:
+    """Read the published inventory scope, every page, and summarise it."""
+
+    return inventory_summary(read_inventory(client, target=target))
+
+
 def read_inventory(client: Any, *, target: str = "") -> dict[str, Any]:
     """Read all inventory pages, including summaries and previewed row fields."""
 

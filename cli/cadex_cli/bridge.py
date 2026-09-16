@@ -39,6 +39,7 @@ from typing import Any
 
 from .clearance import read_fit
 from .client import CadexdClient
+from .inventory import read_inventory_summary
 from .tools import (
     STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision, tool_definitions,
 )
@@ -49,7 +50,7 @@ SOCKET_TIMEOUT_SECONDS = 3600.0
 
 #: The ops that run the script and publish a revision. Each one's reply is
 #: what the model reasons about a build from, so each one carries the
-#: measured fit (ADR-346).
+#: measured fit (ADR-346) and the published catalog identity (ADR-362).
 MODELLING_OPS = frozenset({"write_script", "edit_script", "set_params", "rebuild"})
 
 
@@ -65,6 +66,9 @@ class ToolCall:
     #: The fit block a modelling reply carried (:func:`read_fit`), or None
     #: for a read, a refusal, or a build whose measurements could not be read.
     fit: dict[str, Any] | None = None
+    #: The inventory block the same reply carried
+    #: (:func:`read_inventory_summary`, ADR-362), or None on the same terms.
+    inventory: dict[str, Any] | None = None
 
 
 @dataclass
@@ -78,6 +82,9 @@ class BridgeState:
     #: The measured fit of the most recent successful modelling reply, as
     #: the model saw it -- what the turn report carries as `fit`.
     last_fit: dict[str, Any] | None = None
+    #: The catalog identity of the most recent successful modelling reply,
+    #: as the model saw it -- what the turn report carries as `inventory`.
+    last_inventory: dict[str, Any] | None = None
     calls: list[ToolCall] = field(default_factory=list)
 
 
@@ -237,18 +244,32 @@ class Bridge:
             # whether to believe it. Read under the lock so the revision the
             # measurements describe is the one this reply accepted.
             fit = self._read_fit() if ok and tool in MODELLING_OPS else None
+            # ...and the published catalog identity beside it (ADR-362):
+            # which placed components are catalog parts and which outputs
+            # no lib.* generator built as-is. Advisory -- a printed part is
+            # expected there -- but it is the only place the model can
+            # learn that a servo it drilled is no longer the catalog servo.
+            inventory = (
+                self._read_inventory() if ok and tool in MODELLING_OPS else None
+            )
 
         summary = _summarize(tool, reply)
         if fit is not None:
             summary += "  " + _fit_line(fit)
             self.state.last_fit = fit
+        if inventory is not None:
+            summary += "  " + _inventory_line(inventory)
+            self.state.last_inventory = inventory
         call = ToolCall(
-            tool, args, ok, summary, str(reply.get("failure_code") or ""), fit
+            tool, args, ok, summary, str(reply.get("failure_code") or ""), fit,
+            inventory,
         )
         self._record(call)
         view = _model_view(tool, reply, args, view_args)
         if fit is not None:
             view["fit"] = fit
+        if inventory is not None:
+            view["inventory"] = inventory
         return _content(
             json.dumps(view, indent=2, sort_keys=True, default=str),
             is_error=not ok,
@@ -274,6 +295,29 @@ class Bridge:
                 "failing_count": 0,
                 "failing": [],
                 "error": f"fit measurements could not be read: {exc}",
+            }
+
+    def _read_inventory(self) -> dict[str, Any]:
+        """The inventory block for a build that just succeeded; never raised.
+
+        Same terms as :meth:`_read_fit`: the build was accepted whatever
+        happens here, so an inventory the bridge cannot read is reported
+        in the block, as `available: false` with the reason, and the block
+        is present on every build reply without exception.
+        """
+
+        try:
+            return read_inventory_summary(self.client)
+        except Exception as exc:  # any failure is an identity the model cannot see
+            return {
+                "available": False,
+                "source": "",
+                "component_count": 0,
+                "catalogued_count": 0,
+                "uncatalogued_count": 0,
+                "catalog_counts": {},
+                "uncatalogued_sources": [],
+                "error": f"inventory could not be read: {exc}",
             }
 
     def _record(self, call: ToolCall) -> None:
@@ -514,6 +558,18 @@ def _fit_line(fit: dict[str, Any]) -> str:
         return "fit unavailable"
     return "fit {:s}: {:d} failing of {:d} pair(s)".format(
         verdict, int(fit.get("failing_count") or 0), int(fit.get("pairs_checked") or 0)
+    )
+
+
+def _inventory_line(inventory: dict[str, Any]) -> str:
+    """The inventory block as one progress-log phrase."""
+
+    if not inventory.get("available"):
+        return "inventory unavailable"
+    return "inventory: {:d} component(s), {:d} catalogued, {:d} uncatalogued".format(
+        int(inventory.get("component_count") or 0),
+        int(inventory.get("catalogued_count") or 0),
+        int(inventory.get("uncatalogued_count") or 0),
     )
 
 

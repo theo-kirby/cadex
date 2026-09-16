@@ -22,6 +22,7 @@ from cadex_cli.bridge import Bridge
 from cadex_cli.tools import CLI_TOOL_OPS, tool_definitions
 
 from fake_cadexd import (
+    inventory_value,
     FakeCadexd, accepted_reply, clearance_value, inspect_reply, rejected_reply,
 )
 
@@ -144,8 +145,27 @@ _CLEAR = {**_OVERLAP, "first": "b", "second": "c", "distance_mm": 10.0,
           "common_volume_mm3": 0.0}
 
 
-def _fit_client(pairs, **replies):
+#: Heron's shape, as F5 measured it over four turns (ADR-362): a printed
+#: base, two servos placed from one drilled catalog body -- so two
+#: uncatalogued components but one uncatalogued source -- a catalog horn
+#: and two catalog bearings. Six components, three catalogued, three not.
+_INVENTORY = [
+    {"component": "base", "label": "base", "source_output": "base_plate"},
+    {"component": "shoulder_servo", "label": "shoulder", "source_output": "servo_drilled"},
+    {"component": "elbow_servo", "label": "elbow", "source_output": "servo_drilled"},
+    {"component": "horn", "label": "horn", "source_output": "horn",
+     "catalog": {"family": "horn", "part_number": "SG-25T-1"}},
+    {"component": "bearing_a", "label": "bearing a", "source_output": "mr128",
+     "catalog": {"family": "bearing", "part_number": "MR128"}},
+    {"component": "bearing_b", "label": "bearing b", "source_output": "mr128",
+     "catalog": {"family": "bearing", "part_number": "MR128"}},
+]
+
+
+def _fit_client(pairs, inventory=None, **replies):
     def inspect(args):
+        if args["scope"] == "inventory":
+            return inspect_reply(args, inventory_value(inventory))
         assert args["scope"] == "clearance", args
         return inspect_reply(args, clearance_value(pairs))
     write = accepted_reply("write", "rev-2")
@@ -179,12 +199,11 @@ def test_a_build_reply_carries_the_measured_fit_beside_the_stdout() -> None:
     assert failing["common_volume_mm3"] == 100.0 and failing["distance_mm"] == 0.0
     assert "stdout" in fit["source"] and "inspect scope=clearance" in fit["source"]
     # It was read from the store the build published to, after the build.
-    assert [op for op, _ in client.calls] == ["write_script", "inspect"]
-    (asked,) = client.args_for("inspect")
-    assert asked["scope"] == "clearance"
+    assert [op for op, _ in client.calls] == ["write_script", "inspect", "inspect"]
+    assert [a["scope"] for a in client.args_for("inspect")] == ["clearance", "inventory"]
     # ...and the parent saw the same thing the model did.
     assert call.fit == fit and last_fit == fit
-    assert call.summary.endswith("fit fail: 1 failing of 2 pair(s)")
+    assert "fit fail: 1 failing of 2 pair(s)  inventory unavailable" in call.summary
 
 
 def test_a_clear_build_says_pass_and_a_partless_build_says_unavailable() -> None:
@@ -205,7 +224,7 @@ def test_a_clear_build_says_pass_and_a_partless_build_says_unavailable() -> None
     assert payload["fit"]["verdict"] == "unavailable"
     assert payload["fit"]["pairs_checked"] == 0
     assert "assembly.component" in payload["fit"]["note"]
-    assert call.summary.endswith("fit unavailable")
+    assert "fit unavailable  inventory unavailable" in call.summary
 
 
 def test_a_build_reply_names_every_failing_pair_past_forty() -> None:
@@ -249,7 +268,7 @@ def test_a_build_reply_names_every_failing_pair_past_forty() -> None:
     ] == expected
     assert "failing_truncated" not in fit and "note" not in fit
     assert call.fit == fit
-    assert call.summary.endswith("fit fail: 60 failing of 63 pair(s)")
+    assert "fit fail: 60 failing of 63 pair(s)  inventory unavailable" in call.summary
 
 
 def test_every_modelling_op_carries_a_fit_block_and_no_read_does() -> None:
@@ -274,8 +293,10 @@ def test_every_modelling_op_carries_a_fit_block_and_no_read_does() -> None:
         ):
             payload = json.loads(bridge.call(tool, arguments)["content"][0]["text"])
             assert "fit" not in payload, tool
+            assert "inventory" not in payload, tool
     calls = [op for op, _ in client.calls]
-    assert calls.count("inspect") == 5  # four fit reads and the model's own
+    # Four fit reads, four inventory reads and the model's own.
+    assert calls.count("inspect") == 9
 
 
 def test_a_refused_build_carries_no_fit_block() -> None:
@@ -285,8 +306,10 @@ def test_a_refused_build_carries_no_fit_block() -> None:
         (call,) = bridge.state.calls
         assert bridge.state.last_fit is None
     assert reply["is_error"] is True
-    assert "fit" not in json.loads(reply["content"][0]["text"])
-    assert call.fit is None
+    payload = json.loads(reply["content"][0]["text"])
+    assert "fit" not in payload and "inventory" not in payload
+    assert call.fit is None and call.inventory is None
+    assert bridge.state.last_inventory is None
     assert [op for op, _ in client.calls] == ["write_script"]
 
 
@@ -310,6 +333,84 @@ def test_a_fit_that_cannot_be_read_is_reported_and_refuses_nothing() -> None:
     assert payload["ok"] is True and payload["revision"] == "rev-1"
     assert payload["fit"]["verdict"] == "unavailable"
     assert "store unreadable" in payload["fit"]["error"]
+    # The inventory read fails the same way and is reported the same way.
+    assert payload["inventory"]["available"] is False
+    assert "store unreadable" in payload["inventory"]["error"]
+    assert payload["inventory"]["uncatalogued_sources"] == []
+
+
+# -- the inventory block (ADR-362) -------------------------------------------
+
+
+def test_a_build_reply_carries_catalog_identity_beside_the_fit() -> None:
+    """The script says every purchased part is catalog; the inventory says
+    the two servos are placed from a drilled body and are not (ADR-362).
+
+    Known answer from the fixture: six components, three catalogued (one
+    horn, two MR128 bearings), three uncatalogued components over two
+    uncatalogued sources -- the printed base and the one drilled servo
+    body placed twice. The count is per component and the names are per
+    source, and both reach the model on the build reply itself.
+    """
+
+    client = _fit_client([_CLEAR], inventory=_INVENTORY)
+    write = accepted_reply("write", "rev-2")
+    write["stdout"] = "all purchased parts are catalog parts\n"
+    client.replies["write_script"] = write
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        payload = json.loads(
+            bridge.call("write_script", {"source": "x"})["content"][0]["text"]
+        )
+        (call,) = bridge.state.calls
+        last = bridge.state.last_inventory
+
+    assert payload["stdout"] == "all purchased parts are catalog parts\n"
+    assert payload["fit"]["verdict"] == "pass"  # fit is untouched by this
+    inventory = payload["inventory"]
+    assert inventory["available"] is True
+    assert inventory["component_count"] == 6
+    assert inventory["catalogued_count"] == 3
+    assert inventory["uncatalogued_count"] == 3
+    assert inventory["catalog_counts"] == {"bearing/MR128": 2, "horn/SG-25T-1": 1}
+    assert inventory["uncatalogued_sources"] == ["base_plate", "servo_drilled"]
+    assert "inspect scope=inventory" in inventory["source"]
+    assert "stdout" in inventory["source"] and "Advisory" in inventory["source"]
+    assert "lost its catalog identity" in inventory["note"]
+    # The parent saw what the model saw, and the progress line says it.
+    assert call.inventory == inventory and last == inventory
+    assert call.summary.endswith(
+        "fit pass: 0 failing of 1 pair(s)  "
+        "inventory: 6 component(s), 3 catalogued, 3 uncatalogued"
+    )
+
+
+def test_a_partless_build_says_inventory_unavailable_not_all_catalog() -> None:
+    client = _fit_client([], inventory=[])
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        payload = json.loads(
+            bridge.call("write_script", {"source": "x"})["content"][0]["text"]
+        )
+        (call,) = bridge.state.calls
+    inventory = payload["inventory"]
+    assert inventory["available"] is False
+    assert inventory["component_count"] == 0 and inventory["catalogued_count"] == 0
+    assert "places none" in inventory["note"]
+    assert call.summary.endswith("fit unavailable  inventory unavailable")
+
+
+def test_the_inventory_block_is_advisory_and_refuses_nothing() -> None:
+    """Three uncatalogued components, fit passing: the build is accepted
+    and the reply is not an error. Uncatalogued is a fact, not a failure."""
+
+    client = _fit_client([_CLEAR], inventory=_INVENTORY)
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        reply = bridge.call("write_script", {"source": "x"})
+    assert reply["is_error"] is False
+    payload = json.loads(reply["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["inventory"]["uncatalogued_count"] == 3
+    assert "verdict" not in payload["inventory"]
+    assert "failing" not in payload["inventory"]
 
 
 # -- calls ---------------------------------------------------------------

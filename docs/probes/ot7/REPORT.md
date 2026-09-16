@@ -1020,6 +1020,20 @@ design that does not reach zero failing checks within its three continuations
 is a valid measured result and will be reported as such. This report is then
 rewritten with one row per design.
 
+**Product version.** F6 and F7 run on a product one change newer than the
+one F5 ran on. After F5's exhaustion the critic asked that the published
+inventory's catalog counts and uncatalogued sources reach the agent beside
+the design-turn fit summary, and ADR-362 landed that: every build reply now
+carries an advisory `inventory` block (component, catalogued and
+uncatalogued counts, the catalog roll-up and every uncatalogued source by
+name), the system prompt says to read it before claiming catalog hardware,
+and the `--json` envelope carries it as `inventory`. F5's four turns had no
+such block, which is why its agent could report every purchased part as
+catalog hardware while the inventory listed its servos and horns as
+uncatalogued. F5 is not re-run and no frozen prompt changed; the catalog
+count in the F6 and F7 rows is measured on the newer product, and a
+difference from F5 on that count is a difference across this one change.
+
 > *Superseded on 2026-09-15:* "All scheduled collector slots are consumed.
 > The run's successful-completion prerequisites are not established by the
 > existing evidence. ... This run returns an incomplete outcome." The

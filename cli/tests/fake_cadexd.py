@@ -124,6 +124,35 @@ def clearance_value(
     }
 
 
+def inventory_value(
+    components: list[dict[str, Any]] | None = None, *, revision: str = "rev-1",
+    assembly: str = "asm",
+) -> dict[str, Any]:
+    """An ``inspect scope=inventory`` value, rolled up the way the engine
+    does it: ``catalog_counts`` by ``family/part_number`` over components
+    with a catalog row, ``uncatalogued_sources`` the distinct source outputs
+    of the rest. Unavailable (no assembly) when no components."""
+
+    rows = list(components or [])
+    counts: dict[str, int] = {}
+    uncatalogued: set[str] = set()
+    for row in rows:
+        catalog = row.get("catalog")
+        if isinstance(catalog, dict):
+            key = f"{catalog.get('family', '')}/{catalog.get('part_number', '')}"
+            counts[key] = counts.get(key, 0) + 1
+        elif row.get("source_output"):
+            uncatalogued.add(str(row["source_output"]))
+    return {
+        "revision": revision,
+        "assembly": assembly if rows else "",
+        "component_count": len(rows),
+        "components": rows,
+        "catalog_counts": dict(sorted(counts.items())),
+        "uncatalogued_sources": sorted(uncatalogued),
+    }
+
+
 def rejected_reply(revision: str, *, error: str = "no") -> dict[str, Any]:
     """A tool-level refusal — which still moves the working revision."""
 
@@ -169,10 +198,13 @@ class FakeCadexd:
         if callable(reply):
             reply = reply(dict(args or {}))
         if reply is None and op == "inspect":
-            # The bridge reads scope=clearance after every build (ADR-346);
-            # an unconfigured fake publishes no assembly, so the fit is
-            # honestly unavailable rather than a shape-check failure.
-            reply = inspect_reply(dict(args or {}), clearance_value())
+            # The bridge reads scope=clearance (ADR-346) and scope=inventory
+            # (ADR-362) after every build; an unconfigured fake publishes no
+            # assembly, so both are honestly unavailable rather than a
+            # shape-check failure.
+            scope = str((args or {}).get("scope") or "")
+            value = inventory_value() if scope == "inventory" else clearance_value()
+            reply = inspect_reply(dict(args or {}), value)
         if reply is None:
             reply = accepted_reply(op, "rev-1")
         frame = {"id": f"fake-{len(self.calls)}", **reply}

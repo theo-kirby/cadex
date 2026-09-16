@@ -75,6 +75,11 @@ class RunReport:
     #: (ADR-346): verdict, counts and every failing pair by name. Read from
     #: the engine's published clearance measurements, never from stdout.
     fit: dict[str, Any] = field(default_factory=dict)
+    #: The catalog identity the same reply carried (ADR-362): component
+    #: and catalogued counts, the catalog roll-up and every uncatalogued
+    #: placed output by name. Read from the published inventory, never
+    #: from stdout. Advisory: it names no failure.
+    inventory: dict[str, Any] = field(default_factory=dict)
     #: ``cadex smoke`` (ADR-352): the bounded stock-MuJoCo rollout's receipt
     #: as measured — verdict, the checks and every failing
     #: line — plus ``receipt``, where it landed. Not re-derived here.
@@ -111,6 +116,8 @@ class RunReport:
             payload["walk"] = dict(self.walk)
         if self.fit:
             payload["fit"] = dict(self.fit)
+        if self.inventory:
+            payload["inventory"] = dict(self.inventory)
         if self.smoke:
             payload["smoke"] = dict(self.smoke)
         if self.notes:
@@ -236,6 +243,17 @@ def human_lines(report: RunReport) -> list[str]:
                     str(pair.get("first") or ""), str(pair.get("second") or ""),
                     str(pair.get("status") or ""), _measure(pair.get("distance_mm")),
                     _measure(pair.get("common_volume_mm3"))))
+    if report.inventory:
+        if not report.inventory.get("available"):
+            lines.append("inventory  unavailable: " + str(
+                report.inventory.get("error") or report.inventory.get("note") or ""))
+        else:
+            lines.append("inventory  {:d} component(s)  {:d} catalogued  {:d} uncatalogued".format(
+                int(report.inventory.get("component_count") or 0),
+                int(report.inventory.get("catalogued_count") or 0),
+                int(report.inventory.get("uncatalogued_count") or 0)))
+            for name in report.inventory.get("uncatalogued_sources") or []:
+                lines.append(f"  uncatalogued {name}")
     if report.smoke:
         checks = report.smoke.get("checks") or {}
         lines.append("smoke  {:s}  {:g} s {:s}  {:s}".format(

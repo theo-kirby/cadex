@@ -25138,3 +25138,60 @@ Validation: Ouroboros's full suite passes, 310 tests, including fresh account
 readings, CLI aliases, old-runner refusal and a refresh arriving during backoff.
 The runner checkout already contained automatic role-transition refresh
 changes; these were preserved. The installed tool uses that editable checkout.
+
+## ADR-362 — Every build reply carries the published catalog identity, advisory (2026-09-16)
+
+Run ot7's F5 measured the same blind spot four times (record
+`sunny-chart-5873`). Heron's create turn on `ot7-heron-c` cut a tap-drill
+bore into the two MG90S servo bodies and re-clocked the two horns on their
+splines; the engine's published inventory listed both servos and both
+horns as uncatalogued after that turn and after every one of the three
+continuations, and the agent's closing message said all twelve purchased
+parts were catalog parts after every one of them. It never read the
+inventory, and it had no reason to: nothing in a build reply carried
+catalog identity, and the fit block (ADR-346) is about geometry. F5 is
+exhausted with every count of its bar met except catalog hardware for
+every purchased part, and the critic ruled that before F6 the product
+should put that count in front of the agent.
+
+One change, on the CLI side, no protocol change and no engine change:
+
+- **The bridge attaches an `inventory` block to every successful
+  `write_script`, `edit_script`, `set_params` and `rebuild` reply**, read
+  from `inspect scope=inventory` under the same lock as the fit block, so
+  it describes the revision the reply accepted. The block is the component
+  count, the count of components placed from a catalog part, the catalog
+  roll-up by `family/part_number`, and the name of every placed output no
+  `lib.*` generator built as-is. Counts are per component and names are
+  per source output, so a drilled servo body placed twice is two
+  uncatalogued components and one name. The block's `source` says where it
+  comes from and that it is not the script's stdout.
+- **It is advisory.** It has no verdict, names no failure, and refuses
+  nothing. A printed part belongs under `uncatalogued_sources`; the block
+  says so, and says that a purchased part listed there has lost its catalog
+  identity. Whether a cut catalog body counts as catalog hardware stays the
+  owner's call on the F5 tick; the product reports the fact and takes no
+  side. An unreadable inventory is `available: false` with the error, and
+  the build is still accepted.
+- **The system prompt says catalog identity is measured too**, beside the
+  fit bullet: read the block before saying hardware comes from the catalog,
+  and if a purchased part is listed, place the untouched catalog body and
+  put the cut in the printed part that receives it.
+- **`inventory` is pinned as a served inspect scope the CLI offers**, in
+  `test_project_tool_surface.py`, the way ADR-346 pinned `clearance`. It
+  was already on the surface; what is new is that the reply summarises it.
+
+The turn's `--json` envelope carries the last accepted build's block as
+`inventory`, and the prose report prints it, one line per uncatalogued
+source. Evidence: a bridge test on a known-answer inventory in Heron's
+shape — six components, three catalogued, three uncatalogued over two
+sources — pinning every count and name on the text the model receives;
+tests for the partless, unreadable and refused-build cases; a unit test on
+the summary itself; the prompt test; the tool-surface test.
+
+**Product version for the remaining designs.** F5's four turns ran on a
+product without this block, and F5 is not re-run: its result stands as
+measured and no prompt is spent on it. F6 and F7 run on the product with
+it. Their frozen prompts are unchanged, so the comparison between F5 and
+F6/F7 on the catalog count is a comparison across this one product change,
+and the closing report says so.

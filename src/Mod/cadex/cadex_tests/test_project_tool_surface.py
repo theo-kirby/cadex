@@ -255,6 +255,13 @@ def test_clearance_is_a_served_inspect_scope_the_cli_offers(tmp_path) -> None:
     spec.loader.exec_module(module)
     offered = tuple(module.INSPECT_SCOPES)
     assert "clearance" in offered
+    # ...and `inventory` (ADR-362): the `inventory` block on the same build
+    # reply is a summary of exactly this scope, the published catalog
+    # identity of every placed component, read after the build and never
+    # from stdout. Advisory on the surface: it names no failure.
+    assert "inventory" in offered
+    captured = capture_inspection(_service(tmp_path), {"scope": "inventory"})
+    assert captured["kind"] == "inventory"
     assert "image" not in offered
     for scope in offered:
         # Every scope the CLI offers is one the engine knows: an offered

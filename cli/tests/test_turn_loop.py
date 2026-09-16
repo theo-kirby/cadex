@@ -115,6 +115,23 @@ def test_the_prompt_says_fit_is_measured_and_a_printout_is_a_claim() -> None:
     assert "its stdout comes back on every result" not in CLI_OVERLAY
 
 
+def test_the_prompt_says_catalog_identity_is_measured_and_advisory() -> None:
+    """ADR-362: the agent reads catalog identity from the `inventory` block.
+
+    F5's agent said all twelve purchased parts were catalog parts in four
+    closing messages while the published inventory listed its servos and
+    horns as uncatalogued; it never read the inventory because nothing in
+    its reply carried it. The block is advisory and the prompt says so.
+    """
+
+    assert "CATALOG IDENTITY IS MEASURED TOO" in CLI_OVERLAY
+    assert "`inventory` block" in CLI_OVERLAY
+    assert "`uncatalogued_sources`" in CLI_OVERLAY
+    assert "advisory, not a fit check" in CLI_OVERLAY
+    assert "lost its catalog identity" in CLI_OVERLAY
+    assert "inspect scope=inventory" in CLI_OVERLAY
+
+
 def test_the_prompt_pushes_for_a_parametric_script() -> None:
     """The cheap sweep only exists if the expensive turn made it possible."""
 

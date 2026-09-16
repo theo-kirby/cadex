@@ -1916,7 +1916,11 @@ that produced no file carry `skipped` with the reason. A prompt run whose
 turn accepted a build adds `fit`, the measured-fit block that build's reply
 carried to the model (§4, ADR-346) — `verdict`, counts and every failing
 pair by name — and the prose report prints it as a `fit` line with one
-line per failing pair. An `asset` run adds
+line per failing pair. The same run adds `inventory`, the catalog-identity
+block that reply carried (ADR-362) — `component_count`,
+`catalogued_count`, `uncatalogued_count`, the `catalog_counts` roll-up and
+every `uncatalogued_sources` name — printed as an `inventory` line with one
+line per uncatalogued source. An `asset` run adds
 `assets`, the store's listing as `[{"name", "bytes", "sha256"}, …]`, sorted
 by name — the same rows `put_asset` and `inspect scope=assets` return. A
 `train` run adds `training`, the offboard trainer's receipt exactly as it
@@ -2101,6 +2105,42 @@ the read error, rather than a verdict on the readable prefix. The successful
 build and its accepted revision still reach the agent. The paged build-reply
 fixture in `cli/tests/test_clearance.py` pins both outcomes.
 
+### Every build reply carries the published catalog identity (ADR-362)
+
+Beside `fit`, the same four replies carry an `inventory` block, read from
+`inspect scope=inventory` under the same lock, so it describes the
+revision the reply accepted:
+
+```json
+"inventory": {
+  "available": true,
+  "source": "the published inventory of the accepted revision (inspect scope=inventory) …",
+  "revision": "…", "assembly": "asm",
+  "component_count": 6, "catalogued_count": 3, "uncatalogued_count": 3,
+  "catalog_counts": {"bearing/MR128": 2, "horn/SG-25T-1": 1},
+  "uncatalogued_sources": ["base_plate", "servo_drilled"],
+  "note": "Each name under uncatalogued_sources is a placed output no lib.* generator built as-is. …"
+}
+```
+
+`catalogued_count` counts placed components whose output is what a `lib.*`
+generator built; `uncatalogued_count` is the rest, per component;
+`uncatalogued_sources` names the distinct outputs behind them, so one
+drilled servo body placed twice is two uncatalogued components and one
+name. **The block is advisory.** It has no verdict and names no failure: a
+printed bracket is expected there, and the build is accepted whatever it
+lists. What it carries is the one fact ot7's F5 showed the agent cannot
+otherwise see — over four turns the agent's closing message said every
+purchased part was a catalog part while the published inventory listed
+both servos and both horns as uncatalogued, because the script had cut a
+bore into the servo bodies and re-clocked the horns, and a cut catalog body
+is no longer the catalog part. The block is computed from the published
+inventory and never from `stdout`. `available` is false, with the reason,
+when the revision places no assembly components or the inventory could
+not be read; neither refuses the build. `inventory` is an `inspect` scope
+on the model's surface for the same reason, and the last accepted build's
+block is the envelope's `inventory`.
+
 ### What the agent is told
 
 The system prompt is the CLI's own overlay plus `describe_api`'s live
@@ -2121,6 +2161,12 @@ The overlay says three things the engine does not:
   claim the script makes about itself, and a `fit` naming a failing pair
   overrules any printout that says otherwise. The prompt no longer tells
   the agent to verify by printing.
+- **Catalog identity is measured too** (ADR-362). The `inventory` block on
+  every build reply says which placed components are catalog parts and
+  names every output no `lib.*` generator built as-is; it is advisory,
+  printed parts belong there, but a purchased part listed there has lost
+  its catalog identity whatever the script prints, and the agent is told
+  to read it before it says hardware comes from the catalog.
 - **You cannot train, and a file comes in by path.** `put_asset` is how a
   trained policy, its provenance or a mesh enters the project, and its
   reply's `sha256` is the digest the script names; asked to train, the

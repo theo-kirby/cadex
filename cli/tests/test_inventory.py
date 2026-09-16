@@ -21,7 +21,9 @@ from pathlib import Path
 import pytest
 
 from cadex_cli.__main__ import main
-from cadex_cli.inventory import INVENTORY_DOC_NAME, render_inventory
+from cadex_cli.inventory import (
+    INVENTORY_DOC_NAME, inventory_summary, render_inventory,
+)
 from cadex_cli.report import EXIT_OK
 
 #: A plate with two catalogued M3 bolts standing on it. `plate` is modelled
@@ -214,3 +216,52 @@ def test_part_only_inventory_is_explicitly_unavailable(engine, tmp_path, capsys)
     text = (root / "docs/inventory.md").read_text()
     assert "0 component(s)" in text
     assert "Inventory unavailable: no published assembly." in text
+
+
+def test_inventory_summary_counts_components_and_names_sources() -> None:
+    """The build-reply block (ADR-362), from a published inventory value.
+
+    Known answer: five components; two catalogued MG90S servos; a hand
+    bracket and one drilled servo body placed twice, so three uncatalogued
+    components over two uncatalogued sources. Counts are per component,
+    names per source, and the order of the names is sorted, not placed.
+    """
+
+    value = {
+        "revision": "r" * 64, "assembly": "asm",
+        "components": [
+            {"component": "c1", "source_output": "servo",
+             "catalog": {"family": "servo", "part_number": "MG90S"}},
+            {"component": "c2", "source_output": "servo",
+             "catalog": {"family": "servo", "part_number": "MG90S"}},
+            {"component": "c3", "source_output": "servo_cut"},
+            {"component": "c4", "source_output": "servo_cut"},
+            {"component": "c5", "source_output": "bracket"},
+        ],
+        "catalog_counts": {"servo/MG90S": 2},
+        "uncatalogued_sources": ["servo_cut", "bracket"],
+    }
+    summary = inventory_summary(value)
+    assert summary["available"] is True
+    assert summary["revision"] == "r" * 64 and summary["assembly"] == "asm"
+    assert summary["component_count"] == 5
+    assert summary["catalogued_count"] == 2
+    assert summary["uncatalogued_count"] == 3
+    assert summary["catalog_counts"] == {"servo/MG90S": 2}
+    assert summary["uncatalogued_sources"] == ["bracket", "servo_cut"]
+    assert "Advisory" in summary["source"]
+    assert "lost its catalog identity" in summary["note"]
+
+    empty = inventory_summary({"revision": "r" * 64, "assembly": ""})
+    assert empty["available"] is False
+    assert empty["component_count"] == 0 and empty["uncatalogued_sources"] == []
+    assert "places none" in empty["note"]
+
+    clean = inventory_summary({
+        "revision": "r", "assembly": "asm",
+        "components": [{"component": "c1", "source_output": "servo",
+                        "catalog": {"family": "servo", "part_number": "MG90S"}}],
+        "catalog_counts": {"servo/MG90S": 1}, "uncatalogued_sources": [],
+    })
+    assert clean["uncatalogued_count"] == 0 and "note" not in clean
+    assert inventory_summary(None)["available"] is False

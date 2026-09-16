@@ -983,6 +983,8 @@ def command_prompt(
             apply_modeling_reply(report, accepted)
         if bridge.state.last_fit is not None:
             report.fit = dict(bridge.state.last_fit)
+        if bridge.state.last_inventory is not None:
+            report.inventory = dict(bridge.state.last_inventory)
         _refresh_script_state(client, report)
 
         if not result.ok:
