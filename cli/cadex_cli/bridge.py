@@ -583,6 +583,10 @@ def _sweep_line(sweep: dict[str, Any]) -> str:
     verdict = str(sweep.get("verdict") or "")
     checked = int(sweep.get("joints_checked") or 0)
     complete = int(sweep.get("joints_complete") or 0)
+    # Suppressed joints are rows this block does not judge (ADR-371), so they
+    # are never counted as unswept coverage and never inflate a pass.
+    skipped = int(sweep.get("joints_skipped") or 0)
+    suppressed = "; {:d} suppressed".format(skipped) if skipped else ""
     if verdict == "unavailable":
         # Two different facts wear this verdict (ADR-368), and a bare
         # "unavailable" hides which: a revision accepted before ADR-367
@@ -591,16 +595,21 @@ def _sweep_line(sweep: dict[str, Any]) -> str:
         # what tells them apart in the block, so say it here too.
         if str(sweep.get("coverage") or "") == "unavailable":
             return "sweep unavailable: no published sweep"
+        # A third fact wears this verdict since ADR-371: the assembly declares
+        # limited joints and suppresses every one of them, which is not the
+        # same statement as declaring none.
+        if skipped and skipped == checked:
+            return "sweep unavailable: every limited joint suppressed ({:d})".format(skipped)
         return "sweep unavailable: no limited joint"
     if verdict == "fail":
-        return "sweep fail: {:d} overlapping pair(s) over {:d} of {:d} joint(s) swept".format(
-            int(sweep.get("failing_count") or 0), complete, checked
+        return "sweep fail: {:d} overlapping pair(s) over {:d} of {:d} joint(s) swept{:s}".format(
+            int(sweep.get("failing_count") or 0), complete, checked - skipped, suppressed
         )
     if verdict == "incomplete":
-        return "sweep incomplete: {:d} of {:d} joint(s) unswept".format(
-            checked - complete, checked
+        return "sweep incomplete: {:d} of {:d} joint(s) unswept{:s}".format(
+            checked - complete - skipped, checked - skipped, suppressed
         )
-    return "sweep pass: {:d} joint(s) swept".format(complete)
+    return "sweep pass: {:d} joint(s) swept{:s}".format(complete, suppressed)
 
 
 def _inventory_line(inventory: dict[str, Any]) -> str:

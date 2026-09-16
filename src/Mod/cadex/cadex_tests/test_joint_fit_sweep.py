@@ -64,11 +64,16 @@ worker._SWEEP_TOTAL_SECONDS = 180
 open_ended = {'hinge': dict(joints['hinge'], angle_limits_degrees=[20, None])}
 open_report = _measure_joint_sweeps(components,data,open_ended,baseline,DEG,True)
 undeclared = _measure_joint_sweeps(components,data,joints,baseline,{'sweep_step_mm': 1},True)
+frozen = {'hinge': dict(joints['hinge'], suppressed=True)}
+suppressed = _measure_joint_sweeps(components,data,frozen,baseline,DEG,True)
+mixed = _measure_joint_sweeps(components,data,
+    dict(joints, frozen=dict(joints['hinge'], suppressed=True)),baseline,DEG,True)
 joints['hinge']['kind'] = 'cylindrical'
 unsupported = _measure_joint_sweeps(components,data,joints,baseline,{'sweep_step_degrees': 1, 'sweep_step_mm': 1},True)
 print('CLEARANCE-FRAME ' + json.dumps(dict(report=report, disagreement=disagreement,
     capped=capped, unsupported=unsupported, timeout=timeout, exhausted=exhausted, pair_cap=pair_cap,
-    closed=closed_report, open_ended=open_report, undeclared=undeclared)))
+    closed=closed_report, open_ended=open_report, undeclared=undeclared,
+    suppressed=suppressed, mixed=mixed)))
 '''
 
 
@@ -97,6 +102,24 @@ def test_known_angle_solved_agreement_and_incomplete_coverage(tmp_path, monkeypa
         assert reason in result[name]['joints'][0]['reason']
     assert result['undeclared']['step_mm'] == 1 and result['undeclared']['step_degrees'] is None
     assert result['unsupported']['joints'][0]['unit'] is None
+    # A suppressed joint is not a coverage hole (ADR-371): the solver ignores
+    # it, so it has no range to sweep, its row is `skipped` rather than
+    # `incomplete`, and the assembly's coverage stays complete. Before this it
+    # was handed to the child, which refused it as an unsupported *kind*, and
+    # coverage could never be complete again.
+    suppressed = result['suppressed']
+    assert suppressed['status'] == 'complete', suppressed
+    frozen = suppressed['joints'][0]
+    assert frozen['status'] == 'skipped' and 'suppresses this revolute joint' in frozen['reason']
+    # No child process ran for it: the bounded call is what stamps elapsed
+    # seconds, and there are no pairs because nothing was measured.
+    assert 'elapsed_seconds' not in frozen and 'pairs' not in frozen
+    # ...and one suppressed joint beside a swept one costs the swept one
+    # nothing.
+    mixed = result['mixed']
+    assert mixed['status'] == 'complete', mixed
+    assert [(j['joint'], j['status']) for j in mixed['joints']] == [
+        ('hinge', 'complete'), ('frozen', 'skipped')]
 
 
 _SLIDER_DRIVER = r'''

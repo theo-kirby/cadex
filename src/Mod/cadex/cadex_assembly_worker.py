@@ -5768,6 +5768,17 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
     ``steps`` may be empty, which is the assembly that declared no step at
     all: every limited joint is then named unswept and no geometry is
     touched (ADR-367).
+
+    A **suppressed** joint is a different statement and gets a different
+    status (ADR-371). The solver ignores it, so it is not an edge of the
+    mechanism and holds no range to move through: there is nothing to sweep
+    and nothing missing. Its row is ``skipped`` with that reason, it costs no
+    child process, and it leaves coverage ``complete`` -- the same rule the
+    fixed-joint attachment report already applies, and the one both
+    ``docs/XSCRIPT.md`` and the CLI's own no-joints wording already stated.
+    Before this it was swept like any other joint, the child refused it, and
+    the assembly's coverage was ``incomplete`` forever with a reason that
+    read as an unsupported *kind*.
     """
     import time
     report = {"status": "complete",
@@ -5782,7 +5793,11 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
         limits_key, step_key, unit = _SWEEP_KINDS.get(kind, (None, None, None))
         step = steps.get(step_key) if step_key else None
         remaining = _SWEEP_TOTAL_SECONDS - (time.monotonic() - start)
-        if kind not in _SWEEP_KINDS:
+        if joint.get("suppressed"):
+            result = {"status": "skipped",
+                      "reason": f"the assembly suppresses this {kind} joint, so the solver ignores it "
+                                "and it holds no range to sweep"}
+        elif kind not in _SWEEP_KINDS:
             result = {"status": "incomplete",
                       "reason": f"only unsuppressed limited tree hinges and sliders are supported, not {kind}"}
         elif step is None:
@@ -5794,7 +5809,7 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
             result = _bounded_sweep_call(components, component_data, joint_data, baseline, name, step,
                 min(remaining, _SWEEP_JOINT_SECONDS))
         report["joints"].append({"joint": name, "kind": kind, "unit": unit, **result})
-        if result["status"] != "complete":
+        if result["status"] not in ("complete", "skipped"):
             report["status"] = "incomplete"
     report["elapsed_seconds"] = time.monotonic() - start
     return report

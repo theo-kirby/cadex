@@ -2156,6 +2156,19 @@ only. The block is advisory like the static one — a failing swept fit is
 reported, never refused — and the prose report prints it as a `sweep` line
 under the `fit` line.
 
+A joint row whose `status` is `skipped` is a **suppressed** joint (ADR-371):
+the solver ignores it, so it holds no range to sweep and its absence is not
+missing coverage. It is counted in `joints_skipped`, apart from
+`joints_complete`, the verdict is judged over the joints that are left, and
+the progress phrase says both without saying either in the other's words
+(`sweep pass: 1 joint(s) swept; 1 suppressed`). An assembly whose limited
+joints are *all* suppressed has rows and judges none: that is the third fact
+wearing `unavailable`, reading `sweep unavailable: every limited joint
+suppressed (N)` with its own reason. Before this the engine handed a
+suppressed joint to the sweep child anyway, the child refused it, and one
+suppressed joint held the whole block at `incomplete` — telling the agent to
+declare a step it had already declared.
+
 An assembly that declares **neither** step is the case ot7's F5 create turn
 measured, and since ADR-367 it is `incomplete` rather than `unavailable`:
 the engine publishes coverage either way, so every limited joint is named

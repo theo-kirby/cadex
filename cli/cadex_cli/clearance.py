@@ -69,6 +69,15 @@ SWEEP_COVERAGE_NOTE = (
 #: :data:`SWEEP_NO_JOINTS` instead.
 SWEEP_NO_PUBLISHED = "No published sweep for this accepted revision."
 
+#: What a sweep block says when every limited joint the assembly declares is
+#: suppressed (ADR-371). Complete coverage of nothing swept is not a pass:
+#: the mechanism declares motion and then holds it still.
+SWEEP_ALL_SUPPRESSED = (
+    "Every limited joint the accepted assembly declares is suppressed, so "
+    "the solver ignores it and there is no motion to check. Unsuppress the "
+    "joint that is meant to move for a swept check to exist."
+)
+
 #: What a sweep block says when the accepted assembly has no limited joint.
 SWEEP_NO_JOINTS = (
     "The accepted assembly declares no limited joint, so there is no motion "
@@ -96,14 +105,23 @@ def sweep_summary(
     could not sweep -- most often because the assembly declares no step for
     its kind -- is ``incomplete`` and carries the engine's own reason.
 
+    A ``skipped`` joint row is a **suppressed** joint (ADR-371), which is not
+    a coverage hole: the solver ignores it, so it has no range to be swept
+    through and nothing about it is missing. It is counted in
+    ``joints_skipped``, apart from ``joints_complete``, and the verdict is
+    judged over the joints that are left -- so one suppressed joint beside a
+    swept one no longer holds the whole block at ``incomplete``.
+
     ``unavailable`` is the verdict when there is no joint row to judge, and
     since ADR-367 that happens for **two** different reasons, which
     ``coverage`` beside it tells apart: ``coverage`` ``unavailable`` is a
     revision accepted by an older engine, which published no sweep at all,
     and ``coverage`` ``complete`` with no joint row is a current revision
     whose assembly declares no limited joint to sweep. The raw published
-    ``clearance_sweep.status`` only ever means the first. ``reason`` says
-    which one in words. Neither is a pass, and neither refuses anything:
+    ``clearance_sweep.status`` only ever means the first. A third case joins
+    them since ADR-371: every limited joint the assembly declares is
+    suppressed, so the block has rows and still judges none. ``reason`` says
+    which one in words. None is a pass, and none refuses anything:
     this is advisory, like the static block beside it.
     """
 
@@ -118,7 +136,7 @@ def sweep_summary(
     coverage = str(published.get("status") or "unavailable")
     joints: list[dict[str, Any]] = []
     failing: list[dict[str, Any]] = []
-    complete = 0
+    complete = skipped = 0
     for joint in published.get("joints") or []:
         if not isinstance(joint, dict):
             continue
@@ -140,6 +158,11 @@ def sweep_summary(
             item["reason"] = str(joint["reason"])
         if item["status"] == "complete":
             complete += 1
+        elif item["status"] == "skipped":
+            # A suppressed joint is not a coverage hole (ADR-371): the solver
+            # ignores it, so there is no range it could have been swept
+            # through. It is counted apart from the joints this block judges.
+            skipped += 1
         minimum_distance = maximum_common = first_contact = None
         contact_pair: list[str] = []
         for row in rows:
@@ -182,11 +205,14 @@ def sweep_summary(
                 "value": first_contact, "unit": unit, "pair": contact_pair,
             }
         joints.append(item)
+    judged = len(joints) - skipped
     if failing:
         verdict = "fail"
-    elif not joints:
+    elif not judged:
+        # No joint this block can judge: no limited joint at all, every one of
+        # them suppressed (ADR-371), or no published sweep. None is a pass.
         verdict = "unavailable"
-    elif coverage == "complete" and complete == len(joints):
+    elif coverage == "complete" and complete == judged:
         verdict = "pass"
     else:
         verdict = "incomplete"
@@ -198,6 +224,10 @@ def sweep_summary(
         "step_mm": published.get("step_mm"),
         "joints_checked": len(joints),
         "joints_complete": complete,
+        # Suppressed joints, counted apart so the other two counts stay
+        # answerable: joints_checked - joints_complete - joints_skipped is
+        # the coverage that is actually missing (ADR-371).
+        "joints_skipped": skipped,
         "joints": joints,
         "thresholds": {"maximum_common_volume_mm3": float(maximum_volume)},
         "failing_count": len(failing),
@@ -206,7 +236,7 @@ def sweep_summary(
     if published.get("reason"):
         summary["reason"] = str(published["reason"])
     elif verdict == "unavailable" and coverage == "complete":
-        summary["reason"] = SWEEP_NO_JOINTS
+        summary["reason"] = SWEEP_ALL_SUPPRESSED if skipped else SWEEP_NO_JOINTS
     if verdict != "pass":
         summary["note"] = SWEEP_COVERAGE_NOTE
     return summary
@@ -442,12 +472,19 @@ def write_clearance(
         # mechanism, and since ADR-367 it is what an assembly with no limited
         # joint publishes. Say which one this is, the way the reply's block
         # already does, so the two surfaces cannot disagree.
-        if coverage == "complete" and not published.get("joints"):
+        rows = [row for row in (published.get("joints") or []) if isinstance(row, dict)]
+        if coverage == "complete" and not rows:
             coverage += ". " + SWEEP_NO_JOINTS.rstrip(".")
+        elif coverage == "complete" and all(row.get("status") == "skipped" for row in rows):
+            # Complete coverage of joints that were all suppressed (ADR-371)
+            # is not a swept mechanism either, and the reply's block says so.
+            coverage += ". " + SWEEP_ALL_SUPPRESSED.rstrip(".")
         text = ("# Swept clearance measurements\n\n"
                 f"Accepted revision `{value['revision']}`, assembly `{value['assembly']}`.\n\n"
                 f"Coverage: {coverage}.\n\n"
                 "Complete coverage means measurements exist, not that fit passes. "
+                "A joint reported `skipped` is suppressed: the solver ignores it, so it "
+                "holds no range to sweep and its absence is not missing coverage. "
                 "Missing or incomplete coverage is not a passing check. "
                 "Other joints stay at the solved pose; first contact is the first "
                 "sample from the lower limit within 0.001 mm, not an interpolated event.\n\n"

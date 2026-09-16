@@ -1623,6 +1623,19 @@ joints went unswept. An
 open-ended limit (one endpoint `None`) has no bound to sweep and is reported
 the same way.
 
+A **suppressed** limited joint is a different statement and carries a
+different status (ADR-371). The solver ignores it, so it is not an edge of the
+mechanism and holds no range to move through: its row is `skipped` with that
+reason, no subprocess runs for it, and the assembly's coverage stays
+`complete`. It is not missing coverage and nothing declares it back. The
+CLI's `fit.sweep` block counts it as `joints_skipped`, apart from
+`joints_complete`, and judges its verdict over the joints that are left — so
+one suppressed joint beside a swept one no longer holds the block at
+`incomplete`. An assembly whose limited joints are *all* suppressed has rows
+and still judges none: that reads `unavailable` with its own reason, never a
+pass, because a mechanism that declares motion and then holds it still has
+not been swept.
+
 Each joint's native queries run in a fresh FreeCAD subprocess with a 90-second
 timeout; the assembly shares 180 seconds of sweep budget. Preparation and
 process cleanup add overhead. At most 73 poses and 2,000 pairs are allowed per

@@ -25570,3 +25570,67 @@ the contract. The collector's `REPAIR_ATTACHMENTS` is left alone on purpose:
 its seed's accepted revision predates this engine and publishes no report, and
 rewriting a receipt's own checker mid-run would make F4's evidence
 unreproducible.
+
+## ADR-371 — A suppressed joint is not missing coverage (2026-09-16)
+
+**Context.** The swept fit check (ADR-349, ADR-351, ADR-366, ADR-367) is the
+half of the measured fit that answers "does this still fit while it moves".
+Its coverage is the evidence, and the block says so in its own words: a joint
+that was not swept has been checked at one pose only, and missing coverage is
+never a pass. That rule only works if everything it counts as missing is
+actually missing.
+
+`_measure_joint_sweeps` counted a **suppressed** joint as missing. Any joint
+carrying limits was handed to the sweep child, which prepared every
+component's BREP, launched a `FreeCADCmd` subprocess, and refused the joint
+from inside it with `only unsuppressed limited tree hinges and sliders are
+supported`. The row came back `incomplete`, and one such row makes the whole
+assembly's coverage `incomplete` — permanently, since nothing the author can
+declare will change it. The CLI then told the agent to declare the
+`sweep_step_degrees` it had already declared, and `fit.sweep` could never read
+`pass` again.
+
+That is wrong on its own terms and contradicted two contracts already written
+down. A suppressed joint is not an edge of the mechanism: the solver ignores
+it (`CadexDynamics` treats it as no edge at all), so it holds no range to move
+through and there is nothing about it to sweep. `docs/XSCRIPT.md` already said
+the producer sweeps "each limited, **unsuppressed** revolute or slider joint",
+and the CLI's own no-joints wording already listed "suppressed" among the
+joints a sweep does not cover. ADR-370's attachment report had made the same
+call one iteration earlier, filtering to unsuppressed fixed joints.
+
+**Decision.** A suppressed limited joint is `skipped`, not `incomplete`.
+
+- `_measure_joint_sweeps` checks `suppressed` first and returns
+  `{"status": "skipped", "reason": "the assembly suppresses this <kind> joint,
+  so the solver ignores it and it holds no range to sweep"}`. No child process
+  runs for it and no geometry is touched, so the row carries no
+  `elapsed_seconds` and no pairs. Only a status that is neither `complete` nor
+  `skipped` degrades the report's coverage.
+- `sweep_summary` counts those rows as `joints_skipped`, apart from
+  `joints_complete`, and judges its verdict over the joints that are left:
+  `joints_checked - joints_complete - joints_skipped` is the coverage that is
+  actually missing. One suppressed joint beside a swept one is now a `pass`,
+  which it always should have been.
+- **Complete coverage of nothing swept is still not a pass.** An assembly
+  whose limited joints are *all* suppressed has rows and judges none: that is
+  a third fact wearing `unavailable` (after ADR-368's two), with its own
+  reason — a mechanism that declares motion and then holds it still has not
+  been swept. The progress phrase reads `sweep unavailable: every limited
+  joint suppressed (N)`, and `sweep pass: 1 joint(s) swept; 1 suppressed`
+  never says one count in the other's words.
+
+**Consequences.** No verdict, failing set or acceptance behaviour changes for
+any design without a suppressed limited joint, so every ot6 and ot7 receipt
+keeps the failing set it was measured with and F4's and F5's exhausted results
+stay comparable with F6's and F7's. A revision accepted before this ADR keeps
+its `incomplete` row and its unsupported-kind reason until it is rebuilt; no
+protocol op, argument or response shape changed. Tests that fail on the old
+code: the real-kernel driver in `cadex_tests/test_joint_fit_sweep.py` sweeps a
+suppressed hinge (coverage `complete`, row `skipped`, no `elapsed_seconds`,
+no pairs) and a suppressed joint beside a swept one; and in
+`cli/tests/test_clearance.py` the mixed case reads `pass` with its counts and
+its phrase, the all-suppressed case reads `unavailable` with its own reason,
+and `cadex clearance --sweep` writes that sentence beside its coverage line.
+`pixi run test-engine` and `pixi run python -m pytest cli/tests` are green.
+`docs/XSCRIPT.md`, `docs/CLI.md` and `docs/INTEGRATION.md` carry the contract.

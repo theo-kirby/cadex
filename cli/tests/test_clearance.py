@@ -419,6 +419,34 @@ def test_sweep_report_reads_every_paged_fact_without_rebuilding(tmp_path, monkey
         assert rendered['status'] == 'unavailable'
     assert 'not that fit passes' in path.read_text()
     assert '`first_contact_mm` are in mm' in path.read_text()
+    assert 'A joint reported `skipped` is suppressed' in path.read_text()
+
+
+def test_sweep_report_says_complete_coverage_of_suppressed_joints_is_not_a_sweep(
+        tmp_path, monkeypatch):
+    """Complete coverage of joints that were all suppressed is not a mechanism
+    that was swept, and the written report has to say so in the same words the
+    build reply's block does (ADR-371)."""
+
+    from conftest import SOURCE_MODULE_DIR
+    monkeypatch.syspath_prepend(str(SOURCE_MODULE_DIR))
+    from CadexInspection import _bounded_page
+    published = {'revision': 'accepted', 'assembly': 'asm', 'pairs': [],
+                 'clearance_sweep': {'status': 'complete', 'joints': [
+                     {'joint': 'knee', 'kind': 'revolute', 'unit': 'degrees',
+                      'status': 'skipped', 'reason': 'the assembly suppresses this '
+                      'revolute joint, so the solver ignores it and it holds no '
+                      'range to sweep'}]}}
+
+    class Client:
+        def request(self, op, arguments):
+            return _bounded_page(published, arguments)
+
+    path, _ = write_clearance(Client(), tmp_path, sweep=True)
+    text = path.read_text()
+    assert 'Coverage: complete. Every limited joint the accepted assembly '\
+           'declares is suppressed' in text
+    assert 'holds no range to sweep' in text
 
 
 def test_sweep_command_on_legacy_project_keeps_accepted_identity(engine, tmp_path, capsys):
@@ -630,6 +658,51 @@ def test_sweep_summary_names_every_pair_that_overlaps_through_the_motion():
         assert only['joints'][0]['first_contact']['value'] == -30.0
 
 
+def test_a_suppressed_joint_is_not_missing_coverage(tmp_path, monkeypatch):
+    """Known answer: one swept hinge, one suppressed one (ADR-371).
+
+    A suppressed joint is not an edge of the mechanism -- the solver ignores
+    it -- so it has no range to sweep and nothing about it is missing. Before
+    this, the engine handed it to the child anyway, the child refused it, and
+    one suppressed joint held the whole block at `incomplete` with a reason
+    that read as an unsupported *kind*: the agent was told to fix coverage it
+    could not fix.
+    """
+
+    sweep = {'status': 'complete', 'step_degrees': 5, 'step_mm': None, 'joints': [
+        {'joint': 'knee', 'kind': 'revolute', 'unit': 'degrees', 'status': 'complete',
+         'step': 5, 'sample_count': 23, 'range_degrees': [-90, 20], 'initial_degrees': 0,
+         'elapsed_seconds': 2.5, 'pairs': [
+             {'first': 'thigh', 'second': 'shin', 'minimum_distance_mm': 3.5,
+              'maximum_common_volume_mm3': 0.0, 'first_contact_degrees': None}]},
+        {'joint': 'spare', 'kind': 'revolute', 'unit': 'degrees', 'status': 'skipped',
+         'reason': 'the assembly suppresses this revolute joint, so the solver '
+                   'ignores it and it holds no range to sweep'},
+    ]}
+    block = fit_summary({'available': True, 'revision': 'r', 'assembly': 'asm',
+                         'pairs': [], 'clearance_sweep': sweep})['sweep']
+    assert block['verdict'] == 'pass'
+    assert (block['joints_checked'], block['joints_complete'],
+            block['joints_skipped']) == (2, 1, 1)
+    # A pass says what it swept and what it did not judge, and says neither in
+    # the other's words.
+    assert _sweep_line(block) == 'sweep pass: 1 joint(s) swept; 1 suppressed'
+    assert 'note' not in block and 'reason' not in block
+    assert block['joints'][1]['status'] == 'skipped'
+    assert 'suppresses this revolute joint' in block['joints'][1]['reason']
+    # An unswept joint beside them is still missing coverage, and the counts
+    # keep the two apart.
+    holed = {'status': 'incomplete', 'joints': sweep['joints'] + [
+        {'joint': 'rail', 'kind': 'slider', 'unit': 'mm', 'status': 'incomplete',
+         'reason': 'sweep_step_mm is not declared on the assembly, so this '
+                   'limited slider joint was not swept'}]}
+    mixed = fit_summary({'available': True, 'pairs': [], 'clearance_sweep': holed})['sweep']
+    assert mixed['verdict'] == 'incomplete'
+    assert (mixed['joints_checked'], mixed['joints_complete'],
+            mixed['joints_skipped']) == (3, 1, 1)
+    assert _sweep_line(mixed) == 'sweep incomplete: 1 of 2 joint(s) unswept; 1 suppressed'
+
+
 @pytest.mark.parametrize('published,verdict,reason,coverage,line', [
     (None, 'unavailable', 'No published sweep for this accepted revision.',
      'unavailable', 'sweep unavailable: no published sweep'),
@@ -639,6 +712,15 @@ def test_sweep_summary_names_every_pair_that_overlaps_through_the_motion():
     ({'status': 'complete', 'joints': []}, 'unavailable',
      'The accepted assembly declares no limited joint',
      'complete', 'sweep unavailable: no limited joint'),
+    # Rows, and still nothing judged: every limited joint is suppressed
+    # (ADR-371). That is not the same statement as declaring none, so it does
+    # not borrow that one's words, and it is not a pass either.
+    ({'status': 'complete', 'joints': [
+        {'joint': 'knee', 'kind': 'revolute', 'unit': 'degrees', 'status': 'skipped',
+         'reason': 'the assembly suppresses this revolute joint, so the solver '
+                   'ignores it and it holds no range to sweep'}]},
+     'unavailable', 'Every limited joint the accepted assembly declares is suppressed',
+     'complete', 'sweep unavailable: every limited joint suppressed (1)'),
 ])
 def test_a_sweep_with_nothing_measured_is_never_a_pass(
         published, verdict, reason, coverage, line):
@@ -650,7 +732,13 @@ def test_a_sweep_with_nothing_measured_is_never_a_pass(
     assert fit['verdict'] == 'pass'  # the solved pose is clear and stays so
     assert fit['sweep']['verdict'] == verdict
     assert reason in fit['sweep']['reason']
-    assert fit['sweep']['joints'] == [] and fit['sweep']['failing'] == []
+    # Nothing measured either way: the suppressed case has a row and still
+    # judges no joint, so `joints_skipped` is what accounts for it.
+    assert fit['sweep']['failing'] == []
+    rows = (published or {}).get('joints') or []
+    assert len(fit['sweep']['joints']) == len(rows)
+    assert fit['sweep']['joints_skipped'] == len(rows)
+    assert all(row['pairs_measured'] == 0 for row in fit['sweep']['joints'])
     assert fit['sweep']['note'].startswith('Coverage means measurements exist')
     # The two facts that share this verdict do not share a phrase (ADR-368):
     # `coverage` is what tells a revision an older engine accepted apart from

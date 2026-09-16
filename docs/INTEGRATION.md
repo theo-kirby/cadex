@@ -585,7 +585,13 @@ assembly with no limited joint publishes complete coverage of an empty set.
 Since ADR-367 the sweep is published whether or not a step is declared, so an
 assembly declaring neither names every limited joint `incomplete` with the
 missing declaration instead of publishing nothing; a revision accepted by an
-older engine still has no sweep and reads `unavailable`.
+older engine still has no sweep and reads `unavailable`. Since ADR-371 a
+**suppressed** limited joint retains `status: skipped` with its reason and no
+measurements: the solver ignores it, so it holds no range to sweep, no
+subprocess runs for it and it does not make the assembly's coverage
+`incomplete`. A revision accepted before ADR-371 carries it as `incomplete`
+with an unsupported-kind reason instead; no response shape or op argument
+changed either way.
 
 `cadex clearance --sweep` writes these facts and the accepted revision to
 `docs/clearance-sweep.md`. Exit 0 means the report was written, including when
