@@ -60,7 +60,10 @@ call on `ot7-heron-b` was interrupted at the 30-minute bound and spent
 nothing (see [Iteration 55](#iteration-55-the-arm-create-call-interrupted-at-the-bound)).
 This report is written forward from the restart; F5's design outcome is
 the measured one above, F6 and F7 have none yet, and there is no critic
-acceptance of done.
+acceptance of done. **They will get none in this run**: the provider
+window they need opens 33 h 34 m after the run's own configured stop, so
+both end unattempted with all eight slots unspent, which is not
+exhaustion — see [The gate opens after this run's own stop](#the-gate-opens-after-this-runs-own-stop).
 
 ## Amendment: the restart (ADR-355)
 
@@ -1028,6 +1031,53 @@ Fable limit", with the reset at 2026-09-18 14:00 UTC. By ADR-364 that is no
 room whatever the window percentages say, so `room` is `false`, no prompt was
 spent, and F6 and F7 keep every slot. This report is then
 rewritten with one row per design.
+
+### The gate opens after this run's own stop
+
+Measured on 2026-09-16 at 16:46 UTC, the two clocks do not overlap.
+
+- **The gate.** `seven_day_overage_included` resets at epoch `1789740000`,
+  which is **2026-09-18T14:00:00Z**. That is the rejected window's own
+  `resets_at`, read off the refused probe and recorded in `pale-garden-4669`;
+  the receipt of that refusal is
+  [`attempts/f6-window-refusal.json`](attempts/f6-window-refusal.json), and the
+  runner reads the same epoch for the Claude seven-day window in
+  `.ouroboros/runs/ot7/status.json`. It is not an estimate.
+- **This run's stop.** `.ouroboros/runs/ot7/run.yml` sets
+  `stop.until: 2026-09-17T00:25:13`, a naive local timestamp the runner
+  compares against local time (`should_stop` in `ouroboros/budget.py`), so it
+  is **2026-09-17T04:25:13Z** at UTC−4. Record `restless-gate-7062` provenances
+  it as the original 48-hour deadline preserved across the restart.
+  `stop.after: 48h` measured from this process's `started: 2026-09-16T11:00:28`
+  would trip at 2026-09-18T15:00:28Z instead, and `should_stop` returns on
+  whichever condition trips first, so `until` is the binding one.
+- **The difference: 33 h 34 m 47 s.** The window the balancer and biped need
+  opens more than a day *after* the run is configured to end. Two exits can
+  come sooner still: `stop.max_stuck: 25` — the critic returned `looping` on
+  iteration 84 and `stuck` on iteration 85 — and any owner action.
+
+So F6 and F7 end this run **unattempted, with all eight create and
+continuation slots unspent**. That is not exhaustion. By the charter's
+exhaustion policy a design is exhausted only once its create prompt and all
+three continuations have reached the model, and neither design has spent one;
+the single pre-restart refusal against each is void (ADR-355) and consumed
+nothing. No verdict, record or report may read this ending as "no authorised
+experiment remaining".
+
+What finishing them takes is unchanged and needs no new decision: after
+2026-09-18T14:00:00Z, dispatch the frozen
+[`robin.create.prompt.txt`](prompts/robin.create.prompt.txt)
+(`e20ee7ab…`) into a fresh `ot7-robin-b` and
+[`plover.create.prompt.txt`](prompts/plover.create.prompt.txt)
+(`b95f98b7…`) into a fresh `ot7-plover-b`, on `claude-fable-5` — the model
+every completed F4 and F5 turn used — each through its continuations as its
+fit report requires and each with its smoke rollout. No prompt changes: a
+changed prompt starts a new attempt. The product-version paragraph below
+applies with more force the longer that wait is, because every product change
+landed in the meantime is one more difference separating F6 and F7 from F5.
+
+No unattended role may extend, stop or restart a run, and neither this
+subsection nor the record behind it does. This is a measurement for the owner.
 
 **Product version.** F6 and F7 run on a product three changes newer than the
 one F5 ran on: ADR-362, ADR-366 and ADR-367, each listed below. After F5's exhaustion the critic asked that the published
