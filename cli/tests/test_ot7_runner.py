@@ -1215,6 +1215,72 @@ def test_a_probe_that_answered_is_room_despite_a_stray_rejected_overage_frame(tm
     assert runner.window_has_room(reading, 45)
 
 
+def test_an_answered_probe_reads_the_frame_that_allowed_it_whatever_the_order(tmp_path, monkeypatch):
+    """The mirror of ADR-369, and the one this account was always going to hit.
+
+    ADR-369 fixed the refused direction: read the frame that rejected, not the
+    one in front of it. The answered direction kept reading `infos[0]`, so the
+    very frame the guard above calls stray decided the verdict whenever the
+    provider happened to send it first — and the provider's order varies, as
+    the same account showed at 14:29 and 17:02 UTC on 2026-09-16. This
+    organisation has overage disabled, so that rejected frame rides along on
+    every probe: with it in front, an answered probe at 8 % read `rejected`
+    and deferred a frozen prompt the account had room for, permanently
+    (ADR-376). The same two frames in both orders must read the same.
+    """
+    calls, out = [], tmp_path / 'window'
+    out.mkdir()
+    stray = {'type': 'rate_limit_event', 'rate_limit_info': {
+        'status': 'rejected', 'resetsAt': 1789740000,
+        'rateLimitType': 'seven_day_overage_included',
+        'overageStatus': 'rejected', 'overageDisabledReason': 'org_level_disabled',
+        'unifiedWindows': {'five_hour': {'utilization': 0.08, 'resetsAt': 1789586400},
+                           'seven_day': {'utilization': 0.45, 'resetsAt': 1789740000},
+                           'seven_day_overage_included': {'utilization': 1,
+                                                          'resetsAt': 1789740000}}}}
+    answer = [{'type': 'assistant', 'message': {'model': 'claude-fable-5', 'role': 'assistant',
+                                                'content': [{'type': 'text', 'text': 'ok'}]}},
+              {'type': 'result', 'is_error': False, 'subtype': 'success', 'result': 'ok'}]
+    readings = []
+    for order in ([limit_frame(0.08), stray], [stray, limit_frame(0.08)]):
+        execute = windowed_executor(calls, [order + answer], monkeypatch)
+        readings.append(runner.window_reading(execute, out, f'probe-{len(readings)}',
+                                              'claude-fable-5'))
+    for reading in readings:
+        assert reading['refused'] is None
+        assert reading['status'] == 'allowed' and reading['rate_limit_type'] == 'five_hour'
+        assert reading['five_hour_percent'] == 8
+        # The window that is full is still named, from the frame that named it.
+        assert reading['windows']['seven_day_overage_included'] == 100
+        assert reading['resets_at_is'] is None
+        assert runner.window_has_room(reading, 45)
+    assert readings[0]['resets_at'] == readings[1]['resets_at']
+
+
+def test_a_stray_rejected_frame_in_front_still_dispatches_the_frozen_prompt(tmp_path, monkeypatch):
+    """What the defect cost, at the level that matters: a slot never sent.
+
+    On the old reading this schedule pauses on its create prompt with every
+    slot unspent and a `deferred` block naming an overage window's reset —
+    a prompt withheld from a model that would have answered (ADR-376).
+    """
+    target = project(tmp_path).with_name('ot7-robin-b')
+    calls = []
+    stray = {'type': 'rate_limit_event', 'rate_limit_info': {
+        'status': 'rejected', 'rateLimitType': 'seven_day_overage_included',
+        'overageDisabledReason': 'org_level_disabled',
+        'unifiedWindows': {'seven_day_overage_included': {'utilization': 1,
+                                                          'resetsAt': 1789740000}}}}
+    answered = [stray, limit_frame(0.08),
+                {'type': 'result', 'is_error': False, 'subtype': 'success', 'result': 'ok'}]
+    report = runner.run('robin', target, 'claude-fable-5',
+                        windowed_executor(calls, [answered] * 4, monkeypatch),
+                        window_bound=45)
+    assert 'deferred' not in report and report['status'] != 'paused'
+    assert [r['dispatched'] for r in report['window_readings']] == [True] * 4
+    assert len(report['turns']) == 4 and report['slots_spent'] == 4
+
+
 def test_a_room_reading_before_a_refused_model_costs_one_void_dispatch(tmp_path, monkeypatch):
     """What the pre-ADR-364 gate actually cost, measured rather than assumed.
 

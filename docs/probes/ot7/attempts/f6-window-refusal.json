@@ -27,7 +27,7 @@
   },
   "provider_text": "You've reached your Fable limit. Switch to another model, or manage usage credits at claude.ai/settings/usage?from=cc_cli_limit_message, to continue.",
   "api_error_status": 429,
-  "consequence": "F6's create prompt and all three continuations remain unspent; no ot7-robin-b project was created. The product agent's model is unchanged at claude-fable-5: ADR-363 moved the Ouroboros roles to claude-opus-5 and deliberately left the experiment's model alone, so F6 and F7 stay comparable with F5. Re-probed at 2026-09-16T17:02 UTC and still refused: F6's four slots and F7's four remain unspent, and no ot7-robin-b exists.",
+  "consequence": "F6's create prompt and all three continuations remain unspent; no ot7-robin-b project was created. The product agent's model is unchanged at claude-fable-5: ADR-363 moved the Ouroboros roles to claude-opus-5 and deliberately left the experiment's model alone, so F6 and F7 stay comparable with F5. Re-probed at 2026-09-16T17:02 UTC and still refused: F6's four slots and F7's four remain unspent, and no ot7-robin-b exists. Re-probed at 2026-09-16T21:37 UTC and still refused; see fourth_probe, which also records the ADR-376 gate defect found while F6 waited. F6's four slots and F7's four remain unspent, and no ot7-robin-b exists.",
   "probe_stream_sha256": "68fb28f158d9cf0a9088cbc79a135ad09a58fc4595eb5d209ec8868bca4e302e",
   "probe_stream_bytes": 10260,
   "second_probe": {
@@ -81,5 +81,57 @@
     },
     "probe_stream_sha256": "fe66d832c8b9fd5593b99f9088cb73275c4b8e4419bcb33ec04b89ac48d1cd3a",
     "probe_stream_bytes": 11356
+  },
+  "fourth_probe": {
+    "read_at": "2026-09-16T21:37:00Z",
+    "why_it_matters": "Still refused, on the same org_level_disabled setting, four hours after the third probe: F6 cannot be dispatched. Reading the gate that will decide the dispatch when capacity returns found the other half of ADR-369 unfixed (ADR-376). On an *answered* probe the reading was still the first frame, so the stray rejected seven_day_overage_included frame this organisation emits on every probe decided the verdict whenever the provider sent it first: the same answered probe at five_hour 8 % reads allowed and dispatches with the allowed frame in front, and rejected and defers with the rejected frame in front. That would have withheld F6 and F7 from a model that would have answered, for as long as overage stays disabled.",
+    "status": "rejected",
+    "rate_limit_type": "seven_day_overage_included",
+    "windows_percent": {
+      "five_hour": 11,
+      "seven_day": 56,
+      "seven_day_overage_included": 100
+    },
+    "overage": {
+      "status": "rejected",
+      "disabled_reason": "org_level_disabled",
+      "in_use": false
+    },
+    "resets_at": "2026-09-18T14:00:00+00:00",
+    "exit_code": 1,
+    "elapsed_seconds": 2.369,
+    "adr_364_gate_says_room": false,
+    "adr_376_defect": {
+      "rule": "ADR-376",
+      "applies_to": "an answered probe, not this refused one",
+      "reproduced": [
+        {
+          "frame_order": [
+            "allowed five_hour 8%",
+            "rejected seven_day_overage_included 100%"
+          ],
+          "refused": null,
+          "status": "allowed",
+          "five_hour_percent": 8,
+          "gate_says_room": true
+        },
+        {
+          "frame_order": [
+            "rejected seven_day_overage_included 100%",
+            "allowed five_hour 8%"
+          ],
+          "refused": null,
+          "status": "rejected",
+          "five_hour_percent": 8,
+          "gate_says_room": false,
+          "pre_adr_376": true
+        }
+      ],
+      "fixed": "the reading is the frame that bound the call: rejected on a refused probe, allowed on an answered one",
+      "tests": [
+        "test_an_answered_probe_reads_the_frame_that_allowed_it_whatever_the_order",
+        "test_a_stray_rejected_frame_in_front_still_dispatches_the_frozen_prompt"
+      ]
+    }
   }
 }

@@ -1075,6 +1075,22 @@ direction.**
   not be: the second probe taught the same lesson in the other direction,
   reading `status: allowed` at 2 % twenty minutes later and being refused
   anyway.
+- **The refusal still held at 21:37 UTC, and the gate that will end it was
+  half broken.** A fourth probe, four hours after the third, was refused on the
+  same `org_level_disabled` setting with `seven_day_overage_included` at 100 %
+  and the five-hour window at 11 % (`attempts/f6-window-refusal.json`,
+  `fourth_probe`). It spent no slot. Reading the gate while F6 waited found the
+  mirror of ADR-369 still unfixed: on an **answered** probe the reading was
+  whichever `rate_limit_event` frame arrived first, and the stray rejected
+  overage frame this organisation emits on every probe is one of them. The
+  same answered probe at five-hour 8 % reads `allowed` and dispatches with the
+  allowed frame in front, and `rejected` and defers with the rejected frame in
+  front — reproduced both ways, and fixed by ADR-376: the reading is
+  the frame that bound the call, rejecting on a refused probe and allowing on
+  an answered one. Had the refusal lifted while this stood, F6's and F7's eight
+  prompts could have been withheld from a model that would have answered them,
+  under a `deferred` block citing an overage window's reset. It changes no
+  product behaviour, no frozen prompt and no slot accounting.
 - **This run's stop.** `.ouroboros/runs/ot7/run.yml` sets
   `stop.until: 2026-09-17T00:25:13`, a naive local timestamp the runner
   compares against local time (`should_stop` in `ouroboros/budget.py`), so it

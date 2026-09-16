@@ -25896,3 +25896,67 @@ the behaviour: its unlimited-hinge case expected `complete` and now expects
 "complete coverage of an empty set" keeps an end-to-end fixture of its own. Existing designs whose joints are all bounded are unaffected;
 a design with an unbounded movable joint moves from a swept pass to a swept
 `incomplete` naming it, which is the finding.
+
+## ADR-376 — The frame that bound the call is the reading, in both directions (2026-09-16)
+
+**Status.** Accepted. Fixes the answered half of the window gate ADR-358
+introduced, ADR-364 narrowed and ADR-369 half-corrected.
+
+**Context.** F6's create prompt is dispatched only while `window_reading`'s
+one-word probe says the product agent's account has room. A probe's stream
+carries several `rate_limit_event` frames, and **their order is the
+provider's**: ADR-369 measured both orders on this same account minutes
+apart — at 14:29 UTC the rejected frame came first, at 17:02 UTC an allowed
+five-hour frame came in front of it. ADR-369 fixed one direction: on a probe
+the provider *refused*, read the frame that did the rejecting rather than
+whichever arrived first. The other direction was left reading `infos[0]`.
+
+That matters here and not in general, because this organisation has overage
+disabled at the organisation level. A rejected `seven_day_overage_included`
+frame therefore rides along on **every** probe, answered or not — ADR-364
+already named it and called it stray, and made `refused` ignore it so it
+could not close the gate on an account that has room. But the frame it then
+read for `status` was still `infos[0]`, so the stray frame decided the
+verdict whenever the provider happened to send it first. Reproduced: one
+answered probe, five-hour at 8 %, two `rate_limit_event` frames; with the
+allowed frame in front the gate reads `allowed` and dispatches, with the
+rejected frame in front it reads `rejected` and defers. Same account, same
+answer, same numbers — only the order differs. The deferral is not a
+one-probe delay: it repeats on every probe for as long as overage stays
+disabled, so it withholds F6's and F7's eight frozen prompts from a model
+that would have answered them, and writes a `deferred` block citing an
+overage window's reset date as the reason.
+
+**Decision.** The reading's frame is the frame that **bound the call**,
+whichever way the provider ordered them. On a refused probe that is the frame
+that rejected (ADR-369, unchanged); on an answered probe it is the frame that
+allowed. Position in the stream decides nothing in either direction. A probe
+carrying no frame of the kind it needs falls back to the first frame, which is
+the previous behaviour and is conservative both ways: an answered probe with
+only rejected frames still reads `rejected` and still does not dispatch.
+
+Everything else is unchanged. Window merging is unchanged, so the 100 % window
+that is not available still reaches the receipt by name from the frame that
+named it; `refused`, `resets_at_is`, the bound, the probe text, the
+one-probe-per-prompt schedule and the pause behaviour are untouched. No engine,
+CLI, protocol, payload, acceptance or dashboard behaviour changes — the runner
+is evidence-collection machinery under `docs/probes/`. No frozen prompt, no
+slot accounting and no design result is affected.
+
+**Consequences.** Two known-answer tests in `cli/tests/test_ot7_runner.py`,
+both red on the old code. `test_an_answered_probe_reads_the_frame_that_allowed_it_whatever_the_order`
+sends the same answered probe's two frames in both orders and requires one
+reading: `allowed`, `five_hour`, 8 %, `seven_day_overage_included` still named
+at 100 %, room true.
+`test_a_stray_rejected_frame_in_front_still_dispatches_the_frozen_prompt`
+takes it to the level that matters — the old reading pauses Robin's schedule on
+its create prompt with all four slots unspent, the new one dispatches all four.
+The two existing stray-frame tests keep the allowed frame in front and are
+unchanged, which is the point: they passed throughout and never covered the
+order that fails. `docs/probes/ot7/runner/README.md` carries the rule beside
+ADR-364's. CLI suite green at 812 passed, 1 skipped.
+
+This is a gate correction, not availability: at 21:37 UTC on 2026-09-16 the
+probe was still **refused** outright (`seven_day_overage_included` 100 %,
+`org_level_disabled`, five-hour 11 %), which ADR-364's rule reads as no room
+and this change does not touch. F6's and F7's eight slots remain unspent.

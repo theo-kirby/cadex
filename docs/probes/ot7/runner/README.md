@@ -723,3 +723,51 @@ agent's model stays `claude-fable-5`: ADR-363 moved the Ouroboros roles to
 F7 remain comparable with F5, which ran on Fable. Until that account's Fable
 capacity returns, F6 cannot be dispatched by any reading of the five-hour
 window, and the charter's answer is the unblocked tooling unit — this one.
+
+## The stray frame in front (iteration 106, ADR-376)
+
+No design turn: the 21:37 UTC probe was refused outright again
+(`seven_day_overage_included` 100 %, `org_level_disabled`, five-hour 11 %),
+which the ADR-364 rule above reads as no room. The unit is the other half of
+ADR-369, found by reading the gate that will decide F6's dispatch when
+capacity returns.
+
+ADR-369 fixed the refused direction — read the frame that rejected, not
+whichever arrived first, because frame order is the provider's and this
+account produced both orders twenty minutes apart. The **answered** direction
+kept reading `infos[0]`. That is the same stray rejected
+`seven_day_overage_included` frame ADR-364 named and deliberately excluded
+from `refused`, so that an organisation with overage disabled could not have
+its gate closed for good — and it was still the frame supplying `status`
+whenever the provider sent it first.
+
+Reproduced with one answered probe, five-hour at 8 %, two `rate_limit_event`
+frames and nothing else changed:
+
+| frame order | `refused` | `status` | five-hour | gate |
+|---|---|---|---:|---|
+| allowed, rejected | none | `allowed` | 8 % | dispatch |
+| rejected, allowed | none | `rejected` | 8 % | **defer** |
+
+Same account, same answer, same numbers. The deferral is not a delay of one
+probe: it repeats for as long as overage stays disabled, so it withholds F6's
+and F7's eight frozen prompts from a model that would have answered, under a
+`deferred` block citing an overage window's reset as the reason.
+
+**The reading's frame is now the frame that bound the call, in both
+directions**: the one that rejected on a refused probe, the one that allowed
+on an answered one. A probe with no frame of the kind it needs falls back to
+the first, which is conservative both ways — an answered probe carrying only
+rejected frames still reads `rejected` and still does not dispatch. Window
+merging is unchanged, so a window at 100 % that is simply unavailable is still
+named in the receipt by the frame that named it.
+
+`test_an_answered_probe_reads_the_frame_that_allowed_it_whatever_the_order`
+sends both orders and requires one reading;
+`test_a_stray_rejected_frame_in_front_still_dispatches_the_frozen_prompt`
+pins the schedule-level cost — the old reading pauses Robin's create with four
+unspent slots, the new one dispatches all four. Both are red on the old code.
+The two existing stray-frame tests keep the allowed frame in front, passed
+throughout, and never covered the order that fails.
+
+F6's and F7's eight slots remain unspent; no `ot7-robin-b` exists.

@@ -142,8 +142,14 @@ def window_reading(execute_call, out, stem, model):
     is the provider's, not ours (ADR-369): at 14:29 UTC the rejected frame
     came first, and at 17:02 UTC the same account put an *allowed* five-hour
     frame in front of it. So the windows are merged across every frame, and
-    on a probe the provider refused the named limit, its status and its reset
-    are taken from the frame that did the rejecting. ``resets_at`` is the
+    **the reading's frame is the one that bound the call, whichever way the
+    provider ordered them** (ADR-376): on a probe the provider refused, the
+    frame that did the rejecting; on a probe that answered, the frame that
+    allowed it. Reading ``infos[0]`` on an answered probe let frame order
+    alone decide the verdict — this organisation has overage disabled, so a
+    rejected ``seven_day_overage_included`` frame rides along on every probe,
+    and with it in front the gate read ``status: rejected`` at 8 % and
+    deferred a prompt the account had room for. ``resets_at`` is the
     schedule of the window ``rate_limit_type`` names and dates nothing else —
     an account or organisation setting is not bound by it in either
     direction.
@@ -171,10 +177,18 @@ def window_reading(execute_call, out, stem, model):
              if frame.get('type') == 'rate_limit_event']
     if not infos:
         return reading
-    # On a refused probe the frame that rejected is the one that bound the
-    # call; on any other, the first frame is the reading, as before (ADR-369).
+    # The frame that bound the call is the reading, in both directions
+    # (ADR-369 for the refusal, ADR-376 for its mirror): on a refused probe
+    # the frame that rejected, on an answered one the frame that allowed.
+    # Position in the stream decides nothing, because it is the provider's
+    # and it varies between two probes of the same account minutes apart.
+    # A probe with no frame of the kind it needs falls back to the first.
     rejected = [info for info in infos if info.get('status') == 'rejected']
-    info = rejected[-1] if (reading['refused'] and rejected) else infos[0]
+    allowed = [info for info in infos if info.get('status') != 'rejected']
+    if reading['refused']:
+        info = rejected[-1] if rejected else infos[0]
+    else:
+        info = allowed[0] if allowed else infos[0]
     # The reading's own frame is authoritative for every window it names; the
     # others only contribute the names it leaves out, which is how the full
     # window that refused reaches a receipt whose frame does not list it.
