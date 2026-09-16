@@ -25418,3 +25418,39 @@ its new coverage sentence. `pixi run test-engine` 2,144 passed, 53 skipped;
 gate `CADEX_ENGINE_ROOT=<payload> pytest test_cadexd_lifecycle.py` 20 passed
 against a freshly staged payload. `docs/XSCRIPT.md`, `docs/CLI.md` and
 `docs/INTEGRATION.md` move with it.
+
+## ADR-368 — A sweep that is `unavailable` says which of its two causes (2026-09-16)
+
+ADR-367 ended with the sentence "**`unavailable` keeps exactly one
+meaning**: a revision accepted by an older engine, which published no
+sweep." That is true of the *raw* published `clearance_sweep.status`, and
+not true of the `fit.sweep.verdict` the agent actually reads: the summary
+has no joint row to judge in **two** different situations, and calls both
+`unavailable`. The second is an assembly with no limited joint at all, which
+publishes complete coverage of an empty set (ADR-367 itself added that).
+Three surfaces said only one of the two, and each said a different one:
+`sweep_summary`'s docstring named the legacy case alone, the agent's system
+prompt named the no-joints case alone, and `docs/CLI.md` asserted the legacy
+case in one paragraph and the no-joints case in the next.
+
+Nothing about the measurement changes; this is what the measurement is
+called. The block already carried the discriminator — `coverage` is
+`unavailable` for the legacy case and `complete` for the no-joints one, and
+`reason` says which in words.
+
+- **The one-line phrase names the cause.** `_sweep_line` reads
+  `sweep unavailable: no published sweep` or `sweep unavailable: no limited
+  joint` instead of a bare `sweep unavailable`, so the progress log, the
+  runner's attempt rows and the turn report cannot record the two as the
+  same fact.
+- **The prompt and the docstring name both causes**, keyed to `coverage`,
+  and `docs/CLI.md` no longer contradicts itself between paragraphs.
+- **The fallback reason is one constant.** `SWEEP_NO_PUBLISHED` replaces the
+  string that was written twice in `clearance.py`.
+
+No protocol change, no engine change, no op and no argument: this is CLI
+wording and one phrase. Acceptance is untouched and the block stays advisory
+— an unswept mechanism is reported, never refused. The parametrised
+empty-sweep test now pins the coverage and the phrase for all three cases
+and fails on the old code; `pixi run python -m pytest cli/tests` is the
+evidence.

@@ -630,14 +630,18 @@ def test_sweep_summary_names_every_pair_that_overlaps_through_the_motion():
         assert only['joints'][0]['first_contact']['value'] == -30.0
 
 
-@pytest.mark.parametrize('published,verdict,reason', [
-    (None, 'unavailable', 'No published sweep for this accepted revision.'),
+@pytest.mark.parametrize('published,verdict,reason,coverage,line', [
+    (None, 'unavailable', 'No published sweep for this accepted revision.',
+     'unavailable', 'sweep unavailable: no published sweep'),
     ({'status': 'unavailable', 'joints': [], 'reason': 'declare the steps'},
-     'unavailable', 'declare the steps'),
+     'unavailable', 'declare the steps',
+     'unavailable', 'sweep unavailable: no published sweep'),
     ({'status': 'complete', 'joints': []}, 'unavailable',
-     'The accepted assembly declares no limited joint'),
+     'The accepted assembly declares no limited joint',
+     'complete', 'sweep unavailable: no limited joint'),
 ])
-def test_a_sweep_with_nothing_measured_is_never_a_pass(published, verdict, reason):
+def test_a_sweep_with_nothing_measured_is_never_a_pass(
+        published, verdict, reason, coverage, line):
     value = {'available': True, 'revision': 'r', 'assembly': 'asm', 'pairs': [
         {'first': 'a', 'second': 'b', 'distance_mm': 5.0, 'common_volume_mm3': 0.0}]}
     if published is not None:
@@ -648,3 +652,8 @@ def test_a_sweep_with_nothing_measured_is_never_a_pass(published, verdict, reaso
     assert reason in fit['sweep']['reason']
     assert fit['sweep']['joints'] == [] and fit['sweep']['failing'] == []
     assert fit['sweep']['note'].startswith('Coverage means measurements exist')
+    # The two facts that share this verdict do not share a phrase (ADR-368):
+    # `coverage` is what tells a revision an older engine accepted apart from
+    # a current one with nothing that moves within a range.
+    assert fit['sweep']['coverage'] == coverage
+    assert _sweep_line(fit['sweep']) == line

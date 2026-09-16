@@ -203,7 +203,7 @@ def test_a_build_reply_carries_the_measured_fit_beside_the_stdout() -> None:
     assert [a["scope"] for a in client.args_for("inspect")] == ["clearance", "inventory"]
     # ...and the parent saw the same thing the model did.
     assert call.fit == fit and last_fit == fit
-    assert ("fit fail: 1 failing of 2 pair(s)  sweep unavailable  "
+    assert ("fit fail: 1 failing of 2 pair(s)  sweep unavailable: no published sweep  "
             "inventory unavailable") in call.summary
 
 
@@ -225,7 +225,8 @@ def test_a_clear_build_says_pass_and_a_partless_build_says_unavailable() -> None
     assert payload["fit"]["verdict"] == "unavailable"
     assert payload["fit"]["pairs_checked"] == 0
     assert "assembly.component" in payload["fit"]["note"]
-    assert "fit unavailable  sweep unavailable  inventory unavailable" in call.summary
+    assert ("fit unavailable  sweep unavailable: no published sweep  "
+            "inventory unavailable") in call.summary
 
 
 @pytest.mark.parametrize("sweep,phrase", [
@@ -307,7 +308,7 @@ def test_a_build_reply_names_every_failing_pair_past_forty() -> None:
     ] == expected
     assert "failing_truncated" not in fit and "note" not in fit
     assert call.fit == fit
-    assert ("fit fail: 60 failing of 63 pair(s)  sweep unavailable  "
+    assert ("fit fail: 60 failing of 63 pair(s)  sweep unavailable: no published sweep  "
             "inventory unavailable") in call.summary
 
 
@@ -419,7 +420,7 @@ def test_a_build_reply_carries_catalog_identity_beside_the_fit() -> None:
     # The parent saw what the model saw, and the progress line says it.
     assert call.inventory == inventory and last == inventory
     assert call.summary.endswith(
-        "fit pass: 0 failing of 1 pair(s)  sweep unavailable  "
+        "fit pass: 0 failing of 1 pair(s)  sweep unavailable: no published sweep  "
         "inventory: 6 component(s), 3 catalogued, 3 uncatalogued"
     )
 
@@ -436,7 +437,7 @@ def test_a_partless_build_says_inventory_unavailable_not_all_catalog() -> None:
     assert inventory["component_count"] == 0 and inventory["catalogued_count"] == 0
     assert "places none" in inventory["note"]
     assert call.summary.endswith(
-        "fit unavailable  sweep unavailable  inventory unavailable")
+        "fit unavailable  sweep unavailable: no published sweep  inventory unavailable")
 
 
 def test_the_inventory_block_is_advisory_and_refuses_nothing() -> None:

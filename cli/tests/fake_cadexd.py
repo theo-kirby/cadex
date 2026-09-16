@@ -116,8 +116,9 @@ def clearance_value(
     """An ``inspect scope=clearance`` value: unavailable when no pairs.
 
     ``sweep`` is the published ``clearance_sweep`` the accepted revision
-    carries when its assembly declared a step (ADR-366); omitted, the value
-    has none, which is what an assembly that declared none publishes.
+    carries (ADR-366); omitted, the value has none, which since ADR-367 is
+    what a revision an older engine accepted looks like -- a current engine
+    publishes coverage whether or not a step was declared.
     """
 
     value = {

@@ -574,7 +574,14 @@ def _sweep_line(sweep: dict[str, Any]) -> str:
     checked = int(sweep.get("joints_checked") or 0)
     complete = int(sweep.get("joints_complete") or 0)
     if verdict == "unavailable":
-        return "sweep unavailable"
+        # Two different facts wear this verdict (ADR-368), and a bare
+        # "unavailable" hides which: a revision accepted before ADR-367
+        # published no sweep, while a current one with complete coverage of
+        # no joints has nothing that moves within a range. `coverage` is
+        # what tells them apart in the block, so say it here too.
+        if str(sweep.get("coverage") or "") == "unavailable":
+            return "sweep unavailable: no published sweep"
+        return "sweep unavailable: no limited joint"
     if verdict == "fail":
         return "sweep fail: {:d} overlapping pair(s) over {:d} of {:d} joint(s) swept".format(
             int(sweep.get("failing_count") or 0), complete, checked

@@ -222,8 +222,12 @@ that interpenetrates anywhere in a range. Declare `sweep_step_degrees` \
 (limited hinges) and `sweep_step_mm` (limited sliders) on the assembly to \
 acquire it; a limited joint whose step is undeclared comes back \
 `incomplete` with that reason even when the assembly declares no step at \
-all, and `fit.sweep.verdict` is `unavailable` when the accepted assembly \
-declares no limited joint to sweep. Neither is a pass: a joint \
+all. `fit.sweep.verdict` is `unavailable` when there is no joint row to \
+judge, for either of two reasons `fit.sweep.coverage` and its `reason` \
+tell apart: `coverage` `complete` means the accepted assembly declares no \
+limited joint to sweep, and `coverage` `unavailable` means an older engine \
+accepted this revision and published no sweep, so rebuild to get one. \
+None of these is a pass: a joint \
 that was not swept has been checked at one pose only, and static fit does \
 not prove motion fit. The swept verdict judges overlap only -- declared \
 contacts and clearance minima are checked at the solved pose -- so read the \

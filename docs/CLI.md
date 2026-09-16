@@ -2142,9 +2142,16 @@ overlapping pair, with the joint it is through and the joint value it first
 touched at, on the same never-cut-short terms as the static list — and it
 does not hide missing coverage, which stays in the joint rows beside it.
 `incomplete` means a joint the engine could not sweep, carrying the engine's
-own reason; `unavailable` means the accepted revision published no sweep at
-all, which since ADR-367 only a revision accepted by an older engine does.
-Neither is a pass: a joint that was not swept has been checked at one pose
+own reason. `unavailable` is the verdict when there is no joint row to judge
+at all, and it covers **two** different facts that `coverage` beside it tells
+apart (ADR-368): `coverage: unavailable` is a revision accepted by an older
+engine, which published no sweep — the only thing the *raw* published
+`clearance_sweep.status` ever means since ADR-367 — while `coverage:
+complete` with no joint row is a current revision whose assembly declares no
+limited joint. `reason` says which in words, and the one-line progress phrase
+reads `sweep unavailable: no published sweep` or `sweep unavailable: no
+limited joint` rather than a bare `sweep unavailable`.
+None of these is a pass: a joint that was not swept has been checked at one pose
 only. The block is advisory like the static one — a failing swept fit is
 reported, never refused — and the prose report prints it as a `sweep` line
 under the `fit` line.

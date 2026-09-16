@@ -62,6 +62,13 @@ SWEEP_COVERAGE_NOTE = (
     "on the assembly and rebuild to acquire the missing measurements."
 )
 
+#: What a sweep block says when the accepted revision published no sweep at
+#: all. Since ADR-367 the engine publishes coverage on every assembly, so
+#: this is a revision accepted by an older engine and nothing else -- the
+#: other empty sweep, an assembly with no limited joint, says
+#: :data:`SWEEP_NO_JOINTS` instead.
+SWEEP_NO_PUBLISHED = "No published sweep for this accepted revision."
+
 #: What a sweep block says when the accepted assembly has no limited joint.
 SWEEP_NO_JOINTS = (
     "The accepted assembly declares no limited joint, so there is no motion "
@@ -87,10 +94,17 @@ def sweep_summary(
     ``verdict`` is ``pass`` only when every limited joint was swept to
     completion and no pair overlaps anywhere in its range. A joint the engine
     could not sweep -- most often because the assembly declares no step for
-    its kind -- is ``incomplete`` and carries the engine's own reason; an
-    accepted revision that published no sweep at all is ``unavailable``.
-    Neither is a pass, and neither refuses anything: this is advisory, like
-    the static block beside it.
+    its kind -- is ``incomplete`` and carries the engine's own reason.
+
+    ``unavailable`` is the verdict when there is no joint row to judge, and
+    since ADR-367 that happens for **two** different reasons, which
+    ``coverage`` beside it tells apart: ``coverage`` ``unavailable`` is a
+    revision accepted by an older engine, which published no sweep at all,
+    and ``coverage`` ``complete`` with no joint row is a current revision
+    whose assembly declares no limited joint to sweep. The raw published
+    ``clearance_sweep.status`` only ever means the first. ``reason`` says
+    which one in words. Neither is a pass, and neither refuses anything:
+    this is advisory, like the static block beside it.
     """
 
     if not isinstance(value, dict):
@@ -99,7 +113,7 @@ def sweep_summary(
     if not isinstance(published, dict):
         published = {
             "status": "unavailable", "joints": [],
-            "reason": "No published sweep for this accepted revision.",
+            "reason": SWEEP_NO_PUBLISHED,
         }
     coverage = str(published.get("status") or "unavailable")
     joints: list[dict[str, Any]] = []
@@ -317,7 +331,7 @@ def write_clearance(
     if sweep:
         published = value.get("clearance_sweep") or {
             "status": "unavailable", "joints": [],
-            "reason": "No published sweep for this accepted revision.",
+            "reason": SWEEP_NO_PUBLISHED,
         }
         value["clearance_sweep"] = published
         coverage = str(published.get("status", "unavailable"))

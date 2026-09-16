@@ -1017,11 +1017,20 @@ each dispatched only when the runner's own window reading shows room
 (ADR-358), at the effort level ADR-359 recorded and with `describe_api`
 paged by section under a measured budget (ADR-360). A
 design that does not reach zero failing checks within its three continuations
-is a valid measured result and will be reported as such. This report is then
+is a valid measured result and will be reported as such.
+
+The gate has not opened yet. `run.py window --model claude-fable-5` on
+2026-09-16 at 16:39 UTC read the five-hour window at 12 % and the seven-day
+at 52 %, and the probe itself was **refused** in 2.3 s: a rejected
+`rate_limit_event` naming `seven_day_overage_included`, a synthetic
+`rate_limit` assistant frame and an HTTP 429 reading "You've reached your
+Fable limit", with the reset at 2026-09-18 14:00 UTC. By ADR-364 that is no
+room whatever the window percentages say, so `room` is `false`, no prompt was
+spent, and F6 and F7 keep every slot. This report is then
 rewritten with one row per design.
 
-**Product version.** F6 and F7 run on a product two changes newer than the
-one F5 ran on. After F5's exhaustion the critic asked that the published
+**Product version.** F6 and F7 run on a product three changes newer than the
+one F5 ran on: ADR-362, ADR-366 and ADR-367, each listed below. After F5's exhaustion the critic asked that the published
 inventory's catalog counts and uncatalogued sources reach the agent beside
 the design-turn fit summary, and ADR-362 landed that: every build reply now
 carries an advisory `inventory` block (component, catalogued and
@@ -1047,6 +1056,24 @@ it as `swept_fit`. F5's four turns had no such block. Swept coverage in the
 F6 and F7 rows is therefore measured on the newer product, and a difference
 from F5 on when the design acquired its sweep is a difference across that
 change.
+
+The third change is ADR-367, landed for the same reason on the half ADR-366
+had left: F5's create turn accepted an arm whose two limited hinges declared
+no step, the engine published no sweep at all, and the reply could only say
+`sweep unavailable`. The engine now publishes coverage on every assembly, so
+an assembly that declares neither step reads `incomplete` with one row per
+limited joint naming the declaration it is missing — an enumeration that
+touches no geometry and measured under 1 ms on the lifecycle fixture. F5's
+create turn spent a continuation discovering that gap; on the product F6 and
+F7 run, the first build reply names it. Its wording follow-up, ADR-368, made
+the two causes of a sweep `verdict: unavailable` distinguishable in the block
+(`coverage`), in the reply's progress phrase and in the agent's instructions:
+a revision accepted by an older engine, versus an assembly with no limited
+joint at all.
+
+F5 is not re-run and no frozen prompt changed for any of the three. Each
+difference in the F6 and F7 rows that lands on a fact one of these changes
+publishes is a difference across that change, not a difference in the agent.
 
 > *Superseded on 2026-09-15:* "All scheduled collector slots are consumed.
 > The run's successful-completion prerequisites are not established by the
