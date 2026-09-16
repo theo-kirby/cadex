@@ -25665,7 +25665,13 @@ welded only to it (a servo against the screws through its tabs, a servo against
 the horn on its output), and rigidity is not inferred transitively through a
 common host; 4 are the 0.05 mm bearing seats between a thigh and the bearing it
 turns on, which is a running clearance the design should declare rather than a
-weld. A design that means either can say so with `contacts=`.
+weld. A design that means either can say so, but not with the same
+declaration, and the distinction is the contact tolerance: `contacts=[(a, b)]`
+holds a pair to **0.001 mm**, so it fits the 12 purchased pairs meeting at
+0.0 mm and would fail each 0.05 mm bearing seat as a `missed contact`. An
+intended gap narrower than the 0.1 mm undeclared default is
+`clearances=[(a, b, 0.05)]` (corrected in ADR-373, which also puts the
+distinction in the agent's instructions).
 
 **How.** `_fixed_joint_pairs` is factored out of `_check_attachments` so one
 reading of "these two are welded" serves both checks, suppressed joints
@@ -25708,3 +25714,51 @@ same rig built and accepted twice, once with the weld and once without, and the
 `cli/cadex_cli/agent.py` says the rule and tells it not to declare a contact
 that repeats a weld. `docs/XSCRIPT.md`, `docs/CLI.md` and `docs/INTEGRATION.md`
 carry the contract.
+
+## ADR-373 — A gap the design means is declared, not widened (2026-09-16)
+
+**Decision.** The agent's instructions now name the declaration for an
+intended gap narrower than the 0.1 mm undeclared-pair default: add
+`clearances=[(a, b, 0.05)]` to `assembly.assembly(...)` with the gap the
+design means. They also say what `contacts=` is not — it holds a pair to
+0.001 mm, so it fails a 0.05 mm running fit as a `missed contact` rather
+than clearing it — and that a declaration is not a way to silence a pair
+the design has not thought about. ADR-372's sentence offering `contacts=`
+for both of the cases it left outside the weld exemption is corrected here.
+
+**Why.** ADR-372 exempted welded pairs from the default gap and taught the
+agent, in its own prompt, that a weld needs no declaration. Then it stopped.
+The pairs it deliberately left failing include Finch's four bearing seats at
+0.05 mm — a thigh turning on the bearing it rides, which is correct design —
+and the only instruction the prompt gave for a failing pair was "fix the
+geometry and build again". For a running fit that is the wrong repair: it
+tells the agent to widen a seat that was right, to 0.1 mm it never chose,
+because nothing told it the number was a *default for pairs nobody declared*
+rather than a manufacturing rule. ADR-372's own remedy was wrong in the same
+direction and more precisely so: `contacts=` cannot express 0.05 mm at all.
+Against a 0.001 mm tolerance it converts `below clearance` into
+`missed contact`, so a design following that sentence would have moved a
+failing row from one status to another and read it as progress.
+
+**How.** One paragraph in `CLI_OVERLAY` (`cli/cadex_cli/agent.py`), beside the
+weld sentence it completes. No engine behaviour changed: `clearances=` already
+accepts any non-negative minimum (ADR-347) and the comparison already allowed
+its 1e-9 mm slack (ADR-353). `docs/DECISIONS.md`'s ADR-372 paragraph is
+corrected in place with a pointer here rather than rewritten, since the
+measurement it reports is unaffected.
+
+**Evidence.** `cli/tests/test_turn_loop.py` pins the three sentences and fails
+on the old prompt.
+`src/Mod/cadex/cadex_tests/test_fit_intent.py::test_a_running_gap_under_the_default_is_a_clearance_and_not_a_contact`
+pins the fact the correction rests on, at the one number ADR-372 named: the
+same 0.05 mm row is `below clearance` undeclared, `missed contact` under
+`contacts=`, clear under `clearances=[(a, b, 0.05)]`, and `below clearance`
+again once the seat closes to 0.02 mm. That test pins current behaviour rather
+than failing on the old code — the defect was in the instructions, not the
+checker.
+
+**What it does not do.** No new declaration kind, no per-pair contact
+tolerance, and no change to any threshold, default or published row. It does
+not declare anything on a retained design: Finch's four bearing seats still
+read `below clearance` until a design turn declares them, which is the
+unchanged rule that a failing fit is reported and never repaired by the tools.

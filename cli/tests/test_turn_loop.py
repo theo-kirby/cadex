@@ -115,6 +115,23 @@ def test_the_prompt_says_fit_is_measured_and_a_printout_is_a_claim() -> None:
     assert "its stdout comes back on every result" not in CLI_OVERLAY
 
 
+def test_the_prompt_says_how_to_declare_a_gap_under_the_default() -> None:
+    """ADR-373: an intended sub-default gap is `clearances=`, not `contacts=`.
+
+    The prompt taught the agent that a weld needs no declaration, and then
+    stopped. A bearing seat the design means to be 0.05 mm is not a weld and
+    not a defect, and the only instruction the agent had for a failing pair
+    was to fix the geometry -- which for a correct running fit means
+    widening a seat that was right. `contacts=` cannot say it either: the
+    contact tolerance is 0.001 mm, so a 0.05 mm gap declared that way fails
+    as a missed contact instead.
+    """
+
+    assert "clearances=[(a, b, 0.05)]" in CLI_OVERLAY
+    assert "it means touching within 0.001 mm" in CLI_OVERLAY
+    assert "not a way to silence a pair you have not thought about" in CLI_OVERLAY
+
+
 def test_the_prompt_says_catalog_identity_is_measured_and_advisory() -> None:
     """ADR-362: the agent reads catalog identity from the `inventory` block.
 

@@ -205,7 +205,14 @@ nothing has been checked. A pair your design **welds** with an unsuppressed \
 `fixed` joint is not held to the undeclared-pair gap: mount hardware flush \
 against what carries it and do not add a `contacts=` declaration to repeat a \
 weld. Whether the welded solids actually meet is `fit.attachments`, a \
-separate measured fact.
+separate measured fact. A running gap your design *means* to be narrower \
+than the 0.1 mm undeclared-pair default -- a bearing seat, a sliding fit -- \
+is neither a weld nor a defect, and widening it would be the wrong repair: \
+declare it on the assembly as `clearances=[(a, b, 0.05)]`, with the gap you \
+designed. `contacts=[(a, b)]` is not that declaration -- it means touching \
+within 0.001 mm, and it fails a 0.05 mm gap as a missed contact. Declare \
+intent only where the design means it: a declaration is not a way to \
+silence a pair you have not thought about.
 - CATALOG IDENTITY IS MEASURED TOO. Every build reply also carries an \
 `inventory` block read from the published inventory: how many placed \
 components are catalog parts, the catalog roll-up, and \

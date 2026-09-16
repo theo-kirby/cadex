@@ -274,3 +274,37 @@ def test_welded_pair_is_not_held_to_the_undeclared_gap():
                    {'fix': joint('a', 'c')}):
         assert check(0.0, joints=joints)['fit_failures'] == ['below clearance']
         assert check(0.0, joints=joints)['intent'] == {}
+
+
+def test_a_running_gap_under_the_default_is_a_clearance_and_not_a_contact():
+    """ADR-373: the two declarations are not interchangeable at 0.05 mm.
+
+    ADR-372 named Finch's four bearing seats -- a thigh turning on the
+    bearing it rides, 0.05 mm apart -- as a running clearance the design
+    should declare, and said a design meaning it "can say so with
+    `contacts=`". It cannot: the contact tolerance is 0.001 mm, so that
+    declaration turns a `below clearance` row into a `missed contact` row
+    rather than clearing it. The declaration that says 0.05 mm is
+    `clearances=[(a, b, 0.05)]`.
+    """
+
+    from cadex_assembly_worker import _check_fit
+
+    def check(declared=None, gap=0.05):
+        first, second = object(), object()
+        outputs = {id(first): 'thigh', id(second): 'bearing'}
+        properties = {'fit_intent': [dict(declared, first=first, second=second)]} if declared else {}
+        row = {'first': 'thigh', 'second': 'bearing',
+               'distance_mm': gap, 'common_volume_mm3': 0.0}
+        assert _check_fit([row], {}, properties, outputs, None, {}, 'asm') == []
+        return row['fit_failures']
+
+    # Undeclared, the seat is below the 0.1 mm default -- the row a design
+    # turn is asked to repair, and the geometry is not what is wrong.
+    assert check() == ['below clearance']
+    # `contacts=` does not repair it; it renames the failure.
+    assert check({'kind': 'contact'}) == ['missed contact']
+    # The gap the design means, declared as such, clears.
+    assert check({'kind': 'clearance', 'minimum_mm': 0.05}) == []
+    # And still measures: a seat that closed past what was declared fails.
+    assert check({'kind': 'clearance', 'minimum_mm': 0.05}, gap=0.02) == ['below clearance']
