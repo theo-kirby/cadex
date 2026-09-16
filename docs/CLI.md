@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-15. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-16. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -2015,19 +2015,33 @@ fail on it.
 `inspect`, `link_part`, `put_asset`. The shell invented friendlier names because it had Blender's
 vocabulary to reconcile; a third vocabulary would be a third thing to keep
 in sync. The input schemas are **generated from `OP_ARG_SPECS`**, so they
-cannot drift from the protocol — only the prose is hand-written.
+cannot drift from the protocol — only the prose is hand-written, and the
+one bridge-owned argument below.
 
-`describe_api` reaches the model cut to one tool result (ADR-359): every
-domain and library export keeps its name and full signature and the first
-paragraph of its documentation, and the reply's `descriptions` line names
-the `inspect scope=api` path that holds the rest. The engine's reply is
-untouched. The harness refuses an MCP tool result over its own token cap
-(25,000 tokens by default) and writes it to a file the product agent has no
-tool to read; the live contract was 163,200 characters on 2026-09-15, and
-the agent's only route to it was paging `inspect scope=api`. The bridge's
-`API_VIEW_CHAR_BUDGET` (90,000 characters) is held by a live-engine test in
-`cli/tests/test_client.py`, so the contract cannot grow past the cap again
-without a test saying so.
+`describe_api` reaches the model one page at a time (ADR-359, ADR-360).
+The engine's reply is untouched and the op takes no argument; the bridge
+offers a `section` argument of its own, consumes it, and cuts the view.
+Without it the reply is the **index**: everything above the domains, and
+each domain and the library listing their exports by name, with a
+`sections` line saying where the signatures are. With `section=<domain>` or
+`section=library` it is that **section**: the block's notes, globals and
+output types, every export's name, full signature and the first paragraph
+of its documentation, the whole catalog for the library, and a
+`descriptions` line naming the `inspect scope=api` path that holds the rest
+of any docstring. A section the contract lacks is refused with
+`NO_SUCH_SECTION` and the list of sections, without reaching the engine.
+The harness refuses an MCP tool result over its own token cap and writes
+it to a file the product agent has no tool to read; the cap is not
+published in characters, so the bridge's `API_VIEW_CHAR_BUDGET` (21,500
+characters) is a measurement — on `ot7-heron-c` the harness refused
+163,200 characters, then the ADR-359 view at 82,523, and accepted every
+result up to 21,742. A live-engine test in `cli/tests/test_client.py` holds
+the index and every section under the budget (13,239 and 3,337–20,502 on
+2026-09-16) and checks that the sections between them carry every
+signature, so the contract cannot grow past a size the harness has been
+seen to accept without a test saying so. `section` is the one schema
+property `OP_ARG_SPECS` does not carry; `VIEW_ARGS` in `cadex_cli.tools`
+is the allowlist the drift test reads.
 
 `display` and `expected_revision` are removed from the schemas: both are
 injected by the bridge, never asked of the model. The revision comes from

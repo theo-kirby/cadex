@@ -89,9 +89,14 @@ def test_the_schemas_cannot_drift_from_op_arg_specs(protocol) -> None:
     a reason the model cannot act on.
     """
 
+    from cadex_cli.tools import VIEW_ARGS
+
     for tool in tool_definitions(protocol):
         required, optional = protocol.OP_ARG_SPECS[tool["name"]]
         declared = set(required) | set(optional)
+        # The one allowed drift is the bridge's own view arguments
+        # (ADR-360), which it consumes before the engine sees the call.
+        declared |= {name for op, name in VIEW_ARGS if op == tool["name"]}
         offered = set(tool["input_schema"]["properties"])
         assert offered <= declared, (tool["name"], offered - declared)
         # Required-minus-injected is exactly what the model must supply.
@@ -561,36 +566,101 @@ def _contract(description: str) -> dict[str, Any]:
     }
 
 
-def test_describe_api_reaches_the_model_one_paragraph_per_export() -> None:
-    """The contract must fit one tool result (ADR-359).
+def test_describe_api_offers_section_and_nothing_else_does(protocol) -> None:
+    """``section`` is the bridge's argument, on ``describe_api`` alone (ADR-360)."""
 
-    On 2026-09-15 the live reply was 163,200 characters, the harness refused
-    it as over its tool-result cap, and the product agent, with no file tool
-    to read the overflow, paged the contract through 44 ``inspect
-    scope=api`` reads. The bridge now keeps every name and signature and
-    the first paragraph of each description, and says where the rest is.
+    offered = {
+        tool["name"]: tool["input_schema"]["properties"] for tool in tool_definitions(protocol)
+    }
+    assert "section" in offered["describe_api"]
+    assert offered["describe_api"]["section"]["type"] == "string"
+    assert "library" in offered["describe_api"]["section"]["description"]
+    assert "section" not in tool_definitions(protocol)[0]["input_schema"]["required"]
+    assert not any("section" in props for name, props in offered.items() if name != "describe_api")
+    # ...and the engine's op still takes nothing: the page is cut here.
+    assert protocol.OP_ARG_SPECS["describe_api"] == ({}, {})
+
+
+def test_describe_api_reaches_the_model_as_an_index_of_names() -> None:
+    """Without ``section`` the contract is its index (ADR-360).
+
+    On 2026-09-15 the whole reply was 163,200 characters and the harness
+    refused it; cut to one paragraph per export (ADR-359) it was 82,523 and
+    was refused again, while every result the harness accepted was under
+    21,742. So the default page carries no signature at all: the domains
+    list their exports by name, the library lists its catalog families, and
+    a ``sections`` line says where the signatures are.
     """
 
-    from cadex_cli.bridge import API_VIEW_DESCRIPTIONS_NOTE
+    from cadex_cli.bridge import API_VIEW_SECTIONS_NOTE
 
     long = "Declare what one body\nmay touch.\n\nSeven kinds, in two groups.\n\n" + "x" * 5000
     client = FakeCadexd(replies={"describe_api": _contract(long)})
     with Bridge(client, initial_revision="rev-1") as bridge:
         result = _rpc(bridge, "tools/call", {"name": "describe_api", "arguments": {}})
+    text = result["result"]["content"][0]["text"]
+    view = json.loads(text)
+
+    assert result["result"]["isError"] is False
+    assert view["domains"]["assembly"] == {"exports": ["collision", "bare"]}
+    assert view["library"] == {"exports": ["bearing"], "catalog": ["bearings"]}
+    assert view["sections"] == API_VIEW_SECTIONS_NOTE
+    assert "describe_api section=<name>" in view["sections"]
+    assert view["instructions"] == "i" and view["program_schema"] == "s"
+    assert '"signature"' not in text and "keep" not in text and "xxxx" not in text
+    assert client.args_for("describe_api") == [{}]
+
+
+def test_a_describe_api_section_carries_signatures_and_first_paragraphs() -> None:
+    """One section is one page: notes, signatures, summaries, and the way to the rest."""
+
+    long = "Declare what one body\nmay touch.\n\nSeven kinds, in two groups.\n\n" + "x" * 5000
+    client = FakeCadexd(replies={"describe_api": _contract(long)})
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        result = _rpc(
+            bridge, "tools/call", {"name": "describe_api", "arguments": {"section": "assembly"}}
+        )
+        library = _rpc(
+            bridge, "tools/call", {"name": "describe_api", "arguments": {"section": "library"}}
+        )
+    text = result["result"]["content"][0]["text"]
+    view = json.loads(text)
+
+    assert result["result"]["isError"] is False
+    assert view["section"] == "assembly" and view["ok"] is True
+    assert view["exports"] == [
+        {
+            "name": "collision",
+            "signature": "(self, kind: 'str')",
+            "description": "Declare what one body may touch.",
+        },
+        {"name": "bare"},
+    ]
+    assert view["notes"] == "keep"
+    assert "inspect scope=api path=/domains/assembly/exports/N/description" in view["descriptions"]
+    assert "xxxx" not in text and "instructions" not in view
+
+    lib = json.loads(library["result"]["content"][0]["text"])
+    assert lib["section"] == "library" and lib["catalog"] == {"bearings": {}}
+    assert lib["exports"][0]["description"] == "Declare what one body may touch."
+    assert "path=/library/exports/N/description" in lib["descriptions"]
+    # `section` never reached the engine, and its reply is what it was.
+    assert client.args_for("describe_api") == [{}, {}]
+    assert client.replies["describe_api"]["domains"]["assembly"]["exports"][0]["description"] == long
+
+
+def test_a_section_the_contract_lacks_is_refused_by_name() -> None:
+    """A wrong section is an error the model can act on: it names the right ones."""
+
+    client = FakeCadexd(replies={"describe_api": _contract("d")})
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        result = _rpc(
+            bridge, "tools/call", {"name": "describe_api", "arguments": {"section": "sketch"}}
+        )
     view = json.loads(result["result"]["content"][0]["text"])
 
-    exports = view["domains"]["assembly"]["exports"]
-    assert exports[0] == {
-        "name": "collision",
-        "signature": "(self, kind: 'str')",
-        "description": "Declare what one body may touch.",
-    }
-    assert exports[1] == {"name": "bare"}
-    assert view["library"]["exports"][0]["description"] == "Declare what one body may touch."
-    assert view["library"]["catalog"] == {"bearings": {}}
-    assert view["domains"]["assembly"]["notes"] == "keep"
-    assert view["descriptions"] == API_VIEW_DESCRIPTIONS_NOTE
-    assert "inspect scope=api path=/domains/D/exports/N/description" in view["descriptions"]
-    assert "xxxx" not in result["result"]["content"][0]["text"]
-    # The engine's own reply is what it was: the trim is the model's view only.
-    assert client.replies["describe_api"]["domains"]["assembly"]["exports"][0]["description"] == long
+    assert result["result"]["isError"] is True
+    assert view["failure_code"] == "NO_SUCH_SECTION"
+    assert view["sections"] == ["assembly", "library"]
+    assert "'sketch'" in view["error"] and "assembly, library" in view["error"]
+    assert client.args_for("describe_api") == [{}]

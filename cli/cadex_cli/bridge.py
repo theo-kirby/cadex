@@ -39,7 +39,9 @@ from typing import Any
 
 from .clearance import read_fit
 from .client import CadexdClient
-from .tools import STANDARD_DISPLAY, injects_display, injects_revision, tool_definitions
+from .tools import (
+    STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision, tool_definitions,
+)
 
 #: Long enough that a slow rebuild is not a broken pipe; the engine's own
 #: budget is what actually bounds a run.
@@ -193,6 +195,13 @@ class Bridge:
         # accepted attempt must retain for review (ADR-312).
         args.pop("expected_revision", None)
         args.pop("display", None)
+        # ...and the view arguments (ADR-360): offered to the model, consumed
+        # here, never sent to the engine, whose op does not take them.
+        view_args = {
+            name: args.pop(name)
+            for op, name in VIEW_ARGS
+            if op == tool and name in args
+        }
         if injects_revision(protocol, tool):
             args["expected_revision"] = self.state.revision
         if injects_display(protocol, tool):
@@ -217,6 +226,10 @@ class Bridge:
                 )
             self._track(tool, reply)
             ok = reply.get("ok") is True
+            section = view_args.get("section")
+            if tool == "describe_api" and ok and section is not None:
+                if section not in api_sections(reply):
+                    reply, ok = no_such_section(reply, section), False
             # A build's reply carries the measured fit (ADR-346): the
             # engine's own pair measurements at the solved pose, read back
             # from the store the accepted revision just published to. The
@@ -233,7 +246,7 @@ class Bridge:
             tool, args, ok, summary, str(reply.get("failure_code") or ""), fit
         )
         self._record(call)
-        view = _model_view(tool, reply, args)
+        view = _model_view(tool, reply, args, view_args)
         if fit is not None:
             view["fit"] = fit
         return _content(
@@ -292,23 +305,38 @@ def _content(text: str, *, is_error: bool = False) -> dict[str, Any]:
 
 
 #: The most characters a ``describe_api`` reply may be, as the model sees it
-#: (ADR-359). The agent harness refuses an MCP tool result over its own
-#: token cap (25,000 tokens by default, which it estimates from the
-#: character count) and writes it to a file the product agent has no tool
-#: to read; on 2026-09-15 the live contract was 163,200 characters and the
-#: agent spent four minutes paging it through ``inspect scope=api`` instead.
-#: Held with a margin under that cap by a live-engine test, so the contract
-#: can grow without silently crossing it again.
-API_VIEW_CHAR_BUDGET = 90_000
+#: (ADR-359, ADR-360). The agent harness refuses an MCP tool result over its
+#: own token cap and writes it to a file the product agent has no tool to
+#: read. The cap is not published in characters, so this budget is the
+#: measurement: on ``ot7-heron-c`` (2026-09-15/16) the harness refused
+#: 82,523 characters and accepted every result up to 21,742. Every page of
+#: the contract — the index and each section — is held under this by a
+#: live-engine test, so the contract cannot grow past a size the harness
+#: has been seen to accept without a test saying so.
+API_VIEW_CHAR_BUDGET = 21_500
 
-#: The one line that says where the trimmed text went.
-API_VIEW_DESCRIPTIONS_NOTE = (
-    "Every export's `description` here is the first paragraph of its "
-    "documentation, beside its full `signature`. The whole text of export N "
-    "of domain D (N counting from 0 in this order) is one read away: "
-    "inspect scope=api path=/domains/D/exports/N/description, or "
-    "/library/exports/N/description for a lib export."
+#: The name of the one section that is not a domain.
+API_LIBRARY_SECTION = "library"
+
+#: The index's line saying where the signatures are.
+API_VIEW_SECTIONS_NOTE = (
+    "This index carries only names. Every signature is in a section: call "
+    "describe_api section=<name> for one of the domains listed under "
+    "`domains`, or section=library for the catalog and the lib exports. A "
+    "section carries every export's name, full signature and the first "
+    "paragraph of its documentation, and fits one tool result."
 )
+
+
+def _descriptions_note(prefix: str) -> str:
+    """A section's line saying where the trimmed documentation went."""
+
+    return (
+        "Every export's `description` here is the first paragraph of its "
+        "documentation, beside its full `signature`. The whole text of "
+        "export N (N counting from 0 in this order) is one read away: "
+        f"inspect scope=api path={prefix}/exports/N/description."
+    )
 
 
 def _first_paragraph(text: Any) -> str:
@@ -329,37 +357,115 @@ def _summarised_exports(exports: Any) -> Any:
     ]
 
 
-def api_view(reply: dict[str, Any]) -> dict[str, Any]:
-    """A ``describe_api`` reply cut to fit one tool result (ADR-359).
+def _export_names(exports: Any) -> Any:
+    if not isinstance(exports, list):
+        return exports
+    return [
+        item.get("name") if isinstance(item, dict) else item for item in exports
+    ]
 
-    Every domain and library export keeps its name and full signature and
-    loses all but the first paragraph of its description; nothing else in
-    the contract changes. The engine's reply is untouched and its full
-    text stays readable through ``inspect scope=api``, which the note in
-    ``descriptions`` says how to reach.
+
+def api_sections(reply: dict[str, Any]) -> list[str]:
+    """The section names a ``describe_api`` reply can be paged by."""
+
+    domains = reply.get("domains")
+    names = list(domains) if isinstance(domains, dict) else []
+    if isinstance(reply.get(API_LIBRARY_SECTION), dict):
+        names.append(API_LIBRARY_SECTION)
+    return names
+
+
+def api_index(reply: dict[str, Any]) -> dict[str, Any]:
+    """A ``describe_api`` reply cut to its index (ADR-360).
+
+    Everything above the domains is kept whole; each domain and the
+    library keep their globals and output types and list their exports by
+    name only. Notes, signatures, descriptions and the catalog's rows are
+    on the sections, which ``sections`` says how to reach.
     """
 
     view = dict(reply)
     domains = reply.get("domains")
     if isinstance(domains, dict):
         view["domains"] = {
-            name: {**domain, "exports": _summarised_exports(domain.get("exports"))}
+            name: {
+                **{key: value for key, value in domain.items() if key != "notes"},
+                "exports": _export_names(domain.get("exports")),
+            }
             if isinstance(domain, dict)
             else domain
             for name, domain in domains.items()
         }
-    library = reply.get("library")
+    library = reply.get(API_LIBRARY_SECTION)
     if isinstance(library, dict):
-        view["library"] = {
-            **library,
-            "exports": _summarised_exports(library.get("exports")),
+        catalog = library.get("catalog")
+        view[API_LIBRARY_SECTION] = {
+            **{key: value for key, value in library.items() if key != "notes"},
+            "exports": _export_names(library.get("exports")),
+            "catalog": sorted(catalog) if isinstance(catalog, dict) else catalog,
         }
-    view["descriptions"] = API_VIEW_DESCRIPTIONS_NOTE
+    view["sections"] = API_VIEW_SECTIONS_NOTE
     return view
 
 
+def api_section(reply: dict[str, Any], section: str) -> dict[str, Any]:
+    """One section of a ``describe_api`` reply, whole but for the docstrings.
+
+    A domain section is the domain's own block — notes, globals, output
+    types — with every export's name, full signature and first-paragraph
+    description; the library section is the same plus the whole catalog.
+    ``section`` must be one of :func:`api_sections`.
+    """
+
+    if section == API_LIBRARY_SECTION:
+        block, prefix = reply.get(API_LIBRARY_SECTION), f"/{API_LIBRARY_SECTION}"
+    else:
+        domains = reply.get("domains")
+        block = domains.get(section) if isinstance(domains, dict) else None
+        prefix = f"/domains/{section}"
+    if not isinstance(block, dict):
+        raise KeyError(section)
+    return {
+        "ok": True,
+        "section": section,
+        **block,
+        "exports": _summarised_exports(block.get("exports")),
+        "descriptions": _descriptions_note(prefix),
+    }
+
+
+def api_view(reply: dict[str, Any], section: str | None = None) -> dict[str, Any]:
+    """A ``describe_api`` reply as the model sees it (ADR-359, ADR-360).
+
+    Without ``section`` it is the index; with one it is that section. The
+    engine's reply is untouched and its full text stays readable through
+    ``inspect scope=api``, which each page says how to reach.
+    """
+
+    if section is None:
+        return api_index(reply)
+    return api_section(reply, section)
+
+
+def no_such_section(reply: dict[str, Any], section: Any) -> dict[str, Any]:
+    """The failure envelope for a section the contract does not have."""
+
+    sections = api_sections(reply)
+    return {
+        "ok": False,
+        "failure_code": "NO_SUCH_SECTION",
+        "error": "describe_api has no section {!r}; the sections are {}.".format(
+            section, ", ".join(sections)
+        ),
+        "sections": sections,
+    }
+
+
 def _model_view(
-    tool: str, reply: dict[str, Any], args: dict[str, Any]
+    tool: str,
+    reply: dict[str, Any],
+    args: dict[str, Any],
+    view_args: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The reply as the model should see it.
 
@@ -369,12 +475,13 @@ def _model_view(
     per-output facts, the script's own stdout, the failure envelope — stays.
     ``expected_revision`` is added back so the guard the bridge supplied is
     visible rather than merely absent. A ``describe_api`` reply is cut to
-    the size of one tool result by :func:`api_view`.
+    the size of one tool result by :func:`api_view` — the index, or the
+    one section ``view_args`` asks for.
     """
 
     view = {key: value for key, value in reply.items() if key not in {"display", "id"}}
     if tool == "describe_api" and reply.get("ok") is True:
-        view = api_view(view)
+        view = api_view(view, (view_args or {}).get("section"))
     if "expected_revision" in args:
         view["expected_revision_used"] = args["expected_revision"]
     return view

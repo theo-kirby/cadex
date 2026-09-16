@@ -594,7 +594,8 @@ Where the 25.5 minutes went, from the stream's timestamps:
   it** as over its tool-result cap, writing it to a file the agent has no
   tool to read. The largest tool result the harness accepted in this turn
   was 20,717 characters, so the cap lies between those two numbers and the
-  90,000-character budget does not reach it. The agent paged the contract
+  90,000-character budget does not reach it (paged by section under a
+  measured 21,500-character budget in iteration 60, ADR-360). The agent paged the contract
   through 43 `inspect scope=api` reads in 2 min 40 s, against 3 min 51 s
   and 44 reads at 163,200 characters in iteration 55.
 - **02:25:36–02:26:30, two probe scripts.** Catalog specs, then the servo
@@ -833,7 +834,9 @@ order: the arm, balancer and biped creates in fresh suffixed projects
 (F5–F7), each through its continuations as its fit report requires, each
 with its smoke rollout, and each dispatched only when the runner's own
 window reading shows room (ADR-358), the arm now on `ot7-heron-c` from its
-`continue-2` prompt, at the effort level ADR-359 recorded. A
+`continue-2` prompt, at the effort level ADR-359 recorded and with
+`describe_api` paged by section under a measured budget (ADR-360, iteration
+60, no design turn: the window read 52 % against the 45 % bound). A
 design that does not reach zero failing checks within its three continuations
 is a valid measured result and will be reported as such. This report is then
 rewritten with one row per design.

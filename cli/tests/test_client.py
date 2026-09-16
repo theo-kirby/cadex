@@ -195,32 +195,40 @@ def test_two_different_projects_do_not_block_each_other(tmp_path) -> None:
         pass
 
 
-def test_the_live_contract_fits_one_tool_result(client, tmp_path) -> None:
-    """The model's view of ``describe_api`` stays under the harness cap (ADR-359).
+def test_every_page_of_the_live_contract_fits_one_tool_result(client, tmp_path) -> None:
+    """The model's view of ``describe_api`` stays under the harness cap (ADR-360).
 
-    The bound is the bridge's budget, held with a margin under the harness's
-    default 25,000-token tool-result cap. Every export keeps its signature;
-    what the view loses is documentation beyond the first paragraph, which
-    stays one ``inspect scope=api`` read away.
+    The bound is the bridge's budget, set from measurement: the largest tool
+    result the harness accepted on ``ot7-heron-c`` (21,742 characters) —
+    it refused 163,200 and then 82,523. The index and every section must
+    each fit, and between them the sections carry every signature the
+    engine's reply does; what the view loses is documentation beyond the
+    first paragraph, which stays one ``inspect scope=api`` read away.
     """
 
     import json
 
-    from cadex_cli.bridge import API_VIEW_CHAR_BUDGET, api_view
+    from cadex_cli.bridge import API_VIEW_CHAR_BUDGET, api_sections, api_view
 
     open_project(client, tmp_path / "project")
     api = client.request("describe_api")
     raw = {key: value for key, value in api.items() if key != "id"}
 
-    rendered = json.dumps(api_view(raw), indent=2, sort_keys=True, default=str)
-    assert len(rendered) <= API_VIEW_CHAR_BUDGET, len(rendered)
-    assert len(rendered) < len(json.dumps(raw, indent=2, sort_keys=True, default=str))
+    def rendered(view):
+        return json.dumps(view, indent=2, sort_keys=True, default=str)
 
-    def signatures(contract):
-        return sorted(
-            (domain, export["name"], export["signature"])
-            for domain, listing in contract["domains"].items()
-            for export in listing["exports"]
-        )
+    sizes = {"index": len(rendered(api_view(raw)))}
+    for section in api_sections(raw):
+        sizes[section] = len(rendered(api_view(raw, section)))
+    assert all(size <= API_VIEW_CHAR_BUDGET for size in sizes.values()), sizes
+    assert set(api_sections(raw)) == set(raw["domains"]) | {"library"}
+    assert '"signature":' not in rendered(api_view(raw))
 
-    assert signatures(api_view(raw)) == signatures(raw) and signatures(raw)
+    def signatures(exports):
+        return sorted((export["name"], export["signature"]) for export in exports)
+
+    for domain, listing in raw["domains"].items():
+        assert signatures(api_view(raw, domain)["exports"]) == signatures(listing["exports"])
+        assert signatures(listing["exports"])
+    assert signatures(api_view(raw, "library")["exports"]) == signatures(raw["library"]["exports"])
+    assert api_view(raw, "library")["catalog"] == raw["library"]["catalog"]

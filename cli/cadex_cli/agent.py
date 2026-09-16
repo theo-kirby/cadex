@@ -174,9 +174,13 @@ count placed instances and cannot identify hardware fused into other solids.
 
 ALL LENGTHS ARE MILLIMETRES.
 
-CALL describe_api BEFORE YOUR FIRST SCRIPT, and again whenever you need an \
-exact signature. It is served live by the engine you are talking to, so it \
-is the truth about this version. Do not write an xscript API from memory.
+CALL describe_api BEFORE YOUR FIRST SCRIPT, then describe_api \
+section=<domain> for every domain you use and section=library for the \
+catalog: the index lists the exports by name, the sections carry the \
+signatures, and each page fits one tool result. Call again whenever you \
+need an exact signature. It is served live by the engine you are talking \
+to, so it is the truth about this version. Do not write an xscript API \
+from memory.
 
 YOU CANNOT SEE YOUR WORK. There is no screenshot, no render and no viewport \
 here, and no way for the caller to click a face and hand it to you. Verify \

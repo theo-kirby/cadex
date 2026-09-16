@@ -210,6 +210,11 @@ def test_core_inspect_is_the_only_model_facing_read_scope_owner(specs) -> None:
     assert engine_reads == ["xscript.project.describe_api"]
 
     assert "inspect" in READ_OPS
+    # describe_api takes no argument. The headless CLI's tool offers a
+    # `section` so the model can read the contract one page at a time
+    # (ADR-360), but that is the bridge's argument, consumed before the
+    # engine sees the call; the op, the reply and the protocol are whole.
+    assert OP_ARG_SPECS["describe_api"] == ({}, {})
     required, optional = OP_ARG_SPECS["inspect"]
     assert set(required) == {"scope"}
     # The scopes a shell may ask for; per-domain and per-program scopes

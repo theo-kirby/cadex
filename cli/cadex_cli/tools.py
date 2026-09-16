@@ -13,7 +13,14 @@ benefit the model can feel.
 type comes from the engine's own ``OP_ARG_SPECS``, so a tool schema cannot
 drift from the protocol: adding an argument to an op adds it here, and
 removing one removes it here. What is hand-written is only the prose — the
-descriptions, which the protocol does not carry.
+descriptions, which the protocol does not carry — and the one exception
+below.
+
+**``describe_api``'s ``section`` is the bridge's, not the protocol's
+(ADR-360).** The engine's op takes no argument and returns the whole
+contract; the bridge offers ``section`` so the model can ask for one page
+of it at a time, consumes it, and never sends it on. :data:`VIEW_ARGS` is
+that allowlist, and the drift test reads it.
 
 **``expected_revision`` is not in the schemas.** The guard exists for
 concurrent writers and a CLI run has exactly one writer, so
@@ -63,6 +70,18 @@ CLI_TOOL_OPS = (
 #: request as a constant — so never asked of the model.
 INJECTED_ARGS = frozenset({"expected_revision", "display"})
 
+#: Offered to the model and consumed by the bridge (ADR-360): ``(op, name)``
+#: to the JSON type and the prose. These never reach the engine, whose
+#: ``OP_ARG_SPECS`` do not carry them; the drift test allows exactly these.
+VIEW_ARGS: dict[tuple[str, str], tuple[type, str]] = {
+    ("describe_api", "section"): (
+        str,
+        "One page of the contract: a domain name from the index's `domains`, "
+        "or `library` for the catalog and the lib exports. Omit it for the "
+        "index, which lists every export by name and names the sections.",
+    ),
+}
+
 #: The tessellation request every modelling op carries: what `cadex params`
 #: asks for (ADR-293), and what the review dashboard draws (ADR-312).
 STANDARD_DISPLAY: dict[str, Any] = {"quality": "standard", "edges": False}
@@ -78,13 +97,16 @@ _JSON_TYPES: dict[type, str] = {
 
 TOOL_DESCRIPTIONS: dict[str, str] = {
     "describe_api": (
-        "Return the xscript authoring contract live from the engine: the "
-        "program schema, the globals a script may use, and every domain's "
-        "exported functions with their signatures. Call this before writing "
-        "your first script, and again whenever you need an exact signature. "
-        "Never write an xscript API from memory. Each export carries its full "
-        "signature and the first paragraph of its documentation; the reply's "
-        "`descriptions` line says which inspect scope=api path holds the rest."
+        "Return the xscript authoring contract live from the engine, one "
+        "page at a time so each fits one tool result. Without `section`: the "
+        "index — the program schema, the globals a script may use, and every "
+        "domain's exports by name. With `section=<domain>` or "
+        "`section=library`: that section's notes and every export's full "
+        "signature with the first paragraph of its documentation; the "
+        "page's `descriptions` line says which inspect scope=api path holds "
+        "the rest. Call the index before writing your first script, then the "
+        "section of every domain you use, and again whenever you need an "
+        "exact signature. Never write an xscript API from memory."
     ),
     "write_script": (
         "Replace the whole project script and rebuild. The engine parses, "
@@ -321,6 +343,9 @@ def tool_definitions(protocol: ModuleType) -> list[dict[str, Any]]:
             if name in INJECTED_ARGS:
                 continue
             properties[name] = _property_schema(op, name, python_type)
+        for (view_op, name), (python_type, description) in VIEW_ARGS.items():
+            if view_op == op:
+                properties[name] = {"type": _json_type(python_type), "description": description}
         definitions.append(
             {
                 "name": op,

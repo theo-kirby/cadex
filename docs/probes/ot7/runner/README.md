@@ -525,7 +525,8 @@ iteration made:
   ("exceeds maximum allowed tokens"), and the largest tool result it
   accepted in the turn was 20,717 characters. The cap is somewhere between
   those two numbers; ADR-359's 90,000-character budget does not reach it,
-  and a further cut is a separate recorded decision. The agent recovered by
+  and a further cut is a separate recorded decision — made in iteration
+  60 as ADR-360, below. The agent recovered by
   paging `inspect scope=api`, as in iteration 55, in less time.
 - **`medium` fits the bound.** One thinking message of about 30,000
   estimated tokens ended on its own; iteration 55's three cap-limited
@@ -557,3 +558,26 @@ by the actor after the turn with the runner's own command into
 window read 35 % at the last stream frame and 38 % after the measurement,
 under the 45 % bound, so `continue-2` is dispatchable before the 12:20 UTC
 reset.
+
+## The window closed, and describe_api paged (iteration 60, ADR-360)
+
+No design turn. The probe read 52 % at 07:40 UTC, above the 45 % bound
+(reset 12:20 UTC), so `continue-2` was not dispatched: `ot7-heron-c` still
+has two continuations unspent and `continue-2` next through `resume`. The
+window rose from 38 % because the actor's own iterations spend it.
+
+The tooling unit the limited window permitted is ADR-360, the cut this
+README's iteration 57 section said was a separate decision. `describe_api`
+now reaches the model as an **index** (every export by name, no
+signature) and, with the bridge's own `section=<domain>` or
+`section=library` argument, one **section** at a time (notes, every
+signature, first-paragraph descriptions, the whole catalog for the
+library). The budget is the measurement the two ot7-heron-c transcripts
+give — every accepted result at most 21,742 characters, 82,523 refused —
+so `API_VIEW_CHAR_BUDGET` is 21,500 and a live-engine test holds every
+page under it: the index at 13,239 characters and the largest section,
+assembly, at 20,502 on 2026-09-16. The engine op, the protocol and the
+frozen prompts are untouched; the CLI's system prompt now says to read
+the index and then the section of every domain used. Whether every page
+is accepted is what `continue-2`'s transcript measures next: under this
+budget no page exceeds a size the harness has accepted.

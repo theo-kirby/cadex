@@ -25056,3 +25056,62 @@ decision, and a changed prompt would be a new attempt. `docs/CLI.md` and
 the runner README document both changes. REPORT.md's F5 and F4 rows were
 corrected in the same unit (two of three probe scripts accepted; four
 completed F4 turns).
+
+## ADR-360 — describe_api reaches the model as an index and sections; `section` is the bridge's argument (2026-09-16)
+
+**Context.** ADR-359 cut the model's view of `describe_api` to one
+paragraph per export, 82,523 characters on the live engine under a
+90,000-character budget that assumed the harness counts about four
+characters per token. The first F5 create turn on `ot7-heron-c`
+(iteration 57) measured the assumption wrong: the harness refused the
+view ("exceeds maximum allowed tokens"), wrote it to a file the product
+agent has no tool to read, and the agent paged the contract through 43
+`inspect scope=api` reads in 2 min 40 s. The harness does not publish its
+cap in characters. What the two ot7-heron-c transcripts do establish is a
+bound: 82,523 refused, every accepted result at most 21,742 characters
+(turn-1's largest `inspect scope=document` reply). The compact rendering
+ADR-359 measured, 69,587 characters, is inside the unknown band and would
+be another guess.
+
+**Decision.** The contract is paged, and the bound is the measurement.
+
+1. **`describe_api` without an argument is the index**: everything above
+   the domains whole, each domain and the library with their globals and
+   output types and their exports **by name only**, the catalog as its
+   family names, and a `sections` line saying where the signatures are.
+   `describe_api section=<domain>` or `section=library` is **one
+   section**: the block's notes, every export's name, full signature and
+   first-paragraph description, the whole catalog for the library, and a
+   `descriptions` line naming the `inspect scope=api` path that holds the
+   rest of any docstring. A section the contract lacks is refused with
+   `NO_SUCH_SECTION` and the list of sections, without reaching the
+   engine.
+2. **`section` is the bridge's argument, not the protocol's.** The engine's
+   op still takes nothing and returns the whole contract; the protocol, the
+   reply, the goldens and the shell client are untouched. The CLI's tool
+   schema offers `section` from `VIEW_ARGS` in `cadex_cli.tools`, the
+   bridge pops it before the request, and the schema drift test allows
+   exactly that allowlist. `test_project_tool_surface.py` pins that
+   `OP_ARG_SPECS["describe_api"]` takes no argument, so the page cannot
+   quietly become a protocol change without INTEGRATION.md moving with it.
+3. **`API_VIEW_CHAR_BUDGET` is 21,500 characters**, under the largest
+   result the harness has been seen to accept, and the live-engine test
+   holds the index and every section under it: 13,239 for the index,
+   20,502 for the largest section (assembly), on 2026-09-16. The test also
+   checks that the sections between them carry every signature of the
+   engine's reply. Growth in the assembly domain's notes or exports past
+   about a thousand characters fails that test rather than a design turn.
+4. **The system prompt says to read the index, then the section of every
+   domain used**, and the tool description says the same; the frozen ot7
+   prompts are not touched.
+
+**Consequences.** A design turn reads the contract in two to seven calls,
+each of a size the harness has accepted, instead of one refused call and
+forty-odd exports read one at a time. Whether every page is accepted is a
+measurement the next ot7 design turn makes from its transcript: an
+accepted page above 21,742 characters would not occur under this budget,
+and a refused page under it would mean the cap is lower than any result
+yet seen and would be recorded. The bound is reversible per measurement:
+if a later transcript accepts a larger result, the budget can rise to it
+under the same test. The runner's collector and the retained receipts are
+unchanged; `docs/CLI.md` documents the page shapes and the budget.
