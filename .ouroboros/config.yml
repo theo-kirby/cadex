@@ -44,6 +44,16 @@ roles:
     timeout: 20m
     fallback:
       - { harness: codex, model: gpt-6-astra }
+  reporter:               # `ouroboros watch` only: the digests that reach the phone.
+                          # Codex first so a report never competes with the actor for the
+                          # Claude window, and never takes a turn the run could have had.
+                          # A digest is summarising, not reasoning, so the fallback is the
+                          # cheap Claude model rather than the actor's.
+    harness: codex
+    model: gpt-6-astra
+    timeout: 10m
+    fallback:
+      - { harness: claude, model: claude-fable-5-1 }
 git:
   branch: null            # -> ouroboros/ot7
   tag_on_accept: true
@@ -84,6 +94,29 @@ loop:                     # motion without progress (ouroboros DESIGN.md section
   escalate_every: 5
   rotate: true            # rung 3: hand the actor's turn to Codex for a while
                           # Nothing here stops the run.
+report:                   # the reporter: an observer outside the loop (ouroboros DESIGN.md section 15).
+                          # It reads this run directory and never the loop, so nothing it
+                          # does reaches the run. `ouroboros run` starts it beside the loop.
+  notify: auto            # pushover when PO_USER and PO_TOKEN are set; off, and says so, otherwise
+  every: 4h               # a model-written digest this often. A 48h run unattended is six of
+                          # them, which is a phone worth reading rather than one worth muting.
+  on:                     # the fixed-text alerts, sent the moment the files say so and with
+                          # no model involved -- when usage runs out, a model cannot report it
+    - needs_human         # the loop could not decide; it is waiting for you
+    - stopped             # the run ended, with the reason
+    - limited             # a harness is out of usage (urgent when every harness is)
+    - stuck               # three `stuck` verdicts in a row, then at ten and twenty
+    - looping             # the loop detector acted: a re-plan or a model rotation
+    - engine_error        # at most one an hour
+    - silent              # the process is gone, or has not written for `silent_after`
+    - done_accepted       # the critic accepted done; `on_done_accepted: 2` ends the run at the next
+                          # `reject` is deliberately absent: this run fixes forward
+                          # (revert_on_reject: false), so a reject is the critic working, not news.
+                          # The digest counts them, and a *failed* revert still arrives as needs_human.
+  silent_after: 2h        # the actor's timeout is 90m, so quiet for longer than that is a call
+                          # that outlived its own kill, not a long iteration
+  poll: 30s
+  max_chars: 1000         # one notification; the whole digest is kept in runs/ot7/reports/
 plan:                     # only with planner: true
   every: 5
   view: plan
