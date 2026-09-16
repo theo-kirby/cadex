@@ -25502,3 +25502,71 @@ an answered probe with a stray rejected frame keeps its first frame, its
 The third probe is recorded in `docs/probes/ot7/attempts/f6-window-refusal.json`
 with both readings, old and new, and `docs/probes/ot7/runner/README.md` and
 `docs/probes/ot7/REPORT.md` carry the rule and the measurement.
+
+## ADR-370 — A fixed joint that holds nothing is measured and said (2026-09-16)
+
+**Context.** ot7's premise is that the agent designs badly because the product
+does not show it the measurements, and F4 is where that premise met its own
+residual. On `ot7-heron-repair-d` the product agent resolved two of Heron's
+three ot6 defects from measurements alone and stopped: both servo horns sit
+**0.2 mm from their links**, the ot6 defect verbatim, and the design's own fit
+report passes. It passes honestly. The script welds each horn to its link with
+a `fixed` joint and, in the same `assembly.assembly` call, declares the pair a
+**clearance of 0.05 mm**; measured at 0.2 mm, the pair clears every one of
+ADR-347's four checks. The agent's ledger lists it among four declared
+clearances that pass, and only the evidence collector disagreed — through a
+hard-coded pair list, `REPAIR_ATTACHMENTS` in
+`docs/probes/ot7/runner/run.py`, which knows two component names the product
+does not. A checker whose right answer lives in the harness is the run's own
+diagnosis pointed at itself: the cause is in the product, not the model.
+
+The fact the collector had and the product did not is that these two
+components are joined by a **fixed joint**. A fixed joint asserts that two
+parts are one rigid body. Whether their solids meet is a separate, measurable
+question, and on Heron the answer is that nothing meets: the horn floats in
+its pocket, held by a joint in the model and by nothing at all in the print.
+
+**Decision.** The engine measures it and every fit surface says it.
+
+- `_check_attachments` (`cadex_assembly_worker.py`) reports one row per
+  component pair joined by an **unsuppressed `fixed` joint** of this assembly:
+  the joint output names that declare it, the measured distance and common
+  volume from the pairs `_measure_clearance` already produced, and a status —
+  `touching` (within the same 0.001 mm tolerance a declared contact is held
+  to, or overlapping), `not touching`, or `unknown` with the engine's own
+  reason. It is published as `attachments` beside `world_geometry`, and the
+  `clearance` inspect scope carries it.
+- `attachment_summary` (`cli/cadex_cli/clearance.py`) is the block a build
+  reply carries inside `fit`, with its own verdict — `touching`, `reported`,
+  `unknown`, `none`, `unavailable` — so a number read from the static, swept
+  or attachment block means one thing only. The progress line ends
+  `welded: N of M pair(s) not touching` whenever the assembly welds anything,
+  and `cadex clearance` writes the same rows under its pair table.
+- **It is reported, never failed.** No `fit_failures` entry, no change to any
+  verdict, no change to acceptance: a standoff, a shim or a captive fastener
+  between two welded parts is a legitimate design and only the design knows
+  which it is. The charter's four checks stay four, every ot6 and ot7 receipt
+  keeps the failing set it was measured with, and F4's and F5's exhausted
+  results remain comparable with F6's and F7's. What the block removes is the
+  design whose every declared check passes while nothing holds two parts
+  together — and it says so in words the reading agent gets: *close the gap
+  and declare the pair a contact.*
+- **Absent is not empty.** A revision accepted before this ADR publishes no
+  `attachments` key and reads `unavailable` with the reason; an assembly with
+  no fixed joint publishes `[]` and reads `none`. Absence of the report is not
+  absence of a gap.
+
+**Consequences.** Tests that fail on the old code: the real-kernel fixture in
+`cadex_tests/test_fit_intent.py` now welds its 0.2 mm horn/link pair and
+declares it a 0.05 mm clearance — Heron's exact shape — so every fit check
+passes and the attachment row is what names it, beside a welded pair that
+really touches; a pure test pins the suppressed joint, the non-fixed joint, the
+other assembly's joint, two joints over one pair, and the unmeasured pair; and
+in `cli/tests/test_clearance.py` a rig whose script prints that everything fits
+gets `verdict: pass` with the gap under its weld in the same reply.
+`pixi run python -m pytest cli/tests` and `pixi run test-engine` are green.
+`docs/XSCRIPT.md`, `docs/CLI.md` and `docs/INTEGRATION.md`'s inspect row carry
+the contract. The collector's `REPAIR_ATTACHMENTS` is left alone on purpose:
+its seed's accepted revision predates this engine and publishes no report, and
+rewriting a receipt's own checker mid-run would make F4's evidence
+unreproducible.

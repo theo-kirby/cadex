@@ -2449,6 +2449,21 @@ not replace a script's declared minimum or contact tolerance. Engine row
 `fit_failures` always describes the engine defaults. See XSCRIPT's measured-fit
 section for declaration syntax and the precise world-geometry detection rule.
 
+### What the fixed joints hold (ADR-370)
+
+The clearance scope also publishes `attachments`: one row per component pair
+joined by an unsuppressed `fixed` joint, carrying the joint names, the measured
+distance and common volume, and `touching`, `not touching` or `unknown`. Build
+replies carry it as `fit.attachments` with its own verdict — `touching`,
+`reported`, `unknown`, `none` (the assembly welds nothing) or `unavailable` (a
+revision accepted before ADR-370 published no report) — and the progress line
+ends `welded: N of M pair(s) not touching` whenever the assembly has a fixed
+joint. `cadex clearance` writes the same rows under the pair table. None of it
+is counted among the fit failures and none of it refuses anything: a gap under
+a weld is a measured fact and a question for the design, since a standoff or a
+shim between two welded parts is legitimate. What it removes is the design
+whose every declared check passes while nothing holds two parts together.
+
 
 ### Published joint sweeps (ADR-350, ADR-351, 2026-09-14)
 

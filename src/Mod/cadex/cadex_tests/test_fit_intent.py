@@ -30,7 +30,7 @@ from pathlib import Path
 import FreeCAD as App
 import Part
 sys.path.insert(0, sys.argv[-1])
-from cadex_assembly_worker import _measure_clearance, _check_fit
+from cadex_assembly_worker import _measure_clearance, _check_fit, _check_attachments
 from cadex_assembly_api import AssemblyDomainAPI
 import CadexScriptedDomains as domains
 from cadex_domain_api import create_domain_api
@@ -59,13 +59,26 @@ wide = box("wide", (400, 0, 0))
 mate = box("mate", (410.4, 0, 0)) # declared 0.5 mm, actual 0.4
 floor = box("floor_face", (500, 0, 0))
 components["floor_face"].Shape = Part.makePlane(20, 20, App.Vector(500, 0, 0), App.Vector(1, 1, 1))
-asm = api.assembly(list(values.values()), contacts=[(horn, link), (base, bearing), (tab, cheek)],
-                   clearances=[(wide, mate, 0.5)])
+asm = api.assembly(list(values.values()), contacts=[(base, bearing), (tab, cheek)],
+                   clearances=[(wide, mate, 0.5), (horn, link, 0.05)])
+# Heron's own shape: the horn is welded to its link and declared a clearance,
+# so every fit check passes while nothing holds the two parts together.
+joint_data = {
+    "weld_horn": {"assembly_output": "asm", "kind": "fixed", "suppressed": False,
+                  "connectors": [{"component_output": "horn"}, {"component_output": "link"}]},
+    "weld_bearing": {"assembly_output": "asm", "kind": "fixed", "suppressed": False,
+                     "connectors": [{"component_output": "base"}, {"component_output": "bearing"}]},
+    "weld_suppressed": {"assembly_output": "asm", "kind": "fixed", "suppressed": True,
+                        "connectors": [{"component_output": "near"}, {"component_output": "other"}]},
+    "hinge": {"assembly_output": "asm", "kind": "revolute", "suppressed": False,
+              "connectors": [{"component_output": "wide"}, {"component_output": "mate"}]},
+}
 body = api.body(base, density_kg_m3=1000, collision=[api.collision("plane", size_mm=[500, 500, 50])])
 doc.recompute()
 rows = _measure_clearance(components)
 world = _check_fit(rows, components, asm.properties, {id(v): k for k, v in values.items()}, {"body": body})
-print("CLEARANCE-FRAME " + json.dumps({"pairs": rows, "world": world}))
+attachments = _check_attachments(rows, joint_data, "asm")
+print("CLEARANCE-FRAME " + json.dumps({"pairs": rows, "world": world, "attachments": attachments}))
 '''
 
 
@@ -79,12 +92,20 @@ def test_heron_defects_measured_by_real_kernel(tmp_path, monkeypatch):
     assert pair('cheek', 'servo_tab')['common_volume_mm3'] == pytest.approx(248.2)
     assert pair('cheek', 'servo_tab')['fit_failures'] == ['intersection']
     assert pair('horn', 'link')['distance_mm'] == pytest.approx(0.2)
-    assert pair('horn', 'link')['fit_failures'] == ['missed contact']
+    # Declared a 0.05 mm clearance, as Heron declared it: every fit check on
+    # this pair passes and the gap under the weld is what reports it (ADR-370).
+    assert pair('horn', 'link')['fit_failures'] == []
     assert pair('base', 'bearing')['fit_failures'] == []
     assert pair('near', 'other')['distance_mm'] == pytest.approx(0.05)
     assert pair('near', 'other')['fit_failures'] == ['below clearance']
     assert pair('wide', 'mate')['distance_mm'] == pytest.approx(0.4)
     assert pair('wide', 'mate')['fit_failures'] == ['below clearance']
+    bearing, horn_gap = report['attachments']
+    assert [item['first'] for item in report['attachments']] == ['base', 'horn']
+    assert bearing == {'first': 'base', 'second': 'bearing', 'joints': ['weld_bearing'],
+                       'status': 'touching', 'distance_mm': 0.0, 'common_volume_mm3': 0.0}
+    assert horn_gap['status'] == 'not touching' and horn_gap['joints'] == ['weld_horn']
+    assert horn_gap['distance_mm'] == pytest.approx(0.2)
     assert report['world'] == [{'component': 'base', 'status': 'world geometry',
                                 'reason': 'collision plane declared on design component'},
                                {'component': 'floor_face', 'status': 'world geometry',
@@ -157,3 +178,39 @@ def test_real_box_gap_static_and_swept_minima(tmp_path, monkeypatch):
             expected = [] if report['gap'] == 0.1 else ['below clearance']
             assert static['fit_failures'] == extrema['fit_failures'] == expected
             assert extrema['distance_mm'] == raw['minimum_distance_mm']
+
+
+def test_attachments_report_only_unsuppressed_fixed_joint_pairs():
+    """A weld with a gap is named; a suppressed one, another kind, and an
+    unmeasured pair each say what they are (ADR-370)."""
+
+    from cadex_assembly_worker import _check_attachments
+    rows = [{'first': 'a', 'second': 'b', 'distance_mm': 0.2, 'common_volume_mm3': 0.0},
+            {'first': 'c', 'second': 'd', 'distance_mm': 0.0, 'common_volume_mm3': 5.0},
+            {'first': 'e', 'second': 'f', 'distance_mm': None, 'common_volume_mm3': None,
+             'error': 'No published measurement; rebuild the project.'},
+            {'first': 'g', 'second': 'h', 'distance_mm': 9.0, 'common_volume_mm3': 0.0}]
+
+    def joint(kind, first, second, suppressed=False, assembly='asm'):
+        return {'assembly_output': assembly, 'kind': kind, 'suppressed': suppressed,
+                'connectors': [{'component_output': first}, {'component_output': second}]}
+
+    report = _check_attachments(rows, {
+        'weld_gap': joint('fixed', 'b', 'a'),
+        'weld_overlap': joint('fixed', 'c', 'd'),
+        'weld_unmeasured': joint('fixed', 'e', 'f'),
+        'weld_again': joint('fixed', 'a', 'b'),
+        'weld_off': joint('fixed', 'g', 'h', suppressed=True),
+        'weld_elsewhere': joint('fixed', 'g', 'h', assembly='other'),
+        'hinge': joint('revolute', 'g', 'h'),
+        'weld_missing_pair': joint('fixed', 'x', 'y'),
+    }, 'asm')
+    assert [(item['first'], item['second'], item['status']) for item in report] == [
+        ('a', 'b', 'not touching'), ('c', 'd', 'touching'),
+        ('e', 'f', 'unknown'), ('x', 'y', 'unknown')]
+    # Two joints over one pair are one row naming both, in a stable order.
+    assert report[0]['joints'] == ['weld_again', 'weld_gap']
+    assert report[0]['distance_mm'] == 0.2
+    assert report[2]['reason'] == 'No published measurement; rebuild the project.'
+    assert report[3]['distance_mm'] is None
+    assert _check_attachments(rows, {}, 'asm') == []

@@ -657,3 +657,98 @@ def test_a_sweep_with_nothing_measured_is_never_a_pass(
     # a current one with nothing that moves within a range.
     assert fit['sweep']['coverage'] == coverage
     assert _sweep_line(fit['sweep']) == line
+
+
+WELD_RIG = '''
+block = part.box(10, 10, 10)
+a = assembly.component(block, grounded=True)
+b = assembly.component(block, placement=[11.2, 0, 0])
+c = assembly.component(block, placement=[30, 0, 0])
+weld_gap = assembly.joint(
+    "fixed",
+    assembly.connector(a, "origin"),
+    assembly.connector(b, "origin", offset={"position": [11.2, 0, 0]}),
+    label="weld_gap")
+weld_touching = assembly.joint(
+    "fixed",
+    assembly.connector(a, "origin"),
+    assembly.connector(c, "origin", offset={"position": [-10.0, 0, 0]}),
+    label="weld_touching")
+asm = assembly.assembly([a, b, c], [weld_gap, weld_touching],
+                        contacts=[(a, c)], clearances=[(a, b, 0.5)])
+diag = assembly.solve(asm)
+print("every part fits: nothing overlaps and every clearance is met")
+result = {"block": block, "a": a, "b": b, "c": c, "asm": asm, "diag": diag,
+          "weld_gap": weld_gap, "weld_touching": weld_touching}
+'''
+
+
+def test_a_weld_holding_nothing_is_reported_while_every_fit_check_passes(engine, tmp_path):
+    """Heron's third ot6 defect, as its own design declared it (ADR-370).
+
+    A pair welded rigidly together, declared a clearance and measured apart:
+    all four fit checks pass, the script prints that everything fits, and the
+    reply still carries the gap under the weld with the joint that asserts it.
+    """
+
+    root = tmp_path / 'weld'
+    with CadexdClient(engine) as client:
+        open_project(client, root)
+        with Bridge(client, initial_revision='') as bridge:
+            reply = bridge.call('write_script', {'source': WELD_RIG})
+        payload = json.loads(reply['content'][0]['text'])
+        assert payload['ok'], payload
+        fit = payload['fit']
+        assert fit['verdict'] == 'pass' and fit['failing'] == []
+        attachments = fit['attachments']
+        assert attachments['verdict'] == 'reported'
+        assert attachments['pairs_checked'] == 2 and attachments['reported_count'] == 1
+        gap, = attachments['reported']
+        assert (gap['first'], gap['second']) == ('a', 'b')
+        assert gap['status'] == 'not touching'
+        assert gap['joints'] == ['weld_gap']
+        assert gap['distance_mm'] == pytest.approx(1.2)
+        assert 'never a fit failure' in attachments['note']
+        assert 'fixed joint' in attachments['source']
+        path, value = write_clearance(client, root)
+        report = path.read_text()
+        assert 'Fixed-joint attachments: 2 pair(s) measured, 1 not touching' in report
+        assert 'weld_gap): not touching, 1.2' in report.replace('1.1999999999999993', '1.2')
+        assert fit_summary(value)['attachments'] == attachments
+
+
+def test_an_assembly_with_no_weld_and_a_revision_without_the_report_say_so():
+    """Absence of a fixed joint and absence of the report are different facts."""
+
+    from cadex_cli.clearance import attachment_summary
+    pairs = [{'first': 'a', 'second': 'b', 'distance_mm': 1.0, 'common_volume_mm3': 0.0}]
+    none = attachment_summary({'available': True, 'pairs': pairs, 'attachments': []})
+    assert none['verdict'] == 'none' and none['pairs_checked'] == 0
+    assert 'no unsuppressed fixed joint' in none['reason']
+    legacy = attachment_summary({'available': True, 'pairs': pairs})
+    assert legacy['verdict'] == 'unavailable'
+    assert 'accepted by an engine that measured no fixed-joint pair' in legacy['reason']
+    assert legacy['reported'] == [] and legacy['reported_count'] == 0
+    assert fit_summary({'available': True, 'pairs': pairs})['attachments'] == legacy
+    touching = attachment_summary({'attachments': [
+        {'first': 'a', 'second': 'b', 'joints': ['w'], 'status': 'touching',
+         'distance_mm': 0.0, 'common_volume_mm3': 0.0}]})
+    assert touching['verdict'] == 'touching' and touching['reported'] == []
+    assert 'note' not in touching
+    unknown = attachment_summary({'attachments': [
+        {'first': 'a', 'second': 'b', 'joints': ['w'], 'status': 'unknown',
+         'distance_mm': None, 'common_volume_mm3': None, 'reason': 'unmeasured pair'}]})
+    assert unknown['verdict'] == 'unknown' and unknown['reported_count'] == 1
+
+
+@pytest.mark.parametrize('attachments,phrase', [
+    (None, ''),
+    ({'pairs_checked': 0, 'reported_count': 0}, ''),
+    ({'pairs_checked': 12, 'reported_count': 2}, '  welded: 2 of 12 pair(s) not touching'),
+])
+def test_the_progress_line_says_what_the_welds_hold(attachments, phrase):
+    from cadex_cli.bridge import _fit_line
+    fit = {'verdict': 'pass', 'failing_count': 0, 'pairs_checked': 105}
+    if attachments is not None:
+        fit['attachments'] = attachments
+    assert _fit_line(fit) == 'fit pass: 0 failing of 105 pair(s)' + phrase

@@ -564,7 +564,17 @@ def _fit_line(fit: dict[str, Any]) -> str:
             int(fit.get("pairs_checked") or 0),
         )
     sweep = fit.get("sweep")
-    return line + ("  " + _sweep_line(sweep) if isinstance(sweep, dict) else "")
+    line += ("  " + _sweep_line(sweep)) if isinstance(sweep, dict) else ""
+    attachments = fit.get("attachments")
+    # Silent when the design welds nothing and when the revision published no
+    # report; a count of zero out of zero is noise, and a gap under a weld is
+    # the one thing here worth a phrase of its own (ADR-370).
+    if isinstance(attachments, dict) and int(attachments.get("pairs_checked") or 0):
+        line += "  welded: {:d} of {:d} pair(s) not touching".format(
+            int(attachments.get("reported_count") or 0),
+            int(attachments["pairs_checked"]),
+        )
+    return line
 
 
 def _sweep_line(sweep: dict[str, Any]) -> str:

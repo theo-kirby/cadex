@@ -5867,6 +5867,60 @@ def _check_fit(rows, components, properties, component_outputs, raw_result=None)
     return world
 
 
+#: How close two solids must be to count as touching -- the same tolerance a
+#: declared contact is held to in :func:`_check_fit`.
+_ATTACHMENT_CONTACT_MM = 1e-3
+
+
+def _check_attachments(rows, joint_data, assembly_output):
+    """Measure whether each fixed-joint pair's solids actually touch (ADR-370).
+
+    A fixed joint asserts that two components are one rigid body. Whether
+    their solids meet is a separate, measured fact, and it is reported here
+    beside the fit checks rather than as one of them: a standoff, a shim or
+    a captive fastener between the two parts is a legitimate design, and
+    only the design knows which it is. What the report removes is the case
+    where nothing at all holds the parts together and every declared check
+    still passes.
+    """
+
+    measured = {frozenset((row["first"], row["second"])): row for row in rows}
+    pairs = {}
+    for name, joint in joint_data.items():
+        if joint.get("assembly_output") != assembly_output or joint.get("kind") != "fixed":
+            continue
+        if joint.get("suppressed"):
+            continue
+        components = {connector.get("component_output")
+                      for connector in joint.get("connectors") or ()}
+        if len(components) != 2 or None in components:
+            continue
+        pairs.setdefault(frozenset(components), []).append(str(name))
+    report = []
+    for pair in sorted(pairs, key=lambda key: sorted(key)):
+        first, second = sorted(pair)
+        row = measured.get(pair)
+        item = {"first": first, "second": second, "joints": sorted(pairs[pair])}
+        if row is None:
+            item.update(status="unknown", distance_mm=None, common_volume_mm3=None,
+                        reason="no published pair measurement for this fixed joint")
+            report.append(item)
+            continue
+        distance, volume = row.get("distance_mm"), row.get("common_volume_mm3")
+        item.update(distance_mm=distance, common_volume_mm3=volume)
+        if row.get("error") or distance is None or volume is None:
+            item.update(status="unknown",
+                        reason=str(row.get("error") or "unmeasured pair"))
+        elif volume > 1e-6 or distance <= _ATTACHMENT_CONTACT_MM:
+            item["status"] = "touching"
+        else:
+            item.update(status="not touching",
+                        reason="a fixed joint holds these components rigidly "
+                               "together and their solids never meet")
+        report.append(item)
+    return report
+
+
 def validate_and_solve_assembly(
     document: Any,
     raw_result: Mapping[str, Any],
@@ -6344,6 +6398,7 @@ def validate_and_solve_assembly(
 
     clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
     world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result)
+    attachments = _check_attachments(clearance, joint_data, assembly_output)
     sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
                    if assembly_properties.get(key) is not None}
     # Coverage is reported even when neither step is declared (ADR-367). The
@@ -6613,6 +6668,7 @@ def validate_and_solve_assembly(
     by_name[assembly_output]["clearance_sweep"] = clearance_sweep
     by_name[assembly_output]["clearance"] = clearance
     by_name[assembly_output]["world_geometry"] = world_geometry
+    by_name[assembly_output]["attachments"] = attachments
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],

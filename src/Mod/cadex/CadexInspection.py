@@ -1200,6 +1200,10 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             },
             "pairs": pairs,
             "world_geometry": by_name.get(assembly, {}).get("world_geometry", []),
+            # Absent rather than empty on a revision accepted before
+            # ADR-370: no fixed-joint pair and no published report are
+            # different facts, and a reader must not read one as the other.
+            "attachments": by_name.get(assembly, {}).get("attachments"),
         }
     return {
         "revision": revision,

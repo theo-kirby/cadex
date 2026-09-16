@@ -1569,6 +1569,21 @@ these facts. The summary counts each failing pair once, prioritising unknown,
 intersection, then intent; the row's `fit_failures` preserves all checks.
 World findings are counted separately. This is static fit, not swept motion.
 
+**What the fixed joints hold** is measured beside these checks and is never one
+of them (ADR-370). Every pair joined by an unsuppressed `fixed` joint is
+reported in `attachments` with the joints that declare it, its measured gap and
+one of `touching` (within the 0.001 mm contact tolerance, or overlapping),
+`not touching`, or `unknown`. A fixed joint asserts that two components are one
+rigid body; a gap between their solids is a connection the geometry does not
+make. It is reported rather than failed because a standoff, a shim or a captive
+fastener between two welded parts is a legitimate design and only the design
+knows which it is — but a pair welded together, declared a clearance and
+measured apart passes every check above while nothing holds it, which is
+exactly how a floating servo horn survives acceptance. `attachments` is
+**absent** on a revision accepted before ADR-370 and an **empty list** on an
+assembly with no fixed joint: no published report and no welded pair are
+different facts.
+
 ## Sampled hinge and slider fit (ADR-349, ADR-351)
 
 `assembly.assembly(..., sweep_step_degrees=5)` requests an advisory exact-solid

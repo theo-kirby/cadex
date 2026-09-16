@@ -212,6 +212,100 @@ def sweep_summary(
     return summary
 
 
+#: Where the attachment block's numbers come from, said in the block itself
+#: for the same reason the other two say it (ADR-370).
+ATTACHMENT_SOURCE = (
+    "engine measurements of the exact solids at the solved pose for every "
+    "pair joined by an unsuppressed fixed joint (inspect scope=clearance "
+    "path=/attachments). A fixed joint asserts the two components are one "
+    "rigid body; a measured gap between them is a connection the geometry "
+    "does not make. Not the script's stdout."
+)
+
+#: Said whenever a fixed-joint pair does not touch: the finding is a measured
+#: fact and a question for the design, never one of the four fit checks.
+ATTACHMENT_NOTE = (
+    "Reported, never a fit failure: a standoff, a shim or a captive fastener "
+    "between two welded parts is a legitimate design, and only the design "
+    "knows which this is. If nothing is meant to sit in the gap, the parts "
+    "are held together by a joint and not by geometry -- close the gap and "
+    "declare the pair a contact."
+)
+
+#: What the block says on a revision accepted before ADR-370, which published
+#: no attachment report at all. Absence of the report is not absence of a gap.
+ATTACHMENT_NO_PUBLISHED = (
+    "No published attachment report for this accepted revision: it was "
+    "accepted by an engine that measured no fixed-joint pair. Rebuild to "
+    "acquire the measurements."
+)
+
+
+def attachment_summary(value: Any) -> dict[str, Any]:
+    """What the fixed joints of an accepted design actually hold (ADR-370).
+
+    ``value`` is the same ``inspect scope=clearance`` value :func:`fit_summary`
+    reads, so like the swept block this costs no second engine call. The block
+    is the count of fixed-joint pairs and **every** one whose solids do not
+    meet, by name, with the joints that declare it and the measured gap.
+
+    ``verdict`` is ``touching`` when every fixed-joint pair meets,
+    ``reported`` when at least one does not, ``unknown`` when one could not
+    be measured and none is open, ``none`` when the assembly declares no
+    fixed joint, and ``unavailable`` when the revision published no report.
+    None of them refuses anything, and none of them is counted among the fit
+    failures beside it.
+    """
+
+    if not isinstance(value, dict):
+        value = {}
+    published = value.get("attachments")
+    if not isinstance(published, list):
+        return {
+            "verdict": "unavailable", "source": ATTACHMENT_SOURCE,
+            "pairs_checked": 0, "reported_count": 0, "reported": [],
+            "reason": ATTACHMENT_NO_PUBLISHED,
+        }
+    rows = [row for row in published if isinstance(row, dict)]
+    reported = [
+        {
+            "first": str(row.get("first") or ""),
+            "second": str(row.get("second") or ""),
+            "joints": [str(name) for name in (row.get("joints") or [])],
+            "status": str(row.get("status") or ""),
+            "distance_mm": row.get("distance_mm"),
+            "common_volume_mm3": row.get("common_volume_mm3"),
+            "reason": str(row.get("reason") or ""),
+        }
+        for row in rows
+        if str(row.get("status") or "") != "touching"
+    ]
+    if any(item["status"] == "not touching" for item in reported):
+        verdict = "reported"
+    elif reported:
+        verdict = "unknown"
+    elif rows:
+        verdict = "touching"
+    else:
+        verdict = "none"
+    summary: dict[str, Any] = {
+        "verdict": verdict,
+        "source": ATTACHMENT_SOURCE,
+        "thresholds": {"contact_tolerance_mm": 1.0e-3},
+        "pairs_checked": len(rows),
+        "reported_count": len(reported),
+        "reported": reported,
+    }
+    if verdict == "none":
+        summary["reason"] = (
+            "The accepted assembly declares no unsuppressed fixed joint, so "
+            "no pair is asserted to be one rigid body."
+        )
+    if reported:
+        summary["note"] = ATTACHMENT_NOTE
+    return summary
+
+
 def _finite(number: Any) -> bool:
     """A measurement the block can compare, rather than a hole in the report."""
 
@@ -236,6 +330,11 @@ def fit_summary(
     pair was measured and every pair is clear; ``unavailable`` when the
     accepted revision publishes no assembly at all, which is a script with
     nothing to fit rather than one that fails.
+
+    ``sweep`` and ``attachments`` are the swept fit (ADR-366) and what the
+    fixed joints actually hold (ADR-370), each from the same published value
+    and each keeping its own verdict: a number read from any of the three
+    blocks means one thing only.
     """
 
     if not isinstance(value, dict):
@@ -292,6 +391,10 @@ def fit_summary(
         # its own verdict: `verdict` above is the solved pose and stays that,
         # so a number read from either block means one thing only.
         "sweep": sweep_summary(value, maximum_volume=maximum_volume),
+        # ...and what the fixed joints hold, from the same value (ADR-370).
+        # Its own verdict too: a gap under a weld is a measured fact about
+        # the design, not one of the four checks `verdict` above counts.
+        "attachments": attachment_summary(value),
     }
     if verdict == "unavailable":
         summary["note"] = (
@@ -393,6 +496,23 @@ def write_clearance(
                  f"{row['status']} | {_cell(detail)} |\n")
     for world in value.get("world_geometry", []):
         text += f"\nWorld geometry: {_cell(world['component'])} — {_cell(world['reason'])}.\n"
+    # What the fixed joints hold (ADR-370), beside the four checks and never
+    # counted among them.
+    attachments = attachment_summary(value)
+    if attachments["verdict"] == "unavailable":
+        text += f"\nFixed-joint attachments: {attachments['reason']}\n"
+    elif attachments["verdict"] != "none":
+        text += (f"\nFixed-joint attachments: {attachments['pairs_checked']} pair(s) measured, "
+                 f"{attachments['reported_count']} not touching or unmeasured "
+                 f"({attachments['verdict']}).\n")
+        for item in attachments["reported"]:
+            gap = item["distance_mm"]
+            measured = f", {gap} mm apart" if gap is not None else ""
+            text += (f"\n- {_cell(item['first'])} — {_cell(item['second'])} "
+                     f"({_cell(', '.join(item['joints']))}): {item['status']}"
+                     f"{measured}. {_cell(item['reason'])}\n")
+        if attachments.get("note"):
+            text += f"\n{attachments['note']}\n"
     path = Path(root) / "docs" / "clearance.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
