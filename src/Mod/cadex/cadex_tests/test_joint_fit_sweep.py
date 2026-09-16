@@ -210,3 +210,85 @@ def test_slider_known_position_solved_agreement_and_incomplete_coverage(tmp_path
                          ('undeclared', 'sweep_step_mm is not declared'), ('timeout', 'runtime budget')]:
         assert result[name]['status'] == 'incomplete', result[name]
         assert reason in result[name]['joints'][0]['reason']
+
+
+_WELD_DRIVER = r'''
+import json, math, sys
+import FreeCAD as App
+import Part
+sys.path.insert(0, sys.argv[-1])
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps
+D = App.newDocument('WeldSweep')
+fixed = D.addObject('Part::Feature','fixed')
+fixed.Shape = Part.makeSphere(1, App.Vector(0,10,0))
+source = D.addObject('Part::Feature','source')
+source.Shape = Part.makeSphere(1, App.Vector(10,0,0))
+source.Placement = App.Placement(App.Vector(13,-7,3), App.Rotation(App.Vector(1,0,0),23))
+moving = D.addObject('App::Link','moving')
+moving.LinkedObject = source
+solved = App.Placement(App.Vector(), App.Rotation(App.Vector(0,0,1),20))
+moving.Placement = solved.multiply(source.Placement.inverse())
+# Welded to `moving` and touching it exactly: the horn against its link.
+centre = App.Vector(10 * math.cos(math.radians(20)), 10 * math.sin(math.radians(20)), 2.0)
+carried = D.addObject('Part::Feature','carried')
+carried.Shape = Part.makeSphere(1, centre)
+D.recompute()
+components = {'fixed':fixed, 'moving':moving, 'carried':carried}
+data = {'fixed':{'grounded':True},'moving':{'grounded':False},'carried':{'grounded':False}}
+identity = {'matrix': list(App.Matrix().A)}
+joints = {'hinge':{'kind':'revolute','suppressed':False,'parameters':{},
+    'angle_limits_degrees':[20,70], 'length_limits_mm':None,
+    'connectors':[{'component_output':'fixed','local_frame':dict(identity)},
+                  {'component_output':'moving','local_frame':{'matrix':list(source.Placement.toMatrix().A)}}]},
+    'weld':{'kind':'fixed','suppressed':False,'parameters':{},
+    'angle_limits_degrees':None, 'length_limits_mm':None,
+    'connectors':[{'component_output':'moving','local_frame':dict(identity)},
+                  {'component_output':'carried','local_frame':dict(identity)}]}}
+baseline = _measure_clearance(components)
+report = _measure_joint_sweeps(components,data,joints,baseline,{'sweep_step_degrees': 1},True)
+print('CLEARANCE-FRAME ' + json.dumps(dict(report=report, baseline=baseline)))
+'''
+
+
+@pytest.mark.skipif(kernel.FREECADCMD is None, reason='Needs real OCCT')
+def test_welded_pair_is_marked_as_holding_still_through_the_sweep(tmp_path, monkeypatch):
+    """A welded pair repeats its solved-pose measurement at every sample (ADR-374).
+
+    Three unit spheres: `fixed` at 90 deg on a radius-10 circle, `moving`
+    hinged from 20 to 70 deg on the same circle, and `carried` welded to
+    `moving` and touching it. Nothing ever contacts through the motion --
+    `fixed` meets `moving` only at 78.5 deg and `carried` only at 90 deg,
+    both outside the range -- yet `moving` and `carried` read 0.0 mm apart at
+    every sample, because the weld holds them there. `relative_motion` is the
+    row saying which of the two facts it carries.
+    """
+
+    monkeypatch.setattr(kernel, '_FRAME_DRIVER', _WELD_DRIVER)
+    result = kernel._drive_frame(tmp_path)
+    report = result['report']
+    assert report['status'] == 'complete', report
+    # The weld declares no limits, so it is not a swept joint of its own.
+    assert [joint['joint'] for joint in report['joints']] == ['hinge']
+    joint = report['joints'][0]
+    assert joint['status'] == 'complete' and joint['solved_pose_agreement']
+    rows = {(row['first'], row['second']): row for row in joint['pairs']}
+    assert set(rows) == {('fixed', 'moving'), ('fixed', 'carried'), ('moving', 'carried')}
+    assert rows['fixed', 'moving']['relative_motion'] is True
+    assert rows['fixed', 'carried']['relative_motion'] is True
+    # Both sides ride the swept subtree, so the hinge cannot change this pair.
+    assert rows['moving', 'carried']['relative_motion'] is False
+    # ...and this is why the flag has to exist: the weld reports the range's
+    # own floor as "first contact" and 0.0 mm as its minimum, every time.
+    weld = rows['moving', 'carried']
+    assert weld['first_contact_degrees'] == 20
+    assert weld['minimum_distance_mm'] <= 1e-3
+    assert weld['maximum_common_volume_mm3'] <= 1e-6
+    # Neither moving pair ever touches: the chord between two radius-10
+    # centres 20 deg apart is 20 sin(10 deg), and the radii take 2 mm off it.
+    for key in (('fixed', 'moving'), ('fixed', 'carried')):
+        assert rows[key]['first_contact_degrees'] is None, rows[key]
+        assert rows[key]['maximum_common_volume_mm3'] == 0.0
+    assert abs(rows['fixed', 'moving']['minimum_distance_mm']
+               - (20 * math.sin(math.radians(10)) - 2)) < 1e-6
+    assert abs(rows['fixed', 'carried']['minimum_distance_mm']
+               - (math.sqrt(204 - 200 * math.sin(math.radians(70))) - 2)) < 1e-6

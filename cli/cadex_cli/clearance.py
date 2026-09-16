@@ -109,6 +109,14 @@ def sweep_summary(
     contact -- and **every** pair that interpenetrates through the motion, by
     name, the way the static block names every failing pair.
 
+    Those three facts are read over the pairs this joint actually moves, and
+    ``pairs_moving`` says how many that was (ADR-374). A pair rigid across
+    the sweep repeats its solved-pose measurement at every sample: a welded
+    horn touching its link would otherwise hold the joint's minimum at
+    0.0 mm and claim first contact at the bottom of the range, which is the
+    weld rather than anything the motion did. ``failing`` is unchanged and
+    still spans every pair, because an overlap is an overlap.
+
     ``verdict`` is ``pass`` only when every limited joint was swept to
     completion and no pair overlaps anywhere in its range. A joint the engine
     could not sweep -- most often because the assembly declares no step for
@@ -174,20 +182,34 @@ def sweep_summary(
             skipped += 1
         minimum_distance = maximum_common = first_contact = None
         contact_pair: list[str] = []
+        moving = 0
         for row in rows:
             first, second = str(row.get("first") or ""), str(row.get("second") or "")
             distance = row.get("minimum_distance_mm")
             volume = row.get("maximum_common_volume_mm3")
             contact = row.get(contact_key) if contact_key else None
+            # Only a pair this joint actually moves says anything about this
+            # joint (ADR-374). A pair rigid across the sweep -- a welded horn
+            # and its link, two parts of the same subtree -- repeats its
+            # solved-pose measurement at every sample, so it would otherwise
+            # pin the joint's minimum at the weld's 0.0 mm and name first
+            # contact at the bottom of the range, hiding the contact the
+            # motion causes. Its gap is the static and attachment blocks'
+            # fact, measured at the pose where it means something. A row
+            # from a revision accepted before ADR-374 carries no flag and
+            # counts as moving, so an older receipt reads as it always did.
+            moves = row.get("relative_motion")
+            moves = True if moves is None else bool(moves)
+            moving += 1 if moves else 0
             # A distance or a volume is a magnitude; a first-contact value is
             # a joint coordinate and is negative all the time, so the sign
             # rule belongs here rather than in `_finite`.
             measured = all(_finite(v) and v >= 0 for v in (distance, volume))
-            if _finite(distance) and (minimum_distance is None or distance < minimum_distance):
+            if moves and _finite(distance) and (minimum_distance is None or distance < minimum_distance):
                 minimum_distance = float(distance)
-            if _finite(volume) and (maximum_common is None or volume > maximum_common):
+            if moves and _finite(volume) and (maximum_common is None or volume > maximum_common):
                 maximum_common = float(volume)
-            if _finite(contact) and (first_contact is None or contact < first_contact):
+            if moves and _finite(contact) and (first_contact is None or contact < first_contact):
                 first_contact, contact_pair = float(contact), [first, second]
             if not measured:
                 failing.append({
@@ -207,6 +229,10 @@ def sweep_summary(
                 if contact_key:
                     overlap[contact_key] = contact
                 failing.append(overlap)
+        # Counted apart so `pairs_measured - pairs_moving` is answerable, the
+        # way `joints_skipped` sits beside `joints_complete` (ADR-371): the
+        # three numbers below are read over these pairs and no others.
+        item["pairs_moving"] = moving
         item["minimum_distance_mm"] = minimum_distance
         item["maximum_common_volume_mm3"] = maximum_common
         if first_contact is not None:

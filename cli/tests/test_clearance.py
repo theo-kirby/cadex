@@ -915,3 +915,53 @@ def test_an_attached_pair_is_clear_at_zero_and_still_fails_on_overlap(intent, st
     assert pair_status({**row, 'distance_mm': None, 'common_volume_mm3': None,
                         'error': 'unmeasured'}, MINIMUM_CLEARANCE_MM,
                        MAXIMUM_COMMON_VOLUME_MM3) == 'unknown'
+
+
+def test_a_welded_pair_does_not_define_the_joint_it_cannot_move():
+    """Known answer: the weld reads 0.0 mm at every sample, and is not the joint's.
+
+    The engine's own fixture, summarised: `knee` sweeps [20, 70] degrees,
+    `horn` is welded to `shin` and touching it, and nothing the hinge moves
+    ever comes closer than 1.47 mm. Rolling the weld into the joint's numbers
+    would report a 0.0 mm minimum and first contact at 20 degrees -- the
+    bottom of the range, where the sweep merely started -- and bury the one
+    number the block exists to carry. `pairs_moving` says how many pairs the
+    three facts were read over (ADR-374).
+    """
+
+    def joint(*pairs):
+        return {'status': 'complete', 'step_degrees': 5, 'step_mm': None,
+                'joints': [{'joint': 'knee', 'kind': 'revolute', 'unit': 'degrees',
+                            'status': 'complete', 'step': 5, 'sample_count': 11,
+                            'range_degrees': [20, 70], 'initial_degrees': 20,
+                            'pairs': list(pairs)}]}
+
+    weld = {'first': 'horn', 'second': 'shin', 'relative_motion': False,
+            'minimum_distance_mm': 0.0, 'maximum_common_volume_mm3': 0.0,
+            'first_contact_degrees': 20.0}
+    swept = {'first': 'thigh', 'second': 'shin', 'relative_motion': True,
+             'minimum_distance_mm': 1.472964, 'maximum_common_volume_mm3': 0.0,
+             'first_contact_degrees': None}
+    block = fit_summary({'available': True, 'pairs': [],
+                         'clearance_sweep': joint(weld, swept)})['sweep']
+    row = block['joints'][0]
+    assert (row['pairs_measured'], row['pairs_moving']) == (2, 1)
+    assert row['minimum_distance_mm'] == 1.472964
+    assert row['maximum_common_volume_mm3'] == 0.0
+    # No pair this hinge moves ever touches, so it has no first contact to
+    # name -- and saying nothing is the honest answer, not 20 degrees.
+    assert 'first_contact' not in row
+    # Nothing failed: the weld is a fit the design asked for (ADR-372), and
+    # the swept block agrees with the static one about it.
+    assert (block['verdict'], block['failing_count']) == ('pass', 0)
+
+    # A row from a revision accepted before ADR-374 carries no flag, so it
+    # counts as moving and the block reads exactly as it did then.
+    legacy = joint({k: v for k, v in weld.items() if k != 'relative_motion'},
+                   {k: v for k, v in swept.items() if k != 'relative_motion'})
+    older = fit_summary({'available': True, 'pairs': [],
+                         'clearance_sweep': legacy})['sweep']['joints'][0]
+    assert (older['pairs_measured'], older['pairs_moving']) == (2, 2)
+    assert older['minimum_distance_mm'] == 0.0
+    assert older['first_contact'] == {'value': 20.0, 'unit': 'degrees',
+                                      'pair': ['horn', 'shin']}

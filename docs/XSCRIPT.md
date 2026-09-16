@@ -1650,6 +1650,18 @@ and still judges none: that reads `unavailable` with its own reason, never a
 pass, because a mechanism that declares motion and then holds it still has
 not been swept.
 
+Every swept pair row carries `relative_motion` (ADR-374): true when one side
+sits inside the joint's moving subtree and the other does not, which is the
+only case the joint can change. A pair with both sides on the same side of it
+is rigid for this sweep and repeats its solved-pose measurement at every
+sample, so a horn welded to the link it turns with reads 0.0 mm apart at
+every angle. That is the weld, not the motion, and it is why the CLI's
+`fit.sweep` joint rows read their minimum distance, maximum common volume and
+first contact over the moving pairs alone, counting them as `pairs_moving`.
+The per-pair rows are unchanged and still cover every pair; what the gap under
+a weld means belongs to the `attachments` report (ADR-370), which measures it
+at the solved pose.
+
 Each joint's native queries run in a fresh FreeCAD subprocess with a 90-second
 timeout; the assembly shares 180 seconds of sweep budget. Preparation and
 process cleanup add overhead. At most 73 poses and 2,000 pairs are allowed per

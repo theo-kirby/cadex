@@ -2123,10 +2123,12 @@ The `fit` block's `verdict` is the solved pose and stays that. Inside it,
   "joints": [
     {"joint": "knee", "kind": "revolute", "unit": "degrees", "status": "complete",
      "pairs_measured": 3, "step": 5, "sample_count": 23, "range_degrees": [-90, 20],
-     "initial_degrees": 0, "minimum_distance_mm": 0.0, "maximum_common_volume_mm3": 42.5,
+     "initial_degrees": 0, "pairs_moving": 3,
+     "minimum_distance_mm": 0.0, "maximum_common_volume_mm3": 42.5,
      "first_contact": {"value": -70.0, "unit": "degrees", "pair": ["shin", "foot"]}},
     {"joint": "rail", "kind": "slider", "unit": "mm", "status": "incomplete",
-     "pairs_measured": 0, "minimum_distance_mm": null, "maximum_common_volume_mm3": null,
+     "pairs_measured": 0, "pairs_moving": 0,
+     "minimum_distance_mm": null, "maximum_common_volume_mm3": null,
      "reason": "sweep_step_mm is not declared on the assembly, so this limited slider joint was not swept"}
   ],
   "failing_count": 1,
@@ -2151,6 +2153,20 @@ complete` with no joint row is a current revision whose assembly declares no
 limited joint. `reason` says which in words, and the one-line progress phrase
 reads `sweep unavailable: no published sweep` or `sweep unavailable: no
 limited joint` rather than a bare `sweep unavailable`.
+A joint row's `minimum_distance_mm`, `maximum_common_volume_mm3` and
+`first_contact` are read over the pairs **that joint actually moves**, and
+`pairs_moving` says how many of `pairs_measured` those were (ADR-374). A pair
+with both sides on the same side of the joint — a horn welded to the link it
+turns with, two parts of one swept subtree — is rigid for this sweep and
+repeats its solved-pose measurement at every sample. Rolling it in would pin
+the joint's minimum at the weld's 0.0 mm and name first contact at the bottom
+of the range, where the sweep merely started, which is the weld and not the
+motion; the gap under a weld is the `attachments` block's fact, measured at
+the pose where it means something. `failing` is unchanged and still spans
+every pair, because an overlap is an overlap. A pair row from a revision
+accepted before ADR-374 carries no `relative_motion` flag and counts as
+moving, so an older receipt reads as it always did.
+
 None of these is a pass: a joint that was not swept has been checked at one pose
 only. The block is advisory like the static one — a failing swept fit is
 reported, never refused — and the prose report prints it as a `sweep` line

@@ -25762,3 +25762,57 @@ tolerance, and no change to any threshold, default or published row. It does
 not declare anything on a retained design: Finch's four bearing seats still
 read `below clearance` until a design turn declares them, which is the
 unchanged rule that a failing fit is reported and never repaired by the tools.
+
+## ADR-374 — A welded pair does not define the joint it cannot move (2026-09-16)
+
+**Decision.** Every swept pair row carries `relative_motion`: true when one
+side of the pair sits inside the swept joint's moving subtree and the other
+does not, which is the only case that joint can change. The CLI's `fit.sweep`
+joint rows read their `minimum_distance_mm`, `maximum_common_volume_mm3` and
+`first_contact` over the moving pairs alone, and report how many those were as
+`pairs_moving` beside `pairs_measured`. The per-pair rows, the `failing` list
+and every threshold are unchanged.
+
+**Why.** The three numbers a joint row carries are the three facts F3 asks for,
+and on any mechanism with welded hardware they were none of them. A pair the
+joint cannot move holds its solved-pose measurement at every sample, so a horn
+welded flush against the link it turns with — exactly what ADR-372 established
+is *correct* design, and exactly what a balancer does to horns, bearings and
+fasteners — reads 0.0 mm at every angle and takes `first_contact` at the first
+sample, which is the bottom of the declared range. The roll-up took the
+minimum, so the weld won every time. A knee whose shin first touches its thigh
+at 62° reported first contact at −90° between two parts bolted together, and
+the agent reading the block learned nothing about the motion. The engine
+already distinguishes the two cases on the line that decides whether to measure
+a pair or reuse its cached value; it simply never said which it had done.
+
+**How.** One key on the row in `_sweep_joint` (`cadex_assembly_worker.py`),
+computed where the distinction was already being made, and the same expression
+then reused to choose measure-or-cache so there is one source of truth. In
+`sweep_summary` (`cli/cadex_cli/clearance.py`) the three extrema updates are
+guarded by it and `pairs_moving` is counted, the way ADR-371 counted
+`joints_skipped` apart from `joints_complete`. A row with no flag — a revision
+accepted before this — counts as moving, so an older receipt reads exactly as
+it did. No protocol op, no threshold, no acceptance behaviour and no
+`shell/` diff.
+
+**Evidence.**
+`src/Mod/cadex/cadex_tests/test_joint_fit_sweep.py::test_welded_pair_is_marked_as_holding_still_through_the_sweep`
+is a real-kernel three-sphere fixture — `fixed` at 90° on a radius-10 circle,
+`moving` hinged over [20°, 70°], `carried` welded to `moving` and touching it —
+where nothing the hinge moves ever contacts (the two moving pairs meet only at
+78.5° and 90°, both outside the range) and the weld still reports 0.0 mm and
+first contact at 20°. It pins the flag on all three pairs and both analytic
+minima, and fails on the old code with a `KeyError`.
+`cli/tests/test_clearance.py::test_a_welded_pair_does_not_define_the_joint_it_cannot_move`
+summarises that fixture: the joint row reads 1.472964 mm and **no** first
+contact, `pairs_moving` is 1 of 2, and the same rows without the flag still
+read 0.0 mm and 20°. It fails on the old code too. `pixi run test-engine` and
+`cli/tests` are green.
+
+**What it does not do.** It does not drop a pair from the sweep, hide a
+failing check or change what fails: `failing` still spans every pair, because
+an overlap is an overlap and a rigid pair that interpenetrates is a real
+finding the static block reports as well. It does not decide whether a weld's
+solids *should* meet — that stays the `attachments` report's separate advisory
+fact (ADR-370), measured at the solved pose where it means something.

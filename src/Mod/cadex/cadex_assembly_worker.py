@@ -5671,6 +5671,15 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     A hinge turns its subtree about the solved connector +Z; a slider
     translates it along that axis. Values, limits and first contact are in
     the joint's own unit (degrees or mm), named in the result's ``unit``.
+
+    Every pair carries ``relative_motion`` (ADR-374): true when one side is
+    inside the swept subtree and the other is not, which is the only case
+    this joint can change. A pair with both sides on the same side of the
+    joint is rigid for this sweep, so its row repeats the solved-pose
+    measurement at every sample -- a welded horn against its link reads
+    0.0 mm here and first contact at the bottom of the range, which is the
+    weld and not the motion. The flag is what lets a reader keep the two
+    apart; the rows themselves are unchanged.
     """
     import FreeCAD as App
     from CadexDynamics import extract_tree, joint_transform, joint_coordinates, length_mm
@@ -5736,7 +5745,15 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     side = 0 if a == body["parent"] else 1
     frame = poses[body["parent"]].multiply(App.Placement(App.Matrix(*connectors[side]["local_matrix"])))
     contact_key = "first_contact_" + unit
-    rows = [{"first": a, "second": b, "minimum_distance_mm": None,
+    # Whether *this* joint moves the pair apart or together (ADR-374). Exactly
+    # one side inside the swept subtree is what makes the measurement a fact
+    # about the motion; two sides that are both inside it, or both outside,
+    # are one rigid body for this sweep and hold their solved-pose value at
+    # every sample. The loop below already decides this to know whether to
+    # measure, so saying it on the row costs nothing and lets a reader tell a
+    # number the motion produced from one it merely repeated.
+    rows = [{"first": a, "second": b, "relative_motion": (a in moving) != (b in moving),
+             "minimum_distance_mm": None,
              "maximum_common_volume_mm3": None, contact_key: None}
             for a, b in cached]
     for value in values:
@@ -5748,7 +5765,7 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
             shapes[n].Placement = delta.multiply(solved_shapes[n])
         for row in rows:
             a, b = row["first"], row["second"]
-            d, v = (measure(a, b) if (a in moving) != (b in moving) else cached[a, b])
+            d, v = (measure(a, b) if row["relative_motion"] else cached[a, b])
             if row["minimum_distance_mm"] is None or d < row["minimum_distance_mm"]:
                 row["minimum_distance_mm"] = d
             if row["maximum_common_volume_mm3"] is None or v > row["maximum_common_volume_mm3"]:
