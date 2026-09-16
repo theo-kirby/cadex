@@ -2227,12 +2227,18 @@ def test_joint_sweep_is_published_and_restore_does_not_recompute(tmp_path, kind,
 
 
 @pytest.mark.skipif(FREECADCMD is None, reason="Needs built engine")
-@pytest.mark.parametrize("limits, expected", [
-    ("angle_limits_degrees=[0, 10]", "incomplete"),
-    ("", "complete"),
+@pytest.mark.parametrize("limits, kind, expected, reason", [
+    ("angle_limits_degrees=[0, 10]", "revolute", "incomplete",
+     "sweep_step_degrees is not declared"),
+    # A hinge nobody bounded can still move, so it is named as the coverage
+    # hole it is rather than dropped before it reaches a row (ADR-375).
+    ("", "revolute", "incomplete", "declares no limits"),
+    # A weld holds no range at all, so complete coverage of an empty set is
+    # still the honest answer for an assembly whose only joint is one.
+    ("", "fixed", "complete", None),
 ])
 def test_an_assembly_declaring_no_step_still_publishes_its_sweep_coverage(
-    tmp_path, limits, expected,
+    tmp_path, limits, kind, expected, reason,
 ):
     """The gap ot7's F5 create turn measured, closed (ADR-367).
 
@@ -2240,12 +2246,14 @@ def test_an_assembly_declaring_no_step_still_publishes_its_sweep_coverage(
     assembly declared no ``sweep_step_degrees``, so the producer was never
     called and nothing enumerated the joints that went unchecked. Coverage
     is now published either way. A limited joint with no step for its kind
-    is named ``incomplete`` with that reason; an assembly with no limited
-    joint at all reports complete coverage of an empty set, which is the
-    honest answer to "what was swept" and is not the same statement.
+    is named ``incomplete`` with that reason, and since ADR-375 so is an
+    unbounded one, with the limit to declare. Only an assembly whose joints
+    hold no range at all -- a weld, a suppressed unlimited joint -- reports
+    complete coverage of an empty set, which is the honest answer to "what
+    was swept" and is not the same statement.
     """
 
-    source = JOINT_SCRIPT.replace(
+    source = JOINT_SCRIPT.replace('assembly.joint("revolute"', 'assembly.joint("%s"' % kind).replace(
         'assembly.connector(swing, "origin"))',
         'assembly.connector(swing, "origin")%s)' % (", " + limits if limits else ""))
     client = _spawn_cadexd()
@@ -2262,11 +2270,11 @@ def test_an_assembly_declaring_no_step_still_publishes_its_sweep_coverage(
         # ran: the whole report is the enumeration.
         assert sweep['step_degrees'] is None and sweep['step_mm'] is None
         assert sweep['elapsed_seconds'] < 1.0, sweep
-        if limits:
+        if reason:
             (joint,) = sweep['joints']
-            assert (joint['joint'], joint['kind'], joint['unit']) == ('j', 'revolute', 'degrees')
+            assert (joint['joint'], joint['kind'], joint['unit']) == ('j', kind, 'degrees')
             assert joint['status'] == 'incomplete'
-            assert 'sweep_step_degrees is not declared' in joint['reason']
+            assert reason in joint['reason']
             assert 'pairs' not in joint
         else:
             assert sweep['joints'] == []

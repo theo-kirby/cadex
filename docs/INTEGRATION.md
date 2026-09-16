@@ -591,7 +591,13 @@ measurements: the solver ignores it, so it holds no range to sweep, no
 subprocess runs for it and it does not make the assembly's coverage
 `incomplete`. A revision accepted before ADR-371 carries it as `incomplete`
 with an unsupported-kind reason instead; no response shape or op argument
-changed either way. Since ADR-374 each pair row also carries
+changed either way. Since ADR-375 a joint that could move and declares **no limits** is
+`incomplete` with a reason naming the limit to declare, rather than absent
+from `joints` entirely; only a `fixed` joint and a suppressed joint the
+assembly also left unlimited are omitted, neither holding a range to sweep.
+A revision accepted before ADR-375 simply has no row for such a joint, so its
+coverage may read `complete` while an unbounded joint went unmeasured. Since
+ADR-374 each pair row also carries
 `relative_motion`: true when exactly one side of the pair sits inside the
 swept joint's moving subtree, which is the only case that joint can change.
 A pair with `relative_motion: false` is one rigid body for this sweep and

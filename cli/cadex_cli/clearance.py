@@ -88,9 +88,12 @@ SWEEP_ALL_SUPPRESSED = (
 )
 
 #: What a sweep block says when the accepted assembly has no limited joint.
+#: Since ADR-375 an unlimited joint that could move has a row of its own, so
+#: this empty sweep is the assembly whose every joint is welded or suppressed
+#: -- never one with an unchecked wheel in it.
 SWEEP_NO_JOINTS = (
     "The accepted assembly declares no limited joint, so there is no motion "
-    "to check: every joint is unlimited, suppressed or welded. A hinge or "
+    "to check: every joint it declares is welded or suppressed. A hinge or "
     "slider that is meant to move within a range has to declare "
     "angle_limits_degrees or length_limits_mm for a swept check to exist."
 )

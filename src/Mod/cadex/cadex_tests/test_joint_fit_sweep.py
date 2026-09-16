@@ -364,3 +364,57 @@ def test_the_protocol_document_carries_the_swept_row_motion_flag():
         'ADR-374. That absence is behaviour — a reader counts an unflagged row '
         'as moving — so it belongs in the contract, in a sentence naming the '
         f'key. Sentences that name it: {sentences}')
+
+
+def test_a_joint_that_can_move_and_declares_no_limits_is_named_as_missing_coverage():
+    """Known answer: a wheel nobody bounded is a coverage hole, not silence.
+
+    Before ADR-375 a joint declaring neither limit was dropped by the loop's
+    first line, so it reached no row at all: a two-wheeled chassis whose one
+    limited hinge swept clean read `complete` beside two wheels that had been
+    measured at the solved pose and nowhere else. The two joints that really
+    hold no range keep their silence -- a weld, whose pair the attachment
+    report measures (ADR-370), and a suppressed joint the assembly also left
+    unlimited.
+    """
+
+    from cadex_assembly_worker import _measure_joint_sweeps
+
+    def joint(kind, limits=None, suppressed=False):
+        return {'kind': kind, 'suppressed': suppressed, 'parameters': {}, 'connectors': [],
+                'angle_limits_degrees': limits, 'length_limits_mm': None}
+
+    report = _measure_joint_sweeps({}, {}, {
+        'wheel_left': joint('revolute'),
+        'wheel_right': joint('revolute'),
+        'slide': joint('slider'),
+        'ball': joint('ball'),
+        'weld': joint('fixed'),
+        'parked': joint('revolute', suppressed=True),
+        'parked_hinge': joint('revolute', limits=[0, 90], suppressed=True),
+    }, [], {'sweep_step_degrees': 5, 'sweep_step_mm': 1}, True)
+
+    # Every joint that could move and was not bounded is named; the weld and
+    # the suppressed unlimited joint are not rows at all.
+    assert [(j['joint'], j['status']) for j in report['joints']] == [
+        ('wheel_left', 'incomplete'), ('wheel_right', 'incomplete'),
+        ('slide', 'incomplete'), ('ball', 'incomplete'),
+        ('parked_hinge', 'skipped')]
+    assert report['status'] == 'incomplete', report
+    # ...and the reason names the declaration that would have it swept, per
+    # kind, without claiming a step is missing when one was declared.
+    assert 'declare angle_limits_degrees' in report['joints'][0]['reason']
+    assert 'declare length_limits_mm' in report['joints'][2]['reason']
+    for row in report['joints'][:2]:
+        assert 'declares no limits' in row['reason'] and 'solved pose only' in row['reason']
+    # An unlimited joint of a kind no sweep supports says that instead: no
+    # limit it could declare would have it swept.
+    assert 'not ball' in report['joints'][3]['reason']
+    # Nothing was measured: no child process, no geometry, no pairs.
+    assert all('pairs' not in row and 'elapsed_seconds' not in row for row in report['joints'])
+    # An assembly whose every joint is welded or suppressed-and-unlimited is
+    # still complete coverage of an empty set (ADR-367).
+    quiet = _measure_joint_sweeps({}, {}, {'weld': joint('fixed'),
+                                           'parked': joint('revolute', suppressed=True)},
+                                  [], {'sweep_step_degrees': 5}, True)
+    assert quiet['status'] == 'complete' and quiet['joints'] == []

@@ -1637,6 +1637,15 @@ joints went unswept. An
 open-ended limit (one endpoint `None`) has no bound to sweep and is reported
 the same way.
 
+A joint that **can move and declares no limits** — a continuously
+rotating wheel, a free spinner, a loop-closure hinge — is a coverage hole too
+(ADR-375), and reads `incomplete` with the limit to declare named per kind.
+Before this it was dropped before it could be named, so a chassis whose one
+limited hinge swept clean read `complete` beside two wheels measured at the
+solved pose and nowhere else. Two joints genuinely hold no range and stay out
+of the report entirely: a `fixed` joint, whose pair the attachment block
+measures instead, and a suppressed joint the assembly also left unlimited.
+
 A **suppressed** limited joint is a different statement and carries a
 different status (ADR-371). The solver ignores it, so it is not an edge of the
 mechanism and holds no range to move through: its row is `skipped` with that

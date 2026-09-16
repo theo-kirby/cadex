@@ -965,3 +965,52 @@ def test_a_welded_pair_does_not_define_the_joint_it_cannot_move():
     assert older['minimum_distance_mm'] == 0.0
     assert older['first_contact'] == {'value': 20.0, 'unit': 'degrees',
                                       'pair': ['horn', 'shin']}
+
+
+def test_an_unbounded_wheel_is_missing_coverage_beside_a_hinge_that_swept_clean():
+    """Known answer: a balancer's two wheels, and one bounded hinge (ADR-375).
+
+    A joint that declares no limits can still move, and before this the
+    engine dropped it before it reached a row: the block read `sweep pass: 1
+    joint(s) swept` while the two parts that turn against the chassis had
+    been measured at the solved pose and nowhere else. It is a coverage hole
+    and reads as one, with the declaration to add named per joint.
+    """
+
+    from cadex_cli.clearance import SWEEP_NO_JOINTS
+
+    def unbounded(name, kind, unit, limit):
+        return {'joint': name, 'kind': kind, 'unit': unit, 'status': 'incomplete',
+                'reason': f'this {kind} joint declares no limits, so the assembly states no '
+                          f'range to sweep it through and the pairs it moves were measured at '
+                          f'the solved pose only; declare {limit} for it to be swept'}
+
+    sweep = {'status': 'incomplete', 'step_degrees': 5, 'step_mm': None, 'joints': [
+        {'joint': 'pitch', 'kind': 'revolute', 'unit': 'degrees', 'status': 'complete',
+         'step': 5, 'sample_count': 13, 'range_degrees': [-30, 30], 'initial_degrees': 0,
+         'elapsed_seconds': 1.5, 'pairs': [
+             {'first': 'chassis', 'second': 'mast', 'minimum_distance_mm': 2.0,
+              'maximum_common_volume_mm3': 0.0, 'first_contact_degrees': None,
+              'relative_motion': True}]},
+        unbounded('wheel_left', 'revolute', 'degrees', 'angle_limits_degrees'),
+        unbounded('wheel_right', 'revolute', 'degrees', 'angle_limits_degrees'),
+    ]}
+    block = fit_summary({'available': True, 'revision': 'r', 'assembly': 'asm',
+                         'pairs': [], 'clearance_sweep': sweep})['sweep']
+    assert block['verdict'] == 'incomplete'
+    # Neither complete nor suppressed: the two wheels are coverage that is
+    # actually missing, which is what `checked - complete - skipped` counts.
+    assert (block['joints_checked'], block['joints_complete'],
+            block['joints_skipped']) == (3, 1, 0)
+    assert _sweep_line(block) == 'sweep incomplete: 2 of 3 joint(s) unswept'
+    assert block['note'] and 'nothing failing' not in block['note']
+    for row in block['joints'][1:]:
+        assert row['pairs_measured'] == 0 and row['pairs_moving'] == 0
+        assert row['minimum_distance_mm'] is None and 'first_contact' not in row
+        assert 'declare angle_limits_degrees' in row['reason']
+    # Nothing failed: missing coverage is not an overlap, and the block does
+    # not invent one.
+    assert block['failing_count'] == 0 and block['failing'] == []
+    # And the empty sweep no longer offers an unlimited joint as a reason it
+    # found nothing to check, because such a joint now has a row of its own.
+    assert 'welded or suppressed' in SWEEP_NO_JOINTS and 'unlimited' not in SWEEP_NO_JOINTS

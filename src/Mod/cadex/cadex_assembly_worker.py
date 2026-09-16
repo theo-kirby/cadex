@@ -5786,6 +5786,17 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
     all: every limited joint is then named unswept and no geometry is
     touched (ADR-367).
 
+    **A joint that can move and declares no limits is a coverage hole, not a
+    joint to pass over in silence** (ADR-375). Before this it was dropped
+    before it could be named: a continuously rotating wheel, a free spinner,
+    a loop-closure hinge reached no row, so an assembly whose one limited
+    joint swept clean read ``complete`` beside two wheels nobody had checked
+    anywhere but the solved pose. It is now ``incomplete`` with a reason
+    naming the limit to declare. Only two joints hold no range by
+    construction and keep their silence: a ``fixed`` joint, whose pair the
+    attachment report measures instead (ADR-370), and a suppressed joint the
+    assembly also left unlimited, which the solver ignores anyway.
+
     A **suppressed** joint is a different statement and gets a different
     status (ADR-371). The solver ignores it, so it is not an edge of the
     mechanism and holds no range to move through: there is nothing to sweep
@@ -5804,9 +5815,15 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
               "max_poses": _SWEEP_MAX_POSES, "max_pairs": _SWEEP_MAX_PAIRS, "joints": []}
     start = time.monotonic()
     for name, joint in joint_data.items():
-        if joint.get("angle_limits_degrees") is None and joint.get("length_limits_mm") is None:
-            continue
         kind = joint.get("kind")
+        limited = (joint.get("angle_limits_degrees") is not None
+                   or joint.get("length_limits_mm") is not None)
+        if not limited and (kind == "fixed" or joint.get("suppressed")):
+            # Neither is an edge the solver moves through a range. A weld
+            # declares no motion at all -- whether its two solids meet is the
+            # attachment report's fact (ADR-370) -- and a suppressed joint the
+            # assembly also gives no limits is doubly nothing.
+            continue
         limits_key, step_key, unit = _SWEEP_KINDS.get(kind, (None, None, None))
         step = steps.get(step_key) if step_key else None
         remaining = _SWEEP_TOTAL_SECONDS - (time.monotonic() - start)
@@ -5817,6 +5834,11 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
         elif kind not in _SWEEP_KINDS:
             result = {"status": "incomplete",
                       "reason": f"only unsuppressed limited tree hinges and sliders are supported, not {kind}"}
+        elif not limited:
+            result = {"status": "incomplete",
+                      "reason": f"this {kind} joint declares no limits, so the assembly states no range to "
+                                f"sweep it through and the pairs it moves were measured at the solved pose "
+                                f"only; declare {limits_key} for it to be swept"}
         elif step is None:
             result = {"status": "incomplete",
                       "reason": f"{step_key} is not declared on the assembly, so this limited {kind} joint was not swept"}

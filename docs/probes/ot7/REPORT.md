@@ -1120,11 +1120,11 @@ landed in the meantime is one more difference separating F6 and F7 from F5.
 No unattended role may extend, stop or restart a run, and neither this
 subsection nor the record behind it does. This is a measurement for the owner.
 
-**Product version.** F6 and F7 run on a product **nine** changes newer than
+**Product version.** F6 and F7 run on a product **ten** changes newer than
 the one F5 ran on, every frozen prompt unchanged: ADR-362, ADR-366, ADR-367,
-ADR-368, ADR-370, ADR-371, ADR-372, ADR-373 and ADR-374. Seven of them change
-the measured fit surface a design reads; the other two are the inventory block
-beside it and the repair wording in the agent's own prompt. Each is listed
+ADR-368, ADR-370, ADR-371, ADR-372, ADR-373, ADR-374 and ADR-375. Eight of them
+change the measured fit surface a design reads; the other two are the inventory
+block beside it and the repair wording in the agent's own prompt. Each is listed
 below with what it publishes, because a difference in an F6 or F7
 row that lands on a fact one of these changes publishes is a difference across
 that change and not a difference in the agent.
@@ -1205,7 +1205,17 @@ minimum, so the weld won every time. The per-pair rows, the `failing` list and
 every threshold are unchanged. It is the second change in a row that reaches
 F6's and F7's own hardware directly.
 
-F5 is not re-run and no frozen prompt changed for any of the nine. Every
+**ADR-375** (`ebbcf73d`) stops the swept report passing over a joint that can
+move and declares no limits. Such a joint reached no row at all, so coverage
+read `complete` while a continuously rotating wheel, a free spinner or a
+loop-closure hinge had been measured at the solved pose and nowhere else; it
+is now `incomplete` with the limit to declare named per kind, and only a weld
+or a suppressed unlimited joint stays out of the report. It reaches F6
+directly — a two-wheeled balancer's moving parts are exactly the joints with
+no natural limit — and is the third change in a row that lands on F6's and
+F7's own hardware. Nothing is refused and no threshold moved.
+
+F5 is not re-run and no frozen prompt changed for any of the ten. Every
 number in the F6 and F7 rows is therefore measured on this product, and the
 ot6 and F5 comparisons in this report are read across these changes.
 

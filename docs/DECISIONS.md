@@ -25826,3 +25826,73 @@ an overlap is an overlap and a rigid pair that interpenetrates is a real
 finding the static block reports as well. It does not decide whether a weld's
 solids *should* meet — that stays the `attachments` report's separate advisory
 fact (ADR-370), measured at the solved pose where it means something.
+
+## ADR-375 — A joint nobody bounded is a coverage hole, not a silence (2026-09-16)
+
+**Context.** The swept check answers F3: for every joint with declared limits,
+where the solids first meet through the motion. `_measure_joint_sweeps` opened
+by dropping every joint that declared neither limit —
+
+```python
+if joint.get("angle_limits_degrees") is None and joint.get("length_limits_mm") is None:
+    continue
+```
+
+— so such a joint reached no row, and coverage stayed `complete`. That is
+correct for a weld, which declares no motion at all, and it was wrong for
+everything else that moves. A continuously rotating wheel, a free spinner, a
+loop-closure hinge: each is an edge the solver moves and none of them declares
+where it may go, and the report said nothing about any of them. Reproduced
+before the change: an assembly with one suppressed hinge and one unlimited
+revolute published `status: complete` with a single `skipped` row and no
+mention of the wheel.
+
+The shape of the reading is what makes it costly. `sweep_summary` judges its
+verdict over the rows it is given, so one limited joint sweeping clean beside
+two unlimited wheels reads `sweep pass: 1 joint(s) swept`, and
+`SWEEP_COVERAGE_NOTE` — the sentence that says coverage is not fit — is
+printed only when the verdict is not a pass. The agent is told the motion was
+checked. This is the third instance of one defect class in this run's tooling,
+after ADR-371 and ADR-374: a clean reading taken over a set that silently
+excludes the thing that matters. It reaches **F6** directly, a two-wheeled
+balancer being the mechanism whose moving parts are exactly the joints with no
+natural limit.
+
+**Decision.** Every joint that could move is named; only the two that hold no
+range by construction stay silent.
+
+- An unsuppressed joint of a sweepable kind that declares neither
+  `angle_limits_degrees` nor `length_limits_mm` is `incomplete`, with a reason
+  saying the assembly states no range, that the pairs it moves were measured
+  at the solved pose only, and which limit to declare for it to be swept. The
+  assembly's coverage is `incomplete`, which is what makes the CLI print the
+  coverage note.
+- An unlimited joint of a kind no sweep supports keeps the existing
+  unsupported-kind reason: no limit it could declare would have it swept.
+- A `fixed` joint and a suppressed joint the assembly also left unlimited are
+  omitted as before. A weld declares no motion and its pair is the attachment
+  report's fact (ADR-370); a suppressed joint is not an edge the solver moves
+  (ADR-371). An assembly whose every joint is one of those still reports
+  complete coverage of an empty set.
+- **Reported, never refused.** No `fit_failures` entry, no acceptance change,
+  no protocol op or argument change, and no `shell/` diff. A revision accepted
+  before this publishes no such row, so retained receipts read exactly as they
+  were measured.
+- `cadex_cli.clearance.SWEEP_NO_JOINTS` no longer offers "unlimited" as a
+  reason an empty sweep found nothing: such a joint now has a row of its own,
+  so the empty sweep is the assembly whose every joint is welded or
+  suppressed.
+
+**Consequences.** Two known-answer tests, both red on the old code: the engine
+one (`cadex_tests/test_joint_fit_sweep.py`) pins two wheels, a slider, an
+unlimited ball, a weld, a suppressed unlimited hinge and a suppressed limited
+one, and the reason each gets; the CLI one (`cli/tests/test_clearance.py`)
+pins the balancer-shaped roll-up — `incomplete`, 3 checked, 1 complete, 0
+skipped, `sweep incomplete: 2 of 3 joint(s) unswept`, nothing failing — and
+the changed wording. `docs/XSCRIPT.md`, `docs/CLI.md` and `docs/INTEGRATION.md`
+carry the rule. `test_cadexd_lifecycle.py`'s ADR-367 coverage test moves with
+the behaviour: its unlimited-hinge case expected `complete` and now expects
+`incomplete` naming the limit, and a third case welds the same pair so
+"complete coverage of an empty set" keeps an end-to-end fixture of its own. Existing designs whose joints are all bounded are unaffected;
+a design with an unbounded movable joint moves from a swept pass to a swept
+`incomplete` naming it, which is the finding.

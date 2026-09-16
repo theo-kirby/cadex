@@ -2172,6 +2172,17 @@ only. The block is advisory like the static one — a failing swept fit is
 reported, never refused — and the prose report prints it as a `sweep` line
 under the `fit` line.
 
+A joint row that declares **no limits** is a joint that can still move and
+was never bounded (ADR-375): a wheel, a free spinner, a loop-closure hinge.
+It reads `incomplete` with the declaration to add named per kind, it counts
+as missing coverage rather than as `joints_skipped`, and the line says so
+(`sweep incomplete: 2 of 3 joint(s) unswept`). Before this the engine dropped
+it before it reached a row, so a chassis whose one limited hinge swept clean
+read `sweep pass: 1 joint(s) swept` while the two parts that turn against it
+had been measured at the solved pose and nowhere else. A weld and a
+suppressed unlimited joint stay out of the report: neither holds a range, and
+a weld's pair is the attachment block's fact (ADR-370).
+
 A joint row whose `status` is `skipped` is a **suppressed** joint (ADR-371):
 the solver ignores it, so it holds no range to sweep and its absence is not
 missing coverage. It is counted in `joints_skipped`, apart from
