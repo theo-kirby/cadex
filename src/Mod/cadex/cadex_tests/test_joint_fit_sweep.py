@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
+import ast
 import math
+import re
+from pathlib import Path
+
 import pytest
 from test_swept_clearance import _api, _solid
 import test_clearance_scope as kernel
@@ -292,3 +296,71 @@ def test_welded_pair_is_marked_as_holding_still_through_the_sweep(tmp_path, monk
                - (20 * math.sin(math.radians(10)) - 2)) < 1e-6
     assert abs(rows['fixed', 'carried']['minimum_distance_mm']
                - (math.sqrt(204 - 200 * math.sin(math.radians(70))) - 2)) < 1e-6
+
+
+#: Where the swept row's shape is decided, and where the contract says so.
+_WORKER = Path(__file__).resolve().parents[1] / 'cadex_assembly_worker.py'
+_CONTRACT = Path(__file__).resolve().parents[4] / 'docs' / 'INTEGRATION.md'
+
+
+def _published_pair_row_keys():
+    """Constant keys `_sweep_joint` puts on every swept pair row, from source.
+
+    Read with `ast` rather than by running the sweep, because the sweep needs
+    a real kernel and this contract does not: the shape of the row is decided
+    by one dict literal, and a renamed or deleted key is visible there.
+    """
+    worker = ast.parse(_WORKER.read_text(encoding='utf-8'))
+    func = next(node for node in ast.walk(worker)
+                if isinstance(node, ast.FunctionDef) and node.name == '_sweep_joint')
+    assign = next(node for node in ast.walk(func)
+                  if isinstance(node, ast.Assign)
+                  and any(getattr(t, 'id', None) == 'rows' for t in node.targets))
+    literal = assign.value.elt if isinstance(assign.value, ast.ListComp) else assign.value
+    assert isinstance(literal, ast.Dict), ast.dump(assign.value)
+    return {key.value for key in literal.keys
+            if isinstance(key, ast.Constant) and isinstance(key.value, str)}
+
+
+def _published_sweep_section():
+    """The section of `docs/INTEGRATION.md` that describes a published sweep."""
+    doc = _CONTRACT.read_text(encoding='utf-8')
+    section = doc.partition('### Published joint sweeps')[2]
+    assert section, 'docs/INTEGRATION.md has no published-sweep section'
+    return section.partition('\n### ')[0].partition('\n## ')[0]
+
+
+def test_the_protocol_document_carries_the_swept_row_motion_flag():
+    """The flag is protocol, so the document that is the contract is tested.
+
+    The engine's own guard for `relative_motion` needs a real kernel and skips
+    without one, and the sentence that documents it landed a commit after the
+    behaviour did (ADR-374) — a thing forgotten once is worth a guard. Two
+    facts held against each other, both headless: `_sweep_joint` puts the flag
+    on every pair row, and the section the other half of the protocol reads
+    names that key *and* says it is absent on a revision accepted before it
+    existed, which is the whole reason an older receipt still reads correctly.
+    """
+    keys = _published_pair_row_keys()
+    assert 'relative_motion' in keys, (
+        '_sweep_joint no longer publishes `relative_motion` on every pair row; '
+        f'it publishes {sorted(keys)}. Renaming it is a protocol change: move '
+        'docs/INTEGRATION.md and cli/cadex_cli/clearance.py in the same change.')
+
+    section = _published_sweep_section()
+    prose = ' '.join(section.split())
+    named = set(re.findall(r'`([a-z0-9_]+)`', prose))
+    assert 'relative_motion' in named, (
+        "docs/INTEGRATION.md's published-sweep section does not name "
+        '`relative_motion`, which every swept pair row carries (ADR-374).')
+
+    sentences = [s for s in re.split(r'(?<=\.) ', prose) if 'relative_motion' in s]
+    absent = [s for s in sentences
+              if re.search(r'\babsent\b|\bnot present\b|\bomitted\b', s)
+              and re.search(r'\bbefore\b|\bolder\b', s)]
+    assert absent, (
+        "docs/INTEGRATION.md's published-sweep section names `relative_motion` "
+        'but no sentence says it is **absent** on a revision accepted before '
+        'ADR-374. That absence is behaviour — a reader counts an unflagged row '
+        'as moving — so it belongs in the contract, in a sentence naming the '
+        f'key. Sentences that name it: {sentences}')

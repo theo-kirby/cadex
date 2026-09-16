@@ -25797,7 +25797,14 @@ it did. No protocol op, no threshold, no acceptance behaviour and no
 `shell/` diff. *Added 2026-09-16:* the key is an additive field inside an
 existing advisory scope value, and `docs/INTEGRATION.md`'s published-sweep
 section names it — the rule, and its absence on a revision accepted before
-this — which that commit should have carried and did not.
+this — which that commit should have carried and did not. *Added 2026-09-16:*
+and that sentence is now test-pinned. `test_joint_fit_sweep.py`'s
+`test_the_protocol_document_carries_the_swept_row_motion_flag` reads the row's
+keys out of `_sweep_joint` with `ast` and holds them against the contract
+section: the key must be published, the section must name it, and a sentence
+naming it must say it is absent on an older revision. It runs headless, unlike
+the real-kernel fixture that pins the flag's value, so a bare checkout still
+fails if either half is dropped.
 
 **Evidence.**
 `src/Mod/cadex/cadex_tests/test_joint_fit_sweep.py::test_welded_pair_is_marked_as_holding_still_through_the_sweep`

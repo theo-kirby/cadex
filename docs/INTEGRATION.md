@@ -600,8 +600,9 @@ joint row up reads its minimum distance, maximum common volume and first
 contact over the moving pairs alone — otherwise a horn welded flush against
 the link it turns with reports 0.0 mm at every value and takes first contact
 at the bottom of the range. Per-pair rows are unchanged and every pair is
-still published. The key is **absent** on a revision accepted before ADR-374,
-which a reader counts as moving so an older receipt reads as it always did.
+still published. The `relative_motion` key is **absent** on a revision accepted
+before ADR-374, which a reader counts as moving so an older receipt reads as it
+always did.
 
 `cadex clearance --sweep` writes these facts and the accepted revision to
 `docs/clearance-sweep.md`. Exit 0 means the report was written, including when
