@@ -60,11 +60,13 @@ call on `ot7-heron-b` was interrupted at the 30-minute bound and spent
 nothing (see [Iteration 55](#iteration-55-the-arm-create-call-interrupted-at-the-bound)).
 This report is written forward from the restart; F5's design outcome is
 the measured one above, F6 and F7 have none yet, and there is no critic
-acceptance of done. **Under the current limits and stop rules they will get
-none in this run**: the earliest the refusal could lift is a scheduled window
-reset 33 h 34 m after the run's own configured stop, so both are expected to
-end unattempted with all eight slots unspent, which is not exhaustion — see
-[The gate cannot open before this run's own stop](#the-gate-cannot-open-before-this-runs-own-stop).
+acceptance of done. **Both are blocked on a provider refusal**:
+`claude-fable-5` was refused on this account at the organisation level when
+last probed, no clock dates the end of that, and the run's configured
+stop falls 33 h 34 m before the refused window's scheduled reset. Unless an
+unrefused probe arrives first, both end unattempted with all eight slots
+unspent, which is not exhaustion — see
+[The gate is shut now, and no clock says when it opens](#the-gate-is-shut-now-and-no-clock-says-when-it-opens).
 
 ## Amendment: the restart (ADR-355)
 
@@ -1033,25 +1035,35 @@ room whatever the window percentages say, so `room` is `false`, no prompt was
 spent, and F6 and F7 keep every slot. This report is then
 rewritten with one row per design.
 
-### The gate cannot open before this run's own stop
+### The gate is shut now, and no clock says when it opens
 
-Measured on 2026-09-16 at 16:46 UTC, the two clocks do not overlap. This
-subsection bounds the refusal from below — it says when the block *cannot*
-have lifted, not when it will.
+Measured on 2026-09-16 at 16:46 UTC. This subsection records what the receipts
+establish — a refusal in force at the moment each was taken — and sets the two
+schedules side by side. **Neither schedule bounds the refusal, in either
+direction.**
 
-- **The gate's earliest possible opening.** `seven_day_overage_included`
-  resets at epoch `1789740000`, which is **2026-09-18T14:00:00Z**. That is the
-  rejected window's own `resets_at`, read off the refused probe and recorded in
-  `pale-garden-4669`; the receipt of that refusal is
-  [`attempts/f6-window-refusal.json`](attempts/f6-window-refusal.json), and the
-  runner reads the same epoch for the Claude seven-day window in
-  `.ouroboros/runs/ot7/status.json`. The epoch is not an estimate, but what it
-  dates is a **scheduled window reset, not a lifting of the refusal.** The
-  binding condition in the receipt is `overage.disabled_reason:
-  "org_level_disabled"` — an organisation-level setting on this account, which
-  no window reset is evidence about. A probe after that epoch may well be
-  refused again. Treat `resets_at` as the earliest moment the refusal *could*
-  lift, and only a probe that is not refused as evidence that it has.
+- **What the refusal establishes.** The receipt is
+  [`attempts/f6-window-refusal.json`](attempts/f6-window-refusal.json), read
+  off `run.py window --model claude-fable-5` and recorded in
+  `pale-garden-4669`. Its binding field is `overage.disabled_reason:
+  "org_level_disabled"` — an organisation-level setting on this account. That
+  receipt is evidence of exactly one thing: `claude-fable-5` was refused on
+  this account **at the moment the probe was taken**. It does not date the end
+  of that setting and does not put a floor under it; an organisation-level
+  setting can change at any time, including before any window resets, as this
+  account showed once already when the owner refreshed it mid-run (ADR-361).
+  Only an **unrefused** probe is evidence the refusal has lifted, and only a
+  fresh refused probe is evidence it still holds.
+- **The scheduled window reset.** `seven_day_overage_included` resets at epoch
+  `1789740000`, which is **2026-09-18T14:00:00Z**. That is the rejected
+  window's own `resets_at`, and the runner reads the same epoch for the Claude
+  seven-day window in `.ouroboros/runs/ot7/status.json`. The epoch is not an
+  estimate, but what it dates is a **scheduled reset of a usage window** — not
+  a lifting of the refusal, and not the earliest the refusal could lift. A
+  probe after that epoch may well be refused again, and a probe before it may
+  not be: the second probe taught the same lesson in the other direction,
+  reading `status: allowed` at 2 % twenty minutes later and being refused
+  anyway.
 - **This run's stop.** `.ouroboros/runs/ot7/run.yml` sets
   `stop.until: 2026-09-17T00:25:13`, a naive local timestamp the runner
   compares against local time (`should_stop` in `ouroboros/budget.py`), so it
@@ -1060,18 +1072,21 @@ have lifted, not when it will.
   `stop.after: 48h` measured from this process's `started: 2026-09-16T11:00:28`
   would trip at 2026-09-18T15:00:28Z instead, and `should_stop` returns on
   whichever condition trips first, so `until` is the binding one.
-- **The difference: 33 h 34 m 47 s.** The earliest the window the balancer and
-  biped need could reopen is more than a day *after* the run is configured to
-  end. Two exits can come sooner still: `stop.max_stuck: 25` — the critic
-  returned `looping` on iteration 84 and `stuck` on iteration 85 — and any owner
-  action.
+- **The difference: 33 h 34 m 47 s.** The scheduled reset of the window these
+  two designs were refused against falls more than a day *after* the run is
+  configured to end. That is arithmetic between two schedules, and nothing
+  more: it says the reset is not going to arrive inside this run, not that the
+  refusal cannot lift inside it. Two exits can come sooner still:
+  `stop.max_stuck: 25` — the critic returned `looping` on iteration 84 and
+  `stuck` on iteration 85 — and any owner action.
 
-So under the current limits and stop rules F6 and F7 are expected to end this
-run **unattempted, with all eight create and continuation slots unspent** —
-expected rather than certain only in the direction that makes no difference
-here, since restored capacity arriving inside the run would have to arrive as
-a probe that is not refused, and nothing schedules one. That is not
-exhaustion. By the charter's
+So F6 and F7 stand with every slot unspent and no dispatch possible while the
+refusal holds. The charter's rule keys dispatch to the harness being
+available, so an iteration that probes and finds the refusal gone may still
+dispatch inside this run; nothing here forecloses that, and nothing here
+promises it. If the run ends with the refusal still in force, both designs end
+**unattempted, with all eight create and continuation slots unspent**. That is
+not exhaustion. By the charter's
 exhaustion policy a design is exhausted only once its create prompt and all
 three continuations have reached the model, and neither design has spent one;
 the single pre-restart refusal against each is void (ADR-355) and consumed
@@ -1079,9 +1094,8 @@ nothing. No verdict, record or report may read this ending as "no authorised
 experiment remaining".
 
 What finishing them takes is unchanged and needs no new decision: once a
-window probe on `claude-fable-5` returns without being refused — which cannot
-be before 2026-09-18T14:00:00Z and is not guaranteed by that reset — dispatch
-the frozen
+window probe on `claude-fable-5` returns without being refused — whenever that
+is, since no schedule here dates it — dispatch the frozen
 [`robin.create.prompt.txt`](prompts/robin.create.prompt.txt)
 (`e20ee7ab…`) into a fresh `ot7-robin-b` and
 [`plover.create.prompt.txt`](prompts/plover.create.prompt.txt)
