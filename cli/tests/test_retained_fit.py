@@ -71,3 +71,78 @@ def test_retained_comparison_and_explained_differences(name, pairs, overlaps, se
     }[name]
     assert value['world_geometry'] == []
     assert value['clearance_sweep']['status'] == 'unavailable'
+
+
+#: The twelve pairs Heron's script welds, from its own ``weld()`` calls. Finch
+#: and Robin's welds follow a rule rather than a list, so they are derived
+#: below the way their scripts write them.
+HERON_WELDS = [
+    ('comp_base', 'comp_servo_shoulder'), ('comp_base', 'comp_bearing_shoulder'),
+    ('comp_base', 'comp_tabscrew_shoulder_0'), ('comp_base', 'comp_tabscrew_shoulder_1'),
+    ('comp_upper_arm', 'comp_horn_shoulder'), ('comp_upper_arm', 'comp_centrescrew_shoulder'),
+    ('comp_upper_arm', 'comp_servo_elbow'), ('comp_upper_arm', 'comp_bearing_elbow'),
+    ('comp_upper_arm', 'comp_tabscrew_elbow_0'), ('comp_upper_arm', 'comp_tabscrew_elbow_1'),
+    ('comp_forearm', 'comp_horn_elbow'), ('comp_forearm', 'comp_centrescrew_elbow'),
+]
+
+
+def _welded_pairs(name, components):
+    """Every pair an unsuppressed ``fixed`` joint welds, read off the script."""
+    if name == 'finch':
+        # `purchase()` welds each bought part to the link it rides: the servo,
+        # its two tab screws and the bearing to the parent, the horn and the
+        # centre screw to the child.
+        pairs = set()
+        for side in ('l', 'r'):
+            for tag, parent, child in ((f'hip_{side}', 'pelvis', f'thigh_{side}'),
+                                       (f'knee_{side}', f'thigh_{side}', f'shin_{side}')):
+                for part in (f'servo_{tag}', f'tabscrew_{tag}_0',
+                             f'tabscrew_{tag}_1', f'bearing_{tag}'):
+                    pairs.add(frozenset((f'{parent}_link', f'{part}_link')))
+                for part in (f'horn_{tag}', f'centrescrew_{tag}'):
+                    pairs.add(frozenset((f'{child}_link', f'{part}_link')))
+        return pairs
+    if name == 'robin':
+        # Everything but the two wheels is welded to the chassis.
+        return {frozenset(('comp_chassis', c)) for c in components
+                if c not in ('comp_chassis', 'comp_wheel_l', 'comp_wheel_r')}
+    return {frozenset(pair) for pair in HERON_WELDS}
+
+
+@pytest.mark.parametrize('name,failing,exempt', [
+    ('finch', 44, 16), ('robin', 39, 11), ('heron', 20, 8),
+])
+def test_weld_exemption_would_clear_exactly_these(name, failing, exempt):
+    """What ADR-372 changes about these three, and what it leaves alone.
+
+    The retained rows themselves are untouched: they were published by the
+    engine that accepted them and carry no intent, which is why the numbers
+    above this test are stable. This pins the *other* half, the one
+    `docs/probes/ot7/REGRESSION.md` states — what the same measurements say
+    under today's checker, by handing `fit_summary` the `attached` intent the
+    engine now implies for a welded pair. Overlap under a weld still fails,
+    and a pair that merely shares a host is not welded to anything.
+    """
+    value = json.loads((RECEIPTS / f'{name}.measurements.json').read_text())
+    components = value.pop('components')
+    welds = _welded_pairs(name, components)
+    value['pairs'] = [
+        dict(first=components[a], second=components[b], distance_mm=d,
+             common_volume_mm3=v,
+             **({'intent': {'kind': 'attached', 'minimum_mm': 0.0}}
+                if frozenset((components[a], components[b])) in welds else {}))
+        for a, b, d, v in value.pop('measurements')
+    ]
+    assert sum('intent' in row for row in value['pairs']) == len(welds)
+    before = {(a, b) for a, b, *_ in json.loads(
+        (RECEIPTS / 'comparison.json').read_text())['designs'][name]['failing']}
+    summary = fit_summary(value)
+    after = {(r['first'], r['second']) for r in summary['failing']}
+    assert summary['failing_count'] == failing - exempt
+    cleared = before - after
+    assert len(cleared) == exempt + (2 if name == 'heron' else 0)
+    # Every pair the weld clears was a zero-volume gap under the default, and
+    # no intersection was silenced by it.
+    assert all(frozenset(p) in welds for p in cleared
+               if p not in ROUNDING_PAIRS) and summary['counts']['intersection'] == {
+        'finch': 12, 'robin': 8, 'heron': 6}[name]

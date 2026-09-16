@@ -1,6 +1,6 @@
 # ot7 regression receipt — F9
 
-Verified against source: 2026-09-14. [Cadex-new]
+Verified against source: 2026-09-16. [Cadex-new]
 
 **F9 has its required evidence:** both suites are green, the relevant packaged
 gate is green, all three retained ot6 designs restore and reopen with accepted
@@ -52,8 +52,38 @@ The remaining static failures are expected under the new checker:
   `comp_forearm` / `comp_bearing_elbow` at 0.09999999999999039 mm, both with zero
   common volume, using the absolute 1e-9 mm minimum-comparison allowance.
 
-The checker reports every overlap and has no implicit seating exceptions.
-These retained scripts declare no fit intent. The [pair-by-pair explanation and
+The checker reports every overlap. It has exactly one implicit exception,
+added after these numbers were taken: a pair welded by an **unsuppressed fixed
+joint** is not held to the 0.1 mm undeclared-pair minimum (ADR-372), because a
+fixed joint is the design saying the two components are one rigid body. That
+exception cannot move a number above, and did not: a retained row is the
+measurement the accepting engine published, it carries no intent, and reading
+it back never recomputes one. These retained scripts declare no fit intent of
+their own either.
+
+**What the same measurements say under today's checker**, with the welds each
+script already declares — Finch's `purchase()` helper, Robin's chassis welding
+everything but its two wheels, Heron's twelve `weld()` calls — supplied as the
+`attached` intent the engine now implies for them:
+
+| Design | Failing as retained | Cleared by the weld exemption | Would remain |
+|---|---:|---:|---:|
+| Finch | 44 | 16 | 28 |
+| Robin | 39 | 11 | 28 |
+| Heron | 20 | 8 | 12 |
+
+Every cleared pair is a zero-volume gap under the default; no overlap is
+silenced (12 / 8 / 6 intersections stand), and a pair that merely shares a host
+with another — Finch's servo against the tab screws beside it, Robin's board
+against its own inserts — is not welded to *it* and still fails, because
+ADR-372 implies no transitivity through a common host. These three rows are
+not a re-measurement and not a rebuild: they are what a *new* design putting
+the same solids in the same places would be told, and the gap between the two
+columns is the four checker changes (ADR-370 – ADR-373) that landed after
+these designs were accepted. The [portable
+regression](../../../cli/tests/test_retained_fit.py) computes both
+columns from the retained receipts through `fit_summary`, so neither can drift
+from the product without a red test. The [pair-by-pair explanation and
 ot6 probe links](retained/README.md#f9-unchanged-retained-measurements-through-the-product-scope),
 [original comparison](retained/comparison.json), and
 [portable regression](../../../cli/tests/test_retained_fit.py) account for the
