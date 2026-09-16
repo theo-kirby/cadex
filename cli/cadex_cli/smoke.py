@@ -38,6 +38,13 @@ DEFAULT_PENETRATION_MM = 0.5
 #: A held pose settles to micrometres per second; a design still moving
 #: faster than this at the end is not resting.
 DEFAULT_REST_SPEED_MM_S = 10.0
+#: A free base that has turned this far from its accepted pose fell over; it
+#: did not hold (ADR-377). Measured: Finch standing ended 9e-06 degrees from
+#: its keyframe attitude and the resting-block fixture 0, while the retained
+#: ot6 balancer given no torque lay 101.3 degrees over after two seconds.
+#: Thirty is orders of magnitude above every settled measurement and well
+#: under any topple.
+DEFAULT_MAX_TILT_DEGREES = 30.0
 DEFAULT_FPS = 50
 #: The charter's bound (ADR-341): a smoke rollout is over inside five
 #: minutes of wall time, or it is a failure with the reason.
@@ -110,6 +117,7 @@ def smoke_command(
     mode: str,
     penetration_mm: float,
     rest_speed_mm_s: float,
+    max_tilt_degrees: float,
     fps: int,
 ) -> list[str]:
     command = [
@@ -120,6 +128,7 @@ def smoke_command(
         "--mode", str(mode),
         "--penetration-mm", f"{float(penetration_mm):g}",
         "--rest-speed-mm-s", f"{float(rest_speed_mm_s):g}",
+        "--max-tilt-degrees", f"{float(max_tilt_degrees):g}",
         "--fps", str(int(fps)),
     ]
     if task:

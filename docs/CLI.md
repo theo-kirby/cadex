@@ -72,7 +72,7 @@ Flags, valid on either side of the subcommand:
 | `--format step,stl` | Any of `step`, `stl`, `brep`. Default `step,stl`. |
 | `--offset-mm N` | `section`: where along the plane normal to cut. **Omit it** to derive the offset from the accepted bounds (ADR-275); the old default was the constant 0.0, which on a mechanism standing off that plane draws an empty page and calls it `empty`. |
 | `--sweep` | `clearance`: write published joint sweep coverage and measurements to `docs/clearance-sweep.md`, without rebuilding (ADR-350). |
-| `--seconds S`, `--mode hold\|zero`, `--penetration-mm N`, `--rest-speed-mm-s N`, `--fps N`, `--timeout S` | `smoke` (ADR-352): the simulated duration (default 2 s), the command (hold the solved pose, or zero action), the deepest floor-proxy penetration (default 0.5 mm), the speed under which a free base counts as resting at the end (default 10 mm/s), the samples per simulated second at which the checks look (default 50), and the wall-time bound (default and maximum 300 s). `--model NAME` and `--task NAME` pick among several exported models or tasks. |
+| `--seconds S`, `--mode hold\|zero`, `--penetration-mm N`, `--rest-speed-mm-s N`, `--max-tilt-degrees N`, `--fps N`, `--timeout S` | `smoke` (ADR-352): the simulated duration (default 2 s), the command (hold the solved pose, or zero action), the deepest floor-proxy penetration (default 0.5 mm), the speed under which a free base counts as resting at the end (default 10 mm/s), how far a free base may turn from its accepted pose before it counts as fallen over (default 30°, ADR-377), the samples per simulated second at which the checks look (default 50), and the wall-time bound (default and maximum 300 s). `--model NAME` and `--task NAME` pick among several exported models or tasks. |
 | `--min-clearance-mm N` | `clearance`: flag distances strictly below N (default 0.1 mm). |
 | `--max-common-volume-mm3 N` | `clearance` and `smoke`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
 | `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output to inventory. A project publishes at most one, so this is only ever a check that you are looking at it. |
@@ -2561,9 +2561,14 @@ The command checks:
   and common volumes must agree with published static clearance; a missing
   solid or disagreement is a measurement error, never a pass.
 - Floor-proxy penetration no deeper than `--penetration-mm 0.5`, and a free
-  base touching the environment floor at the end with linear speed at most
-  `--rest-speed-mm-s 10`. Grounded bodies hold by construction. Floor support
-  uses the model's collision proxies; component fit uses exact solids.
+  base whose design is touching the environment floor at the end, whose linear
+  speed is at most `--rest-speed-mm-s 10`, and which has turned no further
+  than `--max-tilt-degrees 30` from the attitude its accepted keyframe gave it
+  (ADR-377: a design that toppled and settled meets the first two and is not
+  standing; the angle is read against the keyframe, so a base modelled lying
+  down and holding that pose reads zero). Grounded bodies hold by
+  construction. Floor support uses the model's collision proxies; component
+  fit uses exact solids.
 - Any termination conditions in the selected task, without applying task
   randomisation, disturbances or a trained policy.
 

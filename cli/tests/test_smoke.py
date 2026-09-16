@@ -62,6 +62,29 @@ BURIED_BLOCK = RESTING_BLOCK.replace('qpos="0 0 0.0100', 'qpos="0 0 0.0080')
 NO_FLOOR = RESTING_BLOCK.replace(
     '<geom name="environment/floor" type="plane" size="0 0 0.1" pos="0 0 0"/>', "")
 
+#: A 100 mm tower, 20 mm square, standing 15° over -- past the 11.3° its
+#: own footprint can hold -- so it topples and lands on its side. Gravity is
+#: a tenth of Earth's and the contact is stiff so the landing sinks 0.2 mm,
+#: under the tolerance: the only thing wrong with this rollout at the end is
+#: that the design is lying down: 90° over in the world, and so 75° from
+#: the attitude its keyframe accepted, 41 mm lower, touching the floor
+#: (ADR-377).
+TOPPLING_TOWER = """<mujoco><option timestep="0.002" gravity="0 0 -1"/><worldbody>
+<geom name="environment/floor" type="plane" size="0 0 0.1" pos="0 0 0" solref="0.002 1"/>
+<body name="comp_tower" pos="0 0 0.0509"><freejoint name="base"/>
+<geom name="comp_tower/collision0" type="box" size="0.01 0.01 0.05" mass="0.05" solref="0.002 1"/></body>
+</worldbody><keyframe><key name="solved" qpos="0 0 0.0509 0.991445 0 0.130526 0"/></keyframe></mujoco>"""
+
+#: The same tower, accepted lying on its side and holding that pose. Its
+#: local +Z points along the world's +X, so an attitude read against the
+#: world would call it 90° over; read against its own keyframe, where
+#: ADR-377 reads it, it has not moved.
+LYING_TOWER = """<mujoco><option timestep="0.002"/><worldbody>
+<geom name="environment/floor" type="plane" size="0 0 0.1" pos="0 0 0"/>
+<body name="comp_tower" pos="0 0 0.01"><freejoint name="base"/>
+<geom name="comp_tower/collision0" type="box" size="0.01 0.01 0.05" mass="0.05"/></body>
+</worldbody><keyframe><key name="solved" qpos="0 0 0.01 0.7071068 0 0.7071068 0"/></keyframe></mujoco>"""
+
 #: A hinge with a 1e9 N·m/rad spring under explicit Euler at 50 ms: the
 #: first step produces a bad acceleration, which MuJoCo reports as a
 #: warning and answers by zeroing the state -- so the counter, not the
@@ -102,7 +125,8 @@ def _runner(tmp_path: Path, xml: str, *, task: dict | None = None, **flags) -> d
         task_path = tmp_path / "job-task.json"
         task_path.write_text(json.dumps(task), encoding="utf-8")
     receipt = tmp_path / "smoke.json"
-    options = dict(seconds=2.0, mode="hold", penetration_mm=0.5, rest_speed_mm_s=10.0, fps=50)
+    options = dict(seconds=2.0, mode="hold", penetration_mm=0.5, rest_speed_mm_s=10.0,
+                   max_tilt_degrees=30.0, fps=50)
     options.update(flags)
     command = smoke_command(sys.executable, model=model, task=task_path, out=receipt, **options)
     return run_smoke(command, receipt=receipt, timeout=60.0)
@@ -153,6 +177,39 @@ def test_a_free_base_with_no_floor_never_rests(tmp_path) -> None:
     assert receipt["checks"]["finite"]["pass"] is True
     assert any("no environment floor" in line for line in receipt["failing"])
     assert any("still moving" in line for line in receipt["failing"])
+
+
+@needs_mujoco
+def test_a_design_that_topples_and_settles_fails_support_on_its_attitude(tmp_path) -> None:
+    # Before ADR-377 this rollout passed every check: the tower is touching
+    # the floor, it is not moving, nothing is buried and the state is finite.
+    # What it is not, is standing.
+    receipt = _runner(tmp_path, TOPPLING_TOWER, seconds=4.0)
+    support = receipt["checks"]["support"]
+    assert receipt["checks"]["finite"]["pass"] and receipt["checks"]["penetration"]["pass"]
+    assert support["touching_floor_at_end"] is True and support["speed_mm_s"] < 10.0
+    assert support["tilt_degrees"] == pytest.approx(90.0, abs=1.0)
+    assert support["tilt_from_start_degrees"] == pytest.approx(75.0, abs=1.0)
+    assert support["drop_mm"] == pytest.approx(41.0, abs=1.0)
+    assert support["pass"] is False and receipt["verdict"] == "fail"
+    (line,) = receipt["failing"]
+    assert line.startswith("support: comp_tower has turned 75.0° away from its accepted pose")
+    assert "limit 30°" in line
+    # The limit is a declared threshold, not a reinterpretation: at 120° the
+    # same trace passes.
+    assert _runner(tmp_path, TOPPLING_TOWER, seconds=4.0, max_tilt_degrees=120.0)["verdict"] == "pass"
+
+
+@needs_mujoco
+def test_a_base_accepted_lying_down_holds_that_pose_and_passes(tmp_path) -> None:
+    # Read against the world this base is 90° over from the first frame;
+    # read against its own accepted keyframe, it never moved.
+    receipt = _runner(tmp_path, LYING_TOWER)
+    support = receipt["checks"]["support"]
+    assert support["tilt_degrees"] == pytest.approx(90.0, abs=1e-3)
+    assert support["tilt_from_start_degrees"] < 1e-3
+    assert support["max_tilt_degrees"] == 30.0
+    assert support["pass"] is True and receipt["verdict"] == "pass", receipt["failing"]
 
 
 @needs_mujoco

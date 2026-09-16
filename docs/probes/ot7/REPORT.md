@@ -952,7 +952,10 @@ as measurement. See the [product sweep receipt](sweep/README.md).
 ### F8: smoke implementation is not a design pass
 
 `cadex smoke` preserves accepted identity and checks finite state, sampled
-exact BREPs and proxy floor support under a 300-second deadline. The grounded
+exact BREPs and proxy floor support under a 300-second deadline. Since ADR-377
+floor support includes the base's attitude: the first real free-base topple
+this run measured, the retained ot6 balancer at zero torque, passed the old
+support check at 101.3° over and fails the new one. The grounded
 fixture passed 101 poses; a falling arm overlapped by **1,463.7845106574737 mm³
 at 1.64 s** despite passing proxy checks; overlapping boxes measured 400 mm³.
 Unavailable BREP evidence cannot pass. No fresh ot7 design ran a simulation.
@@ -1136,11 +1139,12 @@ landed in the meantime is one more difference separating F6 and F7 from F5.
 No unattended role may extend, stop or restart a run, and neither this
 subsection nor the record behind it does. This is a measurement for the owner.
 
-**Product version.** F6 and F7 run on a product **ten** changes newer than
+**Product version.** F6 and F7 run on a product **eleven** changes newer than
 the one F5 ran on, every frozen prompt unchanged: ADR-362, ADR-366, ADR-367,
-ADR-368, ADR-370, ADR-371, ADR-372, ADR-373, ADR-374 and ADR-375. Eight of them
-change the measured fit surface a design reads; the other two are the inventory
-block beside it and the repair wording in the agent's own prompt. Each is listed
+ADR-368, ADR-370, ADR-371, ADR-372, ADR-373, ADR-374, ADR-375 and ADR-377.
+Eight of them change the measured fit surface a design reads; two more are the
+inventory block beside it and the repair wording in the agent's own prompt;
+the eleventh is the smoke rollout their bar ends on. Each is listed
 below with what it publishes, because a difference in an F6 or F7
 row that lands on a fact one of these changes publishes is a difference across
 that change and not a difference in the agent.
@@ -1231,7 +1235,21 @@ directly — a two-wheeled balancer's moving parts are exactly the joints with
 no natural limit — and is the third change in a row that lands on F6's and
 F7's own hardware. Nothing is refused and no threshold moved.
 
-F5 is not re-run and no frozen prompt changed for any of the ten. Every
+**ADR-377** (`COMMIT-377`) is the smoke rollout, and it was measured on F6's
+own mechanism. The retained ot6 balancer, copied to `ot7-robin-smoke` and
+smoked for the first time in this run, topples at zero torque in 0.38 s and
+comes to rest **101.3° over, 43.5 mm lower, chassis on the floor** — and the
+`support` check called that a pass, because a fallen design is touching the
+floor and is not moving. Robin's verdict still failed, on its own termination
+rule and 2.7 mm of chassis in the floor, but a design with no exported task
+and a softer landing would have passed `cadex smoke` lying on its side. The
+check now reads the base's attitude against the pose its accepted keyframe
+gave it, and fails beyond `--max-tilt-degrees` (default 30°, against Finch's
+measured 9×10⁻⁶ ° standing). F5's arm is grounded and reads none of this; F6
+and F7 are the two designs whose failure mode is falling over, so their smoke
+results are measured across this change.
+
+F5 is not re-run and no frozen prompt changed for any of the eleven. Every
 number in the F6 and F7 rows is therefore measured on this product, and the
 ot6 and F5 comparisons in this report are read across these changes.
 

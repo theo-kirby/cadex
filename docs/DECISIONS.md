@@ -25960,3 +25960,56 @@ This is a gate correction, not availability: at 21:37 UTC on 2026-09-16 the
 probe was still **refused** outright (`seven_day_overage_included` 100 %,
 `org_level_disabled`, five-hour 11 %), which ADR-364's rule reads as no room
 and this change does not touch. F6's and F7's eight slots remain unspent.
+
+## ADR-377 — A design that toppled and settled is not resting on the floor (2026-09-16)
+
+**Status.** Accepted. Extends the `support` check `cadex smoke` got in
+ADR-352; no protocol, engine, payload or shell change.
+
+**Context.** F8's smoke rollout passes a design when its state stays finite,
+no component pair interpenetrates, no declared termination fires, and — for a
+free base — it "rests on the environment floor". `support` read that as three
+facts: an environment floor exists, something of the design is touching it at
+the end, and the base's *linear* speed is under `--rest-speed-mm-s`. A design
+that falls over satisfies all three the moment it stops moving. The receipt
+already measured the fourth fact, `tilt_degrees`, and no check read it.
+
+Measured on the retained ot6 balancer, copied to `ot7-robin-smoke` and smoked
+for the first time in this run: at zero torque Robin topples in 0.38 s and
+comes to rest **101.3° over, 43.5 mm lower, chassis on the floor** — and
+`support` reported `pass: true`. Robin's whole verdict still failed, but only
+because Robin happens to declare a termination rule and to bury its chassis
+2.7 mm in the floor. A design with no exported task and a softer landing would
+have passed `cadex smoke` lying on its side. F6 and F7, the balancer and the
+biped, are the two designs left to run, and both fail by falling over.
+
+**Decision.** The support check reads the base's attitude, against the pose
+the accepted keyframe gave it. `tilt_from_start_degrees` is the angle between
+the base's local +Z at the keyframe and at the last sample, and a free base
+passes only when it is within `--max-tilt-degrees`, default **30°**. The
+failing line names the base, the angle and the limit. The absolute
+`tilt_degrees` field keeps its old meaning and is still reported.
+
+Measured against the keyframe, not the world, so a design whose base is
+*modelled* lying down and holds that pose reads zero rather than 90°. The
+default is a threshold, not a guess: Finch standing ends 9×10⁻⁶ ° from its
+keyframe attitude and the resting-block fixture 0°, while the toppled
+balancer reads 101.3°. Thirty degrees is orders of magnitude above every
+settled measurement and well under any topple; a design that genuinely holds a
+leaning pose raises the flag.
+
+**Consequences.** Two known-answer fixtures in `cli/tests/test_smoke.py`.
+`TOPPLING_TOWER` is a 100 mm tower standing 15° over — past the 11.3° its own
+footprint can hold — under a tenth of Earth's gravity with stiff contact, so
+it topples and lands sinking 0.2 mm, under tolerance: at the end the *only*
+thing wrong is that it is lying down. On the old child that rollout is
+`verdict: pass, failing: []`; on the new one it fails with
+`support: comp_tower has turned 75.0° away from its accepted pose (limit 30°)`,
+and passes again at `--max-tilt-degrees 120`. `LYING_TOWER` is the same tower
+accepted on its side and holding: absolute tilt 90°, tilt from its keyframe
+0°, pass. Finch's real standing smoke is unchanged and still passes support.
+`docs/CLI.md` carries the flag and the check. CLI suite green.
+
+This is a checker correction, not a design result: no `ot7-*` design was
+edited, no frozen prompt was spent, and Robin's copy is `ot7-robin-smoke`, not
+the retained project.

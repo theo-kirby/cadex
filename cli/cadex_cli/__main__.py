@@ -113,6 +113,7 @@ from .review_record import manifest_identity, write_run_record
 from .review_server import serve as serve_review
 from .smoke import (
     DEFAULT_FPS,
+    DEFAULT_MAX_TILT_DEGREES,
     DEFAULT_MODE,
     DEFAULT_PENETRATION_MM,
     DEFAULT_REST_SPEED_MM_S,
@@ -459,6 +460,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_REST_SPEED_MM_S,
         help="A free base moving slower than this at the end is at rest "
         "(default %(default)g mm/s).",
+    )
+    smoke_parser.add_argument(
+        "--max-tilt-degrees", dest="max_tilt_degrees", type=float,
+        default=DEFAULT_MAX_TILT_DEGREES,
+        help="A free base that has turned further than this from its accepted "
+        "pose by the end has fallen over (default %(default)g°).",
     )
     smoke_parser.add_argument(
         "--fps", type=int, default=DEFAULT_FPS,
@@ -1571,6 +1578,9 @@ def command_smoke(args: argparse.Namespace, report: RunReport) -> int:
     if float(args.penetration_mm) < 0.0 or float(args.rest_speed_mm_s) < 0.0:
         report.error = "--penetration-mm and --rest-speed-mm-s must be nonnegative."
         return EXIT_USAGE
+    if not (0.0 <= float(args.max_tilt_degrees) <= 180.0):
+        report.error = "--max-tilt-degrees must be within [0, 180]."
+        return EXIT_USAGE
     if int(args.fps) < 1 or args.seconds * args.fps > 15000:
         report.error = "--fps must be at least 1 and --seconds × --fps at most 15000."
         return EXIT_USAGE
@@ -1578,7 +1588,8 @@ def command_smoke(args: argparse.Namespace, report: RunReport) -> int:
     import time
     import math
     if any(not math.isfinite(v) or v < 0 for v in
-           (args.penetration_mm, args.rest_speed_mm_s, args.max_common_volume_mm3)):
+           (args.penetration_mm, args.rest_speed_mm_s, args.max_common_volume_mm3,
+            args.max_tilt_degrees)):
         report.error = "smoke tolerances must be finite and nonnegative."
         return EXIT_USAGE
     deadline = time.monotonic() + float(args.timeout)
@@ -1605,7 +1616,8 @@ def command_smoke(args: argparse.Namespace, report: RunReport) -> int:
             python, model=model.files["xml"], task=task.files["json"] if task else None,
             out=dynamics_path, seconds=float(args.seconds), mode=str(args.mode),
             penetration_mm=float(args.penetration_mm),
-            rest_speed_mm_s=float(args.rest_speed_mm_s), fps=int(args.fps),
+            rest_speed_mm_s=float(args.rest_speed_mm_s),
+            max_tilt_degrees=float(args.max_tilt_degrees), fps=int(args.fps),
         )
         _progress(f" · smoke  {model.name}  {float(args.seconds):g} s {args.mode}  ({python})")
         receipt_path.unlink(missing_ok=True)

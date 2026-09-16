@@ -19,9 +19,12 @@ Four checks, each a fixture's known answer (``cli/tests/test_smoke.py``):
   is checked separately by smoke_geometry.py, including excluded contacts.
   MuJoCo's soft contact lets a resting part sink about 0.1--0.2 mm at the
   default ``solref``, which is why the default tolerance is above that;
-* **support** -- a free base (ADR-335) is touching the environment floor at
-  the end and its linear speed is under the rest threshold; a grounded
-  design holds its grounded bodies by construction, and says which;
+* **support** -- something of a free base's design (ADR-335) is touching the
+  environment floor at the end, the base's linear speed is under the rest
+  threshold, and the base still holds the attitude its accepted keyframe gave
+  it, within ``--max-tilt-degrees`` (ADR-377: a design that toppled and
+  settled satisfies the first two and is not standing); a grounded design
+  holds its grounded bodies by construction, and says which;
 * **termination** -- when a task was exported, none of its own declared
   termination rules fires over the trace. This is the design's own
   statement of what "holding its pose" means, evaluated exactly the way
@@ -86,13 +89,24 @@ def _channels(task: dict[str, Any]) -> list[tuple[str, int, float]]:
     return found
 
 
+def _up_vector(quat_wxyz: Any) -> tuple[float, float, float]:
+    """A body's local +Z in world coordinates: its rotation matrix's third column."""
+
+    w, x, y, z = (float(v) for v in quat_wxyz)
+    return (2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y))
+
+
+def _angle_between_degrees(first: Any, second: Any) -> float:
+    """The angle between two unit vectors, in degrees."""
+
+    dot = sum(float(a) * float(b) for a, b in zip(first, second))
+    return math.degrees(math.acos(max(-1.0, min(1.0, dot))))
+
+
 def _quat_tilt_degrees(quat_wxyz: Any) -> float:
     """The angle between a body's local +Z and the world's +Z."""
 
-    w, x, y, z = (float(v) for v in quat_wxyz)
-    # Third column of the rotation matrix, z component: R[2][2].
-    cos_tilt = 1.0 - 2.0 * (x * x + y * y)
-    return math.degrees(math.acos(max(-1.0, min(1.0, cos_tilt))))
+    return _angle_between_degrees(_up_vector(quat_wxyz), (0.0, 0.0, 1.0))
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -317,9 +331,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         z_end = float(data.qpos[qadr + 2]) * 1000.0
         rest_speed = float(args.rest_speed_mm_s)
         at_rest = speed_mm_s <= rest_speed
+        # How far the base turned away from the attitude its accepted
+        # keyframe gave it (ADR-377). Measured against the keyframe rather
+        # than the world, so a design whose base is modelled lying down and
+        # holds that pose reads zero, and one that toppled reads its topple.
+        tilt_from_start = _angle_between_degrees(
+            _up_vector(model.key_qpos[key][qadr + 3:qadr + 7]),
+            _up_vector(data.qpos[qadr + 3:qadr + 7]))
+        maximum_tilt = float(args.max_tilt_degrees)
+        held_attitude = tilt_from_start <= maximum_tilt
         support = {
             "kind": "free",
-            "pass": floor >= 0 and touching_floor and at_rest and nonfinite_at is None,
+            "pass": (floor >= 0 and touching_floor and at_rest and held_attitude
+                     and nonfinite_at is None),
             "base": base,
             "floor": ENVIRONMENT_FLOOR_GEOM if floor >= 0 else None,
             "touching_floor_at_end": bool(touching_floor),
@@ -329,6 +353,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "z_end_mm": z_end,
             "drop_mm": z_start - z_end,
             "tilt_degrees": _quat_tilt_degrees(data.qpos[qadr + 3:qadr + 7]),
+            "tilt_from_start_degrees": tilt_from_start,
+            "max_tilt_degrees": maximum_tilt,
         }
         if floor < 0:
             failing.append("support: the free base has no environment floor to rest on")
@@ -338,6 +364,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             failing.append(
                 f"support: {base} is still moving at {speed_mm_s:.1f} mm/s "
                 f"(rest is {rest_speed:g} mm/s)"
+            )
+        if not held_attitude:
+            failing.append(
+                f"support: {base} has turned {tilt_from_start:.1f}° away from its "
+                f"accepted pose (limit {maximum_tilt:g}°)"
             )
     else:
         support = {
@@ -407,6 +438,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", choices=("hold", "zero"), required=True)
     parser.add_argument("--penetration-mm", dest="penetration_mm", type=float, required=True)
     parser.add_argument("--rest-speed-mm-s", dest="rest_speed_mm_s", type=float, required=True)
+    parser.add_argument("--max-tilt-degrees", dest="max_tilt_degrees", type=float, required=True)
     parser.add_argument("--fps", type=int, required=True)
     args = parser.parse_args(argv)
     receipt = run(args)
