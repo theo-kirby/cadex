@@ -5878,13 +5878,26 @@ def _check_fit(rows, components, properties, component_outputs, raw_result=None,
     on the row so a reader reaches the same verdict the engine did.
 
     The implication is the weakest one available: it exempts the pair from
-    the default gap and asserts nothing else. Interpenetration still fails,
-    an unmeasured pair still fails, and an explicit ``contacts=`` or
-    ``clearances=`` declaration on the same pair still wins -- the author
-    saying "0.5 mm here" outranks the joint. Whether a weld's solids
-    actually meet stays the attachment report's separate advisory fact
-    (ADR-370), because a standoff or a captive fastener between them is a
-    legitimate design and only the design knows which it is.
+    the default gap and asserts nothing else. Interpenetration still fails
+    and an unmeasured pair still fails. A ``contacts=`` declaration on a
+    welded pair agrees with the joint and is checked as written. Whether a
+    weld's solids actually meet stays the attachment report's separate
+    advisory fact (ADR-370), because a standoff or a captive fastener
+    between them is a legitimate design and only the design knows which.
+
+    **A ``clearances=`` declaration on a welded pair does not outrank the
+    joint; it contradicts it, and that is the failing check** (ADR-379).
+    One declaration says the two components are one rigid body, the other
+    says they run with a gap between them, and both cannot be true: what
+    holds the parts together is the joint and not the geometry. Before this
+    the explicit declaration simply won, so a horn welded to its link and
+    declared a 0.05 mm clearance measured 0.2 mm and passed every check --
+    which is how ot6's floating-horn defect survived F4's whole four-turn
+    repair run, its own ledger calling the gap "a declared clearance".
+    ``minimum_mm`` is not consulted: no gap makes a weld true, and the two
+    repairs are to close the gap and declare a ``contacts=`` pair, or to
+    stop welding two components that are meant to stay apart. Reported,
+    never refused, like every other check here.
     """
     intents = {}
     for intent in properties.get("fit_intent", ()):
@@ -5896,6 +5909,10 @@ def _check_fit(rows, components, properties, component_outputs, raw_result=None,
         joints = welded.get(frozenset((row["first"], row["second"])))
         if not intent and joints:
             intent = {"kind": "attached", "minimum_mm": 0.0, "joints": sorted(joints)}
+        elif joints and intent.get("kind") == "clearance":
+            # The one declaration a weld contradicts (ADR-379). Published on
+            # the row so a reader reaches the same verdict the engine did.
+            intent = dict(intent, joints=sorted(joints))
         row["intent"] = intent
         distance, volume = row["distance_mm"], row["common_volume_mm3"]
         failures = []
@@ -5903,7 +5920,9 @@ def _check_fit(rows, components, properties, component_outputs, raw_result=None,
             failures.append("intersection")
         if row.get("error") or distance is None or volume is None:
             failures.append("unknown")
-        if distance is not None:
+        if joints and intent.get("kind") == "clearance":
+            failures.append("clearance under weld")
+        elif distance is not None:
             if intent.get("kind") == "contact":
                 if distance > 1e-3:
                     failures.append("missed contact")

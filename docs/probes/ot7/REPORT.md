@@ -539,6 +539,31 @@ the agent and it uses them, and a defect the checks do not name is not
 repaired. No slot remains; a further prompt would be a new attempt under a
 changed prompt, which the charter forbids for this design.
 
+### The checker correction F4's result produced (ADR-379)
+
+F4's measured result stands exactly as recorded above: the numbers in this
+section are what the accepting engine published, and nothing here rebuilds or
+re-accepts that design. What it produced is a defect in the checker, found in
+its own last paragraph.
+
+Both horn pairs are welded — `weld_horn_shoulder` joins `comp_horn_shoulder`
+to `comp_upper_arm`, `weld_horn_elbow` joins `comp_horn_elbow` to
+`comp_forearm` — and both carry `{"kind": "clearance", "minimum_mm": 0.05}`
+from the same script. ADR-372 had said an explicit declaration "outranks the
+joint", so the 0.2 mm measured gap cleared its declared 0.05 mm and every fit
+check passed. The design says the horn is one rigid body with its link and
+also that it runs 0.05 mm clear of it; both cannot be true, and what holds the
+horn on is the joint rather than the geometry. Three prompts asking for every
+failing check to be resolved found none named, which is why two continuations
+correctly changed nothing.
+
+ADR-379 makes the contradiction the failing check, `clearance under weld`, at
+any measured gap. A rebuild of `ot7-heron-repair-d` would now report two
+failing pairs where it reported none — the horn gap, nameable at last. No
+retained receipt moves: none publishes `joints` on a clearance intent, because
+none was accepted by an engine that wrote one. No `ot7-*` design was edited and
+no frozen prompt was spent.
+
 ## Iteration 55: the arm create call interrupted at the bound
 
 The first F5 call that reached a model. `heron.create.prompt.txt` (9,648

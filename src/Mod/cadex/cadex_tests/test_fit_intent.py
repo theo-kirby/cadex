@@ -97,9 +97,15 @@ def test_heron_defects_measured_by_real_kernel(tmp_path, monkeypatch):
     assert pair('cheek', 'servo_tab')['common_volume_mm3'] == pytest.approx(248.2)
     assert pair('cheek', 'servo_tab')['fit_failures'] == ['intersection']
     assert pair('horn', 'link')['distance_mm'] == pytest.approx(0.2)
-    # Declared a 0.05 mm clearance, as Heron declared it: every fit check on
-    # this pair passes and the gap under the weld is what reports it (ADR-370).
-    assert pair('horn', 'link')['fit_failures'] == []
+    # Declared a 0.05 mm clearance, as Heron declared it, on a pair the same
+    # script welds: the two declarations contradict each other and the
+    # contradiction is the failing check (ADR-379). The measured 0.2 mm
+    # clears the declared 0.05 mm, so before this every check passed.
+    assert pair('horn', 'link')['fit_failures'] == ['clearance under weld']
+    assert pair('horn', 'link')['intent'] == {'kind': 'clearance', 'minimum_mm': 0.05,
+                                              'joints': ['weld_horn']}
+    # A *contact* declaration on a welded pair agrees with the joint and is
+    # checked as written, so this weld stays clear.
     assert pair('base', 'bearing')['fit_failures'] == []
     assert pair('base', 'bearing')['intent']['kind'] == 'contact'
     # Welded flush with nothing declared: the fixed joint is the declaration
@@ -112,7 +118,11 @@ def test_heron_defects_measured_by_real_kernel(tmp_path, monkeypatch):
     assert pair('near', 'other')['distance_mm'] == pytest.approx(0.05)
     assert pair('near', 'other')['intent'] == {}
     assert pair('near', 'other')['fit_failures'] == ['below clearance']
+    # A declared clearance on a pair no fixed joint welds is judged by its
+    # minimum, exactly as before: the hinge that joins these two is not a
+    # weld, so ADR-379 says nothing about it.
     assert pair('wide', 'mate')['distance_mm'] == pytest.approx(0.4)
+    assert pair('wide', 'mate')['intent'] == {'kind': 'clearance', 'minimum_mm': 0.5}
     assert pair('wide', 'mate')['fit_failures'] == ['below clearance']
     bearing, horn_gap, mount_weld = report['attachments']
     assert mount_weld['status'] == 'touching'
@@ -142,6 +152,50 @@ def test_minimum_comparison_preserves_raw_measurements(declared, gap, failed):
     assert _check_fit([row], {}, properties, {id(a): 'a', id(b): 'b'}) == []
     assert row['fit_failures'] == (['below clearance'] if failed else [])
     assert row['distance_mm'] == gap and row['common_volume_mm3'] == 0.0
+
+
+@pytest.mark.parametrize('kind,suppressed,gap,volume,expected', [
+    # The contradiction itself, at any gap: a welded pair declared a running
+    # clearance fails whether or not the gap clears its own minimum.
+    ('clearance', False, 0.2, 0.0, ['clearance under weld']),
+    ('clearance', False, 0.02, 0.0, ['clearance under weld']),
+    ('clearance', False, 0.0, 0.0, ['clearance under weld']),
+    # Overlap is still overlap, and still named first.
+    ('clearance', False, 0.0, 1.0, ['intersection', 'clearance under weld']),
+    # A *suppressed* fixed joint is no weld, so there is nothing to
+    # contradict and the declared minimum is judged exactly as before.
+    ('clearance', True, 0.2, 0.0, []),
+    ('clearance', True, 0.02, 0.0, ['below clearance']),
+    # A contact declaration agrees with the weld and is checked as written.
+    ('contact', False, 0.0, 0.0, []),
+    ('contact', False, 0.2, 0.0, ['missed contact']),
+])
+def test_a_clearance_declared_on_a_welded_pair_is_the_failing_check(
+        kind, suppressed, gap, volume, expected):
+    """ADR-379: one pair, two declarations, and they cannot both be true."""
+
+    from cadex_assembly_worker import _check_fit
+    a, b = object(), object()
+    intent = {'first': a, 'second': b, 'kind': kind}
+    if kind == 'clearance':
+        intent['minimum_mm'] = 0.05
+    joint_data = {'weld': {'assembly_output': 'asm', 'kind': 'fixed',
+                           'suppressed': suppressed,
+                           'connectors': [{'component_output': 'a'},
+                                          {'component_output': 'b'}]}}
+    row = {'first': 'a', 'second': 'b', 'distance_mm': gap, 'common_volume_mm3': volume}
+    assert _check_fit([row], {}, {'fit_intent': [intent]},
+                      {id(a): 'a', id(b): 'b'}, {}, joint_data, 'asm') == []
+    assert row['fit_failures'] == expected
+    # The welding joints ride on the declaration that contradicts them, and
+    # on no other, so a reader reaches the same verdict without the joint
+    # table -- and no intent this project already published changes shape.
+    if kind == 'clearance' and not suppressed:
+        assert row['intent'] == {'kind': 'clearance', 'minimum_mm': 0.05,
+                                 'joints': ['weld']}
+    else:
+        assert 'joints' not in row['intent']
+    assert row['distance_mm'] == gap and row['common_volume_mm3'] == volume
 
 
 _GAP_DRIVER = r'''
@@ -262,11 +316,18 @@ def test_welded_pair_is_not_held_to_the_undeclared_gap():
     assert check(0.0, 4.07, joints={'fix': joint('a', 'b')})['fit_failures'] == ['intersection']
     assert check(None, None, joints={'fix': joint('a', 'b')},
                  error='Component has no measurable shape')['fit_failures'] == ['unknown']
-    # The author's own declaration outranks the joint, either way round.
-    assert check(0.2, joints={'fix': joint('a', 'b')},
-                 declared={'kind': 'clearance', 'minimum_mm': 0.5})['fit_failures'] == ['below clearance']
+    # A contact declaration on a welded pair agrees with the joint, so the
+    # author's own tolerance is what it is checked against.
     assert check(0.2, joints={'fix': joint('a', 'b')},
                  declared={'kind': 'contact'})['fit_failures'] == ['missed contact']
+    # A *clearance* declaration does not outrank the joint, as ADR-372 had
+    # it -- it contradicts it, and the contradiction is the failing check
+    # (ADR-379). The declared 0.5 mm is not consulted at all: this pair
+    # fails at 0.2 mm and would fail at 5 mm.
+    for gap in (0.2, 5.0):
+        assert check(gap, joints={'fix': joint('a', 'b')},
+                     declared={'kind': 'clearance',
+                               'minimum_mm': 0.5})['fit_failures'] == ['clearance under weld']
     # Nothing welds these two: the default gap is unchanged by this rule.
     for joints in ({}, {'fix': joint('a', 'b', suppressed=True)},
                    {'fix': joint('a', 'b', kind='revolute')},

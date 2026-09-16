@@ -26082,3 +26082,90 @@ This is a checker correction, not a design result: no `ot7-*` design was
 edited and no frozen prompt was spent. The product-agent harness was refused
 again on the same organisation-level setting (`org_level_disabled`, sixth
 refusal), so no F6 dispatch was possible.
+
+## ADR-379 — A weld and a declared gap on the same pair contradict each other (2026-09-16)
+
+**Status.** Accepted. Narrows ADR-372's "an explicit declaration still wins".
+Engine `_check_fit` plus the CLI blocks that read its rows; no new op, no
+`OP_ARG_SPECS` change, no payload or `shell/` change.
+
+**Context.** ADR-372 stopped holding a welded pair to the undeclared-pair
+0.1 mm gap, because an unsuppressed `fixed` joint is the design saying the two
+components are one rigid body. It kept one escape hatch, stated in its own
+words: "an explicit `contacts=` or `clearances=` declaration on the same pair
+still wins — the author saying '0.5 mm here' outranks the joint."
+
+That hatch is how ot6's floating-horn defect survived F4. The seeded repair
+run on `ot7-heron-repair-d` spent its prompt and all three continuations, each
+asking for every failing check to be resolved, and ended with
+`comp_horn_shoulder` 0.2 mm from `comp_upper_arm` and `comp_horn_elbow` 0.2 mm
+from `comp_forearm` — the same gap ot6's hand-run probe found. Both pairs are
+welded (`weld_horn_shoulder`, `weld_horn_elbow`) and both carry
+`{"kind": "clearance", "minimum_mm": 0.05}`. The static block read 0 of 105
+failing, the swept block read 0, and the agent's own ledger wrote the outcome
+down: "4 declared ≥0.05 mm clearances measure 0.0999999–0.2 mm (…horn pockets
+both joints)". Two continuations that named no failure left the design
+unchanged, correctly, because nothing named one.
+
+The declaration did not outrank the joint. It contradicted it, and the product
+resolved the contradiction in favour of whichever one silenced the pair.
+
+**Decision.** A `clearances=` declaration on a pair an **unsuppressed** fixed
+joint welds is itself the failing check, `clearance under weld`. The declared
+minimum is not consulted: no measured gap makes "one rigid body" and "a running
+gap" both true, so the pair fails below its minimum and above it alike. The
+engine publishes the welding joints on that declaration —
+`{"kind": "clearance", "minimum_mm": …, "joints": [...]}` — so a reader reaches
+the same verdict without the joint table, and the key appears nowhere it did
+not appear before. The `fit` block carries a note naming the two repairs: close
+the gap and declare the pair with `contacts=`, or stop welding two components
+that are meant to stay apart. Neither repair is a wider gap, and removing only
+the declaration is not a repair either — it leaves the gap, reported by
+`attachments` (ADR-370) instead of hidden behind a passing check.
+
+Narrowly, and nothing else moves:
+
+- A `contacts=` declaration on a welded pair **agrees** with the joint and is
+  checked as written, at its 0.001 mm tolerance. Only `clearances=` contradicts.
+- A **suppressed** fixed joint is not an edge of the mechanism (ADR-371,
+  ADR-372) and raises no contradiction: a clearance declared across one is
+  judged by its minimum exactly as an unwelded pair's is.
+- Overlap is still overlap and is still named first; an unmeasured pair is
+  still `unknown`.
+- The swept block (ADR-378) judges only pairs the static block calls clear, so
+  a `clearance under weld` pair is named once, at the pose where it means
+  something, and not again per joint.
+- Reported, never refused. A design carrying the contradiction still builds,
+  still accepts, and still opens.
+
+**Consequences.** `fit.verdict`, `cadex clearance`'s table and the review's
+`offending_pairs` gain the status. A revision accepted before this change
+carries no `joints` on a clearance intent, so its retained rows read exactly
+as they did — the counts in `docs/probes/ot7/REPORT.md` are what the accepting
+engine published and do not move. What a **rebuild** of `ot7-heron-repair-d`
+would now report is two failing pairs where it reported none, which is the
+point: F4's measured result stands as recorded, and the defect it left behind
+is now nameable.
+
+Evidence: the real-OCCT fixture in `cadex_tests/test_fit_intent.py` already
+carried Heron's shape — `horn` welded to `link`, declared 0.05 mm, measured
+0.2 mm — asserting `fit_failures == []`; it now asserts
+`['clearance under weld']` and was red on the old worker. Eight parametrised
+engine cases cover the contradiction at three gaps, under an overlap, across a
+suppressed weld and against a contact declaration. `test_clearance.py` pins the
+CLI status, the reply's counts, note and named pair, and the report's detail
+line. `test_welded_pair_is_not_held_to_the_undeclared_gap` keeps ADR-372's
+exemption and had its one "outranks the joint" assertion reversed here.
+ADR-370's `test_a_weld_holding_nothing_is_reported_…` is the same shape
+end to end through a real engine: it asserted `verdict: pass` with an empty
+failing list and now asserts the named pair, its `joints` and the note,
+while the attachment report beside it is unchanged. Replayed over the
+twenty `clearance.json` receipts in the operator's `ot7-*` projects the new
+rule finds **zero** rows, because no accepted revision was built by an
+engine that published `joints` on a clearance intent;
+`test_adr_379_moves_no_retained_number` pins the same fact on the three
+committed retained receipts, which carry no `intent` key at all.
+
+No `ot7-*` design was edited and no frozen prompt was spent: this is a checker
+correction found in F4's own measured result. The product-agent harness stayed
+refused on the organisation-level setting, so no F6 dispatch was possible.
