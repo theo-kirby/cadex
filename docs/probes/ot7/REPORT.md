@@ -1235,7 +1235,7 @@ directly — a two-wheeled balancer's moving parts are exactly the joints with
 no natural limit — and is the third change in a row that lands on F6's and
 F7's own hardware. Nothing is refused and no threshold moved.
 
-**ADR-377** (`COMMIT-377`) is the smoke rollout, and it was measured on F6's
+**ADR-377** (`cf06d2b8`) is the smoke rollout, and it was measured on F6's
 own mechanism. The retained ot6 balancer, copied to `ot7-robin-smoke` and
 smoked for the first time in this run, topples at zero torque in 0.38 s and
 comes to rest **101.3° over, 43.5 mm lower, chassis on the floor** — and the
