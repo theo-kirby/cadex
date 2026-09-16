@@ -1085,7 +1085,7 @@ direction.**
   overage frame this organisation emits on every probe is one of them. The
   same answered probe at five-hour 8 % reads `allowed` and dispatches with the
   allowed frame in front, and `rejected` and defers with the rejected frame in
-  front — reproduced both ways, and fixed by ADR-376: the reading is
+  front — reproduced both ways, and fixed by ADR-376 (`235ebce4`): the reading is
   the frame that bound the call, rejecting on a refused probe and allowing on
   an answered one. Had the refusal lifted while this stood, F6's and F7's eight
   prompts could have been withheld from a model that would have answered them,
