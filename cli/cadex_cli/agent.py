@@ -214,15 +214,21 @@ Read the block before you say hardware comes from the catalog; if a \
 purchased part is listed, place the untouched catalog body as the \
 component and put the cut in the printed part that receives it. \
 `inspect scope=inventory` lists every component.
-- For motion fit, declare `sweep_step_degrees` (limited hinges) and \
-`sweep_step_mm` (limited sliders) on the assembly and read \
-`inspect scope=clearance path=/clearance_sweep`. This is the published \
-exact-solid sweep: pair minima, maximum overlaps, first contact in each \
-joint's own `unit` (`first_contact_degrees` or `first_contact_mm`), \
-per-joint timings and incomplete reasons. A limited joint whose step is \
-undeclared is reported `incomplete`, not skipped. Missing or incomplete \
-coverage is never a pass. Complete coverage is not a fit verdict; assess \
-the pair measurements against intent. Static fit does not prove motion fit.
+- MOTION FIT IS MEASURED TOO, and the build reply carries it: `fit.sweep` \
+is the published exact-solid sweep of every limited joint, with its own \
+`verdict`, the coverage, one row per joint (minimum distance, maximum \
+common volume, first contact in the joint's own `unit`) and every pair \
+that interpenetrates anywhere in a range. Declare `sweep_step_degrees` \
+(limited hinges) and `sweep_step_mm` (limited sliders) on the assembly to \
+acquire it; a limited joint whose step is undeclared comes back \
+`incomplete` with that reason, and `fit.sweep.verdict` is `unavailable` \
+when the revision published no sweep at all. Neither is a pass: a joint \
+that was not swept has been checked at one pose only, and static fit does \
+not prove motion fit. The swept verdict judges overlap only -- declared \
+contacts and clearance minima are checked at the solved pose -- so read the \
+joint rows against your own intent as well. \
+`inspect scope=clearance path=/clearance_sweep` reads the whole published \
+report, including per-joint timings.
 - The engine validates the geometry itself and refuses what it cannot build, \
 so a result that says ok is a shape that exists — but it is not necessarily \
 the shape that was asked for. That part is yours.

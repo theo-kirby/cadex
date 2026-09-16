@@ -162,12 +162,12 @@ _INVENTORY = [
 ]
 
 
-def _fit_client(pairs, inventory=None, **replies):
+def _fit_client(pairs, inventory=None, sweep=None, **replies):
     def inspect(args):
         if args["scope"] == "inventory":
             return inspect_reply(args, inventory_value(inventory))
         assert args["scope"] == "clearance", args
-        return inspect_reply(args, clearance_value(pairs))
+        return inspect_reply(args, clearance_value(pairs, sweep=sweep))
     write = accepted_reply("write", "rev-2")
     write["stdout"] = "no overlap\n"
     return FakeCadexd(replies={"write_script": write, "inspect": inspect, **replies})
@@ -203,7 +203,8 @@ def test_a_build_reply_carries_the_measured_fit_beside_the_stdout() -> None:
     assert [a["scope"] for a in client.args_for("inspect")] == ["clearance", "inventory"]
     # ...and the parent saw the same thing the model did.
     assert call.fit == fit and last_fit == fit
-    assert "fit fail: 1 failing of 2 pair(s)  inventory unavailable" in call.summary
+    assert ("fit fail: 1 failing of 2 pair(s)  sweep unavailable  "
+            "inventory unavailable") in call.summary
 
 
 def test_a_clear_build_says_pass_and_a_partless_build_says_unavailable() -> None:
@@ -224,7 +225,45 @@ def test_a_clear_build_says_pass_and_a_partless_build_says_unavailable() -> None
     assert payload["fit"]["verdict"] == "unavailable"
     assert payload["fit"]["pairs_checked"] == 0
     assert "assembly.component" in payload["fit"]["note"]
-    assert "fit unavailable  inventory unavailable" in call.summary
+    assert "fit unavailable  sweep unavailable  inventory unavailable" in call.summary
+
+
+@pytest.mark.parametrize("sweep,phrase", [
+    ({"status": "complete", "joints": [
+        {"joint": "knee", "kind": "revolute", "unit": "degrees",
+         "status": "complete", "pairs": [
+             {"first": "a", "second": "b", "minimum_distance_mm": 2.0,
+              "maximum_common_volume_mm3": 0.0, "first_contact_degrees": None}]}]},
+     "sweep pass: 1 joint(s) swept"),
+    ({"status": "complete", "joints": [
+        {"joint": "knee", "kind": "revolute", "unit": "degrees",
+         "status": "complete", "pairs": [
+             {"first": "a", "second": "b", "minimum_distance_mm": 0.0,
+              "maximum_common_volume_mm3": 8.0, "first_contact_degrees": -20.0}]}]},
+     "sweep fail: 1 overlapping pair(s) over 1 of 1 joint(s) swept"),
+    ({"status": "incomplete", "joints": [
+        {"joint": "knee", "kind": "revolute", "unit": "degrees",
+         "status": "incomplete", "reason": "sweep_step_degrees is not declared"}]},
+     "sweep incomplete: 1 of 1 joint(s) unswept"),
+])
+def test_the_progress_line_carries_the_swept_half(sweep, phrase) -> None:
+    """The parent's one-line summary says both halves (ADR-366).
+
+    A swept overlap must never reach the log as a bare `fit pass`: the
+    static verdict is the solved pose, and the phrase beside it is the
+    motion. Coverage travels with the count, so no number appears without
+    the joints it was measured over.
+    """
+
+    client = _fit_client([_CLEAR], sweep=sweep)
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        payload = json.loads(
+            bridge.call("write_script", {"source": "x"})["content"][0]["text"]
+        )
+        (call,) = bridge.state.calls
+    assert payload["fit"]["verdict"] == "pass"
+    assert f"fit pass: 0 failing of 1 pair(s)  {phrase}" in call.summary
+    assert payload["fit"]["sweep"]["verdict"] == phrase.split()[1].rstrip(":")
 
 
 def test_a_build_reply_names_every_failing_pair_past_forty() -> None:
@@ -268,7 +307,8 @@ def test_a_build_reply_names_every_failing_pair_past_forty() -> None:
     ] == expected
     assert "failing_truncated" not in fit and "note" not in fit
     assert call.fit == fit
-    assert "fit fail: 60 failing of 63 pair(s)  inventory unavailable" in call.summary
+    assert ("fit fail: 60 failing of 63 pair(s)  sweep unavailable  "
+            "inventory unavailable") in call.summary
 
 
 def test_every_modelling_op_carries_a_fit_block_and_no_read_does() -> None:
@@ -379,7 +419,7 @@ def test_a_build_reply_carries_catalog_identity_beside_the_fit() -> None:
     # The parent saw what the model saw, and the progress line says it.
     assert call.inventory == inventory and last == inventory
     assert call.summary.endswith(
-        "fit pass: 0 failing of 1 pair(s)  "
+        "fit pass: 0 failing of 1 pair(s)  sweep unavailable  "
         "inventory: 6 component(s), 3 catalogued, 3 uncatalogued"
     )
 
@@ -395,7 +435,8 @@ def test_a_partless_build_says_inventory_unavailable_not_all_catalog() -> None:
     assert inventory["available"] is False
     assert inventory["component_count"] == 0 and inventory["catalogued_count"] == 0
     assert "places none" in inventory["note"]
-    assert call.summary.endswith("fit unavailable  inventory unavailable")
+    assert call.summary.endswith(
+        "fit unavailable  sweep unavailable  inventory unavailable")
 
 
 def test_the_inventory_block_is_advisory_and_refuses_nothing() -> None:

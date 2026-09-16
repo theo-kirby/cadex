@@ -50,6 +50,10 @@ continuation counts, elapsed time and process status. Each `turn-N/` retains:
   including missing or incomplete coverage and per-joint timings.
 - `fit.json`: the product's static verdict, failure count and every failing
   pair, read independently from the accepted measurements after the turn.
+  Since ADR-366 it also carries the `sweep` half the turn's own build reply
+  carried — coverage, per-joint extrema and every pair overlapping through a
+  range — and the attempt row summarises it as `swept_fit` beside
+  `static_fit`. A receipt measured before ADR-366 has neither.
 - `inventory.json`: the accepted catalog inventory.
 
 Artifact paths in each row are relative to its `turn-N/` directory; smoke

@@ -44,6 +44,166 @@ FIT_SOURCE = (
 )
 
 
+#: Where the sweep block's numbers come from, said in the block itself for
+#: the same reason the static one says it (ADR-366).
+SWEEP_SOURCE = (
+    "engine measurements of the exact solids at poses across each limited "
+    "joint's declared range, published with the accepted revision (inspect "
+    "scope=clearance path=/clearance_sweep). Other joints hold the solved "
+    "pose. Not the script's stdout; missing coverage is not a passing check."
+)
+
+#: Said in the block whenever its verdict is not ``pass``: coverage is
+#: evidence, and its absence is not the absence of a problem.
+SWEEP_COVERAGE_NOTE = (
+    "Coverage means measurements exist, not that fit passes: a joint that "
+    "was not swept has been checked at one pose only. Declare "
+    "sweep_step_degrees (limited hinges) and sweep_step_mm (limited sliders) "
+    "on the assembly and rebuild to acquire the missing measurements."
+)
+
+#: What a sweep block says when the accepted assembly has no limited joint.
+SWEEP_NO_JOINTS = (
+    "The accepted assembly declares no limited joint, so there is no motion "
+    "to check: every joint is unlimited, suppressed or welded. A hinge or "
+    "slider that is meant to move within a range has to declare "
+    "angle_limits_degrees or length_limits_mm for a swept check to exist."
+)
+
+
+def sweep_summary(
+    value: Any, *, maximum_volume: float = MAXIMUM_COMMON_VOLUME_MM3,
+) -> dict[str, Any]:
+    """The swept fit as a build reply carries it (ADR-366).
+
+    ``value`` is the same ``inspect scope=clearance`` value :func:`fit_summary`
+    reads, so this costs no second engine call: the published
+    ``clearance_sweep`` is already in it. The block is the coverage, one
+    compact row per joint carrying the three facts the charter asks for --
+    minimum distance, maximum common volume and the joint value of first
+    contact -- and **every** pair that interpenetrates through the motion, by
+    name, the way the static block names every failing pair.
+
+    ``verdict`` is ``pass`` only when every limited joint was swept to
+    completion and no pair overlaps anywhere in its range. A joint the engine
+    could not sweep -- most often because the assembly declares no step for
+    its kind -- is ``incomplete`` and carries the engine's own reason; an
+    accepted revision that published no sweep at all is ``unavailable``.
+    Neither is a pass, and neither refuses anything: this is advisory, like
+    the static block beside it.
+    """
+
+    if not isinstance(value, dict):
+        value = {}
+    published = value.get("clearance_sweep")
+    if not isinstance(published, dict):
+        published = {
+            "status": "unavailable", "joints": [],
+            "reason": "No published sweep for this accepted revision.",
+        }
+    coverage = str(published.get("status") or "unavailable")
+    joints: list[dict[str, Any]] = []
+    failing: list[dict[str, Any]] = []
+    complete = 0
+    for joint in published.get("joints") or []:
+        if not isinstance(joint, dict):
+            continue
+        name = str(joint.get("joint") or "")
+        unit = str(joint.get("unit") or "")
+        contact_key = ("first_contact_" + unit) if unit else ""
+        rows = [row for row in (joint.get("pairs") or []) if isinstance(row, dict)]
+        item: dict[str, Any] = {
+            "joint": name,
+            "kind": str(joint.get("kind") or ""),
+            "unit": unit,
+            "status": str(joint.get("status") or ""),
+            "pairs_measured": len(rows),
+        }
+        for key in ("step", "sample_count", "range_" + unit, "initial_" + unit):
+            if joint.get(key) is not None:
+                item[key] = joint[key]
+        if joint.get("reason"):
+            item["reason"] = str(joint["reason"])
+        if item["status"] == "complete":
+            complete += 1
+        minimum_distance = maximum_common = first_contact = None
+        contact_pair: list[str] = []
+        for row in rows:
+            first, second = str(row.get("first") or ""), str(row.get("second") or "")
+            distance = row.get("minimum_distance_mm")
+            volume = row.get("maximum_common_volume_mm3")
+            contact = row.get(contact_key) if contact_key else None
+            # A distance or a volume is a magnitude; a first-contact value is
+            # a joint coordinate and is negative all the time, so the sign
+            # rule belongs here rather than in `_finite`.
+            measured = all(_finite(v) and v >= 0 for v in (distance, volume))
+            if _finite(distance) and (minimum_distance is None or distance < minimum_distance):
+                minimum_distance = float(distance)
+            if _finite(volume) and (maximum_common is None or volume > maximum_common):
+                maximum_common = float(volume)
+            if _finite(contact) and (first_contact is None or contact < first_contact):
+                first_contact, contact_pair = float(contact), [first, second]
+            if not measured:
+                failing.append({
+                    "joint": name, "first": first, "second": second,
+                    "status": "unknown",
+                    "minimum_distance_mm": distance,
+                    "maximum_common_volume_mm3": volume,
+                    "error": str(row.get("error") or "no swept measurement for this pair"),
+                })
+            elif volume > maximum_volume:
+                overlap: dict[str, Any] = {
+                    "joint": name, "first": first, "second": second,
+                    "status": "intersection",
+                    "minimum_distance_mm": float(distance),
+                    "maximum_common_volume_mm3": float(volume),
+                }
+                if contact_key:
+                    overlap[contact_key] = contact
+                failing.append(overlap)
+        item["minimum_distance_mm"] = minimum_distance
+        item["maximum_common_volume_mm3"] = maximum_common
+        if first_contact is not None:
+            item["first_contact"] = {
+                "value": first_contact, "unit": unit, "pair": contact_pair,
+            }
+        joints.append(item)
+    if failing:
+        verdict = "fail"
+    elif not joints:
+        verdict = "unavailable"
+    elif coverage == "complete" and complete == len(joints):
+        verdict = "pass"
+    else:
+        verdict = "incomplete"
+    summary: dict[str, Any] = {
+        "verdict": verdict,
+        "source": SWEEP_SOURCE,
+        "coverage": coverage,
+        "step_degrees": published.get("step_degrees"),
+        "step_mm": published.get("step_mm"),
+        "joints_checked": len(joints),
+        "joints_complete": complete,
+        "joints": joints,
+        "thresholds": {"maximum_common_volume_mm3": float(maximum_volume)},
+        "failing_count": len(failing),
+        "failing": failing,
+    }
+    if published.get("reason"):
+        summary["reason"] = str(published["reason"])
+    elif verdict == "unavailable" and coverage == "complete":
+        summary["reason"] = SWEEP_NO_JOINTS
+    if verdict != "pass":
+        summary["note"] = SWEEP_COVERAGE_NOTE
+    return summary
+
+
+def _finite(number: Any) -> bool:
+    """A measurement the block can compare, rather than a hole in the report."""
+
+    return isinstance(number, (int, float)) and not isinstance(number, bool) and math.isfinite(number)
+
+
 def fit_summary(
     value: Any, *,
     minimum: float = MINIMUM_CLEARANCE_MM,
@@ -114,6 +274,10 @@ def fit_summary(
         "counts": counts,
         "failing_count": len(failing),
         "failing": failing,
+        # The swept half, from the same published value (ADR-366). It keeps
+        # its own verdict: `verdict` above is the solved pose and stays that,
+        # so a number read from either block means one thing only.
+        "sweep": sweep_summary(value, maximum_volume=maximum_volume),
     }
     if verdict == "unavailable":
         summary["note"] = (

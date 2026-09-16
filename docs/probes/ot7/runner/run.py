@@ -554,6 +554,13 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
         if (out / 'fit.json').exists():
             fit = json.loads((out / 'fit.json').read_text())
             row['static_fit'] = {key: fit[key] for key in ('verdict', 'failing_count', 'pairs_checked')}
+            # The swept half the same reply carried (ADR-366), so a receipt
+            # says what the agent saw about motion without opening the raw
+            # report beside it. Absent on a receipt measured before ADR-366.
+            if isinstance(fit.get('sweep'), dict):
+                row['swept_fit'] = {key: fit['sweep'][key] for key in (
+                    'verdict', 'coverage', 'joints_checked', 'joints_complete',
+                    'failing_count')}
         if row['void']:
             # ADR-355: no model saw the prompt, or the turn did not end on its
             # own. The slot is unspent, the evidence stays, and nothing else is

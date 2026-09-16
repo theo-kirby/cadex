@@ -54,7 +54,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). **`--offset-mm` is optional**: omitted, the offset is derived from the accepted bounds the way the walk derives it — every candidate is cut and the one covering the most objects wins (ADR-273, ADR-275). The note reports the offset, whether it was `explicit` or `derived`, and how many of the model's objects the cut reached. | no |
 | `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews plus `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
-| `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. The same rows reach the agent as `inspect scope=clearance` and, summarised, as the `fit` block on every build reply (ADR-346). | no |
+| `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. The same rows reach the agent as `inspect scope=clearance` and, summarised, as the `fit` block on every build reply (ADR-346), whose `sweep` half carries the published joint sweeps (ADR-366). | no |
 | `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, and the pose the solver settled on. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
@@ -1915,8 +1915,10 @@ revision and commits views under a revision directory. The same snapshot supplie
 that produced no file carry `skipped` with the reason. A prompt run whose
 turn accepted a build adds `fit`, the measured-fit block that build's reply
 carried to the model (§4, ADR-346) — `verdict`, counts and every failing
-pair by name — and the prose report prints it as a `fit` line with one
-line per failing pair. The same run adds `inventory`, the catalog-identity
+pair by name, with the swept `sweep` half inside it (ADR-366) — and the
+prose report prints it as a `fit` line with one line per failing pair,
+followed by a `sweep` line with one line per unswept joint and per
+overlapping pair. The same run adds `inventory`, the catalog-identity
 block that reply carried (ADR-362) — `component_count`,
 `catalogued_count`, `uncatalogued_count`, the `catalog_counts` roll-up and
 every `uncatalogued_sources` name — printed as an `inventory` line with one
@@ -2104,6 +2106,54 @@ If any later page cannot be read, the whole fit block is `unavailable` with
 the read error, rather than a verdict on the readable prefix. The successful
 build and its accepted revision still reach the agent. The paged build-reply
 fixture in `cli/tests/test_clearance.py` pins both outcomes.
+
+### The same reply carries the swept fit (ADR-366)
+
+The `fit` block's `verdict` is the solved pose and stays that. Inside it,
+`fit.sweep` is the swept half, read from the `clearance_sweep` the same
+`inspect scope=clearance` value already carries — no second engine call:
+
+```json
+"sweep": {
+  "verdict": "fail",
+  "source": "engine measurements of the exact solids at poses across each limited joint's declared range, …",
+  "coverage": "incomplete",
+  "step_degrees": 5, "step_mm": null,
+  "joints_checked": 2, "joints_complete": 1,
+  "joints": [
+    {"joint": "knee", "kind": "revolute", "unit": "degrees", "status": "complete",
+     "pairs_measured": 3, "step": 5, "sample_count": 23, "range_degrees": [-90, 20],
+     "initial_degrees": 0, "minimum_distance_mm": 0.0, "maximum_common_volume_mm3": 42.5,
+     "first_contact": {"value": -70.0, "unit": "degrees", "pair": ["shin", "foot"]}},
+    {"joint": "rail", "kind": "slider", "unit": "mm", "status": "incomplete",
+     "pairs_measured": 0, "minimum_distance_mm": null, "maximum_common_volume_mm3": null,
+     "reason": "sweep_step_mm is not declared on the assembly, so this limited slider joint was not swept"}
+  ],
+  "failing_count": 1,
+  "failing": [{"joint": "knee", "first": "thigh", "second": "shin", "status": "intersection",
+               "minimum_distance_mm": 0.0, "maximum_common_volume_mm3": 42.5,
+               "first_contact_degrees": -55.0}]
+}
+```
+
+`verdict` is `pass` only when every limited joint was swept to completion
+and no pair interpenetrates anywhere in its range. `fail` names **every**
+overlapping pair, with the joint it is through and the joint value it first
+touched at, on the same never-cut-short terms as the static list — and it
+does not hide missing coverage, which stays in the joint rows beside it.
+`incomplete` means a joint the engine could not sweep, carrying the engine's
+own reason; `unavailable` means the accepted revision published no sweep at
+all, which is what a design whose assembly declares no `sweep_step_degrees`
+or `sweep_step_mm` gets, with the engine's reason naming the declaration it
+is missing. Neither is a pass: a joint that was not swept has been checked
+at one pose only. The block is advisory like the static one — a failing
+swept fit is reported, never refused — and the prose report prints it as a
+`sweep` line under the `fit` line.
+
+The engine publishes no row for a limited joint when the assembly declares
+no step of that joint's kind at all, because it runs no sweep in that case;
+the block then says `unavailable` with the reason rather than counting the
+joints, which is one call it does not make to say so.
 
 ### Every build reply carries the published catalog identity (ADR-362)
 

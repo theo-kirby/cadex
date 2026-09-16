@@ -25307,3 +25307,60 @@ the loop's iteration commit is a working-tree sweep, so an operator edit made
 during a turn lands under the actor's commit message with the actor's
 attribution. When that happens, the provenance goes in an ADR rather than
 being left to look like unattributed drift.
+
+## ADR-366 — Every build reply carries the swept fit beside the static one (2026-09-16)
+
+Run ot7's F5 measured the cost of a reply that stops at the solved pose
+(records `flat-cove-2253`, `easy-otter-0439`). Heron's create turn on
+`ot7-heron-c` accepted an arm whose two revolute joints declared limits
+(±90°, ±100°) and whose assembly declared no `sweep_step_degrees`, so the
+engine ran no sweep and published none. The reply said nothing about it:
+the `fit` block (ADR-346) is the solved pose, and its own `source` line
+says so. The agent learned the gap a continuation later, and F5's bar —
+"zero failing static **and swept** fit checks" — had half of it invisible
+in the place the charter put the other half.
+
+Same shape as ADR-362, same side of the process boundary. One change, on
+the CLI side, no protocol change and no engine change:
+
+- **`fit.sweep` on every successful `write_script`, `edit_script`,
+  `set_params` and `rebuild` reply**, computed by `sweep_summary` from the
+  `clearance_sweep` the `inspect scope=clearance` value the bridge already
+  reads carries. **No second engine call**, and no second measurement: the
+  numbers are the engine's published sweep, unchanged.
+- **It keeps its own verdict**, because a number read from either block has
+  to mean one thing. `fit["verdict"]` stays the solved pose. `fit.sweep`'s
+  is `pass` only when every limited joint was swept to completion and no
+  pair interpenetrates anywhere in its range; `fail` names every
+  overlapping pair with the joint it is through and the value it first
+  touched at; `incomplete` carries the engine's per-joint reason; and
+  `unavailable` is the F5 case — no sweep published at all — carrying the
+  engine's reason, which names the declaration the design is missing.
+  Missing coverage is never a pass, and the block says so in a `note`.
+- **Each joint gets one compact row** with the three facts the charter's F3
+  asks for: minimum distance, maximum common volume, and the joint value of
+  first contact with the pair that reached it. Per-joint rows are O(joints);
+  the unbounded list is the failing pairs, on the same never-cut-short terms
+  as the static block.
+- **Advisory, like the block beside it.** A failing swept fit is reported,
+  never refused; acceptance is unchanged, and an old project reopens and
+  builds exactly as before, with `unavailable` where it published no sweep.
+- The system prompt, `docs/CLI.md` and the prose report move with it: the
+  agent is told that `fit.sweep` is measured motion fit, that an unswept
+  joint has been checked at one pose only, and how to acquire the
+  measurements.
+
+What this deliberately does **not** do: enumerate the limited joints an
+assembly declared no step for. The engine skips `_measure_joint_sweeps`
+entirely when neither step is declared, so nothing names those joints, and
+the reply says `unavailable` with the engine's declare-the-steps reason
+rather than counting them. Making the engine emit an `incomplete` row per
+limited joint in that case is an engine change with goldens behind it, and
+is a separate unit if a design turn shows the reason alone is not enough.
+
+Evidence: `cli/cadex_cli/clearance.py` (`sweep_summary`, folded into
+`fit_summary`), `cli/cadex_cli/bridge.py` (`_sweep_line`),
+`cli/cadex_cli/report.py`, `cli/cadex_cli/agent.py`; six tests in
+`cli/tests/test_clearance.py`, all six red on the previous code — two live
+against the real engine on one hinge built with and without its step, which
+is the F5 shape with its static verdict passing either way.

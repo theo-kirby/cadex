@@ -28,7 +28,11 @@ def executor(calls, turn_code=0):
             assert receipt['turns'][-1]['status'] == 'started'
             (out / 'transcript.jsonl').write_text('{"type":"result"}\n')
         elif stem == 'measurement':
-            runner.write(out / 'fit.json', {'verdict': 'fail', 'failing_count': 7, 'pairs_checked': 10})
+            runner.write(out / 'fit.json', {
+                'verdict': 'fail', 'failing_count': 7, 'pairs_checked': 10,
+                'sweep': {'verdict': 'incomplete', 'coverage': 'incomplete',
+                          'joints_checked': 2, 'joints_complete': 1,
+                          'failing_count': 0, 'joints': [], 'failing': []}})
             runner.write(out / 'clearance.json', {'pairs': [], 'clearance_sweep': {'status': 'incomplete'}})
             runner.write(out / 'inventory.json', {'component_count': 3})
         elif stem == 'smoke':
@@ -48,6 +52,10 @@ def test_fourth_continuation_is_impossible_even_after_restart(tmp_path):
     assert [r['continuations_used'] for r in report['turns']] == [0, 1, 2, 3]
     for row in report['turns']:
         assert row['static_fit']['failing_count'] == 7
+        # The swept half the reply carried, summarised beside it (ADR-366).
+        assert row['swept_fit'] == {'verdict': 'incomplete', 'coverage': 'incomplete',
+                                    'joints_checked': 2, 'joints_complete': 1,
+                                    'failing_count': 0}
         artifacts = {a['path']: a for a in row['artifacts']}
         assert {'transcript.jsonl', 'clearance.json', 'fit.json', 'inventory.json'} <= artifacts.keys()
         assert artifacts['transcript.jsonl']['sha256'] == runner.digest(target / 'evidence/turn-0/transcript.jsonl')['sha256']

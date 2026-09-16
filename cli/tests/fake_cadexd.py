@@ -111,17 +111,25 @@ def inspect_reply(args: dict[str, Any], value: Any) -> dict[str, Any]:
 
 def clearance_value(
     pairs: list[dict[str, Any]] | None = None, *, revision: str = "rev-1",
-    assembly: str = "asm",
+    assembly: str = "asm", sweep: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """An ``inspect scope=clearance`` value: unavailable when no pairs."""
+    """An ``inspect scope=clearance`` value: unavailable when no pairs.
 
-    return {
+    ``sweep`` is the published ``clearance_sweep`` the accepted revision
+    carries when its assembly declared a step (ADR-366); omitted, the value
+    has none, which is what an assembly that declared none publishes.
+    """
+
+    value = {
         "revision": revision,
         "assembly": assembly if pairs else "",
         "available": bool(pairs),
         "pose": "initial solved pose (not swept motion)",
         "pairs": list(pairs or []),
     }
+    if sweep is not None:
+        value["clearance_sweep"] = sweep
+    return value
 
 
 def inventory_value(

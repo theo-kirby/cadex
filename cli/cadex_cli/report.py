@@ -243,6 +243,29 @@ def human_lines(report: RunReport) -> list[str]:
                     str(pair.get("first") or ""), str(pair.get("second") or ""),
                     str(pair.get("status") or ""), _measure(pair.get("distance_mm")),
                     _measure(pair.get("common_volume_mm3"))))
+    sweep = report.fit.get("sweep") if report.fit else None
+    if isinstance(sweep, dict):
+        verdict = str(sweep.get("verdict") or "")
+        if verdict == "unavailable":
+            lines.append("sweep  unavailable: " + str(
+                sweep.get("reason") or sweep.get("note") or ""))
+        else:
+            lines.append(
+                "sweep  {:s}  {:d} of {:d} joint(s) swept  {:d} overlapping pair(s)".format(
+                    verdict, int(sweep.get("joints_complete") or 0),
+                    int(sweep.get("joints_checked") or 0),
+                    int(sweep.get("failing_count") or 0)))
+            for joint in sweep.get("joints") or []:
+                if str(joint.get("status") or "") != "complete":
+                    lines.append("  {:s} unswept: {:s}".format(
+                        str(joint.get("joint") or ""), str(joint.get("reason") or "")))
+            for pair in sweep.get("failing") or []:
+                lines.append(
+                    "  {:s} ∩ {:s} through {:s}: min {:s} mm  max common {:s} mm³".format(
+                        str(pair.get("first") or ""), str(pair.get("second") or ""),
+                        str(pair.get("joint") or ""),
+                        _measure(pair.get("minimum_distance_mm")),
+                        _measure(pair.get("maximum_common_volume_mm3"))))
     if report.inventory:
         if not report.inventory.get("available"):
             lines.append("inventory  unavailable: " + str(

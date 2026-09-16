@@ -239,10 +239,12 @@ class Bridge:
                     reply, ok = no_such_section(reply, section), False
             # A build's reply carries the measured fit (ADR-346): the
             # engine's own pair measurements at the solved pose, read back
-            # from the store the accepted revision just published to. The
-            # script's stdout is still in the reply; this is what says
-            # whether to believe it. Read under the lock so the revision the
-            # measurements describe is the one this reply accepted.
+            # from the store the accepted revision just published to, with
+            # the published joint sweeps beside them in the same value
+            # (ADR-366) -- motion fit at no second call. The script's stdout
+            # is still in the reply; this is what says whether to believe
+            # it. Read under the lock so the revision the measurements
+            # describe is the one this reply accepted.
             fit = self._read_fit() if ok and tool in MODELLING_OPS else None
             # ...and the published catalog identity beside it (ADR-362):
             # which placed components are catalog parts and which outputs
@@ -551,14 +553,37 @@ def _summarize(tool: str, reply: dict[str, Any]) -> str:
 
 
 def _fit_line(fit: dict[str, Any]) -> str:
-    """The fit block as one progress-log phrase."""
+    """The fit block as one progress-log phrase, both halves (ADR-366)."""
 
     verdict = str(fit.get("verdict") or "")
     if verdict == "unavailable":
-        return "fit unavailable"
-    return "fit {:s}: {:d} failing of {:d} pair(s)".format(
-        verdict, int(fit.get("failing_count") or 0), int(fit.get("pairs_checked") or 0)
-    )
+        line = "fit unavailable"
+    else:
+        line = "fit {:s}: {:d} failing of {:d} pair(s)".format(
+            verdict, int(fit.get("failing_count") or 0),
+            int(fit.get("pairs_checked") or 0),
+        )
+    sweep = fit.get("sweep")
+    return line + ("  " + _sweep_line(sweep) if isinstance(sweep, dict) else "")
+
+
+def _sweep_line(sweep: dict[str, Any]) -> str:
+    """The swept half as one phrase: never a count without its coverage."""
+
+    verdict = str(sweep.get("verdict") or "")
+    checked = int(sweep.get("joints_checked") or 0)
+    complete = int(sweep.get("joints_complete") or 0)
+    if verdict == "unavailable":
+        return "sweep unavailable"
+    if verdict == "fail":
+        return "sweep fail: {:d} overlapping pair(s) over {:d} of {:d} joint(s) swept".format(
+            int(sweep.get("failing_count") or 0), complete, checked
+        )
+    if verdict == "incomplete":
+        return "sweep incomplete: {:d} of {:d} joint(s) unswept".format(
+            checked - complete, checked
+        )
+    return "sweep pass: {:d} joint(s) swept".format(complete)
 
 
 def _inventory_line(inventory: dict[str, Any]) -> str:

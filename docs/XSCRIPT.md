@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-14
+Verified against source: 2026-09-16
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -1578,7 +1578,10 @@ either or both may be declared. The optional declarations enter the definition;
 omitting both preserves legacy definitions. The producer stores `clearance_sweep`
 on the assembly output in the accepted result. Opening a retained result does
 not recompute it. `inspect(scope="clearance", path="/clearance_sweep")` and
-`cadex clearance --sweep` read it unchanged (ADR-350).
+`cadex clearance --sweep` read it unchanged (ADR-350), and the CLI's build
+replies carry it summarised as `fit.sweep` beside the static block, with its
+own verdict (ADR-366, `docs/CLI.md`); omitting both steps makes that verdict
+`unavailable`, which is never a pass.
 
 For each limited, unsuppressed revolute or slider joint in a rigid tree, the
 producer moves its descendant solids about, or along, the solved connector +Z

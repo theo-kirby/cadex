@@ -218,6 +218,25 @@ def test_the_prose_report_prints_the_fit_and_each_failing_pair():
     unavailable = RunReport(fit={'verdict': 'unavailable', 'error': 'store unreadable'})
     assert 'fit    unavailable: store unreadable' in human_lines(unavailable)
     assert 'fit' not in RunReport().to_json()
+    # The swept half prints beside it, with the joint each overlap is
+    # through and the reason for every joint that was not swept (ADR-366).
+    assert 'sweep  unavailable: No published sweep for this accepted revision.' in lines
+    swept = RunReport(project_root='/p', fit=fit_summary({
+        'available': True, 'pairs': [], 'clearance_sweep': {
+            'status': 'incomplete', 'joints': [
+                {'joint': 'knee', 'kind': 'revolute', 'unit': 'degrees',
+                 'status': 'complete', 'pairs': [
+                     {'first': 'thigh', 'second': 'shin',
+                      'minimum_distance_mm': 0.0,
+                      'maximum_common_volume_mm3': 42.5,
+                      'first_contact_degrees': -55.0}]},
+                {'joint': 'rail', 'kind': 'slider', 'unit': 'mm',
+                 'status': 'incomplete', 'reason': 'sweep_step_mm is not declared'}]}}))
+    printed = human_lines(swept)
+    assert 'sweep  fail  1 of 2 joint(s) swept  1 overlapping pair(s)' in printed
+    assert '  rail unswept: sweep_step_mm is not declared' in printed
+    assert '  thigh ∩ shin through knee: min 0 mm  max common 42.5 mm³' in printed
+    assert swept.to_json()['fit']['sweep']['failing_count'] == 1
 
 
 def test_fit_summary_without_an_assembly_is_unavailable_not_passing():
@@ -454,3 +473,165 @@ def test_override_minimum_uses_absolute_not_relative_slack():
     assert pair_status(dict(row, distance_mm=0.4999), 0.5, 1e-6) == 'below clearance'
     # A large threshold must not enlarge the allowance through relative isclose.
     assert pair_status(dict(row, distance_mm=1e6 - 1e-4), 1e6, 1e-6) == 'below clearance'
+
+
+HINGE = '''
+plate = part.box(40, 20, 4)
+arm = part.box(30, 6, 6)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin", offset=[12, 0, 20]),
+                   assembly.connector(swing, "origin"),
+                   angle_limits_degrees=[0, 10])
+asm = assembly.assembly([base, swing], [j]%s)
+diag = assembly.solve(asm)
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag}
+'''
+
+
+@pytest.mark.parametrize('step,verdict', [
+    (', sweep_step_degrees=5', 'pass'), ('', 'unavailable'),
+])
+def test_build_reply_carries_the_published_joint_sweep(
+    engine, tmp_path, step, verdict,
+):
+    """The blind spot ot7's F5 create turn measured (ADR-366).
+
+    That turn accepted an arm whose two hinges declared limits and whose
+    assembly declared no step, so nothing was swept -- and the reply said
+    nothing about it, because the fit block was the solved pose only. Here
+    the same design shape is built both ways against the real engine: the
+    static verdict passes either way, and the reply's `fit.sweep` is the
+    difference between a measured range and a joint checked at one pose.
+    """
+
+    root = tmp_path / ('swept' if step else 'unswept')
+    with CadexdClient(engine) as client:
+        open_project(client, root)
+        with Bridge(client, initial_revision='') as bridge:
+            reply = bridge.call('write_script', {'source': HINGE % step})
+            (call,) = bridge.state.calls
+        payload = json.loads(reply['content'][0]['text'])
+        assert payload['ok'] is True, payload
+        fit = payload['fit']
+        # Static fit passes in both builds: the arm clears the plate by
+        # 16 mm at the solved pose, which is exactly why the swept half has
+        # to speak for itself.
+        assert (fit['verdict'], fit['failing_count']) == ('pass', 0)
+        sweep = fit['sweep']
+        assert sweep['verdict'] == verdict
+        assert sweep['failing_count'] == 0 and sweep['failing'] == []
+        if step:
+            assert sweep['coverage'] == 'complete' and sweep['step_degrees'] == 5
+            assert (sweep['joints_checked'], sweep['joints_complete']) == (1, 1)
+            (joint,) = sweep['joints']
+            assert (joint['joint'], joint['kind'], joint['unit']) == (
+                'j', 'revolute', 'degrees')
+            assert joint['range_degrees'] == [0, 10] and joint['sample_count'] == 3
+            assert joint['minimum_distance_mm'] == pytest.approx(16, abs=1e-6)
+            assert joint['maximum_common_volume_mm3'] == 0
+            assert 'first_contact' not in joint and 'note' not in sweep
+        else:
+            # The F5 shape exactly: a limited hinge, no declared step, so the
+            # engine published no sweep at all. The reply carries the engine's
+            # own reason, which names the declaration the design is missing.
+            assert sweep['coverage'] == 'unavailable' and sweep['joints'] == []
+            assert 'sweep_step_degrees' in sweep['reason']
+            assert sweep['note'].startswith('Coverage means measurements exist')
+        # The same block the progress line and the turn report read.
+        assert call.fit == fit
+        _, value = write_clearance(client, root, sweep=True)
+        assert fit_summary(value)['sweep'] == sweep
+
+
+def test_sweep_summary_names_every_pair_that_overlaps_through_the_motion():
+    """Known answer: one hinge overlaps two pairs, one slider is unswept.
+
+    `knee`'s sweep is complete and two of its three pairs interpenetrate
+    somewhere in [-90, 20] degrees; `rail` is a limited slider the assembly
+    declared no `sweep_step_mm` for. The block fails on the overlaps, names
+    each with the joint and the angle it first touched at, and still carries
+    the unswept joint's reason -- a failure never hides missing coverage.
+    """
+
+    sweep = {'status': 'incomplete', 'step_degrees': 5, 'step_mm': None,
+             'joints': [
+                 {'joint': 'knee', 'kind': 'revolute', 'unit': 'degrees',
+                  'status': 'complete', 'step': 5, 'sample_count': 23,
+                  'range_degrees': [-90, 20], 'initial_degrees': 0,
+                  'elapsed_seconds': 2.5, 'pairs': [
+                      {'first': 'thigh', 'second': 'shin',
+                       'minimum_distance_mm': 0.0,
+                       'maximum_common_volume_mm3': 42.5,
+                       'first_contact_degrees': -55.0},
+                      {'first': 'shin', 'second': 'foot',
+                       'minimum_distance_mm': 0.0,
+                       'maximum_common_volume_mm3': 0.25,
+                       'first_contact_degrees': -70.0},
+                      {'first': 'thigh', 'second': 'foot',
+                       'minimum_distance_mm': 3.5,
+                       'maximum_common_volume_mm3': 0.0,
+                       'first_contact_degrees': None},
+                  ]},
+                 {'joint': 'rail', 'kind': 'slider', 'unit': 'mm',
+                  'status': 'incomplete',
+                  'reason': 'sweep_step_mm is not declared on the assembly, '
+                            'so this limited slider joint was not swept'},
+             ]}
+    fit = fit_summary({'available': True, 'pairs': [], 'clearance_sweep': sweep})
+    block = fit['sweep']
+    assert block['verdict'] == 'fail' and fit['verdict'] == 'pass'
+    assert (block['joints_checked'], block['joints_complete']) == (2, 1)
+    assert [(f['joint'], f['first'], f['second'], f['maximum_common_volume_mm3'],
+             f['first_contact_degrees']) for f in block['failing']] == [
+        ('knee', 'thigh', 'shin', 42.5, -55.0),
+        ('knee', 'shin', 'foot', 0.25, -70.0)]
+    knee, rail = block['joints']
+    assert knee['minimum_distance_mm'] == 0.0
+    assert knee['maximum_common_volume_mm3'] == 42.5
+    # First contact is the earliest sample any pair touched at, with the pair.
+    assert knee['first_contact'] == {
+        'value': -70.0, 'unit': 'degrees', 'pair': ['shin', 'foot']}
+    assert knee['pairs_measured'] == 3 and knee['range_degrees'] == [-90, 20]
+    assert rail['status'] == 'incomplete' and 'sweep_step_mm' in rail['reason']
+    assert rail['minimum_distance_mm'] is None and rail['pairs_measured'] == 0
+    assert block['note'].startswith('Coverage means measurements exist')
+    # A volume under the maximum is not an overlap, and a measurement the
+    # engine could not take is not a fit.
+    for hole in ({'minimum_distance_mm': None, 'maximum_common_volume_mm3': None},
+                 {'minimum_distance_mm': -1.0, 'maximum_common_volume_mm3': 0.0},
+                 {'minimum_distance_mm': float('nan'), 'maximum_common_volume_mm3': 0.0},
+                 {'minimum_distance_mm': 0.0, 'maximum_common_volume_mm3': -1e-9}):
+        holed = {'status': 'complete', 'joints': [
+            {'joint': 'knee', 'kind': 'revolute', 'unit': 'degrees',
+             'status': 'complete', 'pairs': [
+                 {'first': 'a', 'second': 'b', 'first_contact_degrees': -30.0,
+                  **hole}]}]}
+        only = fit_summary({'available': True, 'pairs': [],
+                            'clearance_sweep': holed})['sweep']
+        assert only['verdict'] == 'fail', hole
+        assert only['failing'][0]['status'] == 'unknown' and only['failing'][0]['error']
+        # A negative joint coordinate is an angle, not a hole in the report.
+        assert only['joints'][0]['first_contact']['value'] == -30.0
+
+
+@pytest.mark.parametrize('published,verdict,reason', [
+    (None, 'unavailable', 'No published sweep for this accepted revision.'),
+    ({'status': 'unavailable', 'joints': [], 'reason': 'declare the steps'},
+     'unavailable', 'declare the steps'),
+    ({'status': 'complete', 'joints': []}, 'unavailable',
+     'The accepted assembly declares no limited joint'),
+])
+def test_a_sweep_with_nothing_measured_is_never_a_pass(published, verdict, reason):
+    value = {'available': True, 'revision': 'r', 'assembly': 'asm', 'pairs': [
+        {'first': 'a', 'second': 'b', 'distance_mm': 5.0, 'common_volume_mm3': 0.0}]}
+    if published is not None:
+        value['clearance_sweep'] = published
+    fit = fit_summary(value)
+    assert fit['verdict'] == 'pass'  # the solved pose is clear and stays so
+    assert fit['sweep']['verdict'] == verdict
+    assert reason in fit['sweep']['reason']
+    assert fit['sweep']['joints'] == [] and fit['sweep']['failing'] == []
+    assert fit['sweep']['note'].startswith('Coverage means measurements exist')

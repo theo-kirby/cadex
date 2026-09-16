@@ -1020,7 +1020,7 @@ design that does not reach zero failing checks within its three continuations
 is a valid measured result and will be reported as such. This report is then
 rewritten with one row per design.
 
-**Product version.** F6 and F7 run on a product one change newer than the
+**Product version.** F6 and F7 run on a product two changes newer than the
 one F5 ran on. After F5's exhaustion the critic asked that the published
 inventory's catalog counts and uncatalogued sources reach the agent beside
 the design-turn fit summary, and ADR-362 landed that: every build reply now
@@ -1032,7 +1032,21 @@ such block, which is why its agent could report every purchased part as
 catalog hardware while the inventory listed its servos and horns as
 uncatalogued. F5 is not re-run and no frozen prompt changed; the catalog
 count in the F6 and F7 rows is measured on the newer product, and a
-difference from F5 on that count is a difference across this one change.
+difference from F5 on that count is a difference across that change.
+
+The second change is ADR-366, landed for the same reason on the other half
+of F5's bar. F5's create turn accepted an arm whose two hinges declared
+limits and whose assembly declared no `sweep_step_degrees`, so the engine
+published no sweep and the reply said nothing about it; the agent found the
+gap a continuation later. Every build reply now carries `fit.sweep` beside
+the static verdict — coverage, one row per limited joint with its minimum
+distance, maximum common volume and first-contact value, and every pair that
+interpenetrates anywhere in a range — computed from the same published
+measurements with no second engine call, and the runner's attempt rows carry
+it as `swept_fit`. F5's four turns had no such block. Swept coverage in the
+F6 and F7 rows is therefore measured on the newer product, and a difference
+from F5 on when the design acquired its sweep is a difference across that
+change.
 
 > *Superseded on 2026-09-15:* "All scheduled collector slots are consumed.
 > The run's successful-completion prerequisites are not established by the
