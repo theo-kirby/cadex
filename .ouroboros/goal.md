@@ -1,12 +1,41 @@
 # Goal: the agent designs it right
 
-Verified against source: 2026-09-15. Owner-directed charter revision (ADR-341),
+Verified against source: 2026-09-17. Owner-directed charter revision (ADR-341),
 replacing the ot6 charter (ADR-328), whose D1, D2 and D4–D10 the owner ticked on
 2026-09-14 (record `nimble-wing-3050`). D3, the rendered look, went to the
 owner's own manual work and does not carry. Amended 2026-09-15 for the ot7
 restart (ADR-355): usage-limit failures are void, design turns wait for the
 product agent, and no role stops or starts the run.
 The human owns this file; unattended roles do not edit it.
+
+## Owner directive: finish the correction, then wait (2026-09-17)
+
+The owner approved this correction after the iteration-116 check-in. This
+section takes precedence over instructions below to find more tooling work
+while the product agent is unavailable.
+
+1. Finish the unit already in flight at iteration 116, including only fixes
+   directly required by its critic review and its required verification.
+2. Reconcile the outstanding corrective impacts, especially ADR-380's removal
+   of ADR-379's false claim that fixed components must touch. The state and
+   generated views must reflect the corrected code. Record this owner directive
+   once, causally parented, with its State Impact; include the charter change
+   in that handoff. Run hypergraph export and check.
+3. Then wait for product-agent access. Do not start more tooling, checker,
+   test, documentation or bookkeeping units to fill the wait. Do not write
+   repeated waiting records or repeatedly probe the same organisation-level
+   refusal. An unchanged refusal is not new evidence. Return a no-change stuck
+   result and let the runner back off.
+4. Resume the existing frozen F6 and F7 experiments only after concrete evidence
+   of restored access to the required product-agent model, such as an owner
+   account refresh with a successful availability check or a provider reset
+   followed by a successful check. Actor availability alone does not establish
+   product-agent availability. Preserve all unspent slots and the measured F4
+   and F5 outcomes. Do not claim done while F6 and F7 remain unattempted.
+
+No restart or configuration change is requested. The current actor and critic
+finish under their existing charter; this directive applies at the next
+iteration boundary. The configured stop rules still apply.
 
 ## Restart
 
