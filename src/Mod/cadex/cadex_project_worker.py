@@ -350,6 +350,63 @@ def _stamp_catalog_identity(outputs: list[dict[str, Any]]) -> None:
         found = identity.get(_canonical_json(dict(definition)))
         if found is not None:
             item["catalog"] = dict(found)
+            continue
+        derived = _catalog_the_base_came_off(definition, identity)
+        if derived is not None:
+            item["catalog_derived_from"] = dict(derived)
+
+
+#: How far ``_catalog_the_base_came_off`` follows the base operand down.
+#: A modelling chain is a handful of operations deep; this only bounds a
+#: definition that is deeper than any real one.
+_CATALOG_SPINE_DEPTH = 64
+
+
+def _catalog_the_base_came_off(
+    definition: Mapping[str, Any],
+    identity: Mapping[str, dict[str, str]],
+) -> dict[str, str] | None:
+    """Name the catalog row a *modified* body was cut from (ADR-381).
+
+    ``_stamp_catalog_identity`` resolves by exact definition, so a servo the
+    script drilled after taking it from ``lib`` has no catalog row — which
+    is correct, it is no longer the catalog part, and ot7's F5 failed on
+    exactly that count. What the published inventory could not say is *why*:
+    a drilled servo and a hand-modelled bracket are both bare names under
+    ``uncatalogued_sources``, one a defect and the other the ordinary case.
+
+    The distinction is positional. ``part.cut(base, tools)`` puts the body
+    being modified first and its cutters after, and the same holds for the
+    other combining operations, so a catalog definition reached by following
+    ``arguments[0]`` down from the root is what this output *is*, while one
+    that appears only as a tool is a clearance cutter and implies no
+    purchased part — a distinction the system prompt already draws in words
+    and nothing measured. The nearest such ancestor wins, so a cut of a
+    placed catalog body names the body rather than nothing.
+
+    Returns ``None`` when the base spine holds no catalog body, which is the
+    printed-part case; the key is then absent rather than null, like
+    ``catalog`` itself.
+    """
+
+    node: Any = definition
+    for _ in range(_CATALOG_SPINE_DEPTH):
+        if not isinstance(node, Mapping):
+            return None
+        if node is not definition:
+            found = identity.get(_canonical_json(dict(node)))
+            if found is not None:
+                return found
+        arguments = node.get("arguments")
+        if not isinstance(arguments, (list, tuple)) or not arguments:
+            return None
+        base: Any = arguments[0]
+        # ``part.fuse([a, b])`` passes its operands as one list, so the base
+        # is that list's first member.
+        while isinstance(base, (list, tuple)) and base:
+            base = base[0]
+        node = base
+    return None
 
 
 def _stamp_measurement_subjects(

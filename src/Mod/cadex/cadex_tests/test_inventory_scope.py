@@ -331,3 +331,217 @@ result = {"bolt": bolt, "first": first, "second": second,
         assert not {"catalog_generated", "catalog_calls_known", "unplaced_catalog"} & value.keys()
     finally:
         _stop(client)
+
+
+# --------------------------------------------------------------------------
+# the modified body (ADR-381)
+# --------------------------------------------------------------------------
+
+
+def _drilled(body: DomainValue, *tools: DomainValue) -> DomainValue:
+    """``part.cut(base, tools)`` as the API builds it: base first."""
+
+    return DomainValue(
+        domain="part",
+        operation="cut",
+        output_type="solid",
+        arguments=(body, tuple(tools)),
+        properties={"tolerance": 0.0, "refine": True, "label": ""},
+    )
+
+
+def test_a_drilled_catalog_body_names_the_row_it_came_off() -> None:
+    servo = _solid("box", [22.5, 12.0, 22.8])
+    LibraryPart("servo", "MG90S", servo, {})
+    drill = _solid("cylinder", [1.6, 12.0])
+
+    item = _part_output("servo_cut", _drilled(servo, drill))
+    cadex_project_worker._stamp_catalog_identity([item])
+
+    # It is not the catalog part any more -- and now it says what it was.
+    assert "catalog" not in item
+    assert item["catalog_derived_from"] == {
+        "family": "servo",
+        "part_number": "MG90S",
+    }
+
+
+def test_a_catalog_body_used_only_as_a_cutter_implies_no_purchased_part() -> None:
+    """The distinction the system prompt drew in words, measured."""
+
+    servo = _solid("box", [22.5, 12.0, 22.8])
+    LibraryPart("servo", "MG90S", servo, {})
+    blank = _solid("box", [40.0, 25.0, 15.0])
+
+    bracket = _part_output("bracket", _drilled(blank, servo))
+    cadex_project_worker._stamp_catalog_identity([bracket])
+
+    assert "catalog" not in bracket
+    assert "catalog_derived_from" not in bracket
+
+
+def test_the_nearest_catalog_body_on_the_base_spine_wins() -> None:
+    horn = _solid("cylinder", [9.0, 2.0])
+    LibraryPart("horn", "25T-single", horn, {})
+    plate = _solid("box", [30.0, 8.0, 2.0])
+    LibraryPart("plate", "generic", plate, {})
+    placed = DomainValue(
+        domain="part",
+        operation="transform",
+        output_type="solid",
+        arguments=(horn, [0.0, 0.0, 1.0], 15.0),
+        properties={},
+    )
+
+    item = _part_output("horn_clocked", _drilled(placed, plate))
+    cadex_project_worker._stamp_catalog_identity([item])
+
+    assert item["catalog_derived_from"] == {
+        "family": "horn",
+        "part_number": "25T-single",
+    }
+
+
+def test_a_fuse_reads_the_first_operand_of_its_one_list_argument() -> None:
+    bearing = _solid("cylinder", [12.0, 8.0])
+    LibraryPart("bearing", "MR128", bearing, {})
+    blob = _solid("sphere", [4.0])
+
+    fused = DomainValue(
+        domain="part",
+        operation="fuse",
+        output_type="solid",
+        arguments=((bearing, blob),),
+        properties={},
+    )
+    other = DomainValue(
+        domain="part",
+        operation="fuse",
+        output_type="solid",
+        arguments=((blob, bearing),),
+        properties={},
+    )
+    first = _part_output("bearing_fused", fused)
+    second = _part_output("blob_fused", other)
+    cadex_project_worker._stamp_catalog_identity([first, second])
+
+    assert first["catalog_derived_from"] == {
+        "family": "bearing",
+        "part_number": "MR128",
+    }
+    # Positional by construction: hardware fused into a printed solid is
+    # the printed solid's, and the roll-up has always said so.
+    assert "catalog_derived_from" not in second
+
+
+def test_the_derivation_stamp_stays_out_of_the_definition_too() -> None:
+    servo = _solid("box", [22.5, 12.0, 22.8])
+    LibraryPart("servo", "MG90S", servo, {})
+    item = _part_output("servo_cut", _drilled(servo, _solid("cylinder", [1.6, 12.0])))
+    before = cadex_project_worker._canonical_json(item["definition"])
+
+    cadex_project_worker._stamp_catalog_identity([item])
+
+    assert cadex_project_worker._canonical_json(item["definition"]) == before
+    assert "catalog_derived_from" not in item["definition"]
+
+
+def _modified_project(tmp_path):
+    servo = _solid("box", [22.5, 12.0, 22.8])
+    LibraryPart("servo", "MG90S", servo, {})
+    bracket = _solid("box", [40.0, 25.0, 15.0])
+
+    outputs = [
+        _part_output("bracket", bracket),
+        _part_output("servo_cut", _drilled(servo, _solid("cylinder", [1.6, 12.0]))),
+        _component_output("frame", "bracket", position=(0.0, 0.0, 0.0), grounded=True),
+        _component_output("servo", "servo_cut", position=(0.0, 0.0, 15.0)),
+        {
+            "name": "asm",
+            "type": "assembly",
+            "domain": "assembly",
+            "definition": {
+                "domain": "assembly",
+                "operation": "assembly",
+                "output_type": "assembly",
+                "arguments": [],
+                "properties": {},
+            },
+        },
+    ]
+    cadex_project_worker._stamp_catalog_identity(outputs)
+    return _store(tmp_path, {"ok": True, "digest": DIGEST, "outputs": outputs})
+
+
+def test_the_inventory_separates_a_modified_purchase_from_a_printed_part(tmp_path) -> None:
+    value = _inventory(_modified_project(tmp_path))["value"]
+
+    assert value["catalog_counts"] == {}
+    assert value["uncatalogued_sources"] == ["bracket", "servo_cut"]
+    # The whole point: one of those two is a purchased part the script cut.
+    assert value["derived_catalog_sources"] == [
+        {"source_output": "servo_cut", "family": "servo", "part_number": "MG90S"},
+    ]
+    assert "derived_catalog_sources" in value["note"]
+
+
+def test_the_component_row_carries_the_row_its_source_came_off(tmp_path) -> None:
+    rows = _inventory(_modified_project(tmp_path), path="/components", limit=50)["value"]
+
+    by_name = {row["component"]: row for row in rows}
+    assert by_name["servo"]["catalog_derived_from"] == {
+        "family": "servo",
+        "part_number": "MG90S",
+    }
+    assert "catalog" not in by_name["servo"]
+    assert "catalog_derived_from" not in by_name["frame"]
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for the real-kernel inventory.",
+)
+def test_a_real_drilled_catalog_body_names_the_row_it_came_off(tmp_path) -> None:
+    """The spine rule against the live API, not a fabricated definition.
+
+    One catalog bolt drilled through and placed, one printed plate the same
+    bolt merely cuts a clearance hole in. The first is a purchased part the
+    script modified; the second is a printed part, and the roll-up must say
+    so without either carrying a catalog row.
+    """
+
+    from test_cadexd_lifecycle import _spawn_cadexd, _stop
+
+    source = """
+bolt = lib.bolt("M3", 12.0).body
+drill = part.cylinder(radius=0.6, height=40.0, origin=(0.0, 0.0, -20.0))
+bolt_drilled = part.cut(bolt, [drill])
+blank = part.box(40.0, 20.0, 4.0, origin=(-20.0, -10.0, -4.0))
+plate = part.cut(blank, [bolt])
+first = assembly.component(plate, grounded=True)
+second = assembly.component(bolt_drilled)
+asm = assembly.assembly([first, second])
+diag = assembly.solve(asm)
+result = {"bolt_drilled": bolt_drilled, "plate": plate, "first": first,
+          "second": second, "asm": asm, "diag": diag}
+"""
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(tmp_path)})["ok"]
+        written = client.request(
+            "write_script", {"source": source, "expected_revision": ""}
+        )
+        assert written["ok"], written
+        reply = client.request("inspect", {"scope": "inventory"})
+        assert reply["ok"], reply
+        value = reply["value"]
+        assert value["catalog_counts"] == {}
+        assert value["uncatalogued_sources"] == ["bolt_drilled", "plate"]
+        # The bolt is the base of one cut and a tool of the other.
+        assert value["derived_catalog_sources"] == [
+            {"source_output": "bolt_drilled", "family": "bolt",
+             "part_number": "m3x12-socket"},
+        ]
+    finally:
+        _stop(client)

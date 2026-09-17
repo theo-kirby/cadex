@@ -233,7 +233,12 @@ it from `lib` is no longer the catalog part, whatever the script prints. \
 Read the block before you say hardware comes from the catalog; if a \
 purchased part is listed, place the untouched catalog body as the \
 component and put the cut in the printed part that receives it. \
-`inspect scope=inventory` lists every component.
+`derived_catalog_sources` names every listed output the engine can prove \
+is exactly that -- one whose base was cut, drilled or re-clocked from a \
+catalog body -- with the row it came off, so a name there is a purchased \
+part to repair and a name absent from it is an ordinary printed part. A \
+catalog body used only as a cutter is not listed and is not a purchased \
+part. `inspect scope=inventory` lists every component.
 - MOTION FIT IS MEASURED TOO, and the build reply carries it: `fit.sweep` \
 is the published exact-solid sweep of every limited joint, with its own \
 `verdict`, the coverage, one row per joint (minimum distance, maximum \

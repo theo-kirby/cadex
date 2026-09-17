@@ -140,18 +140,29 @@ def inventory_value(
     """An ``inspect scope=inventory`` value, rolled up the way the engine
     does it: ``catalog_counts`` by ``family/part_number`` over components
     with a catalog row, ``uncatalogued_sources`` the distinct source outputs
-    of the rest. Unavailable (no assembly) when no components."""
+    of the rest, and ``derived_catalog_sources`` those of them whose row
+    carries the catalog body its base was cut from (ADR-381).
+    Unavailable (no assembly) when no components."""
 
     rows = list(components or [])
     counts: dict[str, int] = {}
     uncatalogued: set[str] = set()
+    derived: dict[str, dict[str, Any]] = {}
     for row in rows:
         catalog = row.get("catalog")
         if isinstance(catalog, dict):
             key = f"{catalog.get('family', '')}/{catalog.get('part_number', '')}"
             counts[key] = counts.get(key, 0) + 1
         elif row.get("source_output"):
-            uncatalogued.add(str(row["source_output"]))
+            source = str(row["source_output"])
+            uncatalogued.add(source)
+            came_off = row.get("catalog_derived_from")
+            if isinstance(came_off, dict):
+                derived[source] = {
+                    "source_output": source,
+                    "family": str(came_off.get("family", "")),
+                    "part_number": str(came_off.get("part_number", "")),
+                }
     return {
         "revision": revision,
         "assembly": assembly if rows else "",
@@ -159,6 +170,7 @@ def inventory_value(
         "components": rows,
         "catalog_counts": dict(sorted(counts.items())),
         "uncatalogued_sources": sorted(uncatalogued),
+        "derived_catalog_sources": [derived[name] for name in sorted(derived)],
     }
 
 

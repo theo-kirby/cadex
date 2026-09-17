@@ -1921,8 +1921,9 @@ followed by a `sweep` line with one line per unswept joint and per
 failing pair, each carrying its status. The same run adds `inventory`,
 the catalog-identity block that reply carried (ADR-362) — `component_count`,
 `catalogued_count`, `uncatalogued_count`, the `catalog_counts` roll-up and
-every `uncatalogued_sources` name — printed as an `inventory` line with one
-line per uncatalogued source. An `asset` run adds
+every `uncatalogued_sources` name, with `derived_catalog_sources` naming
+the ones cut from a catalog body (ADR-381) — printed as an `inventory` line
+with one line per uncatalogued source. An `asset` run adds
 `assets`, the store's listing as `[{"name", "bytes", "sha256"}, …]`, sorted
 by name — the same rows `put_asset` and `inspect scope=assets` return. A
 `train` run adds `training`, the offboard trainer's receipt exactly as it
@@ -2241,7 +2242,10 @@ revision the reply accepted:
   "component_count": 6, "catalogued_count": 3, "uncatalogued_count": 3,
   "catalog_counts": {"bearing/MR128": 2, "horn/SG-25T-1": 1},
   "uncatalogued_sources": ["base_plate", "servo_drilled"],
-  "note": "Each name under uncatalogued_sources is a placed output no lib.* generator built as-is. …"
+  "derived_catalog_sources": [
+    {"source_output": "servo_drilled", "family": "servo", "part_number": "MG90S"}
+  ],
+  "note": "Each name under uncatalogued_sources is a placed output no lib.* generator built as-is. … derived_catalog_sources names the ones the engine can prove are exactly that: servo_drilled (cut from servo/MG90S). …"
 }
 ```
 
@@ -2257,7 +2261,26 @@ purchased part was a catalog part while the published inventory listed
 both servos and both horns as uncatalogued, because the script had cut a
 bore into the servo bodies and re-clocked the horns, and a cut catalog body
 is no longer the catalog part. The block is computed from the published
-inventory and never from `stdout`. `available` is false, with the reason,
+inventory and never from `stdout`.
+
+`derived_catalog_sources` (ADR-381) says **which** of those names is that
+defect. An uncatalogued source is one of two very different things — a
+printed part, which belongs there, or a purchased part the script modified,
+which does not — and the bare list cannot tell them apart. The engine
+resolves catalog identity by exact definition, so it can also follow the
+*base operand* of a definition down (`part.cut(base, tools)` puts the body
+being modified first) and name the nearest catalog body it came off. A row
+is `{"source_output", "family", "part_number"}`, sorted by source; a catalog
+body used only as a **cutter** appears on no base spine and is listed
+nowhere, which is the distinction between hardware and a clearance tool.
+The list is empty rather than missing when nothing derives, and the block's
+`note` repeats each row in words. Every component row of `inspect
+scope=inventory` carries the same fact as `catalog_derived_from` beside the
+absent `catalog`, and `cadex inventory`'s table prints it as *cut from
+servo `MG90S`*. Still advisory: nothing here is a check and nothing is
+refused.
+
+`available` is false, with the reason,
 when the revision places no assembly components or the inventory could
 not be read; neither refuses the build. `inventory` is an `inspect` scope
 on the model's surface for the same reason, and the last accepted build's

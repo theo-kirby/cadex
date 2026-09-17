@@ -265,3 +265,67 @@ def test_inventory_summary_counts_components_and_names_sources() -> None:
     })
     assert clean["uncatalogued_count"] == 0 and "note" not in clean
     assert inventory_summary(None)["available"] is False
+
+
+def test_the_block_names_a_modified_purchase_apart_from_a_printed_part() -> None:
+    """ADR-381: which uncatalogued source is a defect, and which is not.
+
+    F5's arm placed two servos and two horns it had drilled and re-clocked,
+    and the reply's block could only list their names beside the printed
+    bracket's. The engine now says which ones came off a catalog body, and
+    the block repeats it where the agent reads it.
+    """
+
+    summary = inventory_summary({
+        "revision": "r" * 64, "assembly": "asm",
+        "components": [
+            {"component": "c1", "source_output": "servo_cut",
+             "catalog_derived_from": {"family": "servo", "part_number": "MG90S"}},
+            {"component": "c2", "source_output": "bracket"},
+        ],
+        "catalog_counts": {},
+        "uncatalogued_sources": ["bracket", "servo_cut"],
+        "derived_catalog_sources": [
+            {"source_output": "servo_cut", "family": "servo",
+             "part_number": "MG90S"},
+        ],
+    })
+
+    assert summary["uncatalogued_count"] == 2
+    assert summary["derived_catalog_sources"] == [
+        {"source_output": "servo_cut", "family": "servo", "part_number": "MG90S"},
+    ]
+    assert "servo_cut (cut from servo/MG90S)" in summary["note"]
+    assert "bracket (cut from" not in summary["note"]
+    # Absent upstream means an empty list, never a missing key: a reader of
+    # the block must not have to tell "none" from "not reported".
+    assert inventory_summary({"revision": "r", "assembly": "asm"})[
+        "derived_catalog_sources"
+    ] == []
+
+
+def test_the_doc_says_which_uncatalogued_output_was_a_purchase() -> None:
+    text = render_inventory(
+        {
+            "revision": "e" * 64,
+            "assembly": "asm",
+            "components": [
+                {"component": "servo", "source_output": "servo_cut",
+                 "catalog_derived_from": {"family": "servo",
+                                          "part_number": "MG90S"}},
+                {"component": "frame", "source_output": "bracket"},
+            ],
+            "catalog_counts": {},
+            "uncatalogued_sources": ["bracket", "servo_cut"],
+            "derived_catalog_sources": [
+                {"source_output": "servo_cut", "family": "servo",
+                 "part_number": "MG90S"},
+            ],
+        },
+        name="arm",
+    )
+
+    assert "| `servo` | `servo_cut` | cut from servo `MG90S` | — | — |" in text
+    assert "| `frame` | `bracket` | — | — | — |" in text
+    assert "- `servo_cut` — cut from `servo/MG90S`, a purchased part" in text
+    assert "- `bracket`\n" in text

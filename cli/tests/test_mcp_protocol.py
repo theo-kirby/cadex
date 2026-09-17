@@ -151,8 +151,10 @@ _CLEAR = {**_OVERLAP, "first": "b", "second": "c", "distance_mm": 10.0,
 #: and two catalog bearings. Six components, three catalogued, three not.
 _INVENTORY = [
     {"component": "base", "label": "base", "source_output": "base_plate"},
-    {"component": "shoulder_servo", "label": "shoulder", "source_output": "servo_drilled"},
-    {"component": "elbow_servo", "label": "elbow", "source_output": "servo_drilled"},
+    {"component": "shoulder_servo", "label": "shoulder", "source_output": "servo_drilled",
+     "catalog_derived_from": {"family": "servo", "part_number": "MG90S"}},
+    {"component": "elbow_servo", "label": "elbow", "source_output": "servo_drilled",
+     "catalog_derived_from": {"family": "servo", "part_number": "MG90S"}},
     {"component": "horn", "label": "horn", "source_output": "horn",
      "catalog": {"family": "horn", "part_number": "SG-25T-1"}},
     {"component": "bearing_a", "label": "bearing a", "source_output": "mr128",
@@ -424,6 +426,13 @@ def test_a_build_reply_carries_catalog_identity_beside_the_fit() -> None:
     assert inventory["uncatalogued_count"] == 3
     assert inventory["catalog_counts"] == {"bearing/MR128": 2, "horn/SG-25T-1": 1}
     assert inventory["uncatalogued_sources"] == ["base_plate", "servo_drilled"]
+    # ...and which of those two is the defect rather than the printed part
+    # (ADR-381): the base plate is expected here, the servo body is not.
+    assert inventory["derived_catalog_sources"] == [
+        {"source_output": "servo_drilled", "family": "servo",
+         "part_number": "MG90S"},
+    ]
+    assert "servo_drilled (cut from servo/MG90S)" in inventory["note"]
     assert "inspect scope=inventory" in inventory["source"]
     assert "stdout" in inventory["source"] and "Advisory" in inventory["source"]
     assert "lost its catalog identity" in inventory["note"]

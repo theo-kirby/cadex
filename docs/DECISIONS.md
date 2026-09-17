@@ -26249,3 +26249,80 @@ moves under either decision: none carries an `intent` key at all, which
 `test_the_weld_rule_moves_no_retained_number` holds.
 
 No `ot7-*` design was edited and no frozen prompt was spent.
+
+
+---
+
+## ADR-381 — A modified purchase says what it was cut from (2026-09-16)
+
+**Context.** ot7's F5 is exhausted with one failing count out of six:
+*catalog hardware for every purchased part*. Across four turns the arm
+placed two MG90S servos and two 25T horns it had drilled and re-clocked,
+the published inventory listed all four under `uncatalogued_sources`, and
+the agent's closing message said every purchased part was a catalog part
+each time. ADR-362 put the inventory block in every build reply so the
+agent would see those names at all, which is the half F6 and F7 will run
+on. What the block still could not say is **which** name is the defect. An
+uncatalogued source is one of two very different things — a printed part,
+which belongs there and is the ordinary case, or a purchased part the
+script modified, which is the failing count — and `["base_plate",
+"servo_drilled"]` reads the same either way. A design with a dozen printed
+parts hides its two modified servos in the list.
+
+**Decision.** The engine names the catalog body a modified output came off,
+and both readers carry it.
+
+1. **`_stamp_catalog_identity` also stamps `catalog_derived_from`** on an
+   output that matched no catalog definition exactly but whose **base
+   operand spine** holds one: follow `arguments[0]` down from the
+   definition — through the first member where that argument is the single
+   list `part.fuse([a, b])` passes — and take the nearest catalog match.
+   The distinction is positional and is the one the CLI's design
+   instructions have drawn in words since ADR-243's follow-up:
+   `part.cut(base, tools)` puts the body being modified first and its
+   cutters after, so a catalog definition on the spine is what the output
+   *is*, while one reachable only as a tool is a clearance cutter and
+   implies no purchase. Written beside the definition like `catalog`
+   itself, so no content digest moves (ADR-064), and absent rather than
+   null where nothing derives.
+2. **`inspect scope=inventory` carries it both ways**: per component row as
+   `catalog_derived_from` beside the absent `catalog`, and as a top-level
+   `derived_catalog_sources` roll-up of `{"source_output", "family",
+   "part_number"}` sorted by source, so a reader that pages the component
+   list does not have to page it to learn this.
+3. **The build reply's `inventory` block repeats it** (`inventory_summary`),
+   empty list rather than missing key, and its `note` names each row in
+   words — "servo_drilled (cut from servo/MG90S)" — with the repair the
+   prompt already asks for: place the untouched catalog body as the
+   component and put the cut in the printed part that receives it. The
+   system prompt gains one clause saying a name there is a purchased part
+   to repair, a name absent from it is a printed part, and a catalog body
+   used only as a cutter is neither.
+4. **`cadex inventory`'s document says it too**: the catalog column of a
+   derived row reads *cut from servo `MG90S`* rather than an em dash, and
+   the "Not from the catalog" list marks the same rows.
+
+**Still advisory, and still not a check.** Nothing here has a verdict,
+nothing is refused, and no fit count moves: this is the same footing
+ADR-362 put the block on. Whether a cut catalog body counts as catalog
+hardware remains the owner's call on F5's tick; what changes is that the
+agent can see which parts the question is about.
+
+**What it does not claim.** ADR-243's boundary stands except on the base
+spine: a catalog body fused into a printed solid as a *second* operand, or
+used as a tool, is still not identified, and absence of a row still does
+not prove absence of hardware. Nor does a derived row assert the modification
+was wrong — a transformed catalog body that is only ever a cutter is not
+placed as a component and so never reaches the inventory at all.
+
+**Evidence.** Seven engine cases in `test_inventory_scope.py`, all red on
+the old code: a drilled catalog body named, the same body used only as a
+cutter *not* named, the nearest ancestor winning through a transform, the
+`fuse` list read positionally in both orders, the definition the digest
+hashes unmoved, and the inventory join reporting one derived source beside
+one printed part. On the CLI side `test_inventory.py` pins the block and
+the rendered document, and `test_mcp_protocol.py` pins the whole path to
+the model on the F5 fixture itself — the drilled servo placed twice now
+reaches the reply as `derived_catalog_sources` and in the note.
+
+No `ot7-*` design was edited and no frozen prompt was spent.

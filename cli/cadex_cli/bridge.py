@@ -319,6 +319,7 @@ class Bridge:
                 "uncatalogued_count": 0,
                 "catalog_counts": {},
                 "uncatalogued_sources": [],
+                "derived_catalog_sources": [],
                 "error": f"inventory could not be read: {exc}",
             }
 
