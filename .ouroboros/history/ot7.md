@@ -1,12 +1,12 @@
 ---
 run: ot7
 machine: sb1x
-started: 2026-09-16T10:28:36
-ended: 2026-09-16T15:00:15+00:00
-hours: 0.3
-state: killed
-iterations: 76
-commits: 98
+started: 2026-09-16T11:00:28
+ended: 2026-09-17T04:34:29+00:00
+hours: 13.6
+state: stopped
+iterations: 145
+commits: 169
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 10
@@ -18,49 +18,49 @@ actor: claude:claude-opus-5
 
 # Run ot7
 
-76 iterations in 0.3h on `sb1x`, killed (-). Branch `ouroboros/ot7`, not merged.
+145 iterations in 13.6h on `sb1x`, stopped (until 2026-09-17T00:25:13 reached). Branch `ouroboros/ot7`, not merged.
 
 ## The numbers
 
 | | |
 |---|---|
-| iterations | 76 (changed 69, recorded 47) |
-| commits | 98 — 167 files changed, 19460 insertions(+), 86 deletions(-) |
+| iterations | 145 (changed 109, recorded 76) |
+| commits | 169 — 200 files changed, 28983 insertions(+), 93 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 10 checked at the tip |
 | reverts | 0 |
-| verdicts | answer 5, continue 57, looping 4, reject 3, stuck 7 |
-| loop detector | no firing |
+| verdicts | answer 5, continue 87, looping 8, reject 9, stuck 36 |
+| loop detector | no_frontier ×38 (longest streak 67) |
 | roles | actor claude:claude-opus-5, critic codex:gpt-6-astra |
-| usage | claude seven_day 51%; claude five_hour 3%; codex seven_day 55% |
+| usage | claude seven_day 52% -> 59% (+7 this run); claude five_hour 8% -> 5% (-3 this run); codex seven_day 56% -> 67% (+11 this run) |
 
 ## What landed
 
-- A refused window probe is no room, whatever the window reads (ADR-364)
-- Switch Ouroboros Claude roles to Opus 5
-- Every build reply carries the published catalog identity, advisory (ADR-362)
-- F5 continue-3 on ot7-heron-c completed: no edit, static 0 of 105, sweep clean, smoke passing, servos and horns uncatalogued; F5 exhausted
-- Restore actor fallback and document account refresh (ADR-361)
-- REPORT.md: F5 attempts cell reads 3, all (three completed turns on ot7-heron-c)
-- F5 continue-2 on ot7-heron-c completed: bench deleted by the agent, static fit 0 of 105, sweep complete with zero overlap, smoke passing, servos and horns still uncatalogued (receipt, REPORT.md, runner README)
-- ADR-360 correction: an unknown describe_api section is refused after the argument-free engine request has been answered; only the section argument never reaches the engine (docs/CLI.md, ADR-360, slender-union-6486)
-- ADR-360: describe_api reaches the model as an index and per-section pages under a measured 21,500-character budget; section is the bridge's argument, never the engine's; no design turn, window 52 % against the 45 % bound
-- F5: continue-1 completed on ot7-heron-c — static fit 1 of 120 failing (bench as world geometry), sweep complete on both joints with zero overlap, servos and horns still uncatalogued, smoke passing; continue-2 next
-- F5: the arm create turn completed on ot7-heron-c — static fit 7 of 120 failing, no sweep declared, servos and horns uncatalogued; describe_api still refused at 82,523 characters; continue-1 next after the reset
-- ADR-359: describe_api fits one tool result; the ot7 collector dispatches at medium effort
-- ot7 report: F5 row counts two accepted probe scripts of three written, F4 row counts four completed turns
-- F5: the arm create call on ot7-heron-b interrupted at the 30-minute bound — no design written, no slot spent, retry ot7-heron-c
-- F4: continue-3 completed on ot7-heron-repair-d — no edit, unchanged script re-accepted at f03054d6, DECISION and NOTE design_specs lines written, F4 exhausted
-- F4: continue-2 completed on ot7-heron-repair-d — no failing check named, no edit, unchanged script re-accepted; one continuation left
-- ot7 runner: read the five-hour window before every frozen prompt, pause without room (ADR-358)
-- F4: continue-1 completed on ot7-heron-repair-d — zero failing product checks static and swept, catalog servos restored, bench removed, horn gap still declared as clearance; two continuations left
-- ot7 runner: the repair prompt is F4's first prompt, not its only one; resume the next continuation without replay (ADR-357)
-- F4: the frozen repair prompt completed on ot7-heron-repair-d — zero failing product checks, two of three defects resolved, horn gap declared not closed; repair-c void
-- ouroboros #46: no record
-- F4: frozen repair prompt reached the model on ot7-heron-repair-b; timed out at the 30-minute bound, no submission
-- ot7 runner: a synthetic frame alone is not a usage limit; auth failures spend their slot (ADR-355)
-- ot7 runner: usage-limit calls are void; classify the six pre-restart calls (ADR-355)
-- ot7 charter: usage-limit failures are void; restart (ADR-355)
-- ... and 29 more
+- Absent provenance is unknown, not printed (ADR-382)
+- A modified purchase says what it was cut from (ADR-381)
+- A fixed joint holds a pose; it does not require touching (ADR-380)
+- A weld and a declared gap on the same pair contradict each other (ADR-379)
+- F6 window probe five: still refused, and the fixed gate read it right
+- Cite ADR-378's own commit in the closing report
+- A gap the motion closes is a failing fit (ADR-378)
+- Cite ADR-377's own commit in the closing report
+- A design that toppled and settled is not resting on the floor (ADR-377)
+- Cite ADR-376's own commit in the closing report
+- The frame that bound the call is the reading, in both directions (ADR-376)
+- Cite ADR-375's own commit in the closing report
+- A joint nobody bounded is a coverage hole, not a silence (ADR-375)
+- The swept row's motion flag is pinned against its contract (ADR-374)
+- The closing receipts count ADR-374, and the contract names its field
+- A welded pair does not define the joint it cannot move (ADR-374)
+- F9's weld-exemption table says only what it models
+- F9's regression receipt says what the checker now does, and pins both columns
+- A gap the design means is declared, not widened (ADR-373)
+- A welded pair is not an undeclared pair (ADR-372)
+- A suppressed joint is not missing coverage (ADR-371)
+- A fixed joint that holds nothing is measured and said (ADR-370)
+- A refused probe reads the frame that rejected (ADR-369)
+- Drop the lower-bound claim: the refusal receipt dates nothing
+- Qualify the F6/F7 gate: a scheduled reset is not proof the refusal lifts
+- ... and 59 more
 
 ## Decisions the critic made
 
@@ -98,3 +98,7 @@ the run, which it did by running `ouroboros stop` itself. The tooling half
 tried. The charter needs three rules it lacked: a harness limit is not an
 attempt, design turns wait for the product agent's harness, and no role may
 stop or start the run.
+
+## What this taught — owner-directed wait (2026-09-17)
+
+The live charter reload worked: the loop finished its correction and reconciliation, then preserved the unspent design slots while access remained unproven. A charter-directed wait still dispatches actor and critic turns and triggers generic no-frontier model rotation; a future runner-level waiting state should suppress both, rather than spending subscriptions to reconfirm the hold. One forbidden waiting record was rejected and reverted, so review the final tree rather than treating every rejection as an outstanding defect; this run stopped on its time limit, not successful completion.

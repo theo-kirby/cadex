@@ -12,48 +12,28 @@ maintainer: false       # true: a separate maintainer call instead of actor hous
 planner: false          # true: a planner writes bets after each reconcile
 idle_interval: 30m
 roles:
+  # Owner-directed restart: every role uses Fable, with no other-model fallback.
   actor:
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5
     timeout: 90m
     resume_for: 1
-    fallback:
-      - { harness: codex, model: gpt-6-astra }
-    # Owner restored fallback (ADR-361). Product-agent design calls still
-    # require the Claude window gate; Codex cannot bypass it.
   critic:
-    harness: codex        # a Codex critic on Claude work is a real second opinion.
-                          # ot5: its read-only sandbox (bubblewrap) could not start under
-                          # AppArmor's userns restriction, so it graded with no tools for
-                          # 106 verdicts. ~/.codex/config.toml now sets
-                          # features.use_legacy_landlock = true; verify with
-                          #   codex sandbox -- ls   (reads) / touch (denied) before launch.
-    model: gpt-6-astra
-    timeout: 10m
-    fallback:
-      - { harness: claude, model: claude-opus-5 }
-  maintainer:             # only called with maintainer: true
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5
+    timeout: 10m
+  maintainer:             # disabled above
+    harness: claude
+    model: claude-fable-5
     timeout: 30m
-    fallback:
-      - { harness: codex, model: gpt-6-astra }
-  planner:                # only called with planner: true
+  planner:                # disabled above
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5
     timeout: 20m
-    fallback:
-      - { harness: codex, model: gpt-6-astra }
-  reporter:               # `ouroboros watch` only: the digests that reach the phone.
-                          # Codex first so a report never competes with the actor for the
-                          # Claude window, and never takes a turn the run could have had.
-                          # A digest is summarising, not reasoning, so the fallback is the
-                          # cheap Claude model rather than the actor's.
-    harness: codex
-    model: gpt-6-astra
+  reporter:
+    harness: claude
+    model: claude-fable-5
     timeout: 10m
-    fallback:
-      - { harness: claude, model: claude-fable-5-1 }
 git:
   branch: null            # -> ouroboros/ot7
   tag_on_accept: true
@@ -69,7 +49,7 @@ stop:
                           # window resets while the run is still going, and the loop
                           # waits it out by itself. `limits.reserve` blocks the harness
                           # instead, which is what leaves Claude for the operator.
-  until: "2026-09-17T00:25:13" # preserve the existing 48h deadline across this restart
+  until: null            # fresh 48h budget for the owner-authorized continuation
   on_done_accepted: 2     # report_done charter: two accepted done verdicts end the run
   max_stuck: 25           # `stuck` is a loop that changed nothing; backoff makes 25 ~3.8h
 handoff:
@@ -85,14 +65,14 @@ limits:
   reserve:
     claude: 0.99          # this is the quarry account and the run may have all of it.
                           # Kept just under 1.0 so the loop steps aside a moment before
-                          # the hard limit and falls back to Codex, instead of spending
+                          # the hard limit and waits, instead of spending
                           # an actor turn discovering the wall.
 loop:                     # motion without progress (ouroboros DESIGN.md section 6b)
   product_after: 8        # iterations changing only records, plans and STATE.md
   frontier_after: 30      # iterations with no node moving and no criterion ticked
   repeat_bet_after: 3     # only measured with the planner on
   escalate_every: 5
-  rotate: true            # rung 3: hand the actor's turn to Codex for a while
+  rotate: false           # all roles stay on the owner-selected Fable model
                           # Nothing here stops the run.
 report:                   # the reporter: an observer outside the loop (ouroboros DESIGN.md section 15).
                           # It reads this run directory and never the loop, so nothing it

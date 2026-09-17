@@ -102,10 +102,10 @@ operator, including you, reads first.
   Mac (`mmini`) and could not train.
 - **Naming:** `ot<n>` -- Ouroboros Test. Runs are no longer nights: one may start
   in the afternoon and go for two days, so never name one for a time of day.
-- **Harnesses:** `claude` for every role, `codex` as the critic and as the
-  fallback for all of them. See `.ouroboros/config.yml`. Check both windows
-  before a launch: ot4 left the Codex weekly window at 99%, which blocks it for
-  days, and Fable has its own limit separate from Opus.
+- **Harnesses:** the owner-directed ot7 continuation uses `claude-fable-5`
+  for every role and product-agent call, with no other-model fallback. See
+  `.ouroboros/config.yml`. Verify product-model access and the usage window
+  before launch; actor availability alone does not establish product access.
 - **Green means** both suites, from `~/cadex`:
 
       pixi run test-engine                     # the engine, ~2100 tests, 4 min

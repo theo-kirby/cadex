@@ -26364,3 +26364,17 @@ false sentence out and the bound in, and cites the engine fixture that
 makes the bound real. `pixi run python -m pytest cli/tests` green.
 
 No `ot7-*` design was edited and no frozen prompt was spent.
+
+
+## ADR-383 — Resume ot7 on Fable for every role (2026-09-17)
+
+The owner restored provider access and authorized continuation of ot7's
+remaining balancer and biped experiments with everything set to Fable.
+All configured roles now use `claude-fable-5`, without other-model fallbacks
+or automatic model rotation; product experiments pass the same model
+explicitly. The expired absolute stop is cleared for a fresh 48-hour budget,
+retaining the two accepted done verdicts as the completion stop. The charter
+supersedes the hold only after a successful product-model availability check.
+F4/F5 outcomes, frozen prompts, unspent F6/F7 slots and the prohibition on
+actor edits to designs are preserved. Further capacity loss means waiting,
+not unrelated tooling work. No product or protocol behavior changes.

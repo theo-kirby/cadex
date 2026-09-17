@@ -8,6 +8,29 @@ restart (ADR-355): usage-limit failures are void, design turns wait for the
 product agent, and no role stops or starts the run.
 The human owns this file; unattended roles do not edit it.
 
+## Owner directive: resume on Fable (2026-09-17)
+
+The owner reports restored access and ample usage, authorizes restarting ot7
+on its existing branch, and requests Fable for every role. This directive
+supersedes the hold below once the launch-time product-model availability
+check succeeds. All runner roles and product-agent calls use
+`claude-fable-5`, with no Opus or Codex fallback. Pass `--model claude-fable-5` explicitly to the product experiment
+runner.
+
+The correction and reconciliation authorized by the previous directive are
+finished. The next substantive unit is F6 (Robin), followed by F7 (Plover),
+using the frozen prompts and existing slot accounting. F4 and F5 remain
+exhausted with their measured outcomes; do not retry them. Continue to check
+the product-agent window before each design turn, preserve void calls and
+unspent slots, and retain the existing no-actor-design-edits rule. After the
+remaining experiments, complete regression verification and the F10 closing
+report. Failed designs after their allowed turns remain valid evidence.
+
+Do not fill another provider block with unrelated tooling or repeated waiting
+records. If access is lost, follow the previous directive's waiting rules.
+The restart has a fresh 48-hour limit and retains two accepted done verdicts
+as its completion stop. No criterion is declared successful by this restart.
+
 ## Owner directive: finish the correction, then wait (2026-09-17)
 
 The owner approved this correction after the iteration-116 check-in. This
