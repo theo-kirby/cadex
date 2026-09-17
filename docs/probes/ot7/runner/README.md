@@ -2,6 +2,12 @@
 
 Verified against source: 2026-09-17. [Cadex-new]
 
+An explicit `resume PROJECT --model MODEL` switches subsequent calls to that
+model (ADR-384). The receipt records the transition and each turn's model;
+previous turns and prompt allowances are preserved. Without `--model`, resume
+keeps the receipt's model. This permits the owner-authorized Opus continuation
+of Robin after its Fable create turn without replaying that turn.
+
 This is the F4–F7 evidence collector (ADR-354), amended for the ot7 restart
 (ADR-355). **Every product-agent call ot7 dispatched before the restart was
 void**: all six ended on the provider's session limit in two to four seconds,

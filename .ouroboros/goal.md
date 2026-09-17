@@ -8,6 +8,21 @@ restart (ADR-355): usage-limit failures are void, design turns wait for the
 product agent, and no role stops or starts the run.
 The human owns this file; unattended roles do not edit it.
 
+## Owner directive: continue on Opus (2026-09-17)
+
+The owner explicitly switches this run to `claude-opus-5` after Fable
+exhausted its credits on the replacement account. This supersedes the Fable
+model requirement below for every role and product-agent call; no fallback
+model is configured. Opus availability and the product window gate passed.
+Resume Robin on its existing `ot7-robin-c` project with
+`run.py resume PROJECT --model claude-opus-5`, using the next frozen
+continuation. The runner now records this model transition without changing
+prior turns or spending extra slots (ADR-384). Its create turn remains Fable
+evidence; do not describe the resulting attempt as a single-model benchmark.
+Then run Plover explicitly on Opus. F4/F5 remain exhausted. Retain the
+existing September 19 deadline, all no-actor-design-edit constraints, and
+the prohibition on unrelated tooling while waiting for capacity.
+
 ## Owner directive: resume on Fable (2026-09-17)
 
 The owner reports restored access and ample usage, authorizes restarting ot7

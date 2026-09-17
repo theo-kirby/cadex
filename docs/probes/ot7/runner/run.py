@@ -574,7 +574,8 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
         prompt.write_bytes((PROMPTS / name).read_bytes())
         counts = index > 0  # the create or repair prompt is not a continuation
         row = {'index': index, 'continuations_used': continuations + counts,
-               'prompt': digest(prompt), 'status': 'started', 'window': reading}
+               'prompt': digest(prompt), 'status': 'started', 'window': reading,
+               'model': receipt['model']}
         receipt['turns'].append(row)
         write(evidence / 'attempt.json', receipt)  # Persist the slot before launching the provider; a void call gives it back.
         # Every turn of an attempt runs at the effort its receipt records
@@ -665,7 +666,7 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
     return receipt
 
 
-def resume(project, execute_call=execute, turns=1, window_bound=None):
+def resume(project, execute_call=execute, turns=1, window_bound=None, model=None):
     """Dispatch the next frozen continuation on a project whose every earlier
     turn ended on its own, without replaying any of them (ADR-357). Refuses a
     project closed by a void, interrupted or failed call (those retry on a
@@ -692,6 +693,15 @@ def resume(project, execute_call=execute, turns=1, window_bound=None):
         receipt['ruling'] = ('ADR-357: status "exhausted" was written under the superseded one-slot '
                              'repair rule; the first prompt is not a continuation and the schedule '
                              'holds three continuations after it.')
+    if model and model != receipt['model']:
+        previous = receipt['model']
+        for row in receipt['turns']:
+            row.setdefault('model', previous)
+        receipt.setdefault('model_changes', []).append({
+            'from': previous, 'to': model, 'before_turn': len(receipt['turns']),
+            'changed_at': datetime.now(timezone.utc).isoformat(timespec='seconds')})
+        receipt['model'] = model
+        write(evidence / 'attempt.json', receipt)
     return dispatch(receipt, project, evidence, execute_call, turns, window_bound)
 
 
@@ -740,7 +750,8 @@ if __name__ == '__main__':
                              'on an existing project; `remaining` only reads what its schedule holds; '
                              '`window` only reads the five-hour window and dispatches nothing')
     parser.add_argument('project', type=Path, nargs='?')
-    parser.add_argument('--model', default='claude-fable-5')
+    parser.add_argument('--model', default=None,
+                        help='model for a new attempt or explicit resume override; omitted resumes preserve the receipt model')
     parser.add_argument('--effort', default=EFFORT_LEVEL, choices=['low', 'medium', 'high', 'xhigh', 'max'],
                         help=f'the effort level every turn of a new attempt is launched at (default '
                              f'{EFFORT_LEVEL}, ADR-359); a resume reuses what its receipt records')
@@ -754,7 +765,7 @@ if __name__ == '__main__':
     if args.design == 'window':
         out = Path(os.environ.get('TMPDIR', '/tmp')) / f'ot7-window-{os.getpid()}'
         out.mkdir()
-        reading = window_reading(execute, out, 'probe', args.model)
+        reading = window_reading(execute, out, 'probe', args.model or 'claude-fable-5')
         reading['room'] = window_has_room(reading, args.window_bound)
         print(json.dumps({k: v for k, v in reading.items() if k != 'frame'}, indent=2))
     elif args.project is None:
@@ -765,7 +776,7 @@ if __name__ == '__main__':
         print(json.dumps(remaining(json.loads((evidence / 'attempt.json').read_text())), indent=2))
     elif args.design == 'resume':
         print(json.dumps(resume(args.project, turns=args.turns or 1,
-                                window_bound=args.window_bound), indent=2))
+                                window_bound=args.window_bound, model=args.model), indent=2))
     else:
-        print(json.dumps(run(args.design, args.project, args.model, turns=args.turns,
+        print(json.dumps(run(args.design, args.project, args.model or 'claude-fable-5', turns=args.turns,
                              window_bound=args.window_bound, effort=args.effort), indent=2))

@@ -1,40 +1,42 @@
 ---
 run: ot7
 machine: sb1x
-started: 2026-09-16T11:00:28
-ended: 2026-09-17T04:34:29+00:00
-hours: 13.6
-state: stopped
-iterations: 145
-commits: 169
+started: 2026-09-17T10:53:10
+ended: 2026-09-17T16:11:11+00:00
+hours: 1.3
+state: killed
+iterations: 148
+commits: 175
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 10
 merged: no
 branch: ouroboros/ot7
 memory: hypergraph
-actor: claude:claude-opus-5
+actor: claude:claude-fable-5
 ---
 
 # Run ot7
 
-145 iterations in 13.6h on `sb1x`, stopped (until 2026-09-17T00:25:13 reached). Branch `ouroboros/ot7`, not merged.
+148 iterations in 1.3h on `sb1x`, killed (limit resets in 29 min: sage credits at claude.ai/settings/usage?from=cc_cli_limit_message, to continue.). Branch `ouroboros/ot7`, not merged.
 
 ## The numbers
 
 | | |
 |---|---|
-| iterations | 145 (changed 109, recorded 76) |
-| commits | 169 — 200 files changed, 28983 insertions(+), 93 deletions(-) |
+| iterations | 148 (changed 111, recorded 77) |
+| commits | 175 — 206 files changed, 29910 insertions(+), 114 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 10 checked at the tip |
 | reverts | 0 |
-| verdicts | answer 5, continue 87, looping 8, reject 9, stuck 36 |
+| verdicts | answer 5, continue 89, looping 8, reject 9, stuck 37 |
 | loop detector | no_frontier ×38 (longest streak 67) |
-| roles | actor claude:claude-opus-5, critic codex:gpt-6-astra |
-| usage | claude seven_day 52% -> 59% (+7 this run); claude five_hour 8% -> 5% (-3 this run); codex seven_day 56% -> 67% (+11 this run) |
+| roles | actor claude:claude-fable-5, critic claude:claude-fable-5 |
+| usage | claude seven_day 7% -> 50% (+43 this run); claude seven_day_overage_included 13% -> 100% (+87 this run); claude five_hour 11% -> 5% (-6 this run) |
 
 ## What landed
 
+- F6: Robin's create dispatched on Fable — b interrupted at launch, c completed with 0 of 276 failing
+- Resume ot7 remaining experiments on Fable (ADR-383)
 - Absent provenance is unknown, not printed (ADR-382)
 - A modified purchase says what it was cut from (ADR-381)
 - A fixed joint holds a pose; it does not require touching (ADR-380)
@@ -58,9 +60,7 @@ actor: claude:claude-opus-5
 - A suppressed joint is not missing coverage (ADR-371)
 - A fixed joint that holds nothing is measured and said (ADR-370)
 - A refused probe reads the frame that rejected (ADR-369)
-- Drop the lower-bound claim: the refusal receipt dates nothing
-- Qualify the F6/F7 gate: a scheduled reset is not proof the refusal lifts
-- ... and 59 more
+- ... and 61 more
 
 ## Decisions the critic made
 

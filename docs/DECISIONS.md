@@ -26378,3 +26378,17 @@ supersedes the hold only after a successful product-model availability check.
 F4/F5 outcomes, frozen prompts, unspent F6/F7 slots and the prohibition on
 actor edits to designs are preserved. Further capacity loss means waiting,
 not unrelated tooling work. No product or protocol behavior changes.
+
+
+## ADR-384 — Continue ot7 on Opus without rewriting model history (2026-09-17)
+
+The owner requested Opus after the refreshed account refused Fable for
+exhausted credits. All run roles now select `claude-opus-5`, with the existing
+deadline retained. The experiment runner previously ignored `--model` on
+resume, which would have sent Robin back to Fable. Resume now honors an
+explicit override, records the transition and each turn's model, and keeps
+the prior model when no override is supplied. Earlier turns, frozen prompts,
+accepted designs and continuation allowances are preserved. Robin therefore
+has a Fable create turn followed by Opus continuations, not a single-model
+result. A regression checks the executed models, legacy receipt history and
+slot accounting. No engine or protocol changes are involved.

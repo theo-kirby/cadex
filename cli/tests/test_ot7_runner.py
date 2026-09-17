@@ -1311,3 +1311,23 @@ def test_a_room_reading_before_a_refused_model_costs_one_void_dispatch(tmp_path,
                                'project': 'ot7-robin-c', 'note': report['retry']['note']}
     # One dispatch, not four: the attempt stops at the first refusal.
     assert len([cmd for cmd, _ in calls if '--child-turn' in cmd]) == 1
+
+
+def test_resume_model_override_preserves_prior_turn_and_remaining_slots(tmp_path):
+    target = project(tmp_path)
+    calls = []
+    runner.run('heron', target, 'claude-fable-5', executor(calls), turns=1)
+    receipt_path = target / 'evidence' / 'attempt.json'
+    legacy = json.loads(receipt_path.read_text())
+    legacy['turns'][0].pop('model')
+    runner.write(receipt_path, legacy)
+    report = runner.resume(target, executor(calls), model='claude-opus-5')
+    assert [cmd[-1] for cmd, _ in calls if '--child-turn' in cmd] == [
+        'claude-fable-5', 'claude-opus-5']
+    assert [row['model'] for row in report['turns']] == ['claude-fable-5', 'claude-opus-5']
+    assert report['turns'][0]['prompt'] == legacy['turns'][0]['prompt']
+    assert report['turns'][1]['continuations_used'] == 1
+    assert report['model_changes'][0]['before_turn'] == 1
+    report = runner.resume(target, executor(calls))
+    assert report['turns'][-1]['model'] == 'claude-opus-5'
+    assert len(report['model_changes']) == 1

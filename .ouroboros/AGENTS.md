@@ -102,7 +102,7 @@ operator, including you, reads first.
   Mac (`mmini`) and could not train.
 - **Naming:** `ot<n>` -- Ouroboros Test. Runs are no longer nights: one may start
   in the afternoon and go for two days, so never name one for a time of day.
-- **Harnesses:** the owner-directed ot7 continuation uses `claude-fable-5`
+- **Harnesses:** the owner-directed ot7 continuation uses `claude-opus-5`
   for every role and product-agent call, with no other-model fallback. See
   `.ouroboros/config.yml`. Verify product-model access and the usage window
   before launch; actor availability alone does not establish product access.

@@ -1,0 +1,22 @@
+{
+  "date": "2026-09-17",
+  "requested_model": "claude-opus-5",
+  "availability": {
+    "exit_code": 0,
+    "result": "READY",
+    "reported_model_usage_keys": [
+      "claude-haiku-4-5-20251001",
+      "claude-opus-5"
+    ]
+  },
+  "runner_window": {
+    "status": "allowed",
+    "five_hour_percent": 6,
+    "seven_day_percent": 50,
+    "refused": null,
+    "disabled_reason": "out_of_credits",
+    "room": true,
+    "exit_code": 0
+  },
+  "note": "No frozen prompt dispatched by this check; auxiliary disabled_reason retained alongside successful allowed gate."
+}
