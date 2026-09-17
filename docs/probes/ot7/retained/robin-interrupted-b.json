@@ -1,0 +1,93 @@
+{
+  "criterion": "F6",
+  "iteration": 148,
+  "project": "ot7-robin-b",
+  "design": "robin",
+  "seed": "a fresh, empty project; the frozen create prompt is the first prompt (ADR-345); no actor edit",
+  "evidence_directory": "evidence",
+  "model": "claude-fable-5",
+  "prompt": {
+    "path": "robin.create.prompt.txt",
+    "bytes": 7650,
+    "sha256": "e20ee7abe5818015182693a2d950b84fc62da67868d2ee42cec748ca2299329b"
+  },
+  "turn_index": 0,
+  "what_happened": "The create prompt was dispatched at 2026-09-17T14:54:01Z, about fifty seconds after the ot7 restart's `ouroboros run` began (14:53:10Z) and before the loop's first actor iteration started (14:56:16Z), so the dispatching runner process belonged to the operator's launch session, not to the loop. The probe gate read 7 % five-hour, allowed, and dispatched. The stream ran 16.3 seconds (first frame 14:54:03.251Z, last 14:54:19.579Z): 9 model messages on claude-fable-5, 6 tool calls (4 describe_api, 2 write_script, the second a datasheet-probe script that accepted), every rate_limit_event frame allowed at 7-11 % five-hour. Then the stream stops: no result frame, an empty CLI envelope, and the runner process died with its child without classifying the turn, leaving attempt.json at status 'running' with turn-0 'started' and no exit code. The runner's --classify on the retained transcript returns void: null and interruption: null, because the void rule finds no limit evidence in the stream and the interruption rule reads the exit code the dead runner never wrote.",
+  "ruling": "Interrupted execution, by the charter's own rule rather than the collector's: 'only a turn that reached the model and ended on its own counts' (ADR-355), and decision #44 / ADR-356 rule that a call cut off by its collector rather than by the provider is an interruption, not a spent slot. The transcript shows the model was answering and no provider limit ended the call, so it is not void; it did not end on its own, so it is not a completed turn. Zero frozen-prompt slots consumed. The receipt in the project stays as written by the dead runner ('running'/'started', slots_spent 0), unedited, as the collector's last true output.",
+  "cause": "Unknown in detail; the runner and its child died together within a minute of the loop launch, consistent with the operator's launch-time session being interrupted. No provider error, timeout classification or kill record exists. What is certain from the stream is that no limit refused it and no result frame closed it.",
+  "void": null,
+  "interruption": {
+    "kind": "collector_died_mid_turn",
+    "rule": "charter ADR-355 (a turn counts only when it ends on its own) applied per decision #44 / ADR-356",
+    "slot_consumed": false,
+    "bound_seconds": 1800,
+    "elapsed_seconds": 16.3,
+    "model_messages_before_death": 9
+  },
+  "slot_consumed": false,
+  "continuations_used": 0,
+  "slots_spent": 0,
+  "void_calls_this_project": 0,
+  "interrupted_calls_this_project": 1,
+  "turn": {
+    "exit_code": "unrecorded (runner died before classification)",
+    "runner_transcript": {
+      "path": "transcript.jsonl",
+      "bytes": 198994,
+      "sha256": "8dd1d40c37aa0d70e8f58ab1434840b7b9b00006cd9c729d6412e21984b81e70"
+    },
+    "captured": "frame by frame as it arrived (ADR-356), which is why a dead collector still left every frame",
+    "frames": {
+      "system": 19,
+      "rate_limit_event": 5,
+      "assistant": 9,
+      "user": 6
+    },
+    "first_frame_utc": "2026-09-17T14:54:03.251Z",
+    "last_frame_utc": "2026-09-17T14:54:19.579Z",
+    "tool_uses": 6,
+    "tools": {
+      "describe_api": 4,
+      "write_script": 2
+    },
+    "submit_calls": 0,
+    "rate_limit_window_at_first_event": {
+      "status": "allowed",
+      "five_hour": { "utilization": 0.08, "resetsAt": 1789674000 },
+      "seven_day": { "utilization": 0.06, "resetsAt": 1790143200 }
+    },
+    "rate_limit_window_at_last_event": {
+      "status": "allowed",
+      "five_hour": { "utilization": 0.11, "resetsAt": 1789674000 },
+      "seven_day": { "utilization": 0.06, "resetsAt": 1790143200 },
+      "seven_day_overage_included": { "utilization": 0.13, "resetsAt": 1790143200 }
+    },
+    "envelope": {
+      "path": "turn.stdout.json",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stderr": {
+      "path": "turn.stderr.txt",
+      "bytes": 443,
+      "sha256": "b5a47427501860943778e1b63443523e87a8c7dccbca6dfb5e275639b0cfacdb"
+    }
+  },
+  "attempt_json": {
+    "path": "evidence/attempt.json",
+    "bytes": 2970,
+    "sha256": "8cd6797c23266f4923ac45cce66444297edcdf4255d921b7837ed464bb15e4d2",
+    "status_as_written": "running",
+    "turn_0_status_as_written": "started",
+    "slots_spent_as_written": 0,
+    "settings": { "effort": "medium", "max_output_tokens": 32000, "turn_bound_seconds": 1800 }
+  },
+  "design_state_left_behind": {
+    "note": "The only accepted script is the product agent's own datasheet-probe (gearmotor, board, insert and bolt specs printed, a unit probe box as result); no design was written. No actor edit occurred.",
+    "script_sha256": "b7f9b26c67e94030b1c8626c8c8a6e039003307fb0ecbc92a96d502b8388410b",
+    "script_bytes": 391
+  },
+  "fable_access": "Restored, in contrast to the 2026-09-16 refusals (f6-window-refusal.json): every frame in this stream is allowed and the model answered. The owner's launch-time availability check at 14:45:54Z (retained/fable-restart-availability.json, ADR-383) read READY with five_hour 0 %, and the loop's own gate reading before the retry dispatch the same day read five_hour 24 %, allowed, room true (in ot7-robin-c's receipt).",
+  "retry": "ot7-robin-c",
+  "consequence": "F6's create prompt and all three continuations remain unspent. The retry is the same frozen prompt in the fresh project ot7-robin-c, dispatched the same day once the gate read room."
+}

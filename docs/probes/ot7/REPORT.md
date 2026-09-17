@@ -950,6 +950,86 @@ static and swept checks, a complete sweep and three passing smokes, with
 zero actor edits, and the one clause the agent did not close is the one it
 had no measurement for.
 
+## Iteration 148: Fable restored — Robin's create interrupted on b, completed on c
+
+The owner restored Fable access on 2026-09-17 and authorized F6 then F7
+(ADR-383, commit `bcfa6914`; launch check
+[`fable-restart-availability.json`](retained/fable-restart-availability.json),
+14:45:54 UTC, `READY`, five-hour 0 %).
+
+**`ot7-robin-b`: an interrupted execution, zero slots spent.** At 14:54:01
+UTC — fifty seconds after the restart's `ouroboros run` began, two minutes
+before the loop's first actor iteration — a runner outside the loop
+dispatched the frozen create prompt (digest `e20ee7ab…`, unchanged) on
+`ot7-robin-b`. The model answered — 9 messages, 6 tool calls, every
+`rate_limit_event` frame allowed at 7–11 % — and 16.3 s in the stream stops
+with no result frame, an empty envelope, and the runner dead with its child,
+its receipt left at `running`/`started`. No limit appears anywhere in the
+stream, so it is not void; it did not end on its own, so it is not a turn
+(ADR-355, decision #44/ADR-356). The ruling and every digest are in
+[`robin-interrupted-b.json`](retained/robin-interrupted-b.json); the
+project's receipt stays as the dead collector wrote it. The only accepted
+script it left is the product agent's own datasheet probe. No actor edited
+anything.
+
+**`ot7-robin-c`: the first F6 turn that ended on its own.**
+`robin.create.prompt.txt` (7,650 bytes, digest `e20ee7ab…`, unchanged) was
+dispatched on the fresh project at 14:58:53 UTC through
+`run.py robin … --turns 1 --model claude-fable-5`, at `medium` with the
+32,000-token cap and 30-minute bound unchanged. The probe read **24 %** and
+dispatched; the stream's first `rate_limit_event` read 24 %, its last 74 %.
+**The turn completed** in 1,676.4 s (result `success`, 35 API turns, 62
+model messages, 19 thinking blocks, no output-cap hit, 33 tool calls: 4
+`describe_api`, 6 `write_script`, 19 `inspect`, 4 `edit_script`), the
+create slot is spent, and the runner paused with `continue-1` next and all
+three continuations unspent (receipt in the project's
+`evidence/attempt.json`; 1,239,403-byte stream, digest `e1fb54cb…`). No
+actor edited any design.
+
+How the turn went, from the stream: two accepted probe scripts (catalog
+specs, then insert and bolt geometry); the full design rejected three times
+on API validation (a `LibraryPart` passed to the part API, an unregistered
+joint output, a task reward naming a channel the task does not observe) —
+each a validation message, not a fit failure — then accepted with fit
+**16 of 276 failing**; one accepted repair edit later, **0 of 276 failing**.
+The final accepted revision is `192db5b9…`, a 365-line parametric script:
+printed chassis as the free base, two printed wheels on revolute axle
+joints, two catalog Pololu 2367 gearmotors in printed clamps, a Pi Zero 2 W
+on standoffs, eight M2 inserts and eight M2×4 screws, torque actuators
+bounded by the datasheet stall torque, an MJCF model with the chassis free
+over the environment floor, a balance task with fall termination and reset
+variation.
+
+The measured result against F6's bar:
+
+- **Static fit: 0 of 276 failing** — zero intersections, zero
+  below-clearance, `world_geometry` empty, all 21 welded attachments
+  measured touching, both declared D-bore clearance pairs holding their
+  0.04 mm minimum. No floor or bench is in the design; the wheels span
+  exactly z 0–65 mm, tangent to the environment's plane.
+- **Sweep: incomplete, and structurally so** — both `joint_wheel_*_axle`
+  joints are free-spinning drive axles with no declared limits, so the
+  product reports "no range to sweep" on each. F3's check reads "every
+  joint with declared limits"; a balancer's drive wheels declare none. What
+  a continuation does with that is the next measurement.
+- **Inventory: every purchased part catalog** — 2× `gearmotor/pololu-2367`,
+  1× `board/pi-zero-2-w`, 8× `heat_insert/m2-standard`, 8×
+  `bolt/m2x4-socket`, `derived_catalog_sources` empty; the five
+  uncatalogued rows are the printed chassis, wheels and clamps. F5's
+  catalog-identity failure did not recur.
+- **The claim and the measurement agree.** The closing message cites the
+  engine's numbers — 276 pairs, 21 touching welds, the two initial
+  wheel-floor contacts in the MJCF, the 0.05 mm D-bore gaps — rather than
+  the script's printout, and states its one analytic exception (M2 thread
+  engagement modelled as tip-on-insert-mouth, 4.85 mm³ swept annulus,
+  because acceptance refuses overlap even across welds).
+
+The turn cost 50 points of the five-hour window (24 % to 74 %), so
+`continue-1` waits for the 19:40 UTC reset, dispatched through
+`run.py resume` when the probe reads room. The runner still spends all
+three continuations regardless of the static pass: the swept half is the
+open question, and no smoke has run yet (the runner runs it at exhaustion).
+
 ## Implemented checks and evidence for F1–F9
 
 | Criterion | What exists | Evidence and limits |

@@ -1,6 +1,6 @@
 # Frozen-design evidence runner
 
-Verified against source: 2026-09-16. [Cadex-new]
+Verified against source: 2026-09-17. [Cadex-new]
 
 This is the F4–F7 evidence collector (ADR-354), amended for the ot7 restart
 (ADR-355). **Every product-agent call ot7 dispatched before the restart was
@@ -771,3 +771,47 @@ The two existing stray-frame tests keep the allowed frame in front, passed
 throughout, and never covered the order that fails.
 
 F6's and F7's eight slots remain unspent; no `ot7-robin-b` exists.
+
+## Fable restored: the interrupted b and the completed create on c (iteration 148, ADR-383)
+
+The owner restored Fable access on 2026-09-17 and authorized the remaining
+experiments (ADR-383, commit `bcfa6914`); the launch-time availability check
+is `retained/fable-restart-availability.json` (14:45:54 UTC, `READY`,
+five-hour 0 %).
+
+**`ot7-robin-b` is an interrupted execution, not a spent slot.** At
+14:54:01 UTC — fifty seconds after the restart's `ouroboros run` began and
+two minutes before the loop's first actor iteration — a runner outside the
+loop dispatched Robin's create prompt on `ot7-robin-b`. The model answered
+(9 messages, 6 tool calls, every `rate_limit_event` allowed at 7–11 %), and
+16.3 s in the stream stops: no result frame, an empty envelope, and the
+runner died with its child before classifying anything, leaving
+`attempt.json` at `running`/`started` with no exit code. `--classify` on the
+retained transcript returns `void: null` (no limit anywhere in the stream)
+and `interruption: null` (the rule reads an exit code a dead collector never
+wrote). The charter's own rule decides it — only a turn that ended on its
+own counts (ADR-355), and a call cut off by its collector is an interruption
+(decision #44, ADR-356) — so zero slots are spent, the project's receipt
+stays as the dead runner wrote it, and the committed ruling is
+[`retained/robin-interrupted-b.json`](../retained/robin-interrupted-b.json).
+The only accepted script it left is the product agent's own datasheet probe;
+no design was written and no actor edited anything.
+
+**The retry completed.** `run.py robin … --turns 1` on the fresh
+`ot7-robin-c` at 14:58:53 UTC: probe 24 % allowed (the ADR-364/376 gate
+passing on a real allowed frame), dispatched at `medium`. The turn ended on
+its own in 1,676.4 s — result frame `success`, 35 API turns, 62 model
+messages, 19 thinking blocks, no output-cap hit, 33 tool calls (4
+`describe_api`, 6 `write_script`, 19 `inspect`, 4 `edit_script`) — and the
+create slot is spent: `status: paused`, `slots_spent: 1`, three
+continuations unspent, `continue-1` next through `resume`. The measured
+result on accepted revision `192db5b9…`: static fit **0 of 276 failing**
+(zero intersections, zero below-clearance, `world_geometry` empty,
+attachments touching); the sweep **incomplete on both wheel joints**,
+because neither `joint_wheel_l_axle` nor `joint_wheel_r_axle` declares
+limits, so no range exists to sweep; the inventory carrying catalog rows for
+every purchased part (2× `gearmotor/pololu-2367`, 1× `board/pi-zero-2-w`,
+8× `heat_insert/m2-standard`, 8× `bolt/m2x4-socket`) with only the five
+modelled printed parts uncatalogued. The stream's last frame read the
+five-hour window at 74 %, so `continue-1` waits for the 19:40 UTC reset.
+The assessment is REPORT.md's iteration 148 section.
