@@ -149,6 +149,29 @@ def test_the_prompt_says_catalog_identity_is_measured_and_advisory() -> None:
     assert "inspect scope=inventory" in CLI_OVERLAY
 
 
+def test_the_prompt_reads_absent_provenance_as_unknown_not_printed() -> None:
+    """ADR-382: the derivation producer is bounded, and the prompt says so.
+
+    ADR-381 gave the reply `derived_catalog_sources` and told the agent a
+    name absent from it was an ordinary printed part. The producer it
+    reports cannot support that: it follows a definition's base operand
+    only, so a catalog body fused in as a *second* operand is a purchase it
+    never names -- which the engine pins deliberately in
+    `test_inventory_scope.py`'s
+    `test_a_fuse_reads_the_first_operand_of_its_one_list_argument`, and
+    which ADR-381's own "what it does not claim" paragraph says outright.
+    An absent name is unknown provenance, and the prompt must not turn the
+    bound into a clean bill of health.
+    """
+
+    assert "ordinary printed part" not in CLI_OVERLAY
+    assert "provenance unknown" in CLI_OVERLAY
+    assert "base operand" in CLI_OVERLAY
+    assert "second operand" in CLI_OVERLAY
+    # ...and the one absence that *is* conclusive stays conclusive.
+    assert "clearance tool rather than a purchase" in CLI_OVERLAY
+
+
 def test_the_prompt_pushes_for_a_parametric_script() -> None:
     """The cheap sweep only exists if the expensive turn made it possible."""
 

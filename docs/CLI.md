@@ -2273,6 +2273,12 @@ being modified first) and name the nearest catalog body it came off. A row
 is `{"source_output", "family", "part_number"}`, sorted by source; a catalog
 body used only as a **cutter** appears on no base spine and is listed
 nowhere, which is the distinction between hardware and a clearance tool.
+**Absence is unknown provenance, not proof of a printed part** (ADR-382):
+the spine is the only path followed, so a catalog body fused into a printed
+solid as a *second* operand is a purchase this list cannot name, exactly as
+ADR-243's boundary and ADR-381's own limits say. The system prompt says the
+same, and tells the agent to read the script that built an unlisted name
+rather than read the silence as a pass.
 The list is empty rather than missing when nothing derives, and the block's
 `note` repeats each row in words. Every component row of `inspect
 scope=inventory` carries the same fact as `catalog_derived_from` beside the

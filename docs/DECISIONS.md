@@ -26297,7 +26297,9 @@ and both readers carry it.
    component and put the cut in the printed part that receives it. The
    system prompt gains one clause saying a name there is a purchased part
    to repair, a name absent from it is a printed part, and a catalog body
-   used only as a cutter is neither.
+   used only as a cutter is neither. **The middle third of that clause is
+   withdrawn by ADR-382**: it contradicts this entry's own limits, and the
+   prompt now calls an absent name provenance unknown.
 4. **`cadex inventory`'s document says it too**: the catalog column of a
    derived row reads *cut from servo `MG90S`* rather than an em dash, and
    the "Not from the catalog" list marks the same rows.
@@ -26324,5 +26326,41 @@ one printed part. On the CLI side `test_inventory.py` pins the block and
 the rendered document, and `test_mcp_protocol.py` pins the whole path to
 the model on the F5 fixture itself — the drilled servo placed twice now
 reaches the reply as `derived_catalog_sources` and in the note.
+
+No `ot7-*` design was edited and no frozen prompt was spent.
+
+## ADR-382 — Absent provenance is unknown, not printed (2026-09-16)
+
+**Context.** ADR-381 gave the build reply `derived_catalog_sources`, the
+roll-up naming every uncatalogued output whose **base operand spine** holds
+a catalog body, and added one clause to the system prompt: *a name there is
+a purchased part to repair, a name absent from it is a printed part, and a
+catalog body used only as a cutter is neither.* The middle third of that
+clause is false, and ADR-381's own "what it does not claim" paragraph says
+so in the same entry: the producer follows `arguments[0]` down and nothing
+else, so a catalog body fused into a printed solid as a **second** operand
+is a purchase it never names. That bound is deliberate and test-pinned
+(`test_a_fuse_reads_the_first_operand_of_its_one_list_argument`). Told that
+absence means printed, the agent reads a known blind spot as a clean bill
+of health — the same failure ADR-362 and ADR-381 were each written to
+remove, reintroduced one clause later.
+
+**Decision.** The prompt describes an absent name as **provenance
+unknown**. It says why — the base operand is the only path followed, so a
+second-operand fuse is a purchase the engine cannot name — keeps the one
+absence that *is* conclusive (a body used only as a cutter is a clearance
+tool, not a purchase), and tells the agent to read the script that built an
+unlisted name before calling it printed. `docs/CLI.md` says the same beside
+the `derived_catalog_sources` description.
+
+**Bounded, and staying bounded.** No detection is expanded: the producer,
+the scope value, the block, the document and every ADR-381 test are
+unchanged, and ADR-243's boundary stands where ADR-381 left it. This
+corrects clause 3 of ADR-381 and nothing else in it.
+
+**Evidence.** `test_the_prompt_reads_absent_provenance_as_unknown_not_printed`
+in `cli/tests/test_turn_loop.py`, red on the old overlay — it holds the
+false sentence out and the bound in, and cites the engine fixture that
+makes the bound real. `pixi run python -m pytest cli/tests` green.
 
 No `ot7-*` design was edited and no frozen prompt was spent.

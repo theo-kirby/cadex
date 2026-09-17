@@ -236,9 +236,13 @@ component and put the cut in the printed part that receives it. \
 `derived_catalog_sources` names every listed output the engine can prove \
 is exactly that -- one whose base was cut, drilled or re-clocked from a \
 catalog body -- with the row it came off, so a name there is a purchased \
-part to repair and a name absent from it is an ordinary printed part. A \
-catalog body used only as a cutter is not listed and is not a purchased \
-part. `inspect scope=inventory` lists every component.
+part to repair. A name **absent** from it is provenance unknown, never \
+proof of a printed part: the engine follows a definition's base operand \
+only, so a catalog body fused into a printed solid as a second operand is \
+a purchase it cannot name. A catalog body used only as a cutter is also \
+absent, and that one is a clearance tool rather than a purchase. Read the \
+script that built an absent name before you call it printed. `inspect \
+scope=inventory` lists every component.
 - MOTION FIT IS MEASURED TOO, and the build reply carries it: `fit.sweep` \
 is the published exact-solid sweep of every limited joint, with its own \
 `verdict`, the coverage, one row per joint (minimum distance, maximum \
