@@ -26503,3 +26503,74 @@ Fixtures in `cli/tests/test_ot7_runner.py` pin the bound against the three
 measured create turns and reproduce the `ot7-plover-b` shape;
 `docs/probes/ot7/runner/README.md` carries both rules. No engine, CLI,
 protocol or acceptance behaviour changes.
+
+## ADR-389 — A geometry digest, for bytes that are not a function of the inputs (2026-09-19)
+
+`compute_project_digest` identifies a BREP output by its exported bytes, and
+`part.offset` — OCCT's `BRepOffset_MakeOffset` — does not produce the same
+bytes twice. Every `open_project` re-runs the accepted script and asserts
+digest equality, so **any accepted design using `part.offset` could never be
+reopened**. Robin, ot7's balancer, was shut for good by exactly this: three
+rebuilds of its 26 outputs gave three different digests, differing only in
+`wheel_l` and `wheel_r`, at the same byte length, in the order of the geometry
+table (`docs/probes/ot7/DIGEST-DRIFT.md`, record `terse-dew-6200`). F6's
+frozen continuation could not be sent, and would have refused identically, in
+six seconds, forever.
+
+The guard was right about what it could see and wrong about what it meant. So
+the guard is unchanged and a second opinion is added.
+
+**The byte digest is untouched.** `cadex-project-digest-v1` is every stored
+`accepted_digest` in every project on disk; its material moved from
+`cadex_project_worker` to a new `CadexGeometryDigest` — so `cadexd` can build
+the same entries without importing the sandboxed worker — and a frozen fixture
+pins the result bit-for-bit against the implementation it replaced.
+
+**`cadex-project-geometry-digest-v1`** is the same entries with one thing
+changed: a BREP output is identified by its canonical definition *plus* what
+the kernel measures on the shape — counts, the exact vertex set, the exact
+edge-length and face-area multisets, the bounding box and the total area.
+Nothing is rounded, for the mesh fingerprint's reason (ADR-016): an exact
+quantity has no boundary to flip across. **Volume is excluded by name**, and
+that is measured rather than cautious: over four processes on the offending
+solid, every quantity above was bit-identical and the volume moved in its last
+two digits. Including the definition is what keeps this from being a weaker
+guard — a hand-edited script fails on the recipe before the geometry is
+consulted, which `test_a_changed_script_is_still_refused_at_the_restore_pass`
+pins against the real kernel.
+
+**Where it is consulted: only on a mismatch.** `open_project` re-measures the
+two retained attempts, and opens when they agree, reporting
+`matched_by: "geometry"` and `geometry_digest` in `restore`. A byte-for-byte
+match reports neither, so the ordinary reply — and its golden — is unchanged.
+Missing evidence is never an agreement: an absent staging directory, an
+unreadable result or a kernel that will not read an artifact back each refuse,
+and say which.
+
+**What it persists, and why it must.** A project whose bytes drift learns
+`accepted_geometry` — `{accepted_digest, geometry_digest}` — the first time it
+opens this way. Without that the fix would have a fuse: `prune_artifacts`
+keeps the three most recent attempts and pins whatever `accepted_attempt` says
+*during the rerun*, which by then is the candidate — so the retained accepted
+artifacts are on a clock, and a sixth reopen would shut a project the fifth
+one opened. Learning the value once takes the project off that clock, and a
+project accepted before any of this existed is rescued by the same read. The
+measurement carries the accepted digest it was learned under because it would
+otherwise outlive its own model: `rebuild` and `write_script` both re-accept,
+and a remembered measurement of the *previous* design would refuse the current
+one — reintroducing the defect one design change later. No migration:
+`read_state` merges the declared keys over whatever the file has.
+
+Evidence: `test_geometry_digest.py` (19 tests, including the frozen byte
+digest, the four refusals and the staleness rule); two real-kernel tests in
+`test_cadexd_lifecycle.py`, both failing on the old `cadexd`, the first of
+which reopens five times so `ATTEMPT_KEEP` really collects the accepted
+attempt and only the remembered measurement gets it open; and the
+measurement that motivated it — a copy of `ot7-robin-c` refuses to export
+before the change and exports after it, with the two retained attempts
+agreeing on all 24 BREP outputs by geometry and definition while disagreeing
+on two by bytes.
+
+`CadexdProtocol` gains two optional `restore` keys, `docs/INTEGRATION.md`
+moves with it, and the shell's client reads `matches_accepted` and is
+unaffected by an added key.

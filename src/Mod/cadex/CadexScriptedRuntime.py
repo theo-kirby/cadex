@@ -44,6 +44,12 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
     "project": (
         "cadex_domain_worker.py",
         "CadexSubshapeQuery.py",
+        # The digest material (ADR-389). In the bundle *and* in cadexd's
+        # closure, which is CadexNets' standing exactly: the project worker
+        # hashes an accepted run with it, and the service re-measures a
+        # retained one with it when the bytes disagree. Pure at module scope
+        # -- `Part` is imported inside the one function that needs a kernel.
+        "CadexGeometryDigest.py",
         "cadex_project_api.py",
         "cadex_sketcher_api.py",
         "cadex_sketcher_worker.py",

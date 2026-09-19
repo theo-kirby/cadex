@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-09-16
+Verified against source: 2026-09-19
 
 **Optional Blender recipe runtime (ADR-185).** A shell-owned cadexd child
 receives `CADEX_BLENDER_EXECUTABLE` naming the shell's own binary. The engine
@@ -127,7 +127,7 @@ lifetime signal.
 
 | Op | Args | Response payload |
 |---|---|---|
-| `open_project` | `project_root`, `budgets?`, `restore?` | manifest + full script.json state; **restore pass** re-runs THE script into the fresh ephemeral document and asserts digest equality when an accepted digest exists; a script that will not run at all is retried once from the accepted revision's pinned source (ADR-044) |
+| `open_project` | `project_root`, `budgets?`, `restore?` | manifest + full script.json state; **restore pass** re-runs THE script into the fresh ephemeral document and asserts digest equality when an accepted digest exists; a digest that differs only because the kernel re-serialized the same model is re-measured and accepted, reported as `matched_by: "geometry"` (ADR-389); a script that will not run at all is retried once from the accepted revision's pinned source (ADR-044) |
 | `describe_api` | — | `describe_project_api()` verbatim |
 | `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}`; `write_script` also takes `replace?` (ADR-045); `set_params` also takes `nets?` — the **complete** replacement row list for the connections a script declares with `nets(...)`, each row `{name, a, b, gauge_mm, solder, enabled}` with `a`/`b` addressed `<port>.<terminal>` (ADR-065). A full list rather than a patch, so the wiring editor can add and drop rows; a nets-only edit sends `values: {}`. `set_params` also takes `boards?` — the **complete** replacement row list for the terminals a script declares with `boards(...)`, each row `{board, name, origin, axis, hole_dia, depth}` in **millimetres in that board's own frame**, `hole_dia` present meaning a hole and absent meaning a pad (ADR-120). Full list, not a patch, for the reason `nets` is. A row may also carry `frame: "world"`: a measurement taken in the viewport, which cadexd cannot convert because it has no geometry and never runs user code — the worker converts it through the inverse of that component's placement chain and the canonical board-frame row is written back into `board_values`, so a pick is converted exactly once. `set_params` also takes `mounts?` — the **complete** replacement row list for the mounts a script declares with `mounts(...)`, each row `{component, name, origin, axis, roll, fastener, clearance}` in **millimetres in that component's own frame** (ADR-126). A mount is a terminal row plus a `roll`, so the frame is fully determined rather than only aimed, plus the fastener and clearance the mating half reads. Full list not a patch, `frame: "world"` converted by the worker, drift dropped rather than refused — the board table's terms exactly, one table over. `set_params` also takes `cages?` — the **complete** replacement ring list for the cages a script declares with `cage(...)`, each row `{cage, position, half_width, half_height, roll, exponent}` in millimetres along that cage's own axis (ADR-127). `exponent` is the superellipse power: 2.0 is an ellipse, larger fills the corners out. A ring carries **no name** — its identity is its place in its cage's order, and the stored list is complete — and rows naming a cage the script no longer declares are dropped | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
 | `rebuild` | `display?` | explicit deterministic re-run of the stored script (same payload shape) |
@@ -194,7 +194,20 @@ string; the family's shape and the golden are unchanged.
 
 `restore` reports what the open re-proved. A stored script that runs but
 produces a different digest is a **restore failure** — the user changed the
-script, and saying so is the point. A stored script that will not run at all
+script, and saying so is the point. Unless the two runs are the *same model
+serialized twice*: `part.offset` is OCCT's `BRepOffset_MakeOffset` and writes
+a different geometry table every process for an identical solid, so before
+ADR-389 a design that used it could never be reopened. On a digest mismatch
+the pass now re-measures both retained attempts —
+`cadex-project-geometry-digest-v1`, the same entries with each BREP output
+identified by its canonical definition plus what the kernel measures on it
+(counts, the exact vertex set, edge-length and face-area multisets, bounds,
+area; never volume, which drifts) — and opens when those agree, adding
+`matched_by: "geometry"` and `geometry_digest` to `restore`. A byte-for-byte
+match reports neither and is unchanged. The accepted digest is untouched,
+nothing re-accepts changed geometry, and a hand-edited script fails on the
+definition before the measurements are consulted. A stored script that will
+not run at all
 is not that: it is a store left broken by something with no business writing
 it, so the pass retries once from the accepted revision's pinned source and,
 if that reproduces the accepted digest, reports

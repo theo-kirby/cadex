@@ -2,6 +2,12 @@
 
 Verified against source: 2026-09-19. [Cadex-new]
 
+**Fixed by ADR-389.** Everything below is the measurement that motivated
+the fix and still reproduces; what has changed is the consequence. A byte
+mismatch is no longer the end of a project — `open_project` re-measures the
+two retained attempts and opens when the model agrees, reporting
+`matched_by: "geometry"`. The section "What this blocks" is superseded.
+
 Robin's F6 continuation was dispatched on Opus and never reached the model.
 The CLI refused in six seconds, before a provider session existed:
 
@@ -62,19 +68,21 @@ a dead end at the shape level.
 
 ## What this blocks, and what it does not
 
-- **F6 and F7 are blocked** for any design that reaches for `part.offset`.
-  An accepted design using it cannot be reopened, so no continuation can run.
+- **F6 and F7 were blocked** for any design that reaches for `part.offset`:
+  an accepted design using it could not be reopened, so no continuation could
+  run. ADR-389 lifts that; a copy of `ot7-robin-c` exports again.
 - **Nothing that is open today breaks.** Heron, Finch and the retained ot6
   designs use no `part.offset`; their digests are byte-stable and their
   projects open.
-- The accepted-state guard is doing its job as specified. What is wrong is
-  that byte equality is being asked to stand for geometric equality, for an
-  operation whose bytes are not a function of its inputs alone. The same
-  function already solves this for meshes with an order-insensitive vertex-set
-  fingerprint rather than artifact bytes (ADR-016), and that is the precedent
-  the fix should follow. Changing the digest's definition outright would
-  invalidate every stored `accepted_digest`, so the fix needs a migration and
-  is not a drive-by.
+- The accepted-state guard is doing its job as specified. What was wrong is
+  that byte equality was being asked to stand for geometric equality, for an
+  operation whose bytes are not a function of its inputs alone. ADR-389 adds
+  `cadex-project-geometry-digest-v1` beside the byte digest rather than
+  replacing it — the same entries, with a BREP output identified by its
+  canonical definition plus the kernel measurements that *are* stable
+  (measured: the exact vertex set, edge-length and face-area multisets,
+  counts, bounds and area; never volume). No stored `accepted_digest` moved,
+  so no migration was needed.
 
 ## Reproducing it
 

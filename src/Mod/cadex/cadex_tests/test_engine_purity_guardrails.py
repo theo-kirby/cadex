@@ -95,6 +95,13 @@ DECLARED_ENGINE_MODULES = frozenset(
         "CadexReferenceContracts",
         "CadexTools",
         "CadexDigest",
+        # The project digest's entry material and the geometric identity of
+        # a shape (ADR-389). Reached from cadexd because `open_project`
+        # re-measures a retained attempt when the byte digest disagrees;
+        # staged into the project worker bundle because that is where the
+        # byte digest is computed. `Part` is deferred into
+        # `brep_geometry_fingerprint`, so importing it costs no kernel.
+        "CadexGeometryDigest",
         # inspection, pins, tessellation
         "CadexInspection",
         "CadexPinResolution",

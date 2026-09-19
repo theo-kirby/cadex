@@ -2288,3 +2288,107 @@ def test_an_assembly_declaring_no_step_still_publishes_its_sweep_coverage(
             'path': '/clearance_sweep', 'limit': 50})['value']
     finally:
         _stop(client)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="No FreeCADCmd binary available.")
+def test_an_offset_project_reopens_although_its_bytes_never_repeat(tmp_path):
+    """`part.offset` re-serializes; the model does not change (ADR-389).
+
+    Robin, ot7's balancer, was shut for good by this: its wheels are the
+    design's only consumers of `part.offset`, three rebuilds of the same
+    source gave three different digests, and every reopen refused. The guard
+    was right about what it could see and wrong about what it meant.
+
+    So the assertion here is in two halves, and the second one is the point:
+    every reopen succeeds, **and** at least one of them got there through the
+    drift path rather than byte equality. If OCCT ever serializes an offset
+    reproducibly this test fails loudly, which is the right way to find out
+    that the fallback has stopped being needed.
+    """
+
+    root = tmp_path / "offset.cadex"
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(root)})["ok"]
+        written = client.request("write_script", {
+            "source": (
+                "pin = part.cylinder(4.0, 10.0)\n"
+                'result = {"pin": pin, "sleeve": part.offset(pin, 0.15, '
+                'output_type="solid")}\n'
+            ),
+            "expected_revision": "", "display": {"quality": "standard"},
+        })
+        assert written["ok"], written
+        state = json.loads((root / "script.json").read_text())
+        drifted = []
+        # Five, not three: `prune_artifacts` keeps ATTEMPT_KEEP = 3 attempts
+        # and pins whatever `accepted_attempt` says during the rerun, which is
+        # the candidate — so by the fourth reopen the accepted attempt's own
+        # artifacts are gone, and only the geometry digest the project learned
+        # on the first one gets it open.
+        for _ in range(5):
+            _stop(client)
+            client = _spawn_cadexd()
+            reopened = client.request("open_project", {"project_root": str(root)})
+            assert reopened["ok"], reopened
+            restore = reopened["restore"]
+            assert restore["matches_accepted"] is True, restore
+            after = json.loads((root / "script.json").read_text())
+            if restore["digest"] != state["accepted_digest"]:
+                assert restore["matched_by"] == "geometry", restore
+                assert len(restore["geometry_digest"]) == 64, restore
+                drifted.append(restore["digest"])
+                # The drift path rolls the accepted attempt back with the rest
+                # of the accepted state. A byte-for-byte reopen does not come
+                # through here at all — ADR-303 decides whether it re-pins —
+                # so only this branch may assert the locator.
+                assert after["accepted_attempt"] == state["accepted_attempt"]
+            else:
+                assert "matched_by" not in restore, restore
+            for key in ("accepted_revision", "accepted_digest"):
+                assert after[key] == state[key], key
+        assert drifted, "part.offset serialized reproducibly; re-read ADR-389"
+        learned = json.loads((root / "script.json").read_text())
+        assert learned["accepted_geometry"]["accepted_digest"] == (
+            state["accepted_digest"]
+        ), learned
+        assert len(learned["accepted_geometry"]["geometry_digest"]) == 64, learned
+        assert not (root / state["accepted_attempt"]["staging"]).is_dir(), (
+            "the accepted attempt outlived ATTEMPT_KEEP; the retention half "
+            "of this test proves nothing"
+        )
+    finally:
+        _stop(client)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="No FreeCADCmd binary available.")
+def test_a_changed_script_is_still_refused_at_the_restore_pass(tmp_path):
+    """The fallback measures; it does not forgive. ADR-044's guard stands."""
+
+    root = tmp_path / "edited.cadex"
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(root)})["ok"]
+        assert client.request("write_script", {
+            "source": 'result = {"plate": part.box(20, 10, 3)}',
+            "expected_revision": "", "display": {"quality": "standard"},
+        })["ok"]
+        state = json.loads((root / "script.json").read_text())
+        (root / "script.py").write_text(
+            'result = {"plate": part.box(20, 10, 4)}\n', encoding="utf-8"
+        )
+        _stop(client)
+        client = _spawn_cadexd()
+        reopened = client.request("open_project", {"project_root": str(root)})
+        assert reopened["ok"] is False, reopened
+        observed = reopened["observed"]
+        assert observed["accepted_digest"] == state["accepted_digest"]
+        assert observed["geometry_comparison"] == (
+            "the rebuilt model is not the accepted one"
+        )
+        after = json.loads((root / "script.json").read_text())
+        assert after["accepted_digest"] == state["accepted_digest"]
+    finally:
+        _stop(client)

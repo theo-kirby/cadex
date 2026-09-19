@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-09-08
+Verified against source: 2026-09-19
 
 **Native Blender geometry (ADR-185).** The mesh domain now includes
 `mesh.blender`: an xscript-owned recipe with named mesh inputs and JSON
@@ -42,7 +42,10 @@ simulation on MuJoCo, MJCF export, training-task bundles and rollouts of
 verified policies, all through that same worker and that same digest
 (ADR-086, `docs/MUJOCO.md`). Every `open_project` re-runs the
 accepted script and asserts digest equality, so restart determinism is
-proven on every open rather than once per audit. The **shell is a Blender
+proven on every open rather than once per audit — and where the kernel
+re-serializes one model to different bytes (`part.offset`), the two retained
+attempts are re-measured instead of refused (`CadexGeometryDigest.py`,
+ADR-389). The **shell is a Blender
 fork under `shell/`**: a protocol client that hydrates the tessellated
 results into its scene, and the thing a user actually launches. It carries
 the engine inside its own bundle as a payload it finds by manifest
@@ -190,6 +193,7 @@ Ownership closure, lint, and orphan queries live in
 | `CadexScriptedRuntime.py` | The project lifecycle: store persistence, source policy, worker staging/exec, validation, acceptance. `[Cadex-new]` |
 | `CadexScriptedDomains.py` | `PROJECT_PACK` + the five capability packs (worker/publication contracts), project tool specs, `project_script_revision`, object-tag constants, source sandbox rules. `[Cadex-new]` |
 | `cadex_project_api.py` / `cadex_project_worker.py` | The project domain: `params`/`num` vocabulary, inline assembly-source tokens, multi-domain exec namespace, per-domain evaluation, worker-side content digest. `[Cadex-new]` |
+| `CadexGeometryDigest.py` | The digest material both halves share: the byte digest the worker computes, and the geometry digest `cadexd` falls back to when a kernel re-serializes one model to different bytes (ADR-389). `[Cadex-new]` |
 | `CadexScriptedDomainPublication.py` / `CadexScriptedPublication.py` | Project publication (one transaction, lint, GC) over the per-domain apply routines. Publishes the five live domains only — the robot/FEM/inspection/points/reverse-engineering/meshpart/surface paths were deleted in Phase 9 (ADR-026), halving the module. `[VibeCAD-era]`, reshaped `[Cadex-new]` |
 | `CadexScriptedOwnership.py` | Ownership tagging, owned closure, untagged/orphan queries. |
 | `CadexScriptedProcess.py` | Bounded subprocess runner (timeout, memory watchdog, cancellation). `[VibeCAD-era]` |

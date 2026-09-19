@@ -60,6 +60,91 @@ from CadexdProtocol import (
 )
 
 
+
+def _remembered_geometry(state: Mapping[str, Any], accepted_digest: str) -> str:
+    """What this project last measured its accepted outputs to be, or ``""``.
+
+    Keyed on the accepted digest it was learned under, because `rebuild` and
+    `write_script` both re-accept: a measurement kept past the model it
+    describes would refuse the model that replaced it, which is the failure
+    this whole path exists to prevent (ADR-389).
+    """
+
+    remembered = state.get("accepted_geometry")
+    if not isinstance(remembered, Mapping):
+        return ""
+    if str(remembered.get("accepted_digest") or "") != accepted_digest:
+        return ""
+    return str(remembered.get("geometry_digest") or "")
+
+
+def _geometry_agrees(
+    root: Path, accepted: Any, candidate: Any, accepted_geometry: str
+) -> tuple[bool, dict[str, Any], str]:
+    """Do two runs describe the same model, byte drift aside?
+
+    Returns ``(agreed, observed, learned)``. ``observed`` always says enough
+    to explain the answer, because a refusal here is a project nobody can
+    open and "the digests differ" was never enough to act on. ``learned`` is
+    the geometry digest worth persisting, and is empty when there is nothing
+    new to keep.
+
+    The accepted side comes from ``accepted_geometry`` when the project has
+    learned it, and from re-measuring the accepted attempt's retained
+    artifacts when it has not -- which is how a project accepted before any
+    of this existed is rescued at all.
+
+    Everything else is a reason to say no: a missing staging directory, an
+    unreadable result, a kernel that will not read an artifact back. The
+    geometry digest is a second opinion on an operation whose bytes are not a
+    function of its inputs (ADR-389) -- it is not a way to open a project
+    whose evidence is gone.
+    """
+
+    from CadexGeometryDigest import staged_geometry_digest
+
+    observed: dict[str, Any] = {}
+
+    def measure(label: str, attempt: Any) -> str | None:
+        relative = str(attempt.get("staging") or "") if isinstance(attempt, Mapping) else ""
+        staging = (root / relative) if relative else None
+        if staging is None or not (staging / "result.json").is_file():
+            observed["geometry_comparison"] = (
+                f"the {label} attempt kept no result to re-measure"
+            )
+            return None
+        try:
+            return staged_geometry_digest(staging)
+        except Exception as exc:  # kernel, filesystem or malformed result
+            observed["geometry_comparison"] = (
+                f"the {label} attempt could not be re-measured: {exc}"
+            )
+            return None
+
+    restored = measure("restored", candidate)
+    if restored is None:
+        return False, observed, ""
+    observed["restored_geometry_digest"] = restored
+
+    learned = ""
+    if accepted_geometry:
+        expected: str | None = accepted_geometry
+    else:
+        expected = measure("accepted", accepted)
+        if expected is None:
+            return False, observed, ""
+        learned = restored
+    observed["accepted_geometry_digest"] = expected
+    if expected != restored:
+        observed["geometry_comparison"] = "the rebuilt model is not the accepted one"
+        return False, observed, ""
+    observed["geometry_comparison"] = (
+        "the bytes drifted but the model did not: same definitions, same "
+        "kernel measurements"
+    )
+    return True, observed, learned
+
+
 class _EmptyRegistry:
     """core.inspect scope='api' resolves through describe_project_api on the
     xscript engine; cadexd serves no per-tool schema registry."""
@@ -466,7 +551,9 @@ class CadexdServer:
                     )
                 payload = retry
                 repaired = True
-            if str(payload.get("digest") or "") != accepted_digest:
+            restored_digest = str(payload.get("digest") or "")
+            geometry_digest = ""
+            if restored_digest != accepted_digest:
                 # The restore pass runs through `write_script`, which is an
                 # *accepting* operation: by now it has already recorded what
                 # it just built as the accepted revision. For a match that is
@@ -474,27 +561,67 @@ class CadexdServer:
                 # redefined by whatever the file happened to contain — so the
                 # second open of a hand-edited project used to adopt the edit
                 # silently, having called it a corruption once (ADR-044).
+                #
+                # ...unless the two runs are the same model serialized twice.
+                # `part.offset` is OCCT's BRepOffset_MakeOffset and it writes
+                # a different geometry table every process for an identical
+                # solid, so byte inequality alone shut such a project for good
+                # (ADR-389). Measure both retained attempts instead, before
+                # restoring the accepted state: same recipe, same kernel
+                # measurements, same project.
+                candidate_attempt = store.read_state().get("accepted_attempt")
+                remembered = _remembered_geometry(state, accepted_digest)
+                agreed, observed, learned = _geometry_agrees(
+                    root,
+                    state.get("accepted_attempt"),
+                    candidate_attempt,
+                    remembered,
+                )
+                # One write, after the measurement, so what the accepted
+                # attempt measures is persisted by the same rollback that puts
+                # the accepted state back. It only has to be read once:
+                # `prune_artifacts` keeps the three most recent attempts and
+                # pins whatever `accepted_attempt` says *during the rerun*,
+                # which by then is the candidate — so the retained accepted
+                # artifacts are on a clock, and this takes the project off it.
                 store.write(
                     state_updates={
                         "accepted_revision": str(state.get("accepted_revision") or ""),
                         "accepted_contract": state.get("accepted_contract"),
                         "accepted_digest": accepted_digest,
                         "accepted_attempt": state.get("accepted_attempt"),
+                        "accepted_geometry": (
+                            {
+                                "accepted_digest": accepted_digest,
+                                "geometry_digest": learned,
+                            }
+                            if learned
+                            else state.get("accepted_geometry")
+                        ),
                     }
                 )
-                return failure(
-                    CADEXD_RESTORE_FAILED,
-                    "The restore pass digest does not match the accepted digest.",
-                    observed={
-                        "restored_digest": payload.get("digest"),
-                        "accepted_digest": accepted_digest,
-                    },
-                )
+                if not agreed:
+                    return failure(
+                        CADEXD_RESTORE_FAILED,
+                        "The restore pass digest does not match the accepted digest.",
+                        observed={
+                            "restored_digest": payload.get("digest"),
+                            "accepted_digest": accepted_digest,
+                            **observed,
+                        },
+                    )
+                geometry_digest = str(observed.get("restored_geometry_digest") or "")
             restore = {
                 "performed": True,
-                "digest": str(payload.get("digest") or ""),
+                "digest": restored_digest,
                 "matches_accepted": True,
             }
+            if geometry_digest:
+                # Only on the drift path: a byte-for-byte match keeps the
+                # reply it always had, so nothing reading it has to learn a
+                # new shape to stay correct.
+                restore["matched_by"] = "geometry"
+                restore["geometry_digest"] = geometry_digest
             if repaired:
                 # The rerun re-wrote script.py and working_revision on its way
                 # through, so the store is consistent again by the time this

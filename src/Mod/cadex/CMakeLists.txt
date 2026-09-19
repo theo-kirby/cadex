@@ -58,6 +58,7 @@ set(Cadex_Scripts
     cadexd.py
     CadexdProtocol.py
     CadexDigest.py
+    CadexGeometryDigest.py
 )
 
 

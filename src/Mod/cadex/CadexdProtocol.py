@@ -538,10 +538,22 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     # A performed restore also reports the digest it re-derived and that it
     # matched; a skipped one carries neither. `repaired_from_accepted` appears
     # only when the working script would not run and the accepted revision's
-    # own source was used instead (ADR-044).
+    # own source was used instead (ADR-044). `matched_by` and
+    # `geometry_digest` appear only when the re-derived digest did *not* equal
+    # the accepted one and the two retained attempts were re-measured to be
+    # the same model anyway (ADR-389) — a byte-for-byte match reports neither,
+    # so the ordinary reply is unchanged.
     "restore": (
         frozenset({"performed"}),
-        frozenset({"digest", "matches_accepted", "repaired_from_accepted"}),
+        frozenset(
+            {
+                "digest",
+                "matches_accepted",
+                "repaired_from_accepted",
+                "matched_by",
+                "geometry_digest",
+            }
+        ),
     ),
     "budgets": (frozenset({"timeout_seconds", "memory_limit_mb"}), frozenset()),
 }
