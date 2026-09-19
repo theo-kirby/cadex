@@ -349,6 +349,46 @@ def interruption(turn, transcript, bound_seconds=TURN_BOUND_SECONDS):
             'model_messages_before_kill': model_messages(transcript)}
 
 
+def unreached_reason(turn, transcript, envelope):
+    """Why a call never reached the model for a local reason, or None (ADR-386).
+
+    The charter counts only a turn that reached the model and ended on its
+    own. A usage limit is void (ADR-355) and a runner kill is an interruption
+    (ADR-356); both are provider-side. This is the third way a frozen prompt
+    can fail to be sent: the CLI refused before it opened a provider session
+    at all, so no model saw the prompt. The ot7 case that found it is a
+    project whose accepted script does not rebuild byte-identically, which
+    makes ``open_project``'s restore pass refuse in six seconds.
+
+    The evidence is the absence of a provider stream together with the CLI's
+    own envelope: an error, and no session id. Both are required, so an
+    ordinary provider failure -- an ``authentication_failed`` synthetic frame,
+    which is a stream -- stays a failed turn and spends its slot, and a call
+    that crashed after the model spoke stays failed too. A call that wrote no
+    envelope proves nothing and is left failed, on the same rule that missing
+    evidence never means a passing result.
+    """
+    if turn.get('exit_code') in (0, 3, 'timeout', 'launch_failed'):
+        return None
+    if read_frames(transcript):
+        return None
+    envelope = Path(envelope)
+    if not envelope.is_file():
+        return None
+    try:
+        reply = json.loads(envelope.read_text())
+    except ValueError:
+        return None
+    if not isinstance(reply, dict):
+        return None
+    error = str(reply.get('error') or '').strip()
+    if not error or str(reply.get('session_id') or ''):
+        return None
+    return {'kind': 'never_reached_model', 'rule': 'ADR-386', 'slot_consumed': False,
+            'exit_code': turn.get('exit_code'), 'elapsed_seconds': turn.get('elapsed_seconds'),
+            'provider_frames': 0, 'error': error[:400]}
+
+
 def retry_project_name(name):
     """The fresh, letter-suffixed project a void call is retried in (ADR-355)."""
     match = re.fullmatch(r'(.*)-([a-y])', name)
@@ -363,10 +403,10 @@ def classify(transcript, envelope=None, stderr=None):
         stderr = transcript.parent / 'turn.stderr.txt'
     void = void_reason(transcript, envelope, stderr)
     cut_off = None
+    turn = {}
     if not void:
         # The runner's own exit code lives in the attempt receipt beside the
         # turn directory; without it a call can only be classified void or not.
-        turn = {}
         try:
             receipt = json.loads((transcript.parent.parent / 'attempt.json').read_text())
             index = int(transcript.parent.name.split('-')[-1])
@@ -374,8 +414,11 @@ def classify(transcript, envelope=None, stderr=None):
         except (OSError, ValueError, KeyError, IndexError, TypeError):
             turn = {}
         cut_off = interruption(turn, transcript) if turn else None
+    never = None
+    if not void and not cut_off and envelope is not None:
+        never = unreached_reason(turn, transcript, envelope)
     return {'transcript': digest(transcript) if transcript.is_file() else None,
-            'void': void, 'interruption': cut_off}
+            'void': void, 'interruption': cut_off, 'unreached': never}
 
 
 def execute(command, out, stem, timeout):
@@ -480,7 +523,7 @@ def run(design, project, model, execute_call=execute, turns=None, window_bound=N
     evidence.mkdir()
     receipt = {'schema': 'ot7-design-evidence-v1', 'design': design, 'project': project.name,
                'model': model, 'actor_design_edits': 0, 'turns': [], 'status': 'running',
-               'slots_spent': 0, 'void_calls': 0, 'interrupted_calls': 0,
+               'slots_spent': 0, 'void_calls': 0, 'interrupted_calls': 0, 'unreached_calls': 0,
                'turn_bound_seconds': TURN_BOUND_SECONDS, 'settings': settings(effort)}
     save = lambda: write(evidence / 'attempt.json', receipt)
     save()
@@ -515,10 +558,14 @@ def remaining(receipt):
     """What the frozen schedule still holds for a receipt: only turns that
     ended on their own spend a slot, the first prompt is not a continuation,
     and a void, interrupted or failed row closes the project (ADR-355,
-    ADR-356). Computed from the rows, never from the receipt's status, so a
-    receipt written under the superseded one-slot repair rule reads right."""
+    ADR-356). An unreached row is skipped entirely (ADR-386): the prompt was
+    never sent, so the same one is still next in the same project. Computed
+    from the rows, never from the receipt's status, so a receipt written
+    under the superseded one-slot repair rule reads right."""
     names = frozen(receipt['design'])
-    rows = receipt['turns']
+    # An unreached call never sent its prompt, so it is transparent here: it
+    # neither closes the project nor advances the schedule (ADR-386).
+    rows = [row for row in receipt['turns'] if row['status'] != 'unreached']
     completed = [row for row in rows if row['status'] == 'completed']
     closed = None
     if rows and rows[-1]['status'] != 'completed':
@@ -569,13 +616,20 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
                 break
             receipt.pop('deferred', None)
         out = evidence / f'turn-{index}'
+        # An unreached call (ADR-386) leaves its receipt behind and the same
+        # prompt is re-sent into the same project, so the retry gets its own
+        # directory rather than overwriting the evidence of why it failed.
+        retry = 0
+        while out.exists():
+            retry += 1
+            out = evidence / f'turn-{index}-retry-{retry}'
         out.mkdir()
         prompt = out / name
         prompt.write_bytes((PROMPTS / name).read_bytes())
         counts = index > 0  # the create or repair prompt is not a continuation
         row = {'index': index, 'continuations_used': continuations + counts,
                'prompt': digest(prompt), 'status': 'started', 'window': reading,
-               'model': receipt['model']}
+               'model': receipt['model'], 'evidence_dir': out.name}
         receipt['turns'].append(row)
         write(evidence / 'attempt.json', receipt)  # Persist the slot before launching the provider; a void call gives it back.
         # Every turn of an attempt runs at the effort its receipt records
@@ -588,6 +642,9 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
                                    receipt['model']], out, 'turn', TURN_BOUND_SECONDS)
         row['void'] = void_reason(out / 'transcript.jsonl', out / 'turn.stdout.json', out / 'turn.stderr.txt')
         row['interruption'] = None if row['void'] else interruption(row['turn'], out / 'transcript.jsonl')
+        row['unreached'] = (None if row['void'] or row['interruption'] else
+                            unreached_reason(row['turn'], out / 'transcript.jsonl',
+                                             out / 'turn.stdout.json'))
         row['measurement'] = execute_call([sys.executable, str(Path(__file__).resolve()), '--child-measure',
                                           str(project), str(out)], out, 'measurement',
                                          MEASUREMENT_BOUND_SECONDS)
@@ -617,6 +674,15 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
             row['slot_consumed'] = False
             row['continuations_used'] = continuations
             receipt['interrupted_calls'] += 1
+        elif row['unreached']:
+            # ADR-386: the CLI refused before a provider session existed, so
+            # no model saw the prompt. The slot is unspent and the project is
+            # not closed -- the same prompt is next, in this same project,
+            # once whatever refused it is fixed.
+            row['status'] = 'unreached'
+            row['slot_consumed'] = False
+            row['continuations_used'] = continuations
+            receipt['unreached_calls'] = receipt.get('unreached_calls', 0) + 1
         else:
             row['status'] = 'completed'
             row['slot_consumed'] = True
@@ -631,6 +697,19 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
                 row['measurement']['exit_code'] == 0)
         row['artifacts'] = [digest(p) for p in sorted(out.iterdir()) if p.is_file()]
         write(evidence / 'attempt.json', receipt)
+        if row['unreached']:
+            # The prompt is still unspent and still next, so the attempt is
+            # paused rather than closed: no fresh project, no retry naming.
+            receipt['status'] = 'paused'
+            receipt['blocked'] = {'rule': 'ADR-386', 'prompt': name,
+                                  'evidence_dir': out.name,
+                                  'error': row['unreached']['error'],
+                                  'note': 'The CLI refused before a provider session existed, so no '
+                                          'model saw this prompt and no slot was spent. Re-send the '
+                                          'same prompt into this same project with `resume`, once '
+                                          'the refusal it names is fixed.'}
+            break
+        receipt.pop('blocked', None)
         if row['void'] or row['interruption']:
             receipt['status'] = 'void' if row['void'] else 'interrupted'
             receipt['retry'] = {'rule': 'ADR-355' if row['void'] else 'ADR-356', 'prompt': name,
@@ -705,6 +784,73 @@ def resume(project, execute_call=execute, turns=1, window_bound=None, model=None
     return dispatch(receipt, project, evidence, execute_call, turns, window_bound)
 
 
+def reclassify(project):
+    """Re-read a retained attempt's own evidence and correct its accounting (ADR-386).
+
+    The unreached class arrived after ot7 had already collected calls under
+    it, so the receipts that recorded one as a completed, slot-spending turn
+    are wrong about a slot the model never saw. This reads each retained
+    turn's own stream and envelope back and demotes only the rows that the
+    evidence proves never reached the model. A completed turn is never
+    touched, because a stream with a model message in it can never satisfy
+    ``unreached_reason``. The superseded receipt is kept beside the corrected
+    one rather than deleted.
+    """
+    project = Path(project).resolve()
+    evidence = next((d for d in (project / 'evidence' / 'f4-repair', project / 'evidence')
+                     if (d / 'attempt.json').is_file()), None)
+    if evidence is None:
+        raise ValueError('no attempt to reclassify')
+    receipt = json.loads((evidence / 'attempt.json').read_text())
+    corrected = []
+    for row in receipt['turns']:
+        if row['status'] != 'completed':
+            continue
+        out = evidence / str(row.get('evidence_dir') or f"turn-{row['index']}")
+        never = unreached_reason(row.get('turn') or {}, out / 'transcript.jsonl',
+                                 out / 'turn.stdout.json')
+        if not never:
+            continue
+        row['status'] = 'unreached'
+        row['unreached'] = never
+        row['slot_consumed'] = False
+        row.setdefault('evidence_dir', out.name)
+        receipt['slots_spent'] = max(receipt.get('slots_spent', 0) - 1, 0)
+        receipt['unreached_calls'] = receipt.get('unreached_calls', 0) + 1
+        corrected.append({'index': row['index'], 'evidence_dir': out.name,
+                          'error': never['error']})
+    if not corrected:
+        return {'project': project.name, 'corrected': [], 'receipt': receipt}
+    # A stale status is what the correction is for: a receipt that closed as
+    # `failed` on a call the model never saw closed on nothing. The status is
+    # taken from the rows, and the rows below an unreached one never ran, so
+    # their continuation counts are unaffected.
+    if receipt['turns'][-1]['status'] == 'unreached':
+        receipt['status'] = 'paused'
+        receipt.pop('retry', None)
+        last = corrected[-1]
+        receipt['blocked'] = {'rule': 'ADR-386', 'prompt': receipt['turns'][-1]['prompt']['path'],
+                              'evidence_dir': last['evidence_dir'], 'error': last['error'],
+                              'note': 'Reclassified from the retained evidence: the CLI refused '
+                                      'before a provider session existed, so no model saw this '
+                                      'prompt and no slot was spent. Re-send the same prompt into '
+                                      'this same project with `resume`, once the refusal it names '
+                                      'is fixed.'}
+    receipt['remaining'] = remaining(receipt)
+    receipt.setdefault('reclassifications', []).append(
+        {'rule': 'ADR-386', 'at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+         'turns': corrected})
+    superseded = evidence / 'attempt.superseded.json'
+    index = 1
+    while superseded.exists():
+        index += 1
+        superseded = evidence / f'attempt.superseded-{index}.json'
+    superseded.write_text((evidence / 'attempt.json').read_text())
+    write(evidence / 'attempt.json', receipt)
+    return {'project': project.name, 'corrected': corrected,
+            'superseded': superseded.name, 'remaining': receipt['remaining']}
+
+
 def design_identity(project):
     """The seed identity when the project has a script, else None (a design
     attempt that never built has no script to snapshot)."""
@@ -745,9 +891,11 @@ if __name__ == '__main__':
         print(json.dumps(classify(*sys.argv[2:5]), indent=2))
         sys.exit(0)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('design', choices=['heron', 'robin', 'plover', 'repair', 'resume', 'remaining', 'window'],
+    parser.add_argument('design', choices=['heron', 'robin', 'plover', 'repair', 'resume', 'remaining',
+                                           'reclassify', 'window'],
                         help='a frozen design to start; `resume` dispatches the next continuation '
                              'on an existing project; `remaining` only reads what its schedule holds; '
+                             '`reclassify` re-reads a retained attempt\'s evidence and corrects its accounting; '
                              '`window` only reads the five-hour window and dispatches nothing')
     parser.add_argument('project', type=Path, nargs='?')
     parser.add_argument('--model', default=None,
@@ -774,6 +922,8 @@ if __name__ == '__main__':
         evidence = next(d for d in (args.project / 'evidence' / 'f4-repair', args.project / 'evidence')
                         if (d / 'attempt.json').is_file())
         print(json.dumps(remaining(json.loads((evidence / 'attempt.json').read_text())), indent=2))
+    elif args.design == 'reclassify':
+        print(json.dumps(reclassify(args.project), indent=2))
     elif args.design == 'resume':
         print(json.dumps(resume(args.project, turns=args.turns or 1,
                                 window_bound=args.window_bound, model=args.model), indent=2))

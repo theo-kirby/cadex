@@ -1,0 +1,87 @@
+# `part.offset` makes a project that can never be reopened
+
+Verified against source: 2026-09-19. [Cadex-new]
+
+Robin's F6 continuation was dispatched on Opus and never reached the model.
+The CLI refused in six seconds, before a provider session existed:
+
+```
+Could not open <project>: The restore pass digest does not match the accepted digest.
+```
+
+`open_project`'s restore pass (`src/Mod/cadex/cadexd.py:487`) re-runs the
+stored script and compares the rebuilt project digest against the accepted
+one. For `ot7-robin-c` it never matches, and it never matches *differently
+each time*, so the project is shut for good. The accepted digest is
+`0a6fe0f5…`; three rebuilds of the same bytes produced `e9ffa272…` in the
+project itself, then `908ed881…` and `7d2a5051…` in two untouched copies.
+
+This is not a changed design, and the guard is not wrong to refuse on what it
+can see. The geometry is identical; only its serialization order is not.
+
+## What actually differs
+
+`compute_project_digest` (`src/Mod/cadex/cadex_project_worker.py:164`)
+identifies a BREP output by its exported bytes. Of Robin's 26 outputs, exactly
+two differ between rebuilds — `wheel_l` and `wheel_r` — and they differ at the
+same byte length (16,927). The differing records are the geometry table:
+the same curves, in a different order.
+
+Both wheels, and nothing else in the design, pass through one operation:
+
+```python
+cutter = part.offset(seg, p.bore_clear / 2.0, output_type="solid")
+```
+
+## Isolated
+
+A minimal script through the real `cadexd`, three separate processes each:
+
+| script | digests over three processes |
+|---|---|
+| `part.offset(cylinder, 0.15, output_type="solid")` | `ad7a46c2…`, `f1d2ecd2…`, `eed4f4fe…` — three different |
+| `part.cut(part.fuse([box, cylinder]), cylinder)` | `260f3221…` three times — stable |
+
+`part.offset` is `TopoShape.makeOffsetShape`, i.e. OCCT's
+`BRepOffset_MakeOffset` (`cadex_part_worker.py:4221`). Heron, which uses no
+`part.offset`, resumed through three continuations without trouble.
+
+## The shape is the same; the bytes are not
+
+Measured directly against the kernel, on the same offset, three processes:
+
+- volume `232.666456132` mm³ every time;
+- 5 faces, 7 edges, 4 vertices every time;
+- the edge-length multiset identical to 1e-6 every time;
+- **4 of the 5 individual faces export to different bytes each run.**
+
+So the instability is *inside* each face, not in the order faces are held.
+Rebuilding the solid from its faces sorted by centre of mass and area — the
+obvious canonicalization — does **not** stabilize the digest. That approach is
+a dead end at the shape level.
+
+## What this blocks, and what it does not
+
+- **F6 and F7 are blocked** for any design that reaches for `part.offset`.
+  An accepted design using it cannot be reopened, so no continuation can run.
+- **Nothing that is open today breaks.** Heron, Finch and the retained ot6
+  designs use no `part.offset`; their digests are byte-stable and their
+  projects open.
+- The accepted-state guard is doing its job as specified. What is wrong is
+  that byte equality is being asked to stand for geometric equality, for an
+  operation whose bytes are not a function of its inputs alone. The same
+  function already solves this for meshes with an order-insensitive vertex-set
+  fingerprint rather than artifact bytes (ADR-016), and that is the precedent
+  the fix should follow. Changing the digest's definition outright would
+  invalidate every stored `accepted_digest`, so the fix needs a migration and
+  is not a drive-by.
+
+## Reproducing it
+
+```bash
+pixi run python docs/probes/ot7/runner/run.py reclassify <project>   # the accounting
+./cadex export --project <copy-of-ot7-robin-c> --out /tmp/out --json  # the refusal
+```
+
+Then read `latest_candidate.digest` in the copy's `script.json`: it is a new
+value after every run, and never the `accepted_digest` beside it.

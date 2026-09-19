@@ -26406,3 +26406,53 @@ and at expiry against this configuration. This avoids the incompatible
 absolute-deadline path without modifying the external runner installation.
 The notifier outlived the loop and sent a process-gone alert; restart it only
 after the loop is live to avoid the known stale-terminal-status launch race.
+
+
+## ADR-386 — A call that never reached the model spends no frozen slot (2026-09-19)
+
+F6's first continuation was dispatched on Opus into `ot7-robin-c` with the
+five-hour window at 2 %. It never reached the model: the CLI refused at
+project open in six seconds — "The restore pass digest does not match the
+accepted digest" — before a provider session existed, so no transcript was
+written at all. The evidence runner had two no-slot classes, a provider usage
+limit (ADR-355) and a runner-bound kill (ADR-356), and neither fits a local
+refusal; the call fell through to "a provider error the call returned on its
+own", which spends its slot and closes the design. That booked a frozen
+continuation the model never saw and forfeited Robin's other two.
+
+The charter's rule is that only a turn that reached the model and ended on its
+own counts, so the runner now recognises a third class. A turn is `unreached`
+when its child exited nonzero for neither of the other two reasons, wrote no
+provider frames at all, and left a CLI envelope carrying an error and no
+session id. Both halves are required: an `authentication_failed` synthetic
+frame is a stream and stays a failed turn, a call that crashed after the model
+spoke stays failed, and a call that wrote no envelope proves nothing and stays
+failed on the same rule that missing evidence never means a passing result.
+
+An unreached call is unlike a void or interrupted one in what happens next.
+Nothing was consumed and no fresh project is named: the attempt is *paused*
+with a `blocked` block naming the refusal, the same prompt is still next in
+the same project, and `resume` re-sends it into a `turn-N-retry-M` directory
+that leaves the refusal's evidence in place. `remaining()` skips unreached
+rows entirely. `run.py reclassify PROJECT` re-reads a retained attempt's own
+streams and corrects a receipt written before this rule, keeping the
+superseded copy beside it; it can only ever demote a row whose evidence proves
+the model was never reached. Applied to `ot7-robin-c`, it returned the design
+to one completed create turn with three continuations unspent.
+
+**The refusal itself is a product defect and is not fixed here**
+(`docs/probes/ot7/DIGEST-DRIFT.md`). `part.offset` — OCCT's
+`BRepOffset_MakeOffset` — exports different BREP bytes on every process for
+the same input, while the shape is identical: same volume, same face, edge and
+vertex counts, same edge-length multiset, and four of five faces differing in
+bytes alone. `compute_project_digest` identifies a BREP output by those bytes,
+so any accepted design using `part.offset` can never be reopened, and the
+digest differs differently each time. Robin's two wheels are the only outputs
+affected; Heron, Finch and the retained ot6 designs use no `part.offset` and
+open normally. Sorting a solid's faces before export does not stabilize it —
+the instability is inside each face — so the fix is not a shape-level
+canonicalization. The precedent to follow is the mesh branch of the same
+function, which already uses an order-insensitive fingerprint instead of
+artifact bytes (ADR-016); redefining the BREP branch invalidates every stored
+`accepted_digest`, so it needs a migration and its own unit. **F6 is blocked
+on that fix, not exhausted.**

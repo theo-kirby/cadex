@@ -1,6 +1,6 @@
 # Frozen-design evidence runner
 
-Verified against source: 2026-09-17. [Cadex-new]
+Verified against source: 2026-09-19. [Cadex-new]
 
 An explicit `resume PROJECT --model MODEL` switches subsequent calls to that
 model (ADR-384). The receipt records the transition and each turn's model;
@@ -149,6 +149,41 @@ near-limit warning that is *not* void, an unrelated provider error that is
 still `interrupted`, a synthetic `authentication_failed` frame that spends
 its slot (a `<synthetic>` model name alone is never limit evidence), the
 retry naming, and the six-call receipt.
+
+## Unreached calls (ADR-386)
+
+A third way a frozen prompt fails to be sent, and the only one that is local:
+the CLI refused before a provider session existed, so the child wrote no
+provider stream at all. F6's first continuation on `ot7-robin-c` is the
+case — `open_project`'s restore pass refused in six seconds because the
+accepted design does not rebuild byte-identically
+([`DIGEST-DRIFT.md`](../DIGEST-DRIFT.md)) — and before this rule it fell
+through to "a provider error the call returned on its own" and spent a slot
+the model never saw.
+
+A turn is `unreached` when its child exited nonzero for neither of the other
+two reasons, `transcript.jsonl` holds no frames, and `turn.stdout.json` carries
+an error with an empty `session_id`. Both halves are required, so a synthetic
+`authentication_failed` frame (a stream) stays failed, a crash after the model
+spoke stays failed, and a call with no envelope stays failed.
+
+What follows differs from a void or interrupted call: nothing is consumed and
+**no fresh project is named**. The row is `unreached` with `slot_consumed`
+false, `unreached_calls` counts it apart from the other two, the measurement is
+still read and hashed, no smoke runs, and the receipt's status is `paused` with
+a `blocked` block naming the refusal. `remaining()` skips unreached rows
+entirely, so the same prompt is still next in the same project; `resume`
+re-sends it into a `turn-N-retry-M` directory, leaving the refusal's evidence
+where it is. `run.py --classify` reports `unreached` beside `void` and
+`interruption`.
+
+`run.py reclassify PROJECT` corrects a receipt written before this rule by
+re-reading each retained turn's own stream and envelope. It can only demote a
+row the evidence proves never reached the model, and it keeps the superseded
+receipt as `attempt.superseded*.json` beside the corrected one. Applied to
+`ot7-robin-c` it returned that design to one completed create turn with three
+continuations unspent; the committed receipt is
+[`attempts/robin-c-unreached.json`](../attempts/robin-c-unreached.json).
 
 ## Interrupted calls (decision #44, ADR-356)
 

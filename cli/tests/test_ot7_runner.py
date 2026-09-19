@@ -1331,3 +1331,127 @@ def test_resume_model_override_preserves_prior_turn_and_remaining_slots(tmp_path
     report = runner.resume(target, executor(calls))
     assert report['turns'][-1]['model'] == 'claude-opus-5'
     assert len(report['model_changes']) == 1
+
+
+# -- a call that never reached the model for a local reason (ADR-386) --------
+
+#: The CLI's own envelope when `open_project`'s restore pass refuses: an
+#: error, no session, and no provider stream anywhere beside it. This is the
+#: shape ot7-robin-c's first continuation produced, in six seconds.
+RESTORE_REFUSAL = ('Could not open /projects/ot7-robin-c: '
+                   'The restore pass digest does not match the accepted digest.')
+
+
+def unreached_executor(calls, at=0, error=RESTORE_REFUSAL, session='', frames=None,
+                       exit_code=1):
+    """A turn whose CLI refused before any provider session existed."""
+
+    fake = executor(calls)
+    def execute(command, out, stem, timeout):
+        result = fake(command, out, stem, timeout)
+        index = int(out.name.split('-')[1]) if out.name.startswith('turn-') else -1
+        if stem == 'turn' and index == at:
+            if frames is None:
+                (out / 'transcript.jsonl').unlink()
+            else:
+                frames_file(out / 'transcript.jsonl', frames)
+            runner.write(out / 'turn.stdout.json', {
+                'ok': False, 'error': error, 'session_id': session,
+                'schema': 'cadex-cli-v1', 'model': 'fixture'})
+            result['exit_code'] = exit_code
+        return result
+    return execute
+
+
+def test_a_local_refusal_before_any_session_spends_no_slot_and_does_not_close(tmp_path):
+    """ADR-386: no model saw the prompt, so it is still the next prompt here."""
+    target = project(tmp_path)
+    calls = []
+    report = runner.run('heron', target, 'fixture', unreached_executor(calls))
+    row = report['turns'][0]
+    assert row['status'] == 'unreached' and row['slot_consumed'] is False
+    assert row['void'] is None and row['interruption'] is None
+    assert row['unreached']['kind'] == 'never_reached_model'
+    assert row['unreached']['rule'] == 'ADR-386' and row['unreached']['provider_frames'] == 0
+    assert row['unreached']['error'] == RESTORE_REFUSAL
+    assert report['slots_spent'] == 0 and report['unreached_calls'] == 1
+    assert report['void_calls'] == 0 and report['interrupted_calls'] == 0
+    # Paused, not closed: no fresh project is named and the schedule is intact.
+    assert report['status'] == 'paused' and 'retry' not in report
+    assert report['blocked']['rule'] == 'ADR-386'
+    assert report['blocked']['error'] == RESTORE_REFUSAL
+    assert report['remaining'] == {'completed': 0, 'continuations_used': 0,
+                                   'continuations_unspent': 3,
+                                   'next_prompt': 'heron.create.prompt.txt', 'closed': None}
+    # Exactly one prompt was sent, the measurement was still read, no smoke ran.
+    assert len([c for c, _ in calls if '--child-turn' in c]) == 1
+    assert [Path(c[-1]).name for c, _ in calls if '--child-measure' in c] == ['turn-0']
+    assert all('smoke' not in c for c, _ in calls)
+
+
+def test_the_same_prompt_resumes_into_the_same_project_after_an_unreached_call(tmp_path):
+    """The retry is not a fresh project: nothing was spent and nothing moved."""
+    target = project(tmp_path)
+    calls = []
+    runner.run('heron', target, 'fixture', unreached_executor(calls), turns=1)
+    report = runner.resume(target, executor(calls), turns=1)
+    sent = [Path(cmd[-2]).name for cmd, _ in calls if '--child-turn' in cmd]
+    assert sent == ['heron.create.prompt.txt', 'heron.create.prompt.txt']
+    # The refused call's evidence is kept; the retry gets its own directory.
+    assert (target / 'evidence/turn-0/turn.stdout.json').is_file()
+    assert (target / 'evidence/turn-0-retry-1/transcript.jsonl').is_file()
+    assert [row['evidence_dir'] for row in report['turns']] == ['turn-0', 'turn-0-retry-1']
+    assert [row['status'] for row in report['turns']] == ['unreached', 'completed']
+    assert report['slots_spent'] == 1 and report['unreached_calls'] == 1
+    assert 'blocked' not in report
+    assert report['remaining']['next_prompt'] == 'continue-1.prompt.txt'
+    assert report['remaining']['continuations_unspent'] == 3
+
+
+@pytest.mark.parametrize('kwargs,reason', [
+    ({'frames': [SPOKE]}, 'a stream means the model was reached'),
+    ({'session': 'sess-1'}, 'a session id means the turn had started'),
+    ({'error': ''}, 'no error means the CLI did not refuse'),
+    ({'exit_code': 3}, 'a rejected design is an ordinary turn'),
+])
+def test_a_call_that_reached_the_model_is_never_unreached(tmp_path, kwargs, reason):
+    calls = []
+    report = runner.run('heron', project(tmp_path), 'fixture',
+                        unreached_executor(calls, **kwargs), turns=1)
+    row = report['turns'][0]
+    assert row['unreached'] is None, reason
+    assert row['status'] == 'completed' and row['slot_consumed'] is True
+    assert report['slots_spent'] == 1 and report.get('unreached_calls', 0) == 0
+
+
+def test_reclassify_corrects_a_retained_receipt_and_leaves_completed_turns_alone(tmp_path):
+    """The retained ot7-robin-c shape: one real turn, then a refusal booked as one."""
+    target = project(tmp_path)
+    calls = []
+    runner.run('heron', target, 'fixture', executor(calls), turns=1)
+    runner.resume(target, unreached_executor(calls, at=1), turns=1)
+    path = target / 'evidence' / 'attempt.json'
+    # Put the receipt back into the pre-ADR-386 accounting it was written with.
+    legacy = json.loads(path.read_text())
+    legacy['turns'][1].update(status='completed', slot_consumed=True)
+    legacy['turns'][1].pop('unreached')
+    legacy.update(status='failed', slots_spent=2)
+    legacy.pop('unreached_calls'), legacy.pop('blocked')
+    runner.write(path, legacy)
+    assert runner.remaining(legacy)['closed'] == 'failed'
+
+    result = runner.reclassify(target)
+    assert [c['index'] for c in result['corrected']] == [1]
+    assert result['corrected'][0]['error'] == RESTORE_REFUSAL
+    assert (target / 'evidence' / result['superseded']).is_file()
+    fixed = json.loads(path.read_text())
+    assert [row['status'] for row in fixed['turns']] == ['completed', 'unreached']
+    assert fixed['slots_spent'] == 1 and fixed['unreached_calls'] == 1
+    assert fixed['status'] == 'paused' and fixed['blocked']['rule'] == 'ADR-386'
+    assert fixed['remaining']['next_prompt'] == 'continue-1.prompt.txt'
+    assert fixed['remaining']['closed'] is None
+    assert fixed['reclassifications'][0]['rule'] == 'ADR-386'
+    # A second pass finds nothing left to correct and writes no second copy.
+    again = runner.reclassify(target)
+    assert again['corrected'] == [] and 'superseded' not in again
+    assert not (target / 'evidence' / 'attempt.superseded-2.json').exists()
