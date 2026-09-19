@@ -1723,3 +1723,52 @@ overwritten. `test_a_reopened_attempt_closes_again_beside_its_first_smoke`
 walks a reopened attempt through its second closure and fails on the old code
 with the `FileExistsError` above. `continue-3` may now be dispatched, and F6's
 smoke evidence arrives with it or not at all.
+
+## Iteration 163: F7's fourth Opus call — the biped the agent actually built
+
+`ot7-plover-e`, the retry ADR-390 named after ruling `ot7-plover-d` void.
+Same frozen create prompt (`plover.create.prompt.txt`, 9,303 bytes,
+`b95f98b7…`), same model and effort (`claude-opus-5`, medium), dispatched at
+22:28 UTC on a five-hour window reading **17 %** against the 45 % gate.
+The turn **reached the model and ended on its own** after **2,695.8 s** with
+`stop_reason: end_turn` — 1,370 frames, 87 assistant turns, 52 tool calls
+(38 `inspect`, 8 `write_script`, 4 `describe_api`, 2 `edit_script`),
+194,037 output tokens of which 113,407 thinking, **zero actor edits**. It
+spent F7's create slot; the three continuations are unspent and the receipt
+is `paused` at `continue-1.prompt.txt`.
+
+**It is a biped, and it is the first Plover call that produced one.** The
+accepted revision `a6f75c23…` carries **29 components**: four catalog MG90S
+servos with hip and knee pitch per leg, four `mg90s-single_arm` horns, four
+MR128 bearings, twelve bolts (8 × M2×6, 4 × M2×16), and five printed parts —
+pelvis, two thighs, two shins — which are the only entries under
+`uncatalogued_sources`, as printed parts should be. The base is free, and
+`world_geometry` is empty.
+
+The fit report it accepted is **failing, measured and legible**:
+
+- **Static: 12 failing of 406 pairs** — 394 clear, 12 intersections, 0 below
+  clearance, 0 unknown, at 0.1 mm minimum clearance and 1e-6 mm³ maximum
+  common volume. Every one is a fastener buried in the part it fastens:
+  eight tab screws through pelvis or thigh at **4.0715 mm³** each, four
+  centre screws through their servo bodies at **15.7080 mm³** each.
+- **Attachments: clean** — 24 of 24 fixed-joint pairs touching within
+  0.001 mm, nothing reported.
+- **Swept: complete on all four joints, at a 15° step**: hips
+  ±60° in 9 samples, knees 0–90° in 7, 406 pairs measured per joint, 190 and
+  78 pairs moving. **48 failing pair-joint rows, and exactly 12 distinct
+  pairs** — the same twelve, seen from four joints, each reported at the
+  sweep's first sample (hips −60°, knees 0°) because they never separate.
+
+So the defect is **one class, twelve instances**: hardware modelled as solid
+where the printed part has no clearance hole for it. That is the state the
+three frozen continuations inherit, and none of them names a part, a number
+or a defect. Receipt:
+`docs/probes/ot7/attempts/plover-e-create.json`; the project manifest is
+`<projects>/ot7-plover-e/evidence/attempt.json` (`32f6fe68…`). The window cost was 15 points for 2,695.8 s, against
+plover-d's 21 for 1,310 s.
+
+**F7 now stands at one spent create turn with three continuations unspent,
+on a design that is a biped with a failing fit report.** No smoke has been
+run: this invocation dispatched one prompt and paused, and the runner smokes
+only at a closure.

@@ -1,0 +1,257 @@
+{
+  "rule": "ADR-355 (charter: a turn that reached the model and ended on its own)",
+  "what": "F7's Plover create turn on Opus, the fourth dispatch and the first that measured the agent: it reached the model, ran 2,695.8 s, ended on its own, spent F7's create slot, and accepted a four-servo biped -- 29 components, 406 measured pairs, four joints swept complete, and a failing fit report the three unspent continuations exist to close.",
+  "design": "plover",
+  "project": "ot7-plover-e",
+  "model": "claude-opus-5",
+  "effort": "medium",
+  "dispatched_at": "2026-09-19T22:28:46+00:00",
+  "collected_at": "2026-09-19T23:13:54+00:00",
+  "window_reading": {
+    "status": "allowed",
+    "five_hour_percent": 17,
+    "windows": {
+      "five_hour": 17,
+      "seven_day": 8
+    },
+    "rate_limit_type": "five_hour",
+    "bound_percent": 45,
+    "resets_at": "2026-09-20T02:10:00+00:00"
+  },
+  "turn": {
+    "index": 0,
+    "prompt": {
+      "path": "plover.create.prompt.txt",
+      "bytes": 9303,
+      "sha256": "b95f98b77ba7180140d873e3615a24a0802e9645671664c2e7277c465d8457aa"
+    },
+    "status": "completed",
+    "slot_consumed": true,
+    "exit_code": 0,
+    "elapsed_seconds": 2695.8,
+    "turn_bound_seconds": 3600,
+    "stop_reason": "end_turn",
+    "assistant_frames": 87,
+    "frames": 1370,
+    "transcript_bytes": 1555377,
+    "tool_calls": {
+      "describe_api": 4,
+      "write_script": 8,
+      "edit_script": 2,
+      "inspect": 38
+    },
+    "tool_calls_total": 52,
+    "output_tokens": 194037,
+    "thinking_tokens": 113407,
+    "actor_design_edits": 0
+  },
+  "measured": {
+    "accepted_revision": "a6f75c23d8e63c45a943cd726dcbbbc57f62f2e2f06dde2c45174788070ae094",
+    "script_sha256": "da901c3272aaf9793885916719b6cf160954330362f5d7bf7118109eddfa6a1a",
+    "static_fit": {
+      "verdict": "fail",
+      "pairs_checked": 406,
+      "failing_count": 12,
+      "counts": {
+        "clear": 394,
+        "intersection": 12,
+        "below clearance": 0,
+        "unknown": 0
+      },
+      "thresholds": {
+        "minimum_clearance_mm": 0.1,
+        "maximum_common_volume_mm3": 1e-06
+      },
+      "failing": [
+        {
+          "pair": [
+            "c_pelvis",
+            "c_tabscrew_hip_l_0"
+          ],
+          "common_volume_mm3": 4.0715,
+          "intent": "attached"
+        },
+        {
+          "pair": [
+            "c_pelvis",
+            "c_tabscrew_hip_l_1"
+          ],
+          "common_volume_mm3": 4.0715,
+          "intent": "attached"
+        },
+        {
+          "pair": [
+            "c_pelvis",
+            "c_tabscrew_hip_r_0"
+          ],
+          "common_volume_mm3": 4.0715,
+          "intent": "attached"
+        },
+        {
+          "pair": [
+            "c_pelvis",
+            "c_tabscrew_hip_r_1"
+          ],
+          "common_volume_mm3": 4.0715,
+          "intent": "attached"
+        },
+        {
+          "pair": [
+            "c_thigh_l",
+            "c_tabscrew_knee_l_0"
+          ],
+          "common_volume_mm3": 4.0715,
+          "intent": "attached"
+        },
+        {
+          "pair": [
+            "c_thigh_l",
+            "c_tabscrew_knee_l_1"
+          ],
+          "common_volume_mm3": 4.0715,
+          "intent": "attached"
+        },
+        {
+          "pair": [
+            "c_thigh_r",
+            "c_tabscrew_knee_r_0"
+          ],
+          "common_volume_mm3": 4.0715,
+          "intent": "attached"
+        },
+        {
+          "pair": [
+            "c_thigh_r",
+            "c_tabscrew_knee_r_1"
+          ],
+          "common_volume_mm3": 4.0715,
+          "intent": "attached"
+        },
+        {
+          "pair": [
+            "c_centrescrew_hip_l",
+            "c_servo_hip_l"
+          ],
+          "common_volume_mm3": 15.708
+        },
+        {
+          "pair": [
+            "c_centrescrew_hip_r",
+            "c_servo_hip_r"
+          ],
+          "common_volume_mm3": 15.708
+        },
+        {
+          "pair": [
+            "c_centrescrew_knee_l",
+            "c_servo_knee_l"
+          ],
+          "common_volume_mm3": 15.708
+        },
+        {
+          "pair": [
+            "c_centrescrew_knee_r",
+            "c_servo_knee_r"
+          ],
+          "common_volume_mm3": 15.708
+        }
+      ]
+    },
+    "attachments": {
+      "verdict": "touching",
+      "pairs_checked": 24,
+      "reported_count": 0
+    },
+    "swept_fit": {
+      "verdict": "fail",
+      "coverage": "complete",
+      "step_degrees": 15.0,
+      "joints_checked": 4,
+      "joints_complete": 4,
+      "failing_count": 48,
+      "joints": [
+        {
+          "joint": "joint_hip_l",
+          "range_degrees": [
+            -60.0,
+            60.0
+          ],
+          "samples": 9,
+          "pairs_moving": 190,
+          "minimum_distance_mm": 0.0,
+          "maximum_common_volume_mm3": 15.708
+        },
+        {
+          "joint": "joint_knee_l",
+          "range_degrees": [
+            0.0,
+            90.0
+          ],
+          "samples": 7,
+          "pairs_moving": 78,
+          "minimum_distance_mm": 0.0,
+          "maximum_common_volume_mm3": 15.708
+        },
+        {
+          "joint": "joint_hip_r",
+          "range_degrees": [
+            -60.0,
+            60.0
+          ],
+          "samples": 9,
+          "pairs_moving": 190,
+          "minimum_distance_mm": 0.0,
+          "maximum_common_volume_mm3": 15.708
+        },
+        {
+          "joint": "joint_knee_r",
+          "range_degrees": [
+            0.0,
+            90.0
+          ],
+          "samples": 7,
+          "pairs_moving": 78,
+          "minimum_distance_mm": 0.0,
+          "maximum_common_volume_mm3": 15.708
+        }
+      ],
+      "distinct_failing_pairs": 12
+    },
+    "inventory": {
+      "component_count": 29,
+      "uncatalogued_sources": [
+        "pelvis",
+        "shin_l",
+        "shin_r",
+        "thigh_l",
+        "thigh_r"
+      ]
+    },
+    "smoke": "not run: this invocation dispatched one prompt and paused, and the runner smokes only at a closure"
+  },
+  "reading": "The design is a biped, not a probe: four MG90S servos with hip and knee pitch per leg, catalog horns, bearings and fasteners, five printed parts (pelvis, two thighs, two shins) as the only uncatalogued sources, and no world geometry. Every one of the 12 static failures is a fastener buried in the part it fastens -- eight tab screws through pelvis or thigh at 4.07 mm3 each, four centre screws through their servo bodies at 15.71 mm3 -- and the 48 swept failures are the same 12 pairs seen from four joints. The attachment half is clean: 24 of 24 fixed-joint pairs touching, nothing reported. That is one defect class, and the frozen continuations say nothing about it.",
+  "receipt": {
+    "path": "<projects>/ot7-plover-e/evidence/attempt.json",
+    "bytes": 28732,
+    "sha256": "32f6fe68b36b4219321ce32755437ce0c9c1138903c3f13c56c4ecae9560d7ea",
+    "status": "paused",
+    "slots_spent": 1,
+    "void_calls": 0,
+    "interrupted_calls": 0,
+    "unreached_calls": 0,
+    "remaining": {
+      "completed": 1,
+      "continuations_used": 0,
+      "continuations_unspent": 3,
+      "next_prompt": "continue-1.prompt.txt",
+      "closed": null
+    }
+  },
+  "window_cost": {
+    "five_hour_at_dispatch": 17,
+    "five_hour_at_last_frame": 32,
+    "points_for_2696_s_on_opus": 15,
+    "note": "Beside plover-d: 21 points for 1,310 s. The window cost is not linear in wall time."
+  },
+  "process_fact": "No source under src/Mod/cadex was edited while this turn was live (ADR-390). The only repository change during it was the ot7 collector and its docs (ADR-391)."
+}
