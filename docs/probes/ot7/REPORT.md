@@ -1772,3 +1772,79 @@ plover-d's 21 for 1,310 s.
 on a design that is a biped with a failing fit report.** No smoke has been
 run: this invocation dispatched one prompt and paused, and the runner smokes
 only at a closure.
+
+## Iteration 164: F6's last continuation, and the smoke a balancer cannot pass
+
+Dispatched at 23:17:53 UTC with the window probe reading **35 %** against the
+unchanged 45 % gate. `continue-3.prompt.txt` (732 bytes, digest `0814d73f…`,
+unchanged) **ended on its own** in 305.7 s (result `success`, 4 API turns, 9
+model messages, 3 thinking blocks, 3 tool calls). The third continuation is
+spent, none remains, and the runner closed the attempt `exhausted` with
+**four slots spent, zero actor design edits**. Compact receipt:
+[`robin-continue-3-c.json`](retained/robin-continue-3-c.json); the
+187,584-byte stream (digest `4845a294…`) stays in the project.
+
+**The agent refused to edit a second time, and this time proved it fresh.**
+Three tool calls: `inspect scope=clearance path=/pairs limit=50`, `inspect
+scope=script`, then `rebuild`. The rebuild re-ran the unchanged script into a
+fresh document, re-solved, re-measured and re-accepted it as a new attempt
+carrying the identical revision `0b438561…` and the identical digest
+`b933d905…` — so unlike `continue-2`, which submitted nothing at all, this
+turn left a fresh acceptance of the same text. Its stated ground was the same:
+the report names no failing check, so an edit would change a design that
+measures correct in order to match the prompt's standing assertion that
+something is wrong. It then wrote the documentation the prompt asked for: two
+`DECISION:` lines and three `NOTE design_specs:` lines, carrying the counts
+(**1,159 checks passing, 0 failing**: 378 rest-pose pairs, 25 attachments, 756
+swept pair-range measurements) and the reason the 0.0500 mm hub clearance is
+deliberately below the 0.1 mm undeclared default — it is a running fit covered
+by its `clearances=` declaration, and widening it "would destroy the
+bore-to-shaft fit that makes the wheel a wheel".
+
+One claim of its own is wider than what it paged, and the report says so
+rather than repeating it: it wrote that every one of the 378 rest-pose rows
+carries `fit_failures: []`, having paged 50 of them. What actually carries
+that is the engine's classification over the whole array — `clear 378,
+intersection 0, below clearance 0, unknown 0` — which is in the same reply, so
+the conclusion is sound and its stated basis is not the one it used.
+
+Measured result, unchanged across `continue-1`, `continue-2` and
+`continue-3`, on accepted revision `0b438561…`: static **0 of 378 failing**,
+attachments **touching** 25 of 25, sweep **pass, `coverage: complete`**, 2 of
+2 joints, minimum distance 0.0500 mm, maximum common volume 0.0 mm³; 28
+components, every purchased part catalogued (2× `gearmotor/pololu-2367`, 1×
+`board/pi-zero-2-w`, 10× `heat_insert/m2-standard`, 8× `bolt/m2x4-socket`, 2×
+`bolt/m2x6.5-socket`), five printed parts uncatalogued, no world geometry.
+
+### The closing smoke: fail, and why it is not a fit defect
+
+This was the exhausting invocation, so the runner ran its one-second holding
+smoke — into `evidence/smoke-retry-1`, ADR-391's first-free-name rule working
+exactly as it was written for, leaving the iteration-157 smoke untouched. It
+took 41.2 s and its **verdict is `fail`**, on three of five checks:
+
+| check | verdict | measurement |
+|---|---|---|
+| finite | pass | no non-finite state |
+| **components** | **pass** | exact BREP solids at **51** sampled MuJoCo poses, **378** pairs, maximum common volume **1e-06 mm³**, `initial_pose_agrees: true`, nothing failing |
+| penetration | fail | 4 breaches at 0.5 mm tolerance — `comp_board` 7.676 mm and `comp_chassis` 5.312 mm through `environment/floor` at 0.740 s, both wheels 0.601/0.600 mm at 0.060 s. **Every breach is against the proxy floor; none is between two components of the design.** |
+| support | fail | the free base `comp_chassis` ends **102.2° from its accepted attitude** (limit 30°), dropping from z 107.5 mm to 16.1 mm |
+| termination | fail | the design's own `fallen` rule fired at **0.660 s** (`chassis_pos_z` 66.73 below its 75.25 threshold) |
+
+Robin is a free-base two-wheeled inverted pendulum with `policy_on: 0`. At
+zero action it topples, because that is what the machine is. This is the same
+outcome the retained ot6 balancer gave at zero torque — 101.3°, recorded under
+ADR-377, and the measurement the new support check was written to catch — so
+it is a property of an uncontrolled balancer, not a new defect, and this run
+trains no policy by charter. The check that speaks to *fit over the trace*
+passes cleanly.
+
+**F6 is exhausted, and its bar is met on five of six requirements.** Accepted
+design from the frozen ot6 create prompt, zero failing static checks, zero
+failing swept checks with complete coverage, zero actor edits, three
+continuations, catalog hardware for every purchased part — and **the smoke
+does not pass**. F6 is not tickable as written on this evidence. Whether an
+inherently unstable mechanism can satisfy F8's "rests on the environment floor
+or holds its grounded base" without a controller is a question for the owner,
+not for an actor to resolve by changing the check: no smoke code was touched
+this iteration.
