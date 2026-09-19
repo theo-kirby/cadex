@@ -1,0 +1,120 @@
+{
+  "rule": "ADR-356",
+  "what": "F7's Plover create turn on Opus: it reached the model, built a measured design, and was killed at the runner's 30-minute bound.",
+  "design": "plover",
+  "project": "ot7-plover-c",
+  "model": "claude-opus-5",
+  "effort": "medium",
+  "dispatched_at": "2026-09-19T18:05:21+00:00",
+  "window_reading": {
+    "status": "allowed",
+    "five_hour_percent": 15,
+    "windows": {
+      "five_hour": 15,
+      "seven_day": 2
+    },
+    "rate_limit_type": "five_hour",
+    "refused": null,
+    "bound_percent": 45
+  },
+  "turn": {
+    "index": 0,
+    "prompt": {
+      "path": "plover.create.prompt.txt",
+      "bytes": 9303,
+      "sha256": "b95f98b77ba7180140d873e3615a24a0802e9645671664c2e7277c465d8457aa"
+    },
+    "status": "interrupted",
+    "slot_consumed": false,
+    "exit_code": "timeout",
+    "elapsed_seconds": 1800.0,
+    "turn_bound_seconds": 1800,
+    "first_frame": "2026-09-19T18:05:24.120Z",
+    "last_frame": "2026-09-19T18:35:02.822Z",
+    "tool_calls": {
+      "describe_api": 4,
+      "inspect": 30,
+      "write_script": 10,
+      "edit_script": 4,
+      "rebuild": 1
+    },
+    "transcript": {
+      "bytes": 1288464,
+      "sha256": "b247a67a5cff4373109b30a48dbe131920a555aed38daee7e602bb28d10235ab"
+    }
+  },
+  "measured_candidate": {
+    "note": "The last revision the turn built before the kill. It was never accepted: the turn was mid-repair, reading clearance, when the bound fired.",
+    "revision": "15be5515ca67b7f3a78f2b4112f5f3616fe8c1716bb9a3fa4b2bfdaac1003f52",
+    "pairs_checked": 435,
+    "counts": {
+      "clear": 423,
+      "intersection": 12,
+      "below clearance": 0,
+      "unknown": 0,
+      "world geometry": 1
+    },
+    "static_fit": {
+      "verdict": "fail",
+      "failing_count": 13,
+      "pairs_checked": 435
+    },
+    "swept_fit": {
+      "verdict": "fail",
+      "coverage": "complete",
+      "joints_checked": 4,
+      "joints_complete": 4,
+      "failing_count": 52
+    },
+    "components": 30,
+    "catalogued": 24,
+    "uncatalogued": 6,
+    "worst_named_failure": {
+      "first": "cmp_centrescrew_hip_l",
+      "second": "cmp_servo_hip_l",
+      "status": "intersection",
+      "distance_mm": 0.0,
+      "common_volume_mm3": 12.5663706143592,
+      "fit_failures": [
+        "intersection",
+        "below clearance"
+      ]
+    }
+  },
+  "accounting": {
+    "slots_spent": 0,
+    "interrupted_calls": 1,
+    "void_calls": 0,
+    "unreached_calls": 0,
+    "retry": {
+      "rule": "ADR-356",
+      "prompt": "plover.create.prompt.txt",
+      "project": "ot7-plover-d",
+      "note": "Same frozen prompt, fresh project or fresh seed copy, only while the product agent is available."
+    },
+    "f7_slots_unspent": 4
+  },
+  "why_the_bound_bound_it": {
+    "claim": "TURN_BOUND_SECONDS = 1800 is the binding constraint for the biped, not the model.",
+    "create_turn_seconds": {
+      "ot7-heron-c (F5, 120 pairs)": 1530.4,
+      "ot7-robin-c (F6, 276 pairs)": 1676.4,
+      "ot7-plover-c (F7, 435 pairs)": 1800.0
+    },
+    "reading": "Every create turn so far has cost more the larger its design; the biped is the first to reach the bound. A retry at the same bound has no reason to end differently."
+  },
+  "sibling_orphan": {
+    "project": "ot7-plover-b",
+    "what": "Iteration 154 dispatched the same frozen prompt and its runner process died 18 s later, taking the child with it. Its receipt still reads status 'running'.",
+    "frames": 28,
+    "first_frame": "2026-09-19T18:01:35.122Z",
+    "last_frame": "2026-09-19T18:01:53.006Z",
+    "envelope_bytes": 0,
+    "reading": "Same class as this one under ADR-356 \u2014 a child that never ended on its own \u2014 so no slot was spent there either. The runner has no path that finalises a receipt when the runner itself dies; this is named, not fixed, here."
+  },
+  "evidence_root": "cadex-projects/ot7-plover-c/evidence",
+  "manifest": {
+    "bytes": 30090,
+    "sha256": "78aab22ece34aa48115448d718168eeeb8380284d9ca4c15ea059b3e21b6eadb"
+  }
+}

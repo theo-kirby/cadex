@@ -1,6 +1,6 @@
-# Frozen design attempts: the three void create calls
+# Frozen design attempts: void, unreached and interrupted calls
 
-Verified against source: 2026-09-15. [Cadex-new]
+Verified against source: 2026-09-19. [Cadex-new]
 
 **Amended for the restart (ADR-355).** The three calls below are **void**,
 not attempts: each ended on the provider session limit before any model saw
@@ -116,3 +116,43 @@ Validation: all eleven artifact hashes and sizes matched the manifest;
 the portable receipt is below 16 KB; all 33 collector tests passed in
 0.36 seconds. This evidence/documentation unit changed no product code,
 protocol or payload; no build or full suite was run.
+
+## F7 biped, second and third calls: one dead runner, one dead clock
+
+Verified against source: 2026-09-19.
+
+Neither of the two Opus dispatches that followed the refusal above was a
+design result, and neither spent a slot. Both retain their evidence.
+
+**`ot7-plover-b`, iteration 154.** The window probe read `allowed` at 12 %,
+the frozen create prompt reached the model, and 18 seconds later the runner
+process itself died and took the child with it. Sixteen frames were retained
+frame by frame (ADR-356), `turn.stdout.json` is empty, and the receipt still
+reads `status: running` because nothing survived to finalise it. A child that
+never ended on its own is an **interruption**: no slot, retry in a fresh
+letter-suffixed project. The runner classifies a child *it* kills at the bound
+and a child that never launched; it has no path for its own death, so this
+receipt is stale by construction. That gap is named here, not fixed here.
+
+**`ot7-plover-c`, iteration 155.** The probe read `allowed` at 14 % of the
+five-hour window, and the same frozen prompt ran on `claude-opus-5` for the
+full **1800.0 s** bound: 124 frames, 49 tool calls (4 `describe_api`, 30
+`inspect`, 10 `write_script`, 4 `edit_script`, 1 `rebuild`), 1.29 MB of
+transcript. The turn was **killed at the bound while repairing its own
+measured fit**, so it is an interruption under ADR-356: slot returned, retry
+in `ot7-plover-d`, F7 still holding all four slots.
+
+Unlike the refusals above, this call produced measured geometry. The last
+revision it built (`15be5515…`, never accepted) is a 30-component biped, 24
+components catalogued and 6 printed, and the product measured it: **13 failing
+of 435 static pairs** (12 intersections and 1 world-geometry failure) and
+**52 failing swept pairs over 4 of 4 joints, coverage complete**. The agent
+was reading those numbers back through `inspect scope=clearance` when the
+clock ran out. [The receipt](plover-c-interrupted.json) carries the digests.
+
+The measurement that matters for the next dispatch is the bound itself. Every
+create turn has cost more the larger its design — Heron 1530.4 s at 120 pairs,
+Robin 1676.4 s at 276, Plover 1800.0 s at 435 — so the biped is the first
+design whose create turn does not fit in 30 minutes, and a retry at the same
+bound has no reason to end differently. `ot7-plover-d` should be dispatched
+only after that bound is raised.

@@ -1,6 +1,6 @@
 # ot7 closing report — measured checks, agent outcomes not yet tried
 
-Verified against source: 2026-09-16. [Cadex-new]
+Verified against source: 2026-09-19. [Cadex-new]
 
 **The measured-fit tools are implemented, and the agent has now completed
 all four of F4's turns from measurements alone on `ot7-heron-repair-d`: the
@@ -85,7 +85,7 @@ below match it. What each design has left:
 | Heron repair / F4 | 4: three pre-restart, and iteration 48 on `ot7-heron-repair-c` (cut off by the five-hour limit after 6 reads, [receipt](retained/repair-void-c.json)); and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound (decision #44: not a turn, no slot) | 4, all on `ot7-heron-repair-d`: iteration 48, the repair prompt, completed in 1,461.9 s with six accepted revisions ([receipt](retained/repair-completed-d.json)); iteration 51, `continue-1`, completed in 738.5 s with two accepted revisions ([receipt](retained/repair-continue-1-d.json)); iteration 52, `continue-2`, completed in 128.7 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-2-d.json)); iteration 53, `continue-3`, completed in 104.9 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-3-d.json)) | spent: the repair prompt, completed on `ot7-heron-repair-d` | 0 of 3 (all three spent; ADR-357: the repair prompt is the first prompt, not a continuation) | none: F4 is exhausted and its measured result stands |
 | Heron arm / F5 | 1 (pre-restart); and 1 **interrupted** call apart from it: iteration 55 on `ot7-heron-b`, killed at the runner's 30-minute bound after 68 model messages with no design written ([receipt](retained/heron-interrupted-b.json)) | 4, all on `ot7-heron-c`: iteration 57, the create prompt, completed in 1,530.4 s with three accepted design revisions, static fit 7 of 120 failing at the last ([receipt](retained/heron-create-c.json)); iteration 59, `continue-1`, completed in 610.6 s with two accepted revisions, static fit 1 of 120 failing (the bench as world geometry), the sweep complete with zero overlap, smoke passing ([receipt](retained/heron-continue-1-c.json)); iteration 66, `continue-2`, completed in 482.4 s with two accepted revisions, static fit 0 of 105 failing, no world geometry, the sweep complete with zero overlap, smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-2-c.json)); iteration 72, `continue-3`, completed in 142.9 s with no edit and the unchanged script re-accepted, static fit 0 of 105 failing, the sweep complete with zero overlap, the runner's smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-3-c.json)) | spent: the create prompt, completed on `ot7-heron-c` | 0 of 3 (all three spent) | none: F5 is exhausted and its measured result stands |
 | Robin balancer / F6 | 1 | 0 | unspent | 3 of 3 | `ot7-robin-b` |
-| Plover biped / F7 | 1 | 0 | unspent | 3 of 3 | `ot7-plover-b` |
+| Plover biped / F7 | 1 (pre-restart); and 2 **interrupted** calls apart from it, both on `claude-opus-5`: iteration 154 on `ot7-plover-b`, whose runner died 18 s in and took the child with it, and iteration 155 on `ot7-plover-c`, killed at the runner's 30-minute bound after 49 tool calls while it was repairing its own measured fit ([receipt](attempts/plover-c-interrupted.json)) | 0 | unspent | 3 of 3 | `ot7-plover-d`, and only after the turn bound is raised — see the F7 section below |
 
 Retries send the same frozen prompts and are dispatched only while the
 product agent's harness is available; no role stops or starts the run. The
@@ -1406,3 +1406,42 @@ ot6 and F5 comparisons in this report are read across these changes.
 > existing evidence. ... This run returns an incomplete outcome." The
 > reconciliation the earlier handoff deferred was folded by the restart
 > (`4505e21f`); the outcome is open, not terminal.
+
+## F7's first two Opus calls: the biped is the design the bound cannot hold
+
+Verified against source: 2026-09-19.
+
+F7 has now been dispatched twice on `claude-opus-5`, and neither call is a
+design result. Both are **interruptions** under ADR-356 — a child that never
+ended on its own — so F7 still holds its create prompt and all three
+continuations, and its retry project is `ot7-plover-d`.
+
+Iteration 154's call on `ot7-plover-b` lasted 18 seconds and ended when the
+runner process itself died, taking the child with it; its receipt is stale at
+`status: running` because nothing survived to finalise it. The runner
+classifies a child it kills at the bound and one that never launched; it has
+no path for its own death. That is a named gap, not a measured design result.
+
+Iteration 155's call on `ot7-plover-c` is the informative one. The window
+probe read `allowed` at 14 % of the five-hour window, the frozen create prompt
+reached the model, and the turn ran the full **1800.0 s** bound: 124 frames,
+49 tool calls (4 `describe_api`, 30 `inspect`, 10 `write_script`, 4
+`edit_script`, 1 `rebuild`), 1.29 MB of transcript, zero actor design edits.
+It was killed mid-repair, reading `inspect scope=clearance` on its own
+numbers.
+
+It is the first F7 call to produce geometry. The last revision it built
+(`15be5515…`, **never accepted**) is a 30-component biped, 24 components
+catalogued and 6 printed, and the product measured it end to end: **13 failing
+of 435 static pairs** — 12 intersections and 1 world-geometry failure, the
+worst being a centre screw 12.566 mm³ inside its own hip servo — and **52
+failing swept pairs across 4 of 4 joints with complete coverage**. That is
+F1–F3 working on the largest design ot7 has put through them; it is not an F7
+result, because F7's bar is an accepted design and nothing here was accepted.
+
+The measurement that decides the next dispatch is the bound itself. Create
+turns have cost more the larger the design: Heron 1,530.4 s at 120 static
+pairs, Robin 1,676.4 s at 276, Plover 1,800.0 s at 435 — the first to reach
+the ceiling rather than finish under it. A retry at the same 30-minute bound
+has no reason to end differently, so `ot7-plover-d` should follow a raised
+`TURN_BOUND_SECONDS`, not precede it.
