@@ -26628,11 +26628,23 @@ a fake module root: a member that starts importing a late-arriving engine
 module raises after a good bundle was already published, and a function-scope
 import of the same module does not.
 
-This does not make the mistake free. F7's create slot is spent on a probe
-script, and the run's process fact stands beside the guard: **never edit
-`src/Mod/cadex` while a design turn is live.** The receipt is
+This does not make the mistake free. It cost a whole Opus turn, and the run's
+process fact stands beside the guard: **never edit `src/Mod/cadex` while a
+design turn is live.** The receipt is
 `docs/probes/ot7/attempts/plover-d-engine-mutated.json`; the report's section
 is "F7's third Opus call".
+
+*Amended 2026-09-19 (iteration 160), by the critic's ruling on the call this
+ADR came from.* The collecting iteration recorded `ot7-plover-d` as a **spent**
+create slot, because the charter voids a call only on a provider usage, session
+or credit limit, and said the reading was the critic's or the owner's to
+confirm. The ruling is **void as a design result**: the charter's void list
+describes calls that never became a fair measurement of the agent, and this
+call measured this repository breaking its own engine 58 ms into the turn. So
+it consumes no slot, it is listed apart from F7's attempts in the report's slot
+table, **F7's create prompt is unspent**, and the retry sends the same frozen
+create text into a fresh `ot7-plover-e`. The receipt's measurements are
+unchanged; its `ruling` field carries the ruling.
 
 No protocol op, arg spec or response shape changes, and no payload content
 changes: this is one engine-side function and a set of tests.

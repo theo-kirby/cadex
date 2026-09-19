@@ -24,9 +24,12 @@ The two earlier calls that reached a model were an interrupted execution
 product-agent calls dispatched before the restart ended on the provider's
 session limit in two to four seconds. Under the amended charter (ADR-355) **those six calls are
 void**: no model saw a prompt, none spent a create, continuation or repair
-slot, and none is a design result. F5–F7 remain open. F5 is exhausted, and
-**F6 and F7 have each spent their create prompt and hold all three
-continuations** (`ot7-robin-c` and `ot7-plover-d`).
+slot, and none is a design result. F5–F7 remain open. F5 is exhausted;
+**F6 has spent its create prompt and holds all three continuations**
+(`ot7-robin-c`), and **F7's create prompt is unspent**, because its only
+completed call, on `ot7-plover-d`, was ruled void as a design result — this
+repository broke its own engine 58 ms into the turn (ADR-390), so the call
+never became a measurement of the agent. Its retry is a fresh `ot7-plover-e`.
 F4 has spent its repair prompt and all three continuations on
 `ot7-heron-repair-d` (ADR-357, [Iteration 49](#iteration-49-the-slot-totals-corrected-adr-357)),
 and its measured result is two of three ot6 defects resolved.
@@ -86,8 +89,8 @@ below match it. What each design has left:
 |---|---|---|---|---|---|
 | Heron repair / F4 | 4: three pre-restart, and iteration 48 on `ot7-heron-repair-c` (cut off by the five-hour limit after 6 reads, [receipt](retained/repair-void-c.json)); and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound (decision #44: not a turn, no slot) | 4, all on `ot7-heron-repair-d`: iteration 48, the repair prompt, completed in 1,461.9 s with six accepted revisions ([receipt](retained/repair-completed-d.json)); iteration 51, `continue-1`, completed in 738.5 s with two accepted revisions ([receipt](retained/repair-continue-1-d.json)); iteration 52, `continue-2`, completed in 128.7 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-2-d.json)); iteration 53, `continue-3`, completed in 104.9 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-3-d.json)) | spent: the repair prompt, completed on `ot7-heron-repair-d` | 0 of 3 (all three spent; ADR-357: the repair prompt is the first prompt, not a continuation) | none: F4 is exhausted and its measured result stands |
 | Heron arm / F5 | 1 (pre-restart); and 1 **interrupted** call apart from it: iteration 55 on `ot7-heron-b`, killed at the runner's 30-minute bound after 68 model messages with no design written ([receipt](retained/heron-interrupted-b.json)) | 4, all on `ot7-heron-c`: iteration 57, the create prompt, completed in 1,530.4 s with three accepted design revisions, static fit 7 of 120 failing at the last ([receipt](retained/heron-create-c.json)); iteration 59, `continue-1`, completed in 610.6 s with two accepted revisions, static fit 1 of 120 failing (the bench as world geometry), the sweep complete with zero overlap, smoke passing ([receipt](retained/heron-continue-1-c.json)); iteration 66, `continue-2`, completed in 482.4 s with two accepted revisions, static fit 0 of 105 failing, no world geometry, the sweep complete with zero overlap, smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-2-c.json)); iteration 72, `continue-3`, completed in 142.9 s with no edit and the unchanged script re-accepted, static fit 0 of 105 failing, the sweep complete with zero overlap, the runner's smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-3-c.json)) | spent: the create prompt, completed on `ot7-heron-c` | 0 of 3 (all three spent) | none: F5 is exhausted and its measured result stands |
-| Robin balancer / F6 | 1 (pre-restart); and 1 **interrupted** call apart from it (iteration 148 on `ot7-robin-b`, killed at the runner's then 30-minute bound); and 1 **unreached** call, counted apart from both (iteration 157's `continue-1` on Opus, which `open_project` refused in 6.0 s before any provider session existed — the digest drift of [`DIGEST-DRIFT.md`](DIGEST-DRIFT.md), reclassified under ADR-386, [receipt](attempts/robin-c-unreached.json)) | 1, on `ot7-robin-c`: iteration 148, the create prompt, completed in 1,676.4 s on `claude-fable-5`, static fit **0 of 276 failing** | spent: the create prompt, completed on `ot7-robin-c` | 3 of 3 | none: the same `continue-1` is still next in `ot7-robin-c` itself, now that ADR-389 lets it open — see the F7 section below for why it was not sent in iteration 159 |
-| Plover biped / F7 | 1 (pre-restart); and 2 **interrupted** calls apart from it, both on `claude-opus-5`: iteration 154 on `ot7-plover-b`, whose runner died 18 s in and took the child with it ([receipt](attempts/plover-b-runner-died.json), finalised by `reclassify` in iteration 156, ADR-388), and iteration 155 on `ot7-plover-c`, killed at the runner's then 30-minute bound after 49 tool calls while it was repairing its own measured fit ([receipt](attempts/plover-c-interrupted.json)) | 1, on `ot7-plover-d`: iteration 156's create prompt, completed on its own in 1,310.0 s on `claude-opus-5` — but with **no biped**: the repo's own iteration-158 source edit poisoned the project-worker bundle under the live turn, every build failed `DOMAIN_WORKER_NO_RESULT`, and the accepted revision is a three-solid probe with fit `unavailable` ([receipt](attempts/plover-d-engine-mutated.json)) | spent: the create prompt, completed on `ot7-plover-d` | 3 of 3, in `ot7-plover-d`, whose accepted design is a probe | none named: F7's create prompt is spent — see the F7 sections below |
+| Robin balancer / F6 | 1 (pre-restart); and 1 **interrupted** call apart from it (iteration 148 on `ot7-robin-b`, killed at the runner's then 30-minute bound); and 1 **unreached** call, counted apart from both (iteration 157's `continue-1` on Opus, which `open_project` refused in 6.0 s before any provider session existed — the digest drift of [`DIGEST-DRIFT.md`](DIGEST-DRIFT.md), reclassified under ADR-386, [receipt](attempts/robin-c-unreached.json)) | 1, on `ot7-robin-c`: iteration 148, the create prompt, completed in 1,676.4 s on `claude-fable-5`, static fit **0 of 276 failing** | spent: the create prompt, completed on `ot7-robin-c` | 3 of 3 | none: the same `continue-1` is still next in `ot7-robin-c` itself, now that ADR-389 lets it open — see the F7 sections below for why it was not sent in iteration 159 |
+| Plover biped / F7 | 2: 1 pre-restart, and **`ot7-plover-d`** — iteration 156's create call on `claude-opus-5`, which reached the model and ended on its own in 1,310.0 s but was ruled void as a design result in iteration 160, because this repo's own iteration-158 source edit poisoned the project-worker bundle 58 ms into the build phase (ADR-390): every build failed `DOMAIN_WORKER_NO_RESULT`, the accepted revision is a three-solid probe and its fit is `unavailable`, so the call never became a fair measurement of the agent ([receipt](attempts/plover-d-engine-mutated.json)); and 2 **interrupted** calls apart from both, both on `claude-opus-5`: iteration 154 on `ot7-plover-b`, whose runner died 18 s in and took the child with it ([receipt](attempts/plover-b-runner-died.json), finalised by `reclassify` in iteration 156, ADR-388), and iteration 155 on `ot7-plover-c`, killed at the runner's then 30-minute bound after 49 tool calls while it was repairing its own measured fit ([receipt](attempts/plover-c-interrupted.json)) | 0 | **unspent** | 3 of 3 | `ot7-plover-e`: the same frozen create prompt, in a fresh project |
 
 Retries send the same frozen prompts and are dispatched only while the
 product agent's harness is available; no role stops or starts the run. The
@@ -1522,13 +1525,20 @@ turn, one retaining the MG90S, MR128 and M2 datums it had measured live from
 `lib` before the worker died. That is F1's instruction working under the worst
 available conditions.
 
-**Recorded as a spent create slot.** The charter voids a call only on a
-provider usage, session or credit limit; an engine mutated by this repo's own
-unattended work is not on that list, and the actor does not invent a category
-for it. F7 therefore stands at one spent create turn with three continuations
-unspent on `ot7-plover-d` — whose accepted design is a probe, so a
-continuation there continues from a probe and not from a biped. Whether that
-reading survives is the critic's or the owner's call.
+**Recorded as a spent create slot by iteration 159, and ruled void in
+iteration 160.** The collecting actor read it as spent because the charter
+voids a call only on a provider usage, session or credit limit, and an engine
+mutated by this repo's own unattended work is not on that list; it said
+plainly that whether the reading survived was the critic's or the owner's
+call. **It did not survive.** The ruling is that the charter's void list
+describes calls that never became a fair measurement, and this is one: the
+call did not measure the agent, it measured this repository breaking its own
+engine 58 ms into the turn. So `ot7-plover-d` **consumes no create slot**, is
+reported apart from F7's attempts in the slot table above, and the receipt
+carries the ruling in its `ruling` field with every measurement left as it
+was recorded. **F7's create prompt is unspent**, and its retry sends the same
+frozen create text into a fresh `ot7-plover-e` rather than continuing from a
+probe.
 
 Two measurements worth keeping. The **window cost of an Opus create turn**:
 33 % at dispatch, 54 % at the last frame, so about 21 points for 1,310 s,

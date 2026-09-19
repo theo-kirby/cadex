@@ -51,10 +51,25 @@
   "measured": {
     "accepted_revision": "6f6b5a67053f652eb89fcf24ac0bed4bbfb9ef59fbb434a0e1b5596fdb224793",
     "accepted_digest": "21e30860d5cd34c2514cf1f3e042444a118fb6872f00eaa1f7e3dba007646c19",
-    "accepted_contract": ["part/probe_box", "part/probe_cyl", "part/probe_bolt"],
-    "static_fit": {"verdict": "unavailable", "pairs_checked": 0, "failing_count": 0},
-    "swept_fit": {"verdict": "unavailable", "coverage": "unavailable", "joints_checked": 0},
-    "attachments": {"verdict": "unavailable", "pairs_checked": 0},
+    "accepted_contract": [
+      "part/probe_box",
+      "part/probe_cyl",
+      "part/probe_bolt"
+    ],
+    "static_fit": {
+      "verdict": "unavailable",
+      "pairs_checked": 0,
+      "failing_count": 0
+    },
+    "swept_fit": {
+      "verdict": "unavailable",
+      "coverage": "unavailable",
+      "joints_checked": 0
+    },
+    "attachments": {
+      "verdict": "unavailable",
+      "pairs_checked": 0
+    },
     "note": "Unavailable, not passing: the accepted revision places no assembly component, so there is no pair to measure. The biped was never accepted.",
     "latest_candidate": {
       "revision": "61d26fc5ca17e8aa7c4815ad3f0edf8ebd7d45415a81d57f6c75fcd0ad8c4b17",
@@ -98,6 +113,7 @@
       "next_prompt": "continue-1.prompt.txt"
     }
   },
-  "ruling": "Recorded as a spent create slot, the receipt's own reading. The charter voids a call only on a provider usage, session or credit limit; an engine mutated by this repo's own unattended work is not in that list, and the actor does not invent a category for it. F7 therefore stands at one spent create turn with three continuations unspent on ot7-plover-d -- whose accepted design is a probe, so a continuation there continues from a probe and not from a biped. Whether that reading survives is the critic's or the owner's call, not this receipt's.",
-  "process_fact": "Never edit src/Mod/cadex while a design turn is live. The dev-tree engine root is the source tree, and a resident cadexd mixes its in-memory module list with on-disk bytes."
+  "ruling": "Recorded as a spent create slot, the receipt's own reading. The charter voids a call only on a provider usage, session or credit limit; an engine mutated by this repo's own unattended work is not in that list, and the actor does not invent a category for it. F7 therefore stands at one spent create turn with three continuations unspent on ot7-plover-d -- whose accepted design is a probe, so a continuation there continues from a probe and not from a biped. Whether that reading survives is the critic's or the owner's call, not this receipt's. RULED 2026-09-19 (critic, iteration 160): VOID as a design result. The call did not measure the agent -- it measured this repository breaking its own engine 58 ms into the turn (ADR-390). The charter's void list is about calls that never became a fair measurement, and this is one, so it consumes no create slot and is reported apart from F7's attempts. The measurements above are unchanged and stand as the receipt of what happened. F7's create prompt is UNSPENT; the retry sends the same frozen create prompt in a fresh ot7-plover-e.",
+  "process_fact": "Never edit src/Mod/cadex while a design turn is live. The dev-tree engine root is the source tree, and a resident cadexd mixes its in-memory module list with on-disk bytes.",
+  "ruling_by": "critic verdict, iteration 160, 2026-09-19; supersedes this receipt's own spent-slot reading and the runner row's slot_consumed/slots_spent fields, which are left as the runner wrote them"
 }
