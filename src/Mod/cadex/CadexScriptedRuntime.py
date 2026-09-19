@@ -15,6 +15,7 @@ with the Phase 2.4 tool-surface swap (docs/DECISIONS.md ADR-013).
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import inspect as _inspect
 import json
@@ -282,6 +283,60 @@ def _bundle_members(domain: str) -> tuple[str, tuple[str, ...]]:
     return entry_module, filenames
 
 
+#: Bundle digests whose members have already been checked against each other.
+#: The check is a function of the bytes, so the digest that keys the bundle
+#: directory keys the check too, and a warm cache pays nothing for it.
+_CHECKED_BUNDLE_DIGESTS: set[str] = set()
+
+
+def _top_level_imports(source: bytes) -> set[str]:
+    """Top-level module names one staged member imports at module scope.
+
+    Only module scope, and only absolute imports: a member that imports a
+    sibling inside a function (``CadexRouting`` in ``cadex_part_worker``, and
+    the kernel in ``CadexGeometryDigest``) is not asking for it at import
+    time, which is the only moment this guard is about.
+    """
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        # It will fail on import with a better message than this guard's.
+        return set()
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            names.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            names.add(node.module.split(".")[0])
+    return names
+
+
+def _unstaged_member_imports(
+    module_root: Path, snapshot: Mapping[str, bytes]
+) -> list[tuple[str, str]]:
+    """``(member, module)`` pairs a bundle would fail to import.
+
+    An engine module that lives beside the bundle's members, is imported by
+    one of them at module scope, and is not itself a member. There is no such
+    pair in a consistent engine, and the one way to make one is the one that
+    cost F7 a frozen create prompt: the member *list* is read from
+    ``_DOMAIN_WORKER_BUNDLES`` once, when the service imports this module,
+    while the member *bytes* are read from disk on every cache miss. Edit the
+    tree under a live ``cadexd`` and the two disagree -- a new worker naming a
+    module the old list never staged. The bundle that results is keyed by the
+    bytes of what it does hold, so it publishes cleanly, caches, and then
+    fails identically on every attempt for the life of the session.
+    """
+
+    return sorted(
+        (member, name)
+        for member, data in snapshot.items()
+        for name in _top_level_imports(data)
+        if f"{name}.py" not in snapshot and (module_root / f"{name}.py").is_file()
+    )
+
+
 def _link_or_copy(source: Path, target: Path) -> None:
     """Hardlink, falling back to a copy that preserves mtime.
 
@@ -331,7 +386,28 @@ def shared_worker_bundle(module_root: Path, domain: str) -> tuple[Path, str]:
 
     clean_domain = str(domain or "").strip().lower()
     root = Path(tempfile.gettempdir()) / _BUNDLE_CACHE_DIRNAME
-    bundle = root / f"{clean_domain}-{digest.hexdigest()[:24]}"
+    fingerprint = digest.hexdigest()
+    # Before publishing, and before trusting a cache hit: a bundle whose own
+    # members cannot import each other must never become a directory. It would
+    # be keyed by the bytes it holds, so it would cache, and every retry in the
+    # session would recompute the same key and fail the same way.
+    if fingerprint not in _CHECKED_BUNDLE_DIGESTS:
+        unstaged = _unstaged_member_imports(module_root, snapshot)
+        if unstaged:
+            raise RuntimeError(
+                f"The {clean_domain!r} XScript worker bundle cannot import "
+                "itself: "
+                + ", ".join(f"{member} imports {name}" for member, name in unstaged)
+                + ", and "
+                + ", ".join(f"{name}.py" for name in sorted({n for _, n in unstaged}))
+                + " is not staged. The engine tree at "
+                f"{module_root} has changed since this service imported its "
+                "bundle list, so the list and the files on disk disagree. "
+                "Restart the engine; if it recurs, the module is missing from "
+                "_DOMAIN_WORKER_BUNDLES."
+            )
+        _CHECKED_BUNDLE_DIGESTS.add(fingerprint)
+    bundle = root / f"{clean_domain}-{fingerprint[:24]}"
 
     def populated() -> bool:
         """Validate identity and reject mutable legacy hardlinks/symlinks."""

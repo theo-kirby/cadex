@@ -1,0 +1,103 @@
+{
+  "rule": "ADR-355 (charter: a turn that reached the model and ended on its own)",
+  "what": "F7's Plover create turn on Opus: it reached the model, ended on its own after 1310.0 s, and spent F7's create slot -- but it built no biped, because the engine's project-worker bundle was poisoned under the live turn by this repo's own iteration-158 source edit. The accepted design is a three-solid probe script.",
+  "design": "plover",
+  "project": "ot7-plover-d",
+  "model": "claude-opus-5",
+  "effort": "medium",
+  "dispatched_at": "2026-09-19T18:51:26+00:00",
+  "collected_at": "2026-09-19T20:05:00+00:00",
+  "window_reading": {
+    "status": "allowed",
+    "five_hour_percent": 33,
+    "windows": {
+      "five_hour": 33,
+      "seven_day": 3
+    },
+    "rate_limit_type": "five_hour",
+    "refused": null,
+    "bound_percent": 45,
+    "resets_at": "2026-09-19T21:10:00+00:00"
+  },
+  "turn": {
+    "index": 0,
+    "prompt": {
+      "path": "plover.create.prompt.txt",
+      "bytes": 9303,
+      "sha256": "b95f98b77ba7180140d873e3615a24a0802e9645671664c2e7277c465d8457aa"
+    },
+    "status": "completed",
+    "slot_consumed": true,
+    "exit_code": 0,
+    "result_subtype": "success",
+    "is_error": false,
+    "elapsed_seconds": 1310.0458651860245,
+    "turn_bound_seconds": 3600,
+    "provider_turns": 25,
+    "frames": 1034,
+    "transcript_bytes": 859812,
+    "transcript_sha256": "265c147f160bf3184aa0b0e5a9de0b110b904ac2ca39e950a5767cbf197c9214",
+    "tool_calls": {
+      "describe_api": 4,
+      "inspect": 11,
+      "write_script": 5,
+      "rebuild": 3
+    },
+    "tool_calls_total": 23,
+    "output_tokens": 97969,
+    "thinking_tokens": 87738,
+    "actor_design_edits": 0
+  },
+  "measured": {
+    "accepted_revision": "6f6b5a67053f652eb89fcf24ac0bed4bbfb9ef59fbb434a0e1b5596fdb224793",
+    "accepted_digest": "21e30860d5cd34c2514cf1f3e042444a118fb6872f00eaa1f7e3dba007646c19",
+    "accepted_contract": ["part/probe_box", "part/probe_cyl", "part/probe_bolt"],
+    "static_fit": {"verdict": "unavailable", "pairs_checked": 0, "failing_count": 0},
+    "swept_fit": {"verdict": "unavailable", "coverage": "unavailable", "joints_checked": 0},
+    "attachments": {"verdict": "unavailable", "pairs_checked": 0},
+    "note": "Unavailable, not passing: the accepted revision places no assembly component, so there is no pair to measure. The biped was never accepted.",
+    "latest_candidate": {
+      "revision": "61d26fc5ca17e8aa7c4815ad3f0edf8ebd7d45415a81d57f6c75fcd0ad8c4b17",
+      "status": "failed",
+      "failure_code": "DOMAIN_WORKER_NO_RESULT",
+      "error": "The isolated domain worker exited without a result."
+    }
+  },
+  "cause": {
+    "kind": "engine mutated under a live turn (not a provider limit, not a model failure)",
+    "failure_code": "DOMAIN_WORKER_NO_RESULT",
+    "traceback": "cadex_project_worker.py line 31: ModuleNotFoundError: No module named 'CadexGeometryDigest'",
+    "explanation": "The CLI's dev-tree engine root IS the live source tree (cli/cadex_cli/engine.py DEV_MODULE_DIR = src/Mod/cadex). cadexd imports CadexScriptedRuntime once, at session start, and keeps its _DOMAIN_WORKER_BUNDLES member list in memory; shared_worker_bundle then reads each member's bytes from disk on every cache miss. Iteration 158 (ADR-389, commit ece37fa6) added the CadexGeometryDigest import to cadex_project_worker.py while this turn was live, so the resident cadexd hashed the NEW worker bytes against its OLD member list, produced a hash that had never existed, and published a 32-member bundle holding a worker that imports a module the bundle does not carry. Being content-addressed, that bundle is recomputed identically on every retry, so no rebuild in the turn could recover.",
+    "poisoned_bundle": "project-051fbabebc61cf661f388441 (32 .py members, no CadexGeometryDigest.py)",
+    "source_edit_mtime": "2026-09-19T15:11:37-04:00 (src/Mod/cadex/cadex_project_worker.py)",
+    "bundle_published": "2026-09-19T15:12:24.987-04:00",
+    "first_failing_frame": "2026-09-19T19:12:25.045Z",
+    "gap_seconds": 0.058,
+    "successful_write_scripts_before": 4,
+    "engine_sound_now": "A bundle staged from today's source carries all 33 members including CadexGeometryDigest.py, and test_cadexd_lifecycle.py is 23 passed against the dev tree."
+  },
+  "window_cost": {
+    "five_hour_at_dispatch": 33,
+    "five_hour_at_last_frame": 54,
+    "points_for_1310_s_on_opus": 21,
+    "note": "Beside ot7-plover-c's ~17 points for 1800 s at a lower start. An Opus create turn is far cheaper in window than the Fable turn the 45 % gate was calibrated on."
+  },
+  "receipt": {
+    "path": "<projects>/ot7-plover-d/evidence/attempt.json",
+    "bytes": 7679,
+    "sha256": "bc5ec77477d6d46ad4b3f6e1d61fabb549b9e1b53439220759aa5307f7b34474",
+    "status": "paused",
+    "slots_spent": 1,
+    "void_calls": 0,
+    "interrupted_calls": 0,
+    "unreached_calls": 0,
+    "remaining": {
+      "completed": 1,
+      "continuations_used": 0,
+      "continuations_unspent": 3,
+      "next_prompt": "continue-1.prompt.txt"
+    }
+  },
+  "ruling": "Recorded as a spent create slot, the receipt's own reading. The charter voids a call only on a provider usage, session or credit limit; an engine mutated by this repo's own unattended work is not in that list, and the actor does not invent a category for it. F7 therefore stands at one spent create turn with three continuations unspent on ot7-plover-d -- whose accepted design is a probe, so a continuation there continues from a probe and not from a biped. Whether that reading survives is the critic's or the owner's call, not this receipt's.",
+  "process_fact": "Never edit src/Mod/cadex while a design turn is live. The dev-tree engine root is the source tree, and a resident cadexd mixes its in-memory module list with on-disk bytes."
+}

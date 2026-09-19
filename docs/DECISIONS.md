@@ -26574,3 +26574,65 @@ on two by bytes.
 `CadexdProtocol` gains two optional `restore` keys, `docs/INTEGRATION.md`
 moves with it, and the shell's client reads `matches_accepted` and is
 unaffected by an added key.
+
+## ADR-390 — A worker bundle that cannot import itself is never published (2026-09-19)
+
+**Context.** ot7's F7 create turn on `ot7-plover-d` reached the model, ran
+1,310.0 s, ended on its own with exit 0 — and built no biped. From frame 997
+of 1,034 onward every build path failed identically with
+`DOMAIN_WORKER_NO_RESULT`, `cadex_project_worker.py` line 31:
+`ModuleNotFoundError: No module named 'CadexGeometryDigest'`.
+
+The cause is a skew this repo made under its own live turn. The CLI's dev-tree
+engine root **is** the source tree (`cli/cadex_cli/engine.py`,
+`DEV_MODULE_DIR = src/Mod/cadex`). `cadexd` reads `_DOMAIN_WORKER_BUNDLES` once,
+when it imports `CadexScriptedRuntime`, and keeps that member *list* in memory
+for the life of the session; `shared_worker_bundle` reads each member's *bytes*
+from disk on every cache miss. ADR-389 added the `CadexGeometryDigest` import
+to `cadex_project_worker.py` while that turn was live, so the resident service
+hashed the new worker bytes against its old list, got a key that had never
+existed, and published a 32-member bundle holding a worker that imports a
+module the bundle does not carry. The poisoned directory's mtime and the first
+failing frame are 58 milliseconds apart.
+
+The shape of the defect is what made it fatal rather than annoying: the bundle
+is **content-addressed over exactly the members it holds**, so an incomplete
+one is a perfectly valid cache entry. Every retry in the session recomputed the
+same key, found it populated, and failed the same way. Nothing inside the turn
+could recover, and the agent — correctly — spent its remaining reads proving
+the engine was broken rather than claiming a fit.
+
+**Decision.** `shared_worker_bundle` checks, before it publishes and before it
+trusts a cache hit, that the snapshot can import itself: for every staged
+member, every module-scope absolute import naming a module that exists beside
+the members must itself be a member. A violation raises, naming the member, the
+module and the skew, and telling the caller to restart the engine. No bundle
+directory is created. `cadexd`'s handler wrapper turns that into one readable
+protocol failure, so what was an unrecoverable `DOMAIN_WORKER_NO_RESULT` for
+the rest of a session is now a message that says what to do.
+
+Only module scope, and only absolute imports: `CadexStress`, `CadexRouting`,
+`CadexBundle` and the kernel itself are reached inside the one function that
+needs them, and a deferred import is not a bundle-import requirement. The
+check is keyed by the digest that already keys the bundle
+(`_CHECKED_BUNDLE_DIGESTS`), so a warm cache pays nothing and the 16-`compile()`
+cost the shared bundle was built to remove stays removed.
+
+**Consequences.** The hand-kept member list — a literal with a paragraph of
+comment per entry, exactly the kind that invites this bug — now has a
+mechanical guard against the class it invites, in two forms: the runtime check
+above, and `test_project_bundle_stages_every_module_its_members_import`, which
+asserts the invariant on the real tree and so fails the moment a staged worker
+grows an import the list does not name. Two fixtures reproduce the incident on
+a fake module root: a member that starts importing a late-arriving engine
+module raises after a good bundle was already published, and a function-scope
+import of the same module does not.
+
+This does not make the mistake free. F7's create slot is spent on a probe
+script, and the run's process fact stands beside the guard: **never edit
+`src/Mod/cadex` while a design turn is live.** The receipt is
+`docs/probes/ot7/attempts/plover-d-engine-mutated.json`; the report's section
+is "F7's third Opus call".
+
+No protocol op, arg spec or response shape changes, and no payload content
+changes: this is one engine-side function and a set of tests.

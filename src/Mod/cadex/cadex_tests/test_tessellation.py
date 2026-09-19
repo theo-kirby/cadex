@@ -412,3 +412,60 @@ def test_bundle_publication_race_validates_winner(bundle_sources, monkeypatch, v
     else:
         with pytest.raises(OSError, match="publication race"):
             runtime.shared_worker_bundle(source, "project")
+
+
+# -- the bundle imports itself (ADR-390) ------------------------------------
+#
+# What ADR-389 cost F7: the member *list* is read from
+# ``_DOMAIN_WORKER_BUNDLES`` once, when the service imports
+# ``CadexScriptedRuntime``, while the member *bytes* are read from disk on
+# every cache miss. Editing the engine tree under a live ``cadexd`` makes the
+# two disagree, and the bundle that results publishes cleanly, caches, and
+# then fails identically for the rest of the session.
+
+
+def test_bundle_refuses_a_member_importing_an_unstaged_engine_module(bundle_sources):
+    runtime, (source, _), entry = bundle_sources
+    first, _ = runtime.shared_worker_bundle(source, "project")
+    assert first.is_dir()
+
+    # The skew, exactly: a module appears beside the members, and the staged
+    # entry imports it, while the list this process holds has never named it.
+    (source / "CadexLateArrival.py").write_bytes(b"VALUE = 1\n")
+    (source / entry).write_bytes(b"from CadexLateArrival import VALUE\n")
+
+    with pytest.raises(RuntimeError) as raised:
+        runtime.shared_worker_bundle(source, "project")
+    message = str(raised.value)
+    assert f"{entry} imports CadexLateArrival" in message
+    assert "CadexLateArrival.py is not staged" in message
+    assert "has changed since this service imported its bundle list" in message
+    # Nothing was published, so nothing is cached to fail the same way again.
+    published = {path.name for path in first.parent.iterdir() if path.is_dir()}
+    assert published == {first.name}
+
+
+def test_bundle_ignores_a_function_scope_import_of_an_unstaged_module(bundle_sources):
+    # CadexStress, CadexRouting and the kernel itself are reached inside the
+    # one function that needs them, which is not a bundle-import requirement.
+    runtime, (source, _), entry = bundle_sources
+    (source / "CadexLateArrival.py").write_bytes(b"VALUE = 1\n")
+    (source / entry).write_bytes(
+        b"def go():\n    from CadexLateArrival import VALUE\n    return VALUE\n"
+    )
+    bundle, _ = runtime.shared_worker_bundle(source, "project")
+    assert not (bundle / "CadexLateArrival.py").exists()
+
+
+def test_project_bundle_stages_every_module_its_members_import() -> None:
+    """The standing invariant, on the real tree rather than a fixture."""
+
+    import CadexScriptedRuntime as runtime
+
+    module_root = Path(runtime.__file__).resolve().parent
+    entry, filenames = runtime._bundle_members("project")
+    snapshot = {
+        name: (module_root / name).read_bytes()
+        for name in sorted(set((entry, *filenames)))
+    }
+    assert runtime._unstaged_member_imports(module_root, snapshot) == []

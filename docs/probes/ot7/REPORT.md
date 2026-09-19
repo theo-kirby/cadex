@@ -24,7 +24,9 @@ The two earlier calls that reached a model were an interrupted execution
 product-agent calls dispatched before the restart ended on the provider's
 session limit in two to four seconds. Under the amended charter (ADR-355) **those six calls are
 void**: no model saw a prompt, none spent a create, continuation or repair
-slot, and none is a design result. F5–F7 remain open with every slot unspent;
+slot, and none is a design result. F5–F7 remain open. F5 is exhausted, and
+**F6 and F7 have each spent their create prompt and hold all three
+continuations** (`ot7-robin-c` and `ot7-plover-d`).
 F4 has spent its repair prompt and all three continuations on
 `ot7-heron-repair-d` (ADR-357, [Iteration 49](#iteration-49-the-slot-totals-corrected-adr-357)),
 and its measured result is two of three ot6 defects resolved.
@@ -84,8 +86,8 @@ below match it. What each design has left:
 |---|---|---|---|---|---|
 | Heron repair / F4 | 4: three pre-restart, and iteration 48 on `ot7-heron-repair-c` (cut off by the five-hour limit after 6 reads, [receipt](retained/repair-void-c.json)); and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound (decision #44: not a turn, no slot) | 4, all on `ot7-heron-repair-d`: iteration 48, the repair prompt, completed in 1,461.9 s with six accepted revisions ([receipt](retained/repair-completed-d.json)); iteration 51, `continue-1`, completed in 738.5 s with two accepted revisions ([receipt](retained/repair-continue-1-d.json)); iteration 52, `continue-2`, completed in 128.7 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-2-d.json)); iteration 53, `continue-3`, completed in 104.9 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-3-d.json)) | spent: the repair prompt, completed on `ot7-heron-repair-d` | 0 of 3 (all three spent; ADR-357: the repair prompt is the first prompt, not a continuation) | none: F4 is exhausted and its measured result stands |
 | Heron arm / F5 | 1 (pre-restart); and 1 **interrupted** call apart from it: iteration 55 on `ot7-heron-b`, killed at the runner's 30-minute bound after 68 model messages with no design written ([receipt](retained/heron-interrupted-b.json)) | 4, all on `ot7-heron-c`: iteration 57, the create prompt, completed in 1,530.4 s with three accepted design revisions, static fit 7 of 120 failing at the last ([receipt](retained/heron-create-c.json)); iteration 59, `continue-1`, completed in 610.6 s with two accepted revisions, static fit 1 of 120 failing (the bench as world geometry), the sweep complete with zero overlap, smoke passing ([receipt](retained/heron-continue-1-c.json)); iteration 66, `continue-2`, completed in 482.4 s with two accepted revisions, static fit 0 of 105 failing, no world geometry, the sweep complete with zero overlap, smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-2-c.json)); iteration 72, `continue-3`, completed in 142.9 s with no edit and the unchanged script re-accepted, static fit 0 of 105 failing, the sweep complete with zero overlap, the runner's smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-3-c.json)) | spent: the create prompt, completed on `ot7-heron-c` | 0 of 3 (all three spent) | none: F5 is exhausted and its measured result stands |
-| Robin balancer / F6 | 1 | 0 | unspent | 3 of 3 | `ot7-robin-b` |
-| Plover biped / F7 | 1 (pre-restart); and 2 **interrupted** calls apart from it, both on `claude-opus-5`: iteration 154 on `ot7-plover-b`, whose runner died 18 s in and took the child with it ([receipt](attempts/plover-b-runner-died.json), finalised by `reclassify` in iteration 156, ADR-388), and iteration 155 on `ot7-plover-c`, killed at the runner's then 30-minute bound after 49 tool calls while it was repairing its own measured fit ([receipt](attempts/plover-c-interrupted.json)) | 0 | unspent | 3 of 3 | `ot7-plover-d`, dispatched in iteration 156 under the raised 60-minute bound — see the F7 section below |
+| Robin balancer / F6 | 1 (pre-restart); and 1 **interrupted** call apart from it (iteration 148 on `ot7-robin-b`, killed at the runner's then 30-minute bound); and 1 **unreached** call, counted apart from both (iteration 157's `continue-1` on Opus, which `open_project` refused in 6.0 s before any provider session existed — the digest drift of [`DIGEST-DRIFT.md`](DIGEST-DRIFT.md), reclassified under ADR-386, [receipt](attempts/robin-c-unreached.json)) | 1, on `ot7-robin-c`: iteration 148, the create prompt, completed in 1,676.4 s on `claude-fable-5`, static fit **0 of 276 failing** | spent: the create prompt, completed on `ot7-robin-c` | 3 of 3 | none: the same `continue-1` is still next in `ot7-robin-c` itself, now that ADR-389 lets it open — see the F7 section below for why it was not sent in iteration 159 |
+| Plover biped / F7 | 1 (pre-restart); and 2 **interrupted** calls apart from it, both on `claude-opus-5`: iteration 154 on `ot7-plover-b`, whose runner died 18 s in and took the child with it ([receipt](attempts/plover-b-runner-died.json), finalised by `reclassify` in iteration 156, ADR-388), and iteration 155 on `ot7-plover-c`, killed at the runner's then 30-minute bound after 49 tool calls while it was repairing its own measured fit ([receipt](attempts/plover-c-interrupted.json)) | 1, on `ot7-plover-d`: iteration 156's create prompt, completed on its own in 1,310.0 s on `claude-opus-5` — but with **no biped**: the repo's own iteration-158 source edit poisoned the project-worker bundle under the live turn, every build failed `DOMAIN_WORKER_NO_RESULT`, and the accepted revision is a three-solid probe with fit `unavailable` ([receipt](attempts/plover-d-engine-mutated.json)) | spent: the create prompt, completed on `ot7-plover-d` | 3 of 3, in `ot7-plover-d`, whose accepted design is a probe | none named: F7's create prompt is spent — see the F7 sections below |
 
 Retries send the same frozen prompts and are dispatched only while the
 product agent's harness is available; no role stops or starts the run. The
@@ -1470,3 +1472,90 @@ read 31 % afterwards — about 17 points for half an hour, against the 49 that
 one Fable turn cost. A 3,600 s Opus turn starting at 33 % therefore projects
 to roughly 67 %, inside the window, whose reset is at 21:10 UTC. The turn's
 outcome belongs to the next iteration.
+
+## F7's third Opus call: the create turn the repo broke under itself
+
+Verified against source: 2026-09-19.
+
+`ot7-plover-d`'s create turn **ended on its own**. It is the first F7 call to
+do so: exit 0, `result subtype: success`, 25 provider turns, 1,310.0 s of a
+3,600 s bound, 1,034 frames and 859,812 bytes of transcript, 23 tool calls
+(4 `describe_api`, 11 `inspect`, 5 `write_script`, 3 `rebuild`), 97,969 output
+tokens of which 87,738 thinking, zero actor design edits
+([receipt](attempts/plover-d-engine-mutated.json)).
+
+It also built no biped. The accepted revision at the end of it is
+`6f6b5a67…`, a **three-solid probe script** — `probe_box`, `probe_cyl`,
+`probe_bolt` — and its measured fit is `unavailable` on all three reports,
+static, swept and attachments, because a revision that places no assembly
+component has no pair to measure. Unavailable is not passing, and this is not
+a design.
+
+**The cause is this repository, not the model.** At frame 997 of 1,034 —
+`2026-09-19T19:12:25.045Z`, after four `write_script` calls had already
+succeeded — every build path began failing identically:
+
+```
+DOMAIN_WORKER_NO_RESULT   returncode 1 after 0.05 s
+cadex_project_worker.py line 31: ModuleNotFoundError: No module named 'CadexGeometryDigest'
+```
+
+The CLI's dev-tree engine root **is** the live source tree
+(`cli/cadex_cli/engine.py`, `DEV_MODULE_DIR = src/Mod/cadex`). `cadexd` reads
+its bundle member list from `_DOMAIN_WORKER_BUNDLES` once, when it imports
+`CadexScriptedRuntime`, and reads each member's *bytes* from disk on every
+cache miss. Iteration 158 (ADR-389, commit `ece37fa6`) added the
+`CadexGeometryDigest` import to `cadex_project_worker.py` at 15:11:37 local,
+**while this turn was live**. The resident service then hashed the new worker
+bytes against its old member list, produced a key that had never existed, and
+published `project-051fbabebc61cf661f388441` — 32 members, holding a worker
+that imports a module the bundle does not carry. That directory's mtime is
+15:12:24.987; the first failing frame is 15:12:25.045, **58 milliseconds
+later**. Being content-addressed, the same key was recomputed on every retry,
+so no rebuild inside the turn could recover.
+
+The agent diagnosed it correctly and refused to claim a fit it could not
+measure: its closing message names the traceback, names the bundle path, says
+"the accepted revision is still the probe script … nothing of the biped has
+been accepted", and records two `NOTE`s in `DECISIONS.md` — one rejecting the
+turn, one retaining the MG90S, MR128 and M2 datums it had measured live from
+`lib` before the worker died. That is F1's instruction working under the worst
+available conditions.
+
+**Recorded as a spent create slot.** The charter voids a call only on a
+provider usage, session or credit limit; an engine mutated by this repo's own
+unattended work is not on that list, and the actor does not invent a category
+for it. F7 therefore stands at one spent create turn with three continuations
+unspent on `ot7-plover-d` — whose accepted design is a probe, so a
+continuation there continues from a probe and not from a biped. Whether that
+reading survives is the critic's or the owner's call.
+
+Two measurements worth keeping. The **window cost of an Opus create turn**:
+33 % at dispatch, 54 % at the last frame, so about 21 points for 1,310 s,
+beside `ot7-plover-c`'s ~17 for 1,800 s — far below the 49 that one Fable turn
+cost the gate it was calibrated on. And the **engine is sound now**: a bundle
+staged from today's source carries all 33 members including
+`CadexGeometryDigest.py`, `test_cadexd_lifecycle.py` is 23 passed against the
+dev tree, and a copy of `ot7-robin-c` opens and publishes its 276 static pairs,
+which is ADR-389's own fix confirmed on the design it was written for.
+
+**The hazard is closed in the product (ADR-390).** `shared_worker_bundle` now
+parses every staged member's module-scope imports and refuses to publish — or
+to trust a cached — bundle in which one member imports an engine module beside
+it that is not itself a member, naming the member, the module and the skew. An
+unusable bundle can no longer become a directory, and the failure the agent
+saw as `DOMAIN_WORKER_NO_RESULT` for the rest of a session is now one readable
+message that says to restart the engine. The check is keyed by the digest that
+already keys the bundle, so a warm cache pays nothing for it, and a test pins
+the standing invariant on the real tree.
+
+**The process fact, for the next iteration: never edit `src/Mod/cadex` while a
+design turn is live.** The guard makes that mistake diagnosable; it does not
+make it free. The turn still costs its slot.
+
+**F6 was not dispatched in this iteration.** The five-hour window read 63 %
+against the runner's unchanged 45 % gate at 20:10 UTC, `room: false`, reset at
+21:10 UTC — most of it spent by the plover-d turn this iteration collected.
+Under the charter a frozen prompt is never sent while the harness is limited,
+so `continue-1` on `ot7-robin-c` stays unspent and is the next dispatch after
+the reset.

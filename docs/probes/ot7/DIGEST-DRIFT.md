@@ -8,6 +8,12 @@ mismatch is no longer the end of a project — `open_project` re-measures the
 two retained attempts and opens when the model agrees, reporting
 `matched_by: "geometry"`. The section "What this blocks" is superseded.
 
+**Confirmed on the design it was written for, in iteration 159.** A copy of
+`ot7-robin-c` — the project the refusal below shut — now answers
+`./cadex clearance` with its **276 static pairs** and exits 0. F6's frozen
+`continue-1` is unblocked; it was not dispatched in that iteration only
+because the five-hour window read 63 % against the runner's 45 % gate.
+
 Robin's F6 continuation was dispatched on Opus and never reached the model.
 The CLI refused in six seconds, before a provider session existed:
 

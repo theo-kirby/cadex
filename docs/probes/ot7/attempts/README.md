@@ -1,4 +1,4 @@
-# Frozen design attempts: void, unreached and interrupted calls
+# Frozen design attempts: void, unreached, interrupted and completed calls
 
 Verified against source: 2026-09-19. [Cadex-new]
 
@@ -167,3 +167,29 @@ bound has no reason to end differently. `ot7-plover-d` should be dispatched
 only after that bound is raised — which iteration 156 did: ADR-388 doubles
 `TURN_BOUND_SECONDS` to **3600 s**, and every receipt now records the bound
 each of its turns ran under, so the three timings above stay comparable.
+
+**`ot7-plover-d`, iteration 156, collected in iteration 159.** The first F7
+call to end on its own: exit 0, `success`, 25 provider turns, **1310.0 s** of
+the raised 3600 s bound, 1,034 frames, 859,812 bytes of transcript, 23 tool
+calls (4 `describe_api`, 11 `inspect`, 5 `write_script`, 3 `rebuild`), 97,969
+output tokens of which 87,738 thinking, zero actor design edits. Under the
+charter that is a **spent create slot**.
+
+It built no biped. From frame 997 on — 58 ms after this repo's own iteration-158
+source edit (ADR-389) published a project-worker bundle missing
+`CadexGeometryDigest.py` under the live turn — every build failed
+`DOMAIN_WORKER_NO_RESULT` with `ModuleNotFoundError: No module named
+'CadexGeometryDigest'`, and the content-addressed key was recomputed
+identically on every retry. The accepted revision is the three-solid probe
+script `6f6b5a67…`; static, swept and attachment fit are all `unavailable`,
+which is not passing. The agent diagnosed the engine correctly, refused to
+claim a fit, and retained the MG90S/MR128/M2 datums it had measured before the
+worker died.
+
+Not a void call: the charter voids a provider usage, session or credit limit,
+and this was neither. ADR-390 closes the hazard in the product — a bundle whose
+members cannot import each other is never published and never trusted from
+cache — and the process fact stands beside it: never edit `src/Mod/cadex` while
+a design turn is live. [The receipt](plover-d-engine-mutated.json) carries the
+digests, the window cost (33 % → 54 % for 1,310 s of Opus) and the timing
+correlation.

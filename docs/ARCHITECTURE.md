@@ -190,7 +190,7 @@ Ownership closure, lint, and orphan queries live in
 
 | File | Role |
 |---|---|
-| `CadexScriptedRuntime.py` | The project lifecycle: store persistence, source policy, worker staging/exec, validation, acceptance. `[Cadex-new]` |
+| `CadexScriptedRuntime.py` | The project lifecycle: store persistence, source policy, worker staging/exec, validation, acceptance. `shared_worker_bundle` is the content-addressed worker bundle — keyed by the bytes of every member, and since ADR-390 refusing to publish or trust one whose members cannot import each other: an engine module beside the members, imported by one of them at module scope and not itself a member, raises and names the skew instead of caching a bundle that fails identically for the life of the session. `[Cadex-new]` |
 | `CadexScriptedDomains.py` | `PROJECT_PACK` + the five capability packs (worker/publication contracts), project tool specs, `project_script_revision`, object-tag constants, source sandbox rules. `[Cadex-new]` |
 | `cadex_project_api.py` / `cadex_project_worker.py` | The project domain: `params`/`num` vocabulary, inline assembly-source tokens, multi-domain exec namespace, per-domain evaluation, worker-side content digest. `[Cadex-new]` |
 | `CadexGeometryDigest.py` | The digest material both halves share: the byte digest the worker computes, and the geometry digest `cadexd` falls back to when a kernel re-serializes one model to different bytes (ADR-389). `[Cadex-new]` |
