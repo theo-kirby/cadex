@@ -1,0 +1,224 @@
+{
+  "criterion": "F6",
+  "iteration": 161,
+  "project": "ot7-robin-c",
+  "seed": "the same ot7-robin-c project, resumed after the completed create turn (Fable) and continue-1 (Opus); model transition already recorded under ADR-384.",
+  "evidence_directory": "evidence/turn-2",
+  "model": "claude-opus-5",
+  "settings": {
+    "effort": "medium",
+    "max_output_tokens": 32000,
+    "turn_bound_seconds": 3600
+  },
+  "prompt": {
+    "path": "continue-2.prompt.txt",
+    "bytes": 611,
+    "sha256": "9a78ff9d417594db72696e1de98311b2aee05470043f496307e0a1d9b0334a78"
+  },
+  "turn_index": 2,
+  "dispatched_at": "2026-09-19T21:58:12Z",
+  "ended_at": "2026-09-19T22:03:45Z",
+  "window": {
+    "before_dispatch_percent": 9,
+    "bound_percent": 45,
+    "status": "allowed",
+    "stream_first_percent": 9,
+    "stream_last_percent": 10,
+    "resets_at": "2026-09-20T02:10:00+00:00",
+    "seven_day": {
+      "first_percent": 7,
+      "last_percent": 7
+    },
+    "overage_disabled_reason": "out_of_credits"
+  },
+  "turn": {
+    "exit_code": 0,
+    "elapsed_seconds": 332.15626293001696
+  },
+  "turn_status": "completed",
+  "void": null,
+  "interruption": null,
+  "unreached": null,
+  "slot_consumed": true,
+  "continuations_used": 2,
+  "slots_spent": 3,
+  "void_calls_this_project": 0,
+  "interrupted_calls_this_project": 0,
+  "unreached_calls_this_project": 1,
+  "runner_status_after": "paused",
+  "remaining_after": {
+    "completed": 3,
+    "continuations_used": 2,
+    "continuations_unspent": 1,
+    "next_prompt": "continue-3.prompt.txt",
+    "closed": null
+  },
+  "actor_design_edits": 0,
+  "stream": {
+    "bytes": 212154,
+    "sha256": "231e10a66f06eae2980e5fa88728069423d2d864a8e13d753237ba89873b427f",
+    "frames": {
+      "system": 75,
+      "assistant": 23,
+      "user": 10,
+      "rate_limit_event": 2,
+      "tool_progress": 3,
+      "result": 1
+    },
+    "assistant_messages": 23,
+    "thinking_blocks": 7,
+    "tool_calls": 10,
+    "tool_calls_by_name": {
+      "inspect": 9,
+      "rebuild": 1
+    },
+    "inspect_scopes": {
+      "clearance": 6,
+      "object": 2,
+      "blueprint": 1
+    },
+    "result": {
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 11,
+      "duration_ms": 231223,
+      "total_cost_usd": 5.9949175
+    }
+  },
+  "edits": {
+    "write_script_calls": 0,
+    "edit_script_calls": 0,
+    "accepted": 0,
+    "rejected": 0,
+    "note": "no script was written and none was submitted. The agent re-ran rebuild to force a fresh measurement rather than read a cached verdict; it reproduced the identical digest b933d905 and the identical numbers. Unlike F4's and F5's corresponding continuations, this turn did not re-accept the unchanged script either: the accepted revision after the turn is the same 0b438561 continue-1 left.",
+    "script_lines_after": 436,
+    "script_sha256_after": "f805fdc2bd886b5da8b01f3051bd2668497a2e53c8d7f9fba392ed2c3c9d30e8"
+  },
+  "accepted_before": {
+    "revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+    "static_failing": 0,
+    "pairs": 378,
+    "sweep": "complete, 0.0 mm3"
+  },
+  "accepted_after": {
+    "revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+    "digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c",
+    "changed": false
+  },
+  "static_fit": {
+    "verdict": "pass",
+    "pairs_checked": 378,
+    "counts": {
+      "clear": 378,
+      "intersection": 0,
+      "below clearance": 0,
+      "unknown": 0
+    },
+    "failing_count": 0,
+    "failing": [],
+    "thresholds": {
+      "minimum_clearance_mm": 0.1,
+      "maximum_common_volume_mm3": 1e-06
+    }
+  },
+  "attachments": {
+    "verdict": "touching",
+    "pairs_checked": 25,
+    "reported_count": 0,
+    "reported": [],
+    "thresholds": {
+      "contact_tolerance_mm": 0.001
+    }
+  },
+  "swept_fit": {
+    "verdict": "pass",
+    "coverage": "complete",
+    "step_degrees": 100.0,
+    "joints_checked": 2,
+    "joints_complete": 2,
+    "joints_skipped": 0,
+    "failing_count": 0,
+    "joints": [
+      {
+        "joint": "joint_wheel_l_axle",
+        "kind": "revolute",
+        "unit": "degrees",
+        "status": "complete",
+        "pairs_measured": 378,
+        "step": 100.0,
+        "sample_count": 37,
+        "range_degrees": [
+          -1800.0,
+          1800.0
+        ],
+        "initial_degrees": 0.0,
+        "pairs_moving": 75,
+        "minimum_distance_mm": 0.04999999999998494,
+        "maximum_common_volume_mm3": 0.0
+      },
+      {
+        "joint": "joint_wheel_r_axle",
+        "kind": "revolute",
+        "unit": "degrees",
+        "status": "complete",
+        "pairs_measured": 378,
+        "step": 100.0,
+        "sample_count": 37,
+        "range_degrees": [
+          -1800.0,
+          1800.0
+        ],
+        "initial_degrees": 0.0,
+        "pairs_moving": 75,
+        "minimum_distance_mm": 0.049999999999981504,
+        "maximum_common_volume_mm3": 0.0
+      }
+    ]
+  },
+  "inventory": {
+    "component_count": 28,
+    "catalog_counts": {
+      "board/pi-zero-2-w": 1,
+      "bolt/m2x4-socket": 8,
+      "bolt/m2x6.5-socket": 2,
+      "gearmotor/pololu-2367": 2,
+      "heat_insert/m2-standard": 10
+    },
+    "uncatalogued_sources": [
+      "chassis",
+      "clamp_l",
+      "clamp_r",
+      "wheel_l",
+      "wheel_r"
+    ],
+    "derived_catalog_sources": [],
+    "verdict": "unchanged from continue-1: every purchased part catalogued, five printed parts uncatalogued"
+  },
+  "smoke": {
+    "status": "not run by this invocation",
+    "note": "the runner smokes only when an invocation ends exhausted or failed; this one paused with continue-3 left. The receipt's smoke block is still the iteration-157 one, measured against the create revision 192db5b9, not against 0b438561."
+  },
+  "what_the_agent_did": [
+    "Read the report rather than its summary line: nine inspects, six of them clearance -- the summary, /clearance_sweep/joints, each joint row, /attachments at limit 25, and the per-joint swept pair rows under /clearance_sweep/joints/0/pairs.",
+    "Also read the MJCF validation property twice and the blueprint, checking initial_contact_count, penetrating, grounded_components and world_geometry.",
+    "Re-ran rebuild to force a fresh measurement instead of trusting a cached verdict; identical digest and identical numbers.",
+    "Found no failing check and refused to edit, saying an edit would mean changing a design that measures correct to match a description of it, and that any edit it invented would rest on a number it could not show.",
+    "Named two non-failing values to watch: the 0.0500 mm swept hub clearance depends on its 0.04 mm clearances= declaration staying in place, and the sweep costs 45.4 s and 46.2 s per joint against a 90 s per-joint budget, so a slower machine could return incomplete for lack of time rather than for a fit defect."
+  ],
+  "measured_result_against_f6": {
+    "static": "pass, 0 of 378 failing",
+    "attachments": "touching, 0 of 25 reported",
+    "swept": "pass, coverage complete, 2 of 2 joints, 0.0500 mm minimum distance, 0.0 mm3 maximum common volume",
+    "world_geometry": "none",
+    "catalog_hardware": "every purchased part catalogued",
+    "actor_edits": 0,
+    "continuations_used": 2,
+    "smoke": "not measured on this revision"
+  },
+  "blocker_for_the_next_dispatch": {
+    "what": "run.py's closing smoke calls evidence/smoke mkdir() with no exist_ok, and ot7-robin-c already has that directory from the iteration-157 invocation.",
+    "why_it_matters": "the smoke block runs only on the exhausting invocation, and the exhausted path writes attempt.json only after it. continue-3 would spend F6's last slot, then raise FileExistsError before its row's measured result was ever persisted, leaving the receipt at status running and the row at started.",
+    "where": "docs/probes/ot7/runner/run.py, the smoke block after the dispatch loop.",
+    "fix_before_dispatching_continue_3": true
+  }
+}

@@ -25,12 +25,16 @@ product-agent calls dispatched before the restart ended on the provider's
 session limit in two to four seconds. Under the amended charter (ADR-355) **those six calls are
 void**: no model saw a prompt, none spent a create, continuation or repair
 slot, and none is a design result. F5–F7 remain open. F5 is exhausted;
-**F6 has spent its create prompt and its first continuation and holds
-two** (`ot7-robin-c`): iteration 160 dispatched `continue-1` on Opus at 0 %
+**F6 has spent its create prompt and two continuations and holds
+one** (`ot7-robin-c`): iteration 160 dispatched `continue-1` on Opus at 0 %
 of the window and was killed at its own bound before recording it, and the
 turn it left behind ended on its own with **0 of 378 static checks failing
 and the sweep complete on both wheel axles at 0.0 mm³** (see
-[Iteration 161](#iteration-161-f6s-first-continuation-completed-and-the-sweep-it-was-missing)).
+[Iteration 161](#iteration-161-f6s-first-continuation-completed-and-the-sweep-it-was-missing));
+`continue-2` followed in the same iteration and **changed nothing**, because
+the agent read every row of the report, re-measured through a forced rebuild
+and found no failing check (see
+[Iteration 161](#iteration-161-f6s-second-continuation-and-the-turn-that-refused-to-edit)).
 **F7's create prompt is unspent**, because its only
 completed call, on `ot7-plover-d`, was ruled void as a design result — this
 repository broke its own engine 58 ms into the turn (ADR-390), so the call
@@ -94,7 +98,7 @@ below match it. What each design has left:
 |---|---|---|---|---|---|
 | Heron repair / F4 | 4: three pre-restart, and iteration 48 on `ot7-heron-repair-c` (cut off by the five-hour limit after 6 reads, [receipt](retained/repair-void-c.json)); and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound (decision #44: not a turn, no slot) | 4, all on `ot7-heron-repair-d`: iteration 48, the repair prompt, completed in 1,461.9 s with six accepted revisions ([receipt](retained/repair-completed-d.json)); iteration 51, `continue-1`, completed in 738.5 s with two accepted revisions ([receipt](retained/repair-continue-1-d.json)); iteration 52, `continue-2`, completed in 128.7 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-2-d.json)); iteration 53, `continue-3`, completed in 104.9 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-3-d.json)) | spent: the repair prompt, completed on `ot7-heron-repair-d` | 0 of 3 (all three spent; ADR-357: the repair prompt is the first prompt, not a continuation) | none: F4 is exhausted and its measured result stands |
 | Heron arm / F5 | 1 (pre-restart); and 1 **interrupted** call apart from it: iteration 55 on `ot7-heron-b`, killed at the runner's 30-minute bound after 68 model messages with no design written ([receipt](retained/heron-interrupted-b.json)) | 4, all on `ot7-heron-c`: iteration 57, the create prompt, completed in 1,530.4 s with three accepted design revisions, static fit 7 of 120 failing at the last ([receipt](retained/heron-create-c.json)); iteration 59, `continue-1`, completed in 610.6 s with two accepted revisions, static fit 1 of 120 failing (the bench as world geometry), the sweep complete with zero overlap, smoke passing ([receipt](retained/heron-continue-1-c.json)); iteration 66, `continue-2`, completed in 482.4 s with two accepted revisions, static fit 0 of 105 failing, no world geometry, the sweep complete with zero overlap, smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-2-c.json)); iteration 72, `continue-3`, completed in 142.9 s with no edit and the unchanged script re-accepted, static fit 0 of 105 failing, the sweep complete with zero overlap, the runner's smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-3-c.json)) | spent: the create prompt, completed on `ot7-heron-c` | 0 of 3 (all three spent) | none: F5 is exhausted and its measured result stands |
-| Robin balancer / F6 | 1 (pre-restart); and 1 **interrupted** call apart from it (iteration 148 on `ot7-robin-b`, killed at the runner's then 30-minute bound); and 1 **unreached** call, counted apart from both (iteration 157's `continue-1` on Opus, which `open_project` refused in 6.0 s before any provider session existed — the digest drift of [`DIGEST-DRIFT.md`](DIGEST-DRIFT.md), reclassified under ADR-386, [receipt](attempts/robin-c-unreached.json)) | 2, both on `ot7-robin-c`: iteration 148, the create prompt, completed in 1,676.4 s on `claude-fable-5`, static fit **0 of 276 failing**, sweep incomplete (no declared joint limits); iteration 160, `continue-1`, completed in 790.6 s on `claude-opus-5` with one accepted revision, static fit **0 of 378 failing** and the sweep **complete on both wheel axles at 0.0 mm³** ([receipt](retained/robin-continue-1-c.json)) | spent: the create prompt, completed on `ot7-robin-c` | 2 of 3 | none: `continue-2` is next in `ot7-robin-c` itself |
+| Robin balancer / F6 | 1 (pre-restart); and 1 **interrupted** call apart from it (iteration 148 on `ot7-robin-b`, killed at the runner's then 30-minute bound); and 1 **unreached** call, counted apart from both (iteration 157's `continue-1` on Opus, which `open_project` refused in 6.0 s before any provider session existed — the digest drift of [`DIGEST-DRIFT.md`](DIGEST-DRIFT.md), reclassified under ADR-386, [receipt](attempts/robin-c-unreached.json)) | 3, all on `ot7-robin-c`: iteration 148, the create prompt, completed in 1,676.4 s on `claude-fable-5`, static fit **0 of 276 failing**, sweep incomplete (no declared joint limits); iteration 160, `continue-1`, completed in 790.6 s on `claude-opus-5` with one accepted revision, static fit **0 of 378 failing** and the sweep **complete on both wheel axles at 0.0 mm³** ([receipt](retained/robin-continue-1-c.json)); iteration 161, `continue-2`, completed in 332.2 s, no edit and no submission, the same numbers re-measured through a forced `rebuild` ([receipt](retained/robin-continue-2-c.json)) | spent: the create prompt, completed on `ot7-robin-c` | 1 of 3 | none: `continue-3` is next in `ot7-robin-c` itself, after the runner's smoke-directory defect is fixed |
 | Plover biped / F7 | 2: 1 pre-restart, and **`ot7-plover-d`** — iteration 156's create call on `claude-opus-5`, which reached the model and ended on its own in 1,310.0 s but was ruled void as a design result in iteration 160, because this repo's own iteration-158 source edit poisoned the project-worker bundle 58 ms into the build phase (ADR-390): every build failed `DOMAIN_WORKER_NO_RESULT`, the accepted revision is a three-solid probe and its fit is `unavailable`, so the call never became a fair measurement of the agent ([receipt](attempts/plover-d-engine-mutated.json)); and 2 **interrupted** calls apart from both, both on `claude-opus-5`: iteration 154 on `ot7-plover-b`, whose runner died 18 s in and took the child with it ([receipt](attempts/plover-b-runner-died.json), finalised by `reclassify` in iteration 156, ADR-388), and iteration 155 on `ot7-plover-c`, killed at the runner's then 30-minute bound after 49 tool calls while it was repairing its own measured fit ([receipt](attempts/plover-c-interrupted.json)) | 0 | **unspent** | 3 of 3 | `ot7-plover-e`: the same frozen create prompt, in a fresh project |
 
 Retries send the same frozen prompts and are dispatched only while the
@@ -1648,3 +1652,70 @@ sits inside the shaft envelope and sweeps through it).
 **F6 stands at: create spent, `continue-1` spent, two continuations unspent,
 zero actor edits, zero failing static and swept checks, catalog hardware
 complete, smoke unmeasured.**
+
+## Iteration 161: F6's second continuation, and the turn that refused to edit
+
+Dispatched at 21:58:18 UTC with the window probe reading **9 %** against the
+unchanged 45 % gate. `continue-2.prompt.txt` (611 bytes, digest `9a78ff9d…`,
+unchanged) **ended on its own** in 332.2 s (result `success`, 11 API turns, 23
+model messages, 7 thinking blocks, 10 tool calls: 9 `inspect` — six
+`clearance`, two `object`, one `blueprint` — and 1 `rebuild`). The second
+continuation is spent; one remains. Compact receipt:
+[`robin-continue-2-c.json`](retained/robin-continue-2-c.json); the
+212,154-byte stream (digest `231e10a6…`) stays in the project.
+
+**The agent read the report and then declined to change anything.** It did not
+stop at the summary line: it paged `/clearance_sweep/joints`, each joint row,
+`/attachments` at limit 25, and the per-joint swept pair rows under
+`/clearance_sweep/joints/0/pairs` — the two places a failure could hide from a
+summary — read the MJCF validation property for `initial_contact_count`,
+`penetrating`, `grounded_components` and `world_geometry`, and re-ran
+`rebuild` to force a fresh measurement rather than read a cached verdict. It
+reproduced the identical digest `b933d905…` and the identical numbers. Its own
+sentence for why it stopped there: editing now would mean changing a design
+that measures correct in order to match a description of it, "which is the one
+thing the measurements exist to prevent — and any edit I invented would have
+to be justified by a number I could not show you."
+
+That is the behaviour F1 was built for, stated by the agent unprompted, and it
+is the mirror image of ot6's failure: there the script's printout said the
+parts fit while the geometry did not; here the prompt's standing text asks for
+a correction and the measurements say there is nothing to correct, so the
+agent answers with the measurements. It also named two non-failing values to
+watch — the 0.0500 mm swept hub clearance sits above its declared 0.04 mm
+minimum but below the 0.1 mm undeclared default, so it depends on that
+`clearances=` declaration staying in place; and the sweep costs 45.4 s and
+46.2 s per joint against F3's 90 s per-joint budget, so a substantially slower
+machine could return `incomplete` for want of time rather than for a fit
+defect, whose repair would be a coarser `sweep_step_degrees` and not a
+geometry change.
+
+Measured result, unchanged from continue-1 and on the same accepted revision
+`0b438561…`: static **0 of 378 failing**, attachments **touching** 25 of 25,
+sweep **pass, `coverage: complete`**, 2 of 2 joints, minimum distance
+0.0500 mm, maximum common volume 0.0 mm³; inventory unchanged, every purchased
+part catalogued. **One difference from F4's and F5's corresponding
+continuations is worth stating plainly: this turn did not re-accept the
+unchanged script either.** It submitted no script at all, so the accepted
+revision after the turn is the one continue-1 left, not a fresh acceptance of
+the same text.
+
+**F6 stands at: create spent, `continue-1` and `continue-2` spent, one
+continuation unspent, zero actor edits, zero failing static and swept checks,
+catalog hardware complete, smoke still unmeasured on `0b438561…`.**
+
+### The defect that must be fixed before `continue-3` is dispatched
+
+The runner's closing smoke runs **only** on the invocation that ends
+`exhausted` or `failed`, and on that path `attempt.json` is written **after**
+it. `continue-3` is F6's last slot, so it is that invocation — and the smoke
+block opens with `smoke.mkdir()`, no `exist_ok`, against an
+`evidence/smoke` directory `ot7-robin-c` has carried since the iteration-157
+invocation wrote it at 17:30 UTC. As the code stands, `continue-3` would reach
+the model, spend the slot, complete, be measured, and then raise
+`FileExistsError` before any of that reached the receipt, leaving it at
+`status: running` with the row at `started` — the dead-runner shape ADR-388
+already had to clean up once, except with a spent frozen prompt inside it.
+Fix the runner first, with a fixture that exhausts a design whose evidence
+directory already holds a smoke, then dispatch. F6's smoke evidence arrives
+with `continue-3` or not at all.
