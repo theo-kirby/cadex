@@ -16,5 +16,5 @@ Adopted the Hypergraph protocol on 2026-08-09 (mode B — no legacy graph existe
 
 ## Reconciliation
 
-- high_water_mark: tidy-banner-0293, shy-glade-0050, empty-light-4558, neat-tower-5715, careful-key-9041, weathered-falcon-4350, deep-branch-6721, sleepy-shade-1485, shady-lodge-6077, wild-prairie-9912, quiet-creek-7756, idle-arrow-2946, candid-creek-2410, pale-river-6583, ancient-crest-4588, proud-cliff-9629, curious-badger-0797, amber-glade-2813, lively-grove-8186, hidden-reef-8369, simple-quartz-9812, royal-water-8317, weathered-sage-2750, falling-ocean-4411, patient-pond-3886, copper-union-7670, crimson-gate-0087, soft-bay-5837, neat-reef-5625, lawful-grotto-1291, restless-slope-6471, calm-signal-9170, clear-clock-9191, terse-dew-6200
-- reconciled_at: 2026-09-19T17:59:57+00:00
+- high_water_mark: tidy-banner-0293, shy-glade-0050, empty-light-4558, neat-tower-5715, careful-key-9041, weathered-falcon-4350, deep-branch-6721, sleepy-shade-1485, shady-lodge-6077, wild-prairie-9912, quiet-creek-7756, idle-arrow-2946, candid-creek-2410, pale-river-6583, ancient-crest-4588, proud-cliff-9629, curious-badger-0797, amber-glade-2813, lively-grove-8186, hidden-reef-8369, simple-quartz-9812, royal-water-8317, weathered-sage-2750, falling-ocean-4411, patient-pond-3886, copper-union-7670, soft-bay-5837, neat-reef-5625, lawful-grotto-1291, restless-slope-6471, calm-signal-9170, clear-clock-9191, silent-rose-4316, cool-grotto-2512
+- reconciled_at: 2026-09-19T19:01:11+00:00
