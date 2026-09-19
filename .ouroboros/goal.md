@@ -1,12 +1,27 @@
 # Goal: the agent designs it right
 
-Verified against source: 2026-09-17. Owner-directed charter revision (ADR-341),
+Verified against source: 2026-09-19. Owner-directed charter revision (ADR-341),
 replacing the ot6 charter (ADR-328), whose D1, D2 and D4–D10 the owner ticked on
 2026-09-14 (record `nimble-wing-3050`). D3, the rendered look, went to the
 owner's own manual work and does not carry. Amended 2026-09-15 for the ot7
 restart (ADR-355): usage-limit failures are void, design turns wait for the
 product agent, and no role stops or starts the run.
 The human owns this file; unattended roles do not edit it.
+
+## Owner directive: recover the deadline crash (2026-09-19)
+
+The owner authorizes restarting ot7 on Opus with a fresh 48-hour budget after
+the runner crashed immediately after iteration 151's reconciliation. The
+configured timezone-bearing absolute deadline caused a naive/aware datetime
+comparison error. Use `stop.after: 48h` and `stop.until: null`; this supersedes
+the September 19 deadline below. All roles and product calls remain on
+`claude-opus-5`. Preserve the two accepted done verdicts as the completion stop.
+
+Reconciliation is complete. The next substantive unit remains Robin's first
+continuation on `ot7-robin-c`, explicitly selecting Opus, then the remaining
+frozen continuations and Plover. No Opus design turn was completed during the
+crashed run. All prior slot accounting, measured outcomes, model-history
+requirements and restrictions on actor edits to designs remain in force.
 
 ## Owner directive: continue on Opus (2026-09-17)
 

@@ -49,7 +49,7 @@ stop:
                           # window resets while the run is still going, and the loop
                           # waits it out by itself. `limits.reserve` blocks the harness
                           # instead, which is what leaves Claude for the operator.
-  until: "2026-09-19T14:53:10+00:00" # retain the existing restart deadline
+  until: null            # use after: 48h; runner cannot compare timezone-bearing deadlines
   on_done_accepted: 2     # report_done charter: two accepted done verdicts end the run
   max_stuck: 25           # `stuck` is a loop that changed nothing; backoff makes 25 ~3.8h
 handoff:

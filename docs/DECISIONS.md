@@ -26392,3 +26392,17 @@ accepted designs and continuation allowances are preserved. Robin therefore
 has a Fable create turn followed by Opus continuations, not a single-model
 result. A regression checks the executed models, legacy receipt history and
 slot accounting. No engine or protocol changes are involved.
+
+
+## ADR-385 — Recover ot7 with a relative deadline (2026-09-19)
+
+The timezone-bearing absolute deadline introduced for the Opus restart
+triggered a TypeError in Ouroboros's naive/aware datetime comparison after
+iteration 151's reconciliation. No subsequent design turn ran. The owner
+authorized recovery with a renewed budget: keep Opus and the existing branch,
+set `after: 48h` and `until: null`, and preserve all experiment slots and
+results. The runner's own BudgetClock is checked at startup, before expiry,
+and at expiry against this configuration. This avoids the incompatible
+absolute-deadline path without modifying the external runner installation.
+The notifier outlived the loop and sent a process-gone alert; restart it only
+after the loop is live to avoid the known stale-terminal-status launch race.
