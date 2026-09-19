@@ -126,13 +126,22 @@ design result, and neither spent a slot. Both retain their evidence.
 
 **`ot7-plover-b`, iteration 154.** The window probe read `allowed` at 12 %,
 the frozen create prompt reached the model, and 18 seconds later the runner
-process itself died and took the child with it. Sixteen frames were retained
-frame by frame (ADR-356), `turn.stdout.json` is empty, and the receipt still
-reads `status: running` because nothing survived to finalise it. A child that
-never ended on its own is an **interruption**: no slot, retry in a fresh
-letter-suffixed project. The runner classifies a child *it* kills at the bound
-and a child that never launched; it has no path for its own death, so this
-receipt is stale by construction. That gap is named here, not fixed here.
+process itself died and took the child with it. Every frame that arrived was
+retained frame by frame (ADR-356) — 28 in all, 10 of them from the model —
+`turn.stdout.json` is empty, and the receipt read `status: running` because
+nothing survived to finalise it. A child that never ended on its own is an
+**interruption**: no slot, retry in a fresh letter-suffixed project.
+
+That gap — the runner classified a child *it* killed at the bound and one that
+never launched, but had no path for its own death — was closed in iteration
+156 (ADR-388), and `run.py reclassify` finalised this receipt: `interrupted`,
+`kind: runner_died`, 0 slots spent, `model_messages_before_kill` 10 counted
+from the transcript the dead child left, retry `ot7-plover-d`. It could be
+ruled because the receipt had been silent for **2769.2 s** against a budget of
+2700 s — the 1,800 s bound *this* turn ran under plus the measurement bound
+plus a 600 s grace — and nothing touches a receipt while its turn runs. The
+stale copy is kept beside it as `attempt.superseded.json`.
+[The receipt](plover-b-runner-died.json) carries the digests.
 
 **`ot7-plover-c`, iteration 155.** The probe read `allowed` at 14 % of the
 five-hour window, and the same frozen prompt ran on `claude-opus-5` for the
@@ -155,4 +164,6 @@ create turn has cost more the larger its design — Heron 1530.4 s at 120 pairs,
 Robin 1676.4 s at 276, Plover 1800.0 s at 435 — so the biped is the first
 design whose create turn does not fit in 30 minutes, and a retry at the same
 bound has no reason to end differently. `ot7-plover-d` should be dispatched
-only after that bound is raised.
+only after that bound is raised — which iteration 156 did: ADR-388 doubles
+`TURN_BOUND_SECONDS` to **3600 s**, and every receipt now records the bound
+each of its turns ran under, so the three timings above stay comparable.

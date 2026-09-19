@@ -3,7 +3,9 @@
 """The evidence collector spends only the frozen continuation budget."""
 import importlib.util
 import json
+import os
 from pathlib import Path
+import time
 
 import pytest
 
@@ -87,7 +89,8 @@ def test_runner_bound_kill_is_interrupted_and_returns_the_slot(tmp_path, code, k
     assert row['status'] == 'interrupted' and row['slot_consumed'] is False and row['void'] is None
     assert row['interruption']['kind'] == kind and row['interruption']['slot_consumed'] is False
     assert row['interruption']['rule'] == 'ADR-356'
-    assert row['interruption']['bound_seconds'] == (1800 if code == 'timeout' else None)
+    assert row['interruption']['bound_seconds'] == (
+        runner.TURN_BOUND_SECONDS if code == 'timeout' else None)
     assert row['continuations_used'] == 0
     assert report['slots_spent'] == 0 and report['void_calls'] == 0 and report['interrupted_calls'] == 1
     assert report['retry'] == {'rule': 'ADR-356', 'prompt': 'heron.create.prompt.txt', 'project': 'ot7-heron-b',
@@ -96,7 +99,7 @@ def test_runner_bound_kill_is_interrupted_and_returns_the_slot(tmp_path, code, k
     # The measurement is still read and hashed; no smoke runs; nothing else is dispatched.
     assert [Path(c[-1]).name for c, _ in calls if '--child-measure' in c] == ['turn-0']
     assert all('smoke' not in c for c, _ in calls) and row['static_fit']['failing_count'] == 7
-    assert calls[0][1] == 1800 == report['turn_bound_seconds']
+    assert calls[0][1] == runner.TURN_BOUND_SECONDS == report['turn_bound_seconds']
     with pytest.raises(FileExistsError):
         runner.run('heron', project(tmp_path), 'fixture', executor(calls, code))
 
@@ -1455,3 +1458,86 @@ def test_reclassify_corrects_a_retained_receipt_and_leaves_completed_turns_alone
     again = runner.reclassify(target)
     assert again['corrected'] == [] and 'superseded' not in again
     assert not (target / 'evidence' / 'attempt.superseded-2.json').exists()
+
+
+def test_the_turn_bound_holds_the_three_measured_create_turns(tmp_path):
+    """ADR-388: the bound is raised past the create turns ot7 actually measured.
+
+    Heron finished in 1,530.4 s at 120 static pairs and Robin in 1,676.4 s at
+    276; Plover reached the old 1,800 s ceiling at 435 pairs, mid-repair. A
+    bound only slightly above the largest measurement would be another
+    interruption, so it doubles -- and every receipt still records the bound
+    its turns ran under, so the timings stay comparable across the change.
+    """
+    measured = [1530.4, 1676.4, 1800.0]
+    assert runner.TURN_BOUND_SECONDS == 3600
+    assert runner.TURN_BOUND_SECONDS >= 2 * max(measured)
+    calls = []
+    report = runner.run('plover', project(tmp_path), 'fixture', executor(calls), turns=1)
+    assert [timeout for command, timeout in calls if '--child-turn' in command] == [3600]
+    assert report['turn_bound_seconds'] == 3600
+    assert report['settings']['turn_bound_seconds'] == 3600
+    assert report['turns'][0]['settings']['turn_bound_seconds'] == 3600
+
+
+def test_a_row_whose_runner_died_finalises_as_an_interruption(tmp_path):
+    """ADR-388: the ot7-plover-b shape -- the runner died and nothing wrote back."""
+    target = project(tmp_path)
+    calls = []
+    fake = executor(calls)
+
+    def dies(command, out, stem, timeout):
+        if stem == 'turn':
+            frames_file(out / 'transcript.jsonl', [SPOKE, SPOKE])
+            raise KeyboardInterrupt('the runner was killed 18 s in')
+        return fake(command, out, stem, timeout)
+
+    with pytest.raises(KeyboardInterrupt):
+        runner.run('plover', target, 'fixture', dies, turns=1)
+    path = target / 'evidence' / 'attempt.json'
+    stale = json.loads(path.read_text())
+    assert stale['status'] == 'running' and stale['turns'][0]['status'] == 'started'
+
+    # A row that could still be in flight is left exactly as it is.
+    assert runner.reclassify(target)['corrected'] == []
+    assert json.loads(path.read_text())['turns'][0]['status'] == 'started'
+
+    # Once the whole budget a turn could take has passed with no write, no
+    # live runner can still be holding the row.
+    budget = runner.TURN_BOUND_SECONDS + runner.MEASUREMENT_BOUND_SECONDS + runner.STALE_GRACE_SECONDS
+    silent = time.time() - budget - 60
+    os.utime(path, (silent, silent))
+    result = runner.reclassify(target)
+    assert [c['kind'] for c in result['corrected']] == ['runner_died']
+    assert (target / 'evidence' / result['superseded']).is_file()
+
+    fixed = json.loads(path.read_text())
+    row = fixed['turns'][0]
+    assert row['status'] == 'interrupted' and row['slot_consumed'] is False
+    assert row['interruption']['rule'] == 'ADR-356'
+    assert row['interruption']['bound_seconds'] == 3600
+    assert row['interruption']['model_messages_before_kill'] == 2
+    assert fixed['status'] == 'interrupted' and fixed['interrupted_calls'] == 1
+    assert fixed['slots_spent'] == 0 and fixed.get('unreached_calls', 0) == 0
+    assert fixed['retry'] == {'rule': 'ADR-356', 'prompt': 'plover.create.prompt.txt',
+                              'project': 'ot7-heron-b',
+                              'note': 'Same frozen prompt, fresh project or fresh seed copy, '
+                                      'only while the product agent is available.'}
+    assert fixed['remaining'] == {'completed': 0, 'continuations_used': 0,
+                                  'continuations_unspent': 0, 'next_prompt': None,
+                                  'closed': 'interrupted'}
+    assert fixed['reclassifications'][0]['rule'] == 'ADR-388'
+    # Idempotent: the finalised row is no longer `started`, so nothing repeats.
+    assert runner.reclassify(target)['corrected'] == []
+    assert not (target / 'evidence' / 'attempt.superseded-2.json').exists()
+
+
+def test_a_retry_name_skips_the_letters_already_taken(tmp_path):
+    """ADR-388: a receipt finalised late names a project that is still free."""
+    root = tmp_path / 'cadex-projects'
+    root.mkdir()
+    (root / 'ot7-plover-b').mkdir()
+    (root / 'ot7-plover-c').mkdir()
+    assert runner.retry_project_name('ot7-plover-b', root) == 'ot7-plover-d'
+    assert runner.retry_project_name('ot7-plover-b') == 'ot7-plover-c'
+    assert runner.retry_project_name('ot7-plover', root) == 'ot7-plover-d'

@@ -83,10 +83,11 @@ transcript or measurement files mean unavailable evidence, never zero
 failures. The runner must not be restarted against another project to hide
 a failed attempt.
 
-Each model call has a 30-minute process bound (`TURN_BOUND_SECONDS`, written
-into the receipt); each measurement read has a five-minute bound. Timeout
-kills the child process group, and a call killed there is an interruption,
-not a spent slot (ADR-356). One final one-second
+Each model call has a **60-minute** process bound (`TURN_BOUND_SECONDS`,
+written into the receipt and into every row's `settings`, so a receipt says
+which bound each of its turns ran under); each measurement read has a
+five-minute bound. Timeout kills the child process group, and a call killed
+there is an interruption, not a spent slot (ADR-356). One final one-second
 holding smoke is attempted even for failing designs, with a 240-second internal
 budget and a 300-second process bound. Its full receipts and logs stay in
 `evidence/smoke/`. A process exit of zero alone is not a passing smoke: read the
@@ -187,7 +188,7 @@ continuations unspent; the committed receipt is
 
 ## Interrupted calls (decision #44, ADR-356)
 
-A call the runner killed at its 30-minute bound did not end on its own, so
+A call the runner killed at its wall-clock bound did not end on its own, so
 under the charter it is not a turn. The critic ruled this for the iteration
 44 call (decision #44): an **interrupted execution**, zero frozen-prompt
 slots consumed, recorded apart from provider-limit void calls. The runner
@@ -202,8 +203,35 @@ next, exactly as for a void call. A limit that landed before the kill is
 void, not interrupted. `run.py --classify` reports `interruption` too, from
 the exit code in the sibling `attempt.json`.
 
-The bound stays at 30 minutes. What changed beside the accounting is the
-turn itself: since ADR-356 the CLI launches every turn at an explicit effort
+There is a third way a call fails to end on its own, and the runner cannot
+write it down at the time: **its own death**. `dispatch` persists the row as
+`started` before it launches the child and rewrites it the moment the child
+returns, so a runner killed in between leaves a receipt stuck at
+`status: running` with a `started` row and no outcome — what iteration 154
+left on `ot7-plover-b`. `run.py reclassify PROJECT` finalises it (ADR-388).
+The evidence a later process has is the receipt's own mtime, which no running
+turn touches: once it has been silent for longer than the whole budget that
+turn could have taken (`TURN_BOUND_SECONDS` + `MEASUREMENT_BOUND_SECONDS` +
+`STALE_GRACE_SECONDS`, 600 s), no live runner can still be holding the row.
+The row becomes `interrupted` with `kind: runner_died` on the same ADR-356
+terms — no slot, evidence kept, same frozen prompt retried in a fresh project
+— and its `model_messages_before_kill` is counted from the transcript the
+dead child had already written. A row that could still be in flight is left
+exactly as it is, so the command is safe to run against a live attempt. Since
+the finalisation happens late, the `retry` name skips the letters already
+taken: `ot7-plover-b` reclassified after `ot7-plover-c` exists names
+`ot7-plover-d`.
+
+The bound was raised from 30 to **60 minutes** on 2026-09-19 (ADR-388).
+The three create turns ot7 has measured cost more the larger the design —
+Heron 1,530.4 s at 120 static pairs, Robin 1,676.4 s at 276, Plover 1,800.0 s
+at 435 — and the last of those *is* the old bound, reached mid-repair rather
+than at an end of its own. A ceiling just above the largest measurement would
+buy another interruption, so it doubles. Each row records the bound it ran
+under, so `classify` rules a pre-ADR-388 kill against 1,800 s and the
+timings stay comparable across the change.
+
+What changed beside the accounting is the turn itself: since ADR-356 the CLI launches every turn at an explicit effort
 level (`high`, or `$CADEX_EFFORT`) and passes the harness its documented
 per-message output cap (`CLAUDE_CODE_MAX_OUTPUT_TOKENS`, 32,000 by default,
 or `$CADEX_MAX_OUTPUT_TOKENS`), which caps thinking and text together. On
@@ -238,7 +266,7 @@ The runner first reads all accepted clearance pages with `restore=False`,
 retaining `before/clearance.json`, `before/fit.json` and their hashes. A failed
 read, missing report or changed script/metadata stops before any provider call.
 It then dispatches only `repair.prompt.txt`, without `--resume`, under the same
-30-minute bound and automatic-follow-up guard as design attempts. It records
+turn bound and automatic-follow-up guard as design attempts. It records
 the repair slot as spent only when the call ends on its own, the provider
 stream, elapsed time, after-fit report and before/after accepted metadata and
 script hashes. The before artifacts are
@@ -335,7 +363,7 @@ The first repair call that reached a model ran on `ot7-heron-repair-b`, a
 copy of the seed without its `evidence/`, `agent.json` or CLI lock, made by
 the operator role and validated by `validate_seed` before dispatch. The
 outcome is in [`repair-timeout-b.json`](../retained/repair-timeout-b.json):
-the turn was killed at the 30-minute bound with no submission, the after-read
+the turn was killed at the then 30-minute bound with no submission, the after-read
 matched the before-read exactly, and the runner of that day reported
 `interrupted` with the slot consumed. **Decision #44 (the critic, iteration
 44) ruled otherwise: an interrupted execution, zero frozen-prompt slots
@@ -483,7 +511,7 @@ turn completed in 104.9 s, reading only, and moved the window from 46 % to
 
 `run.py heron … --turns 1` on the fresh project `ot7-heron-b` is the first
 design-attempt dispatch under the gate: probe 13 %, dispatched at 21:28 UTC,
-killed at the 30-minute bound with no design written
+killed at the then 30-minute bound with no design written
 ([receipt](../retained/heron-interrupted-b.json)). The runner classified it
 `interrupted`, spent no slot and named `ot7-heron-c`; the receipt's
 `interruption_analysis` has the timeline. Two collector facts the call
@@ -519,8 +547,8 @@ frozen prompt byte or a design:
   attempt; `resume` reuses what the receipt records, so an attempt cannot
   change level between its turns. A receipt written before this field
   existed resumes at `high`, which is what its turns ran at. The 32,000-token
-  output cap and the 30-minute bound are unchanged. The reason is the
-  iteration 55 timeline: at `high`, a create turn spent 24 of its 30 minutes
+  output cap and the then 30-minute bound are unchanged. The reason is the
+  iteration 55 timeline: at `high`, a create turn spent 24 of its then 30 minutes
   in three thinking-only messages that each hit the cap, and the effort
   level is the documented soft control on that.
 - **`describe_api` now fits under the bridge's budget, and measured on

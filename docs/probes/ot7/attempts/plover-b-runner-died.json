@@ -1,0 +1,77 @@
+{
+  "rule": "ADR-388",
+  "what": "F7's first Opus create call, finalised: its runner process died 18 s in and took the child with it, so no process survived to write the outcome. `run.py reclassify` ruled it an ADR-356 interruption from the receipt's own silence.",
+  "design": "plover",
+  "project": "ot7-plover-b",
+  "model": "claude-opus-5",
+  "effort": "medium",
+  "dispatched_at": "2026-09-19T18:01:33+00:00",
+  "window_reading": {
+    "status": "allowed",
+    "five_hour_percent": 12,
+    "windows": {
+      "five_hour": 12,
+      "seven_day": 2
+    },
+    "resets_at": "2026-09-19T21:10:00+00:00",
+    "dispatched": true
+  },
+  "prompt": {
+    "path": "plover.create.prompt.txt",
+    "bytes": 9303,
+    "sha256": "b95f98b77ba7180140d873e3615a24a0802e9645671664c2e7277c465d8457aa"
+  },
+  "turn": {
+    "status": "interrupted",
+    "recorded_outcome": null,
+    "transcript": {
+      "path": "turn-0/transcript.jsonl",
+      "bytes": 186472,
+      "sha256": "ac871c452d61f3133b22fd9944b407d9447c6b5fbcdf538c12de8bd5181f9a98",
+      "frames": 28
+    },
+    "envelope_bytes": 0
+  },
+  "interruption": {
+    "kind": "runner_died",
+    "rule": "ADR-356",
+    "slot_consumed": false,
+    "bound_seconds": 1800,
+    "elapsed_seconds": null,
+    "silent_seconds": 2769.2,
+    "budget_seconds": 2700,
+    "model_messages_before_kill": 10
+  },
+  "reclassification": {
+    "rule": "ADR-388",
+    "at": "2026-09-19T18:47:42+00:00",
+    "turns": [
+      {
+        "index": 0,
+        "evidence_dir": "turn-0",
+        "kind": "runner_died",
+        "silent_seconds": 2769.2
+      }
+    ]
+  },
+  "why_it_could_be_ruled": "`dispatch` writes the receipt once before it launches the child and again the moment the child returns, and nothing touches it while a turn runs. The receipt had been silent for 2769.2 s against a budget of 2700 s (the 1,800 s bound this turn ran under, plus the 300 s measurement bound, plus a 600 s grace), so no live runner could still have held the row. A row that could still be in flight is left untouched.",
+  "accounting": {
+    "slots_spent": 0,
+    "interrupted_calls": 1,
+    "void_calls": 0,
+    "unreached_calls": 0,
+    "retry": {
+      "rule": "ADR-356",
+      "prompt": "plover.create.prompt.txt",
+      "project": "ot7-plover-d",
+      "note": "Same frozen prompt, fresh project or fresh seed copy, only while the product agent is available."
+    },
+    "f7_slots_unspent": 4
+  },
+  "evidence_root": "cadex-projects/ot7-plover-b/evidence (project-local, not committed)",
+  "superseded_receipt": "evidence/attempt.superseded.json (the stale `running` copy, kept)",
+  "manifest": {
+    "bytes": 3970,
+    "sha256": "6492f52f0b5b1ea139c03384b024a531de4e6604f4bd9e04b6011390f24284e1"
+  }
+}

@@ -20,9 +20,21 @@ PROMPTS = REPO / 'docs/probes/ot7/prompts'
 sys.path.insert(0, str(REPO / 'cli'))
 
 #: The wall-clock bound on one product-agent call. A call killed here is an
-#: interruption, not a turn that ended on its own (ADR-356).
-TURN_BOUND_SECONDS = 1800
+#: interruption, not a turn that ended on its own (ADR-356). Raised from 1800
+#: to 3600 by ADR-388: a create turn costs more the larger the design, and the
+#: three measured ones run 1,530.4 s at 120 static pairs (Heron), 1,676.4 s at
+#: 276 (Robin) and 1,800.0 s at 435 (Plover) -- the last being the bound
+#: itself, reached mid-repair rather than at an end of its own. Every receipt
+#: records the bound each of its turns ran under, so timings stay comparable
+#: across the change.
+TURN_BOUND_SECONDS = 3600
 MEASUREMENT_BOUND_SECONDS = 300
+#: How long a row left at ``started`` must stay silent before a later process
+#: may rule that its runner died (ADR-388). The receipt is written once before
+#: the child launches and again as soon as it returns, so the whole budget a
+#: turn could take -- its bound plus its measurement -- must pass with no
+#: write before the row can be anything but in flight.
+STALE_GRACE_SECONDS = 600
 #: A frozen prompt is dispatched only while the five-hour window reads at or
 #: under this, in percent (ADR-358): one completed turn moved a window from
 #: 8 % to 57 % and another from 8 % to 63 %, so a turn that starts above about
@@ -349,6 +361,48 @@ def interruption(turn, transcript, bound_seconds=TURN_BOUND_SECONDS):
             'model_messages_before_kill': model_messages(transcript)}
 
 
+def abandoned(receipt, row, attempt, now=None):
+    """Why a row still at ``started`` belongs to a runner that died, or None (ADR-388).
+
+    ``dispatch`` writes the receipt once before it launches the child and
+    again as soon as the child returns, so a row that is still ``started``
+    was either left in flight or orphaned when the runner itself died. A
+    later process has one piece of evidence for telling those apart: the
+    receipt's own mtime, which is not touched while a turn runs. Once the
+    whole budget that turn could have taken -- its bound, its measurement and
+    a grace period -- has passed with nothing written back, no live runner can
+    still be holding the row.
+
+    This is an interruption on the same terms as a kill at the bound: the call
+    did not end on its own, so no frozen slot is consumed and the same prompt
+    is retried in a fresh project.
+    """
+    if row.get('status') != 'started' or row.get('turn'):
+        return None
+    bound = turn_bound(receipt, row)
+    budget = bound + MEASUREMENT_BOUND_SECONDS + STALE_GRACE_SECONDS
+    try:
+        silent = (now if now is not None else time.time()) - Path(attempt).stat().st_mtime
+    except OSError:
+        return None
+    if silent < budget:
+        return None
+    return {'kind': 'runner_died', 'rule': 'ADR-356', 'slot_consumed': False,
+            'bound_seconds': bound, 'elapsed_seconds': None,
+            'silent_seconds': round(silent, 1), 'budget_seconds': budget,
+            'model_messages_before_kill': 0}
+
+
+def turn_bound(receipt, row=None):
+    """The bound a turn ran under: the row's own record, else the receipt's,
+    else today's constant (a receipt written before the field existed)."""
+    for source in ((row or {}).get('settings') or {}, receipt.get('settings') or {}, receipt):
+        value = source.get('turn_bound_seconds')
+        if isinstance(value, (int, float)):
+            return value
+    return TURN_BOUND_SECONDS
+
+
 def unreached_reason(turn, transcript, envelope):
     """Why a call never reached the model for a local reason, or None (ADR-386).
 
@@ -389,10 +443,20 @@ def unreached_reason(turn, transcript, envelope):
             'provider_frames': 0, 'error': error[:400]}
 
 
-def retry_project_name(name):
-    """The fresh, letter-suffixed project a void call is retried in (ADR-355)."""
+def retry_project_name(name, parent=None):
+    """The fresh, letter-suffixed project a void call is retried in (ADR-355).
+
+    With ``parent``, the first suffix that does not already exist there: a
+    receipt finalised after its retry has already started -- which is what
+    ``reclassify`` does to a runner that died (ADR-388) -- names a project
+    that is still free rather than one already spent.
+    """
     match = re.fullmatch(r'(.*)-([a-y])', name)
-    return f'{match.group(1)}-{chr(ord(match.group(2)) + 1)}' if match else f'{name}-b'
+    stem, letter = (match.group(1), match.group(2)) if match else (name, 'a')
+    candidate = f'{stem}-{chr(ord(letter) + 1)}'
+    while parent is not None and (Path(parent) / candidate).exists() and candidate[-1] < 'z':
+        candidate = f'{stem}-{chr(ord(candidate[-1]) + 1)}'
+    return candidate
 
 
 def classify(transcript, envelope=None, stderr=None):
@@ -407,13 +471,17 @@ def classify(transcript, envelope=None, stderr=None):
     if not void:
         # The runner's own exit code lives in the attempt receipt beside the
         # turn directory; without it a call can only be classified void or not.
+        # The bound comes from the same row, so a call killed under the old
+        # 1800 s bound is still reported against 1800 (ADR-388).
+        receipt, row = {}, {}
         try:
             receipt = json.loads((transcript.parent.parent / 'attempt.json').read_text())
             index = int(transcript.parent.name.split('-')[-1])
-            turn = receipt['turns'][index].get('turn') or {}
+            row = receipt['turns'][index]
+            turn = row.get('turn') or {}
         except (OSError, ValueError, KeyError, IndexError, TypeError):
             turn = {}
-        cut_off = interruption(turn, transcript) if turn else None
+        cut_off = interruption(turn, transcript, turn_bound(receipt, row)) if turn else None
     never = None
     if not void and not cut_off and envelope is not None:
         never = unreached_reason(turn, transcript, envelope)
@@ -589,6 +657,12 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
     continuations = left['continuations_used']
     first = names.index(left['next_prompt'])
     receipt['status'] = 'running'
+    # Every invocation runs at the collector's current bound, and each row
+    # copies it, so a receipt resumed after ADR-388 raised the bound says
+    # which of its turns ran under which -- and cross-design timings stay
+    # comparable rather than silently mixing two ceilings.
+    receipt['turn_bound_seconds'] = TURN_BOUND_SECONDS
+    receipt.setdefault('settings', settings('high'))['turn_bound_seconds'] = TURN_BOUND_SECONDS
     for index in range(first, min(first + turns, len(names))):
         name = names[index]
         reading = None
@@ -641,7 +715,8 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
                                    '--effort', effort, str(project), str(out), str(prompt),
                                    receipt['model']], out, 'turn', TURN_BOUND_SECONDS)
         row['void'] = void_reason(out / 'transcript.jsonl', out / 'turn.stdout.json', out / 'turn.stderr.txt')
-        row['interruption'] = None if row['void'] else interruption(row['turn'], out / 'transcript.jsonl')
+        row['interruption'] = (None if row['void'] else
+                               interruption(row['turn'], out / 'transcript.jsonl', TURN_BOUND_SECONDS))
         row['unreached'] = (None if row['void'] or row['interruption'] else
                             unreached_reason(row['turn'], out / 'transcript.jsonl',
                                              out / 'turn.stdout.json'))
@@ -713,7 +788,7 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
         if row['void'] or row['interruption']:
             receipt['status'] = 'void' if row['void'] else 'interrupted'
             receipt['retry'] = {'rule': 'ADR-355' if row['void'] else 'ADR-356', 'prompt': name,
-                                'project': retry_project_name(project.name),
+                                'project': retry_project_name(project.name, project.parent),
                                 'note': 'Same frozen prompt, fresh project or fresh seed copy, '
                                         'only while the product agent is available.'}
             break
@@ -795,6 +870,13 @@ def reclassify(project):
     touched, because a stream with a model message in it can never satisfy
     ``unreached_reason``. The superseded receipt is kept beside the corrected
     one rather than deleted.
+
+    It also finalises the other way a receipt goes stale (ADR-388): a row left
+    at ``started`` because the runner itself died mid-call, which ``dispatch``
+    has no path for, since the process that would have written the outcome is
+    the one that went away. Such a row becomes an interruption once its
+    receipt has been silent for longer than the whole budget its turn could
+    have taken; a row that could still be in flight is left exactly as it is.
     """
     project = Path(project).resolve()
     evidence = next((d for d in (project / 'evidence' / 'f4-repair', project / 'evidence')
@@ -803,7 +885,24 @@ def reclassify(project):
         raise ValueError('no attempt to reclassify')
     receipt = json.loads((evidence / 'attempt.json').read_text())
     corrected = []
+    stale = None
     for row in receipt['turns']:
+        # A row the runner never wrote an outcome for (ADR-388). It is ruled
+        # on first, because a stale `started` row is never `completed` and the
+        # two corrections cannot collide.
+        why = abandoned(receipt, row, evidence / 'attempt.json')
+        if why:
+            out = evidence / str(row.get('evidence_dir') or f"turn-{row['index']}")
+            why['model_messages_before_kill'] = model_messages(out / 'transcript.jsonl')
+            row['status'] = 'interrupted'
+            row['interruption'] = why
+            row['slot_consumed'] = False
+            row.setdefault('evidence_dir', out.name)
+            receipt['interrupted_calls'] = receipt.get('interrupted_calls', 0) + 1
+            corrected.append({'index': row['index'], 'evidence_dir': out.name,
+                              'kind': why['kind'], 'silent_seconds': why['silent_seconds']})
+            stale = row
+            continue
         if row['status'] != 'completed':
             continue
         out = evidence / str(row.get('evidence_dir') or f"turn-{row['index']}")
@@ -818,14 +917,24 @@ def reclassify(project):
         receipt['slots_spent'] = max(receipt.get('slots_spent', 0) - 1, 0)
         receipt['unreached_calls'] = receipt.get('unreached_calls', 0) + 1
         corrected.append({'index': row['index'], 'evidence_dir': out.name,
-                          'error': never['error']})
+                          'kind': never['kind'], 'error': never['error']})
     if not corrected:
         return {'project': project.name, 'corrected': [], 'receipt': receipt}
     # A stale status is what the correction is for: a receipt that closed as
     # `failed` on a call the model never saw closed on nothing. The status is
     # taken from the rows, and the rows below an unreached one never ran, so
     # their continuation counts are unaffected.
-    if receipt['turns'][-1]['status'] == 'unreached':
+    if stale is not None and receipt['turns'][-1] is stale:
+        # The same terms as a kill at the bound: the call did not end on its
+        # own, the slot is unspent, and the same prompt is retried in a fresh
+        # project -- the first letter that is not already taken.
+        receipt['status'] = 'interrupted'
+        receipt.pop('blocked', None)
+        receipt['retry'] = {'rule': 'ADR-356', 'prompt': stale['prompt']['path'],
+                            'project': retry_project_name(project.name, project.parent),
+                            'note': 'Same frozen prompt, fresh project or fresh seed copy, '
+                                    'only while the product agent is available.'}
+    elif receipt['turns'][-1]['status'] == 'unreached':
         receipt['status'] = 'paused'
         receipt.pop('retry', None)
         last = corrected[-1]
@@ -838,7 +947,8 @@ def reclassify(project):
                                       'is fixed.'}
     receipt['remaining'] = remaining(receipt)
     receipt.setdefault('reclassifications', []).append(
-        {'rule': 'ADR-386', 'at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+        {'rule': 'ADR-388' if stale is not None else 'ADR-386',
+         'at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
          'turns': corrected})
     superseded = evidence / 'attempt.superseded.json'
     index = 1

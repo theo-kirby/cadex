@@ -39,6 +39,17 @@ An already-open old-server tab needs one refresh to load the new follower.
 Subsequent switches happen automatically. Future drivers must publish the
 receipt contract documented in docs/OPERATOR-REVIEW.md.
 
+Authorisation, added 2026-09-19 so the ot7 closing report does not read this as
+a constraint breach: the ot7 charter reserves the dashboard, docs/REVIEW-DESIGN.md
+and the operator review service for the owner, and this unit touched all three.
+It was not an unattended-role unit. The owner asked for it directly ("the website
+always show the current run") and did it in their own session outside the loop:
+commit b5194827 landed at 18:12:31 UTC, between iteration 154 (which committed
+nothing, sha unchanged at 406835d5) and iteration 155's commits (afd3b773,
+6c69e62d), and neither .ouroboros/runs/ot7/transcripts/0154-actor.json nor
+0155-actor.json mentions operator_review. The charter's reservation stands
+unchanged for every unattended role.
+
 ## Repo
 
 - repo: git@github.com:theo-kirby/cadex.git

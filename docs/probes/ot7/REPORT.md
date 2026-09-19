@@ -85,7 +85,7 @@ below match it. What each design has left:
 | Heron repair / F4 | 4: three pre-restart, and iteration 48 on `ot7-heron-repair-c` (cut off by the five-hour limit after 6 reads, [receipt](retained/repair-void-c.json)); and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound (decision #44: not a turn, no slot) | 4, all on `ot7-heron-repair-d`: iteration 48, the repair prompt, completed in 1,461.9 s with six accepted revisions ([receipt](retained/repair-completed-d.json)); iteration 51, `continue-1`, completed in 738.5 s with two accepted revisions ([receipt](retained/repair-continue-1-d.json)); iteration 52, `continue-2`, completed in 128.7 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-2-d.json)); iteration 53, `continue-3`, completed in 104.9 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-3-d.json)) | spent: the repair prompt, completed on `ot7-heron-repair-d` | 0 of 3 (all three spent; ADR-357: the repair prompt is the first prompt, not a continuation) | none: F4 is exhausted and its measured result stands |
 | Heron arm / F5 | 1 (pre-restart); and 1 **interrupted** call apart from it: iteration 55 on `ot7-heron-b`, killed at the runner's 30-minute bound after 68 model messages with no design written ([receipt](retained/heron-interrupted-b.json)) | 4, all on `ot7-heron-c`: iteration 57, the create prompt, completed in 1,530.4 s with three accepted design revisions, static fit 7 of 120 failing at the last ([receipt](retained/heron-create-c.json)); iteration 59, `continue-1`, completed in 610.6 s with two accepted revisions, static fit 1 of 120 failing (the bench as world geometry), the sweep complete with zero overlap, smoke passing ([receipt](retained/heron-continue-1-c.json)); iteration 66, `continue-2`, completed in 482.4 s with two accepted revisions, static fit 0 of 105 failing, no world geometry, the sweep complete with zero overlap, smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-2-c.json)); iteration 72, `continue-3`, completed in 142.9 s with no edit and the unchanged script re-accepted, static fit 0 of 105 failing, the sweep complete with zero overlap, the runner's smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-3-c.json)) | spent: the create prompt, completed on `ot7-heron-c` | 0 of 3 (all three spent) | none: F5 is exhausted and its measured result stands |
 | Robin balancer / F6 | 1 | 0 | unspent | 3 of 3 | `ot7-robin-b` |
-| Plover biped / F7 | 1 (pre-restart); and 2 **interrupted** calls apart from it, both on `claude-opus-5`: iteration 154 on `ot7-plover-b`, whose runner died 18 s in and took the child with it, and iteration 155 on `ot7-plover-c`, killed at the runner's 30-minute bound after 49 tool calls while it was repairing its own measured fit ([receipt](attempts/plover-c-interrupted.json)) | 0 | unspent | 3 of 3 | `ot7-plover-d`, and only after the turn bound is raised — see the F7 section below |
+| Plover biped / F7 | 1 (pre-restart); and 2 **interrupted** calls apart from it, both on `claude-opus-5`: iteration 154 on `ot7-plover-b`, whose runner died 18 s in and took the child with it ([receipt](attempts/plover-b-runner-died.json), finalised by `reclassify` in iteration 156, ADR-388), and iteration 155 on `ot7-plover-c`, killed at the runner's then 30-minute bound after 49 tool calls while it was repairing its own measured fit ([receipt](attempts/plover-c-interrupted.json)) | 0 | unspent | 3 of 3 | `ot7-plover-d`, dispatched in iteration 156 under the raised 60-minute bound — see the F7 section below |
 
 Retries send the same frozen prompts and are dispatched only while the
 product agent's harness is available; no role stops or starts the run. The
@@ -1417,10 +1417,13 @@ ended on its own — so F7 still holds its create prompt and all three
 continuations, and its retry project is `ot7-plover-d`.
 
 Iteration 154's call on `ot7-plover-b` lasted 18 seconds and ended when the
-runner process itself died, taking the child with it; its receipt is stale at
+runner process itself died, taking the child with it; its receipt was stale at
 `status: running` because nothing survived to finalise it. The runner
-classifies a child it kills at the bound and one that never launched; it has
-no path for its own death. That is a named gap, not a measured design result.
+classified a child it kills at the bound and one that never launched; it had
+no path for its own death. That was a named gap, not a measured design result
+— and iteration 156 closed it (ADR-388): the receipt now reads `interrupted`,
+`kind: runner_died`, 10 model messages before the kill, 0 slots spent
+([receipt](attempts/plover-b-runner-died.json)).
 
 Iteration 155's call on `ot7-plover-c` is the informative one. The window
 probe read `allowed` at 14 % of the five-hour window, the frozen create prompt
@@ -1445,3 +1448,25 @@ pairs, Robin 1,676.4 s at 276, Plover 1,800.0 s at 435 — the first to reach
 the ceiling rather than finish under it. A retry at the same 30-minute bound
 has no reason to end differently, so `ot7-plover-d` should follow a raised
 `TURN_BOUND_SECONDS`, not precede it.
+
+**Both were acted on in iteration 156 (ADR-388).** `TURN_BOUND_SECONDS` is
+now **3600 s**: a ceiling just above the largest measurement buys another
+interruption, so it doubles, and every receipt records the bound at each
+invocation with every row copying it, so a pre-ADR-388 kill is still ruled
+against 1,800 s and the timings above stay comparable. `reclassify` gained
+the runner's own death: a row left at `started` whose receipt has been silent
+for longer than the whole budget its turn could take is finalised as an
+ADR-356 interruption with `kind: runner_died`, which is what `ot7-plover-b`
+now carries — 0 slots spent, its create prompt and all three continuations
+still unspent, retry named `ot7-plover-d`.
+
+**`ot7-plover-d` was then dispatched, on Opus, under the raised bound.** The
+probe read `allowed` at **33 %** of the five-hour window against the unchanged
+45 % gate, and the receipt records `turn_bound_seconds: 3600` at both the
+receipt and the row. The window cost of an Opus create turn is now measured
+too, and it is far below the Fable figure the gate was calibrated on:
+`ot7-plover-c` started at 14–15 % and ran the full 1,800 s, and the window
+read 31 % afterwards — about 17 points for half an hour, against the 49 that
+one Fable turn cost. A 3,600 s Opus turn starting at 33 % therefore projects
+to roughly 67 %, inside the window, whose reset is at 21:10 UTC. The turn's
+outcome belongs to the next iteration.

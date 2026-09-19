@@ -26473,3 +26473,33 @@ contract; arbitrary project-directory activity is not dispatch evidence.
 The selection/HTTP regression checks pass, including a run transition with no
 project and subsequent dispatch. Live Tailscale HTTP verification confirms ot7
 Plover is served. Deployment and receipt contract: `docs/OPERATOR-REVIEW.md`.
+
+## ADR-388 — The turn bound is an hour, and a dead runner finalises (2026-09-19)
+
+Two facts about ot7's collector, measured on F7.
+
+**The bound.** `TURN_BOUND_SECONDS` rises from 1800 to 3600 s. A create turn
+costs more the larger the design: Heron 1,530.4 s at 120 static pairs, Robin
+1,676.4 s at 276, Plover 1,800.0 s at 435 — and the last of those *is* the old
+bound, reached mid-repair while the agent was reading its own clearance
+numbers, not an end of its own. A ceiling just above the largest measurement
+buys another interruption, so it doubles. Every receipt now records the bound
+at each invocation and every row copies it, so `classify` rules a pre-ADR-388
+kill against 1,800 s and cross-design timings stay comparable.
+
+**The runner's own death.** `dispatch` persists a row as `started` before it
+launches the child and rewrites it when the child returns; a runner killed in
+between leaves `status: running` with no outcome, which is what iteration 154
+left on `ot7-plover-b`. `reclassify` now finalises such a row as an ADR-356
+interruption with `kind: runner_died`: no slot, evidence kept, the same frozen
+prompt retried in a fresh project. The evidence is the receipt's own mtime,
+which no running turn touches — silence longer than the turn's whole budget
+(bound + measurement + a 600 s grace) is proof no live runner holds the row,
+and a row that could still be in flight is left alone. A finalisation this
+late names a retry project whose letter is not already taken, so
+`ot7-plover-b` reclassified beside `ot7-plover-c` names `ot7-plover-d`.
+
+Fixtures in `cli/tests/test_ot7_runner.py` pin the bound against the three
+measured create turns and reproduce the `ot7-plover-b` shape;
+`docs/probes/ot7/runner/README.md` carries both rules. No engine, CLI,
+protocol or acceptance behaviour changes.
