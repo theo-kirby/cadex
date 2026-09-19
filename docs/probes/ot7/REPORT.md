@@ -1704,7 +1704,7 @@ the same text.
 continuation unspent, zero actor edits, zero failing static and swept checks,
 catalog hardware complete, smoke still unmeasured on `0b438561…`.**
 
-### The defect that must be fixed before `continue-3` is dispatched
+### The defect that had to be fixed before `continue-3` was dispatched (fixed, ADR-391)
 
 The runner's closing smoke runs **only** on the invocation that ends
 `exhausted` or `failed`, and on that path `attempt.json` is written **after**
@@ -1716,6 +1716,10 @@ the model, spend the slot, complete, be measured, and then raise
 `FileExistsError` before any of that reached the receipt, leaving it at
 `status: running` with the row at `started` — the dead-runner shape ADR-388
 already had to clean up once, except with a spent frozen prompt inside it.
-Fix the runner first, with a fixture that exhausts a design whose evidence
-directory already holds a smoke, then dispatch. F6's smoke evidence arrives
-with `continue-3` or not at all.
+Fixed in iteration 163 (ADR-391): the closing smoke takes the first free name
+-- `evidence/smoke`, then `evidence/smoke-retry-N` -- the receipt names the
+directory it used in `smoke.evidence_dir`, and earlier smoke evidence is never
+overwritten. `test_a_reopened_attempt_closes_again_beside_its_first_smoke`
+walks a reopened attempt through its second closure and fails on the old code
+with the `FileExistsError` above. `continue-3` may now be dispatched, and F6's
+smoke evidence arrives with it or not at all.

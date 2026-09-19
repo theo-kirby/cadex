@@ -63,7 +63,8 @@ continuation counts, elapsed time and process status. Each `turn-N/` retains:
 - `inventory.json`: the accepted catalog inventory.
 
 Artifact paths in each row are relative to its `turn-N/` directory; smoke
-artifact paths are relative to `evidence/smoke/`. Every listed file carries its
+artifact paths are relative to the smoke directory its receipt names in
+`smoke.evidence_dir`. Every listed file carries its
 byte size and SHA-256. The manifest is project-local, and may exceed the 16 KB
 limit for committed receipts. Publish only a compact receipt citing it.
 
@@ -90,7 +91,10 @@ five-minute bound. Timeout kills the child process group, and a call killed
 there is an interruption, not a spent slot (ADR-356). One final one-second
 holding smoke is attempted even for failing designs, with a 240-second internal
 budget and a 300-second process bound. Its full receipts and logs stay in
-`evidence/smoke/`. A process exit of zero alone is not a passing smoke: read the
+`evidence/smoke/`, or, when an attempt reopened by `reclassify` closes a second
+time, in the first free `evidence/smoke-retry-N/` beside it (ADR-391) -- earlier
+smoke evidence is never overwritten, and the receipt names the directory it used.
+A process exit of zero alone is not a passing smoke: read the
 receipt's verdict. No policy is trained. The collector does not change engine,
 CLI, protocol, acceptance or dashboard behavior.
 
@@ -102,7 +106,10 @@ interruption fixtures pin a runner-bound kill on a create, on a continuation
 after two completed turns, and on the repair, each returning only its own
 slot and naming the retry project; frame-by-frame capture that keeps every
 frame received before a kill; and that a limit seen before the kill is void,
-not interrupted. These are runner fixtures, not F5–F7 design results.
+not interrupted. A reopened attempt that closes a second time keeps its first
+smoke, writes the second beside it and persists its closing status, so no
+later resume reads a live schedule on a closed attempt (ADR-391). These are
+runner fixtures, not F5–F7 design results.
 
 ## Void calls (ADR-355)
 

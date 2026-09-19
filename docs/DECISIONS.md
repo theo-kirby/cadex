@@ -26648,3 +26648,41 @@ unchanged; its `ruling` field carries the ruling.
 
 No protocol op, arg spec or response shape changes, and no payload content
 changes: this is one engine-side function and a set of tests.
+
+## ADR-391 — A second closing smoke gets its own directory (2026-09-19)
+
+**Context.** The ot7 evidence collector runs one bounded holding smoke when an
+attempt closes, exhausted or failed, and wrote it into `evidence/smoke` with a
+bare `mkdir()`. That was safe while an attempt closed once. It stopped being
+safe when ADR-386 gave a refused call its slot back: `reclassify` reopens a
+receipt that had closed as `failed` on a call the model never saw, the same
+frozen prompt is retried in the same project, and the retry can close the
+attempt a second time. A runner that died inside its own first smoke (ADR-388)
+leaves the same directory behind without the closing write.
+
+The cost is not the lost smoke. `dispatch` persists each turn's row before and
+after the provider call, but the status that *closes* an attempt — `failed` or
+`exhausted`, and the `remaining` block beside it — is written after the smoke.
+A `FileExistsError` there raises after the model has already spoken, leaving a
+receipt that still says `running` with every row completed. `remaining` reads
+its closure from the rows and the status together, so a receipt stuck at
+`running` after a failed turn reports a live schedule, and the next `resume`
+spends a frozen continuation on an attempt the charter had already closed.
+
+**Decision.** The closing smoke takes the first free name, on the same rule the
+turn directories use: `evidence/smoke`, then `evidence/smoke-retry-1`, and so
+on. The receipt names the one it used in `smoke.evidence_dir`, and its artifact
+paths are relative to that directory. Earlier smoke evidence is never
+overwritten and never deleted.
+
+**Consequences.** `cli/tests/test_ot7_runner.py::
+test_a_reopened_attempt_closes_again_beside_its_first_smoke` walks the whole
+chain — a pre-ADR-386 receipt closed on a refusal, `reclassify` giving the slot
+back, the retry closing on a provider failure — and fails on the old code with
+the `FileExistsError` this fixes. It asserts the closing status reached the
+disk, that both smokes exist, and that the closed attempt refuses to spend
+anything further. Receipts written before this change have no
+`smoke.evidence_dir`; theirs is `evidence/smoke`.
+
+This is the collector only: no engine, CLI, protocol, acceptance or dashboard
+behaviour changes, and no design is touched.

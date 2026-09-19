@@ -810,11 +810,22 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
         write(evidence / 'attempt.json', receipt)
         return receipt
     # One bounded smoke, even on a failing fit; it never modifies the design.
+    # An attempt can reach this twice: a receipt reopened by `reclassify`
+    # (ADR-386) retries its prompt and closes again, and a runner that died
+    # inside its first smoke leaves the directory without the closing write.
+    # The second smoke therefore gets its own directory, on the same rule the
+    # turns use -- colliding here would raise after the model had already run
+    # and lose the status this invocation was about to persist.
     smoke = evidence / 'smoke'
+    retry = 0
+    while smoke.exists():
+        retry += 1
+        smoke = evidence / f'smoke-retry-{retry}'
     smoke.mkdir()
     receipt['smoke'] = execute_call([str(REPO / 'cadex'), 'smoke', '--project', str(project),
                                     '--out', str(smoke), '--seconds', '1', '--timeout', '240', '--json'],
                                    smoke, 'smoke', MEASUREMENT_BOUND_SECONDS)
+    receipt['smoke']['evidence_dir'] = smoke.name
     receipt['smoke']['artifacts'] = [digest(p) for p in sorted(smoke.iterdir()) if p.is_file()]
     write(evidence / 'attempt.json', receipt)
     return receipt

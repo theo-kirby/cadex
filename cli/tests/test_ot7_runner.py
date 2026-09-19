@@ -1541,3 +1541,49 @@ def test_a_retry_name_skips_the_letters_already_taken(tmp_path):
     assert runner.retry_project_name('ot7-plover-b', root) == 'ot7-plover-d'
     assert runner.retry_project_name('ot7-plover-b') == 'ot7-plover-c'
     assert runner.retry_project_name('ot7-plover', root) == 'ot7-plover-d'
+
+
+def test_a_reopened_attempt_closes_again_beside_its_first_smoke(tmp_path):
+    """The closing smoke must not collide with one an earlier closure left.
+
+    A receipt closed under the pre-ADR-386 accounting booked a refusal as a
+    failed turn, and a failed close smokes. `reclassify` gives that slot back
+    and reopens the attempt, so the retry can close it a second time -- and
+    the second closing smoke runs after the model has already spoken. A
+    collision there raises before the status write at the end of `dispatch`,
+    which is the one that closes the attempt: the receipt would keep saying
+    `running`, and a later `resume` would read a live schedule and spend the
+    next frozen continuation on an attempt that is already closed.
+    """
+    target = project(tmp_path)
+    calls = []
+    runner.run('heron', target, 'fixture', unreached_executor(calls), turns=1)
+    path = target / 'evidence' / 'attempt.json'
+    legacy = json.loads(path.read_text())
+    legacy['turns'][0].update(status='completed', slot_consumed=True)
+    legacy['turns'][0].pop('unreached')
+    legacy.update(status='failed', slots_spent=1)
+    legacy.pop('unreached_calls'), legacy.pop('blocked')
+    runner.write(path, legacy)
+    first = target / 'evidence' / 'smoke'  # what that closure smoked
+    first.mkdir()
+    runner.write(first / 'smoke.json', {'verdict': 'fail', 'closure': 'first'})
+
+    assert runner.reclassify(target)['corrected'][0]['index'] == 0
+    report = runner.resume(target, executor(calls, turn_code=1), turns=1)
+
+    # The retry closed the attempt, and the closing status reached the disk.
+    assert report['status'] == 'failed'
+    assert json.loads(path.read_text())['status'] == 'failed'
+    assert [row['status'] for row in report['turns']] == ['unreached', 'completed']
+    assert report['slots_spent'] == 1 and report['remaining']['closed'] == 'failed'
+    # Both smokes exist: the first is untouched, the second is its own receipt.
+    assert json.loads((first / 'smoke.json').read_text())['closure'] == 'first'
+    assert report['smoke']['evidence_dir'] == 'smoke-retry-1'
+    assert report['smoke']['artifacts'][0]['path'] == 'smoke.json'
+    assert json.loads((target / 'evidence/smoke-retry-1/smoke.json').read_text()) == {'verdict': 'fail'}
+    smokes = [cmd for cmd, _ in calls if 'smoke' in cmd]
+    assert len(smokes) == 1 and smokes[0][smokes[0].index('--out') + 1].endswith('smoke-retry-1')
+    # And the closed attempt spends nothing further.
+    with pytest.raises(ValueError, match='closed by a failed call'):
+        runner.resume(target, executor(calls), turns=1)
