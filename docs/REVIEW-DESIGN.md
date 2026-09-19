@@ -1,6 +1,6 @@
 # REVIEW-DESIGN.md — The review dashboard as one designed page
 
-Verified against source: 2026-09-14. [Cadex-new]
+Verified against source: 2026-09-19. [Cadex-new]
 
 This is the design specification for the page `cadex review` serves
 (`cli/cadex_cli/review_static/`, ADR-286) and for the operator dashboard that
@@ -552,3 +552,13 @@ and no page scroll with both drawers closed and off screen. It then taps
 drawers open and verifies that the model's width is unchanged, that only one
 drawer is open at a time, that a tap on the model closes a drawer, and that
 one finger still orbits without moving the page.
+
+## Operator run status (ADR-387)
+
+The operator deployment adds a compact bottom-right status strip with run name,
+iteration, loop state and project name. It uses the dark chrome palette and
+12 px text, and reloads the page on project changes so prior-project videos,
+documents and camera state do not carry across. When the configured run has no
+dispatched project, show a waiting message instead of the previous model. This
+strip belongs to the operator launcher; ordinary single-project review keeps
+its existing layout. See `OPERATOR-REVIEW.md` for the selection contract.

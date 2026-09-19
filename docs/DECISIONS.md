@@ -26456,3 +26456,20 @@ function, which already uses an order-insensitive fingerprint instead of
 artifact bytes (ADR-016); redefining the BREP branch invalidates every stored
 `accepted_digest`, so it needs a migration and its own unit. **F6 is blocked
 on that fix, not exhausted.**
+
+## ADR-387 — The operator dashboard follows dispatched work (2026-09-19)
+
+The owner asked that the website always show the current run. Its transient
+service was still pinned to ot6 Heron while ot7 was designing Plover. Deploy
+`tools/operator_review.py` as a persistent user service at the existing address:
+read the configured run and select its latest explicitly dispatched product
+project from identity-checked experiment receipts. Ignore diagnostic copies and
+file mtimes, preserve selection across partial writes, and show a waiting page
+when a new run has no project. Open tabs reload on selection changes and show
+run/iteration/state beside the existing read-only review. The ordinary
+single-project CLI is unchanged. Drivers must publish the documented receipt
+contract; arbitrary project-directory activity is not dispatch evidence.
+
+The selection/HTTP regression checks pass, including a run transition with no
+project and subsequent dispatch. Live Tailscale HTTP verification confirms ot7
+Plover is served. Deployment and receipt contract: `docs/OPERATOR-REVIEW.md`.
