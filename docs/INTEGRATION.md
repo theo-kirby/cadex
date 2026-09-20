@@ -208,6 +208,13 @@ match reports neither and is unchanged. The accepted digest is untouched,
 nothing re-accepts changed geometry, and a hand-edited script fails on the
 definition before the measurements are consulted.
 
+Restore defers artifact pruning until the accepted pin is settled (ADR-398).
+The accepting lifecycle used for the replay must not collect the original
+accepted attempt while its candidate is temporarily pinned. Repeated opens,
+including geometry-fallback opens, preserve the accepted artifacts and display
+buffers byte-for-byte; collection then retains the usual recent attempts plus
+that accepted pin. Refused restores also prune only after restoring the pin.
+
 That digest also drops a **derived** output's artifact bytes — an MJCF model,
 a training task, a trace, a render — identifying it by its canonical
 definition alone (ADR-396). `cadex-project-digest-v1` still carries them

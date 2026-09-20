@@ -350,7 +350,8 @@ def test_a_learned_geometry_digest_outlives_the_attempt_it_came_from(
     monkeypatch.setattr(
         module, "staged_geometry_digest", lambda _staging: "same-model"
     )
-    # ATTEMPT_KEEP has since collected the accepted attempt (ADR-045).
+    # A pre-ADR-398 restore could collect the accepted attempt. Preserve
+    # recovery through the learned digest for those existing projects.
     shutil.rmtree(tmp_path / accepted["staging"])
 
     agreed, observed, learned = cadexd._geometry_agrees(

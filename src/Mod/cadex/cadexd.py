@@ -36,6 +36,7 @@ testable under the stubbed pytest suite.
 
 from __future__ import annotations
 
+from contextlib import suppress
 import json
 import os
 from pathlib import Path
@@ -523,6 +524,7 @@ class CadexdServer:
                     progress_callback=lambda event: self._send(
                         {"id": request_id, "event": event}
                     ),
+                    prune_artifacts=False,
                 )
 
             payload = rerun(source)
@@ -579,11 +581,9 @@ class CadexdServer:
                 )
                 # One write, after the measurement, so what the accepted
                 # attempt measures is persisted by the same rollback that puts
-                # the accepted state back. It only has to be read once:
-                # `prune_artifacts` keeps the three most recent attempts and
-                # pins whatever `accepted_attempt` says *during the rerun*,
-                # which by then is the candidate — so the retained accepted
-                # artifacts are on a clock, and this takes the project off it.
+                # the accepted state back. Pruning is deferred until that
+                # rollback settles the pin, so the original evidence and
+                # display artifacts survive repeated restores (ADR-398).
                 store.write(
                     state_updates={
                         "accepted_revision": str(state.get("accepted_revision") or ""),
@@ -601,6 +601,8 @@ class CadexdServer:
                     }
                 )
                 if not agreed:
+                    with suppress(OSError):
+                        store.prune_artifacts()
                     return failure(
                         CADEXD_RESTORE_FAILED,
                         "The restore pass digest does not match the accepted digest.",
@@ -611,6 +613,8 @@ class CadexdServer:
                         },
                     )
                 geometry_digest = str(observed.get("restored_geometry_digest") or "")
+            with suppress(OSError):
+                store.prune_artifacts()
             restore = {
                 "performed": True,
                 "digest": restored_digest,

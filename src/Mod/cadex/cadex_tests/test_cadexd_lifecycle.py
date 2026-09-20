@@ -2322,11 +2322,13 @@ def test_an_offset_project_reopens_although_its_bytes_never_repeat(tmp_path):
         assert written["ok"], written
         state = json.loads((root / "script.json").read_text())
         drifted = []
-        # Five, not three: `prune_artifacts` keeps ATTEMPT_KEEP = 3 attempts
-        # and pins whatever `accepted_attempt` says during the rerun, which is
-        # the candidate — so by the fourth reopen the accepted attempt's own
-        # artifacts are gone, and only the geometry digest the project learned
-        # on the first one gets it open.
+        retained = root / state["accepted_attempt"]["staging"]
+        original_files = {
+            path.relative_to(retained): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in retained.rglob("*") if path.is_file()
+        }
+        # Exceed ATTEMPT_KEEP: a successful restore must retain the accepted
+        # evidence and display buffers, not just a cached geometry digest.
         for _ in range(5):
             _stop(client)
             client = _spawn_cadexd()
@@ -2354,10 +2356,13 @@ def test_an_offset_project_reopens_although_its_bytes_never_repeat(tmp_path):
             state["accepted_digest"]
         ), learned
         assert len(learned["accepted_geometry"]["geometry_digest"]) == 64, learned
-        assert not (root / state["accepted_attempt"]["staging"]).is_dir(), (
-            "the accepted attempt outlived ATTEMPT_KEEP; the retention half "
-            "of this test proves nothing"
-        )
+        assert retained.is_dir(), "restore pruned the pinned accepted artifacts"
+        assert {
+            path.relative_to(retained): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in retained.rglob("*") if path.is_file()
+        } == original_files
+        from CadexScriptStore import ATTEMPT_KEEP
+        assert len(list(root.glob("script_artifacts/*/attempt-*"))) <= ATTEMPT_KEEP + 1
     finally:
         _stop(client)
 
@@ -2379,16 +2384,21 @@ def test_a_changed_script_is_still_refused_at_the_restore_pass(tmp_path):
         (root / "script.py").write_text(
             'result = {"plate": part.box(20, 10, 4)}\n', encoding="utf-8"
         )
-        _stop(client)
-        client = _spawn_cadexd()
-        reopened = client.request("open_project", {"project_root": str(root)})
-        assert reopened["ok"] is False, reopened
-        observed = reopened["observed"]
-        assert observed["accepted_digest"] == state["accepted_digest"]
-        assert observed["geometry_comparison"] == (
-            "the rebuilt model is not the accepted one"
-        )
-        after = json.loads((root / "script.json").read_text())
-        assert after["accepted_digest"] == state["accepted_digest"]
+        retained = root / state["accepted_attempt"]["staging"]
+        original_result = (retained / "result.json").read_bytes()
+        for _ in range(5):
+            _stop(client)
+            client = _spawn_cadexd()
+            reopened = client.request("open_project", {"project_root": str(root)})
+            assert reopened["ok"] is False, reopened
+            observed = reopened["observed"]
+            assert observed["accepted_digest"] == state["accepted_digest"]
+            assert observed["geometry_comparison"] == (
+                "the rebuilt model is not the accepted one"
+            )
+            after = json.loads((root / "script.json").read_text())
+            assert after["accepted_digest"] == state["accepted_digest"]
+            assert after["accepted_attempt"] == state["accepted_attempt"]
+            assert (retained / "result.json").read_bytes() == original_result
     finally:
         _stop(client)

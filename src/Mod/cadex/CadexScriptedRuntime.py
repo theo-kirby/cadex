@@ -2124,6 +2124,8 @@ def accept_project_candidate(
     prepared: Mapping[str, Any],
     publication: Mapping[str, Any],
     validated: Mapping[str, Any],
+    *,
+    prune_artifacts: bool = True,
 ) -> dict[str, Any]:
     """Persist the accepted project revision/contract/digest; return the tool payload."""
 
@@ -2185,10 +2187,11 @@ def accept_project_candidate(
         store.record_history(revision, source, contract)
     except OSError:
         pass
-    try:
-        store.prune_artifacts()
-    except OSError:
-        pass
+    if prune_artifacts:
+        try:
+            store.prune_artifacts()
+        except OSError:
+            pass
     return {
         "ok": True,
         "tool": str(prepared["tool_name"]),
@@ -2308,6 +2311,7 @@ def run_project_lifecycle(
     cancellation_check: Callable[[], bool] | None = None,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
     result_sink: dict[str, Any] | None = None,
+    prune_artifacts: bool = True,
 ) -> dict[str, Any]:
     """One complete inline project lifecycle: capture → prepare → execute →
     validate → publish → accept.
@@ -2319,6 +2323,8 @@ def run_project_lifecycle(
     produced, so protocol clients see an unchanged contract. When
     ``result_sink`` is given, ``prepared`` and ``validated`` are stored in it
     on success so the caller can reach staged artifacts (display buffers).
+    A restore caller passes ``prune_artifacts=False`` and prunes only after
+    settling the accepted pin: this acceptance is provisional until then.
     """
 
     from CadexScriptedDomainPublication import publish_project_candidate
@@ -2409,7 +2415,9 @@ def run_project_lifecycle(
             record_project_candidate_failure(prepared, failure)
             failure["model_state"] = candidate_model_state(prepared)
             return failure
-        payload = accept_project_candidate(prepared, publication, validated)
+        payload = accept_project_candidate(
+            prepared, publication, validated, prune_artifacts=prune_artifacts
+        )
         if result_sink is not None:
             result_sink["prepared"] = prepared
             result_sink["validated"] = validated

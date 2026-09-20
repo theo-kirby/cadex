@@ -27031,3 +27031,28 @@ fourteen-row non-attempt list with each receipt resolving, the F1–F9 rows, the
 open-items list and the done claim, plus every relative link, anchor, record
 slug and ADR the report cites. Five of its six tests fail against the report
 as it stood at commit `7ae8760a`. Suite: `pixi run python -m pytest cli/tests`.
+
+
+## ADR-398 — Restore retains the accepted artifacts until its pin is settled (2026-09-20)
+
+**Decision.** The restore replay defers `accept_project_candidate`'s artifact
+pruning. After comparing the replay with the accepted design, `cadexd` first
+settles the accepted pin and only then runs the existing bounded collector.
+Normal write/edit/rebuild acceptance still prunes immediately. No request or
+response schema changes.
+
+**Why.** The ot7 merge review found that the geometry fallback restored the
+accepted locator after the accepting lifecycle had already collected its
+artifacts. Repeated opens succeeded through the cached geometry digest but
+left the accepted locator dangling: display and retained-artifact readers
+lost their evidence. The previous offset lifecycle test explicitly expected
+the accepted directory to disappear, testing reopen success while missing
+this data loss.
+
+**Evidence.** The corrected offset lifecycle regression failed on the ot7
+tip (`restore pruned the pinned accepted artifacts`). It now opens in five
+fresh processes, checks every retained file's SHA-256 against the original,
+and bounds remaining attempts to `ATTEMPT_KEEP + 1`. The changed-script
+regression also makes five refused restore attempts and checks that the
+accepted pin and retained result survive. Both targeted source tests pass
+after the fix. `docs/INTEGRATION.md` records the retention contract.

@@ -138,10 +138,10 @@ class CadexProjectScriptStore:
             # (ADR-389): ``{"accepted_digest": ..., "geometry_digest": ...}``.
             # None until then, and None forever for a project whose bytes are
             # reproducible. It is here rather than derived on demand because
-            # the evidence it is derived from -- the accepted attempt's
-            # artifacts -- is exactly what `prune_artifacts` is allowed to
-            # remove, and a sixth reopen must not shut a project the fifth one
-            # opened. It carries the accepted digest it was learned under
+            # the evidence it is derived from may already have been pruned
+            # by pre-ADR-398 restores. New restores retain those artifacts
+            # by deferring pruning until the accepted pin is settled.
+            # It carries the accepted digest it was learned under
             # because it would otherwise outlive its own model: `rebuild` and
             # `write_script` both re-accept, and a measurement of the previous
             # design would refuse the current one. No migration: `read_state`
