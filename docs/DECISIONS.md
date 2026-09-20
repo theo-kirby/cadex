@@ -26981,3 +26981,53 @@ the geometry digest does not — it fails on the pre-ADR-396 code.
 old bytes assertion with the three that still hold: the derived output's
 recipe, its solved placement, and a mesh's vertex set each move the digest.
 `docs/INTEGRATION.md`'s restore paragraph and the module docstring say so.
+
+## ADR-397 — ot7's closing report is one row per design, and a test holds it there (2026-09-20)
+
+**Decision.** `docs/probes/ot7/REPORT.md` is rewritten forward into the
+closing report F10 asks for: a summary table with **one row per design**
+(frozen prompts and their digests, turns that reached the model,
+continuations used, static fit per turn, final static and swept checks, smoke
+result, inventory, actor edits and the ot6 comparison), a complete list of
+**every call that was not an attempt**, the F1–F9 evidence table brought up to
+date, and a closing section that claims done and names what remains open.
+The chronology below those sections is unchanged — it is the record of what
+happened, and where it calls a refusal an attempt, the restart amendment
+already supersedes it.
+
+**The numbers, taken from the committed receipts rather than restated.** F4:
+four turns on `ot7-heron-repair-d`, seed 15 of 120 failing to 0 of 105, sweep
+complete at 5°, two of three ot6 defects resolved and the third declared as a
+0.2 mm clearance. F5: four turns on `ot7-heron-c`, 7 of 120 to 0 of 105, sweep
+complete, smoke passing, and **two servos and two horns left uncatalogued**
+after the agent modified their bodies — the one count of its bar it missed.
+F6: four turns on `ot7-robin-c`, 0 of 378 with 25 of 25 attachments touching
+and the wheel-axle limits the agent declared itself, every purchased part
+catalogued, and a **failing** smoke: support 102.2°, its own `fallen` rule at
+0.660 s. F7: **two** turns on `ot7-plover-e`, 12 of 406 to 0 of 406, sweep
+complete at 15° on four joints, smoke passing on the re-exported model
+(ADR-395), 24 catalogued components against five printed sources, and
+`continue-2`/`continue-3` **unspent**. Fourteen calls reached the model and
+ended on their own; fourteen others were void, interrupted or unreached
+(ADR-355, ADR-356, ADR-386, ADR-390) and spent no slot.
+
+**Why F7's two remaining continuations are not spent.** Its bar is *at most*
+three continuations, and it was met in one: accepted biped, zero failing
+static and swept checks, a passing smoke and a catalogued inventory. Spending
+a frozen prompt on a fit report that names nothing to fix buys no evidence,
+and the exhaustion policy forbids repeating an attempt to fill the run.
+ADR-396 unblocked those slots; that they stay unspent is the measurement.
+
+**What the report does not claim.** It does not claim ot7's designs are better
+mechanisms than ot6's — the two runs' checkers use different rules, so their
+failure counts are not comparable. It does not claim a smoke verdict on F7's
+accepted pin; the pin holds the pre-ADR-393 MJCF, moving it costs a design
+turn, and the report prints the control beside the measurement. It does not
+claim F5's catalog failure or F6's topple away.
+
+**Evidence that fails on the old code.** `cli/tests/test_ot7_report.py` pins
+the four sections, the per-design table's eleven columns and their values, the
+fourteen-row non-attempt list with each receipt resolving, the F1–F9 rows, the
+open-items list and the done claim, plus every relative link, anchor, record
+slug and ADR the report cites. Five of its six tests fail against the report
+as it stood at commit `7ae8760a`. Suite: `pixi run python -m pytest cli/tests`.
