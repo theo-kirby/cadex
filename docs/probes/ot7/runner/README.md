@@ -891,3 +891,49 @@ every purchased part (2× `gearmotor/pololu-2367`, 1× `board/pi-zero-2-w`,
 modelled printed parts uncatalogued. The stream's last frame read the
 five-hour window at 74 %, so `continue-1` waits for the 19:40 UTC reset.
 The assessment is REPORT.md's iteration 148 section.
+
+## Smoking a paused attempt (iteration 167, ADR-392)
+
+The closing smoke only runs when an attempt *closes*. F7 found the hole that
+leaves: `ot7-plover-e` reached zero failing static and zero failing swept fit
+checks on its create prompt plus `continue-1`, so the attempt sat at `paused`
+with two continuations unspent and no smoke result at all — and F5–F7 each ask
+for a passing smoke rollout. Reaching one meant spending a frozen continuation
+on a turn whose own fit report names nothing to fix, which buys a measurement
+with a design slot.
+
+`run.py smoke PROJECT` takes it instead. It sends no prompt, reaches no model,
+spends no slot and changes no status: it runs the same bounded
+`cadex smoke --seconds 1` the closure runs, into `evidence/smoke-interim/`
+(then `smoke-interim-retry-N`), and appends the result to the receipt's
+`interim_smokes` beside the design identity it measured, the status it was
+taken at and the `remaining` block it left untouched. The canonical
+`evidence/smoke/` stays free for whatever closes the attempt later.
+
+It refuses what it cannot honestly measure: no attempt at all; a repair
+attempt, whose F4 bar has no smoke in it; an attempt closed by a void,
+interrupted or failed call, which its closure already smoked and whose retry is
+a fresh project; an attempt with no completed turn; and a design that changed
+since its last turn — the same guard `resume` holds, because the actor never
+edits a design.
+
+**What it measured on `ot7-plover-e`.** Exit 1 in 0.4 s on accepted revision
+`0491ead7…`. The **dynamics half passed every check** — finite; penetration 0
+breaches with the two feet touching the floor at 0.337 mm against a 0.5 mm
+tolerance; support resting on the floor after a 0.28 mm drop at 0.19° of tilt;
+termination unfired — verdict `pass`. The **geometry half never produced a
+verdict**: the frame-0 agreement gate raised on
+`('c_bearing_hip_l', 'c_bearing_hip_r')`, whose published clearance is 33.8 mm
+apart and whose MJCF bodies are at the same point. Composing the MJCF body
+tree against the solved placements, **all 24 components whose placement carries
+a rotation are at a different world pose than the assembly solved** — up to
+121.9 mm out, with a wholly different orientation — and the five with an
+identity rotation are exact. Four of the misplaced bodies carry a collision
+geom. Robin and Heron write no rotated body, so neither exercised this.
+Of the 28 non-root bodies, 4 carry the transform the solved assembly implies
+and 24 carry **its inverse**, none anything else — the four are exactly the
+bodies with a revolute joint, and the 24 are the fixed attachments.
+
+That is a repository defect, not a design defect, so it is not something a
+frozen continuation can ask the agent to fix. The receipt is
+[`retained/plover-smoke-e.json`](../retained/plover-smoke-e.json).

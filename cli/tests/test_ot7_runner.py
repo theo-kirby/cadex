@@ -1587,3 +1587,80 @@ def test_a_reopened_attempt_closes_again_beside_its_first_smoke(tmp_path):
     # And the closed attempt spends nothing further.
     with pytest.raises(ValueError, match='closed by a failed call'):
         runner.resume(target, executor(calls), turns=1)
+
+
+def test_a_paused_attempt_is_smoked_without_spending_a_slot(tmp_path):
+    """ADR-392: a design at zero failing checks needs its smoke, not a prompt.
+
+    The closing smoke only runs when the schedule runs out, so an attempt
+    paused with continuations unspent had no smoke result at all -- and the
+    only way to a smoke was to spend a frozen prompt on a turn with nothing
+    to fix. `smoke` takes the measurement instead: no prompt, no slot, no
+    change to the schedule or the status, and the canonical `smoke`
+    directory left free for whatever closes the attempt later.
+    """
+    target = project(tmp_path)
+    calls = []
+    runner.run('heron', target, 'fixture', executor(calls), turns=1)
+    before = json.loads((target / 'evidence/attempt.json').read_text())
+    assert before['status'] == 'paused' and 'smoke' not in before
+
+    report = runner.smoke(target, executor(calls))
+
+    assert [cmd for cmd, _ in calls if '--child-turn' in cmd] != []  # only the one create turn
+    assert len([cmd for cmd, _ in calls if '--child-turn' in cmd]) == 1
+    smokes = [cmd for cmd, _ in calls if 'smoke' in cmd]
+    assert len(smokes) == 1 and smokes[0][smokes[0].index('--out') + 1].endswith('smoke-interim')
+    assert report['status'] == 'paused' and report['remaining'] == before['remaining']
+    taken = report['smoke']
+    assert taken['rule'] == 'ADR-392' and taken['slot_consumed'] is False
+    assert taken['status_when_taken'] == 'paused' and taken['after_turn'] == 0
+    assert taken['evidence_dir'] == 'smoke-interim'
+    assert taken['artifacts'][0]['path'] == 'smoke.json'
+    assert taken['design'] == before['turns'][0]['accepted_after']
+    assert json.loads((target / 'evidence/smoke-interim/smoke.json').read_text()) == {'verdict': 'fail'}
+
+    # The receipt kept its schedule, its status and its spend, and grew only
+    # the interim smoke.
+    after = json.loads((target / 'evidence/attempt.json').read_text())
+    assert after['status'] == 'paused' and after['remaining'] == before['remaining']
+    assert after['slots_spent'] == before['slots_spent'] == 1
+    assert len(after['turns']) == 1 and 'smoke' not in after
+    assert [s['evidence_dir'] for s in after['interim_smokes']] == ['smoke-interim']
+
+    # A second interim smoke keeps the first, and the closure still gets the
+    # canonical `smoke` directory rather than a retry name.
+    runner.smoke(target, executor(calls))
+    assert [s['evidence_dir'] for s in json.loads((target / 'evidence/attempt.json').read_text())
+            ['interim_smokes']] == ['smoke-interim', 'smoke-interim-retry-1']
+    closed = runner.resume(target, executor(calls), turns=3)
+    assert closed['status'] == 'exhausted' and closed['smoke']['evidence_dir'] == 'smoke'
+    assert [r['continuations_used'] for r in closed['turns']] == [0, 1, 2, 3]
+    assert len(closed['interim_smokes']) == 2
+
+
+def test_smoke_refuses_what_it_cannot_honestly_measure(tmp_path, monkeypatch):
+    """No attempt, a repair, a closed attempt, and an actor-edited design."""
+    calls = []
+    for name in ('none', 'repair', 'dead', 'live'):
+        (tmp_path / name).mkdir()
+    with pytest.raises(ValueError, match='no attempt to smoke'):
+        runner.smoke(project(tmp_path / 'none'), executor(calls))
+
+    repair = repair_seed(tmp_path / 'repair', monkeypatch)
+    runner.run('repair', repair, 'fixture', executor(calls), turns=1)
+    with pytest.raises(ValueError, match='repair attempt has no smoke'):
+        runner.smoke(repair, executor(calls))
+
+    dead = project(tmp_path / 'dead')
+    runner.run('heron', dead, 'fixture', executor(calls, turn_code=1))
+    with pytest.raises(ValueError, match='closed by a failed call'):
+        runner.smoke(dead, executor(calls))
+
+    live = project(tmp_path / 'live')
+    runner.run('heron', live, 'fixture', executor(calls), turns=1)
+    (live / 'script.py').write_text('# an actor edit\n')
+    runner.write(live / 'script.json', {'accepted_revision': 'edited'})
+    with pytest.raises(ValueError, match='only a product-agent turn may change it'):
+        runner.smoke(live, executor(calls))
+    assert not (live / 'evidence/smoke-interim').exists()

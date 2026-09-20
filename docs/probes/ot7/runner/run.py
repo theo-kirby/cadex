@@ -816,19 +816,78 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
     # The second smoke therefore gets its own directory, on the same rule the
     # turns use -- colliding here would raise after the model had already run
     # and lose the status this invocation was about to persist.
-    smoke = evidence / 'smoke'
-    retry = 0
-    while smoke.exists():
-        retry += 1
-        smoke = evidence / f'smoke-retry-{retry}'
-    smoke.mkdir()
-    receipt['smoke'] = execute_call([str(REPO / 'cadex'), 'smoke', '--project', str(project),
-                                    '--out', str(smoke), '--seconds', '1', '--timeout', '240', '--json'],
-                                   smoke, 'smoke', MEASUREMENT_BOUND_SECONDS)
-    receipt['smoke']['evidence_dir'] = smoke.name
-    receipt['smoke']['artifacts'] = [digest(p) for p in sorted(smoke.iterdir()) if p.is_file()]
+    receipt['smoke'] = run_smoke(project, evidence, execute_call, 'smoke')
     write(evidence / 'attempt.json', receipt)
     return receipt
+
+
+def run_smoke(project, evidence, execute_call, stem):
+    """One bounded smoke rollout into the first free ``<stem>`` directory.
+
+    Never modifies the design and never sends a prompt. The first free name
+    is ``<stem>``, then ``<stem>-retry-N``, so an earlier smoke's evidence is
+    kept rather than overwritten and a collision can never raise where the
+    caller was about to persist a status (ADR-391).
+    """
+    out = evidence / stem
+    retry = 0
+    while out.exists():
+        retry += 1
+        out = evidence / f'{stem}-retry-{retry}'
+    out.mkdir()
+    result = execute_call([str(REPO / 'cadex'), 'smoke', '--project', str(project),
+                           '--out', str(out), '--seconds', '1', '--timeout', '240', '--json'],
+                          out, 'smoke', MEASUREMENT_BOUND_SECONDS)
+    result['evidence_dir'] = out.name
+    result['artifacts'] = [digest(p) for p in sorted(out.iterdir()) if p.is_file()]
+    return result
+
+
+def smoke(project, execute_call=execute):
+    """Smoke a paused attempt's accepted design without spending a slot (ADR-392).
+
+    An attempt only reaches its closing smoke when its schedule runs out, so
+    a design that is already at zero failing fit checks with continuations
+    still unspent had no smoke result at all -- and the only way to get one
+    was to spend a frozen prompt on a turn with nothing to fix. A smoke is a
+    measurement, not a design turn: it sends no prompt, consumes no slot and
+    cannot change the design. This takes one, records it in the receipt as an
+    interim smoke beside the design identity it measured, and leaves the
+    schedule and the status exactly as it found them. The canonical ``smoke``
+    directory is left for the closure, so a later exhaustion still writes its
+    own closing smoke rather than a retry-named one.
+
+    Refused on: no attempt; a repair attempt (the repair bar has no smoke);
+    an attempt closed by a void, interrupted or failed call, whose retry is a
+    fresh project; an attempt with no completed turn, which has no
+    product-agent design to measure; and a design that changed since its last
+    turn, because the actor never edits a design.
+    """
+    project = Path(project).resolve()
+    evidence = next((d for d in (project / 'evidence' / 'f4-repair', project / 'evidence')
+                     if (d / 'attempt.json').is_file()), None)
+    if evidence is None:
+        raise ValueError('no attempt to smoke: start one with the design name')
+    receipt = json.loads((evidence / 'attempt.json').read_text())
+    if receipt['design'] == 'repair':
+        raise ValueError('the repair attempt has no smoke in its bar; F4 is measured by its fit report')
+    left = remaining(receipt)
+    if left['closed']:
+        raise ValueError(f"cannot smoke a project closed by a {left['closed']} call; "
+                         f"its closure smoked it, and its retry is a fresh project")
+    last = receipt['turns'][-1] if receipt['turns'] else {}
+    if last.get('status') != 'completed':
+        raise ValueError('no completed turn to smoke: the design is not the product agent\'s yet')
+    if design_identity(project) != last['accepted_after']:
+        raise ValueError('the design changed since its last turn; only a product-agent turn may change it')
+    result = run_smoke(project, evidence, execute_call, 'smoke-interim')
+    result.update(rule='ADR-392', slot_consumed=False, status_when_taken=receipt['status'],
+                  taken_at=datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                  after_turn=last['index'], remaining=left, design=last['accepted_after'])
+    receipt.setdefault('interim_smokes', []).append(result)
+    write(evidence / 'attempt.json', receipt)
+    return {'project': project.name, 'status': receipt['status'], 'remaining': left,
+            'smoke': result}
 
 
 def resume(project, execute_call=execute, turns=1, window_bound=None, model=None):
@@ -1013,10 +1072,11 @@ if __name__ == '__main__':
         sys.exit(0)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('design', choices=['heron', 'robin', 'plover', 'repair', 'resume', 'remaining',
-                                           'reclassify', 'window'],
+                                           'reclassify', 'smoke', 'window'],
                         help='a frozen design to start; `resume` dispatches the next continuation '
                              'on an existing project; `remaining` only reads what its schedule holds; '
                              '`reclassify` re-reads a retained attempt\'s evidence and corrects its accounting; '
+                             '`smoke` measures a paused attempt\'s accepted design and spends no slot; '
                              '`window` only reads the five-hour window and dispatches nothing')
     parser.add_argument('project', type=Path, nargs='?')
     parser.add_argument('--model', default=None,
@@ -1045,6 +1105,8 @@ if __name__ == '__main__':
         print(json.dumps(remaining(json.loads((evidence / 'attempt.json').read_text())), indent=2))
     elif args.design == 'reclassify':
         print(json.dumps(reclassify(args.project), indent=2))
+    elif args.design == 'smoke':
+        print(json.dumps(smoke(args.project), indent=2))
     elif args.design == 'resume':
         print(json.dumps(resume(args.project, turns=args.turns or 1,
                                 window_bound=args.window_bound, model=args.model), indent=2))

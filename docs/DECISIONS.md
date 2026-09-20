@@ -26686,3 +26686,61 @@ anything further. Receipts written before this change have no
 
 This is the collector only: no engine, CLI, protocol, acceptance or dashboard
 behaviour changes, and no design is touched.
+
+## ADR-392 — A paused attempt can be smoked without spending a slot (2026-09-19)
+
+**Context.** The ot7 collector runs its one bounded holding smoke only when an
+attempt *closes* — exhausted, or failed. That was the whole rule while a design
+needed its remaining prompts anyway. F7 broke it: `ot7-plover-e` reached zero
+failing static and zero failing swept fit checks on its create prompt plus one
+continuation, with `continue-2` and `continue-3` unspent, so the attempt sat at
+`paused` and the design had no smoke result at all. F5's and F6's bar asks for
+a passing smoke rollout, and the only way to reach one was to spend a frozen
+continuation on a turn with nothing left to fix — buying a measurement with a
+design slot, on a design whose own fit report names no failing check.
+
+A smoke is not a design turn. It sends no prompt, reaches no model, and cannot
+change the design: `cadex smoke` reads the accepted revision, exports it, holds
+it for a bounded second and measures what happened.
+
+**Decision.** `docs/probes/ot7/runner/run.py smoke PROJECT` takes that
+measurement on an open attempt and records it in the receipt under
+`interim_smokes`, beside the design identity it measured, the status it was
+taken at and the schedule it left untouched. It spends no slot, changes no
+status and advances nothing. Its evidence goes to `evidence/smoke-interim`,
+then `smoke-interim-retry-N`, so the canonical `evidence/smoke` stays free for
+whatever closes the attempt later (ADR-391).
+
+It refuses what it cannot honestly measure: a project with no attempt; a repair
+attempt, whose F4 bar is its fit report and has no smoke in it; an attempt
+closed by a void, interrupted or failed call, whose closure already smoked it
+and whose retry is a fresh project; an attempt with no completed turn, which
+has no product-agent design to measure; and a design that changed since its
+last turn, because the actor never edits a design.
+
+**Consequences.** The closing-smoke block in `dispatch` becomes `run_smoke`,
+called by both paths, so the first-free-name rule ADR-391 established is shared
+rather than copied. `cli/tests/test_ot7_runner.py::
+test_a_paused_attempt_is_smoked_without_spending_a_slot` and
+`::test_smoke_refuses_what_it_cannot_honestly_measure` fail on the old code.
+A receipt that never took an interim smoke has no `interim_smokes` key.
+
+This is the collector only: no engine, CLI, protocol, acceptance or dashboard
+behaviour changes, and no design is touched.
+
+**Addendum (measured the same iteration).** The first use of `run.py smoke`,
+on `ot7-plover-e`, returned a measurement worth naming here because it is the
+reason the interim smoke exists at all rather than a frozen continuation: the
+dynamics half passed every check, and the exact-BREP half's frame-0 agreement
+gate raised. Composed against the solved component placements, 24 of the 29
+MJCF bodies are at the wrong world pose — all 24 whose placement carries a
+rotation, by up to 121.9 mm — and of the 28 non-root bodies, 4 carry the
+parent-relative transform the assembly implies and 24 carry its exact inverse,
+none anything else. The four correct ones are the four with a revolute joint;
+the 24 inverted ones are fixed attachments. `CadexDynamics.py` derives a
+non-root body's frame from the joint connector frames as `parent_local_matrix ×
+inverse(child_local_matrix)`, while the root body alone uses the solved
+placement. Robin and Heron write no rotated body, so this is the first design
+to reach it. It is a repository defect, not a design defect, and no frozen
+prompt was spent on it. Evidence:
+`docs/probes/ot7/retained/plover-smoke-e.json`.

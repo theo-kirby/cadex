@@ -1061,7 +1061,7 @@ open question, and no smoke has run yet (the runner runs it at exhaustion).
 | F4 | Four void calls (ADR-355), one interrupted call (decision #44, ADR-356), and **four completed turns** on `ot7-heron-repair-d`: the repair prompt (1,461.9 s, 46 tool calls, six accepted revisions, static fit 0 of 120 pairs failing, swept complete at 5°, servo bodies uncatalogued, a bench slab added, joint ranges narrowed), `continue-1` (738.5 s, 20 tool calls, two accepted revisions, static fit 0 of 105 pairs failing, swept complete at 5° with zero common volume, both servos back to untouched catalog bodies, the bench removed, no world geometry) `continue-2` (128.7 s, 8 tool calls, no edit, the unchanged script re-accepted at the same digest after every measurement was re-read and none failed) and `continue-3` (104.9 s, 4 tool calls, no edit, the unchanged script re-accepted again, and the prompt's `DECISION:` and `NOTE design_specs:` lines written with 105 rest-pose and 210 swept checks passed, 0 failed); the collector's attachment assessment still fails on both horn-to-link pairs at 0.2 mm, declared as clearance | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [classification](attempts/void-calls.json), [interrupted call](retained/repair-timeout-b.json), [void call c](retained/repair-void-c.json), [completed turn d](retained/repair-completed-d.json), [assessment](#iteration-48-the-repair-turn-that-completed), [continue-1 on d](retained/repair-continue-1-d.json), [its assessment](#iteration-51-the-first-continuation-completed), [continue-2 on d](retained/repair-continue-2-d.json), [its assessment](#iteration-52-the-window-read-by-the-runner-then-continue-2-completed-adr-358), [continue-3 on d](retained/repair-continue-3-d.json), [its assessment](#iteration-53-the-last-continuation-completed-and-f4-exhausted). **Measured, and final: zero failing product checks after all four turns; two of three defects resolved, the horn gap declared rather than closed, and two continuations that name no failure leave the design unchanged. F4 is exhausted: no slot remains** |
 | F5 | One void arm create (pre-restart), one **interrupted** create on `ot7-heron-b` (iteration 55: killed at the 30-minute bound after 4 min of reading and three thinking-only messages that each hit the 32,000-token output cap; three probe scripts written, two accepted, no assembly, no design), and **one completed create turn** on `ot7-heron-c` (iteration 57, effort `medium`: 1,530.4 s, 82 tool calls, three accepted design revisions, static fit 8 then 6 then 7 of 120 failing: six screw intersections of 4.07 and 18.10 mm³ and the bench as world geometry; sweep unavailable, no step declared; servos and horns uncatalogued after modification, bearings and screws catalogued; `describe_api` at 82,523 characters still refused by the harness), and **one completed continuation** on the same project (iteration 59, `continue-1`: 610.6 s, 19 tool calls, two accepted revisions, static fit 1 of 120 failing: the bench as world geometry, zero intersections after the screw holes were bored to nominal and the six screw pairs declared contacts; sweep complete on both joints at 5° with 0 mm³ on every pair after the ranges were narrowed to [−90, 65] and [−100, 40]; servos and horns still uncatalogued; smoke pass, hold mode, 1 s, 51 samples, 120 pairs, no breach), and **a second completed continuation** (iteration 66, `continue-2`: 482.4 s, 19 tool calls, two accepted revisions that delete the bench component, its weld, contact row, body and solid; static fit 0 of 105 failing with no world geometry; sweep complete on both joints at 5° with 0 mm³ on every pair; servos and horns still uncatalogued while the closing message calls the catalog hardware unchanged; smoke pass, hold mode, 1 s, 51 samples, 105 pairs, no breach), and **a third completed continuation** (iteration 72, `continue-3`: 142.9 s, 6 tool calls, five clearance reads and one rebuild, no edit; the unchanged script re-accepted at the same revision and digest; static fit 0 of 105 failing, sweep complete at 5° with 0 mm³ on every pair; servos and horns still uncatalogued while the closing message calls all twelve purchased parts catalog parts; the runner's own smoke pass, hold mode, 1 s, 51 samples, 105 pairs, no breach, its trace digest identical to turn-2's) | [Record](../../../.hypergraph/graph/record/quiet-dew-5243.md), [void receipt](attempts/heron-refusal.json), [interrupted receipt](retained/heron-interrupted-b.json), [its assessment](#iteration-55-the-arm-create-call-interrupted-at-the-bound), [completed create receipt](retained/heron-create-c.json), [its assessment](#iteration-57-the-arm-create-turn-completed), [continue-1 receipt](retained/heron-continue-1-c.json), [its assessment](#iteration-59-the-first-continuation-completed), [continue-2 receipt](retained/heron-continue-2-c.json), [its assessment](#iteration-66-the-second-continuation-completed), [continue-3 receipt](retained/heron-continue-3-c.json), [its assessment](#iteration-72-the-last-continuation-completed-and-f5-exhausted). **Exhausted: the create slot and all three continuations spent on completed turns. The measured result meets zero failing static and swept checks, zero actor edits, three continuations and a passing smoke; the one count failing F5's bar is catalog hardware for every purchased part, the two servos and two horns** |
 | F6 | One void balancer create (pre-restart), one **interrupted** create on `ot7-robin-b`, and **four completed turns** on `ot7-robin-c`: the Fable create turn, then `continue-1` (Opus, ADR-384; the sweep declared and completed on both wheel axles), `continue-2` (no edit; every row re-read, nothing failing) and `continue-3` (no edit, but the unchanged script re-accepted through a fresh rebuild at the identical digest, with the prompt's `DECISION:` and `NOTE design_specs:` lines written). Final fit on revision `0b438561…`: static **0 of 378** failing, attachments **25 of 25** touching, sweep **pass, coverage complete** on 2 of 2 joints at 100° with 0.0 mm³; 28 components, every purchased part catalogued, no world geometry. The closing smoke **fails** — support 102.2°, the design's own `fallen` rule at 0.660 s, four floor penetrations — while its component-pair check over the trace passes | [Record](../../../.hypergraph/graph/record/keen-chart-9070.md), [void receipt](attempts/robin-refusal.json), [interrupted receipt](retained/robin-interrupted-b.json), [continue-1](retained/robin-continue-1-c.json), [continue-2](retained/robin-continue-2-c.json), [continue-3](retained/robin-continue-3-c.json), [its assessment](#iteration-164-f6s-last-continuation-and-the-smoke-a-balancer-cannot-pass). **Exhausted: all four slots spent. Five of six requirements met; the smoke is an uncontrolled inverted pendulum toppling at `policy_on: 0`, not a fit defect** |
-| F7 | New frozen biped prompt; one void create (pre-restart), two **interrupted** calls, one call **void** for an engine defect this repository introduced (ADR-390), and **two completed turns** on `ot7-plover-e`: the create turn (2,695.8 s, 52 tool calls, a 29-component biped with four catalog MG90S servos, hip and knee pitch per leg, catalog horns, MR128 bearings and bolts, five printed parts, free base, no world geometry — static fit **12 of 406** failing, all one class: hardware modelled solid inside the part it fastens; sweep complete at 15° on 4 of 4 joints with 48 failing pair-ranges over the same twelve pairs) and `continue-1` (802.1 s, **one** `edit_script` call, static fit **0 of 406** failing, attachments 24 of 24 touching, sweep **pass, coverage complete** on 4 of 4 joints at 15° with 0.0 mm³, two `DECISION:` lines, no actor edit) | [Record](../../../.hypergraph/graph/record/red-hawk-4600.md), [void receipt](attempts/plover-refusal.json), [create receipt](attempts/plover-e-create.json), [its assessment](#iteration-163-f7s-fourth-opus-call--the-biped-the-agent-actually-built), [continue-1 receipt](retained/plover-continue-1-e.json), [its assessment](#iteration-165-f7s-first-continuation-and-twelve-buried-fasteners-removed). **Open and unexhausted: two continuations unspent. Zero failing static and swept checks reached in one continuation with zero actor edits; the smoke is unrun because the runner smokes only at a closure, and the centre screw's catalog row moved from M2 × 16 to M2 × 12** |
+| F7 | New frozen biped prompt; one void create (pre-restart), two **interrupted** calls, one call **void** for an engine defect this repository introduced (ADR-390), and **two completed turns** on `ot7-plover-e`: the create turn (2,695.8 s, 52 tool calls, a 29-component biped with four catalog MG90S servos, hip and knee pitch per leg, catalog horns, MR128 bearings and bolts, five printed parts, free base, no world geometry — static fit **12 of 406** failing, all one class: hardware modelled solid inside the part it fastens; sweep complete at 15° on 4 of 4 joints with 48 failing pair-ranges over the same twelve pairs) and `continue-1` (802.1 s, **one** `edit_script` call, static fit **0 of 406** failing, attachments 24 of 24 touching, sweep **pass, coverage complete** on 4 of 4 joints at 15° with 0.0 mm³, two `DECISION:` lines, no actor edit) | [Record](../../../.hypergraph/graph/record/red-hawk-4600.md), [void receipt](attempts/plover-refusal.json), [create receipt](attempts/plover-e-create.json), [its assessment](#iteration-163-f7s-fourth-opus-call--the-biped-the-agent-actually-built), [continue-1 receipt](retained/plover-continue-1-e.json), [its assessment](#iteration-165-f7s-first-continuation-and-twelve-buried-fasteners-removed). **Open and unexhausted: two continuations unspent. Zero failing static and swept checks reached in one continuation with zero actor edits, and the inventory measured at 24 catalogued components against five printed sources, so catalog hardware is met — though the centre screw's row moved from M2 × 16 to M2 × 12. The smoke was taken without spending a slot (ADR-392) and is *unproven rather than failing*: its dynamics half passes every check and the biped stands, while its exact-BREP half never returns a verdict because the MJCF misplaces all 24 rotated components by up to 121.9 mm — a repository defect, not a design one** — [smoke receipt](retained/plover-smoke-e.json), [its assessment](#iteration-167-f7s-smoke-taken-without-spending-a-slot-adr-392) |
 | F8 | One-command bounded smoke over accepted artifacts; passing and failing known-answer fixtures | [Record](../../../.hypergraph/graph/record/lean-fountain-9707.md), [receipt](f8-smoke.json). Implementation verified; F5–F7 have no executed simulation receipts |
 | F9 | Green recorded suites and packaged gate; retained ot6 copies restore/reopen, all measurement differences explained | [Closure record](../../../.hypergraph/graph/record/narrow-valley-3317.md), [regression receipt](REGRESSION.md), [restore record](../../../.hypergraph/graph/record/still-raven-7629.md). Carried evidence, not a fresh run for this report |
 
@@ -1925,3 +1925,80 @@ edits.** What F7's bar still lacks is its smoke rollout: the runner attempts
 one closing smoke when an attempt closes, and this attempt is paused with two
 continuations unspent. No engine, CLI, checker or runner code was touched this
 iteration.
+
+## Iteration 167: F7's smoke, taken without spending a slot (ADR-392)
+
+F7's bar has six requirements and had five. The sixth, a passing smoke
+rollout, was unmeasured for a procedural reason rather than a design one: the
+collector runs its one bounded holding smoke when an attempt *closes*, and
+`ot7-plover-e` is paused at zero failing static and zero failing swept checks
+with `continue-2` and `continue-3` unspent. The only route to a smoke was to
+spend a frozen continuation on a turn whose own fit report names nothing to
+fix — buying a measurement with a design slot.
+
+**The collector gap, closed first (ADR-392).** `run.py smoke PROJECT` runs the
+same bounded `cadex smoke --seconds 1` on an open attempt: no prompt, no
+model, no slot, no status change. Its evidence goes to
+`evidence/smoke-interim/` (then `smoke-interim-retry-N`), leaving the
+canonical `evidence/smoke/` free for whatever closes the attempt later, and
+its result is appended to the receipt's `interim_smokes` beside the design
+identity it measured. It refuses a project with no attempt, a repair attempt
+(F4's bar has no smoke in it), an attempt closed by a void, interrupted or
+failed call, an attempt with no completed turn, and a design that changed
+since its last turn. Two fixtures fail on the old code; `cli/tests`: **845
+passed, 1 skipped**.
+
+**What it measured.** Exit 1 in 0.4 s on accepted revision `0491ead7…`, digest
+`a00d1aea…`, the receipt still `paused` with two continuations unspent.
+
+- **The dynamics half passed every check**, verdict `pass`: state finite
+  throughout; penetration **0 breaches** with the two feet touching the floor
+  at 0.337 mm against a 0.5 mm tolerance; support resting on the floor after a
+  0.281 mm drop at 0.186° of tilt, base `c_pelvis`, `kind: free`; the one
+  termination rule unfired. 51 samples over 1.0 s at 50 Hz, MuJoCo 3.10.0.
+  **The biped stands.** It does not topple the way Robin's did.
+- **The geometry half never produced a verdict.** The exact-BREP check's
+  frame-0 agreement gate raised on `('c_bearing_hip_l', 'c_bearing_hip_r')`:
+  published clearance puts them 33.8 mm apart with zero common volume, and the
+  MJCF puts both at the same point, 16.9 mm below the pelvis.
+
+**The gate was right, and what it found is ours.** Composing the MJCF body
+tree down to world poses and holding it against the solved component
+placements: **all 24 components whose solved placement carries a non-identity
+rotation are at a different world pose in the model than in the assembly** —
+worst `c_tabscrew_knee_l_0` at **121.9 mm**, with a wholly different
+orientation in every case — while the five with an identity rotation (pelvis,
+both thighs, both shins) are exact to 1e-6. Four of the misplaced bodies carry
+a collision geom (the servos, 55.2 mm and 114.2 mm out) and all 24 carry mass,
+so the dynamics half's pass is a pass on a model that does not match the
+design. Robin and Heron write no rotated body at all — every `quat` in their
+MJCF is absent — which is why neither exercised this and why it surfaced only
+on the first design whose components are rotated.
+
+**And the shape of it is exact.** Taking each non-root body's written
+parent-relative transform against the one the solved assembly implies: 4 of 28
+match it, 24 match **its inverse**, and none is anything else. The four that
+match are precisely the four bodies carrying a revolute joint — both thighs and
+both shins; all 24 that are inverted are fixed attachments. `CadexDynamics.py`
+derives a non-root body's frame as `parent_local_matrix ×
+inverse(child_local_matrix)` from the joint connector frames rather than from
+the solved placements, which only the root body uses. That line is where the
+fixture and the fix start.
+
+**So F7's smoke is unproven rather than failing, and `continue-2` stays
+unspent.** The failure is a repository defect in the MJCF the engine exports,
+not something the agent can see from its tools or fix in its script, and the
+charter's rule is that the actor never edits a design. Asking a frozen
+continuation to resolve it would spend a design slot on our bug and report the
+result as the agent's. The next unit is the engine-side one: a fixture that
+pins a rotated component's MJCF body pose to its solved placement, then the
+fix. Receipt: [`retained/plover-smoke-e.json`](retained/plover-smoke-e.json).
+
+**Inventory, measured for F7's catalog-hardware requirement.** 29 components:
+**24 catalogued** — 4 `servo/mg90s`, 4 `servo_horn/mg90s-single_arm`, 4
+`bearing/mr128`, 8 `bolt/m2x6-socket`, 4 `bolt/m2x12-socket` — and **five
+uncatalogued sources, all printed parts**: pelvis, both thighs, both shins.
+`derived_catalog_sources` is empty and no world geometry entered the design.
+Every purchased part is a catalog part, so that requirement is met; the M2 × 16
+the create prompt named is still absent, replaced by the M2 × 12 the
+continuation fitted.
