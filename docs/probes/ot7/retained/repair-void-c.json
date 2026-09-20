@@ -1,0 +1,401 @@
+{
+ "criterion": "F4",
+ "iteration": 48,
+ "project": "ot7-heron-repair-c",
+ "seed": "fresh copy of ot7-heron-repair, excluding evidence/, agent.json and the CLI lock; identity validated by the runner before dispatch",
+ "evidence_directory": "evidence/f4-repair",
+ "model": "claude-fable-5",
+ "prompt": {
+  "path": "repair.prompt.txt",
+  "bytes": 830,
+  "sha256": "5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904"
+ },
+ "dispatched_utc": "2026-09-15T06:07:12Z",
+ "runner_exit_code": null,
+ "outcome": null,
+ "collector_status": "void",
+ "turn_status": "void",
+ "void": {
+  "kind": "usage_limit",
+  "rule": "ADR-355",
+  "slot_consumed": false,
+  "cut_off_mid_turn": true,
+  "model_messages_before_limit": 8,
+  "signals": [
+   {
+    "frame": "rate_limit_event",
+    "status": "rejected",
+    "limit": "five_hour",
+    "resets_at": 1789467600
+   },
+   {
+    "frame": "assistant",
+    "error": "rate_limit",
+    "model": "<synthetic>"
+   },
+   {
+    "frame": "result",
+    "api_error_status": 429,
+    "text": "You've hit your session limit \u00b7 resets 6:20am (America/New_York)"
+   },
+   {
+    "frame": "envelope",
+    "text": "You've hit your session limit \u00b7 resets 6:20am (America/New_York)"
+   }
+  ]
+ },
+ "interruption": null,
+ "slot_consumed": false,
+ "continuations_used": 0,
+ "slots_spent": 0,
+ "void_calls_this_project": 1,
+ "interrupted_calls_this_project": 0,
+ "slot_rule": null,
+ "retry": {
+  "rule": "ADR-355",
+  "prompt": "repair.prompt.txt",
+  "project": "ot7-heron-repair-d",
+  "note": "Same frozen prompt, fresh project or fresh seed copy, only while the product agent is available."
+ },
+ "turn": {
+  "exit_code": 1,
+  "elapsed_seconds": 79.90243291691877,
+  "runner_transcript": {
+   "path": "turn-0/transcript.jsonl",
+   "bytes": 216946,
+   "sha256": "facd820027cbee125b7e382f2caf8e31b5e12b10e396f6b8d6fdef966d0a3aca"
+  },
+  "captured": "frame by frame as it arrived (ADR-356)",
+  "frames": {
+   "system": 56,
+   "rate_limit_event": 5,
+   "assistant": 9,
+   "user": 6,
+   "result": 1
+  },
+  "first_frame_utc": "2026-09-15T06:07:16.793Z",
+  "last_frame_utc": "2026-09-15T06:08:32.291Z",
+  "api_messages": 4,
+  "synthetic_error_messages": 1,
+  "tool_uses": 6,
+  "submit_calls": 0,
+  "text_output": 0,
+  "rate_limit_window_at_first_event": {
+   "status": "allowed_warning",
+   "five_hour": {
+    "utilization": 0.95,
+    "resetsAt": 1789467600
+   },
+   "seven_day": {
+    "utilization": 0.33,
+    "resetsAt": 1789538400
+   }
+  },
+  "rate_limit_window_at_last_event": {
+   "status": "rejected",
+   "five_hour": {
+    "utilization": 1.01,
+    "resetsAt": 1789467600
+   },
+   "seven_day": {
+    "utilization": 0.33,
+    "resetsAt": 1789538400
+   }
+  },
+  "rate_limit_events": 5,
+  "result_frame": {
+   "subtype": "success",
+   "is_error": true,
+   "api_error_status": 429,
+   "result": "You've hit your session limit \u00b7 resets 6:20am (America/New_York)",
+   "num_turns": 7,
+   "duration_ms": 76881,
+   "duration_api_ms": 77005,
+   "stop_reason": "stop_sequence",
+   "terminal_reason": "api_error"
+  },
+  "usage_totals": {
+   "output_tokens": 5172,
+   "thinking_tokens": 4628,
+   "cache_read_input_tokens": 70023,
+   "cache_creation_input_tokens": 23327
+  },
+  "tool_use_sequence": [
+   "06:07:17 inspect clearance",
+   "06:07:17 inspect script",
+   "06:07:19 inspect clearance /pairs",
+   "06:07:21 inspect clearance /pairs",
+   "06:08:31 inspect clearance /pairs",
+   "06:08:31 inspect script /source"
+  ]
+ },
+ "completed_design_turns": 0,
+ "actor_design_edits": 0,
+ "before_measurement_seconds": 0.1637290259823203,
+ "after_measurement_seconds": 0.1639078250154853,
+ "before_read_seed_unchanged": true,
+ "script_sha256_before": "3339a1786d4d2bbcb69de9b4410ee325aed9ea73a327cd7703848484a677389d",
+ "script_sha256_after": "3339a1786d4d2bbcb69de9b4410ee325aed9ea73a327cd7703848484a677389d",
+ "accepted_revision_before": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+ "accepted_revision_after": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+ "metadata_changed_fields": [
+  "latest_candidate",
+  "updated_at"
+ ],
+ "before_fit": {
+  "verdict": "fail",
+  "failing_count": 15,
+  "pairs_checked": 105,
+  "counts": {
+   "clear": 91,
+   "intersection": 8,
+   "below clearance": 6,
+   "unknown": 0,
+   "world geometry": 1
+  }
+ },
+ "after_fit": {
+  "verdict": "fail",
+  "failing_count": 15,
+  "pairs_checked": 105,
+  "counts": {
+   "clear": 91,
+   "intersection": 8,
+   "below clearance": 6,
+   "unknown": 0,
+   "world geometry": 1
+  }
+ },
+ "after_failing": [
+  {
+   "first": "comp_base",
+   "second": "comp_servo_shoulder",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 248.20162986795066
+  },
+  {
+   "first": "comp_base",
+   "second": "comp_bearing_shoulder",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_base",
+   "second": "comp_tabscrew_shoulder_0",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052369
+  },
+  {
+   "first": "comp_base",
+   "second": "comp_tabscrew_shoulder_1",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052367
+  },
+  {
+   "first": "comp_upper_arm",
+   "second": "comp_servo_elbow",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 248.20162986795046
+  },
+  {
+   "first": "comp_upper_arm",
+   "second": "comp_bearing_elbow",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_upper_arm",
+   "second": "comp_tabscrew_elbow_0",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052383
+  },
+  {
+   "first": "comp_upper_arm",
+   "second": "comp_tabscrew_elbow_1",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 4.071504079052412
+  },
+  {
+   "first": "comp_upper_arm",
+   "second": "comp_centrescrew_shoulder",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_forearm",
+   "second": "comp_centrescrew_elbow",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_servo_shoulder",
+   "second": "comp_horn_shoulder",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_servo_shoulder",
+   "second": "comp_centrescrew_shoulder",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 9.424777960769386
+  },
+  {
+   "first": "comp_servo_elbow",
+   "second": "comp_horn_elbow",
+   "status": "below clearance",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_servo_elbow",
+   "second": "comp_centrescrew_elbow",
+   "status": "intersection",
+   "distance_mm": 0.0,
+   "common_volume_mm3": 9.424777960769378
+  },
+  {
+   "first": "comp_base",
+   "second": "",
+   "status": "world geometry",
+   "distance_mm": null,
+   "common_volume_mm3": null
+  }
+ ],
+ "before_attachments": [
+  {
+   "first": "comp_horn_shoulder",
+   "second": "comp_upper_arm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999999732,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_horn_elbow",
+   "second": "comp_forearm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999993,
+   "common_volume_mm3": 0.0
+  }
+ ],
+ "after_attachments": [
+  {
+   "first": "comp_horn_shoulder",
+   "second": "comp_upper_arm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999999732,
+   "common_volume_mm3": 0.0
+  },
+  {
+   "first": "comp_horn_elbow",
+   "second": "comp_forearm",
+   "status": "fail",
+   "reason": "missed contact",
+   "distance_mm": 0.19999999999993,
+   "common_volume_mm3": 0.0
+  }
+ ],
+ "assessment_status_before": "fail",
+ "assessment_status_after": "fail",
+ "smoke": "not requested for F4",
+ "artifacts": {
+  "before": [
+   {
+    "path": "clearance.json",
+    "bytes": 48856,
+    "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803"
+   },
+   {
+    "path": "fit.json",
+    "bytes": 4488,
+    "sha256": "63c8f7722485ec542fa91eb728158acfeb9fb6f0fa46512b6fd36d95d1fd4b30"
+   },
+   {
+    "path": "inventory.json",
+    "bytes": 19242,
+    "sha256": "8115e34ae52612f4ee6462cae503a3d3cc9b45e539e6ac9e99176b17caa61811"
+   },
+   {
+    "path": "measurement.stderr.txt",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "measurement.stdout.json",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "repair-assessment.json",
+    "bytes": 5650,
+    "sha256": "95f7e3239f7d5558890c67c09d7c5b2f02e4fce78341016074ebe7c05144878f"
+   }
+  ],
+  "turn-0": [
+   {
+    "path": "clearance.json",
+    "bytes": 48856,
+    "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803"
+   },
+   {
+    "path": "fit.json",
+    "bytes": 4488,
+    "sha256": "63c8f7722485ec542fa91eb728158acfeb9fb6f0fa46512b6fd36d95d1fd4b30"
+   },
+   {
+    "path": "inventory.json",
+    "bytes": 19242,
+    "sha256": "8115e34ae52612f4ee6462cae503a3d3cc9b45e539e6ac9e99176b17caa61811"
+   },
+   {
+    "path": "measurement.stderr.txt",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "measurement.stdout.json",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "path": "repair-assessment.json",
+    "bytes": 5650,
+    "sha256": "95f7e3239f7d5558890c67c09d7c5b2f02e4fce78341016074ebe7c05144878f"
+   },
+   {
+    "path": "repair.prompt.txt",
+    "bytes": 830,
+    "sha256": "5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904"
+   },
+   {
+    "path": "transcript.jsonl",
+    "bytes": 216946,
+    "sha256": "facd820027cbee125b7e382f2caf8e31b5e12b10e396f6b8d6fdef966d0a3aca"
+   },
+   {
+    "path": "turn.stderr.txt",
+    "bytes": 198,
+    "sha256": "38150f7fdfaa809fa003c11ac60c84b2267fa89317126165c641790062e4287a"
+   },
+   {
+    "path": "turn.stdout.json",
+    "bytes": 1456,
+    "sha256": "1d359a8a03fe297cf0caedd09ff15e6072e85117249f48a20a0d2252dd48ec9c"
+   }
+  ]
+ }
+}

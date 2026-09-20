@@ -1,0 +1,177 @@
+{
+  "criterion": "F4",
+  "iteration": 39,
+  "project": "ot7-heron-repair",
+  "evidence_directory": "evidence/f4-repair",
+  "model": "claude-fable-5",
+  "outcome": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)",
+  "collector_status": "interrupted",
+  "collector_exit_code": 0,
+  "turn": {
+    "exit_code": 1,
+    "elapsed_seconds": 4.170883105136454
+  },
+  "before_measurement_seconds": 0.16371314600110054,
+  "after_measurement_seconds": 0.1640564468689263,
+  "session_id": "68817322-0aff-421c-9d38-4b1e8e59be01",
+  "fresh_session": true,
+  "completed_design_turns": 0,
+  "actor_design_edits": 0,
+  "collector_slot_consumed": true,
+  "prompt": {
+    "path": "repair.prompt.txt",
+    "bytes": 830,
+    "sha256": "5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904"
+  },
+  "historical_f4_dispatches": 3,
+  "earlier_refusals": [
+    "repair-refusal.json",
+    "repair-refusal-iteration19.json"
+  ],
+  "script_sha256": "3339a1786d4d2bbcb69de9b4410ee325aed9ea73a327cd7703848484a677389d",
+  "script_unchanged": true,
+  "accepted_revision": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+  "accepted_identity_unchanged": true,
+  "before_read_seed_unchanged": true,
+  "metadata_changed_fields": [
+    "latest_candidate",
+    "updated_at"
+  ],
+  "metadata_change_reason": "Normal product restore metadata; accepted identity and script unchanged.",
+  "before_fit": {
+    "verdict": "fail",
+    "failing_count": 15,
+    "pairs_checked": 105
+  },
+  "after_fit": {
+    "verdict": "fail",
+    "failing_count": 15,
+    "pairs_checked": 105
+  },
+  "before_attachments": [
+    {
+      "first": "comp_horn_shoulder",
+      "second": "comp_upper_arm",
+      "status": "fail",
+      "reason": "missed contact",
+      "distance_mm": 0.19999999999999732,
+      "common_volume_mm3": 0.0
+    },
+    {
+      "first": "comp_horn_elbow",
+      "second": "comp_forearm",
+      "status": "fail",
+      "reason": "missed contact",
+      "distance_mm": 0.19999999999993,
+      "common_volume_mm3": 0.0
+    }
+  ],
+  "after_attachments": [
+    {
+      "first": "comp_horn_shoulder",
+      "second": "comp_upper_arm",
+      "status": "fail",
+      "reason": "missed contact",
+      "distance_mm": 0.19999999999999732,
+      "common_volume_mm3": 0.0
+    },
+    {
+      "first": "comp_horn_elbow",
+      "second": "comp_forearm",
+      "status": "fail",
+      "reason": "missed contact",
+      "distance_mm": 0.19999999999993,
+      "common_volume_mm3": 0.0
+    }
+  ],
+  "assessment_status": "fail",
+  "sweep": "unavailable",
+  "smoke": "not requested for F4",
+  "artifacts": [
+    {
+      "path": "attempt.json",
+      "bytes": 46274,
+      "sha256": "0d6068851bad9ce57161996864bcff6bc3dc4c5ae37d3c022320619fded60a89"
+    },
+    {
+      "path": "before/clearance.json",
+      "bytes": 48856,
+      "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803"
+    },
+    {
+      "path": "before/fit.json",
+      "bytes": 4488,
+      "sha256": "63c8f7722485ec542fa91eb728158acfeb9fb6f0fa46512b6fd36d95d1fd4b30"
+    },
+    {
+      "path": "before/inventory.json",
+      "bytes": 19242,
+      "sha256": "8115e34ae52612f4ee6462cae503a3d3cc9b45e539e6ac9e99176b17caa61811"
+    },
+    {
+      "path": "before/measurement.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "before/measurement.stdout.json",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "before/repair-assessment.json",
+      "bytes": 5650,
+      "sha256": "95f7e3239f7d5558890c67c09d7c5b2f02e4fce78341016074ebe7c05144878f"
+    },
+    {
+      "path": "turn-0/clearance.json",
+      "bytes": 48856,
+      "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803"
+    },
+    {
+      "path": "turn-0/fit.json",
+      "bytes": 4488,
+      "sha256": "63c8f7722485ec542fa91eb728158acfeb9fb6f0fa46512b6fd36d95d1fd4b30"
+    },
+    {
+      "path": "turn-0/inventory.json",
+      "bytes": 19242,
+      "sha256": "8115e34ae52612f4ee6462cae503a3d3cc9b45e539e6ac9e99176b17caa61811"
+    },
+    {
+      "path": "turn-0/measurement.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "turn-0/measurement.stdout.json",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "turn-0/repair-assessment.json",
+      "bytes": 5650,
+      "sha256": "95f7e3239f7d5558890c67c09d7c5b2f02e4fce78341016074ebe7c05144878f"
+    },
+    {
+      "path": "turn-0/repair.prompt.txt",
+      "bytes": 830,
+      "sha256": "5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904"
+    },
+    {
+      "path": "turn-0/transcript.jsonl",
+      "bytes": 6466,
+      "sha256": "75cedbfd888448b5568bc17abf8bd7afe36b8905ffdf34869ad95cc28465323e"
+    },
+    {
+      "path": "turn-0/turn.stderr.txt",
+      "bytes": 66,
+      "sha256": "3129a282accd591370a712118bb85970706917fe3ea7a70d4ed9095f069f6349"
+    },
+    {
+      "path": "turn-0/turn.stdout.json",
+      "bytes": 1454,
+      "sha256": "0527675b73891c0d28a91d2db72d4e97cd8fe9480b3b35bcd160a3c7ebbb5074"
+    }
+  ]
+}

@@ -71,6 +71,19 @@ class RunReport:
     #: ``cadex walk``: the legs it ran, in order, and the review it read
     #: off the verified rollout's trace (ADR-199).
     walk: dict[str, Any] = field(default_factory=dict)
+    #: The measured fit the last accepted build reply carried to the model
+    #: (ADR-346): verdict, counts and every failing pair by name. Read from
+    #: the engine's published clearance measurements, never from stdout.
+    fit: dict[str, Any] = field(default_factory=dict)
+    #: The catalog identity the same reply carried (ADR-362): component
+    #: and catalogued counts, the catalog roll-up and every uncatalogued
+    #: placed output by name. Read from the published inventory, never
+    #: from stdout. Advisory: it names no failure.
+    inventory: dict[str, Any] = field(default_factory=dict)
+    #: ``cadex smoke`` (ADR-352): the bounded stock-MuJoCo rollout's receipt
+    #: as measured — verdict, the checks and every failing
+    #: line — plus ``receipt``, where it landed. Not re-derived here.
+    smoke: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
@@ -101,6 +114,12 @@ class RunReport:
             payload["training_plan"] = dict(self.training_plan)
         if self.walk:
             payload["walk"] = dict(self.walk)
+        if self.fit:
+            payload["fit"] = dict(self.fit)
+        if self.inventory:
+            payload["inventory"] = dict(self.inventory)
+        if self.smoke:
+            payload["smoke"] = dict(self.smoke)
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -210,6 +229,70 @@ def human_lines(report: RunReport) -> list[str]:
         for name, path in sorted((plan.get("artifacts") or {}).items()):
             if path:
                 lines.append(f"  file {name:<13s} {path}")
+    if report.fit:
+        verdict = str(report.fit.get("verdict") or "")
+        if verdict == "unavailable":
+            lines.append("fit    unavailable: " + str(
+                report.fit.get("error") or report.fit.get("note") or ""))
+        else:
+            lines.append("fit    {:s}  {:d} failing of {:d} pair(s)".format(
+                verdict, int(report.fit.get("failing_count") or 0),
+                int(report.fit.get("pairs_checked") or 0)))
+            for pair in report.fit.get("failing") or []:
+                lines.append("  {:s} ∩ {:s}: {:s}  distance {:s} mm  common {:s} mm³".format(
+                    str(pair.get("first") or ""), str(pair.get("second") or ""),
+                    str(pair.get("status") or ""), _measure(pair.get("distance_mm")),
+                    _measure(pair.get("common_volume_mm3"))))
+    sweep = report.fit.get("sweep") if report.fit else None
+    if isinstance(sweep, dict):
+        verdict = str(sweep.get("verdict") or "")
+        if verdict == "unavailable":
+            lines.append("sweep  unavailable: " + str(
+                sweep.get("reason") or sweep.get("note") or ""))
+        else:
+            lines.append(
+                "sweep  {:s}  {:d} of {:d} joint(s) swept  {:d} failing pair(s)".format(
+                    verdict, int(sweep.get("joints_complete") or 0),
+                    int(sweep.get("joints_checked") or 0),
+                    int(sweep.get("failing_count") or 0)))
+            for joint in sweep.get("joints") or []:
+                if str(joint.get("status") or "") != "complete":
+                    lines.append("  {:s} unswept: {:s}".format(
+                        str(joint.get("joint") or ""), str(joint.get("reason") or "")))
+            for pair in sweep.get("failing") or []:
+                # The status, the way the static block's pair lines carry it:
+                # a swept failure is an intersection, a gap the motion closed
+                # below its minimum (ADR-378), or a pair with no measurement,
+                # and the numbers alone do not say which.
+                lines.append(
+                    "  {:s} ∩ {:s} through {:s}: {:s}  min {:s} mm  max common {:s} mm³".format(
+                        str(pair.get("first") or ""), str(pair.get("second") or ""),
+                        str(pair.get("joint") or ""), str(pair.get("status") or ""),
+                        _measure(pair.get("minimum_distance_mm")),
+                        _measure(pair.get("maximum_common_volume_mm3"))))
+    if report.inventory:
+        if not report.inventory.get("available"):
+            lines.append("inventory  unavailable: " + str(
+                report.inventory.get("error") or report.inventory.get("note") or ""))
+        else:
+            lines.append("inventory  {:d} component(s)  {:d} catalogued  {:d} uncatalogued".format(
+                int(report.inventory.get("component_count") or 0),
+                int(report.inventory.get("catalogued_count") or 0),
+                int(report.inventory.get("uncatalogued_count") or 0)))
+            for name in report.inventory.get("uncatalogued_sources") or []:
+                lines.append(f"  uncatalogued {name}")
+    if report.smoke:
+        checks = report.smoke.get("checks") or {}
+        lines.append("smoke  {:s}  {:g} s {:s}  {:s}".format(
+            str(report.smoke.get("verdict") or ""),
+            float(report.smoke.get("seconds") or 0.0),
+            str(report.smoke.get("mode") or ""),
+            "  ".join(
+                f"{name}:{'ok' if (check or {}).get('pass') else 'FAIL'}"
+                for name, check in checks.items()),
+        ))
+        for line in report.smoke.get("failing") or []:
+            lines.append(f"  {line}")
     for leg in report.walk.get("legs") or []:
         lines.append(
             "leg    {:<8s} exit {:d}  {:.1f} s".format(
@@ -230,6 +313,12 @@ def human_lines(report: RunReport) -> list[str]:
     if report.revision:
         lines.append(f"next   expected_revision {report.revision[:16]}")
     return lines
+
+
+def _measure(value: Any) -> str:
+    """A measurement, or the dash that says the engine could not take it."""
+
+    return "—" if value is None else _short(value)
 
 
 def _short(value: Any) -> str:

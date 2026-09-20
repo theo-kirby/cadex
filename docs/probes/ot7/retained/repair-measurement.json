@@ -1,0 +1,63 @@
+{
+  "exit_code": 0,
+  "elapsed_seconds": 0.1637349701486528,
+  "seed_unchanged": true,
+  "metadata_bytes_unchanged": true,
+  "artifacts": [
+    {
+      "path": "clearance.json",
+      "bytes": 48856,
+      "sha256": "5f1d4fbb78de32668409731ebca2a32f806234589a1fbe65be4c71480f042803"
+    },
+    {
+      "path": "fit.json",
+      "bytes": 4488,
+      "sha256": "63c8f7722485ec542fa91eb728158acfeb9fb6f0fa46512b6fd36d95d1fd4b30"
+    },
+    {
+      "path": "identity-after.json",
+      "bytes": 12369,
+      "sha256": "844bc48f87784b43eed56b4ae63fdcff4f3e1f71cbc926eebbb74cc8751486cc"
+    },
+    {
+      "path": "identity-before.json",
+      "bytes": 12369,
+      "sha256": "844bc48f87784b43eed56b4ae63fdcff4f3e1f71cbc926eebbb74cc8751486cc"
+    },
+    {
+      "path": "inventory.json",
+      "bytes": 19242,
+      "sha256": "8115e34ae52612f4ee6462cae503a3d3cc9b45e539e6ac9e99176b17caa61811"
+    },
+    {
+      "path": "measurement.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "measurement.stdout.json",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "project": "ot7-heron-repair",
+  "evidence_directory": "evidence/iteration29-measurement",
+  "revision": "7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475",
+  "pairs_checked": 105,
+  "static_counts": {
+    "clear": 91,
+    "intersection": 8,
+    "below clearance": 6,
+    "unknown": 0,
+    "world geometry": 1
+  },
+  "static_failing_count": 15,
+  "sweep": {
+    "joints": [],
+    "reason": "No published sweep for this accepted revision. Declare sweep_step_degrees (hinges) and/or sweep_step_mm (sliders) on the assembly and explicitly rebuild.",
+    "status": "unavailable"
+  },
+  "inventory_component_count": 15,
+  "verification": "All artifact sizes and SHA-256 hashes verified; 105 distinct pairs; shared accepted revision; known shoulder overlap and horn gap; identical before/after identity and metadata bytes.",
+  "receipt_sha256": "42517b8bfe3bb67c85a6c077cd76d9f6b1c031528870b93a8b4a40ce3e2e2cd6"
+}

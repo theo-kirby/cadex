@@ -1,0 +1,26 @@
+{
+  "checked_at": "2026-09-17T14:45:54.183016+00:00",
+  "requested_model": "claude-fable-5",
+  "availability_probe": {
+    "exit_code": 0,
+    "is_error": false,
+    "result": "READY",
+    "reported_model_usage_keys": [
+      "claude-haiku-4-5-20251001",
+      "claude-fable-5",
+      "claude-opus-4-8"
+    ]
+  },
+  "experiment_runner_window": {
+    "command": "pixi run python docs/probes/ot7/runner/run.py window --model claude-fable-5",
+    "status": "allowed",
+    "five_hour_percent": 0,
+    "seven_day_percent": 6,
+    "seven_day_overage_included_percent": 12,
+    "refused": null,
+    "disabled_reason": "out_of_credits",
+    "room": true,
+    "exit_code": 0
+  },
+  "interpretation": "The requested model call and the experiment runner gate both succeeded. The auxiliary disabled_reason field does not override status=allowed and room=true in the existing gate. No frozen design prompt was dispatched by this preflight."
+}

@@ -1,0 +1,244 @@
+{
+  "schema": "ot7-void-calls-v1",
+  "rule": "ADR-355",
+  "verified": "2026-09-15",
+  "note": "Every product-agent call ot7 dispatched before the restart, classified by `runner/run.py --classify` from the retained transcript, CLI envelope and stderr. A void call spent no create, continuation or repair slot and is not a design result. Paths are relative to the operator cadex-projects directory.",
+  "calls": [
+    {
+      "criterion": "F4",
+      "role": "seeded repair",
+      "record": "lucky-willow-8039",
+      "project": "ot7-heron-repair",
+      "transcript": {
+        "path": "ot7-heron-repair/evidence/turn1.transcript.jsonl",
+        "bytes": 35795,
+        "sha256": "7f4238888d0925e0fb3a5d2810843a3d01a7103a4155b3ea0ec0a7f07f4bd455"
+      },
+      "envelope": "ot7-heron-repair/evidence/turn1.envelope.json",
+      "stderr": "ot7-heron-repair/evidence/turn1.stderr.txt",
+      "earlier_receipt": "retained/repair-refusal.json",
+      "void": {
+        "kind": "usage_limit",
+        "rule": "ADR-355",
+        "slot_consumed": false,
+        "cut_off_mid_turn": false,
+        "model_messages_before_limit": 0,
+        "signals": [
+          {
+            "frame": "assistant",
+            "error": "rate_limit",
+            "model": "<synthetic>"
+          },
+          {
+            "frame": "envelope",
+            "text": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)"
+          }
+        ]
+      }
+    },
+    {
+      "criterion": "F4",
+      "role": "seeded repair",
+      "record": "keen-quill-2265",
+      "project": "ot7-heron-repair",
+      "transcript": {
+        "path": "ot7-heron-repair/evidence/iteration19/turn.transcript.jsonl",
+        "bytes": 37102,
+        "sha256": "5c41384de5d7c3b129467c5a63b9d6980de88507f02cd31ce7a4a6fed09cf19e"
+      },
+      "envelope": "ot7-heron-repair/evidence/iteration19/turn.envelope.json",
+      "stderr": "ot7-heron-repair/evidence/iteration19/turn.stderr.txt",
+      "earlier_receipt": "retained/repair-refusal-iteration19.json",
+      "void": {
+        "kind": "usage_limit",
+        "rule": "ADR-355",
+        "slot_consumed": false,
+        "cut_off_mid_turn": false,
+        "model_messages_before_limit": 0,
+        "signals": [
+          {
+            "frame": "assistant",
+            "error": "rate_limit",
+            "model": "<synthetic>"
+          },
+          {
+            "frame": "envelope",
+            "text": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)"
+          }
+        ]
+      }
+    },
+    {
+      "criterion": "F4",
+      "role": "seeded repair",
+      "record": "blue-slope-0916",
+      "project": "ot7-heron-repair",
+      "transcript": {
+        "path": "ot7-heron-repair/evidence/f4-repair/turn-0/transcript.jsonl",
+        "bytes": 6466,
+        "sha256": "75cedbfd888448b5568bc17abf8bd7afe36b8905ffdf34869ad95cc28465323e"
+      },
+      "envelope": "ot7-heron-repair/evidence/f4-repair/turn-0/turn.stdout.json",
+      "stderr": "ot7-heron-repair/evidence/f4-repair/turn-0/turn.stderr.txt",
+      "earlier_receipt": "retained/repair-refusal-iteration39.json",
+      "void": {
+        "kind": "usage_limit",
+        "rule": "ADR-355",
+        "slot_consumed": false,
+        "cut_off_mid_turn": false,
+        "model_messages_before_limit": 0,
+        "signals": [
+          {
+            "frame": "rate_limit_event",
+            "status": "rejected",
+            "limit": "five_hour",
+            "resets_at": 1789431600
+          },
+          {
+            "frame": "assistant",
+            "error": "rate_limit",
+            "model": "<synthetic>"
+          },
+          {
+            "frame": "result",
+            "api_error_status": 429,
+            "text": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)"
+          },
+          {
+            "frame": "envelope",
+            "text": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)"
+          }
+        ]
+      }
+    },
+    {
+      "criterion": "F5",
+      "role": "arm create",
+      "record": "quiet-dew-5243",
+      "project": "ot7-heron",
+      "transcript": {
+        "path": "ot7-heron/evidence/turn-0/transcript.jsonl",
+        "bytes": 6452,
+        "sha256": "813e77ee6c0183c17e4a54dec380f83524ae4183ce763f0bfe7aab3ee9c0dedb"
+      },
+      "envelope": "ot7-heron/evidence/turn-0/turn.stdout.json",
+      "stderr": "ot7-heron/evidence/turn-0/turn.stderr.txt",
+      "earlier_receipt": "attempts/heron-refusal.json",
+      "void": {
+        "kind": "usage_limit",
+        "rule": "ADR-355",
+        "slot_consumed": false,
+        "cut_off_mid_turn": false,
+        "model_messages_before_limit": 0,
+        "signals": [
+          {
+            "frame": "rate_limit_event",
+            "status": "rejected",
+            "limit": "five_hour",
+            "resets_at": 1789431600
+          },
+          {
+            "frame": "assistant",
+            "error": "rate_limit",
+            "model": "<synthetic>"
+          },
+          {
+            "frame": "result",
+            "api_error_status": 429,
+            "text": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)"
+          },
+          {
+            "frame": "envelope",
+            "text": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)"
+          }
+        ]
+      }
+    },
+    {
+      "criterion": "F6",
+      "role": "balancer create",
+      "record": "keen-chart-9070",
+      "project": "ot7-robin",
+      "transcript": {
+        "path": "ot7-robin/evidence/turn-0/transcript.jsonl",
+        "bytes": 6452,
+        "sha256": "01566753ac81f189b21cc565b300fc00f8d63e4cf63d985989d3663b6b490674"
+      },
+      "envelope": "ot7-robin/evidence/turn-0/turn.stdout.json",
+      "stderr": "ot7-robin/evidence/turn-0/turn.stderr.txt",
+      "earlier_receipt": "attempts/robin-refusal.json",
+      "void": {
+        "kind": "usage_limit",
+        "rule": "ADR-355",
+        "slot_consumed": false,
+        "cut_off_mid_turn": false,
+        "model_messages_before_limit": 0,
+        "signals": [
+          {
+            "frame": "rate_limit_event",
+            "status": "rejected",
+            "limit": "five_hour",
+            "resets_at": 1789431600
+          },
+          {
+            "frame": "assistant",
+            "error": "rate_limit",
+            "model": "<synthetic>"
+          },
+          {
+            "frame": "result",
+            "api_error_status": 429,
+            "text": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)"
+          },
+          {
+            "frame": "envelope",
+            "text": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)"
+          }
+        ]
+      }
+    },
+    {
+      "criterion": "F7",
+      "role": "biped create",
+      "record": "red-hawk-4600",
+      "project": "ot7-plover",
+      "transcript": {
+        "path": "ot7-plover/evidence/turn-0/transcript.jsonl",
+        "bytes": 6455,
+        "sha256": "b5b359ec0d0f5465cd1e8520701e3d7c17285881823ed028b03e13996434ea59"
+      },
+      "envelope": "ot7-plover/evidence/turn-0/turn.stdout.json",
+      "stderr": "ot7-plover/evidence/turn-0/turn.stderr.txt",
+      "earlier_receipt": "attempts/plover-refusal.json",
+      "void": {
+        "kind": "usage_limit",
+        "rule": "ADR-355",
+        "slot_consumed": false,
+        "cut_off_mid_turn": false,
+        "model_messages_before_limit": 0,
+        "signals": [
+          {
+            "frame": "rate_limit_event",
+            "status": "rejected",
+            "limit": "five_hour",
+            "resets_at": 1789431600
+          },
+          {
+            "frame": "assistant",
+            "error": "rate_limit",
+            "model": "<synthetic>"
+          },
+          {
+            "frame": "result",
+            "api_error_status": 429,
+            "text": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)"
+          },
+          {
+            "frame": "envelope",
+            "text": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)"
+          }
+        ]
+      }
+    }
+  ]
+}

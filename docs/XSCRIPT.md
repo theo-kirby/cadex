@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-13
+Verified against source: 2026-09-16
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -1524,3 +1524,182 @@ multi-engine runtime is preserved at
 `docs/history/RUNTIME_VERIFICATION.md`. Still-current facts — structured
 failure envelopes, transactional parity, resource budgets, revision
 integrity — are enforced by `src/Mod/cadex/cadex_tests/`.
+
+## Measured assembly fit (ADR-347)
+
+Fit intent belongs to the assembly definition:
+
+```python
+asm = assembly.assembly(
+    [base, horn, link], joints,
+    contacts=[(horn, link)],
+    clearances=[(base, link, 0.5)],
+)
+```
+
+Pairs reference the component variables, whose returned output names identify
+measurements. Each pair may have one declaration, in either order; self-pairs,
+foreign components, duplicates and nonfinite or negative minima are malformed
+script arguments. Declarations are part of the hashed definition. Omitting them
+preserves the existing definition and accepted-state restore contract.
+
+At the initial solved pose, the published `clearance` rows carry `intent` and
+`fit_failures`. The checker reports common volume above 1e-6 mm³ on **every**
+pair, including intended contacts; contact distance above 0.001 mm; declared
+clearance below its minimum in mm; and undeclared distance below 0.1 mm.
+
+A pair joined by an **unsuppressed `fixed` joint is not an undeclared pair**
+(ADR-372) and is exempt from that 0.1 mm: welding two components is the design
+declaring them one rigid body, so meeting face to face is what the declaration
+asks for rather than a gap that has closed. The row carries the implied intent
+`{"kind": "attached", "minimum_mm": 0.0, "joints": [...]}`, published so a
+reader reaches the same verdict the engine did. The implication is the weakest
+one available — it exempts the pair from the gap and asserts nothing else:
+common volume above 1e-6 mm³ still fails, an unmeasured pair still fails, and
+an explicit `contacts=` or `clearances=` entry on the same pair still wins.
+Whether the weld's solids actually meet stays the `attachments` fact below. A
+*suppressed* fixed joint is not an edge of the mechanism and grants no
+exemption.
+
+A **`clearances=` entry on a welded pair is judged by the minimum it
+declares**, exactly as an unwelded pair's is (ADR-380, withdrawing ADR-379).
+A fixed joint fixes the *relative pose* of two components and says nothing
+about whether their solids touch, and a declared minimum is a floor on a
+distance rather than a claim that the pair moves — so a board rigidly held
+2 mm over its standoffs, a shroud around a pulley or a magnet over its sensor
+is welded *and* meant to stay apart, and the declaration is the only place
+the design can say by how much. The row carries
+`{"kind": "clearance", "minimum_mm": …, "joints": [...]}`, the welding joints
+published beside the declared minimum as a fact a reader can join rather than
+a verdict; the `joints` key rides on a `clearance` intent only where an
+unsuppressed fixed joint welds the pair. ADR-379 briefly read that pair as a
+self-contradiction and failed it at every gap, as `clearance under weld`;
+that status no longer exists. What names a weld whose solids do not meet — a
+horn floating 0.2 mm off its link — is the `attachments` report below, beside
+the checks and never one of them.
+
+Minimum-clearance comparisons allow an absolute **1e-9 mm** numerical slack
+(ADR-353): a deficit must exceed that slack to fail. There is no relative
+tolerance and no rounding of published distances or volumes. This is comparison
+noise allowance, not the 0.001 mm contact tolerance or a manufacturing allowance.
+Swept reports retain raw minima and maxima without threshold verdicts, because
+the engine publishes measurements and the client reaches the verdict. Since
+ADR-378 the CLI's `fit.sweep` block does compare them: a pair the joint moves,
+which the solved pose found clear and which declares no contact and carries no
+weld, fails `below clearance` when its minimum through the range misses its
+declared or default minimum by more than that slack. Apply the same slack in
+any other reader.
+An unmeasured pair remains unknown. A row can fail more than one check.
+These are advisory findings: a failing fit still builds and accepts.
+
+World geometry is a separate `world_geometry` finding by component name.
+Collision planes on design bodies (including bodies nested in exports), a
+single planar CAD face without solids, and `assembly.component(..., world=True)`
+are reported. A solid bench has no geometric property that distinguishes it
+from a printable base: mark environment solids with `world=True`. Grounding
+alone never means world geometry. The checker does not infer purpose from a
+component's name. Existing floor declarations continue to build.
+
+`inspect(scope="clearance")`, build-reply `fit`, and `cadex clearance` expose
+these facts. The summary counts each failing pair once, prioritising unknown,
+intersection, then intent; the row's `fit_failures` preserves all checks.
+World findings are counted separately. This is static fit, not swept motion.
+
+**What the fixed joints hold** is measured beside these checks and is never one
+of them (ADR-370). Every pair joined by an unsuppressed `fixed` joint is
+reported in `attachments` with the joints that declare it, its measured gap and
+one of `touching` (within the 0.001 mm contact tolerance, or overlapping),
+`not touching`, or `unknown`. A fixed joint asserts that two components are one
+rigid body; a gap between their solids is a connection the geometry does not
+make. It is reported rather than failed because a standoff, a shim or a captive
+fastener between two welded parts is a legitimate design and only the design
+knows which it is — but a pair welded together, declared a clearance and
+measured apart passes every check above while nothing holds it, which is
+exactly how a floating servo horn survives acceptance. `attachments` is
+**absent** on a revision accepted before ADR-370 and an **empty list** on an
+assembly with no fixed joint: no published report and no welded pair are
+different facts.
+
+## Sampled hinge and slider fit (ADR-349, ADR-351)
+
+`assembly.assembly(..., sweep_step_degrees=5)` requests an advisory exact-solid
+sweep of every limited hinge when the assembly builds, and
+`assembly.assembly(..., sweep_step_mm=1)` the same for every limited slider;
+either or both may be declared. The optional declarations enter the definition;
+omitting both preserves legacy definitions. The producer stores `clearance_sweep`
+on the assembly output in the accepted result **whether or not a step is
+declared** (ADR-367), so coverage is always reported: an assembly that declares
+neither step names every limited joint `incomplete` with the declaration it is
+missing, and one with no limited joint at all reports complete coverage of an
+empty set. Neither case touches geometry. Opening a retained result does
+not recompute it. `inspect(scope="clearance", path="/clearance_sweep")` and
+`cadex clearance --sweep` read it unchanged (ADR-350), and the CLI's build
+replies carry it summarised as `fit.sweep` beside the static block, with its
+own verdict (ADR-366, `docs/CLI.md`); neither `incomplete` nor an empty
+`complete` is a pass.
+
+For each limited, unsuppressed revolute or slider joint in a rigid tree, the
+producer moves its descendant solids about, or along, the solved connector +Z
+axis, holding other joint coordinates at their solved values. Samples run from
+lower to upper limit in the joint's own unit, including both endpoints, at no
+more than the declared step (at least 0.000001 degree or mm). Each joint entry
+names its `kind`, its `unit` (`degrees` or `mm`), the `step` it used, its
+`range_<unit>` and `initial_<unit>`. Each pair reports minimum distance,
+maximum common volume, and the first sample at distance <= 0.001 mm
+(`first_contact_degrees` or `first_contact_mm`, null if absent). Contact at the
+lower limit is reported there. Sampling cannot exclude contact between samples
+and is not a continuous collision proof. The solved-pose measurements must
+first agree with static clearance within 0.0001 mm and 0.001 mm³.
+
+A limited joint whose kind's step is undeclared (a slider under
+`sweep_step_degrees` alone, or a hinge under `sweep_step_mm` alone) is
+reported `incomplete` with that reason, never silently skipped, so a design
+that declares one step, or neither (ADR-367), still learns which limited
+joints went unswept. An
+open-ended limit (one endpoint `None`) has no bound to sweep and is reported
+the same way.
+
+A joint that **can move and declares no limits** — a continuously
+rotating wheel, a free spinner, a loop-closure hinge — is a coverage hole too
+(ADR-375), and reads `incomplete` with the limit to declare named per kind.
+Before this it was dropped before it could be named, so a chassis whose one
+limited hinge swept clean read `complete` beside two wheels measured at the
+solved pose and nowhere else. Two joints genuinely hold no range and stay out
+of the report entirely: a `fixed` joint, whose pair the attachment block
+measures instead, and a suppressed joint the assembly also left unlimited.
+
+A **suppressed** limited joint is a different statement and carries a
+different status (ADR-371). The solver ignores it, so it is not an edge of the
+mechanism and holds no range to move through: its row is `skipped` with that
+reason, no subprocess runs for it, and the assembly's coverage stays
+`complete`. It is not missing coverage and nothing declares it back. The
+CLI's `fit.sweep` block counts it as `joints_skipped`, apart from
+`joints_complete`, and judges its verdict over the joints that are left — so
+one suppressed joint beside a swept one no longer holds the block at
+`incomplete`. An assembly whose limited joints are *all* suppressed has rows
+and still judges none: that reads `unavailable` with its own reason, never a
+pass, because a mechanism that declares motion and then holds it still has
+not been swept.
+
+Every swept pair row carries `relative_motion` (ADR-374): true when one side
+sits inside the joint's moving subtree and the other does not, which is the
+only case the joint can change. A pair with both sides on the same side of it
+is rigid for this sweep and repeats its solved-pose measurement at every
+sample, so a horn welded to the link it turns with reads 0.0 mm apart at
+every angle. That is the weld, not the motion, and it is why the CLI's
+`fit.sweep` joint rows read their minimum distance, maximum common volume and
+first contact over the moving pairs alone, counting them as `pairs_moving`.
+The per-pair rows are unchanged and still cover every pair; what the gap under
+a weld means belongs to the `attachments` report (ADR-370), which measures it
+at the solved pose.
+
+Each joint's native queries run in a fresh FreeCAD subprocess with a 90-second
+timeout; the assembly shares 180 seconds of sweep budget. Preparation and
+process cleanup add overhead. At most 73 poses and 2,000 pairs are allowed per
+joint. Reports carry the limits and measured elapsed seconds. Timeout, malformed
+or unsupported geometry, limited joints of any other kind (cylindrical included),
+flexible components, closed/coupled/static-joint graphs, and unsolved
+assemblies produce explicit `incomplete` coverage and a reason. No samples means no claim about fit. Joints
+without limits are outside coverage. A sweep failure never rejects acceptance.
+The checker uses copied solids, never changes live placements, and never
+rebuilds historical scripts. It needs no dynamics declaration or MuJoCo run.

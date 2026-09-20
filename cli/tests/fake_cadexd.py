@@ -84,6 +84,96 @@ def accepted_reply(
     }
 
 
+def inspect_reply(args: dict[str, Any], value: Any) -> dict[str, Any]:
+    """An ``inspect`` response as the protocol pins it, with ``value``."""
+
+    return {
+        "ok": True,
+        "scope": str(args.get("scope") or ""),
+        "target": str(args.get("target") or ""),
+        "path": str(args.get("path") or ""),
+        "value": value,
+        "page": {
+            "kind": "object" if isinstance(value, dict) else "scalar",
+            "offset": 0, "requested_limit": 50, "effective_limit": 50,
+            "returned": len(value) if isinstance(value, (dict, list)) else 1,
+            "total": len(value) if isinstance(value, (dict, list)) else 1,
+            "next_offset": None,
+        },
+        "document": {"name": "Ephemeral", "uid": "doc", "object_count": 0},
+        "surface": {
+            "available": True, "domain": "project", "engine": "xscript",
+            "surface_id": "xscript.project", "workbench": "PartWorkbench",
+        },
+        "result_json_bytes": 0,
+    }
+
+
+def clearance_value(
+    pairs: list[dict[str, Any]] | None = None, *, revision: str = "rev-1",
+    assembly: str = "asm", sweep: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """An ``inspect scope=clearance`` value: unavailable when no pairs.
+
+    ``sweep`` is the published ``clearance_sweep`` the accepted revision
+    carries (ADR-366); omitted, the value has none, which since ADR-367 is
+    what a revision an older engine accepted looks like -- a current engine
+    publishes coverage whether or not a step was declared.
+    """
+
+    value = {
+        "revision": revision,
+        "assembly": assembly if pairs else "",
+        "available": bool(pairs),
+        "pose": "initial solved pose (not swept motion)",
+        "pairs": list(pairs or []),
+    }
+    if sweep is not None:
+        value["clearance_sweep"] = sweep
+    return value
+
+
+def inventory_value(
+    components: list[dict[str, Any]] | None = None, *, revision: str = "rev-1",
+    assembly: str = "asm",
+) -> dict[str, Any]:
+    """An ``inspect scope=inventory`` value, rolled up the way the engine
+    does it: ``catalog_counts`` by ``family/part_number`` over components
+    with a catalog row, ``uncatalogued_sources`` the distinct source outputs
+    of the rest, and ``derived_catalog_sources`` those of them whose row
+    carries the catalog body its base was cut from (ADR-381).
+    Unavailable (no assembly) when no components."""
+
+    rows = list(components or [])
+    counts: dict[str, int] = {}
+    uncatalogued: set[str] = set()
+    derived: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        catalog = row.get("catalog")
+        if isinstance(catalog, dict):
+            key = f"{catalog.get('family', '')}/{catalog.get('part_number', '')}"
+            counts[key] = counts.get(key, 0) + 1
+        elif row.get("source_output"):
+            source = str(row["source_output"])
+            uncatalogued.add(source)
+            came_off = row.get("catalog_derived_from")
+            if isinstance(came_off, dict):
+                derived[source] = {
+                    "source_output": source,
+                    "family": str(came_off.get("family", "")),
+                    "part_number": str(came_off.get("part_number", "")),
+                }
+    return {
+        "revision": revision,
+        "assembly": assembly if rows else "",
+        "component_count": len(rows),
+        "components": rows,
+        "catalog_counts": dict(sorted(counts.items())),
+        "uncatalogued_sources": sorted(uncatalogued),
+        "derived_catalog_sources": [derived[name] for name in sorted(derived)],
+    }
+
+
 def rejected_reply(revision: str, *, error: str = "no") -> dict[str, Any]:
     """A tool-level refusal — which still moves the working revision."""
 
@@ -128,6 +218,14 @@ class FakeCadexd:
         reply = self.replies.get(op)
         if callable(reply):
             reply = reply(dict(args or {}))
+        if reply is None and op == "inspect":
+            # The bridge reads scope=clearance (ADR-346) and scope=inventory
+            # (ADR-362) after every build; an unconfigured fake publishes no
+            # assembly, so both are honestly unavailable rather than a
+            # shape-check failure.
+            scope = str((args or {}).get("scope") or "")
+            value = inventory_value() if scope == "inventory" else clearance_value()
+            reply = inspect_reply(dict(args or {}), value)
         if reply is None:
             reply = accepted_reply(op, "rev-1")
         frame = {"id": f"fake-{len(self.calls)}", **reply}

@@ -1,0 +1,217 @@
+{
+ "schema": "ot7-plover-reexport-v1",
+ "what": "ot7-plover-e was accepted before ADR-393, so its pinned MJCF places 24 of 29 bodies at the inverse of their solved pose and `cadex smoke` refuses at its first-frame agreement gate. Re-running the same accepted script through the fixed engine, on a copy, re-exports a model that agrees exactly -- and that model smokes pass. The same rebuild is refused by open_project, because the changed export moves both the project digest and the ADR-389 geometry digest.",
+ "design": {
+  "project": "ot7-plover-e",
+  "copy_measured": "ot7-plover-e-reexport",
+  "accepted_revision": "0491ead7998a2d5b42cde770b2968df3d921baa2c3b7248a2bca19bb60cf9516",
+  "accepted_digest": "a00d1aea382ae292b4a217bd94c9c0365de4129e70b54cf73679d7fe92606588",
+  "script_sha256": "d14bfbaad98ff77d307d6b60a07d122b95a54ea2aa86bbefe7ac40b8d9c88450",
+  "note": "No prompt, no model turn, no design edit. F7 keeps continue-2 and continue-3 unspent."
+ },
+ "tools": {
+  "reexport_smoke.py": "a0261f3da91a3b171a86112a838563b2ca0b2cd30ab380b6a7a62d6f8b460857",
+  "mjcf_agreement.py": "a776542327bb4b6a610f7e126855550dadb247f4104ddae70c876450ceca13e6",
+  "engine": "dev-tree at ADR-393 (commit 63236e54)"
+ },
+ "restore": {
+  "seconds": 89.424,
+  "ok": false,
+  "failure_code": "CADEXD_RESTORE_FAILED",
+  "error": "The restore pass digest does not match the accepted digest.",
+  "observed": {
+   "accepted_digest": "a00d1aea382ae292b4a217bd94c9c0365de4129e70b54cf73679d7fe92606588",
+   "accepted_geometry_digest": "a4c4cc281bbfc6ab4780267309e0afb3fce31c0c71ef5afe39cc81cc22c02db4",
+   "geometry_comparison": "the rebuilt model is not the accepted one",
+   "restored_digest": "9ef44502db06d838a2f401c7ec70e6dba5958878e1be7128e91831af29225867",
+   "restored_geometry_digest": "bb33c4205713479c13eb5e5ce9e3a1caecafc2459e2d0d852b857d338f637bbf"
+  },
+  "accepted_pin_preserved": true,
+  "rebuilt_attempt": "attempt-1789866693172-2f551e684f20",
+  "second_rebuild_of_the_same_bytes": {
+   "attempt": "attempt-1789866291288-62c88a11b841 (an earlier copy, deleted)",
+   "restored_digest": "9ef44502db06d838a2f401c7ec70e6dba5958878e1be7128e91831af29225867",
+   "model_sha256": "71b8b39c9ae655985cb1aa92b900240022b2033d121c02e45e29a111829d8453",
+   "note": "Byte-identical to the rebuild below: this export is deterministic, so the digest moved because the engine changed and for no other reason."
+  }
+ },
+ "outputs_changed": {
+  "outputs": 90,
+  "changed": [
+   {
+    "output": "plover_model",
+    "artifact": {
+     "kind": "assembly_mjcf_xml",
+     "first_sha256": "c4c470941421592509b3d9d2781a3065cd4846160c6812dafb97c5420ac66057",
+     "second_sha256": "71b8b39c9ae655985cb1aa92b900240022b2033d121c02e45e29a111829d8453"
+    }
+   },
+   {
+    "output": "plover_stand",
+    "artifact": {
+     "kind": "assembly_training_task_json",
+     "first_sha256": "ad634716fca0004cd1a8b2bd3c71da280c31ec3282a016b1a3667f3cf9939590",
+     "second_sha256": "a3a060e58676cf8e03eefa26508917ed1199020c8cfcc4d34080257b04733d38"
+    }
+   }
+  ],
+  "note": "Two of ninety, and the second only because a training task pins its model digest: task/model/sha256 and task/model/bytes are its only two differing fields. Every BREP artifact, every canonical definition and every solved placement is identical."
+ },
+ "mjcf_agreement": {
+  "accepted_pin": {
+   "bodies": 29,
+   "disagreeing": 24,
+   "agrees": false,
+   "worst_body": "c_tabscrew_knee_l_0",
+   "worst_position_error_mm": 121.86102740417053,
+   "worst_orientation_error_degrees": 179.99999879258172,
+   "tolerance_mm": 0.0001,
+   "tolerance_degrees": 0.0001
+  },
+  "rebuilt": {
+   "bodies": 29,
+   "disagreeing": 0,
+   "agrees": true,
+   "worst_body": "c_servo_knee_r",
+   "worst_position_error_mm": 8.620781476393591e-33,
+   "worst_orientation_error_degrees": 1.2074182697257333e-06,
+   "tolerance_mm": 0.0001,
+   "tolerance_degrees": 0.0001
+  }
+ },
+ "smoke": {
+  "accepted_pin": {
+   "attempt": "attempt-1789861381979-c8948be83c0b",
+   "exit_code": 1,
+   "seconds": 0.308,
+   "verdict": null,
+   "error": "ValueError: initial pose disagrees with published clearance: ('c_bearing_hip_l', 'c_bearing_hip_r')",
+   "note": "The shipped geometry check refuses before a verdict exists: the exact solids placed from the trace do not reproduce the published static clearance at the first frame."
+  },
+  "rebuilt": {
+   "attempt": "attempt-1789866693172-2f551e684f20",
+   "exit_code": 0,
+   "seconds": 35.034,
+   "verdict": "pass",
+   "failing": [],
+   "mode": "hold",
+   "simulated_seconds": 1.0,
+   "samples": 51,
+   "frames_per_second": 50,
+   "mujoco_version": "3.10.0",
+   "wall_time_s": 0.023475917987525463,
+   "model_sha256": "71b8b39c9ae655985cb1aa92b900240022b2033d121c02e45e29a111829d8453",
+   "task_sha256": "a3a060e58676cf8e03eefa26508917ed1199020c8cfcc4d34080257b04733d38",
+   "checks": {
+    "finite": {
+     "nonfinite_at_s": null,
+     "pass": true,
+     "warnings": []
+    },
+    "penetration": {
+     "breaches": 0,
+     "omitted": 0,
+     "pairs_touching": 2,
+     "pass": true,
+     "tolerance_mm": 0.5
+    },
+    "penetration_worst": [
+     {
+      "depth_mm": 0.3214283954748017,
+      "first": "c_shin_l",
+      "geoms": [
+       "environment/floor",
+       "c_shin_l/collision2"
+      ],
+      "second": "environment/floor",
+      "time_s": 0.08
+     }
+    ],
+    "support": {
+     "base": "c_pelvis",
+     "drop_mm": 0.2683688948842189,
+     "floor": "environment/floor",
+     "kind": "free",
+     "max_tilt_degrees": 30.0,
+     "pass": true,
+     "rest_speed_mm_s": 10.0,
+     "speed_mm_s": 1.1830173478808238e-07,
+     "tilt_degrees": 0.18159412499621788,
+     "tilt_from_start_degrees": 0.18159412499621788,
+     "touching_floor_at_end": true,
+     "z_end_mm": 159.73163110511578,
+     "z_start_mm": 160.0
+    },
+    "termination": {
+     "errors": [],
+     "fired": [],
+     "note": null,
+     "pass": true,
+     "rules": 1
+    },
+    "components": {
+     "pass": true,
+     "source": "exact BREP solids at sampled MuJoCo poses",
+     "initial_pose_agrees": true,
+     "samples": 51,
+     "pairs_checked": 406,
+     "maximum_volume_mm3": 1e-06,
+     "failing": []
+    }
+   },
+   "note": "The shipped `cadex smoke`, with its digest-checked bundle read from the rebuilt attempt of the same accepted revision rather than from the accepted pin. Not a `run.py smoke` receipt: the pin still holds the pre-fix model, and only a product-agent turn may move it."
+  }
+ },
+ "evidence": [
+  {
+   "path": "evidence/agreement-accepted.json",
+   "bytes": 989,
+   "sha256": "75382299eac09133daf059bfe9acc68a89c598c4a0de8fa86703232ebaeecd56"
+  },
+  {
+   "path": "evidence/agreement-rebuilt.json",
+   "bytes": 403,
+   "sha256": "7074508769545db28634943e0b9a4929c93c0f24be8a27f74c59db4faff365be"
+  },
+  {
+   "path": "evidence/compare.json",
+   "bytes": 1159,
+   "sha256": "32f6f7eb60462e309c74019e2181035403dd641753bac6420b6e5a9ea2fabaff"
+  },
+  {
+   "path": "evidence/restore.json",
+   "bytes": 3733,
+   "sha256": "bfc214ca7f360d7e27d97bc27053bfc14f26914872e2b62ecd1357ce97d63904"
+  },
+  {
+   "path": "evidence/smoke-accepted.json",
+   "bytes": 350,
+   "sha256": "d5ca485f25d0a9e411f4d17d4d92660689767291f9456c21a5319a577e3683ca"
+  },
+  {
+   "path": "evidence/smoke-accepted.stderr.txt",
+   "bytes": 84,
+   "sha256": "d36b2aec46de507e53b7c96f349ac923a140dc692895abf3f1a246da6c31d48e"
+  },
+  {
+   "path": "evidence/smoke-rebuilt.json",
+   "bytes": 72465,
+   "sha256": "b3c049927caeeb424bb73925d78018a8dcdd62c2917124fa3294fc8426a9dced"
+  },
+  {
+   "path": "evidence/smoke-rebuilt.stderr.txt",
+   "bytes": 84,
+   "sha256": "d36b2aec46de507e53b7c96f349ac923a140dc692895abf3f1a246da6c31d48e"
+  },
+  {
+   "path": "evidence/smoke-rebuilt/smoke.json",
+   "bytes": 67012,
+   "sha256": "eea8cd9bf857d03b3e8fffd49514e179cdfb347eca327027a96d3063f84e113c"
+  },
+  {
+   "path": "evidence/smoke-rebuilt/smoke-dynamics.json",
+   "bytes": 2449,
+   "sha256": "0542bcb0a3b70b02b1005d44d20894ed317bddc8b0fccd0ec05a2d729a440c9e"
+  }
+ ]
+}

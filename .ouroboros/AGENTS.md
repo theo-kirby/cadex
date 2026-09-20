@@ -57,9 +57,15 @@ edit applies at the next iteration boundary; the current actor and critic finish
 under their original charter. Save edits atomically and check loop.log for
 "charter reloaded". Config changes still require a restart. To watch:
 
+    ouroboros refresh         # after switching accounts or restoring credits
     ouroboros status          # one shot
     ouroboros top             # the live view, in a window of its own
     <prefix> n                # tmux: the loop's own log is the next window over
+
+After switching a harness login or restoring credits, `ouroboros refresh`
+(alias `ouroboros --refresh`) rechecks configured providers and wakes backoff.
+Active turns finish first. It uses small no-tool availability probes; failed
+probes retain cooldowns. This does not reload configuration.
 
 **5. Reading it.** Use the `ouroboros-checkup` skill. It works mid-run and after,
 and it leads with the question the numbers hide: is this moving, or going in
@@ -96,10 +102,10 @@ operator, including you, reads first.
   Mac (`mmini`) and could not train.
 - **Naming:** `ot<n>` -- Ouroboros Test. Runs are no longer nights: one may start
   in the afternoon and go for two days, so never name one for a time of day.
-- **Harnesses:** `claude` for every role, `codex` as the critic and as the
-  fallback for all of them. See `.ouroboros/config.yml`. Check both windows
-  before a launch: ot4 left the Codex weekly window at 99%, which blocks it for
-  days, and Fable has its own limit separate from Opus.
+- **Harnesses:** the owner-directed ot7 continuation uses `claude-opus-5`
+  for every role and product-agent call, with no other-model fallback. See
+  `.ouroboros/config.yml`. Verify product-model access and the usage window
+  before launch; actor availability alone does not establish product access.
 - **Green means** both suites, from `~/cadex`:
 
       pixi run test-engine                     # the engine, ~2100 tests, 4 min

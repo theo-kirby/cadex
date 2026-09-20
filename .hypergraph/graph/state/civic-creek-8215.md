@@ -23,6 +23,8 @@ Assumptions stated by the records: the reach target is fixed across episodes and
 
 Three accepted-revision identities appear across Heron's evidence and are one design, not three: the design receipt names `9c1f2fe7ea19…`, the training receipt `5971903121bf…`, and the operator page serves `0c8c64c92252…`; all carry the same script digest `f9be3985bc55…`, the revision identity carrying the playback parameter values [rec: frosty-path-5235].
 
+**The owner ticked D8 on 2026-09-14 with the evidence unchanged.** Ticked as worded and knowing the gaps, because the next charter (ADR-341) raises the bar rather than re-running: Heron holds about 3 mm low, its fit was checked at one pose only, and its three defects were found by a hand-run probe and fed back as hand-written turns while the agent's printout said the parts fit — the measurement ot7's mission is sized from, and its F4 seeds from Heron's first accepted revision [rec: nimble-wing-3050].
+
 Charter criterion: **D8. A single servo arm goes through the lifecycle.** Same as D7 for a 2 or 3 DoF arm on MG90S servos with a modelled base and links; its task is a reach or hold, measured. Declared target `gap-d8-single-servo-arm-goes`; the human owns the checkbox edit [rec: brisk-ledge-9638].
 
 ## Negative knowledge
@@ -37,3 +39,4 @@ Charter criterion: **D8. A single servo arm goes through the lifecycle.** Same a
 - narrow-quill-3259 — ADR-339, the design half: Heron accepted after three measured corrections, 55/55 fit rules on the retained pairs, five fresh-process reopens, real solids on the persistent dashboard at both widths
 - mild-hill-0753 — ADR-340, the training half: heron1 trained once under the bounds, checkpoint 20 on 0/10 and the final policy on 10/10 over seeds 0–9, both videos in the new look on the operator dashboard
 - frosty-path-5235 — the closing report: D8 evidenced pending the owner's tick, the 3 mm-low hold left as an open design decision in the project, the three revision identities reconciled to one script digest
+- nimble-wing-3050 — the owner ticked D8 on 2026-09-14; evidence unchanged

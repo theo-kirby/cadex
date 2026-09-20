@@ -1,0 +1,115 @@
+{
+  "schema": "ot7-design-evidence-v1",
+  "design": "plover",
+  "project": "ot7-plover",
+  "model": "claude-fable-5",
+  "actor_design_edits": 0,
+  "turns": [
+    {
+      "index": 0,
+      "continuations_used": 0,
+      "prompt": {
+        "path": "plover.create.prompt.txt",
+        "bytes": 9303,
+        "sha256": "b95f98b77ba7180140d873e3615a24a0802e9645671664c2e7277c465d8457aa"
+      },
+      "status": "completed",
+      "turn": {
+        "exit_code": 1,
+        "elapsed_seconds": 3.272533206967637
+      },
+      "measurement": {
+        "exit_code": 0,
+        "elapsed_seconds": 0.11399342399090528
+      },
+      "static_fit": {
+        "verdict": "unavailable",
+        "failing_count": 0,
+        "pairs_checked": 0
+      },
+      "artifacts": [
+        {
+          "path": "clearance.json",
+          "bytes": 83,
+          "sha256": "4c1379dc79864eff816a4e7e2b6400e8a74876bacfe673621164ba261638da0e"
+        },
+        {
+          "path": "fit.json",
+          "bytes": 787,
+          "sha256": "3d3e63f1ca203446227bcfcc7b8c0d4e61c14c616a7f07b790d54b6c39b842c7"
+        },
+        {
+          "path": "inventory.json",
+          "bytes": 83,
+          "sha256": "4c1379dc79864eff816a4e7e2b6400e8a74876bacfe673621164ba261638da0e"
+        },
+        {
+          "path": "measurement.stderr.txt",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "measurement.stdout.json",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "plover.create.prompt.txt",
+          "bytes": 9303,
+          "sha256": "b95f98b77ba7180140d873e3615a24a0802e9645671664c2e7277c465d8457aa"
+        },
+        {
+          "path": "transcript.jsonl",
+          "bytes": 6455,
+          "sha256": "b5b359ec0d0f5465cd1e8520701e3d7c17285881823ed028b03e13996434ea59"
+        },
+        {
+          "path": "turn.stderr.txt",
+          "bytes": 66,
+          "sha256": "3129a282accd591370a712118bb85970706917fe3ea7a70d4ed9095f069f6349"
+        },
+        {
+          "path": "turn.stdout.json",
+          "bytes": 768,
+          "sha256": "f3a15173eabf2c3417c712078c119bcb705bb522e9a9cb9e2fe402561116220d"
+        }
+      ]
+    }
+  ],
+  "status": "interrupted",
+  "smoke": {
+    "exit_code": 1,
+    "elapsed_seconds": 0.11384848412126303,
+    "artifacts": [
+      {
+        "path": "smoke.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "smoke.stdout.json",
+        "bytes": 594,
+        "sha256": "36d424964c078ca0d0bbf0003a3518706e4dccf00b741edb67dbc8bd6b285302"
+      }
+    ]
+  },
+  "interpretation": {
+    "outcome": "provider_session_limit_refusal",
+    "provider_message": "You've hit your session limit \u00b7 resets 8:20pm (America/New_York)",
+    "completed_design_turns": 0,
+    "provider_dispatches": 1,
+    "continuations_used": 0,
+    "accepted_revision": null,
+    "static_fit": "unavailable",
+    "swept_fit": "unavailable",
+    "inventory": "unavailable",
+    "smoke": "not run: no accepted script",
+    "f4_repair_dispatched": false
+  },
+  "evidence_root": "cadex-projects/ot7-plover/evidence",
+  "manifest": {
+    "path": "attempt.json",
+    "bytes": 2763,
+    "sha256": "84c14ac30f702ef8bd66b52ccd933b9122b616f5f76ab857c6f094c15a225c05"
+  }
+}

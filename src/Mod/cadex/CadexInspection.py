@@ -1136,6 +1136,7 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
     components: list[dict[str, Any]] = []
     catalogued: dict[str, int] = {}
     uncatalogued: list[str] = []
+    derived: dict[str, dict[str, str]] = {}
     for item in items:
         if str(item.get("type") or "") != "component_link":
             continue
@@ -1158,6 +1159,16 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             catalogued[key] = catalogued.get(key, 0) + 1
         elif source_output:
             uncatalogued.append(source_output)
+            # Why this output has no catalog row, where the engine can say
+            # it: the catalog body its base was cut from (ADR-381). Absent
+            # on a hand-modelled part, which is the ordinary case.
+            came_off = source.get("catalog_derived_from")
+            if isinstance(came_off, Mapping):
+                row["catalog_derived_from"] = {
+                    "family": str(came_off.get("family") or ""),
+                    "part_number": str(came_off.get("part_number") or ""),
+                }
+                derived[source_output] = dict(row["catalog_derived_from"])
         matrix = item.get("solved_placement_matrix")
         position = _inventory_position(matrix)
         if position is not None:
@@ -1192,7 +1203,18 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             "revision": revision, "assembly": assembly,
             "available": bool(assembly) and measurements is not None,
             "pose": "initial solved pose (not swept motion)",
+            "clearance_sweep": by_name.get(assembly, {}).get("clearance_sweep") or {
+                "status": "unavailable", "joints": [],
+                "reason": "No published sweep for this accepted revision. Declare "
+                          "sweep_step_degrees (hinges) and/or sweep_step_mm (sliders) "
+                          "on the assembly and explicitly rebuild.",
+            },
             "pairs": pairs,
+            "world_geometry": by_name.get(assembly, {}).get("world_geometry", []),
+            # Absent rather than empty on a revision accepted before
+            # ADR-370: no fixed-joint pair and no published report are
+            # different facts, and a reader must not read one as the other.
+            "attachments": by_name.get(assembly, {}).get("attachments"),
         }
     return {
         "revision": revision,
@@ -1201,12 +1223,19 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
         "components": components,
         "catalog_counts": dict(sorted(catalogued.items())),
         "uncatalogued_sources": sorted(set(uncatalogued)),
+        "derived_catalog_sources": [
+            {"source_output": name, **derived[name]} for name in sorted(derived)
+        ],
         "note": (
             "One row per component of the accepted assembly. 'catalog' is "
             "present only where the placed output was built by a lib.* "
             "generator; an output modelled by hand has no catalogue row to "
             "name, and its source output name is listed under "
-            "'uncatalogued_sources' instead. 'placement' is the pose the "
+            "'uncatalogued_sources' instead. Of those, the ones whose base "
+            "was cut from a catalog body are listed again under "
+            "'derived_catalog_sources' with the row they came off: a "
+            "purchased part the script modified, rather than a printed one. "
+            "'placement' is the pose the "
             "assembly solver settled on, not the pose the script declared. "
             "For the full measurement of any one part, ask "
             "inspect scope=\"output\" with that source_output as the target."

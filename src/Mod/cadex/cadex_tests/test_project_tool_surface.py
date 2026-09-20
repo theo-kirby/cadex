@@ -210,11 +210,73 @@ def test_core_inspect_is_the_only_model_facing_read_scope_owner(specs) -> None:
     assert engine_reads == ["xscript.project.describe_api"]
 
     assert "inspect" in READ_OPS
+    # describe_api takes no argument. The headless CLI's tool offers a
+    # `section` so the model can read the contract one page at a time
+    # (ADR-360), but that is the bridge's argument, consumed before the
+    # engine sees the call; the op, the reply and the protocol are whole.
+    assert OP_ARG_SPECS["describe_api"] == ({}, {})
     required, optional = OP_ARG_SPECS["inspect"]
     assert set(required) == {"scope"}
     # The scopes a shell may ask for; per-domain and per-program scopes
     # dissolved with ADR-013 and must not come back.
     assert "path" in optional and "target" in optional
+
+
+def test_clearance_is_a_served_inspect_scope_the_cli_offers(tmp_path) -> None:
+    """The measured fit reaches the agent through `inspect` (ADR-346).
+
+    The engine serves ``scope=clearance`` -- the published pair measurements
+    of the accepted assembly -- and the headless CLI offers every scope it
+    lists to the model, ``clearance`` among them, because the ``fit`` block
+    on a build reply is a summary of exactly this scope. The CLI's list is
+    read by path: ``cli/`` imports nothing from the engine's test tree and
+    the engine imports nothing from ``cli/``, so a shared constant would
+    itself be a boundary crossing.
+    """
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    from CadexInspection import capture_inspection
+
+    from test_inventory_scope import _service
+
+    captured = capture_inspection(_service(tmp_path), {"scope": "clearance"})
+    assert captured["kind"] == "clearance"
+    from CadexInspection import complete_inspection
+    from test_inventory_scope import _store
+    root = _store(tmp_path / "sweep", {"ok": True, "outputs": []})
+    missing = complete_inspection(capture_inspection(_service(root), {
+        "scope": "clearance", "path": "/clearance_sweep"}))
+    assert missing["value"]["status"] == "unavailable"
+
+    tools_py = MODULE_DIR.parent.parent.parent / "cli" / "cadex_cli" / "tools.py"
+    spec = spec_from_file_location("cadex_cli_tools_for_surface_test", tools_py)
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    offered = tuple(module.INSPECT_SCOPES)
+    assert "clearance" in offered
+    # ...and `inventory` (ADR-362): the `inventory` block on the same build
+    # reply is a summary of exactly this scope, the published catalog
+    # identity of every placed component, read after the build and never
+    # from stdout. Advisory on the surface: it names no failure.
+    assert "inventory" in offered
+    captured = capture_inspection(_service(tmp_path), {"scope": "inventory"})
+    assert captured["kind"] == "inventory"
+    assert "image" not in offered
+    for scope in offered:
+        # Every scope the CLI offers is one the engine knows: an offered
+        # scope the engine refused as unknown would be a tool the model can
+        # call and never use. `object` needs a live document to look in and
+        # `image` a shell to have stored one; what is pinned here is only
+        # that no offered name is unknown to the engine.
+        if scope == "object":
+            continue
+        try:
+            capture_inspection(_service(tmp_path), {"scope": scope})
+        except Exception as exc:  # the stub service is thin; only the name is pinned
+            assert "Unknown core.inspect scope" not in str(exc), scope
+    with pytest.raises(ValueError, match="Unknown core.inspect scope"):
+        capture_inspection(_service(tmp_path), {"scope": "fit"})
 
 
 
@@ -338,3 +400,14 @@ def test_publication_has_no_worker_or_artifact_io() -> None:
         "exportBrep(",
     ):
         assert forbidden not in source
+
+
+def test_agent_api_description_exposes_fit_intent():
+    """ADR-347: the model can discover declarations without an external doc."""
+    from CadexScriptedRuntime import _capability_api_listing
+
+    exports = {row['name']: row for row in _capability_api_listing()['assembly']['exports']}
+    assert 'contacts:' in exports['assembly']['signature']
+    assert 'clearances:' in exports['assembly']['signature']
+    assert 'never refuse acceptance' in exports['assembly']['description']
+    assert 'world:' in exports['component']['signature']

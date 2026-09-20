@@ -104,6 +104,74 @@ def test_the_prompt_states_the_headless_limits_rather_than_leaving_them(
     assert "expected_revision" in CLI_OVERLAY
 
 
+def test_the_prompt_says_fit_is_measured_and_a_printout_is_a_claim() -> None:
+    """ADR-346: the agent verifies fit from the `fit` block, never by printing."""
+
+    assert "FIT IS MEASURED, NOT PRINTED" in CLI_OVERLAY
+    assert "`fit` block" in CLI_OVERLAY
+    assert "inspect scope=clearance" in CLI_OVERLAY
+    assert "a claim the script makes about itself" in CLI_OVERLAY
+    # The old instruction -- verify through stdout -- is gone.
+    assert "its stdout comes back on every result" not in CLI_OVERLAY
+
+
+def test_the_prompt_says_how_to_declare_a_gap_under_the_default() -> None:
+    """ADR-373: an intended sub-default gap is `clearances=`, not `contacts=`.
+
+    The prompt taught the agent that a weld needs no declaration, and then
+    stopped. A bearing seat the design means to be 0.05 mm is not a weld and
+    not a defect, and the only instruction the agent had for a failing pair
+    was to fix the geometry -- which for a correct running fit means
+    widening a seat that was right. `contacts=` cannot say it either: the
+    contact tolerance is 0.001 mm, so a 0.05 mm gap declared that way fails
+    as a missed contact instead.
+    """
+
+    assert "clearances=[(a, b, 0.05)]" in CLI_OVERLAY
+    assert "it means touching within 0.001 mm" in CLI_OVERLAY
+    assert "not a way to silence a pair you have not thought about" in CLI_OVERLAY
+
+
+def test_the_prompt_says_catalog_identity_is_measured_and_advisory() -> None:
+    """ADR-362: the agent reads catalog identity from the `inventory` block.
+
+    F5's agent said all twelve purchased parts were catalog parts in four
+    closing messages while the published inventory listed its servos and
+    horns as uncatalogued; it never read the inventory because nothing in
+    its reply carried it. The block is advisory and the prompt says so.
+    """
+
+    assert "CATALOG IDENTITY IS MEASURED TOO" in CLI_OVERLAY
+    assert "`inventory` block" in CLI_OVERLAY
+    assert "`uncatalogued_sources`" in CLI_OVERLAY
+    assert "advisory, not a fit check" in CLI_OVERLAY
+    assert "lost its catalog identity" in CLI_OVERLAY
+    assert "inspect scope=inventory" in CLI_OVERLAY
+
+
+def test_the_prompt_reads_absent_provenance_as_unknown_not_printed() -> None:
+    """ADR-382: the derivation producer is bounded, and the prompt says so.
+
+    ADR-381 gave the reply `derived_catalog_sources` and told the agent a
+    name absent from it was an ordinary printed part. The producer it
+    reports cannot support that: it follows a definition's base operand
+    only, so a catalog body fused in as a *second* operand is a purchase it
+    never names -- which the engine pins deliberately in
+    `test_inventory_scope.py`'s
+    `test_a_fuse_reads_the_first_operand_of_its_one_list_argument`, and
+    which ADR-381's own "what it does not claim" paragraph says outright.
+    An absent name is unknown provenance, and the prompt must not turn the
+    bound into a clean bill of health.
+    """
+
+    assert "ordinary printed part" not in CLI_OVERLAY
+    assert "provenance unknown" in CLI_OVERLAY
+    assert "base operand" in CLI_OVERLAY
+    assert "second operand" in CLI_OVERLAY
+    # ...and the one absence that *is* conclusive stays conclusive.
+    assert "clearance tool rather than a purchase" in CLI_OVERLAY
+
+
 def test_the_prompt_pushes_for_a_parametric_script() -> None:
     """The cheap sweep only exists if the expensive turn made it possible."""
 
@@ -157,10 +225,16 @@ def test_a_scripted_turn_builds_exports_and_reports(tmp_path) -> None:
     assert Path(output.files["stl"]).is_file()
     assert "Built a 30 mm plate." in report.notes
 
-    # The engine's own stdout reached the model, which is the only way it
-    # can check its work here.
+    # The engine's own stdout reached the model...
     turn = factory.made[0]
-    assert "built at 30" in turn.last_payload("write_script")["stdout"]
+    payload = turn.last_payload("write_script")
+    assert "built at 30" in payload["stdout"]
+    # ...beside the fit block every build carries (ADR-346). A lone plate
+    # places no assembly component, so the honest answer is that nothing
+    # was checked -- and the turn's report says the same.
+    assert payload["fit"]["verdict"] == "unavailable"
+    assert report.fit["verdict"] == "unavailable"
+    assert report.to_json()["fit"] == report.fit
 
 
 @pytest.mark.usefixtures("engine")

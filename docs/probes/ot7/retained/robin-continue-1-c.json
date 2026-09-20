@@ -1,0 +1,219 @@
+{
+  "criterion": "F6",
+  "iteration": 161,
+  "project": "ot7-robin-c",
+  "seed": "the same ot7-robin-c project, resumed into the agent's own session after the completed create turn (ADR-357), on claude-opus-5 after the recorded model transition (ADR-384). The unreached continue-1 of iteration 157 returned its slot (ADR-386) and left the design untouched; ADR-389's geometry digest is what let open_project reopen the project.",
+  "evidence_directory": "evidence/turn-1-retry-1",
+  "model": "claude-opus-5",
+  "settings": {
+    "effort": "medium",
+    "max_output_tokens": 32000,
+    "turn_bound_seconds": 3600
+  },
+  "prompt": {
+    "path": "continue-1.prompt.txt",
+    "bytes": 756,
+    "sha256": "80d725d2961e7ca44a56fed391745d6df551741c6545a837e815ca3ae0b7f4d0"
+  },
+  "turn_index": 1,
+  "dispatched_at": "2026-09-19T21:12:17Z",
+  "ended_at": "2026-09-19T21:25:27Z",
+  "dispatched_by": "iteration 160, which was killed at its own actor bound after the turn had already ended; this receipt is iteration 161 collecting it",
+  "window": {
+    "before_dispatch_percent": 0,
+    "bound_percent": 45,
+    "status": "allowed",
+    "stream_first_percent": 0,
+    "stream_last_percent": 5,
+    "resets_at": "2026-09-20T02:10:00+00:00",
+    "seven_day": {
+      "first_percent": 6,
+      "last_percent": 7
+    },
+    "overage_disabled_reason": "out_of_credits"
+  },
+  "turn": {
+    "exit_code": 0,
+    "elapsed_seconds": 790.6082516771276
+  },
+  "turn_status": "completed",
+  "void": null,
+  "interruption": null,
+  "unreached": null,
+  "slot_consumed": true,
+  "continuations_used": 1,
+  "slots_spent": 2,
+  "void_calls_this_project": 0,
+  "interrupted_calls_this_project": 0,
+  "unreached_calls_this_project": 1,
+  "runner_status_after": "paused",
+  "remaining_after": {
+    "completed": 2,
+    "continuations_used": 1,
+    "continuations_unspent": 2,
+    "next_prompt": "continue-2.prompt.txt",
+    "closed": null
+  },
+  "actor_design_edits": 0,
+  "stream": {
+    "bytes": 436073,
+    "sha256": "cf797cd6cd36334ec0742eb88d962725067cd09d129476a8df3f538bfdde482c",
+    "frames": {
+      "system": 350,
+      "assistant": 15,
+      "rate_limit_event": 4,
+      "user": 6,
+      "tool_progress": 6,
+      "result": 1
+    },
+    "assistant_messages": 15,
+    "thinking_blocks": 4,
+    "tool_calls": 6,
+    "tool_calls_by_name": {
+      "inspect": 4,
+      "write_script": 1,
+      "rebuild": 1
+    },
+    "inspect_scopes": {
+      "clearance": 3,
+      "object": 1
+    },
+    "result": {
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 7,
+      "duration_ms": 782596,
+      "total_cost_usd": 4.342661499999999
+    }
+  },
+  "edits": {
+    "write_script_calls": 1,
+    "edit_script_calls": 0,
+    "accepted": 1,
+    "rejected": 0,
+    "note": "one write_script, accepted on its first submission against expected_revision 192db5b9; one rebuild afterwards reproduced the same digest b933d905.",
+    "script_lines_after": 436,
+    "script_sha256_after": "f805fdc2bd886b5da8b01f3051bd2668497a2e53c8d7f9fba392ed2c3c9d30e8"
+  },
+  "accepted_before": {
+    "revision": "192db5b9481c7f375bd6dfcb06eba273e958ba08d5684f58efbe2d55b0208755",
+    "static_failing": 0,
+    "pairs": 276,
+    "sweep": "incomplete: both wheel axles declared no limits, so the product reported 'no range to sweep' on each"
+  },
+  "accepted_after": {
+    "revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+    "digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c"
+  },
+  "static_fit": {
+    "verdict": "pass",
+    "pairs_checked": 378,
+    "counts": {
+      "clear": 378,
+      "intersection": 0,
+      "below clearance": 0,
+      "unknown": 0
+    },
+    "failing_count": 0,
+    "failing": [],
+    "thresholds": {
+      "minimum_clearance_mm": 0.1,
+      "maximum_common_volume_mm3": 1e-06
+    }
+  },
+  "attachments": {
+    "verdict": "touching",
+    "pairs_checked": 25,
+    "reported_count": 0,
+    "reported": [],
+    "thresholds": {
+      "contact_tolerance_mm": 0.001
+    }
+  },
+  "swept_fit": {
+    "verdict": "pass",
+    "coverage": "complete",
+    "step_degrees": 100.0,
+    "joints_checked": 2,
+    "joints_complete": 2,
+    "joints_skipped": 0,
+    "failing_count": 0,
+    "joints": [
+      {
+        "joint": "joint_wheel_l_axle",
+        "kind": "revolute",
+        "unit": "degrees",
+        "status": "complete",
+        "pairs_measured": 378,
+        "step": 100.0,
+        "sample_count": 37,
+        "range_degrees": [
+          -1800.0,
+          1800.0
+        ],
+        "initial_degrees": 0.0,
+        "pairs_moving": 75,
+        "minimum_distance_mm": 0.04999999999998494,
+        "maximum_common_volume_mm3": 0.0
+      },
+      {
+        "joint": "joint_wheel_r_axle",
+        "kind": "revolute",
+        "unit": "degrees",
+        "status": "complete",
+        "pairs_measured": 378,
+        "step": 100.0,
+        "sample_count": 37,
+        "range_degrees": [
+          -1800.0,
+          1800.0
+        ],
+        "initial_degrees": 0.0,
+        "pairs_moving": 75,
+        "minimum_distance_mm": 0.049999999999981504,
+        "maximum_common_volume_mm3": 0.0
+      }
+    ]
+  },
+  "inventory": {
+    "component_count": 28,
+    "catalog_counts": {
+      "board/pi-zero-2-w": 1,
+      "bolt/m2x4-socket": 8,
+      "bolt/m2x6.5-socket": 2,
+      "gearmotor/pololu-2367": 2,
+      "heat_insert/m2-standard": 10
+    },
+    "uncatalogued_sources": [
+      "chassis",
+      "clamp_l",
+      "clamp_r",
+      "wheel_l",
+      "wheel_r"
+    ],
+    "derived_catalog_sources": [],
+    "verdict": "every purchased part is a catalog part; the five uncatalogued rows are the printed chassis, two wheels and two motor clamps"
+  },
+  "smoke": {
+    "status": "not re-run by this invocation",
+    "note": "the receipt's smoke block is the one the iteration-157 invocation wrote at 17:30 UTC against the create revision 192db5b9; the runner attempts its holding smoke when an invocation closes, and this one paused with two continuations left. F6's smoke evidence must come from a later invocation on the accepted revision 0b438561."
+  },
+  "what_the_agent_did": [
+    "Read the measured report first: four clearance inspects (the summary, /attachments paged, /clearance_sweep) before any edit.",
+    "Found the static pose and all 21 welds already passing, and the sweep reported incomplete on both wheel axles because neither declared limits.",
+    "Replaced the keyed D-bore wheel hub with a split clamp hub bored on the shaft's envelope of revolution, pinched by a catalog M2x6.5 socket screw into a catalog M2 heat-set insert per wheel, and moved the wheel web to the inboard face so the clamp section is free to close.",
+    "Declared angle_limits_degrees = +/-1800 on both wheel joints and a sweep step derived as range/18, holding the pose count at 37 under the engine's 73-pose cap.",
+    "Declared the two pinch screws as contacts against their wheels and welded the two pinch inserts into OD counterbores.",
+    "Re-accepted and rebuilt, reporting the engine's numbers rather than the script's printout, and wrote four DECISION lines plus NOTE design_specs and NOTE rejected."
+  ],
+  "measured_result_against_f6": {
+    "static": "pass, 0 of 378 failing (was 0 of 276)",
+    "attachments": "touching, 0 of 25 reported",
+    "swept": "pass, coverage complete, 2 of 2 joints, 37 poses each at 100 deg over +/-1800 deg, minimum distance 0.0500 mm, maximum common volume 0.0 mm3",
+    "world_geometry": "none",
+    "catalog_hardware": "every purchased part catalogued",
+    "actor_edits": 0,
+    "continuations_used": 1,
+    "smoke": "not measured on this revision"
+  }
+}

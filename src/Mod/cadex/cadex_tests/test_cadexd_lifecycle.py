@@ -2177,3 +2177,228 @@ def test_cadexd_plays_a_trained_policy_into_a_simulation_trace() -> None:
     finally:
         _stop(client)
         shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="Needs built engine")
+@pytest.mark.parametrize("kind, limits, step, unit", [
+    ("revolute", "angle_limits_degrees=[0, 10]", "sweep_step_degrees=5", "degrees"),
+    ("slider", "length_limits_mm=[0, 10]", "sweep_step_mm=5", "mm"),
+])
+def test_joint_sweep_is_published_and_restore_does_not_recompute(tmp_path, kind, limits, step, unit):
+    source = JOINT_SCRIPT.replace('assembly.joint("revolute"', f'assembly.joint("{kind}"').replace(
+        'assembly.connector(swing, "origin"))',
+        f'assembly.connector(swing, "origin"), {limits})').replace(
+        'assembly.assembly([base, swing], [j])',
+        f'assembly.assembly([base, swing], [j], {step})')
+    client = _spawn_cadexd()
+    try:
+        assert client.request('open_project', {'project_root': str(tmp_path)})['ok']
+        written = client.request('write_script', {'source': source, 'expected_revision': ''})
+        assert written['ok'], written
+        state_path = tmp_path / 'script.json'
+        state = state_path.read_bytes()
+        accepted = json.loads(state)['accepted_attempt']
+        result_path = tmp_path / accepted['staging'] / 'result.json'
+        retained = result_path.read_bytes()
+        outputs = {o['name']: o for o in json.loads(retained)['outputs']}
+        sweep = outputs['asm']['clearance_sweep']
+        assert sweep['status'] == 'complete', sweep
+        assert sweep['joints'][0]['sample_count'] == 3
+        assert sweep['joints'][0]['solved_pose_agreement']
+        assert (sweep['joints'][0]['kind'], sweep['joints'][0]['unit']) == (kind, unit)
+        assert sweep['joints'][0]['range_' + unit] == [0, 10]
+        assert 'first_contact_' + unit in sweep['joints'][0]['pairs'][0]
+        _stop(client)
+        client = _spawn_cadexd()
+        assert client.request('open_project', {'project_root': str(tmp_path)})['ok']
+        inspected = client.request('inspect', {'scope': 'clearance',
+            'path': '/clearance_sweep', 'limit': 50})
+        assert inspected['ok'], inspected
+        from CadexInspection import _bounded_page
+        assert inspected['value'] == _bounded_page({'clearance_sweep': sweep}, {
+            'path': '/clearance_sweep', 'limit': 50})['value']
+        pair = client.request('inspect', {'scope': 'clearance',
+            'path': '/clearance_sweep/joints/0/pairs/0', 'limit': 50})
+        assert pair['value'] == sweep['joints'][0]['pairs'][0]
+        assert result_path.read_bytes() == retained
+        assert json.loads(state_path.read_bytes())["accepted_attempt"] == accepted
+    finally:
+        _stop(client)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="Needs built engine")
+@pytest.mark.parametrize("limits, kind, expected, reason", [
+    ("angle_limits_degrees=[0, 10]", "revolute", "incomplete",
+     "sweep_step_degrees is not declared"),
+    # A hinge nobody bounded can still move, so it is named as the coverage
+    # hole it is rather than dropped before it reaches a row (ADR-375).
+    ("", "revolute", "incomplete", "declares no limits"),
+    # A weld holds no range at all, so complete coverage of an empty set is
+    # still the honest answer for an assembly whose only joint is one.
+    ("", "fixed", "complete", None),
+])
+def test_an_assembly_declaring_no_step_still_publishes_its_sweep_coverage(
+    tmp_path, limits, kind, expected, reason,
+):
+    """The gap ot7's F5 create turn measured, closed (ADR-367).
+
+    That turn accepted an arm whose two hinges declared limits and whose
+    assembly declared no ``sweep_step_degrees``, so the producer was never
+    called and nothing enumerated the joints that went unchecked. Coverage
+    is now published either way. A limited joint with no step for its kind
+    is named ``incomplete`` with that reason, and since ADR-375 so is an
+    unbounded one, with the limit to declare. Only an assembly whose joints
+    hold no range at all -- a weld, a suppressed unlimited joint -- reports
+    complete coverage of an empty set, which is the honest answer to "what
+    was swept" and is not the same statement.
+    """
+
+    source = JOINT_SCRIPT.replace('assembly.joint("revolute"', 'assembly.joint("%s"' % kind).replace(
+        'assembly.connector(swing, "origin"))',
+        'assembly.connector(swing, "origin")%s)' % (", " + limits if limits else ""))
+    client = _spawn_cadexd()
+    try:
+        assert client.request('open_project', {'project_root': str(tmp_path)})['ok']
+        written = client.request('write_script', {'source': source, 'expected_revision': ''})
+        assert written['ok'], written
+        accepted = json.loads((tmp_path / 'script.json').read_text())['accepted_attempt']
+        outputs = {o['name']: o for o in json.loads(
+            (tmp_path / accepted['staging'] / 'result.json').read_text())['outputs']}
+        sweep = outputs['asm']['clearance_sweep']
+        assert sweep['status'] == expected, sweep
+        # Neither step was declared, so neither is claimed and no geometry
+        # ran: the whole report is the enumeration.
+        assert sweep['step_degrees'] is None and sweep['step_mm'] is None
+        assert sweep['elapsed_seconds'] < 1.0, sweep
+        if reason:
+            (joint,) = sweep['joints']
+            assert (joint['joint'], joint['kind'], joint['unit']) == ('j', kind, 'degrees')
+            assert joint['status'] == 'incomplete'
+            assert reason in joint['reason']
+            assert 'pairs' not in joint
+        else:
+            assert sweep['joints'] == []
+        # The agent reaches the same enumeration through the scope it
+        # already has, with no rebuild.
+        inspected = client.request('inspect', {'scope': 'clearance',
+            'path': '/clearance_sweep', 'limit': 50})
+        assert inspected['ok'], inspected
+        from CadexInspection import _bounded_page
+        assert inspected['value'] == _bounded_page({'clearance_sweep': sweep}, {
+            'path': '/clearance_sweep', 'limit': 50})['value']
+    finally:
+        _stop(client)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="No FreeCADCmd binary available.")
+def test_an_offset_project_reopens_although_its_bytes_never_repeat(tmp_path):
+    """`part.offset` re-serializes; the model does not change (ADR-389).
+
+    Robin, ot7's balancer, was shut for good by this: its wheels are the
+    design's only consumers of `part.offset`, three rebuilds of the same
+    source gave three different digests, and every reopen refused. The guard
+    was right about what it could see and wrong about what it meant.
+
+    So the assertion here is in two halves, and the second one is the point:
+    every reopen succeeds, **and** at least one of them got there through the
+    drift path rather than byte equality. If OCCT ever serializes an offset
+    reproducibly this test fails loudly, which is the right way to find out
+    that the fallback has stopped being needed.
+    """
+
+    root = tmp_path / "offset.cadex"
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(root)})["ok"]
+        written = client.request("write_script", {
+            "source": (
+                "pin = part.cylinder(4.0, 10.0)\n"
+                'result = {"pin": pin, "sleeve": part.offset(pin, 0.15, '
+                'output_type="solid")}\n'
+            ),
+            "expected_revision": "", "display": {"quality": "standard"},
+        })
+        assert written["ok"], written
+        state = json.loads((root / "script.json").read_text())
+        drifted = []
+        retained = root / state["accepted_attempt"]["staging"]
+        original_files = {
+            path.relative_to(retained): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in retained.rglob("*") if path.is_file()
+        }
+        # Exceed ATTEMPT_KEEP: a successful restore must retain the accepted
+        # evidence and display buffers, not just a cached geometry digest.
+        for _ in range(5):
+            _stop(client)
+            client = _spawn_cadexd()
+            reopened = client.request("open_project", {"project_root": str(root)})
+            assert reopened["ok"], reopened
+            restore = reopened["restore"]
+            assert restore["matches_accepted"] is True, restore
+            after = json.loads((root / "script.json").read_text())
+            if restore["digest"] != state["accepted_digest"]:
+                assert restore["matched_by"] == "geometry", restore
+                assert len(restore["geometry_digest"]) == 64, restore
+                drifted.append(restore["digest"])
+                # The drift path rolls the accepted attempt back with the rest
+                # of the accepted state. A byte-for-byte reopen does not come
+                # through here at all — ADR-303 decides whether it re-pins —
+                # so only this branch may assert the locator.
+                assert after["accepted_attempt"] == state["accepted_attempt"]
+            else:
+                assert "matched_by" not in restore, restore
+            for key in ("accepted_revision", "accepted_digest"):
+                assert after[key] == state[key], key
+        assert drifted, "part.offset serialized reproducibly; re-read ADR-389"
+        learned = json.loads((root / "script.json").read_text())
+        assert learned["accepted_geometry"]["accepted_digest"] == (
+            state["accepted_digest"]
+        ), learned
+        assert len(learned["accepted_geometry"]["geometry_digest"]) == 64, learned
+        assert retained.is_dir(), "restore pruned the pinned accepted artifacts"
+        assert {
+            path.relative_to(retained): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in retained.rglob("*") if path.is_file()
+        } == original_files
+        from CadexScriptStore import ATTEMPT_KEEP
+        assert len(list(root.glob("script_artifacts/*/attempt-*"))) <= ATTEMPT_KEEP + 1
+    finally:
+        _stop(client)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="No FreeCADCmd binary available.")
+def test_a_changed_script_is_still_refused_at_the_restore_pass(tmp_path):
+    """The fallback measures; it does not forgive. ADR-044's guard stands."""
+
+    root = tmp_path / "edited.cadex"
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(root)})["ok"]
+        assert client.request("write_script", {
+            "source": 'result = {"plate": part.box(20, 10, 3)}',
+            "expected_revision": "", "display": {"quality": "standard"},
+        })["ok"]
+        state = json.loads((root / "script.json").read_text())
+        (root / "script.py").write_text(
+            'result = {"plate": part.box(20, 10, 4)}\n', encoding="utf-8"
+        )
+        retained = root / state["accepted_attempt"]["staging"]
+        original_result = (retained / "result.json").read_bytes()
+        for _ in range(5):
+            _stop(client)
+            client = _spawn_cadexd()
+            reopened = client.request("open_project", {"project_root": str(root)})
+            assert reopened["ok"] is False, reopened
+            observed = reopened["observed"]
+            assert observed["accepted_digest"] == state["accepted_digest"]
+            assert observed["geometry_comparison"] == (
+                "the rebuilt model is not the accepted one"
+            )
+            after = json.loads((root / "script.json").read_text())
+            assert after["accepted_digest"] == state["accepted_digest"]
+            assert after["accepted_attempt"] == state["accepted_attempt"]
+            assert (retained / "result.json").read_bytes() == original_result
+    finally:
+        _stop(client)

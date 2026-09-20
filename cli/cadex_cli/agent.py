@@ -58,6 +58,53 @@ def default_model(project_model: str = "") -> str:
 
     return os.environ.get(MODEL_ENV, "").strip() or project_model or DEFAULT_MODEL
 
+
+#: Every turn is launched at an explicit effort level (ADR-356). On the
+#: adaptive-reasoning models the CLI defaults to, effort is Claude Code's
+#: documented per-step thinking control; its fixed ``MAX_THINKING_TOKENS``
+#: budget is documented as having no effect on them. Pinning the level
+#: keeps a headless turn from inheriting whatever an interactive session on
+#: the same account last saved. ``high`` is the harness's own default.
+EFFORT_ENV = "CADEX_EFFORT"
+DEFAULT_EFFORT = "high"
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+#: The hard per-message bound: the request's max output tokens, which caps
+#: thinking and text together (ADR-356). The one F4 turn that reached a
+#: model spent 16.5 of its 30 minutes on a single 64,000-token thinking
+#: message that ended on the provider's cap and produced nothing. 32,000
+#: halves that worst case and still leaves a 30 KB script submission room
+#: after 20,000 tokens of thinking. Reaches the harness as its documented
+#: ``CLAUDE_CODE_MAX_OUTPUT_TOKENS`` variable.
+MAX_OUTPUT_TOKENS_ENV = "CADEX_MAX_OUTPUT_TOKENS"
+DEFAULT_MAX_OUTPUT_TOKENS = 32000
+HARNESS_MAX_OUTPUT_TOKENS_ENV = "CLAUDE_CODE_MAX_OUTPUT_TOKENS"
+
+
+def default_effort() -> str:
+    """The effort level a turn is launched at: ``$CADEX_EFFORT`` or ``high``."""
+
+    level = os.environ.get(EFFORT_ENV, "").strip() or DEFAULT_EFFORT
+    if level not in EFFORT_LEVELS:
+        raise ValueError(
+            f"${EFFORT_ENV}={level!r} is not an effort level; use one of "
+            + ", ".join(EFFORT_LEVELS)
+        )
+    return level
+
+
+def default_max_output_tokens() -> int:
+    """The per-message output cap: ``$CADEX_MAX_OUTPUT_TOKENS`` or 32,000."""
+
+    text = os.environ.get(MAX_OUTPUT_TOKENS_ENV, "").strip()
+    if not text:
+        return DEFAULT_MAX_OUTPUT_TOKENS
+    if not text.isdigit() or int(text) <= 0:
+        raise ValueError(
+            f"${MAX_OUTPUT_TOKENS_ENV}={text!r} is not a positive token count"
+        )
+    return int(text)
+
 MCP_SERVER_NAME = "cadex"
 
 _CLAUDE_CANDIDATES = (
@@ -127,9 +174,13 @@ count placed instances and cannot identify hardware fused into other solids.
 
 ALL LENGTHS ARE MILLIMETRES.
 
-CALL describe_api BEFORE YOUR FIRST SCRIPT, and again whenever you need an \
-exact signature. It is served live by the engine you are talking to, so it \
-is the truth about this version. Do not write an xscript API from memory.
+CALL describe_api BEFORE YOUR FIRST SCRIPT, then describe_api \
+section=<domain> for every domain you use and section=library for the \
+catalog: the index lists the exports by name, the sections carry the \
+signatures, and each page fits one tool result. Call again whenever you \
+need an exact signature. It is served live by the engine you are talking \
+to, so it is the truth about this version. Do not write an xscript API \
+from memory.
 
 YOU CANNOT SEE YOUR WORK. There is no screenshot, no render and no viewport \
 here, and no way for the caller to click a face and hand it to you. Verify \
@@ -139,7 +190,82 @@ through facts instead, and do verify:
 shape type, volume, bounding box, face and edge counts. Check that the \
 numbers are the ones you intended. A bore you meant to be through is a \
 volume you can compute in advance.
-- `print(...)` in the script: its stdout comes back on every result.
+- FIT IS MEASURED, NOT PRINTED. Every build reply (write_script, \
+edit_script, set_params, rebuild) carries a `fit` block the engine computed \
+from the exact solids at the solved pose: the check counts, and every \
+failing component pair by name with its minimum distance (mm) and common \
+volume (mm³). `inspect scope=clearance` lists every pair. A script's own \
+`print(...)` output comes back too, but it is a claim the script makes \
+about itself; the `fit` block is the evidence, and a `fit` that names an \
+intersection, a pair below clearance or an unmeasured pair overrules any \
+printout that says the parts fit. Never report a design as fitting while \
+`fit` reports a failing pair: fix the geometry and build again. `fit` is \
+`unavailable` when the script places no assembly components, in which case \
+nothing has been checked. A pair your design **welds** with an unsuppressed \
+`fixed` joint is not held to the undeclared-pair gap: mount hardware flush \
+against what carries it and do not add a `contacts=` declaration to repeat a \
+weld. Whether the welded solids actually meet is `fit.attachments`, a \
+separate measured fact and not one of the four checks -- READ IT ANYWAY. A \
+weld reported `not touching` holds its two parts at a fixed pose across a \
+gap that no geometry closes, so unless a standoff or a captive fastener \
+spans that gap it is a connection your design does not actually make, and \
+declaring a clearance across it does not make it one. A weld may still \
+carry a `clearances=` declaration where the design means the two rigidly \
+held parts to stay apart -- a board over its standoffs, a shroud around a \
+pulley -- and it is checked against the minimum you declared exactly as an \
+unwelded pair is. A running \
+gap your design *means* to be narrower \
+than the 0.1 mm undeclared-pair default -- a bearing seat, a sliding fit -- \
+is neither a weld nor a defect, and widening it would be the wrong repair: \
+declare it on the assembly as `clearances=[(a, b, 0.05)]`, with the gap you \
+designed. `contacts=[(a, b)]` is not that declaration -- it means touching \
+within 0.001 mm, and it fails a 0.05 mm gap as a missed contact. Declare \
+intent only where the design means it: a declaration is not a way to \
+silence a pair you have not thought about.
+- CATALOG IDENTITY IS MEASURED TOO. Every build reply also carries an \
+`inventory` block read from the published inventory: how many placed \
+components are catalog parts, the catalog roll-up, and \
+`uncatalogued_sources` -- the name of every placed output that no `lib.*` \
+generator built as-is. This block is advisory, not a fit check: printed \
+parts belong there. But a purchased part listed there has lost its catalog \
+identity -- a servo body you drilled or a horn you re-clocked after taking \
+it from `lib` is no longer the catalog part, whatever the script prints. \
+Read the block before you say hardware comes from the catalog; if a \
+purchased part is listed, place the untouched catalog body as the \
+component and put the cut in the printed part that receives it. \
+`derived_catalog_sources` names every listed output the engine can prove \
+is exactly that -- one whose base was cut, drilled or re-clocked from a \
+catalog body -- with the row it came off, so a name there is a purchased \
+part to repair. A name **absent** from it is provenance unknown, never \
+proof of a printed part: the engine follows a definition's base operand \
+only, so a catalog body fused into a printed solid as a second operand is \
+a purchase it cannot name. A catalog body used only as a cutter is also \
+absent, and that one is a clearance tool rather than a purchase. Read the \
+script that built an absent name before you call it printed. `inspect \
+scope=inventory` lists every component.
+- MOTION FIT IS MEASURED TOO, and the build reply carries it: `fit.sweep` \
+is the published exact-solid sweep of every limited joint, with its own \
+`verdict`, the coverage, one row per joint (minimum distance, maximum \
+common volume, first contact in the joint's own `unit`) and every pair \
+that fails anywhere in a range. Declare `sweep_step_degrees` \
+(limited hinges) and `sweep_step_mm` (limited sliders) on the assembly to \
+acquire it; a limited joint whose step is undeclared comes back \
+`incomplete` with that reason even when the assembly declares no step at \
+all. `fit.sweep.verdict` is `unavailable` when there is no joint row to \
+judge, for either of two reasons `fit.sweep.coverage` and its `reason` \
+tell apart: `coverage` `complete` means the accepted assembly declares no \
+limited joint to sweep, and `coverage` `unavailable` means an older engine \
+accepted this revision and published no sweep, so rebuild to get one. \
+None of these is a pass: a joint \
+that was not swept has been checked at one pose only, and static fit does \
+not prove motion fit. A swept pair fails on `intersection`, on `below \
+clearance` -- its minimum through the range misses the minimum you declared \
+for it, or 0.1 mm if you declared none -- or on a measurement the engine \
+could not take. A pair you declared a contact, or welded with a fixed \
+joint, is not held to a gap here, and a pair the solved pose already fails \
+is named in the static list instead of twice. \
+`inspect scope=clearance path=/clearance_sweep` reads the whole published \
+report, including per-joint timings.
 - The engine validates the geometry itself and refuses what it cannot build, \
 so a result that says ok is a shape that exists — but it is not necessarily \
 the shape that was asked for. That part is yours.
@@ -274,9 +400,13 @@ class ClaudeTurn:
         session_id: str = "",
         on_text: TextCallback | None = None,
         cwd: str | Path | None = None,
+        effort: str = "",
+        max_output_tokens: int = 0,
     ) -> None:
         self.claude_path = claude_path
         self.model = model
+        self.effort = effort or default_effort()
+        self.max_output_tokens = int(max_output_tokens or default_max_output_tokens())
         self.system_prompt_text = system_prompt_text
         self.socket_path = str(socket_path)
         self.token = token
@@ -327,6 +457,8 @@ class ClaudeTurn:
             "--verbose",
             "--model",
             self.model,
+            "--effort",
+            self.effort,
             "--mcp-config",
             str(self._config_path),
             "--strict-mcp-config",
@@ -346,6 +478,11 @@ class ClaudeTurn:
         if resume and self.session_id:
             command.extend(["--resume", self.session_id])
         return command
+
+    def _environment(self) -> dict[str, str]:
+        """The child's environment: ours, plus the per-message output cap."""
+
+        return {**os.environ, HARNESS_MAX_OUTPUT_TOKENS_ENV: str(self.max_output_tokens)}
 
     def run(self, prompt: str) -> TurnResult:
         """Run the turn, falling back to a fresh conversation if resume fails."""
@@ -379,6 +516,7 @@ class ClaudeTurn:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=self._cwd,
+                env=self._environment(),
                 text=True,
                 encoding="utf-8",
                 errors="replace",

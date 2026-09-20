@@ -1708,6 +1708,65 @@ def _native_reference(reference: Any) -> dict[str, Any]:
     }
 
 
+def _native_connector_sides(
+    joint: Any, connectors: Sequence[Mapping[str, Any]], *, output_name: str
+) -> list[int]:
+    """Which native slot on ``joint`` carries each script connector's frame.
+
+    ``setJointConnectors`` calls ``ensureUnconnectedIsSecondRef``
+    (``JointObject.py``, upstream FreeCAD issue 29355), which swaps
+    ``Reference1``/``Reference2`` *together with* ``Placement1``/``Placement2``
+    and ``Offset1``/``Offset2`` whenever the first reference's part is the
+    unconnected one. That is every weld written hardware-first -- the shape
+    ``assembly.connector(part, "origin"), assembly.connector(host, ...)``
+    takes when a script fixes a bought part to the printed part carrying it.
+
+    Reading ``Placement{i}`` at the *script's* connector index after such a
+    swap hands each component the **other** component's connector frame, so
+    the dynamics tree derives that body's parent-relative transform as the
+    exact inverse of the one the solved assembly holds (ADR-393). This maps
+    each script connector to the slot FreeCAD actually left its frame in, by
+    the component the native reference names.
+    """
+
+    native = []
+    for index in (1, 2):
+        reference = getattr(joint, f"Reference{index}", None)
+        obj = reference[0] if isinstance(reference, tuple) and reference else None
+        native.append(str(getattr(obj, "Name", "") or ""))
+    sides: list[int] = []
+    for connector in connectors:
+        name = str(getattr(connector["component"], "Name", "") or "")
+        matched = [index + 1 for index, item in enumerate(native) if item and item == name]
+        if len(matched) != 1:
+            raise AssemblyCandidateError(
+                f"FreeCAD's connector frames for joint output {output_name!r} name "
+                f"components this joint was not given: the script connected "
+                f"{[str(getattr(item['component'], 'Name', '') or '') for item in connectors]} "
+                f"and the solved joint references {native}.",
+                details={
+                    "stage": "native_connector_frames",
+                    "joint_output": output_name,
+                    "script_components": [
+                        str(item["component_output"]) for item in connectors
+                    ],
+                    "native_references": native,
+                },
+            )
+        sides.append(matched[0])
+    if sorted(sides) != [1, 2]:
+        raise AssemblyCandidateError(
+            f"FreeCAD's connector frames for joint output {output_name!r} both "
+            f"resolve to native slot {sides[0]}.",
+            details={
+                "stage": "native_connector_frames",
+                "joint_output": output_name,
+                "native_references": native,
+            },
+        )
+    return sides
+
+
 def _graph_contract(
     raw_result: Mapping[str, Any],
 ) -> tuple[
@@ -5600,6 +5659,446 @@ def _measure_clearance(
     return rows
 
 
+# A child owns native queries so a stuck OCCT operation cannot exceed the budget.
+_SWEEP_JOINT_SECONDS = 90.0
+_SWEEP_TOTAL_SECONDS = 180.0
+_SWEEP_MAX_POSES = 73
+_SWEEP_MAX_PAIRS = 2000
+
+
+def _bounded_sweep_call(components, component_data, joint_data, baseline, name, step, seconds):
+    import FreeCAD as App
+    import subprocess
+    import tempfile
+    import time
+    start = time.monotonic()
+    try:
+        payload = {"components": {n: {
+            "brep": _component_world_shape(obj).exportBrepToString(),
+            "placement": list(obj.Placement.toMatrix().A)} for n, obj in components.items()},
+            "component_data": component_data, "joint_data": joint_data,
+            "baseline": baseline, "name": name, "step": step}
+        with tempfile.TemporaryDirectory(prefix="cadex-fit-sweep-") as directory:
+            source = Path(directory) / "input.json"
+            target = Path(directory) / "output.json"
+            source.write_text(json.dumps(payload), encoding="utf-8")
+            code = ("import sys; sys.path.insert(0, " + repr(str(Path(__file__).parent)) + "); "
+                    "from cadex_assembly_worker import _sweep_child; _sweep_child("
+                    + repr(str(source)) + ", " + repr(str(target)) + ")")
+            binary = Path(App.getHomePath()) / "bin" / "FreeCADCmd"
+            subprocess.run([str(binary), "-c", code], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=True,
+                           timeout=max(0.001, seconds - (time.monotonic() - start)))
+            result = json.loads(target.read_text(encoding="utf-8"))
+    except subprocess.TimeoutExpired:
+        result = {"status": "incomplete", "reason": "runtime budget exceeded"}
+    except Exception as exc:
+        result = {"status": "incomplete", "reason": str(exc)}
+    result["elapsed_seconds"] = time.monotonic() - start
+    return result
+
+
+def _sweep_child(source, target):
+    import FreeCAD as App
+    import Part
+    from types import SimpleNamespace
+    data = json.loads(Path(source).read_text(encoding="utf-8"))
+    try:
+        components = {}
+        for name, item in data["components"].items():
+            shape = Part.Shape()
+            shape.importBrepFromString(item["brep"])
+            components[name] = SimpleNamespace(Shape=shape,
+                Placement=App.Placement(App.Matrix(*item["placement"])))
+        result = _sweep_joint(components, data["component_data"], data["joint_data"],
+                              data["baseline"], data["name"], data["step"])
+    except Exception as exc:
+        result = {"status": "incomplete", "reason": str(exc)}
+    Path(target).write_text(json.dumps(result), encoding="utf-8")
+
+
+#: The limit, declared step and unit each sweepable joint kind uses.
+_SWEEP_KINDS = {
+    "revolute": ("angle_limits_degrees", "sweep_step_degrees", "degrees"),
+    "slider": ("length_limits_mm", "sweep_step_mm", "mm"),
+}
+
+
+def _sweep_joint(components, component_data, joint_data, baseline, name, step):
+    """Sample one limited hinge or slider of a rigid tree with exact solids.
+
+    A hinge turns its subtree about the solved connector +Z; a slider
+    translates it along that axis. Values, limits and first contact are in
+    the joint's own unit (degrees or mm), named in the result's ``unit``.
+
+    Every pair carries ``relative_motion`` (ADR-374): true when one side is
+    inside the swept subtree and the other is not, which is the only case
+    this joint can change. A pair with both sides on the same side of the
+    joint is rigid for this sweep, so its row repeats the solved-pose
+    measurement at every sample -- a welded horn against its link reads
+    0.0 mm here and first contact at the bottom of the range, which is the
+    weld and not the motion. The flag is what lets a reader keep the two
+    apart; the rows themselves are unchanged.
+    """
+    import FreeCAD as App
+    from CadexDynamics import extract_tree, joint_transform, joint_coordinates, length_mm
+    joints = [{**data, "name": key, "connectors": [
+        {"component": c["component_output"], "local_matrix": c["local_frame"]["matrix"]}
+        for c in data["connectors"]]} for key, data in joint_data.items()]
+    tree = extract_tree([{"name": n, "grounded": d["grounded"], "flexible": d.get("flexible", False)}
+                         for n, d in component_data.items()], joints)
+    if tree["closures"] or tree["couplings"] or tree["static_joints"]:
+        raise ValueError("closed, coupled or static-joint graph is unsupported")
+    joint = next(j for j in joints if j["name"] == name)
+    if joint["kind"] not in _SWEEP_KINDS or joint["suppressed"]:
+        raise ValueError("only unsuppressed limited tree hinges and sliders are supported")
+    limits_key, _step_key, unit = _SWEEP_KINDS[joint["kind"]]
+    if joint.get(limits_key) is None:
+        raise ValueError(f"{joint['kind']} joint declares no {limits_key}")
+    low, high = joint[limits_key]
+    if low is None or high is None:
+        raise ValueError(f"{limits_key} is open-ended, so the range has no bound to sweep")
+    count = math.ceil((high - low) / step)
+    if count < 0 or count + 1 > _SWEEP_MAX_POSES:
+        raise ValueError("pose budget exceeded")
+    values = [min(low + i * step, high) for i in range(count + 1)]
+    if len(baseline) > _SWEEP_MAX_PAIRS:
+        raise ValueError("pair budget exceeded")
+    body = next(b for b in tree["bodies"] if b["joint"] == name)
+    moving = {body["name"]}
+    for b in tree["bodies"]:
+        if b["parent"] in moving:
+            moving.add(b["name"])
+    poses = {n: obj.Placement for n, obj in components.items()}
+    shapes = {n: _component_world_shape(obj).copy() for n, obj in components.items()}
+    solved_shapes = {n: shape.Placement for n, shape in shapes.items()}
+
+    def measure(a, b):
+        a, b = shapes[a], shapes[b]
+        if a.isNull() or b.isNull() or not a.Solids or not b.Solids:
+            raise ValueError("sweep requires solid components")
+        d = float(a.distToShape(b)[0])
+        v = float(a.common(b).Volume) if a.BoundBox.intersect(b.BoundBox) else 0.0
+        if not math.isfinite(d) or not math.isfinite(v) or min(d, v) < 0:
+            raise ValueError("invalid native measurement")
+        return d, v
+
+    cached = {}
+    for row in baseline:
+        key = row["first"], row["second"]
+        d, v = measure(*key)
+        if (row.get("error") or row["distance_mm"] is None or row["common_volume_mm3"] is None
+                or abs(d - row["distance_mm"]) > 1e-4
+                or abs(v - row["common_volume_mm3"]) > 1e-3):
+            raise ValueError("solved-pose clearance disagreement")
+        cached[key] = d, v
+    connectors = joint["connectors"]
+    a, b = [c["component"] for c in connectors]
+    coords = joint_coordinates(joint["kind"], joint_transform(
+        list(poses[a].toMatrix().A), connectors[0]["local_matrix"],
+        list(poses[b].toMatrix().A), connectors[1]["local_matrix"]), context=name)
+    if coords["residual_mm"] > 1e-4 or coords["residual_radians"] > 1e-6:
+        raise ValueError(f"solved {joint['kind']} joint has a residual its kind cannot express")
+    initial = (math.degrees(coords["values"][0]) if unit == "degrees"
+               else length_mm(coords["values"][0]))
+    side = 0 if a == body["parent"] else 1
+    frame = poses[body["parent"]].multiply(App.Placement(App.Matrix(*connectors[side]["local_matrix"])))
+    contact_key = "first_contact_" + unit
+    # Whether *this* joint moves the pair apart or together (ADR-374). Exactly
+    # one side inside the swept subtree is what makes the measurement a fact
+    # about the motion; two sides that are both inside it, or both outside,
+    # are one rigid body for this sweep and hold their solved-pose value at
+    # every sample. The loop below already decides this to know whether to
+    # measure, so saying it on the row costs nothing and lets a reader tell a
+    # number the motion produced from one it merely repeated.
+    rows = [{"first": a, "second": b, "relative_motion": (a in moving) != (b in moving),
+             "minimum_distance_mm": None,
+             "maximum_common_volume_mm3": None, contact_key: None}
+            for a, b in cached]
+    for value in values:
+        travel = (value - initial) * (1 if side == 0 else -1)
+        motion = (App.Placement(App.Vector(), App.Rotation(App.Vector(0, 0, 1), travel))
+                  if unit == "degrees" else App.Placement(App.Vector(0, 0, travel), App.Rotation()))
+        delta = frame.multiply(motion).multiply(frame.inverse())
+        for n in moving:
+            shapes[n].Placement = delta.multiply(solved_shapes[n])
+        for row in rows:
+            a, b = row["first"], row["second"]
+            d, v = (measure(a, b) if row["relative_motion"] else cached[a, b])
+            if row["minimum_distance_mm"] is None or d < row["minimum_distance_mm"]:
+                row["minimum_distance_mm"] = d
+            if row["maximum_common_volume_mm3"] is None or v > row["maximum_common_volume_mm3"]:
+                row["maximum_common_volume_mm3"] = v
+            if row[contact_key] is None and d <= 1e-3:
+                row[contact_key] = value
+    return {"status": "complete", "kind": joint["kind"], "unit": unit, "step": step,
+            "sample_count": len(values), "range_" + unit: [low, high],
+            "initial_" + unit: initial, "solved_pose_agreement": True, "pairs": rows}
+
+
+def _measure_joint_sweeps(components, component_data, joint_data, baseline, steps, solved):
+    """Sweep every limited joint; ``steps`` maps each declared step name to its value.
+
+    A limited joint whose kind's step is undeclared, or whose kind is not
+    sweepable, is reported ``incomplete`` with the reason, never skipped.
+    ``steps`` may be empty, which is the assembly that declared no step at
+    all: every limited joint is then named unswept and no geometry is
+    touched (ADR-367).
+
+    **A joint that can move and declares no limits is a coverage hole, not a
+    joint to pass over in silence** (ADR-375). Before this it was dropped
+    before it could be named: a continuously rotating wheel, a free spinner,
+    a loop-closure hinge reached no row, so an assembly whose one limited
+    joint swept clean read ``complete`` beside two wheels nobody had checked
+    anywhere but the solved pose. It is now ``incomplete`` with a reason
+    naming the limit to declare. Only two joints hold no range by
+    construction and keep their silence: a ``fixed`` joint, whose pair the
+    attachment report measures instead (ADR-370), and a suppressed joint the
+    assembly also left unlimited, which the solver ignores anyway.
+
+    A **suppressed** joint is a different statement and gets a different
+    status (ADR-371). The solver ignores it, so it is not an edge of the
+    mechanism and holds no range to move through: there is nothing to sweep
+    and nothing missing. Its row is ``skipped`` with that reason, it costs no
+    child process, and it leaves coverage ``complete`` -- the same rule the
+    fixed-joint attachment report already applies, and the one both
+    ``docs/XSCRIPT.md`` and the CLI's own no-joints wording already stated.
+    Before this it was swept like any other joint, the child refused it, and
+    the assembly's coverage was ``incomplete`` forever with a reason that
+    read as an unsupported *kind*.
+    """
+    import time
+    report = {"status": "complete",
+              "step_degrees": steps.get("sweep_step_degrees"), "step_mm": steps.get("sweep_step_mm"),
+              "per_joint_seconds": _SWEEP_JOINT_SECONDS, "total_seconds": _SWEEP_TOTAL_SECONDS,
+              "max_poses": _SWEEP_MAX_POSES, "max_pairs": _SWEEP_MAX_PAIRS, "joints": []}
+    start = time.monotonic()
+    for name, joint in joint_data.items():
+        kind = joint.get("kind")
+        limited = (joint.get("angle_limits_degrees") is not None
+                   or joint.get("length_limits_mm") is not None)
+        if not limited and (kind == "fixed" or joint.get("suppressed")):
+            # Neither is an edge the solver moves through a range. A weld
+            # declares no motion at all -- whether its two solids meet is the
+            # attachment report's fact (ADR-370) -- and a suppressed joint the
+            # assembly also gives no limits is doubly nothing.
+            continue
+        limits_key, step_key, unit = _SWEEP_KINDS.get(kind, (None, None, None))
+        step = steps.get(step_key) if step_key else None
+        remaining = _SWEEP_TOTAL_SECONDS - (time.monotonic() - start)
+        if joint.get("suppressed"):
+            result = {"status": "skipped",
+                      "reason": f"the assembly suppresses this {kind} joint, so the solver ignores it "
+                                "and it holds no range to sweep"}
+        elif kind not in _SWEEP_KINDS:
+            result = {"status": "incomplete",
+                      "reason": f"only unsuppressed limited tree hinges and sliders are supported, not {kind}"}
+        elif not limited:
+            result = {"status": "incomplete",
+                      "reason": f"this {kind} joint declares no limits, so the assembly states no range to "
+                                f"sweep it through and the pairs it moves were measured at the solved pose "
+                                f"only; declare {limits_key} for it to be swept"}
+        elif step is None:
+            result = {"status": "incomplete",
+                      "reason": f"{step_key} is not declared on the assembly, so this limited {kind} joint was not swept"}
+        elif not solved or remaining <= 0:
+            result = {"status": "incomplete", "reason": "unsolved assembly or total runtime budget exceeded"}
+        else:
+            result = _bounded_sweep_call(components, component_data, joint_data, baseline, name, step,
+                min(remaining, _SWEEP_JOINT_SECONDS))
+        report["joints"].append({"joint": name, "kind": kind, "unit": unit, **result})
+        if result["status"] not in ("complete", "skipped"):
+            report["status"] = "incomplete"
+    report["elapsed_seconds"] = time.monotonic() - start
+    return report
+
+
+# Absolute comparison slack in mm, not a geometry/contact tolerance (ADR-353).
+_FIT_MINIMUM_SLACK_MM = 1e-9
+
+#: What two components with nothing declared between them are held apart by.
+_FIT_DEFAULT_MINIMUM_MM = 0.1
+
+
+def _check_fit(rows, components, properties, component_outputs, raw_result=None,
+               joint_data=None, assembly_output=None):
+    """Annotate measured facts with advisory intent; never refuse a fit failure.
+
+    An undeclared pair is held to :data:`_FIT_DEFAULT_MINIMUM_MM`, which is
+    the rule for two parts that merely stand near each other. **A pair the
+    assembly welds is not that pair** (ADR-372): an unsuppressed fixed joint
+    is the design saying these two components are one rigid body, so meeting
+    face to face is what the declaration means rather than a gap that has
+    closed. Before this, flush-mounted hardware -- a servo against its
+    bracket, a horn against its link, a screw against the tab it clamps --
+    failed ``below clearance`` at 0.0 mm for doing exactly what the fixed
+    joint asked, and the only escape was to declare a contact that repeated
+    the joint. Its implied intent is ``attached`` with no minimum, published
+    on the row so a reader reaches the same verdict the engine did.
+
+    The implication is the weakest one available: it exempts the pair from
+    the default gap and asserts nothing else. Interpenetration still fails,
+    an unmeasured pair still fails, and an explicit ``contacts=`` or
+    ``clearances=`` declaration on the same pair still wins -- the author
+    saying "0.5 mm here" outranks the joint. Whether a weld's solids
+    actually meet stays the attachment report's separate advisory fact
+    (ADR-370), because a standoff or a captive fastener between them is a
+    legitimate design and only the design knows which it is.
+
+    ADR-379 briefly made a ``clearances=`` declaration on a welded pair a
+    failing check of its own, on the reading that a weld and a gap
+    contradict each other. **They do not, and ADR-380 withdrew it**: a
+    fixed joint fixes the *relative pose* of two components and says
+    nothing about whether their solids touch, and a declared minimum is a
+    floor on a distance rather than a claim that the pair moves. Two parts
+    held rigidly 2 mm apart -- a board over its standoff, a magnet over its
+    sensor, a shroud around a pulley -- are one rigid body and are also
+    meant to stay apart, and the declaration is the only place the design
+    can say by how much. So the declared minimum is consulted exactly as
+    it is on an unwelded pair, and the welding joints ride on the
+    published intent as a fact a reader can join, never as a verdict.
+    Whether the weld's own solids meet remains ``attachments``'s advisory
+    fact, which is what names a horn floating 0.2 mm off its link.
+    """
+    intents = {}
+    for intent in properties.get("fit_intent", ()):
+        key = tuple(sorted(component_outputs[id(intent[side])] for side in ("first", "second")))
+        intents[key] = {k: v for k, v in intent.items() if k not in {"first", "second"}}
+    welded = _fixed_joint_pairs(joint_data or {}, assembly_output)
+    for row in rows:
+        intent = intents.get(tuple(sorted((row["first"], row["second"]))), {})
+        joints = welded.get(frozenset((row["first"], row["second"])))
+        if not intent and joints:
+            intent = {"kind": "attached", "minimum_mm": 0.0, "joints": sorted(joints)}
+        elif joints and intent.get("kind") == "clearance":
+            # A rigidly held pair the design also gives a running gap: both
+            # facts are true, so both are published (ADR-380). The minimum
+            # below is judged as written; `joints` is a join, not a verdict.
+            intent = dict(intent, joints=sorted(joints))
+        row["intent"] = intent
+        distance, volume = row["distance_mm"], row["common_volume_mm3"]
+        failures = []
+        if volume is not None and volume > 1e-6:
+            failures.append("intersection")
+        if row.get("error") or distance is None or volume is None:
+            failures.append("unknown")
+        if distance is not None:
+            if intent.get("kind") == "contact":
+                if distance > 1e-3:
+                    failures.append("missed contact")
+            elif intent.get("minimum_mm", _FIT_DEFAULT_MINIMUM_MM) - distance > _FIT_MINIMUM_SLACK_MM:
+                failures.append("below clearance")
+        row["fit_failures"] = failures
+    plane_components = set()
+    visited = set()
+
+    def visit(value):
+        if isinstance(value, DomainValue):
+            if id(value) in visited:
+                return
+            visited.add(id(value))
+            if value.operation == "body" and any(
+                shape.properties.get("kind") == "plane"
+                for shape in value.properties.get("collision", ())
+            ):
+                plane_components.add(component_outputs[id(value.arguments[0])])
+            visit(value.arguments)
+            visit(value.properties)
+        elif isinstance(value, Mapping):
+            for item in value.values():
+                visit(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                visit(item)
+
+    visit(raw_result or {})
+    world = []
+    for value in properties.get("components", ()):
+        name = component_outputs[id(value)]
+        reason = "declared world geometry" if value.properties.get("world") else None
+        if name in plane_components:
+            reason = "collision plane declared on design component"
+        try:
+            shape = _component_world_shape(components[name])
+            if (not shape.Solids and len(shape.Faces) == 1
+                    and type(shape.Faces[0].Surface).__name__ == "Plane"):
+                reason = "surface-only plane"
+        except Exception:
+            pass  # Pair measurement retains its explicit unknown diagnostic.
+        if reason:
+            world.append({"component": name, "status": "world geometry", "reason": reason})
+    return world
+
+
+#: How close two solids must be to count as touching -- the same tolerance a
+#: declared contact is held to in :func:`_check_fit`.
+_ATTACHMENT_CONTACT_MM = 1e-3
+
+
+def _fixed_joint_pairs(joint_data, assembly_output):
+    """The component pairs this assembly welds, mapped to the joints that weld them.
+
+    One reading of "these two are one rigid body", shared by the two checks
+    that need it: the attachment report (ADR-370), which measures whether the
+    welded solids meet, and the fit check (ADR-372), which stops holding a
+    welded pair to the gap an unrelated pair is held to. A **suppressed**
+    fixed joint is not an edge of the mechanism and is not here, the same
+    rule the swept report applies (ADR-371).
+    """
+
+    pairs = {}
+    for name, joint in joint_data.items():
+        if joint.get("assembly_output") != assembly_output or joint.get("kind") != "fixed":
+            continue
+        if joint.get("suppressed"):
+            continue
+        components = {connector.get("component_output")
+                      for connector in joint.get("connectors") or ()}
+        if len(components) != 2 or None in components:
+            continue
+        pairs.setdefault(frozenset(components), []).append(str(name))
+    return pairs
+
+
+def _check_attachments(rows, joint_data, assembly_output):
+    """Measure whether each fixed-joint pair's solids actually touch (ADR-370).
+
+    A fixed joint asserts that two components are one rigid body. Whether
+    their solids meet is a separate, measured fact, and it is reported here
+    beside the fit checks rather than as one of them: a standoff, a shim or
+    a captive fastener between the two parts is a legitimate design, and
+    only the design knows which it is. What the report removes is the case
+    where nothing at all holds the parts together and every declared check
+    still passes.
+    """
+
+    measured = {frozenset((row["first"], row["second"])): row for row in rows}
+    pairs = _fixed_joint_pairs(joint_data, assembly_output)
+    report = []
+    for pair in sorted(pairs, key=lambda key: sorted(key)):
+        first, second = sorted(pair)
+        row = measured.get(pair)
+        item = {"first": first, "second": second, "joints": sorted(pairs[pair])}
+        if row is None:
+            item.update(status="unknown", distance_mm=None, common_volume_mm3=None,
+                        reason="no published pair measurement for this fixed joint")
+            report.append(item)
+            continue
+        distance, volume = row.get("distance_mm"), row.get("common_volume_mm3")
+        item.update(distance_mm=distance, common_volume_mm3=volume)
+        if row.get("error") or distance is None or volume is None:
+            item.update(status="unknown",
+                        reason=str(row.get("error") or "unmeasured pair"))
+        elif volume > 1e-6 or distance <= _ATTACHMENT_CONTACT_MM:
+            item["status"] = "touching"
+        else:
+            item.update(status="not touching",
+                        reason="a fixed joint holds these components rigidly "
+                               "together and their solids never meet")
+        report.append(item)
+    return report
+
+
 def validate_and_solve_assembly(
     document: Any,
     raw_result: Mapping[str, Any],
@@ -5949,9 +6448,14 @@ def validate_and_solve_assembly(
         if hasattr(joint, "Suppressed"):
             joint.Suppressed = bool(properties.get("suppressed"))
         frames = []
-        for connector_index, connector in enumerate(connectors, start=1):
-            native_reference = getattr(joint, f"Reference{connector_index}")
-            local_frame = getattr(joint, f"Placement{connector_index}")
+        native_sides = _native_connector_sides(
+            joint, connectors, output_name=output_name
+        )
+        for connector_index, (connector, native_side) in enumerate(
+            zip(connectors, native_sides), start=1
+        ):
+            native_reference = getattr(joint, f"Reference{native_side}")
+            local_frame = getattr(joint, f"Placement{native_side}")
             try:
                 global_frame = UtilsAssembly.getJcsGlobalPlc(
                     local_frame,
@@ -6076,6 +6580,21 @@ def validate_and_solve_assembly(
         )
 
     clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
+    world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result,
+                                joint_data, assembly_output)
+    attachments = _check_attachments(clearance, joint_data, assembly_output)
+    sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
+                   if assembly_properties.get(key) is not None}
+    # Coverage is reported even when neither step is declared (ADR-367). The
+    # per-joint loop already names a limited joint whose kind's step is
+    # missing, so the assembly that declares nothing learns *which* joints
+    # went unswept instead of only that a sweep is absent. It costs nothing:
+    # with no step to sweep at, every joint short-circuits before any
+    # geometry call, and an assembly with no limited joint reports complete
+    # coverage of an empty set.
+    clearance_sweep = _measure_joint_sweeps(
+        components, component_data, joint_data, clearance,
+        sweep_steps, diagnostics["status"] == "solved")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
     if simulation_contract is not None:
@@ -6330,7 +6849,10 @@ def validate_and_solve_assembly(
         )
     if exploded_view_summaries:
         diagnostics["exploded_views"] = exploded_view_summaries
+    by_name[assembly_output]["clearance_sweep"] = clearance_sweep
     by_name[assembly_output]["clearance"] = clearance
+    by_name[assembly_output]["world_geometry"] = world_geometry
+    by_name[assembly_output]["attachments"] = attachments
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],

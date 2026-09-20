@@ -133,6 +133,20 @@ class CadexProjectScriptStore:
             "accepted_revision": "",
             "accepted_contract": None,
             "accepted_digest": "",
+            # What the accepted revision's outputs *measure*, learned the
+            # first time the byte digest drifted and matched anyway
+            # (ADR-389): ``{"accepted_digest": ..., "geometry_digest": ...}``.
+            # None until then, and None forever for a project whose bytes are
+            # reproducible. It is here rather than derived on demand because
+            # the evidence it is derived from may already have been pruned
+            # by pre-ADR-398 restores. New restores retain those artifacts
+            # by deferring pruning until the accepted pin is settled.
+            # It carries the accepted digest it was learned under
+            # because it would otherwise outlive its own model: `rebuild` and
+            # `write_script` both re-accept, and a measurement of the previous
+            # design would refuse the current one. No migration: `read_state`
+            # merges the declared keys over whatever the file has.
+            "accepted_geometry": None,
             # Locator for the accepted revision's staged artifacts (BREP +
             # worker report). The accepted attempt directory is pinned: no GC
             # removes it while it is referenced here (Phase 5.2).

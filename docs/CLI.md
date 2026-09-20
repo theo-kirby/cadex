@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-14. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-16. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -54,11 +54,12 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). **`--offset-mm` is optional**: omitted, the offset is derived from the accepted bounds the way the walk derives it — every candidate is cut and the one covering the most objects wins (ADR-273, ADR-275). The note reports the offset, whether it was `explicit` or `derived`, and how many of the model's objects the cut reached. | no |
 | `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews plus `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
-| `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. | no |
+| `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. The same rows reach the agent as `inspect scope=clearance` and, summarised, as the `fit` block on every build reply (ADR-346), whose `sweep` half carries the published joint sweeps (ADR-366). | no |
 | `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, and the pose the solver settled on. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. With `--dry-run`, report the plan — the files the leg would touch and the steps it would take, in either mode — and train nothing. | no |
+| `cadex smoke --out DIR` | Simulate retained accepted artifacts with zero action or held position actuators, check finite state, exact component overlaps and floor support, and write `smoke.json` (ADR-352; details below). No rebuild or acceptance. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
 | `cadex review --host ADDR --port N` | Serve **this one project's** review dashboard to a browser, read-only (ADR-286): the accepted identity now, every recorded run labelled current/historical, its parameters and specs as recorded, training and rollout figures, retained artifacts, document snapshots, and the model in an orbit/zoom WebGL view — a run's own rollout meshes at its own revision, or the accepted attempt's tessellation. Opens no engine, rebuilds nothing, writes nothing, adds no `PROGRESS.md` row. Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/REVIEW-DESIGN.md`. | no |
 
@@ -70,8 +71,10 @@ Flags, valid on either side of the subcommand:
 | `--out DIR` | Write exported files here. Omit and nothing is written. |
 | `--format step,stl` | Any of `step`, `stl`, `brep`. Default `step,stl`. |
 | `--offset-mm N` | `section`: where along the plane normal to cut. **Omit it** to derive the offset from the accepted bounds (ADR-275); the old default was the constant 0.0, which on a mechanism standing off that plane draws an empty page and calls it `empty`. |
+| `--sweep` | `clearance`: write published joint sweep coverage and measurements to `docs/clearance-sweep.md`, without rebuilding (ADR-350). |
+| `--seconds S`, `--mode hold\|zero`, `--penetration-mm N`, `--rest-speed-mm-s N`, `--max-tilt-degrees N`, `--fps N`, `--timeout S` | `smoke` (ADR-352): the simulated duration (default 2 s), the command (hold the solved pose, or zero action), the deepest floor-proxy penetration (default 0.5 mm), the speed under which a free base counts as resting at the end (default 10 mm/s), how far a free base may turn from its accepted pose before it counts as fallen over (default 30°, ADR-377), the samples per simulated second at which the checks look (default 50), and the wall-time bound (default and maximum 300 s). `--model NAME` and `--task NAME` pick among several exported models or tasks. |
 | `--min-clearance-mm N` | `clearance`: flag distances strictly below N (default 0.1 mm). |
-| `--max-common-volume-mm3 N` | `clearance`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
+| `--max-common-volume-mm3 N` | `clearance` and `smoke`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
 | `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output to inventory. A project publishes at most one, so this is only ever a check that you are looking at it. |
 | `--blueprints` | `export` only: also copy the project's stored blueprint sheets into `--out`, store filenames kept (ADR-150) — which since ADR-157 means `0007-gearbox-overview-v1.png` for a **named** sheet rather than a revision prefix. Read-only — the shell renders them; this only reaches the store through `inspect scope=blueprint`. |
 | `--engine ROOT` | A staged engine payload. Default: `$CADEX_ENGINE_ROOT`, then the dev tree. |
@@ -85,6 +88,21 @@ project's `agent.json.model`, then `claude-fable-5` (ADR-249, ADR-276).
 The recorded model applies with or without `--resume`; that flag controls
 conversation continuity. A machine can override project choices once through
 its environment, and an explicit flag wins over both.
+
+Every turn is launched at an explicit **effort level** and with a hard
+**per-message output cap** (ADR-356). The effort level is `high`, the
+harness's own default, or `$CADEX_EFFORT` (`low`, `medium`, `high`, `xhigh`,
+`max`); it reaches the harness as `--effort`, so a headless turn does not
+inherit whatever level an interactive session on the same account last
+saved. The cap is 32,000 tokens, or `$CADEX_MAX_OUTPUT_TOKENS`, passed to the
+harness as its documented `CLAUDE_CODE_MAX_OUTPUT_TOKENS`; it bounds one
+model message, thinking and text together, and is the reason a turn can no
+longer spend half its wall-clock bound inside a single silent thinking
+message. On the adaptive-reasoning models the CLI defaults to, the harness
+documents that its fixed thinking budget (`MAX_THINKING_TOKENS`) has no
+effect, so the effort level is the documented soft control and the output
+cap the only hard one. A bad value in either variable refuses the turn with
+a `ValueError` naming it. Neither setting changes the prompt.
 `script --set` also takes `--replace`, which is you saying you mean to drop
 an output the accepted revision declares — without it such a script is
 refused, because `write_script` replaces *the whole* script and losing an
@@ -1894,7 +1912,18 @@ revision and commits views under a revision directory. The same snapshot supplie
 ```
 
 `error` is present instead of `notes` when `ok` is false. `outputs` entries
-that produced no file carry `skipped` with the reason. An `asset` run adds
+that produced no file carry `skipped` with the reason. A prompt run whose
+turn accepted a build adds `fit`, the measured-fit block that build's reply
+carried to the model (§4, ADR-346) — `verdict`, counts and every failing
+pair by name, with the swept `sweep` half inside it (ADR-366) — and the
+prose report prints it as a `fit` line with one line per failing pair,
+followed by a `sweep` line with one line per unswept joint and per
+failing pair, each carrying its status. The same run adds `inventory`,
+the catalog-identity block that reply carried (ADR-362) — `component_count`,
+`catalogued_count`, `uncatalogued_count`, the `catalog_counts` roll-up and
+every `uncatalogued_sources` name, with `derived_catalog_sources` naming
+the ones cut from a catalog body (ADR-381) — printed as an `inventory` line
+with one line per uncatalogued source. An `asset` run adds
 `assets`, the store's listing as `[{"name", "bytes", "sha256"}, …]`, sorted
 by name — the same rows `put_asset` and `inspect scope=assets` return. A
 `train` run adds `training`, the offboard trainer's receipt exactly as it
@@ -1942,7 +1971,8 @@ cli/cadex_cli/
   agent.py             one `claude -p` turn; the system prompt
   export.py            STEP/STL/BREP out of the display block; the rest copied
   render.py            accepted tessellation -> depth-tested named-angle SVG previews
-  clearance.py         inspect scope=clearance -> docs/clearance.md; read-time thresholds
+  clearance.py         inspect scope=clearance -> docs/clearance.md; read-time thresholds;
+                       and the `fit` block every build reply carries (ADR-346)
   inventory.py         inspect scope=inventory -> the project's docs/inventory.md
   train.py             the offboard trainer as a subprocess, local or remote
   walk.py              the lifecycle walk's leg plan (ADR-199)
@@ -1992,7 +2022,36 @@ fail on it.
 `inspect`, `link_part`, `put_asset`. The shell invented friendlier names because it had Blender's
 vocabulary to reconcile; a third vocabulary would be a third thing to keep
 in sync. The input schemas are **generated from `OP_ARG_SPECS`**, so they
-cannot drift from the protocol — only the prose is hand-written.
+cannot drift from the protocol — only the prose is hand-written, and the
+one bridge-owned argument below.
+
+`describe_api` reaches the model one page at a time (ADR-359, ADR-360).
+The engine's reply is untouched and the op takes no argument; the bridge
+offers a `section` argument of its own, consumes it, and cuts the view.
+Without it the reply is the **index**: everything above the domains, and
+each domain and the library listing their exports by name, with a
+`sections` line saying where the signatures are. With `section=<domain>` or
+`section=library` it is that **section**: the block's notes, globals and
+output types, every export's name, full signature and the first paragraph
+of its documentation, the whole catalog for the library, and a
+`descriptions` line naming the `inspect scope=api` path that holds the rest
+of any docstring. A section the contract lacks is refused with
+`NO_SUCH_SECTION` and the list of sections. That refusal is decided
+**after** the engine has answered: the bridge sends the argument-free
+request first, because the section names come from the reply, and only
+the `section` argument itself never reaches the engine.
+The harness refuses an MCP tool result over its own token cap and writes
+it to a file the product agent has no tool to read; the cap is not
+published in characters, so the bridge's `API_VIEW_CHAR_BUDGET` (21,500
+characters) is a measurement — on `ot7-heron-c` the harness refused
+163,200 characters, then the ADR-359 view at 82,523, and accepted every
+result up to 21,742. A live-engine test in `cli/tests/test_client.py` holds
+the index and every section under the budget (13,239 and 3,337–20,502 on
+2026-09-16) and checks that the sections between them carry every
+signature, so the contract cannot grow past a size the harness has been
+seen to accept without a test saying so. `section` is the one schema
+property `OP_ARG_SPECS` does not carry; `VIEW_ARGS` in `cadex_cli.tools`
+is the allowlist the drift test reads.
 
 `display` and `expected_revision` are removed from the schemas: both are
 injected by the bridge, never asked of the model. The revision comes from
@@ -2001,6 +2060,237 @@ standard`, no edges) on every modelling op, so the accepted attempt the
 review dashboard draws always retains tessellation (ADR-312). Anything the
 model supplies for either is overruled, and the reply's `display` block is
 dropped before the model sees it.
+
+### Every build reply carries the measured fit (ADR-346)
+
+After a successful `write_script`, `edit_script`, `set_params` or `rebuild`,
+the bridge reads `inspect scope=clearance` — the engine's own pair
+measurements of the accepted assembly's exact solids at the solved pose,
+published with the revision the build just accepted — and adds a `fit`
+block to the reply the model sees, beside the script's `stdout`:
+
+```json
+"fit": {
+  "verdict": "fail",
+  "source": "engine measurements of the exact solids at the solved pose, …",
+  "revision": "…", "assembly": "asm",
+  "pose": "initial solved pose (not swept motion)",
+  "thresholds": {"minimum_clearance_mm": 0.1, "maximum_common_volume_mm3": 1e-06},
+  "pairs_checked": 3,
+  "counts": {"clear": 2, "intersection": 1, "below clearance": 0, "unknown": 0},
+  "failing_count": 1,
+  "failing": [{"first": "a", "second": "b", "status": "intersection",
+               "distance_mm": 0.0, "common_volume_mm3": 100.0}]
+}
+```
+
+`verdict` is `pass` only when every pair was measured and every pair is
+clear at the `cadex clearance` defaults; `fail` names **every** pair that
+is not — an intersection, a distance below the minimum, or a pair the
+engine could not measure, with its reason — however many there are. The
+list is never cut short: sixty failing pairs are sixty entries, each with
+its own distance and volume, and nothing in the block points elsewhere
+for the rest. `unavailable` means the revision places no assembly
+components, so nothing was checked; it never means pass. A measurement the
+bridge cannot read is also `unavailable`, with the error, and the build is
+still accepted: **a failing fit is reported, never refused.** The block is
+computed from the published measurements and never from `stdout` — a
+script that prints "no overlap" over two solids that share 100 mm³ is
+handed both, and the system prompt tells the model which one is the claim.
+`clearance` is an `inspect` scope on the model's surface for the same
+reason, and the last accepted build's block is the envelope's `fit`.
+
+The bridge resolves all inspection pages before reporting fit. A later page
+can contain an intersection, a missed declared contact or an unmeasured pair
+even when the first page is clear; world-geometry findings are included too.
+If any later page cannot be read, the whole fit block is `unavailable` with
+the read error, rather than a verdict on the readable prefix. The successful
+build and its accepted revision still reach the agent. The paged build-reply
+fixture in `cli/tests/test_clearance.py` pins both outcomes.
+
+### The same reply carries the swept fit (ADR-366)
+
+The `fit` block's `verdict` is the solved pose and stays that. Inside it,
+`fit.sweep` is the swept half, read from the `clearance_sweep` the same
+`inspect scope=clearance` value already carries — no second engine call:
+
+```json
+"sweep": {
+  "verdict": "fail",
+  "source": "engine measurements of the exact solids at poses across each limited joint's declared range, …",
+  "coverage": "incomplete",
+  "step_degrees": 5, "step_mm": null,
+  "joints_checked": 2, "joints_complete": 1,
+  "joints": [
+    {"joint": "knee", "kind": "revolute", "unit": "degrees", "status": "complete",
+     "pairs_measured": 3, "step": 5, "sample_count": 23, "range_degrees": [-90, 20],
+     "initial_degrees": 0, "pairs_moving": 3,
+     "minimum_distance_mm": 0.0, "maximum_common_volume_mm3": 42.5,
+     "first_contact": {"value": -70.0, "unit": "degrees", "pair": ["shin", "foot"]}},
+    {"joint": "rail", "kind": "slider", "unit": "mm", "status": "incomplete",
+     "pairs_measured": 0, "pairs_moving": 0,
+     "minimum_distance_mm": null, "maximum_common_volume_mm3": null,
+     "reason": "sweep_step_mm is not declared on the assembly, so this limited slider joint was not swept"}
+  ],
+  "failing_count": 2,
+  "failing": [{"joint": "knee", "first": "thigh", "second": "shin", "status": "intersection",
+               "minimum_distance_mm": 0.0, "maximum_common_volume_mm3": 42.5,
+               "first_contact_degrees": -55.0},
+              {"joint": "knee", "first": "thigh", "second": "cover", "status": "below clearance",
+               "minimum_distance_mm": 0.04, "maximum_common_volume_mm3": 0.0,
+               "minimum_mm": 0.1, "distance_mm": 10.75, "first_contact_degrees": null}]
+}
+```
+
+`verdict` is `pass` only when every limited joint was swept to completion,
+no pair interpenetrates anywhere in its range **and no pair closes below its
+minimum there** (ADR-378). `fail` names **every** failing pair, with the
+joint it is through and the joint value it first touched at, on the same
+never-cut-short terms as the static list — and it does not hide missing
+coverage, which stays in the joint rows beside it.
+
+A `below clearance` row is a gap the motion closed: the pair's own minimum —
+its declared `clearances=` value, or `minimum_clearance_mm` for a pair with
+nothing declared — not met somewhere in the range, with `distance_mm` beside
+it saying what the solved pose measured. Before ADR-378 the block held the
+minimum it measured against nothing, so a hinge that took two parts from
+10.75 mm apart to 0.04 mm — a quarter of the gap the static block holds the
+same undeclared pair to — printed that 0.04 mm beside `verdict: pass`. The
+rule is the narrowest one that closes it, so the swept block stays strictly
+additive to the static one: only a pair **this joint moves** is judged, only
+a pair the static block calls **clear** is judged (one that already fails at
+the solved pose is named there, once), and a pair declared `contact` or
+carrying a fixed joint's implied `attached` intent (ADR-372) is exempt here
+exactly as it is there. On every ot7 receipt retained before this change the
+new rule adds no failure.
+`incomplete` means a joint the engine could not sweep, carrying the engine's
+own reason. `unavailable` is the verdict when there is no joint row to judge
+at all, and it covers **two** different facts that `coverage` beside it tells
+apart (ADR-368): `coverage: unavailable` is a revision accepted by an older
+engine, which published no sweep — the only thing the *raw* published
+`clearance_sweep.status` ever means since ADR-367 — while `coverage:
+complete` with no joint row is a current revision whose assembly declares no
+limited joint. `reason` says which in words, and the one-line progress phrase
+reads `sweep unavailable: no published sweep` or `sweep unavailable: no
+limited joint` rather than a bare `sweep unavailable`.
+A joint row's `minimum_distance_mm`, `maximum_common_volume_mm3` and
+`first_contact` are read over the pairs **that joint actually moves**, and
+`pairs_moving` says how many of `pairs_measured` those were (ADR-374). A pair
+with both sides on the same side of the joint — a horn welded to the link it
+turns with, two parts of one swept subtree — is rigid for this sweep and
+repeats its solved-pose measurement at every sample. Rolling it in would pin
+the joint's minimum at the weld's 0.0 mm and name first contact at the bottom
+of the range, where the sweep merely started, which is the weld and not the
+motion; the gap under a weld is the `attachments` block's fact, measured at
+the pose where it means something. `failing` spans every pair that
+overlaps, because an overlap is an overlap. A pair row from a revision
+accepted before ADR-374 carries no `relative_motion` flag and counts as
+moving, so an older receipt reads as it always did — including under
+ADR-378, whose three narrowing rules are what keep a flagless rigid row from
+failing: it repeats a solved-pose number the static block already judged.
+
+None of these is a pass: a joint that was not swept has been checked at one pose
+only. The block is advisory like the static one — a failing swept fit is
+reported, never refused — and the prose report prints it as a `sweep` line
+under the `fit` line.
+
+A joint row that declares **no limits** is a joint that can still move and
+was never bounded (ADR-375): a wheel, a free spinner, a loop-closure hinge.
+It reads `incomplete` with the declaration to add named per kind, it counts
+as missing coverage rather than as `joints_skipped`, and the line says so
+(`sweep incomplete: 2 of 3 joint(s) unswept`). Before this the engine dropped
+it before it reached a row, so a chassis whose one limited hinge swept clean
+read `sweep pass: 1 joint(s) swept` while the two parts that turn against it
+had been measured at the solved pose and nowhere else. A weld and a
+suppressed unlimited joint stay out of the report: neither holds a range, and
+a weld's pair is the attachment block's fact (ADR-370).
+
+A joint row whose `status` is `skipped` is a **suppressed** joint (ADR-371):
+the solver ignores it, so it holds no range to sweep and its absence is not
+missing coverage. It is counted in `joints_skipped`, apart from
+`joints_complete`, the verdict is judged over the joints that are left, and
+the progress phrase says both without saying either in the other's words
+(`sweep pass: 1 joint(s) swept; 1 suppressed`). An assembly whose limited
+joints are *all* suppressed has rows and judges none: that is the third fact
+wearing `unavailable`, reading `sweep unavailable: every limited joint
+suppressed (N)` with its own reason. Before this the engine handed a
+suppressed joint to the sweep child anyway, the child refused it, and one
+suppressed joint held the whole block at `incomplete` — telling the agent to
+declare a step it had already declared.
+
+An assembly that declares **neither** step is the case ot7's F5 create turn
+measured, and since ADR-367 it is `incomplete` rather than `unavailable`:
+the engine publishes coverage either way, so every limited joint is named
+with the declaration it is missing (`sweep incomplete: 2 of 2 joint(s)
+unswept`) instead of the reply saying only that a sweep is absent. It costs
+no measurement — with no step to sweep at, no geometry is touched. An
+assembly with no limited joint at all reports complete coverage of an empty
+set, which the block reads as `unavailable` with its own reason: there is no
+motion to check, and that is a different statement from a swept mechanism.
+
+### Every build reply carries the published catalog identity (ADR-362)
+
+Beside `fit`, the same four replies carry an `inventory` block, read from
+`inspect scope=inventory` under the same lock, so it describes the
+revision the reply accepted:
+
+```json
+"inventory": {
+  "available": true,
+  "source": "the published inventory of the accepted revision (inspect scope=inventory) …",
+  "revision": "…", "assembly": "asm",
+  "component_count": 6, "catalogued_count": 3, "uncatalogued_count": 3,
+  "catalog_counts": {"bearing/MR128": 2, "horn/SG-25T-1": 1},
+  "uncatalogued_sources": ["base_plate", "servo_drilled"],
+  "derived_catalog_sources": [
+    {"source_output": "servo_drilled", "family": "servo", "part_number": "MG90S"}
+  ],
+  "note": "Each name under uncatalogued_sources is a placed output no lib.* generator built as-is. … derived_catalog_sources names the ones the engine can prove are exactly that: servo_drilled (cut from servo/MG90S). …"
+}
+```
+
+`catalogued_count` counts placed components whose output is what a `lib.*`
+generator built; `uncatalogued_count` is the rest, per component;
+`uncatalogued_sources` names the distinct outputs behind them, so one
+drilled servo body placed twice is two uncatalogued components and one
+name. **The block is advisory.** It has no verdict and names no failure: a
+printed bracket is expected there, and the build is accepted whatever it
+lists. What it carries is the one fact ot7's F5 showed the agent cannot
+otherwise see — over four turns the agent's closing message said every
+purchased part was a catalog part while the published inventory listed
+both servos and both horns as uncatalogued, because the script had cut a
+bore into the servo bodies and re-clocked the horns, and a cut catalog body
+is no longer the catalog part. The block is computed from the published
+inventory and never from `stdout`.
+
+`derived_catalog_sources` (ADR-381) says **which** of those names is that
+defect. An uncatalogued source is one of two very different things — a
+printed part, which belongs there, or a purchased part the script modified,
+which does not — and the bare list cannot tell them apart. The engine
+resolves catalog identity by exact definition, so it can also follow the
+*base operand* of a definition down (`part.cut(base, tools)` puts the body
+being modified first) and name the nearest catalog body it came off. A row
+is `{"source_output", "family", "part_number"}`, sorted by source; a catalog
+body used only as a **cutter** appears on no base spine and is listed
+nowhere, which is the distinction between hardware and a clearance tool.
+**Absence is unknown provenance, not proof of a printed part** (ADR-382):
+the spine is the only path followed, so a catalog body fused into a printed
+solid as a *second* operand is a purchase this list cannot name, exactly as
+ADR-243's boundary and ADR-381's own limits say. The system prompt says the
+same, and tells the agent to read the script that built an unlisted name
+rather than read the silence as a pass.
+The list is empty rather than missing when nothing derives, and the block's
+`note` repeats each row in words. Every component row of `inspect
+scope=inventory` carries the same fact as `catalog_derived_from` beside the
+absent `catalog`, and `cadex inventory`'s table prints it as *cut from
+servo `MG90S`*. Still advisory: nothing here is a check and nothing is
+refused.
+
+`available` is false, with the reason,
+when the revision places no assembly components or the inventory could
+not be read; neither refuses the build. `inventory` is an `inspect` scope
+on the model's surface for the same reason, and the last accepted build's
+block is the envelope's `inventory`.
 
 ### What the agent is told
 
@@ -2015,9 +2305,19 @@ The overlay says three things the engine does not:
 - **Build it parametric**, because the cheap sweep only exists if the
   expensive turn made one possible.
 - **You cannot see your work.** No viewport, no screenshot, no render, no
-  pin — the agent verifies through `inspect scope=output` facts and the
-  script's own `stdout`, and is told so rather than discovering it by
-  failing.
+  pin — the agent verifies through `inspect scope=output` facts, and is
+  told so rather than discovering it by failing.
+- **Fit is measured, not printed** (ADR-346). The `fit` block on every
+  build reply is the evidence that parts fit; the script's `stdout` is a
+  claim the script makes about itself, and a `fit` naming a failing pair
+  overrules any printout that says otherwise. The prompt no longer tells
+  the agent to verify by printing.
+- **Catalog identity is measured too** (ADR-362). The `inventory` block on
+  every build reply says which placed components are catalog parts and
+  names every output no `lib.*` generator built as-is; it is advisory,
+  printed parts belong there, but a purchased part listed there has lost
+  its catalog identity whatever the script prints, and the agent is told
+  to read it before it says hardware comes from the catalog.
 - **You cannot train, and a file comes in by path.** `put_asset` is how a
   trained policy, its provenance or a mesh enters the project, and its
   reply's `sha256` is the digest the script names; asked to train, the
@@ -2220,3 +2520,138 @@ revision, policy, seed, trace digest and simulation time. New recordings appear 
 earlier entries and content-addressed files remain retained and downloadable.
 Identical video bytes are deduplicated. Old entries lacking a style are labelled
 “historical legacy style”. Copy the full project directory to retain all of them.
+
+### Declared fit intent (ADR-347)
+
+The published clearance scope includes each pair's `intent` and `fit_failures`,
+plus `world_geometry` findings by component name. Build-reply fit summaries and
+`cadex clearance` respect declared contacts (0.001 mm tolerance) and declared
+minimum clearances; undeclared pairs use the default 0.1 mm — except a pair an
+unsuppressed `fixed` joint welds, which the engine publishes with the implied
+intent `{"kind": "attached", "minimum_mm": 0.0, "joints": [...]}` and which no
+minimum applies to (ADR-372), including a `--min-clearance-mm` override. Its
+verdict is `clear` unless it interpenetrates or could not be measured, and
+`cadex clearance` writes `welded by <joint names>` as its detail.
+
+An explicit `contacts=` or `clearances=` entry on a welded pair still wins,
+and a `clearances=` one is judged by the minimum it declares exactly as an
+unwelded pair's is (ADR-380, withdrawing ADR-379): a fixed joint fixes a
+relative pose without requiring the solids to touch, and a declared minimum
+is a floor on a distance rather than a claim that the pair moves, so
+"rigidly held, and at least 0.5 mm apart" is one coherent design. Such a row
+carries the welding joints beside its declared minimum, and `cadex
+clearance` writes `declared minimum <n> mm, and welded by <joint names>` as
+the detail — a fact to join, not a verdict. ADR-379 briefly made that pair a
+failing check of its own, `clearance under weld`, on the reading that a weld
+and a gap contradict each other; that status no longer exists. What names a
+weld whose solids do not meet — F4's Heron horn, 0.2 mm off its link through
+all four repair turns — is the `attachments` report, beside the four checks
+and never one of them.
+
+A clearance
+deficit must exceed an absolute 1e-9 mm comparison slack to fail (ADR-353),
+including when `--min-clearance-mm` overrides the default. Published measurements remain
+unrounded. Swept reports publish raw extrema without threshold verdicts; the
+same slack applies when comparing their minima. Overlap above
+1e-6 mm³ still fails even for a declared contact. A missing contact has status
+`missed contact`; environment geometry has status `world geometry`. Counts of
+those statuses appear when present, and every finding reaches the reply.
+CLI threshold overrides apply to undeclared gaps and common volume; they do
+not replace a script's declared minimum or contact tolerance. Engine row
+`fit_failures` always describes the engine defaults. See XSCRIPT's measured-fit
+section for declaration syntax and the precise world-geometry detection rule.
+
+### What the fixed joints hold (ADR-370)
+
+The clearance scope also publishes `attachments`: one row per component pair
+joined by an unsuppressed `fixed` joint, carrying the joint names, the measured
+distance and common volume, and `touching`, `not touching` or `unknown`. Build
+replies carry it as `fit.attachments` with its own verdict — `touching`,
+`reported`, `unknown`, `none` (the assembly welds nothing) or `unavailable` (a
+revision accepted before ADR-370 published no report) — and the progress line
+ends `welded: N of M pair(s) not touching` whenever the assembly has a fixed
+joint. `cadex clearance` writes the same rows under the pair table. None of it
+is counted among the fit failures and none of it refuses anything: a gap under
+a weld is a measured fact and a question for the design, since a standoff or a
+shim between two welded parts is legitimate. What it removes is the design
+whose every declared check passes while nothing holds two parts together.
+
+
+### Published joint sweeps (ADR-350, ADR-351, 2026-09-14)
+
+`inspect scope=clearance path=/clearance_sweep` reads the accepted assembly's
+published sweep unchanged: coverage status, the declared steps (`step_degrees`
+for hinges, `step_mm` for sliders, either null when undeclared) and runtime
+bounds, per-joint timings, pair minimum distances (mm), maximum common volumes
+(mm³), and first-contact values in each joint's own `unit`: a revolute joint
+reports `range_degrees`, `initial_degrees` and `first_contact_degrees`; a
+slider reports `range_mm`, `initial_mm` and `first_contact_mm`. First contact
+is the first sample from the lower limit within 0.001 mm; other joints stay at
+their solved pose. Missing data returns `status: unavailable` with a reason;
+unsupported joints, a limited joint whose step is undeclared, and budget
+exhaustion retain `status: incomplete` and their reasons.
+Complete coverage means measurements exist, **not** that fit passes.
+
+`cadex clearance --sweep` writes these facts and the accepted revision to
+`docs/clearance-sweep.md`. Exit 0 means the report was written, including when
+coverage is missing or incomplete. Static threshold flags do not reinterpret
+sweep extrema as fit-intent verdicts. Inspection never rebuilds or re-accepts.
+To acquire measurements, explicitly build a script declaring
+`assembly.assembly(..., sweep_step_degrees=...)` and/or
+`assembly.assembly(..., sweep_step_mm=...)`. Legacy projects keep their
+accepted identity. The existing inspect arguments and generic paged response
+contract are unchanged; shell clients continue to pass the scope value through.
+
+## Bounded smoke rollout (ADR-352)
+
+```bash
+./cadex smoke --project ./mechanism --out ./mechanism/smoke1 --seconds 2 --json
+```
+
+`smoke` copies the retained accepted MJCF, optional task and detached BREP
+artifacts into the output directory and holds the project lock through measurement. It never runs
+`script.py`, restores the working script, or changes accepted state. The
+receipt pins the accepted revision and digest. Model/task hashes are checked
+when present in the retained report; tasks must match the selected model.
+The child uses stock MuJoCo, without a policy or trainer. `hold` holds each
+position actuator at its solved joint coordinate; other actuators receive
+zero. `zero` sends zero to every actuator.
+
+The command checks:
+
+- Finite position, velocity, acceleration, actuator state and controls, at
+  every solver step, with MuJoCo warning counters retained across resets.
+- Exact BREP common volume for every component pair at every sampled pose,
+  including pairs excluded from physics contact and parts with no collision
+  proxy. The default limit is `--max-common-volume-mm3 0.000001`. Each pair's
+  maximum volume and its time are retained. At the first frame, distances
+  and common volumes must agree with published static clearance; a missing
+  solid or disagreement is a measurement error, never a pass.
+- Floor-proxy penetration no deeper than `--penetration-mm 0.5`, and a free
+  base whose design is touching the environment floor at the end, whose linear
+  speed is at most `--rest-speed-mm-s 10`, and which has turned no further
+  than `--max-tilt-degrees 30` from the attitude its accepted keyframe gave it
+  (ADR-377: a design that toppled and settled meets the first two and is not
+  standing; the angle is read against the keyframe, so a base modelled lying
+  down and holding that pose reads zero). Grounded bodies hold by
+  construction. Floor support uses the model's collision proxies; component
+  fit uses exact solids.
+- Any termination conditions in the selected task, without applying task
+  randomisation, disturbances or a trained policy.
+
+Sampling defaults to 50 Hz, always includes the initial and final poses, and
+records actual solver times. Duration rounds up by less than one solver step.
+The trace budget is 15,000 requested intervals. This is a sampled check, not
+continuous collision detection. `--timeout` shares a wall-time budget across
+simulation and exact geometry measurement, capped at 300 seconds; a timed-out
+child is killed and no complete smoke receipt is claimed.
+
+`smoke-dynamics.json` is the intermediate physics result, not a complete smoke.
+`smoke-trace.json` holds the numeric component poses; `smoke-geometry.json`
+holds exact pair measurements; `smoke.json` combines all checks and identifies
+the accepted design. Reusing an output directory overwrites these artifacts.
+The CLI envelope and the project's `PROGRESS.md` carry the verdict and failing
+checks. Exit zero means a complete measurement, **not a passing design**: read
+`smoke.verdict`. A measured failure never changes acceptance. Missing artifacts,
+missing geometry, model/task disagreement or timeout make the command fail.
+No STEP/STL conversion, new dependency, protocol op or shell change is involved.

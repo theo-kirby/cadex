@@ -1,0 +1,288 @@
+{
+ "criterion": "F7",
+ "iteration": 165,
+ "project": "ot7-plover-e",
+ "seed": "the same ot7-plover-e project, resumed after its create turn (Opus, iteration 163); one model throughout.",
+ "evidence_directory": "evidence/turn-1",
+ "model": "claude-opus-5",
+ "settings": {
+  "effort": "medium",
+  "max_output_tokens": 32000,
+  "turn_bound_seconds": 3600
+ },
+ "prompt": {
+  "path": "continue-1.prompt.txt",
+  "bytes": 756,
+  "sha256": "80d725d2961e7ca44a56fed391745d6df551741c6545a837e815ca3ae0b7f4d0"
+ },
+ "turn_index": 1,
+ "dispatched_at": "2026-09-19T23:31:39Z",
+ "ended_at": "2026-09-19T23:45:01Z",
+ "window": {
+  "before_dispatch_percent": 44,
+  "bound_percent": 45,
+  "status": "allowed",
+  "stream_first_percent": 44,
+  "stream_last_percent": 46,
+  "resets_at": "2026-09-20T02:10:00+00:00",
+  "seven_day": {
+   "first_percent": 10,
+   "last_percent": 10
+  },
+  "overage_disabled_reason": "out_of_credits",
+  "note": "dispatched at 43 % read by a standalone probe three minutes earlier; the turn itself cost 2 points of the five-hour window, and the window is over the 45 % gate now."
+ },
+ "turn": {
+  "exit_code": 0,
+  "elapsed_seconds": 802.0909257719759
+ },
+ "turn_status": "completed",
+ "void": null,
+ "interruption": null,
+ "unreached": null,
+ "slot_consumed": true,
+ "continuations_used": 1,
+ "slots_spent": 2,
+ "void_calls_this_project": 0,
+ "interrupted_calls_this_project": 0,
+ "unreached_calls_this_project": 0,
+ "runner_status_after": "paused",
+ "remaining_after": {
+  "completed": 2,
+  "continuations_used": 1,
+  "continuations_unspent": 2,
+  "next_prompt": "continue-2.prompt.txt",
+  "closed": null
+ },
+ "actor_design_edits": 0,
+ "stream": {
+  "bytes": 352812,
+  "sha256": "c66c935329775f18cafb2277171b6a348878576ed0be317780201f7f09e8f1c7",
+  "frames": {
+   "system": 479,
+   "assistant": 6,
+   "rate_limit_event": 3,
+   "user": 2,
+   "tool_progress": 3,
+   "result": 1
+  },
+  "assistant_messages": 6,
+  "thinking_blocks": 3,
+  "tool_calls": 1,
+  "tool_calls_by_name": {
+   "mcp__cadex__edit_script": 1
+  },
+  "output_limit_resumes": 1,
+  "result": {
+   "subtype": "success",
+   "is_error": false,
+   "num_turns": 3,
+   "duration_ms": 710297,
+   "total_cost_usd": 12.573578500000002,
+   "output_tokens": 45594,
+   "thinking_tokens": 42817
+  }
+ },
+ "accepted_before": {
+  "revision": "a6f75c23d8e63c45a943cd726dcbbbc57f62f2e2f06dde2c45174788070ae094",
+  "static_failing": 12,
+  "pairs": 406,
+  "sweep": "complete at 15 deg on 4 of 4 joints, 48 failing pair-ranges"
+ },
+ "accepted_after": {
+  "revision": "0491ead7998a2d5b42cde770b2968df3d921baa2c3b7248a2bca19bb60cf9516",
+  "digest": "a00d1aea382ae292b4a217bd94c9c0365de4129e70b54cf73679d7fe92606588",
+  "attempt_id": "1789861381979-c8948be83c0b",
+  "changed": true
+ },
+ "static_fit": {
+  "verdict": "pass",
+  "pairs_checked": 406,
+  "counts": {
+   "clear": 406,
+   "intersection": 0,
+   "below clearance": 0,
+   "unknown": 0
+  },
+  "failing_count": 0,
+  "failing": [],
+  "thresholds": {
+   "minimum_clearance_mm": 0.1,
+   "maximum_common_volume_mm3": 1e-06
+  }
+ },
+ "attachments": {
+  "verdict": "touching",
+  "pairs_checked": 24,
+  "reported_count": 0,
+  "reported": [],
+  "thresholds": {
+   "contact_tolerance_mm": 0.001
+  }
+ },
+ "swept_fit": {
+  "verdict": "pass",
+  "coverage": "complete",
+  "step_degrees": 15.0,
+  "joints_checked": 4,
+  "joints_complete": 4,
+  "joints_skipped": 0,
+  "failing_count": 0,
+  "joints": [
+   {
+    "joint": "joint_hip_l",
+    "kind": "revolute",
+    "unit": "degrees",
+    "status": "complete",
+    "pairs_measured": 406,
+    "step": 15.0,
+    "sample_count": 9,
+    "range_degrees": [
+     -60.0,
+     60.0
+    ],
+    "initial_degrees": 0.0,
+    "pairs_moving": 190,
+    "minimum_distance_mm": 0.0,
+    "maximum_common_volume_mm3": 0.0,
+    "first_contact": {
+     "value": -60.0,
+     "unit": "degrees",
+     "pair": [
+      "c_centrescrew_hip_l",
+      "c_servo_hip_l"
+     ]
+    }
+   },
+   {
+    "joint": "joint_knee_l",
+    "kind": "revolute",
+    "unit": "degrees",
+    "status": "complete",
+    "pairs_measured": 406,
+    "step": 15.0,
+    "sample_count": 7,
+    "range_degrees": [
+     0.0,
+     90.0
+    ],
+    "initial_degrees": 0.0,
+    "pairs_moving": 78,
+    "minimum_distance_mm": 0.0,
+    "maximum_common_volume_mm3": 0.0,
+    "first_contact": {
+     "value": 0.0,
+     "unit": "degrees",
+     "pair": [
+      "c_centrescrew_knee_l",
+      "c_servo_knee_l"
+     ]
+    }
+   },
+   {
+    "joint": "joint_hip_r",
+    "kind": "revolute",
+    "unit": "degrees",
+    "status": "complete",
+    "pairs_measured": 406,
+    "step": 15.0,
+    "sample_count": 9,
+    "range_degrees": [
+     -60.0,
+     60.0
+    ],
+    "initial_degrees": 0.0,
+    "pairs_moving": 190,
+    "minimum_distance_mm": 0.0,
+    "maximum_common_volume_mm3": 0.0,
+    "first_contact": {
+     "value": -60.0,
+     "unit": "degrees",
+     "pair": [
+      "c_centrescrew_hip_r",
+      "c_servo_hip_r"
+     ]
+    }
+   },
+   {
+    "joint": "joint_knee_r",
+    "kind": "revolute",
+    "unit": "degrees",
+    "status": "complete",
+    "pairs_measured": 406,
+    "step": 15.0,
+    "sample_count": 7,
+    "range_degrees": [
+     0.0,
+     90.0
+    ],
+    "initial_degrees": 0.0,
+    "pairs_moving": 78,
+    "minimum_distance_mm": 0.0,
+    "maximum_common_volume_mm3": 0.0,
+    "first_contact": {
+     "value": 0.0,
+     "unit": "degrees",
+     "pair": [
+      "c_centrescrew_knee_r",
+      "c_servo_knee_r"
+     ]
+    }
+   }
+  ]
+ },
+ "inventory": {
+  "component_count": 29,
+  "catalog_counts": {
+   "bearing/mr128": 4,
+   "bolt/m2x12-socket": 4,
+   "bolt/m2x6-socket": 8,
+   "servo/mg90s": 4,
+   "servo_horn/mg90s-single_arm": 4
+  },
+  "uncatalogued_sources": [
+   "pelvis",
+   "shin_l",
+   "shin_r",
+   "thigh_l",
+   "thigh_r"
+  ],
+  "derived_catalog_sources": [],
+  "verdict": "24 catalog components and five printed parts; every purchased part catalogued. The centre screw's catalog row moved from bolt/m2x16-socket to bolt/m2x12-socket when the agent shortened it, so the design no longer uses the M2 x 16 the create prompt named -- still catalog hardware, a different length."
+ },
+ "smoke": {
+  "ran": false,
+  "note": "the attempt is paused with two continuations unspent; the runner attempts one closing smoke when an attempt closes, so F7 has no smoke result yet."
+ },
+ "edits": {
+  "write_script_calls": 0,
+  "edit_script_calls": 1,
+  "accept_tool_calls": 0,
+  "rebuild_calls": 0,
+  "script_lines_before": 427,
+  "script_lines_after": 440,
+  "script_sha256_after": "d14bfbaad98ff77d307d6b60a07d122b95a54ea2aa86bbefe7ac40b8d9c88450",
+  "unified_diff": "+20 / -7 lines against script_history/0004-a6f75c23d8e6.py",
+  "note": "one mcp__cadex__edit_script call did the whole repair, and its reply carried the new accepted revision with the fit block. Three geometric changes and one declaration: the cheek screw holes are cut at the M2 nominal major diameter (thr_r) instead of the 1.6 mm tap-drill radius, so the catalog bolt's shank is coincident with the hole wall; CTR_LEN became p.block_w - 2.0 (12.0 mm at default) with head_depth 2.0, so the centre screw spans the child block and its end face is coplanar with the servo spline's top face (engage_ctr is now 0); and servo-to-centrescrew was added to the declared contacts list. The two stdout lines that printed engagement volumes were rewritten to print the residual overlap and the thread length instead."
+ },
+ "measured_result_against_f7": {
+  "static": "pass, 0 of 406 failing (was 12 of 406 after the create turn)",
+  "attachments": "touching, 0 of 24 reported",
+  "swept": "pass, coverage complete, 4 of 4 joints at 15 deg, 0.0 mm3 maximum common volume on every joint",
+  "world_geometry": "none",
+  "catalog_hardware": "every purchased part catalogued (24 rows); five printed parts uncatalogued",
+  "actor_edits": 0,
+  "continuations_used": 1,
+  "smoke": "not yet run -- the attempt is paused with two continuations unspent",
+  "verdict": "F7 now has an accepted design with zero failing static and swept fit checks, reached from the frozen create prompt plus one frozen continuation with zero actor edits. Two of its six requirements are still unevidenced: the smoke rollout, which the runner attempts when the attempt closes, and nothing else remains to fix. F7 is not exhausted: continue-2 and continue-3 are unspent."
+ },
+ "what_the_agent_did": [
+  "Read the measured report for revision a6f75c23 and named the two failure classes from the numbers: eight tabscrew-to-printed-cheek pairs at 4.0715 mm3 (a 2.0 mm shank in a 1.6 mm tap-drilled hole) and four centrescrew-to-servo pairs at 15.70796 mm3 (5.0 mm of shank driven into the catalog MG90S envelope).",
+  "Called the fit an unexcusable solid overlap rather than declaring it away: 'Both are real solid overlaps, so they must go.' It did not add an intent declaration to either class to make the check pass.",
+  "Resolved the cheek class by modelling the hole at the M2 nominal major diameter and recording the 1.6 mm drill and M2 x 0.4 tap as a manufacturing note in a comment and a NOTE design_specs line.",
+  "Resolved the servo class by shortening the purchased screw instead of cutting the purchased servo: the centre screw is now block_w - 2.0 long, head flush in the child block's counterbore, its end face coplanar with the spline face, and thread engagement into the MG90S output-shaft bore is recorded as an assembly note.",
+  "Wrote both DECISION: lines the prompt asked for, each naming the measurement it read and the number after the change, plus one NOTE design_specs: line revising the fastener schedule and the mass roll-up.",
+  "One tool call in the whole turn (edit_script), and it hit the per-message output cap once mid-turn; the CLI's own resume message brought it back and it finished on its own in 802 s.",
+  "Its closing claim matches the retained measurement exactly: 406 clear of 406, 24 of 24 attachments touching, sweep complete and passing on 4 of 4 joints."
+ ]
+}

@@ -1,0 +1,86 @@
+{
+  "schema": "ot7-unreached-call-v1",
+  "rule": "ADR-386",
+  "summary": "F6's first continuation on ot7-robin-c was dispatched on claude-opus-5 and never reached the model: the CLI refused at project open in six seconds, before a provider session existed. No transcript was written. The runner booked it as a completed, slot-spending turn and closed the design as failed, forfeiting Robin's two remaining continuations. Under the charter only a turn that reached the model and ended on its own counts, so the call spent nothing; the receipt is corrected forward.",
+  "call": {
+    "project": "ot7-robin-c",
+    "design": "robin",
+    "model": "claude-opus-5",
+    "prompt": {
+      "path": "continue-1.prompt.txt",
+      "bytes": 756,
+      "sha256": "80d725d2961e7ca44a56fed391745d6df551741c6545a837e815ca3ae0b7f4d0"
+    },
+    "evidence_dir": "turn-1",
+    "exit_code": 1,
+    "elapsed_seconds": 5.978805270045996,
+    "provider_frames": 0,
+    "transcript_written": false,
+    "error": "Could not open /home/theo/cadex-projects/ot7-robin-c: The restore pass digest does not match the accepted digest.",
+    "window_at_dispatch": {
+      "five_hour_percent": 2,
+      "seven_day_percent": 1,
+      "status": "allowed",
+      "note": "The product agent had room; the refusal was local."
+    }
+  },
+  "accounting": {
+    "before": {
+      "status": "failed",
+      "slots_spent": 2,
+      "continuations_unspent": 0,
+      "closed": "failed"
+    },
+    "after": {
+      "status": "paused",
+      "slots_spent": 1,
+      "unreached_calls": 1,
+      "continuations_unspent": 3,
+      "next_prompt": "continue-1.prompt.txt",
+      "closed": null
+    },
+    "superseded_receipt": "evidence/attempt.superseded.json (project-local, retained)"
+  },
+  "blocker": {
+    "kind": "nondeterministic_rebuild",
+    "document": "docs/probes/ot7/DIGEST-DRIFT.md",
+    "accepted_digest": "0a6fe0f501ec345c96b4df5f5446ac10c0daeecbf3206fc65354624afe59aa08",
+    "observed_restore_digests": [
+      "e9ffa2726edea14564d0ca1fba8a703b5ba0e975bbb636322a7ae4f0ea539315",
+      "908ed881bd332c5aa6a0ff7bad3b5b4b899117aad50111b11537555a51648187",
+      "7d2a5051cda23dd8c8958803c5cbd9a351a233c3f9e96192c034109893a7d50c"
+    ],
+    "unstable_outputs": [
+      "wheel_l",
+      "wheel_r"
+    ],
+    "stable_outputs": 24,
+    "artifact_bytes": 16927,
+    "cause": "part.offset -> TopoShape.makeOffsetShape (OCCT BRepOffset_MakeOffset)",
+    "isolation": {
+      "offset_script_digests": [
+        "ad7a46c2aa03db4dc701ca14678bfaf06c89d6f35f927cfc95ac8fc637e47a99",
+        "f1d2ecd2169ddb799f07506bf1fe17bcd5580a8cd8cba19735fed09c7d4ffcd3",
+        "eed4f4fef7ef36e9b6c2d76d9400da41272c2e38b57ca95e33cb3634385e15cf"
+      ],
+      "control_script_digest": "260f322102dae31bba72f4454f963a9946d9f88db16beb042e8c2ff53750b466",
+      "control_runs": 3,
+      "note": "Same source, three separate cadexd processes each."
+    },
+    "geometry_unchanged": {
+      "volume_mm3": 232.666456132,
+      "faces": 5,
+      "edges": 7,
+      "vertices": 4,
+      "faces_with_unstable_bytes": 4,
+      "face_sorted_rebuild_stabilises": false
+    },
+    "open_designs_unaffected": [
+      "ot7-heron-c",
+      "ot6-finch",
+      "ot6-robin",
+      "ot6-heron"
+    ]
+  },
+  "next": "Robin's create turn stands, its three continuations are unspent, and the same frozen continue-1 prompt is re-sent into this same project by `resume` once the rebuild refusal is fixed. F6 is blocked, not exhausted."
+}

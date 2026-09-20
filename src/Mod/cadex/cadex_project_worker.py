@@ -28,6 +28,12 @@ import time
 import traceback
 from typing import Any
 
+from CadexGeometryDigest import (
+    DIGEST_SCHEMA,
+    canonical_json as _canonical_json,
+    file_sha256 as _file_sha256,
+    project_digest,
+)
 from cadex_domain_api import DomainValue, create_domain_api
 from cadex_domain_worker import (
     MAX_STDOUT_CHARS,
@@ -53,8 +59,6 @@ from cadex_tessellation import generate_display_artifacts, validate_display_requ
 REQUEST_ENV = "CADEX_XSCRIPT_DOMAIN_REQUEST"
 RESULT_ENV = "CADEX_XSCRIPT_DOMAIN_RESULT"
 SCHEMA = "cadex-xscript-project-worker-v1"
-DIGEST_SCHEMA = "cadex-project-digest-v1"
-_PLACEMENT_DECIMALS = 9
 
 
 def _execute_project_source(
@@ -131,101 +135,16 @@ def _execute_project_source(
     )
 
 
-def _canonical_json(value: Any) -> str:
-    return json.dumps(
-        value,
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _round_placement(values: Any) -> Any:
-    if not isinstance(values, (list, tuple)):
-        return None
-    rounded = []
-    for value in values:
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            rounded.append(round(float(value), _PLACEMENT_DECIMALS))
-        else:
-            return None
-    return rounded
-
-
 def compute_project_digest(root: Path, outputs: list[dict[str, Any]]) -> str:
-    """SHA-256 over the canonical description of all serialized outputs.
+    """The project content digest. See :func:`CadexGeometryDigest.project_digest`.
 
-    Entries are sorted by output name; solved placements are rounded to 1e-9
-    so OCCT noise below modeling tolerance cannot flip the digest.
-
-    A BREP output is its exported shape and a mesh output is its vertex set;
-    both are identified by that and nothing else, because for those two the
-    bytes *are* the whole output. Everything else is identified by its
-    canonical definition — the recipe — **and, if it retained an artifact, by
-    that artifact's bytes as well** (ADR-068).
-
-    The bytes clause is an addition rather than a substitution, and that is
-    the deliberate part. Before it, a *simulation trace* — an artifact this
-    engine had spent a slice proving byte-reproducible across processes — was
-    identified only by the graph that asked for it. Two projects whose
-    scripts matched but whose traces came from different solver versions had
-    the same digest, and `open_project` asserts digest equality, so the
-    difference passed in silence. Adding the bytes rather than swapping them
-    in makes the change strictly monotonic: everything that moved the digest
-    before still moves it, so no edit that used to be visible becomes
-    invisible.
-
-    The clause is keyed on *having an artifact* rather than on a roster of
-    known kinds, so an output kind invented later joins the digest by writing
-    a file rather than by someone remembering to add it here. `mesh` is the
-    single exception and is excluded by name, for the reason given below.
+    The material lives in ``CadexGeometryDigest`` rather than here because
+    ``cadexd`` needs the *same entries* to build the geometry digest it falls
+    back to when the bytes disagree (ADR-389), and the project worker is
+    staged into the sandbox by filename rather than imported by the service.
     """
 
-    entries = []
-    for item in outputs:
-        entry: dict[str, Any] = {
-            "output_name": str(item.get("name") or ""),
-            "domain": str(item.get("domain") or ""),
-            "output_type": str(item.get("type") or ""),
-        }
-        artifact = str(item.get("artifact_path") or "")
-        kind = str(item.get("artifact_kind") or "")
-        if artifact and kind == "brep":
-            entry["shape_sha256"] = _file_sha256(root / artifact)
-        elif artifact and kind == "mesh" and item.get("geometry_sha256"):
-            # Vertex-set fingerprint, not artifact bytes: the native set
-            # operations re-triangulate coplanar regions non-deterministically
-            # while the vertex set stays exact. Approximating mesh outputs
-            # (decimate trees) carry no fingerprint and fall through to the
-            # canonical-definition hash (see cadex_mesh_worker, ADR-016).
-            entry["mesh_sha256"] = str(item["geometry_sha256"])
-        else:
-            entry["payload_sha256"] = hashlib.sha256(
-                _canonical_json(item.get("definition") or {}).encode("utf-8")
-            ).hexdigest()
-            # `kind != "mesh"` and not `geometry_sha256 is None`: a decimate
-            # tree is approximating and run-dependent *by construction*, so
-            # its bytes are the last thing that should identify it. Excluding
-            # the kind rather than the missing fingerprint is what keeps that
-            # true.
-            if artifact and kind != "mesh":
-                entry["artifact_sha256"] = _file_sha256(root / artifact)
-        placement = _round_placement(item.get("solved_placement_matrix"))
-        if placement is not None:
-            entry["placement"] = placement
-        entries.append(entry)
-    entries.sort(key=lambda entry: entry["output_name"])
-    material = _canonical_json({"schema": DIGEST_SCHEMA, "outputs": entries})
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+    return project_digest(root, outputs)
 
 
 def _group_result_by_domain(
@@ -350,6 +269,63 @@ def _stamp_catalog_identity(outputs: list[dict[str, Any]]) -> None:
         found = identity.get(_canonical_json(dict(definition)))
         if found is not None:
             item["catalog"] = dict(found)
+            continue
+        derived = _catalog_the_base_came_off(definition, identity)
+        if derived is not None:
+            item["catalog_derived_from"] = dict(derived)
+
+
+#: How far ``_catalog_the_base_came_off`` follows the base operand down.
+#: A modelling chain is a handful of operations deep; this only bounds a
+#: definition that is deeper than any real one.
+_CATALOG_SPINE_DEPTH = 64
+
+
+def _catalog_the_base_came_off(
+    definition: Mapping[str, Any],
+    identity: Mapping[str, dict[str, str]],
+) -> dict[str, str] | None:
+    """Name the catalog row a *modified* body was cut from (ADR-381).
+
+    ``_stamp_catalog_identity`` resolves by exact definition, so a servo the
+    script drilled after taking it from ``lib`` has no catalog row — which
+    is correct, it is no longer the catalog part, and ot7's F5 failed on
+    exactly that count. What the published inventory could not say is *why*:
+    a drilled servo and a hand-modelled bracket are both bare names under
+    ``uncatalogued_sources``, one a defect and the other the ordinary case.
+
+    The distinction is positional. ``part.cut(base, tools)`` puts the body
+    being modified first and its cutters after, and the same holds for the
+    other combining operations, so a catalog definition reached by following
+    ``arguments[0]`` down from the root is what this output *is*, while one
+    that appears only as a tool is a clearance cutter and implies no
+    purchased part — a distinction the system prompt already draws in words
+    and nothing measured. The nearest such ancestor wins, so a cut of a
+    placed catalog body names the body rather than nothing.
+
+    Returns ``None`` when the base spine holds no catalog body, which is the
+    printed-part case; the key is then absent rather than null, like
+    ``catalog`` itself.
+    """
+
+    node: Any = definition
+    for _ in range(_CATALOG_SPINE_DEPTH):
+        if not isinstance(node, Mapping):
+            return None
+        if node is not definition:
+            found = identity.get(_canonical_json(dict(node)))
+            if found is not None:
+                return found
+        arguments = node.get("arguments")
+        if not isinstance(arguments, (list, tuple)) or not arguments:
+            return None
+        base: Any = arguments[0]
+        # ``part.fuse([a, b])`` passes its operands as one list, so the base
+        # is that list's first member.
+        while isinstance(base, (list, tuple)) and base:
+            base = base[0]
+        node = base
+    return None
 
 
 def _stamp_measurement_subjects(

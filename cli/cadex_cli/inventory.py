@@ -69,11 +69,18 @@ def _volume(row: Mapping[str, Any]) -> str:
 
 def _catalog(row: Mapping[str, Any]) -> str:
     catalog = row.get("catalog")
-    if not isinstance(catalog, Mapping):
-        return "—"
-    return "{:s} `{:s}`".format(
-        str(catalog.get("family") or ""), str(catalog.get("part_number") or "")
-    )
+    if isinstance(catalog, Mapping):
+        return "{:s} `{:s}`".format(
+            str(catalog.get("family") or ""), str(catalog.get("part_number") or "")
+        )
+    # Not a catalog part, and the engine can say what it was cut from
+    # (ADR-381): a modified purchase reads differently from a printed part.
+    came_off = row.get("catalog_derived_from")
+    if isinstance(came_off, Mapping):
+        return "cut from {:s} `{:s}`".format(
+            str(came_off.get("family") or ""), str(came_off.get("part_number") or "")
+        )
+    return "—"
 
 
 def render_inventory(value: Mapping[str, Any], *, name: str) -> str:
@@ -110,8 +117,21 @@ def render_inventory(value: Mapping[str, Any], *, name: str) -> str:
             "\n## Not from the catalog\n\n"
             "Outputs modelled by hand rather than by a `lib.*` generator:\n\n"
         )
+        came_off = {
+            str(row.get("source_output") or ""): row
+            for row in list(value.get("derived_catalog_sources") or [])
+            if isinstance(row, Mapping)
+        }
         for item in sorted(uncatalogued):
-            text += f"- `{item}`\n"
+            row = came_off.get(item)
+            if row is None:
+                text += f"- `{item}`\n"
+            else:
+                text += "- `{:s}` — cut from `{:s}/{:s}`, a purchased part this script modified\n".format(
+                    item,
+                    str(row.get("family") or ""),
+                    str(row.get("part_number") or ""),
+                )
     return text
 
 
@@ -161,6 +181,110 @@ def _read_path(client: Any, base: Mapping[str, Any], path: str) -> Any:
         if not isinstance(next_offset, int) or next_offset <= offset:
             return result
         offset = next_offset
+
+
+#: Where the inventory block's counts come from, said in the block itself
+#: so the agent reading it cannot mistake it for the script's own claim
+#: about which parts it took from the catalog.
+INVENTORY_SOURCE = (
+    "the published inventory of the accepted revision (inspect "
+    "scope=inventory): one row per placed assembly component, with a catalog "
+    "row only where the placed output is what a lib.* generator built. Not "
+    "the script's stdout. Advisory, not a fit check: a printed part is "
+    "expected here, a purchased part is not."
+)
+
+
+def inventory_summary(value: Any) -> dict[str, Any]:
+    """The catalog identity of a build as its reply carries it (ADR-362).
+
+    ``value`` is an ``inspect scope=inventory`` value. The block is the
+    component count, how many components place a catalog part, the catalog
+    roll-up by ``family/part_number``, and the name of **every** placed
+    output that no ``lib.*`` generator built as-is -- a hand-modelled
+    bracket, but also a servo body the script drilled after taking it from
+    the catalog, since a cut catalog body is no longer the catalog part.
+    The block is advisory: it names no failure and refuses nothing. What
+    ``derived_catalog_sources`` names the ones the engine can prove are a
+    modified purchase rather than a printed part -- the catalog body their
+    base was cut from (ADR-381). What
+    it removes is the blind spot ot7's F5 measured over four turns, an
+    agent that reported every purchased part as catalog hardware while
+    the published inventory listed its servos and horns as uncatalogued,
+    because nothing in its reply carried catalog identity. ``available``
+    is false when the accepted revision publishes no assembly.
+    """
+
+    if not isinstance(value, Mapping):
+        value = {}
+    components = [
+        row for row in list(value.get("components") or []) if isinstance(row, Mapping)
+    ]
+    counts = {
+        str(key): int(count)
+        for key, count in dict(value.get("catalog_counts") or {}).items()
+    }
+    catalogued = sum(counts.values())
+    uncatalogued = sorted({
+        str(item) for item in list(value.get("uncatalogued_sources") or [])
+    })
+    derived = [
+        {
+            "source_output": str(row.get("source_output") or ""),
+            "family": str(row.get("family") or ""),
+            "part_number": str(row.get("part_number") or ""),
+        }
+        for row in list(value.get("derived_catalog_sources") or [])
+        if isinstance(row, Mapping)
+    ]
+    derived.sort(key=lambda row: row["source_output"])
+    assembly = str(value.get("assembly") or "")
+    summary: dict[str, Any] = {
+        "available": bool(assembly),
+        "source": INVENTORY_SOURCE,
+        "revision": str(value.get("revision") or ""),
+        "assembly": assembly,
+        "component_count": len(components),
+        "catalogued_count": catalogued,
+        "uncatalogued_count": max(len(components) - catalogued, 0),
+        "catalog_counts": dict(sorted(counts.items())),
+        "uncatalogued_sources": uncatalogued,
+        "derived_catalog_sources": derived,
+    }
+    if not assembly:
+        summary["note"] = (
+            "No published assembly: catalog identity is read per placed "
+            "assembly component, and this revision places none."
+        )
+    elif uncatalogued:
+        note = (
+            "Each name under uncatalogued_sources is a placed output no lib.* "
+            "generator built as-is. Printed parts belong here. A purchased "
+            "part listed here has lost its catalog identity -- usually "
+            "because the script cut, drilled or re-clocked the catalog body "
+            "-- and is not catalog hardware whatever the script prints."
+        )
+        if derived:
+            note += (
+                " derived_catalog_sources names the ones the engine can "
+                "prove are exactly that: "
+                + ", ".join(
+                    "{:s} (cut from {:s}/{:s})".format(
+                        row["source_output"], row["family"], row["part_number"]
+                    )
+                    for row in derived
+                )
+                + ". Place the untouched catalog body as the component and "
+                "put the cut in the printed part that receives it."
+            )
+        summary["note"] = note
+    return summary
+
+
+def read_inventory_summary(client: Any, *, target: str = "") -> dict[str, Any]:
+    """Read the published inventory scope, every page, and summarise it."""
+
+    return inventory_summary(read_inventory(client, target=target))
 
 
 def read_inventory(client: Any, *, target: str = "") -> dict[str, Any]:

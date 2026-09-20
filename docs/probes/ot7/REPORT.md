@@ -1,0 +1,2217 @@
+# ot7 closing report — the agent designs it right
+
+Verified against source: 2026-09-20. [Cadex-new]
+
+**This is F10, the run's last unit under the ot7 charter (ADR-341): one row
+per design, the evidence for F1–F9, every call that was not an attempt, and
+what remains open.**
+
+ot6 produced three buildable designs and not one of them made itself fit.
+Finch was written by the actor with no model turn; Robin needed two actor
+edits to its script; Heron's three defects were found by a hand-run probe
+and fed back as hand-written prompts naming the part, the number and the
+defect. The cause was in the product: the engine measured every part pair at
+the solved pose and the agent could not reach the measurement, its reply
+carried the script's own printout, and its instructions told it to verify by
+printing.
+
+ot7 changed the product and then measured the agent against it. The
+measured-fit half landed with fixtures: a build reply that carries the
+published clearance counts and names every failing pair (F1), declared
+contact and clearance intent checked four ways (F2), exact solids swept
+through every declared joint range (F3), and a one-command bounded smoke
+(F8). The agent half then ran on frozen prompts, in fresh projects, with
+**zero actor edits to any design** — the constraint that separates this run
+from ot6 — and with every continuation prompt naming no part, no number and
+no defect.
+
+**Fourteen calls reached the model and ended on their own; fourteen others
+did not and spent nothing.** All four designs reached **zero failing static
+fit checks**, and the three with declared joint limits reached **zero failing
+swept checks**. Two of the four bars were missed and are reported as measured
+results rather than argued away: F5's arm left its two servos and two horns
+uncatalogued after modifying them, and F6's balancer — an inverted pendulum
+with `policy_on: 0` — topples in its own smoke. F7's biped met every count of
+its bar, in one continuation, and holds two unspent.
+
+## One row per design
+
+Static counts are failing pairs of pairs checked, in dispatch order; the pair
+count changes when a turn adds or deletes components. "Turns" counts only
+calls that reached the model and ended on their own.
+
+| Design / criterion | Prompts (frozen) | Turns | Continuations used | Static fit per turn | Final static | Final swept | Smoke | Inventory | Actor edits | ot6 comparison |
+|---|---|---|---:|---|---|---|---|---|---:|---|
+| **Heron repair / F4** — the seeded repair | [`repair.prompt.txt`](prompts/repair.prompt.txt) `5d846901…` + [`continue-1..3`](prompts/) | 4, on `ot7-heron-repair-d` | 3 of 3 | seed 15 of 120 → **0** of 120 → 0 of 105 → 0 of 105 → 0 of 105 | **pass, 0 of 105** | **complete at 5°, 0.0 mm³** | not required by F4's bar; none run | 15 components, every purchased part catalogued, no world geometry | **0** | ot6 repaired the same seed with three hand-written prompts naming each defect; ot7 used one design-agnostic repair prompt and the agent's own measurements |
+| **Heron arm / F5** | [`heron.create.prompt.txt`](prompts/heron.create.prompt.txt) `bcda5af5…` + `continue-1..3` | 4, on `ot7-heron-c` | 3 of 3 | 7 of 120 → 1 of 120 → **0** of 105 → 0 of 105 | **pass, 0 of 105** | **complete at 5°, 0.0 mm³** on 2 of 2 joints | **pass** — hold, 1.0 s, 51 samples, 105 pairs, no breach | 15 components, 8 catalogued rows (2 bearings, 6 screws) against 7 uncatalogued sources — three printed parts and **two servo and two horn solids** the agent bored and re-clocked, losing their catalog identity | **0** | ot6 accepted Heron after three measurement-fed hand-written corrections; ot7 reached a cleaner fit report with no human design feedback, and missed one count of its bar |
+| **Robin balancer / F6** | [`robin.create.prompt.txt`](prompts/robin.create.prompt.txt) `e20ee7ab…` + `continue-1..3` | 4, on `ot7-robin-c` | 3 of 3 | 0 of 276 (16 before its own repair edit) → **0** of 378 → 0 of 378 → 0 of 378 | **pass, 0 of 378**, 25 of 25 attachments touching | **complete at 100°, 0.0 mm³** on 2 of 2 joints, declared by `continue-1` | **fail** — support 102.2°, the design's own `fallen` rule at 0.660 s; its component-pair check over the trace passes | 28 components, **every purchased part catalogued**, no world geometry | **0** | ot6 needed two actor edits to Robin's script; ot7 needed none, and the balancer's smoke failure is an uncontrolled inverted pendulum at `policy_on: 0`, not a fit defect |
+| **Plover biped / F7** | [`plover.create.prompt.txt`](prompts/plover.create.prompt.txt) `b95f98b7…` + `continue-1` | 2, on `ot7-plover-e` | **1 of 3** | 12 of 406 → **0** of 406 | **pass, 0 of 406**, 24 of 24 attachments touching | **complete at 15°, 0.0 mm³** on 4 of 4 joints | **pass** — 0 penetration breaches, resting on the floor at 0.18° of tilt, 406 of 406 pairs over 51 samples; measured on the re-exported model, not on the accepted pin ([why](#iteration-170-f7s-biped-smokes-pass-on-the-model-the-fixed-engine-exports-adr-395)) | 29 components, 24 catalogued against five printed sources; **every purchased part catalogued** | **0** | **no ot6 baseline**: Finch was actor-authored with no model turn. This is the first biped this repository's product agent designed |
+
+The per-turn narrative for each row is in the iteration sections below; the
+receipts they cite are the JSON files under [`retained/`](retained/) and
+[`attempts/`](attempts/), each carrying its prompt digest, transcript digest
+and measured counts.
+
+## Every call that was not an attempt
+
+Fourteen dispatches reached no design result. None spent a slot, and each
+kept its evidence. Three rules classify them: **void** (ADR-355 — a provider
+usage, session or credit limit, or a turn this repository's own defect
+invalidated), **interrupted** (ADR-356 — it reached the model and did not end
+on its own), and **unreached** (ADR-386 — the CLI refused before a provider
+session existed).
+
+| # | Criterion | Project | Kind | What happened | Receipt |
+|---:|---|---|---|---|---|
+| 1 | F4 | `ot7-heron-repair` | void | pre-restart session limit, 4.090 s, no model message | [receipt](retained/repair-refusal.json) |
+| 2 | F4 | `ot7-heron-repair` | void | pre-restart session limit, 4.020 s | [receipt](retained/repair-refusal-iteration19.json) |
+| 3 | F4 | `ot7-heron-repair` | void | pre-restart session limit, 4.171 s | [receipt](retained/repair-refusal-iteration39.json) |
+| 4 | F5 | `ot7-heron` | void | pre-restart session limit, 1.917 s | [receipt](attempts/heron-refusal.json) |
+| 5 | F6 | `ot7-robin` | void | pre-restart session limit, 1.868 s | [receipt](attempts/robin-refusal.json) |
+| 6 | F7 | `ot7-plover` | void | pre-restart session limit, 3.273 s | [receipt](attempts/plover-refusal.json) |
+| 7 | F4 | `ot7-heron-repair-b` | interrupted | killed at the runner's 30-minute bound (decision #44) | [receipt](retained/repair-timeout-b.json) |
+| 8 | F4 | `ot7-heron-repair-c` | void | cut off mid-turn by the five-hour limit after 6 reads | [receipt](retained/repair-void-c.json) |
+| 9 | F5 | `ot7-heron-b` | interrupted | killed at the bound after 68 model messages, no design written | [receipt](retained/heron-interrupted-b.json) |
+| 10 | F6 | `ot7-robin-b` | interrupted | the runner died 16.3 s in and took its child with it | [receipt](retained/robin-interrupted-b.json) |
+| 11 | F6 | `ot7-robin-c` | unreached | `open_project` refused in 6.0 s on a digest drift; no provider session | [receipt](attempts/robin-c-unreached.json) |
+| 12 | F7 | `ot7-plover-b` | interrupted | the runner died 18 s in and took its child with it | [receipt](attempts/plover-b-runner-died.json) |
+| 13 | F7 | `ot7-plover-c` | interrupted | killed at the bound after 49 tool calls, mid-repair | [receipt](attempts/plover-c-interrupted.json) |
+| 14 | F7 | `ot7-plover-d` | void | it ended on its own in 1,310.0 s, but this repository broke its own worker bundle 58 ms into the build phase (ADR-390), so it never measured the agent | [receipt](attempts/plover-d-engine-mutated.json) |
+
+Rows 1–6 are the six calls the 2026-09-14 handoff counted as attempts and the
+restart amendment voided; their transcript digests are in
+[`attempts/void-calls.json`](attempts/void-calls.json). One further dispatch
+never happened at all: F6's create was **blocked before dispatch** on
+2026-09-16 by a refused window probe ([receipt](attempts/f6-window-refusal.json)),
+which spent nothing and is not a call.
+
+## Amendment: the restart (ADR-355)
+
+The 2026-09-14 version of this report declared the run exhausted and its
+outcome terminal and incomplete. That handoff is **superseded**: a usage-limit
+call is not an attempt, so nothing was exhausted. The runner now classifies
+such calls itself, spends no slot on them, keeps their evidence and stops
+further dispatch from that project ([runner README](runner/README.md#void-calls-adr-355)).
+The six pre-restart calls, classified by that rule from their retained
+transcripts, envelopes and stderr, are in [`attempts/void-calls.json`](attempts/void-calls.json):
+none was cut off mid-turn, and the six transcript digests in the table
+below match it. What each design has left:
+
+| Design / criterion | Void calls (not attempts) | Attempts that reached the model | Create or repair prompt | Continuations unspent | Retry project |
+|---|---|---|---|---|---|
+| Heron repair / F4 | 4: three pre-restart, and iteration 48 on `ot7-heron-repair-c` (cut off by the five-hour limit after 6 reads, [receipt](retained/repair-void-c.json)); and 1 **interrupted** call apart from them: iteration 44 on `ot7-heron-repair-b`, killed at the runner's 30-minute bound (decision #44: not a turn, no slot) | 4, all on `ot7-heron-repair-d`: iteration 48, the repair prompt, completed in 1,461.9 s with six accepted revisions ([receipt](retained/repair-completed-d.json)); iteration 51, `continue-1`, completed in 738.5 s with two accepted revisions ([receipt](retained/repair-continue-1-d.json)); iteration 52, `continue-2`, completed in 128.7 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-2-d.json)); iteration 53, `continue-3`, completed in 104.9 s with no edit and the unchanged script re-accepted ([receipt](retained/repair-continue-3-d.json)) | spent: the repair prompt, completed on `ot7-heron-repair-d` | 0 of 3 (all three spent; ADR-357: the repair prompt is the first prompt, not a continuation) | none: F4 is exhausted and its measured result stands |
+| Heron arm / F5 | 1 (pre-restart); and 1 **interrupted** call apart from it: iteration 55 on `ot7-heron-b`, killed at the runner's 30-minute bound after 68 model messages with no design written ([receipt](retained/heron-interrupted-b.json)) | 4, all on `ot7-heron-c`: iteration 57, the create prompt, completed in 1,530.4 s with three accepted design revisions, static fit 7 of 120 failing at the last ([receipt](retained/heron-create-c.json)); iteration 59, `continue-1`, completed in 610.6 s with two accepted revisions, static fit 1 of 120 failing (the bench as world geometry), the sweep complete with zero overlap, smoke passing ([receipt](retained/heron-continue-1-c.json)); iteration 66, `continue-2`, completed in 482.4 s with two accepted revisions, static fit 0 of 105 failing, no world geometry, the sweep complete with zero overlap, smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-2-c.json)); iteration 72, `continue-3`, completed in 142.9 s with no edit and the unchanged script re-accepted, static fit 0 of 105 failing, the sweep complete with zero overlap, the runner's smoke passing, servos and horns still uncatalogued ([receipt](retained/heron-continue-3-c.json)) | spent: the create prompt, completed on `ot7-heron-c` | 0 of 3 (all three spent) | none: F5 is exhausted and its measured result stands |
+| Robin balancer / F6 | 1 (pre-restart); and 1 **interrupted** call apart from it (iteration 148 on `ot7-robin-b`, killed at the runner's then 30-minute bound); and 1 **unreached** call, counted apart from both (iteration 157's `continue-1` on Opus, which `open_project` refused in 6.0 s before any provider session existed — the digest drift of [`DIGEST-DRIFT.md`](DIGEST-DRIFT.md), reclassified under ADR-386, [receipt](attempts/robin-c-unreached.json)) | 4, all on `ot7-robin-c`: iteration 148, the create prompt, completed in 1,676.4 s on `claude-fable-5`, static fit **0 of 276 failing**, sweep incomplete (no declared joint limits); iteration 160, `continue-1`, completed in 790.6 s on `claude-opus-5` with one accepted revision, static fit **0 of 378 failing** and the sweep **complete on both wheel axles at 0.0 mm³** ([receipt](retained/robin-continue-1-c.json)); iteration 161, `continue-2`, completed in 332.2 s, no edit and no submission, the same numbers re-measured through a forced `rebuild` ([receipt](retained/robin-continue-2-c.json)); iteration 164, `continue-3`, completed in 305.7 s, no edit, the unchanged script re-accepted through a fresh rebuild at the identical digest ([receipt](retained/robin-continue-3-c.json)) | spent: the create prompt, completed on `ot7-robin-c` | 0 of 3 (all three spent) | none: F6 is exhausted and its measured result stands — fit clean, closing smoke failed |
+| Plover biped / F7 | 2: 1 pre-restart, and **`ot7-plover-d`** — iteration 156's create call on `claude-opus-5`, which reached the model and ended on its own in 1,310.0 s but was ruled void as a design result in iteration 160, because this repo's own iteration-158 source edit poisoned the project-worker bundle 58 ms into the build phase (ADR-390): every build failed `DOMAIN_WORKER_NO_RESULT`, the accepted revision is a three-solid probe and its fit is `unavailable`, so the call never became a fair measurement of the agent ([receipt](attempts/plover-d-engine-mutated.json)); and 2 **interrupted** calls apart from both, both on `claude-opus-5`: iteration 154 on `ot7-plover-b`, whose runner died 18 s in and took the child with it ([receipt](attempts/plover-b-runner-died.json), finalised by `reclassify` in iteration 156, ADR-388), and iteration 155 on `ot7-plover-c`, killed at the runner's then 30-minute bound after 49 tool calls while it was repairing its own measured fit ([receipt](attempts/plover-c-interrupted.json)) | 2, both on `ot7-plover-e`: iteration 163, the create prompt, completed in 2,695.8 s with a 29-component biped, static fit **12 of 406 failing** ([receipt](attempts/plover-e-create.json)); iteration 165, `continue-1`, completed in 802.1 s with a single `edit_script` call, static fit **0 of 406 failing** and the sweep **complete on all four joints at 0.0 mm³** ([receipt](retained/plover-continue-1-e.json)) | spent: the create prompt, completed on `ot7-plover-e` | **2 of 3** | none: `ot7-plover-e` met every count of F7's bar in one continuation, and the charter's bar is *at most* three |
+
+Retries send the same frozen prompts and are dispatched only while the
+product agent's harness is available; no role stops or starts the run. The
+sections below are the 2026-09-14 text, kept as the record of what happened.
+Where they call a refusal an attempt, a slot consumed, or the run exhausted,
+this amendment supersedes them.
+
+> *Superseded on 2026-09-15:* "Terminal outcome: incomplete. This run
+> exhausted its authorized experiments without establishing F4–F7 or
+> successful completion. No further dispatch, collector-slot reset, repeated
+> measurement or unrelated horizon work is authorized by this handoff."
+
+## Design outcomes as recorded on 2026-09-14
+
+The [prompt manifest](prompts/README.md) retains frozen prompts, hashes and ot6
+provenance. Creates used `claude-fable-5`, exited 1, and consumed **zero of
+three continuations**. No actor edited a design. The table's "attempts" and
+"collector slot consumed" wording predates ADR-355; every row is a void call.
+
+| Design / criterion | Prompt and attempts | Completed turns / continuations used | Fit failures per dispatch; final static / swept | Inventory / smoke | ot6 comparison |
+|---|---|---|---|---|---|
+| Heron repair / F4 | [Frozen repair](prompts/repair.prompt.txt); three fresh-session refusals, 4.090 s, 4.020 s and 4.171 s | 0; same single repair text dispatched three times, no follow-on prompt; collector slot consumed | First: before unavailable, restored after 21. Second and third: 15 before and after. Latest measurements: 15 static failures / sweep unavailable | Baseline has 15 components; no smoke requested or run | First accepted seed `7e9eff5c…` remains unrepaired; all three original defect classes persist |
+| Heron arm / F5 | [Frozen create](prompts/heron.create.prompt.txt); one refusal, 1.917 s | 0 / 0 of 3 | Unavailable for sole dispatch; final static unavailable / sweep unavailable | Inventory unavailable; smoke command exit 1, 0.114 s, no simulation | ot6 accepted Heron after three measurement-fed corrections; ot7 produced no design |
+| Robin balancer / F6 | [Frozen create](prompts/robin.create.prompt.txt); one refusal, 1.868 s | 0 / 0 of 3 | Unavailable for sole dispatch; final static unavailable / sweep unavailable | Inventory unavailable; smoke command exit 1, 0.114 s, no simulation | ot6 accepted Robin with two actor script corrections; ot7 produced no design |
+| Plover biped / F7 | [Frozen create](prompts/plover.create.prompt.txt); one refusal, 3.273 s | 0 / 0 of 3 | Unavailable for sole dispatch; final static unavailable / sweep unavailable | Inventory unavailable; smoke command exit 1, 0.114 s, no simulation | No product-agent biped baseline in ot6: Finch was actor-authored; ot7 produced no design |
+
+For all three creates, there is no accepted revision. Zero pairs and zero
+failures in an empty report describe absent geometry. The smoke command could
+not find `script.json`; no finite-state, collision or support check ran.
+The collector's exit 0 means it retained the refusal, not that a design passed.
+The historical provider reset message does not authorize retries.
+
+### Void-call receipts and transcript identity
+
+All six calls, including both pre-collector F4 refusals, are retained below.
+Each is classified void in [`attempts/void-calls.json`](attempts/void-calls.json)
+by the same digest.
+
+| Dispatch | Receipt | Transcript SHA-256 | Causal record |
+|---|---|---|---|
+| F4 first | [Seed and refusal](retained/repair-refusal.json) | `7f4238888d0925e0fb3a5d2810843a3d01a7103a4155b3ea0ec0a7f07f4bd455` | [lucky-willow-8039](../../../.hypergraph/graph/record/lucky-willow-8039.md) |
+| F4 iteration 19 | [Second refusal](retained/repair-refusal-iteration19.json) | `5c41384de5d7c3b129467c5a63b9d6980de88507f02cd31ce7a4a6fed09cf19e` | [keen-quill-2265](../../../.hypergraph/graph/record/keen-quill-2265.md) |
+| F4 iteration 39 | [Collector refusal](retained/repair-refusal-iteration39.json) | `75cedbfd888448b5568bc17abf8bd7afe36b8905ffdf34869ad95cc28465323e` | [blue-slope-0916](../../../.hypergraph/graph/record/blue-slope-0916.md) |
+| F5 iteration 32 | [Arm refusal](attempts/heron-refusal.json) | `813e77ee6c0183c17e4a54dec380f83524ae4183ce763f0bfe7aab3ee9c0dedb` | [quiet-dew-5243](../../../.hypergraph/graph/record/quiet-dew-5243.md) |
+| F6 iteration 33 | [Balancer refusal](attempts/robin-refusal.json) | `01566753ac81f189b21cc565b300fc00f8d63e4cf63d985989d3663b6b490674` | [keen-chart-9070](../../../.hypergraph/graph/record/keen-chart-9070.md) |
+| F7 iteration 35 | [Biped refusal](attempts/plover-refusal.json) | `b5b359ec0d0f5465cd1e8520701e3d7c17285881823ed028b03e13996434ea59` | [red-hawk-4600](../../../.hypergraph/graph/record/red-hawk-4600.md) |
+
+The repair prompt SHA-256 is
+`5d846901563ddef8b278a88f46e9ccfcd1a372f1e38b475743372c20cdcb4904`.
+Create hashes are in their receipts.
+The [attempt narrative](attempts/README.md) retains artifact verification and
+per-call accounting.
+
+## F4: what the seed measurements actually establish
+
+The seed was copied verbatim from ot6 project commit `14bc75f…`, first accepted
+revision `7e9eff5c4ff2640fbaaedd475f7394c0aeae54ce59f6effc067cffeaca8b4475`.
+Its old accepted artifact directory was missing. Before the first refused
+call, static and swept reads failed. Normal product restore during that call
+recreated artifacts and changed the attempt pointer while preserving script,
+revision and accepted digest. Its 21-failure report is a restored measurement,
+not recovered historical artifact bytes; there is no invented before report.
+
+The later count of **15** is a checker correction, not a design improvement:
+ADR-353 removed six nominal-0.1 mm numerical false positives (two bearing gaps
+and four servo/tab-screw gaps), using an absolute 1e-9 mm comparison allowance.
+The second refused call measured 15 before and after with accepted identity
+unchanged. Only ordinary restore metadata changed. The subsequent
+[read-only baseline](retained/repair-measurement.json) independently collected
+105 pairs and 15 inventory components in 0.164 s with unchanged script and
+metadata. [Baseline record](../../../.hypergraph/graph/record/long-falcon-7461.md).
+
+The baseline contains eight intersections, six below-clearance pairs and one
+world-geometry failure. Servo/cheek overlap is about **248.20162986795 mm³**;
+`comp_base` still carries the collision plane. Both horn/link gaps are about
+**0.2 mm**. Those gaps do not fail the default 0.1 mm clearance minimum because
+the seed declares no contact intent. Thus even a future zero-failure static
+summary alone would not prove both attachments repaired.
+
+The later [repair collector](runner/README.md) separately requires contact
+within 0.001 mm and common volume within 1e-6 mm³ for both original horn/link
+pairs. Missing or renamed attachment evidence cannot pass without a functional
+identity justification. Its fixtures prove the assessment, not a real repair.
+[Collector record](../../../.hypergraph/graph/record/blue-sky-2193.md),
+[assessment record](../../../.hypergraph/graph/record/western-fox-7010.md).
+### Iteration 39: frozen collector outcome
+
+The critic requested the still-unused collector on the preserved seed.
+It dispatched the frozen prompt once in a fresh `claude-fable-5` session and
+received the same provider session-limit refusal (CLI exit 1) in **4.171 s**.
+There were zero completed design turns and zero actor edits. This is the
+**third F4 invocation**, including the earlier 4.090 s and 4.020 s refusals.
+The exclusive `evidence/f4-repair/` directory is now written. *Amended
+2026-09-15:* that directory is the void call's receipt, not a consumed slot;
+the repair prompt is retried on a fresh seed copy, `ot7-heron-repair-b`.
+
+The guarded before read took **0.164 s**, preserved the seed, and measured
+**105 pairs / 15 failures**. The after read took **0.164 s** and retained
+byte-identical clearance, fit, inventory and attachment-assessment reports.
+Both horn contacts fail before and after: shoulder **0.19999999999999732 mm**,
+elbow **0.19999999999993 mm**, each with **0 mm³** common volume. The world
+plane and approximately 248.2 mm³ servo overlap also persist. Swept coverage
+is unavailable; no F4 smoke was requested or run.
+
+Script hash, accepted revision/digest/attempt and parameters stayed unchanged.
+Normal product restore changed only `latest_candidate` and `updated_at` in
+metadata. The [portable receipt](retained/repair-refusal-iteration39.json)
+retains timings, both attachment assessments, the fresh session identity and
+all artifact sizes and SHA-256 digests; each listed hash was verified against
+the external project. The transcript contains a rate-limit event and no tool
+use. Collector exit 0 means evidence collection completed, not repair success.
+No successful after-repair report exists; F4 stays open.
+
+## Iteration 44: the first call that reached the model
+
+With Claude available (a one-word probe with the runner's model name
+answered in 5.4 s), the frozen repair prompt was dispatched once through the
+runner on `ot7-heron-repair-b`, a fresh copy of the seed with the earlier
+evidence, session pointer and CLI lock left out. The runner validated the
+seed identity, and its guarded before-read reproduced the baseline exactly:
+**105 pairs, 15 failures**, both horn attachments 0.2 mm short of contact,
+the servo/cheek overlap and the collision plane on `comp_base`. The
+[receipt](retained/repair-timeout-b.json) carries every number and digest.
+
+The model saw the prompt and worked for the whole bound. Its tool calls, in
+order: the clearance scope four times (the summary, then the pairs in three
+pages of 50), the script, the authoring contract, seven pages of the assembly
+and library API, the script source in two pages, then the library and part
+exports. After the fifteenth read, at 05:12:25 UTC, it produced one message
+of **64,000 output tokens, 63,999 of them thinking**, that ended on the
+provider's output cap at 05:29:03 with no text and no tool call. It made two
+more reads and was generating again when the runner killed the process group
+at **1,800.0 s**. It never called submit. **Zero design edits, zero
+revisions, zero acceptances**: the script hash and accepted revision are
+byte-identical before and after, the after-read measures the same 15
+failures, and only the ordinary restore fields (`latest_candidate`,
+`updated_at`) changed in the metadata.
+
+Two evidence limits, both the runner's. The CLI envelope is empty and the
+runner's `transcript.jsonl` is missing, because the collector writes the
+stream only after the turn returns and the kill came first. The provider
+stream was recovered unmodified from the harness's own session store for the
+project directory (698,175 bytes, SHA-256 `56e81011…`, retained under
+`evidence/f4-repair/recovered/`), and the receipt's per-message stop reasons,
+token counts and tool sequence come from it. Its usage total is 82,904 output
+tokens over 16 API messages.
+
+What this is and is not. It is the first measured product-agent result of the
+run: given measured fit and the repair prompt, the agent read the right
+things first and then spent 16.5 of its 30 minutes inside one thinking burst
+that produced nothing. It is not a void call: no usage, session or credit
+limit appeared anywhere in the stream. The collector of that day reported
+the repair slot spent under its timeout rule. **Decision #44** (the critic,
+iteration 44) ruled instead that the call is an **interrupted execution**:
+it did not end on its own, so it is not a turn, it consumed no frozen-prompt
+slot, and it is recorded apart from provider-limit void calls. The receipt's
+`slot_consumed`, `slots_spent` and `continuations_used` values stay as the
+collector's historical output, marked by its `ruling` field; the repair
+prompt and all three continuations are unspent. No retry was dispatched in
+that iteration.
+
+## Iteration 46: decision #44 carried into the collector and the CLI
+
+Two collector defects the interrupted call exposed are fixed (ADR-356). The
+collector now writes the provider stream frame by frame as it arrives, so a
+kill loses nothing received, and it applies decision #44 itself: a call
+whose child exited on the runner's bound or never launched is `interrupted`,
+returns its slot, is counted in `interrupted_calls` apart from `void_calls`
+and `slots_spent`, keeps its measurement, and names the fresh retry project.
+Fixtures pin a kill on a create, on a continuation after two completed turns,
+and on the repair, plus the frame-by-frame capture. The CLI now launches
+every turn at an explicit effort level and passes the harness its documented
+per-message output cap of 32,000 tokens, which caps thinking and text
+together; the harness documents that on Fable models its fixed thinking
+budget has no effect, so this is the only hard per-message bound available.
+No frozen prompt changed. The next design turn is the same repair prompt on
+`ot7-heron-repair-c`, dispatched only while the product agent is available.
+
+## Iteration 48: the repair turn that completed
+
+Two calls, both on fresh copies of the seed validated by the runner, both
+under the corrected collector (ADR-356), both with the unchanged frozen repair
+prompt (`5d846901…`, 830 bytes). No actor edited any design.
+
+**`ot7-heron-repair-c` is void** ([receipt](retained/repair-void-c.json)).
+Dispatched at 06:07 UTC into a five-hour window the stream's first
+`rate_limit_event` frame already showed at 95 % utilization, the model made
+six reads in 80 s (the clearance summary, the script, three pages of pairs,
+the script source) and was cut off mid-turn by the session limit, 429, at
+101 %. The collector classified it void with no slot spent; the before and
+after reads both show the seed's 15 failures and the script and accepted
+revision unchanged. The stream was written frame by frame, so this void call
+is the first whose transcript (216,946 bytes) survived in the runner's own
+capture. The probe that preceded it answered "ok", so an answering probe is
+not evidence of room in the window; the first `rate_limit_event` frame is.
+
+**`ot7-heron-repair-d` completed** ([receipt](retained/repair-completed-d.json)).
+Dispatched at 10:24:40 UTC, four minutes after the window reset (first frame
+at 8 % utilization), the turn ended on its own after **1,461.9 s** with 39
+model messages and 46 tool calls: 35 inspects, 9 script edits, one
+`describe_api`, one rebuild. Six edits were accepted and three rejected (two
+malformed replacement calls and one MuJoCo refusal of a collision plane on a
+non-static body). The longest silent thinking gap was 254 s; usage was
+80,451 output tokens (65,887 thinking) and 5.45 M cache-read input tokens,
+and the five-hour window went from 8 % to 57 % in this one turn. The turn
+read clearance first and after every accepted edit, then the script, the
+API, the outputs and, at the end, the inventory. The accepted revision
+sequence by failing count is 15 → 2 → 1 → 2 → 1 → 0 → 0, ending at
+`252e73b5…`, script `27680dc0…`, digest reproduced on rebuild.
+
+What the after-read measures, independently of the agent's printed claims:
+
+- **Static fit: pass, 120 pairs, 0 failing** (from 105 pairs and 15). The
+  eight intersections and six below-clearance pairs are gone; the world
+  geometry row is gone.
+- **Swept fit: complete** at 5°, shoulder [−90°, +65°] in 32 samples (20.9 s)
+  and elbow [−100°, +25°] in 26 samples (10.5 s), 31.3 s in all, solved-pose
+  agreement true on both joints, maximum common volume 0 on every pair at
+  every sample; the 19 pairs at 0 mm are all declared contacts.
+- **The collector's attachment assessment: fail.** `comp_horn_shoulder` to
+  `comp_upper_arm` is still 0.19999999999999732 mm and `comp_horn_elbow` to
+  `comp_forearm` still 0.19999999999993 mm, exactly the seed's values. The
+  agent declared both pairs as *clearance, minimum 0.05 mm* rather than as
+  contact, so the product's checker passes them.
+- **Inventory:** catalog counts unchanged (2 MR128 bearings, 2 M2×16 and 4
+  M2×6 screws, 2 single-arm horns), but `servo_shoulder` and `servo_elbow`
+  are now `uncatalogued_sources`: the agent cut a spline screw bore into each
+  catalog servo body so the centre screw's 9.42 mm³ overlap measures as
+  contact.
+
+How the three ot6 defects fared, in the agent's own five recorded decisions
+(ADR-006 to ADR-010 in the project's `DECISIONS.md`):
+
+1. **The floor plane** is gone from the base. In its place the agent added a
+   grounded 400 × 400 × 8 mm `bench` slab as an ordinary component with a
+   declared base contact, after MuJoCo refused the plane on a non-static
+   body and the checker reported it as world geometry. The checker now
+   measures every bench pair. The design carries a bench.
+2. **The buried servo tab** (248.2 mm³ on each joint) is resolved by a form
+   pocket in each cheek; the tab pairs now measure contact at zero volume.
+   The screw overlaps (4.07 mm³ per tab screw, 9.42 mm³ per centre screw)
+   are resolved by cutting the holes at shank diameter, which the agent
+   describes as modelling the thread-formed state.
+3. **The horn 0.2 mm from its link** is **not** closed. Neither the seed nor
+   the product's report ever named it: 0.2 mm exceeds the 0.1 mm default
+   minimum, so it was a clear pair on every page the agent read, and the
+   agent chose to declare it a running clearance. The only reader that flags
+   it is the collector's attachment assessment, which carries ot6's knowledge
+   that a horn attaches to its link.
+
+Two further changes the prompt did not ask for: the joint ranges are narrowed
+from symmetric ±90° and ±100° to the swept first contacts less 5° (shoulder
++65°, elbow +25°), mirrored into the servo command limits; and `sweep_step_degrees=5.0`
+is declared so the swept report publishes. Both are the agent's design
+decisions and are recorded as such.
+
+**Against F4's bar.** "Accepts with zero failing fit checks": met, on the
+product's static and swept checks. "Resolves all three defects": not met;
+two are resolved and the third is declared away. This is F4's measured
+result after its first prompt; the three frozen continuations remain unspent
+(ADR-357, [iteration 49](#iteration-49-the-slot-totals-corrected-adr-357)).
+It is a product finding as much as an agent one: fit intent (F2) is only as good as
+what a script declares, and an attachment nobody declared is invisible to
+measurements alone. No smoke rollout ran; the repair mode does not request
+one.
+
+## Iteration 49: the slot totals corrected (ADR-357)
+
+The iteration 48 text above and its receipt said the repair mode carried one
+frozen prompt and that F4's slot was spent. The slot table said the same in
+one column and "3 of 3" for every other design in the next. The charter's
+exhaustion policy is the rule: a design is exhausted only after "its create
+or repair prompt and all three continuations have reached the model", so
+the repair prompt is F4's first prompt, not its only one, and the critic of
+iteration 48 ruled the same. **F4 stands at one completed turn, its repair
+prompt spent, zero continuations used and three unspent**; the receipt
+[`repair-completed-d.json`](retained/repair-completed-d.json) keeps its
+`status: exhausted` and `continuations_used: 1` as the collector's output
+under the superseded rule, marked by a `ruling` field, the way the
+iteration 44 receipt carries decision #44. The
+[runner](runner/README.md#resuming-after-a-completed-turn-iteration-49-adr-357)
+now carries the four-prompt repair schedule, dispatches one turn per
+invocation for a repair, and resumes the next continuation on the same
+project without replaying any earlier turn; fixtures pin it. No prompt byte
+changed and no design was edited. The completed experiment on
+`ot7-heron-repair-d` stands as recorded, and its next turn is
+`continue-1.prompt.txt` on that project, dispatched only when the first
+`rate_limit_event` frame shows room: at dispatch time this iteration the
+five-hour window stood at 74 % with the reset at 15:20 UTC, and one turn of
+the observed size does not fit, so no continuation was sent.
+
+## Iteration 51: the first continuation completed
+
+`continue-1.prompt.txt` (756 bytes, digest unchanged) was resumed on
+`ot7-heron-repair-d` into the agent's own session at 15:22 UTC, two minutes
+after the five-hour window reset (first `rate_limit_event` frame at 8 %),
+through `run.py resume`. No actor edited any design. The turn ended on its
+own after **738.5 s** with 43 model messages and 20 tool calls: 14 inspects,
+4 `edit_script`, 2 `write_script`
+([receipt](retained/repair-continue-1-d.json)). It read the clearance
+summary first, then the script and its source, edited, then read the
+inventory and every page of both joints' swept pairs before its closing
+text. Four edit calls were rejected: one broke the script with an undefined
+name, one was a malformed replacement call, and two, an edit and a whole
+write, were refused by the engine because an output cannot be retired while
+its component still links to it. Two were accepted, `a95405bb…` then
+`f03054d6…` (script `59ff7c95…`, 578 → 557 lines, 75 diff lines), each
+measuring 0 failing of 105 pairs. Usage was 56,472 output tokens (14,196
+thinking) and 4.46 M cache-read input tokens; the five-hour window went from
+8 % to 63 % in this one turn. The runner paused with `continue-2` next.
+
+What the after-read measures, independently of the agent's printed claims:
+
+- **Static fit: pass, 105 pairs, 0 failing** (from 120 pairs and 0). The
+  15 bench pairs are gone with the bench; the 16 pairs at 0 mm are all
+  declared contacts; `world_geometry` is empty.
+- **Swept fit: complete** at 5°, shoulder [−90°, +65°] in 32 samples
+  (20.3 s) and elbow [−100°, +25°] in 26 samples (10.3 s), 30.6 s in all,
+  solved-pose agreement true on both joints, maximum common volume 0 and no
+  first contact on any pair at any sample; 18 pairs per joint at 0 mm, all
+  declared contacts.
+- **Inventory: every purchased part is a catalog part again.** `servo/mg90s`
+  ×2, `servo_horn/mg90s-single_arm` ×2, `bearing/mr128` ×2, `bolt/m2x6` ×4,
+  `bolt/m2x16` ×2; `uncatalogued_sources` is exactly the three printed parts
+  (base, upper arm, forearm); 15 components, from 16.
+- **The collector's attachment assessment: fail**, unchanged.
+  `comp_horn_shoulder` to `comp_upper_arm` is 0.19999999999999732 mm and
+  `comp_horn_elbow` to `comp_forearm` 0.19999999999993 mm, the seed's exact
+  values, still declared as 0.05 mm clearances.
+
+The agent's three recorded decisions (ADR-011 to ADR-013 in the project's
+`DECISIONS.md`) resolve the two design-contract departures the repair turn
+had introduced, both of which it found in the inventory read rather than in
+a failing fit row: the servos are placed as untouched `lib.servo` bodies
+again, and the centre screws are retracted so the M2×16 tip sits on the
+spline top face (measured contact, 0 mm, 0 volume, a declared pair) instead
+of a bore cut into a purchased body; the bench solid, component, body and
+floor collision are removed over two accepted revisions, the task's tip-floor
+termination stands in for the floor, and the +75° first contact measured in
+`252e73b5…` is kept out of reach by the +65° shoulder clamp.
+
+**Against F4's bar.** "Accepts with zero failing fit checks": met again on the
+product's static and swept checks. "Resolves all three defects": still not
+met; the horn gap remains declared as clearance, and nothing the agent reads
+names it. This turn fixed what its own tools reported, the inventory contract
+and the world geometry, and nothing they did not. Two continuations remain
+unspent and follow through `resume`, one per window.
+
+## Iteration 52: the window read by the runner, then continue-2 completed (ADR-358)
+
+This iteration ran twice. Its first attempt, while the five-hour window read
+**84 %** at 15:45 UTC and **93 %** (`allowed_warning`) at 15:49 UTC against
+a bound of 45 % from the two measured turns, dispatched nothing and moved the
+dispatch decision into the collector: `run.py` now probes the window before
+every frozen prompt, records the reading in the receipt (`window_readings`,
+and `window` on each dispatched row), and without room writes
+`status: paused` with a `deferred` block before any slot is persisted, so the
+same prompt resumes after the reset. `run.py window` only reads. Fixtures pin
+the real 84 % frame as no room and 8 % as room, the deferred create and
+repair, the schedule that pauses mid-way, and the hermetic default
+([runner README](runner/README.md#reading-the-window-before-every-prompt-iteration-52-adr-358)).
+That attempt was itself cut off by the actor's session limit before it could
+commit; the second attempt, after the 20:20 UTC reset, verified and committed
+it (68 runner tests passing) and then used it.
+
+`continue-2.prompt.txt` (611 bytes, digest unchanged) was resumed on
+`ot7-heron-repair-d` through `run.py resume` at 20:23 UTC. The runner's own
+probe read **6 %** (`allowed`, reset 01:20 UTC) and dispatched; the turn's
+first `rate_limit_event` frame read 7 %. No actor edited any design. The turn
+ended on its own after **128.7 s** with 17 model messages and 8 tool calls:
+7 `inspect` reads of the clearance scope (the summary, all 105 pairs over
+three pages, the sweep and each joint's swept table) and 1 `rebuild`, which
+reproduced the accepted digest `bf167b32…` bit for bit
+([receipt](retained/repair-continue-2-d.json)). It made **no edit and no
+write**: the frozen prompt states that the report still names failing
+checks, the agent wrote down the measured value at every tight pair, found
+`failing_count 0` at the rest pose and `maximum_common_volume 0.0` on all
+210 swept rows, re-ran the unchanged script through acceptance (same
+revision `f03054d6…`, same digest), and recorded ADR-014 in the project:
+"the claim of remaining failures is overruled by the engine's published
+measurements". Usage was 3,486 output tokens (1,563 thinking) and 2.40 M
+cache-read input tokens; the five-hour window went from 7 % to 28 %, the
+actor's own session sharing it. The runner paused with `continue-3` next.
+
+What the after-read measures, unchanged from iteration 51 because the script
+is unchanged (`59ff7c95…`, 557 lines): static fit **pass, 105 pairs, 0
+failing**, 16 pairs at 0 mm all declared contacts, `world_geometry` empty;
+swept fit **complete** at 5° on both joints (31.0 s in all), zero common
+volume and no first contact beyond the declared contacts present from each
+lower limit; inventory with all five catalog families at full count and only
+the three printed parts uncatalogued; the collector's attachment assessment
+**fail**, `comp_horn_shoulder`/`comp_upper_arm` and `comp_horn_elbow`/
+`comp_forearm` at 0.2 mm, declared as 0.05 mm clearances.
+
+**Against F4's bar.** "Accepts with zero failing fit checks": met a third
+time on the product's static and swept checks. "Resolves all three defects":
+still not met, two of three. This turn is the run's clearest measurement of
+the charter's premise: with every product check passing, a continuation
+prompt that asserts failures without naming one does not move the agent,
+which trusts the measurements over the prompt, exactly as its instructions
+say to. The horn gap stays a declared clearance because nothing the agent
+reads calls it anything else. One continuation remains unspent.
+
+## Iteration 53: the last continuation completed, and F4 exhausted
+
+`continue-3.prompt.txt` (732 bytes, digest unchanged) was resumed on
+`ot7-heron-repair-d` through `run.py resume` at 20:34 UTC. The runner's own
+probe read **44 %** (`allowed`, reset 01:20 UTC), one point under the 45 %
+bound, and dispatched; the turn's first `rate_limit_event` frame read 46 %.
+No actor edited any design. The turn ended on its own after **104.9 s** with
+10 model messages and 4 tool calls: 1 `inspect` of the clearance scope's
+summary, 1 `rebuild` that reproduced the accepted digest `bf167b32…` bit for
+bit, and 2 `inspect` reads of the two joints' swept tables
+([receipt](retained/repair-continue-3-d.json)). It made **no edit and no
+write**: the prompt, which calls itself the last correction turn and asks
+for every failing check to be resolved, found none named, so the agent
+re-ran the unchanged script through acceptance (same revision `f03054d6…`,
+same digest) and wrote the documentation the prompt asked for as reply
+lines: one `DECISION:` line, captured by the CLI as the project's ADR-015
+("Final correction turn made no geometry change"), and two
+`NOTE design_specs:` lines, captured into the project's `docs/design-specs.md`,
+counting **105 rest-pose checks passed, 0 failed** and **210 swept pair
+checks passed, 0 failed**. The second NOTE is the agent's own fit-intent
+ledger: 18 declared contacts at 0.0 mm at rest and at every sample, and
+"4 declared ≥0.05 mm clearances measure 0.0999999–0.2 mm (stub-in-bearing-bore
+both joints, horn pockets both joints)". Usage was 2,418 output tokens (855
+thinking) and 1.69 M cache-read input tokens; the five-hour window went from
+46 % to 48 %. The runner wrote `status: exhausted` with every slot spent:
+`slots_spent: 4`, `continuations_used: 3`, `next_prompt: null`.
+
+What the after-read measures, unchanged from iterations 51 and 52 because
+the script is unchanged (`59ff7c95…`, 557 lines): static fit **pass, 105
+pairs, 0 failing**, 16 pairs at 0 mm all declared contacts, `world_geometry`
+empty; swept fit **complete** at 5° on both joints (30.5 s in all), zero
+common volume and no first contact beyond the 18 declared contacts present
+from each lower limit; inventory with all five catalog families at full
+count and only the three printed parts uncatalogued; the collector's
+attachment assessment **fail**, `comp_horn_shoulder`/`comp_upper_arm` and
+`comp_horn_elbow`/`comp_forearm` at 0.2 mm, declared as 0.05 mm clearances.
+
+**Against F4's bar, now final.** "Accepts with zero failing fit checks":
+met on every one of the four turns, on the product's static and swept
+checks. "Resolves all three defects": not met, two of three. The floor
+plane is gone and the buried servo tab is out of the cheek; the horn is
+0.2 mm from its link, exactly where ot6's probe found it, and every report
+the agent reads calls that gap a passing declared clearance, which the
+agent's own ledger now says in as many words. Two continuations that named
+no failure left the design unchanged, and the last one documented the
+outcome as asked. That is F4's measured result: the product's checks reach
+the agent and it uses them, and a defect the checks do not name is not
+repaired. No slot remains; a further prompt would be a new attempt under a
+changed prompt, which the charter forbids for this design.
+
+### The defect F4's result left in the open, and the rule that did not fix it (ADR-379, ADR-380)
+
+F4's measured result stands exactly as recorded above: the numbers in this
+section are what the accepting engine published, and nothing here rebuilds or
+re-accepts that design. What its last paragraph names is a defect no check
+reports.
+
+Both horn pairs are welded — `weld_horn_shoulder` joins `comp_horn_shoulder`
+to `comp_upper_arm`, `weld_horn_elbow` joins `comp_horn_elbow` to
+`comp_forearm` — and both carry `{"kind": "clearance", "minimum_mm": 0.05}`
+from the same script. The 0.2 mm measured gap clears that declared 0.05 mm, so
+every fit check passes. Three prompts asking for every failing check to be
+resolved found none named on those pairs, which is why two continuations
+correctly changed nothing. The horn really is floating: nothing spans the
+0.2 mm, and what reports it is `fit.attachments`, which names the pair `not
+touching` with its joint — beside the four checks and never one of them
+(ADR-370).
+
+ADR-379 tried to close that by failing the *declaration*: a welded pair
+carrying a `clearances=` minimum became the failing check `clearance under
+weld`, at any gap. **ADR-380 withdrew it the same day.** A fixed joint fixes a
+relative pose and does not require the solids to touch, and a declared minimum
+is a floor on a distance rather than a claim of motion — so a board rigidly
+held over its standoffs is welded *and* meant to stay apart, and ADR-379 would
+have failed it and every design like it. A rebuild of `ot7-heron-repair-d`
+therefore reports what it reported: zero failing checks, and the horn gap in
+`attachments`. The agent's instructions now tell it to read that block and
+treat a `not touching` weld as a connection the geometry does not make unless
+a standoff or fastener spans it. Whether that should become a check of its own
+is open and undecided; it needs a way for a design to declare the spanner.
+
+No retained receipt moves under either decision: none carries an `intent` key
+at all. No `ot7-*` design was edited and no frozen prompt was spent.
+
+## Iteration 55: the arm create call interrupted at the bound
+
+The first F5 call that reached a model. `heron.create.prompt.txt` (9,648
+bytes, digest unchanged) was dispatched on the fresh, empty project
+`ot7-heron-b` through `run.py heron … --turns 1` at 21:28 UTC. The runner's
+own probe read **13 %** (`allowed`, reset 02:20 UTC), well under the 45 %
+bound, and dispatched; the turn's first `rate_limit_event` frame read 13 %,
+its last 51 %. No actor edited any design. **The turn did not end on its
+own**: the runner killed it at 1,800.0 s, and classified it `interrupted`
+under ADR-356 with `slot_consumed: false`, `slots_spent: 0`,
+`continuations_used: 0` and the retry named `ot7-heron-c`
+([receipt](retained/heron-interrupted-b.json)). The stream was captured frame
+by frame, 68 model messages, 1,023,332 bytes.
+
+Where the thirty minutes went, from the stream's own timestamps:
+
+- **21:28:02–21:31:53, reading (49 tool calls).** The agent's first call,
+  `describe_api`, returned 163,200 characters, which the harness refused as
+  over its tool-result cap and wrote to a file instead. The agent tried
+  `Grep`, `Read`, `Bash` and `Agent` on that file; all four are disabled in
+  the product-agent session. It then paged the same contract through 44
+  `inspect scope=api` reads: the catalog families, the assembly exports one
+  by one, the part exports one by one.
+- **21:29:24–21:31:53, three probe scripts.** The first was rejected
+  (`import json`, which xscript forbids). The second and third were accepted
+  as probes of the catalog geometry: the servo body, a flange cut from it, and
+  the horn, published as three `part` outputs with no assembly, so the
+  product's fit, sweep and inventory reads are unavailable by construction.
+  This is the accepted state the project was left in: revision `544ea74e…`,
+  twelve lines, zero components.
+- **21:31:53–21:56:46, thinking (1 tool call).** Three consecutive
+  thinking-only messages, each of about 31,950 estimated thinking tokens over
+  479, 494 and 472 s, each ending on the 32,000-token output cap that
+  ADR-356 set, each followed by the harness's own auto-resume text ("Output
+  token limit hit. Resume directly…"). Between the second and third the
+  agent made one read (the horn's face table). The stream carries no
+  thinking text, only the harness's token estimates, so what the model was
+  working out is not retained. A fourth such message began at 21:56:46 and
+  the bound fell at 21:58:02.
+
+**What this measures.** Under the ADR-356 settings (effort `high`, output cap
+32,000 tokens) this create prompt did not fit the bound: the cap that turned
+iteration 44's single 64,000-token thought into a kill at 16.5 minutes turned
+this one into three 8-minute thoughts and a kill at 30. The turn cost 38
+points of the five-hour window (13 % to 51 %) and produced no assembly,
+so there is no fit report, and nothing here is a design result for or
+against F5. The design's create prompt and all three continuations remain
+unspent. The window read 67 % after the kill, so the retry on `ot7-heron-c`
+waits for the 02:20 UTC reset; whether it should be dispatched under the
+same effort and cap, or under a lower effort level (the CLI's documented
+`CADEX_EFFORT` control, no prompt byte changed), is the decision the next
+unit has to make and record before it spends the window again.
+
+## Iteration 57: the arm create turn completed
+
+The first F5 turn that ended on its own. `heron.create.prompt.txt` (9,648
+bytes, digest `bcda5af5…`, unchanged) was dispatched on the fresh, empty
+project `ot7-heron-c` through `run.py heron … --turns 1` at 02:22:53 UTC,
+two minutes after the reset, at effort `medium` with the 32,000-token cap and
+the 30-minute bound unchanged (ADR-359). The runner's probe read **5 %** and
+dispatched; the stream's first `rate_limit_event` read 5 %, its last 62 %,
+and the probe after the measurement read 64 %. No actor edited any design.
+**The turn completed** in 1,530.4 s (exit 0, 123 model messages, 35 thinking
+blocks, no output-cap hit, 82 tool calls), the slot is spent, and the runner
+left the attempt `paused` with `continue-1` next and all three continuations
+unspent ([receipt](retained/heron-create-c.json), 1,492,517-byte stream,
+digest `4bd8071a…`, in the project).
+
+Where the 25.5 minutes went, from the stream's timestamps:
+
+- **02:22:56–02:25:36, reading (44 calls).** The first call, `describe_api`,
+  returned the ADR-359 view, **82,523 characters, and the harness refused
+  it** as over its tool-result cap, writing it to a file the agent has no
+  tool to read. The largest tool result the harness accepted in this turn
+  was 20,717 characters, so the cap lies between those two numbers and the
+  90,000-character budget does not reach it (paged by section under a
+  measured 21,500-character budget in iteration 60, ADR-360). The agent paged the contract
+  through 43 `inspect scope=api` reads in 2 min 40 s, against 3 min 51 s
+  and 44 reads at 163,200 characters in iteration 55.
+- **02:25:36–02:26:30, two probe scripts.** Catalog specs, then the servo
+  and horn bodies, accepted as `part` outputs with no assembly.
+- **02:26:30–02:38:20, one thinking message** of about 30,000 estimated
+  tokens that ended on its own under the cap: the effort level did what
+  ADR-359 said it would, one thought in place of iteration 55's three.
+- **02:38:20–02:40:40, the design.** 280 lines rejected on `import math`;
+  469 lines accepted as `c186fe25…`: a printed base, upper arm and forearm,
+  two MG90S, two single-arm horns, two MR128 bearings, four M2×6 and two
+  M2×16 screws as 15 fixed components, shoulder and elbow revolute joints
+  with ±90° and ±100° limits, eleven declared contacts, an MJCF model and a
+  reach task. The reply's fit summary: **105 pairs, 8 failing**, six screw
+  intersections and two declared horn-to-screw contacts missed by 0.55 mm.
+- **02:43:10, the first repair from the reply.** One accepted edit
+  (`9f7b39c4…`) restored the catalog horn's through-bore and resolved both
+  missed contacts: 105 pairs, 6 failing.
+- **02:44:00–02:45:50, the bench.** The agent then added the floor it had
+  reasoned MuJoCo needs, three ways: a plane (rejected, no solid), a slab
+  marked `world=True` (rejected by MuJoCo, plane only in static bodies) and
+  that slab welded to the grounded base, accepted as `512c157c…`, which the
+  F2 check reports as **world geometry** on `bench`: 120 pairs, 7 failing.
+- **02:46:00–02:48:22, the close.** The agent read `inspect scope=clearance`
+  in full, the inventory, rebuilt to the identical digest and wrote five
+  `DECISION:` lines and three `NOTE` lines into the project. Its closing
+  message says "the only measured intersections are the six thread
+  engagements, matching the analytic values exactly", 4.0715 mm³ per tab
+  screw and 18.096 mm³ per centre screw, and that the bench "is the
+  environment's plane … reported as world geometry".
+
+**What this measures.** The product's fit report reached the agent in every
+build reply and the agent acted on it inside the create turn: eight failing
+checks became six by a measurement-led edit, with no continuation prompt
+spent. What it did not do is treat the report as the bar. It accepted six
+intersections it can explain and a world component it knows is reported, and
+declared eleven contacts but no clearances and no sweep step, so **the swept
+check is unavailable** for this revision ("declare `sweep_step_degrees` …
+and explicitly rebuild") and F5's swept half is unmeasured. Its inventory
+lists the servos and horns under `uncatalogued_sources`: the servo solid has
+a tap-drill bore cut into its shaft and the horns are re-clocked, so two of
+the four purchased families lost catalog identity, while the bearings and
+all six screws keep it. Against F5's bar this revision fails on three
+counts: 7 failing static checks, no swept measurement, and two purchased
+parts not catalogued. The continuation prompt, frozen, asks for exactly
+these three things by measurement alone. The turn cost 59 points of the
+five-hour window (5 % to 64 %), so `continue-1` waits for the 07:20 UTC
+reset, dispatched through `run.py resume` only when the probe reads room.
+
+Against ot6: Heron's first accepted ot6 revision had a floor plane in the
+design, 248.2 mm³ of servo tab buried in a cheek, and a horn 0.2 mm from its
+link, none of them visible to the agent. Here the bench is reported by name
+as world geometry, the servo tabs seat at 0 mm and 0 mm³, and the horns sit
+in declared contact, measured; the six intersections are 4.07 and 18.10 mm³
+screw engagements, and the agent's printed claim and the product's
+measurement agree on their size and disagree on whether they count.
+
+## Iteration 59: the first continuation completed
+
+The first F5 continuation. `continue-1.prompt.txt` (756 bytes, digest
+`80d725d2…`, unchanged) was dispatched on `ot7-heron-c` through `run.py
+resume` at 07:22:36 UTC, two minutes after the reset, into the create
+turn's own session at the receipt's `medium` (ADR-357, ADR-359). The
+runner's probe read **5 %** and dispatched; the stream's first
+`rate_limit_event` read 5 %, its last 35 %, and the probe after the
+measurement read 38 %. No actor edited any design. **The turn completed**
+in 610.6 s (exit 0, 41 model messages, 18 thinking blocks, no output-cap
+hit, 19 tool calls: 13 `inspect`, ten of them the clearance scope, and 6
+`edit_script`), the first continuation slot is spent, and the runner left
+the attempt `paused` with `continue-2` next and two continuations unspent
+([receipt](retained/heron-continue-1-c.json), 556,279-byte stream, digest
+`d38864d8…`, in the project). Five minutes passed between the dispatch and
+the first stream frame, which is the end of the first message.
+
+Where the ten minutes went, from the stream's timestamps:
+
+- **07:27:38, the report.** One `inspect scope=clearance` read: the
+  accepted revision's seven failures and its unavailable sweep.
+- **07:28:13–07:28:38, three rejected edits.** Each failed because one
+  replacement's old text did not occur in the script.
+- **07:29:09, the repair, accepted as `ae1020d4…`.** One edit did four
+  things: bored the tab-screw and centre-screw holes to the 2.0 mm M2
+  nominal over the screwed length, keeping the 1.6 mm pilots past the
+  screw tip, and declared the six screw pairs as contacts (11 to 17);
+  replaced the bench's plane collision with a box matching the slab,
+  keeping `world=True` and the `fix_bench` weld to the base; declared
+  `sweep_step_degrees=5.0`; and narrowed both joint ranges through two new
+  parameters, shoulder [−90, 90] to [−90, 65] and elbow [−100, 100] to
+  [−100, 40], with the actuator command limits matched. The reply's fit
+  summary: **120 pairs, 1 failing**, the bench as world geometry; zero
+  intersections, zero below clearance.
+- **07:30:16, one rejected edit**: an MJCF body giving mass to a component
+  not in the assembly.
+- **07:30:26–07:31:22, nine clearance reads.** The static pairs and both
+  joints' sweeps, paged.
+- **07:31:44, `1779112b…`.** The second accepted edit changes four print
+  lines and nothing else: the printout now says the screw pairs "must
+  MEASURE as contact" instead of claiming an engagement annulus.
+- **07:32:46, the close.** Four `DECISION:` lines and one `NOTE`; the
+  project's DECISIONS.md gains ADR-007 to ADR-010.
+
+**What this measures.** At rest the product reports **1 of 120 failing**:
+zero intersections, zero below-clearance pairs, fifteen zero-distance pairs
+all of them declared contacts, and the bench reported as declared world
+geometry. The sweep is **complete on both joints at 5°**: shoulder 32
+samples in 20.25 s, elbow 29 samples in 10.79 s, `solved_pose_agreement`
+true on both, 0 mm³ maximum common volume on every one of the 120 pairs at
+every sample, the closest moving pairs the designed 0.15 mm stub-in-bearing
+and 0.25 mm horn-slot clearances, the forearm 1.0 mm from the upper arm at
+the elbow limit and 9.8 mm from the bench at the shoulder limit. The
+agent's own DECISION line says why the ranges narrowed: at the old
+symmetric limits the forearm tip crossed the bench at shoulder +70.8° and
+the forearm beam met the elbow yoke at +43.9°, which is the swept check
+finding the collisions F3 was built to find, and the agent choosing the
+range over the geometry. The smoke, run by the actor after the turn with
+the runner's own command into `evidence/turn-1/smoke`, **passes**: hold
+mode, 1 s, 51 samples, state finite, no floor breach at 0.5 mm, the base
+grounded, 120 exact-BREP pairs with no overlap at any sample, initial pose
+in agreement. Against F5's bar this revision now fails on **two counts**,
+down from three: **world geometry in the design** (the bench is a
+component, welded to the base, and its closing message calls that "no
+world geometry in the design"), and **two purchased families
+uncatalogued** (the inventory is unchanged from the create turn, and the
+closing message calls it "the same catalog hardware"). Both are places
+where the agent's claim and the product's measurement disagree and the
+agent kept the claim. The screw repair is the one the previous record
+flagged as the likely resolution: thread engagement is no longer modelled
+as overlap, the screws sit coincident in nominal holes, and the displaced
+volume is stated in the printout rather than measured. The continuation
+prompt, frozen, asks again for every failing check resolved and every
+purchased part a catalog part; `continue-2` is next through `resume`. The
+turn cost 30 points of the five-hour window (5 % to 35 %), the probe read
+38 % afterwards, under the runner's 45 % bound, so the next dispatch does
+not wait for the 12:20 UTC reset.
+
+Against ot6: Heron's ot6 revisions reached a clean fit only after three
+hand-written turns naming the floor plane, the buried tab and the horn
+gap. Here one frozen continuation, naming nothing, took the measured
+failures from seven to one, published the sweep and passed the smoke; what
+it did not do is take the bench out of the design or restore the catalog
+servos and horns, the two counts the measurement still names.
+
+## Iteration 66: the second continuation completed
+
+The second F5 continuation. `continue-2.prompt.txt` (611 bytes, digest
+`9a78ff9d…`, unchanged) was dispatched on `ot7-heron-c` through `run.py
+resume` at 12:22:51 UTC, three minutes after the reset, into the same
+session at the receipt's `medium` (ADR-357, ADR-359). The actor's own probe
+read **3 %** at 12:22:09 and the runner's read **7 %** and dispatched; the
+stream's first `rate_limit_event` read 9 %, its last 50 %, and the probe
+after the measurement read **56 %**, over the 45 % bound. No actor edited
+any design. **The turn completed** in 482.4 s (exit 0, 36 model messages,
+12 thinking blocks, no output-cap hit, 19 tool calls: 13 `inspect`, eleven
+of them the clearance scope, 4 `edit_script`, 1 `write_script` and 1
+`rebuild`), the second continuation slot is spent, and the runner left the
+attempt `paused` with `continue-3` next and one continuation unspent
+([receipt](retained/heron-continue-2-c.json), 488,861-byte stream, digest
+`1d83c796…`, in the project). One minute passed between the dispatch and
+the first stream frame.
+
+Where the eight minutes went, from the stream's timestamps:
+
+- **12:23:51, the decision.** The agent's first message reads the one
+  failing check its session already held, the bench's world-geometry row,
+  and concludes the bench must leave the model entirely.
+- **12:24:05, a rejected edit.** The engine refused to retire the
+  `bench_slab` output while the bench component link still referenced it.
+- **12:24:46–12:24:53, two script reads**, paged, of the source.
+- **12:26:53, a rejected whole-source write**, for the same reason.
+- **12:27:43, `d94fc2b8…`, accepted.** The bench component, its
+  `fix_bench` weld to the base, the base-to-bench declared contact, the
+  bench body with its box collision, and the bench's entries in the
+  component, joint and output lists removed; the slab solid kept for the
+  moment. The reply's fit summary: **105 pairs, 0 failing**.
+- **12:28:23, a rejected edit**: a replacement's old text not found.
+- **12:28:32, `58ff41b4…`, accepted.** The `bench_slab` solid and its
+  output retired and the comment rewritten to say the bench is the
+  environment's plane, not modelled. 105 pairs, 0 failing.
+- **12:29:11–12:29:55, eleven clearance reads.** The static report, the
+  sweep summary, both joints, and both joints' pairs paged; one read asked
+  for a page of 55 and was refused at the cap of 50, then retried.
+- **12:30:00, a rebuild.** The same revision re-accepted at the same digest.
+- **12:30:53, the close.** One `DECISION:` line and one `NOTE
+  design_specs:` line; the project's DECISIONS.md gains ADR-011.
+
+**What this measures.** At rest the product reports **0 of 105 failing**:
+zero intersections, zero below-clearance pairs, fourteen zero-distance pairs
+all of them declared contacts, and `world_geometry` empty. The sweep is
+**complete on both joints at 5°**: shoulder 32 samples in 19.45 s, elbow 29
+samples in 10.39 s, `solved_pose_agreement` true on both, 0 mm³ maximum
+common volume on every one of the 105 pairs at every sample, the closest
+moving pairs the same 0.15 mm stub-in-bearing and 0.25 mm horn-slot
+clearances as before. The script diff against `1779112b…` removes fourteen
+lines and changes one comment, and touches nothing else: parameters, limits,
+step, printed parts and hardware are byte-identical. The smoke, run by the
+actor after the turn with the runner's own command into
+`evidence/turn-2/smoke`, **passes**: hold mode, 1 s, 51 samples, state
+finite, no floor breach at 0.5 mm, the base grounded, 105 exact-BREP pairs
+with no overlap at any sample, initial pose in agreement. The agent's NOTE
+says plainly that the exported MJCF no longer carries a floor geom and that
+a trainer wanting one should add a plane outside Cadex; the smoke's support
+check passes on the grounded base by construction and does not exercise a
+floor.
+
+Against F5's bar this revision now fails on **one count**, down from two:
+**two purchased families uncatalogued**. The inventory lists both servos and
+both horns under `uncatalogued_sources`, as it has since the create turn,
+and the closing message again says "Catalog hardware unchanged (2× MG90S,
+2× single-arm horns, …)". The frozen prompt asks for "every purchased part
+a catalog part" and the agent did not act on it in three turns; it does not
+read the inventory, and nothing in its fit summary names catalog identity.
+Zero failing static and swept checks, zero actor edits, a passing smoke and
+two of three continuations used are all met. `continue-3` is next through
+`resume`; the probe read 56 % afterwards, so it waits for the 17:20 UTC
+reset. The stream's `rate_limit_event` frames also flagged the seven-day
+window at 90 % rising to 94 % (`allowed_warning`, reset 2026-09-17 19:00
+UTC), which the runner's five-hour bound does not read.
+
+Against ot6: Heron's ot6 revisions reached a clean fit only after three
+hand-written turns naming the floor plane, the buried tab and the horn gap.
+Here two frozen continuations, naming nothing, took the measured failures
+from seven to zero, published a complete sweep and passed the smoke twice;
+the floor plane, which ot6 fed back by hand, was found and removed from the
+world-geometry row alone.
+
+## Iteration 72: the last continuation completed, and F5 exhausted
+
+The third and last F5 continuation. `continue-3.prompt.txt` (732 bytes,
+digest `0814d73f…`, unchanged) was dispatched on `ot7-heron-c` through
+`run.py resume` at 13:51:42 UTC into the same session at the receipt's
+`medium` (ADR-357, ADR-359). This was the first dispatch after the owner
+refreshed the account (ADR-361): the actor's own probe read **4 %** at
+13:51 and the runner's read **7 %** and dispatched; the stream's first
+`rate_limit_event` read 8 %, its last 38 %, and the probe after the
+measurement read **41 %**, under the 45 % bound but not by enough for a
+create turn. The seven-day window that continue-2's stream had flagged at
+90–94 % read 0–4 %: the reset moved the five-hour boundary from 17:20 to
+18:50 UTC. No actor edited any design. **The turn completed** in 142.9 s
+(exit 0, 12 model messages, 5 thinking blocks, no output-cap hit, 6 tool
+calls: 5 `inspect`, all of them the clearance scope, and 1 `rebuild`), the
+third continuation slot is spent, and the runner wrote `status: exhausted`
+with `slots_spent: 4`, `next_prompt: null`, then ran its own smoke
+([receipt](retained/heron-continue-3-c.json), 188,093-byte stream, digest
+`d051c2f9…`, in the project). One minute passed between the dispatch and
+the first stream frame, as in every turn on this project.
+
+Where the two minutes went, from the stream's timestamps:
+
+- **13:52:40–13:52:57, five clearance reads.** The static report for the
+  accepted revision, its 105 pairs paged at 50, 50 and 5, and the sweep
+  block for both joints.
+- **13:53:09, a rebuild.** The unchanged script re-submitted through normal
+  acceptance and re-accepted at `58ff41b4…` with the identical digest
+  `2c42c943…`.
+- **13:54:04, the close.** The report names zero failing checks, so "the
+  correct change this turn was no change"; one `DECISION:` line and one
+  `NOTE design_specs:` line; the project's DECISIONS.md gains ADR-012.
+
+**What this measures.** Nothing in the design changed: the script's digest
+`91ace2bb…`, the accepted revision and its content digest are the ones
+continue-2 left, `fit.json` and `inventory.json` carry the same digests as
+turn-2, and `clearance.json` differs only in the sweep's elapsed seconds.
+At rest the product reports **0 of 105 failing**: zero intersections, zero
+below-clearance pairs, fourteen zero-distance pairs all of them declared
+contacts, `world_geometry` empty. The sweep is **complete on both joints at
+5°**: shoulder 32 samples in 19.60 s, elbow 29 samples in 10.29 s,
+`solved_pose_agreement` true on both, 0 mm³ on every pair at every sample.
+The smoke, run by the runner at exhaustion into `evidence/smoke`,
+**passes**: hold mode, 1 s, 51 samples, state finite, no breach at 0.5 mm,
+the base grounded, 105 exact-BREP pairs with no overlap at any sample,
+initial pose in agreement, and its trace and geometry files carry the same
+digests as the actor's turn-2 smoke, so the simulation reproduces exactly.
+
+**F5 is exhausted.** The create prompt and all three continuations reached
+the model on `ot7-heron-c` and every turn ended on its own, so under the
+amended charter no slot remains and no fourth prompt exists. Against F5's
+bar the final design meets zero failing static checks, zero failing swept
+checks, zero actor edits, at most three continuations and a passing smoke,
+and fails **one count: catalog hardware for every purchased part**. The
+inventory has listed both servos and both horns under `uncatalogued_sources`
+after every one of the four turns, because the create turn cut a tap-drill
+bore into the servo bodies and re-clocked the horns on their splines, and
+the placed outputs are no longer what a `lib.*` generator built. In all
+four closing messages the agent asserted the opposite, this time as "all
+twelve purchased parts are catalog parts (2× MG90S servo, 2× single-arm
+horn, …)", and in four turns it never read the inventory: nothing in the
+fit summary names catalog identity, and the frozen prompt's "keep every
+purchased part from the catalog" was read as a statement about the design
+rather than a check to run. That is a valid measured result and is reported
+as such. Whether a catalog part that has been cut still counts as catalog
+hardware is the owner's call on the tick; this report reads the product's
+inventory and counts it as failing.
+
+Against ot6: Heron's ot6 revisions reached a clean fit only after three
+hand-written turns naming the floor plane, the buried tab and the horn gap,
+and the actor never touched the ot6 script. Here one frozen create and three
+frozen continuations naming nothing produced an arm with zero failing
+static and swept checks, a complete sweep and three passing smokes, with
+zero actor edits, and the one clause the agent did not close is the one it
+had no measurement for.
+
+## Iteration 148: Fable restored — Robin's create interrupted on b, completed on c
+
+The owner restored Fable access on 2026-09-17 and authorized F6 then F7
+(ADR-383, commit `bcfa6914`; launch check
+[`fable-restart-availability.json`](retained/fable-restart-availability.json),
+14:45:54 UTC, `READY`, five-hour 0 %).
+
+**`ot7-robin-b`: an interrupted execution, zero slots spent.** At 14:54:01
+UTC — fifty seconds after the restart's `ouroboros run` began, two minutes
+before the loop's first actor iteration — a runner outside the loop
+dispatched the frozen create prompt (digest `e20ee7ab…`, unchanged) on
+`ot7-robin-b`. The model answered — 9 messages, 6 tool calls, every
+`rate_limit_event` frame allowed at 7–11 % — and 16.3 s in the stream stops
+with no result frame, an empty envelope, and the runner dead with its child,
+its receipt left at `running`/`started`. No limit appears anywhere in the
+stream, so it is not void; it did not end on its own, so it is not a turn
+(ADR-355, decision #44/ADR-356). The ruling and every digest are in
+[`robin-interrupted-b.json`](retained/robin-interrupted-b.json); the
+project's receipt stays as the dead collector wrote it. The only accepted
+script it left is the product agent's own datasheet probe. No actor edited
+anything.
+
+**`ot7-robin-c`: the first F6 turn that ended on its own.**
+`robin.create.prompt.txt` (7,650 bytes, digest `e20ee7ab…`, unchanged) was
+dispatched on the fresh project at 14:58:53 UTC through
+`run.py robin … --turns 1 --model claude-fable-5`, at `medium` with the
+32,000-token cap and 30-minute bound unchanged. The probe read **24 %** and
+dispatched; the stream's first `rate_limit_event` read 24 %, its last 74 %.
+**The turn completed** in 1,676.4 s (result `success`, 35 API turns, 62
+model messages, 19 thinking blocks, no output-cap hit, 33 tool calls: 4
+`describe_api`, 6 `write_script`, 19 `inspect`, 4 `edit_script`), the
+create slot is spent, and the runner paused with `continue-1` next and all
+three continuations unspent (receipt in the project's
+`evidence/attempt.json`; 1,239,403-byte stream, digest `e1fb54cb…`). No
+actor edited any design.
+
+How the turn went, from the stream: two accepted probe scripts (catalog
+specs, then insert and bolt geometry); the full design rejected three times
+on API validation (a `LibraryPart` passed to the part API, an unregistered
+joint output, a task reward naming a channel the task does not observe) —
+each a validation message, not a fit failure — then accepted with fit
+**16 of 276 failing**; one accepted repair edit later, **0 of 276 failing**.
+The final accepted revision is `192db5b9…`, a 365-line parametric script:
+printed chassis as the free base, two printed wheels on revolute axle
+joints, two catalog Pololu 2367 gearmotors in printed clamps, a Pi Zero 2 W
+on standoffs, eight M2 inserts and eight M2×4 screws, torque actuators
+bounded by the datasheet stall torque, an MJCF model with the chassis free
+over the environment floor, a balance task with fall termination and reset
+variation.
+
+The measured result against F6's bar:
+
+- **Static fit: 0 of 276 failing** — zero intersections, zero
+  below-clearance, `world_geometry` empty, all 21 welded attachments
+  measured touching, both declared D-bore clearance pairs holding their
+  0.04 mm minimum. No floor or bench is in the design; the wheels span
+  exactly z 0–65 mm, tangent to the environment's plane.
+- **Sweep: incomplete, and structurally so** — both `joint_wheel_*_axle`
+  joints are free-spinning drive axles with no declared limits, so the
+  product reports "no range to sweep" on each. F3's check reads "every
+  joint with declared limits"; a balancer's drive wheels declare none. What
+  a continuation does with that is the next measurement.
+- **Inventory: every purchased part catalog** — 2× `gearmotor/pololu-2367`,
+  1× `board/pi-zero-2-w`, 8× `heat_insert/m2-standard`, 8×
+  `bolt/m2x4-socket`, `derived_catalog_sources` empty; the five
+  uncatalogued rows are the printed chassis, wheels and clamps. F5's
+  catalog-identity failure did not recur.
+- **The claim and the measurement agree.** The closing message cites the
+  engine's numbers — 276 pairs, 21 touching welds, the two initial
+  wheel-floor contacts in the MJCF, the 0.05 mm D-bore gaps — rather than
+  the script's printout, and states its one analytic exception (M2 thread
+  engagement modelled as tip-on-insert-mouth, 4.85 mm³ swept annulus,
+  because acceptance refuses overlap even across welds).
+
+The turn cost 50 points of the five-hour window (24 % to 74 %), so
+`continue-1` waits for the 19:40 UTC reset, dispatched through
+`run.py resume` when the probe reads room. The runner still spends all
+three continuations regardless of the static pass: the swept half is the
+open question, and no smoke has run yet (the runner runs it at exhaustion).
+
+## Implemented checks and evidence for F1–F9
+
+| Criterion | What exists | Evidence and limits |
+|---|---|---|
+| F1 | Build replies include published static fit counts and every named failing pair; `clearance` inspect is exposed; instructions distinguish stdout claims from measurements | [Implementation](../../../.hypergraph/graph/record/happy-dawn-1960.md), [complete-list correction](../../../.hypergraph/graph/record/steady-quartz-9854.md), [real pager regression](../../../.hypergraph/graph/record/tidy-journey-9462.md), [CLI contract](../../CLI.md). A script printing “no overlap” returns its measured 100 mm³ intersection. Later-page failures and read errors are pinned |
+| F2 | Contact and minimum-clearance declarations; overlaps, missed contact, insufficient clearance and world geometry are advisory findings | [Known-answer fixtures](FIT-INTENT.md), [record](../../../.hypergraph/graph/record/crisp-ember-0302.md), [numerical correction](../../../.hypergraph/graph/record/hidden-lodge-4550.md), [script contract](../../XSCRIPT.md). Solid world geometry needs explicit intent; grounding alone does not imply a floor |
+| F3 | Published bounded exact-solid hinge and slider sweeps, agent inspection and `cadex clearance --sweep` | [Producer](../../../.hypergraph/graph/record/misty-spark-6372.md), [consumer](../../../.hypergraph/graph/record/green-river-3790.md), [slider fixtures](../../../.hypergraph/graph/record/curious-cedar-4881.md), [Finch product measurement](../../../.hypergraph/graph/record/kind-flint-2780.md), [sweep receipt](sweep/README.md). Discrete samples, unsupported or undeclared coverage explicitly incomplete; details below |
+| F4 | Four void calls (ADR-355), one interrupted call (decision #44, ADR-356), and **four completed turns** on `ot7-heron-repair-d`: the repair prompt (1,461.9 s, 46 tool calls, six accepted revisions, static fit 0 of 120 pairs failing, swept complete at 5°, servo bodies uncatalogued, a bench slab added, joint ranges narrowed), `continue-1` (738.5 s, 20 tool calls, two accepted revisions, static fit 0 of 105 pairs failing, swept complete at 5° with zero common volume, both servos back to untouched catalog bodies, the bench removed, no world geometry) `continue-2` (128.7 s, 8 tool calls, no edit, the unchanged script re-accepted at the same digest after every measurement was re-read and none failed) and `continue-3` (104.9 s, 4 tool calls, no edit, the unchanged script re-accepted again, and the prompt's `DECISION:` and `NOTE design_specs:` lines written with 105 rest-pose and 210 swept checks passed, 0 failed); the collector's attachment assessment still fails on both horn-to-link pairs at 0.2 mm, declared as clearance | [First void call](../../../.hypergraph/graph/record/lucky-willow-8039.md), [second](../../../.hypergraph/graph/record/keen-quill-2265.md), [classification](attempts/void-calls.json), [interrupted call](retained/repair-timeout-b.json), [void call c](retained/repair-void-c.json), [completed turn d](retained/repair-completed-d.json), [assessment](#iteration-48-the-repair-turn-that-completed), [continue-1 on d](retained/repair-continue-1-d.json), [its assessment](#iteration-51-the-first-continuation-completed), [continue-2 on d](retained/repair-continue-2-d.json), [its assessment](#iteration-52-the-window-read-by-the-runner-then-continue-2-completed-adr-358), [continue-3 on d](retained/repair-continue-3-d.json), [its assessment](#iteration-53-the-last-continuation-completed-and-f4-exhausted). **Measured, and final: zero failing product checks after all four turns; two of three defects resolved, the horn gap declared rather than closed, and two continuations that name no failure leave the design unchanged. F4 is exhausted: no slot remains** |
+| F5 | One void arm create (pre-restart), one **interrupted** create on `ot7-heron-b` (iteration 55: killed at the 30-minute bound after 4 min of reading and three thinking-only messages that each hit the 32,000-token output cap; three probe scripts written, two accepted, no assembly, no design), and **one completed create turn** on `ot7-heron-c` (iteration 57, effort `medium`: 1,530.4 s, 82 tool calls, three accepted design revisions, static fit 8 then 6 then 7 of 120 failing: six screw intersections of 4.07 and 18.10 mm³ and the bench as world geometry; sweep unavailable, no step declared; servos and horns uncatalogued after modification, bearings and screws catalogued; `describe_api` at 82,523 characters still refused by the harness), and **one completed continuation** on the same project (iteration 59, `continue-1`: 610.6 s, 19 tool calls, two accepted revisions, static fit 1 of 120 failing: the bench as world geometry, zero intersections after the screw holes were bored to nominal and the six screw pairs declared contacts; sweep complete on both joints at 5° with 0 mm³ on every pair after the ranges were narrowed to [−90, 65] and [−100, 40]; servos and horns still uncatalogued; smoke pass, hold mode, 1 s, 51 samples, 120 pairs, no breach), and **a second completed continuation** (iteration 66, `continue-2`: 482.4 s, 19 tool calls, two accepted revisions that delete the bench component, its weld, contact row, body and solid; static fit 0 of 105 failing with no world geometry; sweep complete on both joints at 5° with 0 mm³ on every pair; servos and horns still uncatalogued while the closing message calls the catalog hardware unchanged; smoke pass, hold mode, 1 s, 51 samples, 105 pairs, no breach), and **a third completed continuation** (iteration 72, `continue-3`: 142.9 s, 6 tool calls, five clearance reads and one rebuild, no edit; the unchanged script re-accepted at the same revision and digest; static fit 0 of 105 failing, sweep complete at 5° with 0 mm³ on every pair; servos and horns still uncatalogued while the closing message calls all twelve purchased parts catalog parts; the runner's own smoke pass, hold mode, 1 s, 51 samples, 105 pairs, no breach, its trace digest identical to turn-2's) | [Record](../../../.hypergraph/graph/record/quiet-dew-5243.md), [void receipt](attempts/heron-refusal.json), [interrupted receipt](retained/heron-interrupted-b.json), [its assessment](#iteration-55-the-arm-create-call-interrupted-at-the-bound), [completed create receipt](retained/heron-create-c.json), [its assessment](#iteration-57-the-arm-create-turn-completed), [continue-1 receipt](retained/heron-continue-1-c.json), [its assessment](#iteration-59-the-first-continuation-completed), [continue-2 receipt](retained/heron-continue-2-c.json), [its assessment](#iteration-66-the-second-continuation-completed), [continue-3 receipt](retained/heron-continue-3-c.json), [its assessment](#iteration-72-the-last-continuation-completed-and-f5-exhausted). **Exhausted: the create slot and all three continuations spent on completed turns. The measured result meets zero failing static and swept checks, zero actor edits, three continuations and a passing smoke; the one count failing F5's bar is catalog hardware for every purchased part, the two servos and two horns** |
+| F6 | One void balancer create (pre-restart), one **interrupted** create on `ot7-robin-b`, and **four completed turns** on `ot7-robin-c`: the Fable create turn, then `continue-1` (Opus, ADR-384; the sweep declared and completed on both wheel axles), `continue-2` (no edit; every row re-read, nothing failing) and `continue-3` (no edit, but the unchanged script re-accepted through a fresh rebuild at the identical digest, with the prompt's `DECISION:` and `NOTE design_specs:` lines written). Final fit on revision `0b438561…`: static **0 of 378** failing, attachments **25 of 25** touching, sweep **pass, coverage complete** on 2 of 2 joints at 100° with 0.0 mm³; 28 components, every purchased part catalogued, no world geometry. The closing smoke **fails** — support 102.2°, the design's own `fallen` rule at 0.660 s, four floor penetrations — while its component-pair check over the trace passes | [Record](../../../.hypergraph/graph/record/keen-chart-9070.md), [void receipt](attempts/robin-refusal.json), [interrupted receipt](retained/robin-interrupted-b.json), [continue-1](retained/robin-continue-1-c.json), [continue-2](retained/robin-continue-2-c.json), [continue-3](retained/robin-continue-3-c.json), [its assessment](#iteration-164-f6s-last-continuation-and-the-smoke-a-balancer-cannot-pass). **Exhausted: all four slots spent. Five of six requirements met; the smoke is an uncontrolled inverted pendulum toppling at `policy_on: 0`, not a fit defect** |
+| F7 | New frozen biped prompt; one void create (pre-restart), two **interrupted** calls, one call **void** for an engine defect this repository introduced (ADR-390), and **two completed turns** on `ot7-plover-e`: the create turn (2,695.8 s, 52 tool calls, a 29-component biped with four catalog MG90S servos, hip and knee pitch per leg, catalog horns, MR128 bearings and bolts, five printed parts, free base, no world geometry — static fit **12 of 406** failing, all one class: hardware modelled solid inside the part it fastens; sweep complete at 15° on 4 of 4 joints with 48 failing pair-ranges over the same twelve pairs) and `continue-1` (802.1 s, **one** `edit_script` call, static fit **0 of 406** failing, attachments 24 of 24 touching, sweep **pass, coverage complete** on 4 of 4 joints at 15° with 0.0 mm³, two `DECISION:` lines, no actor edit) | [Record](../../../.hypergraph/graph/record/red-hawk-4600.md), [void receipt](attempts/plover-refusal.json), [create receipt](attempts/plover-e-create.json), [its assessment](#iteration-163-f7s-fourth-opus-call--the-biped-the-agent-actually-built), [continue-1 receipt](retained/plover-continue-1-e.json), [its assessment](#iteration-165-f7s-first-continuation-and-twelve-buried-fasteners-removed). **Met, in one continuation, with two unspent. Zero failing static and swept checks with zero actor edits; the inventory measured at 24 catalogued components against five printed sources, so catalog hardware is met — though the centre screw's row moved from M2 × 16 to M2 × 12. The smoke passes** (ADR-395): taken without spending a slot on the model the accepted script exports under the ADR-393 engine — verdict `pass` in 35.0 s, 0 penetration breaches, both shins at 0.321 mm against a 0.5 mm tolerance, resting on the floor after a 0.268 mm drop at 0.182° of tilt, and the exact-BREP half passing **406 of 406 pairs across all 51 samples**. Its control is the same probe on the accepted pin, which holds the pre-ADR-393 MJCF and reproduces the earlier refusal exactly; moving the pin itself would cost a frozen continuation on a fit report that names nothing to fix** — [smoke receipt](retained/plover-smoke-e.json), [its assessment](#iteration-167-f7s-smoke-taken-without-spending-a-slot-adr-392), [the fix](#iteration-168-the-misplaced-bodies-were-a-swapped-connector-frame-adr-393), [the re-export measurement](retained/plover-e-reexport.json) |
+| F8 | One-command bounded smoke over accepted artifacts; passing and failing known-answer fixtures | [Record](../../../.hypergraph/graph/record/lean-fountain-9707.md), [receipt](f8-smoke.json). Implementation verified by fixtures, and **three ot7 designs now carry executed smoke receipts**: F5's arm passes, F6's balancer fails on support, F7's biped passes on the re-exported model. F4's bar asks for no smoke |
+| F9 | Green recorded suites and packaged gate; retained ot6 copies restore/reopen, all measurement differences explained, and the one exception closed | [Closure record](../../../.hypergraph/graph/record/narrow-valley-3317.md), [regression receipt](REGRESSION.md), [restore record](../../../.hypergraph/graph/record/still-raven-7629.md), [ADR-393's reach](retained/adr393-reach.json), [the ADR-396 re-measurement](retained/adr396-reopen.json). The three retained copies read **406/44, 276/39 and 105/20** before and after a full restore under the current engine, pair for pair, with every difference from ot6 explained; last suites `pixi run test-engine` **2196 passed, 53 skipped** and the packaged gate **23 passed** |
+
+### F3: measured motion and the absent predicted contact
+
+The hinge fixture reports contact at 79° versus analytic 78.522°, within
+its 1° step; the slider locates −2 mm contact within 0.75 mm. Bounds are
+73 poses, 2,000 pairs and 90 seconds per joint, 180 seconds per assembly.
+Unsupported or missing coverage is incomplete. Samples are not continuous proof.
+
+A separate product-agent turn on a retained Finch copy added only the sweep
+step declaration. It is F3 instrumentation evidence, not a fourth fresh design
+or an F7 baseline. At 5°, the fourth hinge exhausted the assembly budget;
+at 10°, all four completed in 104.4 s, respectively 35.7, 16.2, 36.2 and
+16.3 s. Each completed joint had 406 pairs and solved-pose agreement.
+Both knee shin/thigh pairs stayed **1.0 mm apart, 0 mm³ common volume, no
+contact**. The charter's predicted contact was absent on this revision.
+Forty pairs first contacted at a range's lower limit; none first contacted
+inside a range. The agent claimed 44, incorrectly including four 0.05 mm
+bearing gaps. This discrepancy is retained as evidence against treating prose
+as measurement. See the [product sweep receipt](sweep/README.md).
+
+### F8: smoke implementation is not a design pass
+
+`cadex smoke` preserves accepted identity and checks finite state, sampled
+exact BREPs and proxy floor support under a 300-second deadline. Since ADR-377
+floor support includes the base's attitude: the first real free-base topple
+this run measured, the retained ot6 balancer at zero torque, passed the old
+support check at 101.3° over and fails the new one. The grounded
+fixture passed 101 poses; a falling arm overlapped by **1,463.7845106574737 mm³
+at 1.64 s** despite passing proxy checks; overlapping boxes measured 400 mm³.
+Unavailable BREP evidence cannot pass. No fresh ot7 design ran a simulation.
+
+## Regression and ot6 comparison
+
+The [regression receipt](REGRESSION.md) carries engine **2,142 passed / 53
+skipped**, successful build and stage, and packaged lifecycle **18 passed**.
+Its CLI checkpoint was **693 passed / 1 skipped**. Later collector work ran
+**718 passed / 1 skipped** in 528.12 s; the final assertion was covered by the
+subsequent **33 passed** focused runner suite, rather than that already-started
+full suite. [Validation record](../../../.hypergraph/graph/record/western-fox-7010.md).
+No engine, CLI or packaged gate was rerun for this evidence/report unit;
+skips remain unexecuted evidence.
+
+All six retained restore/reopen checks preserved accepted identity and all
+787 pair measurements. Final retained revisions have **44 Finch, 39 Robin and
+20 Heron static failures**: ot6 explicitly allowed certain screw engagements,
+and the old scripts lack contact declarations for seatings and small gaps.
+The two final-Heron nominal-0.1 mm flags were removed by the same numerical
+correction described above. These are distinct from the six flags removed
+from F4's earlier seed. The complete failing sets and their explanations are
+in [the retained comparison](retained/README.md) and
+[restore receipt](retained/restore-open.json). Legacy sweeps remain unavailable;
+compatibility does not imply fit passes.
+
+The [ot6 report](../ot6/REPORT.md) records 55/55 custom Heron fit rules,
+84/84 Robin rules and 87 Finch rules. Those custom checks and their explicit
+engagement allowances differ from the new product checker. Heron's corrections
+used hand-written defect feedback; Robin needed actor edits; Finch had no
+model turn. ot7 supplies no new accepted mechanism against which to measure
+an improvement in autonomous design. ot6 training results do not substitute
+for this run's smoke receipts; no policy training occurred in ot7.
+
+## F10: what this run established, and what remains open
+
+**F1–F9 each have their evidence, and this report is the last unit.** The
+table above links it criterion by criterion; what follows is the honest
+reading of it.
+
+**Four designs, fourteen turns, zero actor edits.** Every change to every
+`ot7-*` script, parameter and accepted state came from a product-agent turn.
+Every continuation prompt was one of the three frozen texts, each naming no
+design, no part, no number and no defect, pinned byte-for-byte by
+[`test_ot7_prompts.py`](../../../cli/tests/test_ot7_prompts.py). The agent
+found what to fix by reading its own measurements, and the measurements are
+the thing this run built.
+
+**What the agent did with them, in one sentence each.** F4's repair turn took
+Heron's ot6 seed from 15 failing checks to zero and its three continuations
+found nothing left to fix — two of the three ot6 defects resolved, the third
+declared as a 0.2 mm clearance rather than closed. F5's arm reached zero
+failing static and swept checks and a passing smoke, and missed its bar on
+one count: the agent modified its servo and horn bodies, so four purchased
+parts stopped being catalog parts. F6's balancer reached zero failing checks
+on 378 pairs with every purchased part catalogued, declared the wheel-axle
+limits its own sweep was missing, and then failed its smoke by toppling —
+which is what an inverted pendulum does at `policy_on: 0`. F7's biped reached
+zero failing checks on 406 pairs and a passing smoke **in a single
+continuation**, from a create turn whose only defect class was hardware
+modelled solid inside the part it fastens.
+
+**Two of the four bars were missed, and both are reported as measured
+results.** F5's catalog-identity failure and F6's smoke failure are real; no
+prompt was re-sent to improve either, because the charter's own rule is that
+a design which does not get there is a valid measured result. F7 met every
+count of its bar and holds `continue-2` and `continue-3` unspent: its bar is
+*at most* three continuations, and spending the remaining two on a fit report
+that names nothing to fix would buy no evidence.
+
+**The comparison with ot6.** ot6's three designs needed a hand-run probe
+script, hand-written prompts naming each defect, and two actor edits to
+Robin's script; Finch had no model turn at all. ot7's four ran on frozen,
+design-agnostic prompts with no human design feedback and no actor edit, and
+all four ended at zero failing static checks. That is the claim this run
+makes. It is *not* a claim that the designs are better mechanisms: ot6's
+custom checkers used different rules and explicit engagement allowances, so
+the two runs' failure counts are not comparable numbers, and the retained ot6
+revisions still report 44, 39 and 20 static failures against the new product
+checker for the reasons [the retained comparison](retained/README.md) gives.
+
+**What remains open**, all of it outside this charter's frontier:
+
+- **F7's two unspent continuations, and its smoke pin.** The biped's smoke was
+  measured on the model its accepted script exports under today's engine, not
+  on the accepted revision's retained MJCF, which predates ADR-393 and holds
+  24 bodies at the inverse of their solved pose. Moving the pin needs a turn
+  that re-accepts the design. Whether a verdict taken off the pin satisfies
+  the sixth requirement is the reader's call; this report claims only what it
+  measured, with its control beside it.
+- **F5's uncatalogued servos and horns.** The agent modified catalog bodies
+  rather than mounting them, and nothing in the product stopped it or told it
+  that identity was lost. A catalog-identity check belongs beside the fit
+  checks; it does not exist.
+- **F6's balancer needs a controller, not a fix.** Its smoke failure is the
+  charter's own no-policy-training rule meeting a mechanism that cannot stand
+  without one. The long-term rung "the balancer stands still" is where that
+  goes.
+- **The swept check is discrete.** Samples at a declared step are not
+  continuous proof, and unsupported or undeclared coverage is reported as
+  incomplete rather than guessed.
+- **Skips are unexecuted evidence.** The recorded suites carry 53 engine
+  skips and 1 CLI skip; they are not failures and they are not passes.
+
+**Done is claimed here**, on the reading that every F1–F9 criterion has its
+evidence present in a record and linked above, and that F4–F7's measured
+outcomes — two bars met, two missed, all four reported with their numbers —
+are the results the charter asked for rather than a reason to keep prompting.
+The critic owns the acceptance; the owner owns the checkboxes.
+
+### Historical: the gate as it stood on 2026-09-16
+
+The subsection below is the record of the provider refusal that blocked F6
+and F7 for two days. It is kept as written. The gate opened, F6 and F7 both
+ran, and its forward-looking sentences are superseded by the rows above.
+
+### The gate is shut now, and no clock says when it opens
+
+Measured on 2026-09-16 at 16:46 UTC. This subsection records what the receipts
+establish — a refusal in force at the moment each was taken — and sets the two
+schedules side by side. **Neither schedule bounds the refusal, in either
+direction.**
+
+- **What the refusal establishes.** The receipt is
+  [`attempts/f6-window-refusal.json`](attempts/f6-window-refusal.json), read
+  off `run.py window --model claude-fable-5` and recorded in
+  `pale-garden-4669`. Its binding field is `overage.disabled_reason:
+  "org_level_disabled"` — an organisation-level setting on this account. That
+  receipt is evidence of exactly one thing: `claude-fable-5` was refused on
+  this account **at the moment the probe was taken**. It does not date the end
+  of that setting and does not put a floor under it; an organisation-level
+  setting can change at any time, including before any window resets, as this
+  account showed once already when the owner refreshed it mid-run (ADR-361).
+  Only an **unrefused** probe is evidence the refusal has lifted, and only a
+  fresh refused probe is evidence it still holds.
+- **The refusal still held at 17:02 UTC.** A third probe, two hours after the
+  second, was refused on the same `org_level_disabled` setting with
+  `seven_day_overage_included` at 100 % and the five-hour window at 18 %
+  (`attempts/f6-window-refusal.json`, `third_probe`). It spent no slot; F6's
+  four and F7's four are all still unspent. It also arrived with its frames in
+  the other order — an allowed five-hour frame in front of the one that
+  rejected — which the reading took at face value, printing `five_hour,
+  allowed, resets 2026-09-16T19:20Z` beside `room: false` and dropping the
+  100 % window that caused the refusal. ADR-369 reads the frame that rejected,
+  and labels its `resets_at` as the schedule of that window rather than a date
+  for the setting.
+- **The scheduled window reset.** `seven_day_overage_included` resets at epoch
+  `1789740000`, which is **2026-09-18T14:00:00Z**. That is the rejected
+  window's own `resets_at`, and the runner reads the same epoch for the Claude
+  seven-day window in `.ouroboros/runs/ot7/status.json`. The epoch is not an
+  estimate, but what it dates is a **scheduled reset of a usage window** — not
+  a lifting of the refusal, and not the earliest the refusal could lift. A
+  probe after that epoch may well be refused again, and a probe before it may
+  not be: the second probe taught the same lesson in the other direction,
+  reading `status: allowed` at 2 % twenty minutes later and being refused
+  anyway.
+- **The refusal still held at 21:37 UTC, and the gate that will end it was
+  half broken.** A fourth probe, four hours after the third, was refused on the
+  same `org_level_disabled` setting with `seven_day_overage_included` at 100 %
+  and the five-hour window at 11 % (`attempts/f6-window-refusal.json`,
+  `fourth_probe`). It spent no slot. Reading the gate while F6 waited found the
+  mirror of ADR-369 still unfixed: on an **answered** probe the reading was
+  whichever `rate_limit_event` frame arrived first, and the stray rejected
+  overage frame this organisation emits on every probe is one of them. The
+  same answered probe at five-hour 8 % reads `allowed` and dispatches with the
+  allowed frame in front, and `rejected` and defers with the rejected frame in
+  front — reproduced both ways, and fixed by ADR-376 (`235ebce4`): the reading is
+  the frame that bound the call, rejecting on a refused probe and allowing on
+  an answered one. Had the refusal lifted while this stood, F6's and F7's eight
+  prompts could have been withheld from a model that would have answered them,
+  under a `deferred` block citing an overage window's reset. It changes no
+  product behaviour, no frozen prompt and no slot accounting.
+- **The refusal still held at 22:40 UTC, and the fixed gate read it correctly.**
+  A fifth probe, an hour after the fourth, was refused on the same
+  `org_level_disabled` setting with `seven_day_overage_included` at 100 %, the
+  five-hour window at 18 % and the seven-day window at 57 %
+  (`attempts/f6-window-refusal.json`, `fifth_probe`). It spent no slot. The
+  provider sent its frames in the order that broke the third probe — the
+  allowed `five_hour` frame first, the rejected `seven_day_overage_included`
+  frame second — and the gate named the rejecting frame anyway, so this is
+  ADR-369's fix confirmed live rather than on a fixture. Nothing was changed
+  in the product for it. It also fixes the two ways out in the provider's own
+  words: the refusal text names `claude.ai/settings/usage`, so **the owner
+  enabling usage credits for this organisation is not bound by any window
+  schedule and could lift the refusal at any moment**; the only other exit is
+  the window reset below, which falls after this run ends.
+- **This run's stop.** `.ouroboros/runs/ot7/run.yml` sets
+  `stop.until: 2026-09-17T00:25:13`, a naive local timestamp the runner
+  compares against local time (`should_stop` in `ouroboros/budget.py`), so it
+  is **2026-09-17T04:25:13Z** at UTC−4. Record `restless-gate-7062` provenances
+  it as the original 48-hour deadline preserved across the restart.
+  `stop.after: 48h` measured from this process's `started: 2026-09-16T11:00:28`
+  would trip at 2026-09-18T15:00:28Z instead, and `should_stop` returns on
+  whichever condition trips first, so `until` is the binding one.
+- **The difference: 33 h 34 m 47 s.** The scheduled reset of the window these
+  two designs were refused against falls more than a day *after* the run is
+  configured to end. That is arithmetic between two schedules, and nothing
+  more: it says the reset is not going to arrive inside this run, not that the
+  refusal cannot lift inside it. Two exits can come sooner still:
+  `stop.max_stuck: 25` — the critic returned `looping` on iteration 84 and
+  `stuck` on iteration 85 — and any owner action.
+
+So F6 and F7 stand with every slot unspent and no dispatch possible while the
+refusal holds. The charter's rule keys dispatch to the harness being
+available, so an iteration that probes and finds the refusal gone may still
+dispatch inside this run; nothing here forecloses that, and nothing here
+promises it. If the run ends with the refusal still in force, both designs end
+**unattempted, with all eight create and continuation slots unspent**. That is
+not exhaustion. By the charter's
+exhaustion policy a design is exhausted only once its create prompt and all
+three continuations have reached the model, and neither design has spent one;
+the single pre-restart refusal against each is void (ADR-355) and consumed
+nothing. No verdict, record or report may read this ending as "no authorised
+experiment remaining".
+
+What finishing them takes is unchanged and needs no new decision: once a
+window probe on `claude-fable-5` returns without being refused — whenever that
+is, since no schedule here dates it — dispatch the frozen
+[`robin.create.prompt.txt`](prompts/robin.create.prompt.txt)
+(`e20ee7ab…`) into a fresh `ot7-robin-b` and
+[`plover.create.prompt.txt`](prompts/plover.create.prompt.txt)
+(`b95f98b7…`) into a fresh `ot7-plover-b`, on `claude-fable-5` — the model
+every completed F4 and F5 turn used — each through its continuations as its
+fit report requires and each with its smoke rollout. No prompt changes: a
+changed prompt starts a new attempt. The product-version paragraph below
+applies with more force the longer that wait is, because every product change
+landed in the meantime is one more difference separating F6 and F7 from F5.
+
+No unattended role may extend, stop or restart a run, and neither this
+subsection nor the record behind it does. This is a measurement for the owner.
+
+**Product version.** F6 and F7 run on a product **twelve** changes newer than
+the one F5 ran on, every frozen prompt unchanged: ADR-362, ADR-366, ADR-367,
+ADR-368, ADR-370, ADR-371, ADR-372, ADR-373, ADR-374, ADR-375, ADR-377 and
+ADR-378. Nine of them change the measured fit surface a design reads; two more
+are the inventory block beside it and the repair wording in the agent's own
+prompt; the twelfth is the smoke rollout their bar ends on. Each is listed
+below with what it publishes, because a difference in an F6 or F7
+row that lands on a fact one of these changes publishes is a difference across
+that change and not a difference in the agent.
+
+**ADR-362** (`fd3b3643`) is the inventory. After F5's exhaustion the critic
+asked that the published inventory's catalog counts and uncatalogued sources
+reach the agent beside the design-turn fit summary, and every build reply now
+carries an advisory `inventory` block — component, catalogued and uncatalogued
+counts, the catalog roll-up and every uncatalogued source by name — the system
+prompt says to read it before claiming catalog hardware, and the `--json`
+envelope carries it as `inventory`. F5's four turns had no such block, which
+is why its agent could report every purchased part as catalog hardware while
+the inventory listed its servos and horns as uncatalogued. The catalog count
+in the F6 and F7 rows is measured on the newer product.
+
+**ADR-366** (`b65ec710`) landed for the same reason on the other half of F5's
+bar. F5's create turn accepted an arm whose two hinges declared limits and
+whose assembly declared no `sweep_step_degrees`, so the engine published no
+sweep and the reply said nothing about it; the agent found the gap a
+continuation later. Every build reply now carries `fit.sweep` beside the
+static verdict — coverage, one row per limited joint with its minimum
+distance, maximum common volume and first-contact value, and every pair that
+interpenetrates anywhere in a range — computed from the same published
+measurements with no second engine call, and the runner's attempt rows carry
+it as `swept_fit`. Swept coverage in the F6 and F7 rows is therefore measured
+on the newer product.
+
+**ADR-367** (`d6a52b02`) landed on the half ADR-366 left: F5's create turn
+accepted an arm whose two limited hinges declared no step, the engine
+published no sweep at all, and the reply could only say `sweep unavailable`.
+The engine now publishes coverage on every assembly, so an assembly that
+declares neither step reads `incomplete` with one row per limited joint naming
+the declaration it is missing — an enumeration that touches no geometry and
+measured under 1 ms on the lifecycle fixture. F5's create turn spent a
+continuation discovering that gap; on the product F6 and F7 run, the first
+build reply names it.
+
+**ADR-368** (`3cd8905e`) is its wording follow-up, and made the two causes of
+a sweep `verdict: unavailable` distinguishable in the block (`coverage`), in
+the reply's progress phrase and in the agent's instructions: a revision
+accepted by an older engine, versus an assembly with no limited joint at all.
+
+**ADR-370** (`3b27f62e`) added the attachment rows. Every pair welded by an
+unsuppressed `fixed` joint is measured at the solved pose and reported as
+touching, not touching or unknown, beside the four fit checks and never
+counted among them — a fixed joint asserts one rigid body, and a gap between
+the solids is a connection the geometry does not make. It reaches F6 and F7
+directly, because a balancer and a biped weld horns, bearings and fasteners to
+their links.
+
+**ADR-371** (`45a2fe2c`) stops a **suppressed** limited joint counting as
+missing swept coverage: the solver ignores it, so it holds no range to sweep,
+it costs no child process, and its row is `skipped` rather than a coverage
+hole that no declaration could ever fill.
+
+**ADR-372** (`43dfe452`) exempts a pair welded by an unsuppressed `fixed`
+joint from the 0.1 mm undeclared-pair minimum. Without it, mounting hardware
+flush against what carries it failed `below clearance` at 0.0 mm for doing
+what the joint asked. Measured on the retained ot6 biped, 16 of Finch's 32
+`below clearance` rows were welds at 0.0 mm, so this reaches F6 and F7 on
+exactly the hardware they will weld.
+
+**ADR-373** (`64b59cee`) tells the agent, in its own prompt, to declare an
+intended gap narrower than the default with `clearances=[(a, b, 0.05)]`
+rather than widen a seat that was already right, and says what `contacts=` is
+not — it holds a pair to 0.001 mm, so it fails a 0.05 mm running fit as a
+`missed contact` rather than clearing it. Finch's four 0.05 mm bearing seats
+are the case it names.
+
+**ADR-374** (`65cbe3ca`) makes the swept half of the fit read its minimum
+distance, maximum common volume and first contact over the pairs the swept
+joint actually moves, counted as `pairs_moving` beside `pairs_measured`. A
+pair the joint cannot move repeats its solved-pose measurement at every
+sample, so a horn welded flush against the link it turns with — correct design
+under ADR-372, and what a balancer does — read 0.0 mm at every angle and took
+first contact at the bottom of the declared range, and the roll-up took the
+minimum, so the weld won every time. The per-pair rows, the `failing` list and
+every threshold are unchanged. It is the second change in a row that reaches
+F6's and F7's own hardware directly.
+
+**ADR-375** (`18492813`) stops the swept report passing over a joint that can
+move and declares no limits. Such a joint reached no row at all, so coverage
+read `complete` while a continuously rotating wheel, a free spinner or a
+loop-closure hinge had been measured at the solved pose and nowhere else; it
+is now `incomplete` with the limit to declare named per kind, and only a weld
+or a suppressed unlimited joint stays out of the report. It reaches F6
+directly — a two-wheeled balancer's moving parts are exactly the joints with
+no natural limit — and is the third change in a row that lands on F6's and
+F7's own hardware. Nothing is refused and no threshold moved.
+
+**ADR-377** (`cf06d2b8`) is the smoke rollout, and it was measured on F6's
+own mechanism. The retained ot6 balancer, copied to `ot7-robin-smoke` and
+smoked for the first time in this run, topples at zero torque in 0.38 s and
+comes to rest **101.3° over, 43.5 mm lower, chassis on the floor** — and the
+`support` check called that a pass, because a fallen design is touching the
+floor and is not moving. Robin's verdict still failed, on its own termination
+rule and 2.7 mm of chassis in the floor, but a design with no exported task
+and a softer landing would have passed `cadex smoke` lying on its side. The
+check now reads the base's attitude against the pose its accepted keyframe
+gave it, and fails beyond `--max-tilt-degrees` (default 30°, against Finch's
+measured 9×10⁻⁶ ° standing). F5's arm is grounded and reads none of this; F6
+and F7 are the two designs whose failure mode is falling over, so their smoke
+results are measured across this change.
+
+**ADR-378** (`6ce89fff`) closes the same hole in the swept fit that ADR-377
+closed in the smoke: a measurement taken and judged against nothing. The swept
+block could fail a pair on interpenetration or on an unmeasured pair, and on
+nothing else — so the minimum distance it measured through a joint's range,
+which is the whole reason for sweeping, was printed and not checked. F2's
+third and fourth checks (a declared clearance below its minimum, an undeclared
+pair closer than the default) existed at the solved pose only. Reproduced on
+real OCCT solids: a hinge that takes two unit spheres from **10.751594 mm**
+apart at the solved pose to **0.04 mm** at 90°, never touching, zero common
+volume at all 71 samples — static `pass, 0 failing`, correctly, and swept
+`pass, 0 failing` with the 0.04 mm printed beside it, against the 0.1 mm the
+same undeclared pair is held to at rest. A swept pair now fails `below
+clearance` against its own minimum, under three narrowing rules that keep the
+block additive to the static one: only a pair the joint moves, only a pair the
+static block calls clear, and never a declared contact or a welded pair.
+Replayed over all twenty-one retained ot7 `clearance.json` files the new rule
+adds **zero** failures, so no number in this report moves. F6 and F7 are
+judged on "zero failing static and swept fit checks", and until this change
+the swept half of that bar could only be failed by an overlap.
+
+F5 is not re-run and no frozen prompt changed for any of the twelve. Every
+number in the F6 and F7 rows is therefore measured on this product, and the
+ot6 and F5 comparisons in this report are read across these changes.
+
+> *Superseded on 2026-09-15:* "All scheduled collector slots are consumed.
+> The run's successful-completion prerequisites are not established by the
+> existing evidence. ... This run returns an incomplete outcome." The
+> reconciliation the earlier handoff deferred was folded by the restart
+> (`4505e21f`); the outcome is open, not terminal.
+
+## F7's first two Opus calls: the biped is the design the bound cannot hold
+
+Verified against source: 2026-09-19.
+
+F7 has now been dispatched twice on `claude-opus-5`, and neither call is a
+design result. Both are **interruptions** under ADR-356 — a child that never
+ended on its own — so F7 still holds its create prompt and all three
+continuations, and its retry project is `ot7-plover-d`.
+
+Iteration 154's call on `ot7-plover-b` lasted 18 seconds and ended when the
+runner process itself died, taking the child with it; its receipt was stale at
+`status: running` because nothing survived to finalise it. The runner
+classified a child it kills at the bound and one that never launched; it had
+no path for its own death. That was a named gap, not a measured design result
+— and iteration 156 closed it (ADR-388): the receipt now reads `interrupted`,
+`kind: runner_died`, 10 model messages before the kill, 0 slots spent
+([receipt](attempts/plover-b-runner-died.json)).
+
+Iteration 155's call on `ot7-plover-c` is the informative one. The window
+probe read `allowed` at 14 % of the five-hour window, the frozen create prompt
+reached the model, and the turn ran the full **1800.0 s** bound: 124 frames,
+49 tool calls (4 `describe_api`, 30 `inspect`, 10 `write_script`, 4
+`edit_script`, 1 `rebuild`), 1.29 MB of transcript, zero actor design edits.
+It was killed mid-repair, reading `inspect scope=clearance` on its own
+numbers.
+
+It is the first F7 call to produce geometry. The last revision it built
+(`15be5515…`, **never accepted**) is a 30-component biped, 24 components
+catalogued and 6 printed, and the product measured it end to end: **13 failing
+of 435 static pairs** — 12 intersections and 1 world-geometry failure, the
+worst being a centre screw 12.566 mm³ inside its own hip servo — and **52
+failing swept pairs across 4 of 4 joints with complete coverage**. That is
+F1–F3 working on the largest design ot7 has put through them; it is not an F7
+result, because F7's bar is an accepted design and nothing here was accepted.
+
+The measurement that decides the next dispatch is the bound itself. Create
+turns have cost more the larger the design: Heron 1,530.4 s at 120 static
+pairs, Robin 1,676.4 s at 276, Plover 1,800.0 s at 435 — the first to reach
+the ceiling rather than finish under it. A retry at the same 30-minute bound
+has no reason to end differently, so `ot7-plover-d` should follow a raised
+`TURN_BOUND_SECONDS`, not precede it.
+
+**Both were acted on in iteration 156 (ADR-388).** `TURN_BOUND_SECONDS` is
+now **3600 s**: a ceiling just above the largest measurement buys another
+interruption, so it doubles, and every receipt records the bound at each
+invocation with every row copying it, so a pre-ADR-388 kill is still ruled
+against 1,800 s and the timings above stay comparable. `reclassify` gained
+the runner's own death: a row left at `started` whose receipt has been silent
+for longer than the whole budget its turn could take is finalised as an
+ADR-356 interruption with `kind: runner_died`, which is what `ot7-plover-b`
+now carries — 0 slots spent, its create prompt and all three continuations
+still unspent, retry named `ot7-plover-d`.
+
+**`ot7-plover-d` was then dispatched, on Opus, under the raised bound.** The
+probe read `allowed` at **33 %** of the five-hour window against the unchanged
+45 % gate, and the receipt records `turn_bound_seconds: 3600` at both the
+receipt and the row. The window cost of an Opus create turn is now measured
+too, and it is far below the Fable figure the gate was calibrated on:
+`ot7-plover-c` started at 14–15 % and ran the full 1,800 s, and the window
+read 31 % afterwards — about 17 points for half an hour, against the 49 that
+one Fable turn cost. A 3,600 s Opus turn starting at 33 % therefore projects
+to roughly 67 %, inside the window, whose reset is at 21:10 UTC. The turn's
+outcome belongs to the next iteration.
+
+## F7's third Opus call: the create turn the repo broke under itself
+
+Verified against source: 2026-09-19.
+
+`ot7-plover-d`'s create turn **ended on its own**. It is the first F7 call to
+do so: exit 0, `result subtype: success`, 25 provider turns, 1,310.0 s of a
+3,600 s bound, 1,034 frames and 859,812 bytes of transcript, 23 tool calls
+(4 `describe_api`, 11 `inspect`, 5 `write_script`, 3 `rebuild`), 97,969 output
+tokens of which 87,738 thinking, zero actor design edits
+([receipt](attempts/plover-d-engine-mutated.json)).
+
+It also built no biped. The accepted revision at the end of it is
+`6f6b5a67…`, a **three-solid probe script** — `probe_box`, `probe_cyl`,
+`probe_bolt` — and its measured fit is `unavailable` on all three reports,
+static, swept and attachments, because a revision that places no assembly
+component has no pair to measure. Unavailable is not passing, and this is not
+a design.
+
+**The cause is this repository, not the model.** At frame 997 of 1,034 —
+`2026-09-19T19:12:25.045Z`, after four `write_script` calls had already
+succeeded — every build path began failing identically:
+
+```
+DOMAIN_WORKER_NO_RESULT   returncode 1 after 0.05 s
+cadex_project_worker.py line 31: ModuleNotFoundError: No module named 'CadexGeometryDigest'
+```
+
+The CLI's dev-tree engine root **is** the live source tree
+(`cli/cadex_cli/engine.py`, `DEV_MODULE_DIR = src/Mod/cadex`). `cadexd` reads
+its bundle member list from `_DOMAIN_WORKER_BUNDLES` once, when it imports
+`CadexScriptedRuntime`, and reads each member's *bytes* from disk on every
+cache miss. Iteration 158 (ADR-389, commit `ece37fa6`) added the
+`CadexGeometryDigest` import to `cadex_project_worker.py` at 15:11:37 local,
+**while this turn was live**. The resident service then hashed the new worker
+bytes against its old member list, produced a key that had never existed, and
+published `project-051fbabebc61cf661f388441` — 32 members, holding a worker
+that imports a module the bundle does not carry. That directory's mtime is
+15:12:24.987; the first failing frame is 15:12:25.045, **58 milliseconds
+later**. Being content-addressed, the same key was recomputed on every retry,
+so no rebuild inside the turn could recover.
+
+The agent diagnosed it correctly and refused to claim a fit it could not
+measure: its closing message names the traceback, names the bundle path, says
+"the accepted revision is still the probe script … nothing of the biped has
+been accepted", and records two `NOTE`s in `DECISIONS.md` — one rejecting the
+turn, one retaining the MG90S, MR128 and M2 datums it had measured live from
+`lib` before the worker died. That is F1's instruction working under the worst
+available conditions.
+
+**Recorded as a spent create slot by iteration 159, and ruled void in
+iteration 160.** The collecting actor read it as spent because the charter
+voids a call only on a provider usage, session or credit limit, and an engine
+mutated by this repo's own unattended work is not on that list; it said
+plainly that whether the reading survived was the critic's or the owner's
+call. **It did not survive.** The ruling is that the charter's void list
+describes calls that never became a fair measurement, and this is one: the
+call did not measure the agent, it measured this repository breaking its own
+engine 58 ms into the turn. So `ot7-plover-d` **consumes no create slot**, is
+reported apart from F7's attempts in the slot table above, and the receipt
+carries the ruling in its `ruling` field with every measurement left as it
+was recorded. **F7's create prompt is unspent**, and its retry sends the same
+frozen create text into a fresh `ot7-plover-e` rather than continuing from a
+probe.
+
+Two measurements worth keeping. The **window cost of an Opus create turn**:
+33 % at dispatch, 54 % at the last frame, so about 21 points for 1,310 s,
+beside `ot7-plover-c`'s ~17 for 1,800 s — far below the 49 that one Fable turn
+cost the gate it was calibrated on. And the **engine is sound now**: a bundle
+staged from today's source carries all 33 members including
+`CadexGeometryDigest.py`, `test_cadexd_lifecycle.py` is 23 passed against the
+dev tree, and a copy of `ot7-robin-c` opens and publishes its 276 static pairs,
+which is ADR-389's own fix confirmed on the design it was written for.
+
+**The hazard is closed in the product (ADR-390).** `shared_worker_bundle` now
+parses every staged member's module-scope imports and refuses to publish — or
+to trust a cached — bundle in which one member imports an engine module beside
+it that is not itself a member, naming the member, the module and the skew. An
+unusable bundle can no longer become a directory, and the failure the agent
+saw as `DOMAIN_WORKER_NO_RESULT` for the rest of a session is now one readable
+message that says to restart the engine. The check is keyed by the digest that
+already keys the bundle, so a warm cache pays nothing for it, and a test pins
+the standing invariant on the real tree.
+
+**The process fact, for the next iteration: never edit `src/Mod/cadex` while a
+design turn is live.** The guard makes that mistake diagnosable; it does not
+make it free. The turn still costs its slot.
+
+**F6 was not dispatched in this iteration.** The five-hour window read 63 %
+against the runner's unchanged 45 % gate at 20:10 UTC, `room: false`, reset at
+21:10 UTC — most of it spent by the plover-d turn this iteration collected.
+Under the charter a frozen prompt is never sent while the harness is limited,
+so `continue-1` on `ot7-robin-c` stays unspent and is the next dispatch after
+the reset.
+
+## Iteration 161: F6's first continuation completed, and the sweep it was missing
+
+The turn was dispatched at 21:12:17 UTC on 2026-09-19 by **iteration 160**,
+which was then killed at its own actor bound at 21:53 and never recorded it;
+iteration 161 collected it. `run.py resume … --turns 1 --model claude-opus-5`
+read the five-hour window at **0 %** against the unchanged 45 % gate and sent
+`continue-1.prompt.txt` (756 bytes, digest `80d725d2…`, unchanged) into
+`ot7-robin-c`. It is the same prompt iteration 157 could not deliver: that call
+never reached the model, because `open_project` refused the project on the
+digest drift [`DIGEST-DRIFT.md`](DIGEST-DRIFT.md) records, and ADR-389's
+geometry digest is what let it open this time. The runner's ADR-384 model
+transition is in the receipt: the create turn is `claude-fable-5`, this one
+`claude-opus-5`, and no earlier turn was replayed.
+
+**The turn ended on its own** in 790.6 s (result `success`, 7 API turns, 15
+model messages, 4 thinking blocks, 6 tool calls: 4 `inspect`, 1 `write_script`,
+1 `rebuild`), so the first continuation is spent and two remain. No actor
+edited the design. The compact receipt is
+[`robin-continue-1-c.json`](retained/robin-continue-1-c.json); the 436,073-byte
+stream (digest `cf797cd6…`) stays in the project.
+
+What the agent did, in order: it read the measurements **before** editing —
+the clearance summary, `/attachments` paged, then `/clearance_sweep` — found
+the rest pose and all 21 welds already passing, and found the one thing the
+create turn's report had left unmeasured. Both wheel axles declared no limits,
+so the product had reported the sweep `incomplete` with that exact reason, and
+the wheel-to-shaft interface had only ever been measured at one clock angle.
+Its own words for what that hid: the catalog gearmotor is a single solid whose
+D-shaft is drawn at a fixed angle, so a keyed D-bore drives printed material
+through the shaft's cylindrical surface at every angle but zero. It replaced
+the keyed hub with a **split clamp hub** bored on the shaft's envelope of
+revolution, pinched by one catalog M2×6.5 socket screw into one catalog M2
+heat-set insert per wheel, moved the wheel web to the inboard face so the
+clamp section is free to close, declared `angle_limits_degrees = ±1800°` on
+both joints with a step derived as `range/18` (37 poses, under the engine's
+73-pose cap), and declared the two pinch screws as contacts against their
+wheels. One `write_script`, accepted on its first submission against
+`expected_revision` `192db5b9…`; one `rebuild` reproducing digest `b933d905…`.
+
+The measured result on revision `0b438561…`:
+
+- **Static fit: 0 of 378 failing** (was 0 of 276) — zero intersections, zero
+  below-clearance, zero unmeasured, `world_geometry` empty.
+- **Attachments: touching**, 25 of 25 welds, none reported.
+- **Sweep: pass, `coverage: complete`** — 2 of 2 joints, 37 poses each at 100°
+  over ±1800°, 75 moving pairs per joint, **minimum distance 0.0500 mm** and
+  **maximum common volume 0.0 mm³**. That 0.0500 mm is the hub-bore-to-shaft
+  running clearance holding constant through a full turn. F3's check is the
+  thing that named the gap, and the design that closed it is the direct
+  answer.
+- **Inventory: every purchased part catalogued** — 2× `gearmotor/pololu-2367`,
+  1× `board/pi-zero-2-w`, 10× `heat_insert/m2-standard`, 8× `bolt/m2x4-socket`,
+  2× `bolt/m2x6.5-socket`, `derived_catalog_sources` empty; the five
+  uncatalogued rows are the printed chassis, two wheels and two clamps. F5's
+  catalog-identity failure has not recurred on Robin.
+- **Smoke: not measured on this revision.** The receipt's smoke block is the
+  one the iteration-157 invocation wrote at 17:30 UTC against the *create*
+  revision. The runner attempts its holding smoke when an invocation closes,
+  and this one paused with two continuations left, so F6's smoke evidence must
+  come from a later invocation.
+
+The agent's closing message cites the engine's numbers rather than the
+script's printout, states its four DECISION lines against the measurement each
+resolved, and lists three alternatives it rejected with the measurement that
+rejected them — keeping the D-bore and declaring the pair a contact (a contact
+exempts a pair from the gap check but not from intersection, so the sweep
+would still have failed), ±180° limits (too tight a physical stop for a
+balancer that drives to recover), and a set screw on the shaft flat (its tip
+sits inside the shaft envelope and sweeps through it).
+
+**F6 stands at: create spent, `continue-1` spent, two continuations unspent,
+zero actor edits, zero failing static and swept checks, catalog hardware
+complete, smoke unmeasured.**
+
+## Iteration 161: F6's second continuation, and the turn that refused to edit
+
+Dispatched at 21:58:18 UTC with the window probe reading **9 %** against the
+unchanged 45 % gate. `continue-2.prompt.txt` (611 bytes, digest `9a78ff9d…`,
+unchanged) **ended on its own** in 332.2 s (result `success`, 11 API turns, 23
+model messages, 7 thinking blocks, 10 tool calls: 9 `inspect` — six
+`clearance`, two `object`, one `blueprint` — and 1 `rebuild`). The second
+continuation is spent; one remains. Compact receipt:
+[`robin-continue-2-c.json`](retained/robin-continue-2-c.json); the
+212,154-byte stream (digest `231e10a6…`) stays in the project.
+
+**The agent read the report and then declined to change anything.** It did not
+stop at the summary line: it paged `/clearance_sweep/joints`, each joint row,
+`/attachments` at limit 25, and the per-joint swept pair rows under
+`/clearance_sweep/joints/0/pairs` — the two places a failure could hide from a
+summary — read the MJCF validation property for `initial_contact_count`,
+`penetrating`, `grounded_components` and `world_geometry`, and re-ran
+`rebuild` to force a fresh measurement rather than read a cached verdict. It
+reproduced the identical digest `b933d905…` and the identical numbers. Its own
+sentence for why it stopped there: editing now would mean changing a design
+that measures correct in order to match a description of it, "which is the one
+thing the measurements exist to prevent — and any edit I invented would have
+to be justified by a number I could not show you."
+
+That is the behaviour F1 was built for, stated by the agent unprompted, and it
+is the mirror image of ot6's failure: there the script's printout said the
+parts fit while the geometry did not; here the prompt's standing text asks for
+a correction and the measurements say there is nothing to correct, so the
+agent answers with the measurements. It also named two non-failing values to
+watch — the 0.0500 mm swept hub clearance sits above its declared 0.04 mm
+minimum but below the 0.1 mm undeclared default, so it depends on that
+`clearances=` declaration staying in place; and the sweep costs 45.4 s and
+46.2 s per joint against F3's 90 s per-joint budget, so a substantially slower
+machine could return `incomplete` for want of time rather than for a fit
+defect, whose repair would be a coarser `sweep_step_degrees` and not a
+geometry change.
+
+Measured result, unchanged from continue-1 and on the same accepted revision
+`0b438561…`: static **0 of 378 failing**, attachments **touching** 25 of 25,
+sweep **pass, `coverage: complete`**, 2 of 2 joints, minimum distance
+0.0500 mm, maximum common volume 0.0 mm³; inventory unchanged, every purchased
+part catalogued. **One difference from F4's and F5's corresponding
+continuations is worth stating plainly: this turn did not re-accept the
+unchanged script either.** It submitted no script at all, so the accepted
+revision after the turn is the one continue-1 left, not a fresh acceptance of
+the same text.
+
+**F6 stands at: create spent, `continue-1` and `continue-2` spent, one
+continuation unspent, zero actor edits, zero failing static and swept checks,
+catalog hardware complete, smoke still unmeasured on `0b438561…`.**
+
+### The defect that had to be fixed before `continue-3` was dispatched (fixed, ADR-391)
+
+The runner's closing smoke runs **only** on the invocation that ends
+`exhausted` or `failed`, and on that path `attempt.json` is written **after**
+it. `continue-3` is F6's last slot, so it is that invocation — and the smoke
+block opens with `smoke.mkdir()`, no `exist_ok`, against an
+`evidence/smoke` directory `ot7-robin-c` has carried since the iteration-157
+invocation wrote it at 17:30 UTC. As the code stands, `continue-3` would reach
+the model, spend the slot, complete, be measured, and then raise
+`FileExistsError` before any of that reached the receipt, leaving it at
+`status: running` with the row at `started` — the dead-runner shape ADR-388
+already had to clean up once, except with a spent frozen prompt inside it.
+Fixed in iteration 163 (ADR-391): the closing smoke takes the first free name
+-- `evidence/smoke`, then `evidence/smoke-retry-N` -- the receipt names the
+directory it used in `smoke.evidence_dir`, and earlier smoke evidence is never
+overwritten. `test_a_reopened_attempt_closes_again_beside_its_first_smoke`
+walks a reopened attempt through its second closure and fails on the old code
+with the `FileExistsError` above. `continue-3` may now be dispatched, and F6's
+smoke evidence arrives with it or not at all.
+
+## Iteration 163: F7's fourth Opus call — the biped the agent actually built
+
+`ot7-plover-e`, the retry ADR-390 named after ruling `ot7-plover-d` void.
+Same frozen create prompt (`plover.create.prompt.txt`, 9,303 bytes,
+`b95f98b7…`), same model and effort (`claude-opus-5`, medium), dispatched at
+22:28 UTC on a five-hour window reading **17 %** against the 45 % gate.
+The turn **reached the model and ended on its own** after **2,695.8 s** with
+`stop_reason: end_turn` — 1,370 frames, 87 assistant turns, 52 tool calls
+(38 `inspect`, 8 `write_script`, 4 `describe_api`, 2 `edit_script`),
+194,037 output tokens of which 113,407 thinking, **zero actor edits**. It
+spent F7's create slot; the three continuations are unspent and the receipt
+is `paused` at `continue-1.prompt.txt`.
+
+**It is a biped, and it is the first Plover call that produced one.** The
+accepted revision `a6f75c23…` carries **29 components**: four catalog MG90S
+servos with hip and knee pitch per leg, four `mg90s-single_arm` horns, four
+MR128 bearings, twelve bolts (8 × M2×6, 4 × M2×16), and five printed parts —
+pelvis, two thighs, two shins — which are the only entries under
+`uncatalogued_sources`, as printed parts should be. The base is free, and
+`world_geometry` is empty.
+
+The fit report it accepted is **failing, measured and legible**:
+
+- **Static: 12 failing of 406 pairs** — 394 clear, 12 intersections, 0 below
+  clearance, 0 unknown, at 0.1 mm minimum clearance and 1e-6 mm³ maximum
+  common volume. Every one is a fastener buried in the part it fastens:
+  eight tab screws through pelvis or thigh at **4.0715 mm³** each, four
+  centre screws through their servo bodies at **15.7080 mm³** each.
+- **Attachments: clean** — 24 of 24 fixed-joint pairs touching within
+  0.001 mm, nothing reported.
+- **Swept: complete on all four joints, at a 15° step**: hips
+  ±60° in 9 samples, knees 0–90° in 7, 406 pairs measured per joint, 190 and
+  78 pairs moving. **48 failing pair-joint rows, and exactly 12 distinct
+  pairs** — the same twelve, seen from four joints, each reported at the
+  sweep's first sample (hips −60°, knees 0°) because they never separate.
+
+So the defect is **one class, twelve instances**: hardware modelled as solid
+where the printed part has no clearance hole for it. That is the state the
+three frozen continuations inherit, and none of them names a part, a number
+or a defect. Receipt:
+`docs/probes/ot7/attempts/plover-e-create.json`; the project manifest is
+`<projects>/ot7-plover-e/evidence/attempt.json` (`32f6fe68…`). The window cost was 15 points for 2,695.8 s, against
+plover-d's 21 for 1,310 s.
+
+**F7 now stands at one spent create turn with three continuations unspent,
+on a design that is a biped with a failing fit report.** No smoke has been
+run: this invocation dispatched one prompt and paused, and the runner smokes
+only at a closure.
+
+## Iteration 164: F6's last continuation, and the smoke a balancer cannot pass
+
+Dispatched at 23:17:53 UTC with the window probe reading **35 %** against the
+unchanged 45 % gate. `continue-3.prompt.txt` (732 bytes, digest `0814d73f…`,
+unchanged) **ended on its own** in 305.7 s (result `success`, 4 API turns, 9
+model messages, 3 thinking blocks, 3 tool calls). The third continuation is
+spent, none remains, and the runner closed the attempt `exhausted` with
+**four slots spent, zero actor design edits**. Compact receipt:
+[`robin-continue-3-c.json`](retained/robin-continue-3-c.json); the
+187,584-byte stream (digest `4845a294…`) stays in the project.
+
+**The agent refused to edit a second time, and this time proved it fresh.**
+Three tool calls: `inspect scope=clearance path=/pairs limit=50`, `inspect
+scope=script`, then `rebuild`. The rebuild re-ran the unchanged script into a
+fresh document, re-solved, re-measured and re-accepted it as a new attempt
+carrying the identical revision `0b438561…` and the identical digest
+`b933d905…` — so unlike `continue-2`, which submitted nothing at all, this
+turn left a fresh acceptance of the same text. Its stated ground was the same:
+the report names no failing check, so an edit would change a design that
+measures correct in order to match the prompt's standing assertion that
+something is wrong. It then wrote the documentation the prompt asked for: two
+`DECISION:` lines and three `NOTE design_specs:` lines, carrying the counts
+(**1,159 checks passing, 0 failing**: 378 rest-pose pairs, 25 attachments, 756
+swept pair-range measurements) and the reason the 0.0500 mm hub clearance is
+deliberately below the 0.1 mm undeclared default — it is a running fit covered
+by its `clearances=` declaration, and widening it "would destroy the
+bore-to-shaft fit that makes the wheel a wheel".
+
+One claim of its own is wider than what it paged, and the report says so
+rather than repeating it: it wrote that every one of the 378 rest-pose rows
+carries `fit_failures: []`, having paged 50 of them. What actually carries
+that is the engine's classification over the whole array — `clear 378,
+intersection 0, below clearance 0, unknown 0` — which is in the same reply, so
+the conclusion is sound and its stated basis is not the one it used.
+
+Measured result, unchanged across `continue-1`, `continue-2` and
+`continue-3`, on accepted revision `0b438561…`: static **0 of 378 failing**,
+attachments **touching** 25 of 25, sweep **pass, `coverage: complete`**, 2 of
+2 joints, minimum distance 0.0500 mm, maximum common volume 0.0 mm³; 28
+components, every purchased part catalogued (2× `gearmotor/pololu-2367`, 1×
+`board/pi-zero-2-w`, 10× `heat_insert/m2-standard`, 8× `bolt/m2x4-socket`, 2×
+`bolt/m2x6.5-socket`), five printed parts uncatalogued, no world geometry.
+
+### The closing smoke: fail, and why it is not a fit defect
+
+This was the exhausting invocation, so the runner ran its one-second holding
+smoke — into `evidence/smoke-retry-1`, ADR-391's first-free-name rule working
+exactly as it was written for, leaving the iteration-157 smoke untouched. It
+took 41.2 s and its **verdict is `fail`**, on three of five checks:
+
+| check | verdict | measurement |
+|---|---|---|
+| finite | pass | no non-finite state |
+| **components** | **pass** | exact BREP solids at **51** sampled MuJoCo poses, **378** pairs, maximum common volume **1e-06 mm³**, `initial_pose_agrees: true`, nothing failing |
+| penetration | fail | 4 breaches at 0.5 mm tolerance — `comp_board` 7.676 mm and `comp_chassis` 5.312 mm through `environment/floor` at 0.740 s, both wheels 0.601/0.600 mm at 0.060 s. **Every breach is against the proxy floor; none is between two components of the design.** |
+| support | fail | the free base `comp_chassis` ends **102.2° from its accepted attitude** (limit 30°), dropping from z 107.5 mm to 16.1 mm |
+| termination | fail | the design's own `fallen` rule fired at **0.660 s** (`chassis_pos_z` 66.73 below its 75.25 threshold) |
+
+Robin is a free-base two-wheeled inverted pendulum with `policy_on: 0`. At
+zero action it topples, because that is what the machine is. This is the same
+outcome the retained ot6 balancer gave at zero torque — 101.3°, recorded under
+ADR-377, and the measurement the new support check was written to catch — so
+it is a property of an uncontrolled balancer, not a new defect, and this run
+trains no policy by charter. The check that speaks to *fit over the trace*
+passes cleanly.
+
+**F6 is exhausted, and its bar is met on five of six requirements.** Accepted
+design from the frozen ot6 create prompt, zero failing static checks, zero
+failing swept checks with complete coverage, zero actor edits, three
+continuations, catalog hardware for every purchased part — and **the smoke
+does not pass**. F6 is not tickable as written on this evidence. Whether an
+inherently unstable mechanism can satisfy F8's "rests on the environment floor
+or holds its grounded base" without a controller is a question for the owner,
+not for an actor to resolve by changing the check: no smoke code was touched
+this iteration.
+
+## Iteration 165: F7's first continuation, and twelve buried fasteners removed
+
+Dispatched at 23:31:39 UTC. A standalone `run.py window --model claude-opus-5`
+probe read the five-hour window at **43 %** against the unchanged 45 % gate,
+`room: true`, and the receipt's own pre-dispatch reading three minutes later
+was **44 %** — so this turn went out before the 02:10 UTC reset rather than
+after it. The measured cost of a continuation is what made that safe: the
+stream's own `rate_limit_event` frames go 44 % → 46 %, **two points for an
+802-second turn**, against the 15–25 points a create turn spends. The window
+is over the gate now.
+
+`continue-1.prompt.txt` (756 bytes, digest `80d725d2…`, unchanged) **reached
+the model and ended on its own** in **802.1 s**, result `success`, exit 0:
+494 frames, 6 assistant messages, **one tool call**, 45,594 output tokens of
+which 42,817 thinking, **zero actor design edits**. It hit the per-message
+output cap once mid-turn and the CLI's own resume message brought it back;
+the runner's suppression of the automatic no-tool follow-up was not
+triggered. The first continuation is spent; **continue-2 and continue-3 are
+unspent** and the attempt is `paused`. Compact receipt:
+[`plover-continue-1-e.json`](retained/plover-continue-1-e.json); the
+352,812-byte stream (digest `c66c9353…`) stays in the project.
+
+**Every failing check is gone, and the agent removed the geometry rather than
+declaring the overlap away.** The accepted revision moved
+`a6f75c23…` → `0491ead7…` (digest `a00d1aea…`, script `d14bfbaa…`, 440 lines,
++20 / −7 against the create turn's script):
+
+| report | after the create turn | after `continue-1` |
+|---|---|---|
+| static | **fail** — 12 failing of 406 pairs | **pass** — 406 clear of 406, 0 intersection, 0 below clearance, 0 unknown |
+| attachments | touching, 0 of 24 reported | touching, 0 of 24 reported |
+| swept | **fail** — complete on 4 of 4 joints, 48 failing pair-ranges | **pass** — complete on 4 of 4 joints at 15°, maximum common volume **0.0 mm³** on every joint |
+
+Both failure classes were resolved in one `edit_script` call:
+
+- **Eight tab screws in printed cheeks, 4.0715 mm³ each.** The cheek's screw
+  hole was cut at the 1.6 mm tap-drill diameter, so the catalog M2 bolt's
+  2.0 mm shank overlapped the printed wall. The hole is now cut at the M2
+  nominal **major** diameter, making the shank coincident with the wall; the
+  1.6 mm drill and the M2 × 0.4 tap are recorded as a manufacturing note in
+  the script and in a `NOTE design_specs:` line.
+- **Four centre screws in catalog servo bodies, 15.7080 mm³ each.** The MG90S
+  envelope has no tapped shaft bore to receive a screw, so the agent
+  shortened the **purchased** part rather than cutting it: `CTR_LEN` is now
+  `p.block_w - 2.0` (12.0 mm at the default), head flush in the child block's
+  counterbore, the shank's end face coplanar with the spline's top face, and
+  `engage_ctr` is therefore exactly 0. Thread engagement into the output-shaft
+  bore is an assembly note. The pair is additionally declared a `contact`, and
+  measures distance 0.000 mm with common volume 0.0 mm³.
+
+It wrote both `DECISION:` lines the prompt asked for, each naming the
+measurement it read and the number after the change, and one
+`NOTE design_specs:` line revising the fastener schedule and the mass
+roll-up (purchased 65.5 g, printed 237.5 g, total 303.0 g).
+
+**One honest consequence for F7's bar.** The catalog row for the centre screw
+moved from `bolt/m2x16-socket` to `bolt/m2x12-socket`, so the design no longer
+uses the M2 × 16 its create prompt named. Every purchased part is still a
+catalog part — 24 catalog components (4 `servo/mg90s`, 4
+`servo_horn/mg90s-single_arm`, 4 `bearing/mr128`, 8 `bolt/m2x6-socket`, 4
+`bolt/m2x12-socket`) against five printed parts (pelvis, both thighs, both
+shins) — and no world geometry entered the design.
+
+**F7 now has an accepted biped with zero failing static and swept fit checks,
+from the frozen create prompt plus one frozen continuation, with zero actor
+edits.** What F7's bar still lacks is its smoke rollout: the runner attempts
+one closing smoke when an attempt closes, and this attempt is paused with two
+continuations unspent. No engine, CLI, checker or runner code was touched this
+iteration.
+
+## Iteration 167: F7's smoke, taken without spending a slot (ADR-392)
+
+F7's bar has six requirements and had five. The sixth, a passing smoke
+rollout, was unmeasured for a procedural reason rather than a design one: the
+collector runs its one bounded holding smoke when an attempt *closes*, and
+`ot7-plover-e` is paused at zero failing static and zero failing swept checks
+with `continue-2` and `continue-3` unspent. The only route to a smoke was to
+spend a frozen continuation on a turn whose own fit report names nothing to
+fix — buying a measurement with a design slot.
+
+**The collector gap, closed first (ADR-392).** `run.py smoke PROJECT` runs the
+same bounded `cadex smoke --seconds 1` on an open attempt: no prompt, no
+model, no slot, no status change. Its evidence goes to
+`evidence/smoke-interim/` (then `smoke-interim-retry-N`), leaving the
+canonical `evidence/smoke/` free for whatever closes the attempt later, and
+its result is appended to the receipt's `interim_smokes` beside the design
+identity it measured. It refuses a project with no attempt, a repair attempt
+(F4's bar has no smoke in it), an attempt closed by a void, interrupted or
+failed call, an attempt with no completed turn, and a design that changed
+since its last turn. Two fixtures fail on the old code; `cli/tests`: **845
+passed, 1 skipped**.
+
+**What it measured.** Exit 1 in 0.4 s on accepted revision `0491ead7…`, digest
+`a00d1aea…`, the receipt still `paused` with two continuations unspent.
+
+- **The dynamics half passed every check**, verdict `pass`: state finite
+  throughout; penetration **0 breaches** with the two feet touching the floor
+  at 0.337 mm against a 0.5 mm tolerance; support resting on the floor after a
+  0.281 mm drop at 0.186° of tilt, base `c_pelvis`, `kind: free`; the one
+  termination rule unfired. 51 samples over 1.0 s at 50 Hz, MuJoCo 3.10.0.
+  **The biped stands.** It does not topple the way Robin's did.
+- **The geometry half never produced a verdict.** The exact-BREP check's
+  frame-0 agreement gate raised on `('c_bearing_hip_l', 'c_bearing_hip_r')`:
+  published clearance puts them 33.8 mm apart with zero common volume, and the
+  MJCF puts both at the same point, 16.9 mm below the pelvis.
+
+**The gate was right, and what it found is ours.** Composing the MJCF body
+tree down to world poses and holding it against the solved component
+placements: **all 24 components whose solved placement carries a non-identity
+rotation are at a different world pose in the model than in the assembly** —
+worst `c_tabscrew_knee_l_0` at **121.9 mm**, with a wholly different
+orientation in every case — while the five with an identity rotation (pelvis,
+both thighs, both shins) are exact to 1e-6. Four of the misplaced bodies carry
+a collision geom (the servos, 55.2 mm and 114.2 mm out) and all 24 carry mass,
+so the dynamics half's pass is a pass on a model that does not match the
+design. Robin and Heron write no rotated body at all — every `quat` in their
+MJCF is absent — which is why neither exercised this and why it surfaced only
+on the first design whose components are rotated.
+
+**And the shape of it is exact.** Taking each non-root body's written
+parent-relative transform against the one the solved assembly implies: 4 of 28
+match it, 24 match **its inverse**, and none is anything else. The four that
+match are precisely the four bodies carrying a revolute joint — both thighs and
+both shins; all 24 that are inverted are fixed attachments. `CadexDynamics.py`
+derives a non-root body's frame as `parent_local_matrix ×
+inverse(child_local_matrix)` from the joint connector frames rather than from
+the solved placements, which only the root body uses. That line is where the
+fixture and the fix start.
+
+**So F7's smoke is unproven rather than failing, and `continue-2` stays
+unspent.** The failure is a repository defect in the MJCF the engine exports,
+not something the agent can see from its tools or fix in its script, and the
+charter's rule is that the actor never edits a design. Asking a frozen
+continuation to resolve it would spend a design slot on our bug and report the
+result as the agent's. The next unit is the engine-side one: a fixture that
+pins a rotated component's MJCF body pose to its solved placement, then the
+fix. Receipt: [`retained/plover-smoke-e.json`](retained/plover-smoke-e.json).
+
+**Inventory, measured for F7's catalog-hardware requirement.** 29 components:
+**24 catalogued** — 4 `servo/mg90s`, 4 `servo_horn/mg90s-single_arm`, 4
+`bearing/mr128`, 8 `bolt/m2x6-socket`, 4 `bolt/m2x12-socket` — and **five
+uncatalogued sources, all printed parts**: pelvis, both thighs, both shins.
+`derived_catalog_sources` is empty and no world geometry entered the design.
+Every purchased part is a catalog part, so that requirement is met; the M2 × 16
+the create prompt named is still absent, replaced by the M2 × 12 the
+continuation fitted.
+
+## Iteration 168: the misplaced bodies were a swapped connector frame (ADR-393)
+
+Iteration 167 named `CadexDynamics.py:3350` as the defect: a non-root body's
+frame derived as `parent_local_matrix × inverse(child_local_matrix)` while only
+the root uses the solved placement. **That line is correct.** A fixture built
+forwards — a grounded host at 37°, a welded tab, a hinged arm — recovers the
+solved parent-relative transform from exactly that expression. What was wrong
+was the *labelling* of its two inputs.
+
+`JointObject.setJointConnectors` calls `ensureUnconnectedIsSecondRef` (upstream
+FreeCAD issue 29355), which swaps `Reference1`/`Reference2` together with
+`Placement1`/`Placement2` whenever the first reference's part is the unconnected
+one. `cadex_assembly_worker._build_joint` read `Placement{i}` at the *script's*
+connector index, so after a swap each component was handed the other one's
+connector frame. Plover's `weld()` writes the bought part first — the
+unconnected-first order — 24 times; its four hinges are written host-first and
+were never swapped. That is the 24-and-4 split exactly.
+
+The fix resolves each script connector to the native slot whose reference names
+its component, and refuses a joint whose references cannot be matched. Evidence:
+`src/Mod/cadex/cadex_tests/test_dynamics_connector_sides_live.py`, two tests
+that compose the exported body tree down to world against the placements the
+solver produced; both fail on the old code. Rebuilt from the fixed engine,
+**all 29 of `ot7-plover-e`'s bodies agree with their solved placements**
+(`bad: 0 of 29`, tolerance 1e-4 mm), against 24 wrong before. `pixi run
+test-engine`: 2195 passed, 53 skipped. Packaged gate: 23 passed.
+
+**F7's smoke is still unproven, and now for a different and correct reason.**
+`cadex smoke` measures the *accepted revision's retained artifacts*, and
+`ot7-plover-e`'s stored `plover_model-model.xml` (`c4c47094…`) was exported by
+the pre-fix engine. A historical view never rebuilds an old run, so the retry
+smoke read the same file and failed the same agreement gate. A freshly built
+plover writes `71b8b39c…`, which passes the comparison. Closing the smoke needs
+the design built again under a turn that re-accepts it — a design slot — so
+`continue-2` and `continue-3` remain unspent and the decision stays open.
+
+## Iteration 169: the window shut, and F9 re-measured under the fixed engine (ADR-394)
+
+**No design turn was dispatched.** A window probe on `claude-opus-5` read the
+five-hour window at **70 %** against the runner's 45 % gate — `room: false`,
+resetting 2026-09-20T02:10Z — and the charter's rule is that design turns wait
+for the product agent. F7 keeps `continue-2` and `continue-3` unspent, its
+receipt stays `paused`, and its smoke stays unproven for the reason iteration
+168 recorded: closing it needs the design built again under a turn that
+re-accepts it.
+
+So the unit was F9's other half, and the question ADR-393 left it: does an
+engine that now reads every joint's connector frames differently change
+anything about the three retained ot6 designs?
+
+**It changes nothing, and that was measured rather than argued.** ADR-393's
+defect fires only on a weld written hardware-first, and all three scripts write
+theirs host-first — Finch's `purchase()`, Robin's `fix_{name}`, Heron's
+`weld()` — so none of their 24, 21 and 12 fixed joints was ever swapped. The
+new probe [`runner/mjcf_agreement.py`](runner/mjcf_agreement.py) composes an
+exported body tree down to world and holds it against the placements the same
+solve published:
+
+| Design | Bodies | Attempts measured | Disagreeing | Worst error | Distinct model digests |
+|---|---:|---:|---:|---:|---:|
+| Finch | 29 | 4 | 0 | 0.0 mm, 0.0° | 1 |
+| Robin | 24 | 4 | 0 | 0.0 mm, 0.0° | 1 |
+| Heron | 15 | 4 | 0 | 0.0 mm, 0.0° | 1 |
+
+The four per design are the ot6-era export, the two from the ot7 restore audit,
+and a rebuild taken under the fixed engine; each design's MJCF is byte-identical
+across all four. The nonzero control is `ot7-plover-e`'s pre-fix model at
+**24 of 29 disagreeing, worst 121.86102740417053 mm** — iteration 167's figure
+recomputed by an independent route.
+
+Each `ot7-open-*` copy was then read twice in a fresh process, once from the
+published measurements and once through `open_project`'s full restore, which
+re-runs the accepted script and exercises ADR-393's new refusal path:
+**406/44, 276/39 and 105/20**, pair-for-pair identical between the two reads,
+accepted revisions preserved, and no joint refused at
+`stage: native_connector_frames`. Tables and caveats in
+[REGRESSION.md](REGRESSION.md#adr-393s-historical-reach-on-the-three-retained-designs--none);
+receipt [`retained/adr393-reach.json`](retained/adr393-reach.json); the probe's
+own arithmetic pinned by
+[`cli/tests/test_mjcf_agreement.py`](../../../cli/tests/test_mjcf_agreement.py).
+
+This claims no swept verdict and no smoke pass for these three revisions: they
+still publish no sweep, and F9 never required these old designs to fit.
+
+## Iteration 170: F7's biped smokes pass, on the model the fixed engine exports (ADR-395)
+
+**No design turn was dispatched and no slot was spent.** F7 keeps `continue-2`
+and `continue-3` unspent; `ot7-plover-e` is untouched, and everything below was
+measured on the copy `ot7-plover-e-reexport`.
+
+Iteration 168 left F7's smoke unproven for a procedural reason: `cadex smoke`
+reads the *accepted* attempt's retained artifacts, and this design was accepted
+before ADR-393, so its stored `plover_model-model.xml` (`c4c47094…`) is the one
+with 24 bodies at the inverse of their solved pose. The route it named — a turn
+that re-accepts the design — costs a frozen continuation on a fit report that
+names nothing to fix. [`runner/reexport_smoke.py`](runner/reexport_smoke.py)
+takes the measurement without one: it re-runs the same accepted script through
+today's engine, and runs the shipped `cadex smoke` with its digest-checked
+bundle read from that rebuilt attempt instead of from the pin.
+
+| Model measured | MJCF agreement (bodies disagreeing) | Worst body error | Smoke |
+|---|---:|---:|---|
+| Accepted pin `c4c47094…` (pre-ADR-393) | 24 of 29 | 121.86102740417053 mm, 179.99999879258172° | **no verdict** — the geometry check's frame-0 gate refuses |
+| Rebuilt `71b8b39c…` (ADR-393 engine) | **0 of 29** | 8.620781476393591e-33 mm, 1.2074182697257333e-06° | **pass** |
+
+**The biped stands, and the geometry agrees with it.** Verdict `pass` in 35.0 s:
+state finite throughout; penetration **0 breaches**, both shins touching the
+floor at 0.3214283954748017 mm against a 0.5 mm tolerance; support resting on
+the floor after a 0.2683688948842189 mm drop at 0.18159412499621788° of tilt,
+base `c_pelvis`, `kind: free`, end speed 1.2e-07 mm/s; the one termination rule
+unfired; 51 samples over 1.0 s at 50 Hz on MuJoCo 3.10.0. The half that never
+produced a verdict before now does: the exact-BREP check passes **406 of 406
+pairs across all 51 samples**, `initial_pose_agrees: true`. The control is the
+same probe on the accepted pin, which reproduces iteration 167's refusal on
+`('c_bearing_hip_l', 'c_bearing_hip_r')` exactly.
+
+**What this is and is not.** It is the product's own smoke code on the model
+the design's own script exports under the current engine, with a control and a
+receipt. It is **not** a `run.py smoke` receipt against the accepted pin: the
+pin still holds the pre-fix model, and only a product-agent turn may move it.
+F7's sixth requirement now has a measured verdict; whether a verdict taken off
+the pin satisfies the bar is the reader's call, and this report claims only
+what it measured. Receipt:
+[`retained/plover-e-reexport.json`](retained/plover-e-reexport.json).
+
+**And the new red line: `ot7-plover-e` can no longer be opened.** The restore
+pass refuses in 89.4 s with `CADEXD_RESTORE_FAILED` (accepted `a00d1aea…`,
+restored `9ef44502…`), and the ADR-389 geometry fallback refuses with it. It is
+right about the bytes and wrong about the design: exactly **2 of 90 outputs**
+changed — the MJCF, and the training task whose only two differing fields are
+the MJCF's digest and byte count — while every BREP artifact, every canonical
+definition and every solved placement is identical, and two independent
+rebuilds wrote the same model bytes. Both digests carry a non-BREP output's
+artifact bytes, so the fallback built for *the same model serialized twice*
+cannot answer *the same model exported better*. A design turn opens with
+`restore=True`, so **F7's two remaining continuations are unspendable on this
+project until that is fixed** — the ADR-386 `unreached` shape, and the next
+engine-side unit.
+
+## Iteration 172: the red line is gone — `ot7-plover-e` opens again (ADR-396)
+
+The defect iteration 170 named is fixed in one keyword. `project_geometry_digest`
+no longer reads a derived output's artifact bytes — an MJCF model, a training
+task, a trace, a render are each identified there by their canonical definition
+alone. `project_digest` is untouched: it still carries those bytes (ADR-068), it
+is still every stored `accepted_digest` on disk, and it still refuses the
+changed export. The second opinion now measures the *model*, which is what it
+was always for.
+
+`ot7-plover-e` **opens**, measured on a fresh copy first and then on the project
+itself: `ok: true` in 89.5 s, `matched_by: "geometry"`, `matches_accepted: true`.
+The byte digests are the same two numbers that refused before — accepted
+`a00d1aea…`, restored `9ef44502…` — and the geometry digests now agree at
+`8c09313f…` on both sides. The accepted pin, digest and revision are unchanged;
+the only state written is the learned `accepted_geometry` measurement, keyed on
+the unchanged accepted digest, and a second open of the copy reproduced
+`ok: true` through it. No script, parameter or accepted state moved, so the
+charter's no-actor-design-edits rule is intact.
+
+**F7's `continue-2` and `continue-3` are spendable again.** That is the whole
+operational point: a design turn opens with `restore=True`, and this project
+refused before a provider session could exist.
+
+**F9's one exception is closed.** The three retained ot6 copies, re-measured
+under the ADR-396 engine with `cadex clearance` before and after a full
+`open_project` restore, report **406/44, 276/39 and 105/20** with the same
+clear/intersection/below breakdowns as every previous reading, accepted pins
+preserved, and each `docs/clearance.md` byte-identical across its restore. All
+three still match on bytes alone, so the fallback is never consulted for them.
+
+Evidence that fails on the old code:
+`test_the_geometry_digest_forgives_a_re_exported_derived_artifact` builds a
+design whose MJCF and model-pinning training task are re-exported with every
+definition, BREP fingerprint and solved placement held fixed, and asserts the
+byte digest moves while the geometry digest does not.
+`test_the_geometry_digest_still_sees_every_non_brep_definition` replaces the old
+bytes assertion with the three that still hold — the derived output's recipe,
+its solved placement, and a mesh's vertex set each move the digest. Suites:
+`pixi run test-engine` **2196 passed, 53 skipped in 295.61 s**; packaged gate
+**23 passed in 18.19 s** on a freshly staged payload. Receipt:
+[`retained/adr396-reopen.json`](retained/adr396-reopen.json), and the tables are
+in [`REGRESSION.md`](REGRESSION.md).

@@ -1,0 +1,326 @@
+{
+  "criterion": "F6",
+  "iteration": 164,
+  "project": "ot7-robin-c",
+  "seed": "the same ot7-robin-c project, resumed after the create turn (Fable) and continue-1/continue-2 (Opus); model transition already recorded under ADR-384.",
+  "evidence_directory": "evidence/turn-3",
+  "model": "claude-opus-5",
+  "settings": {
+    "effort": "medium",
+    "max_output_tokens": 32000,
+    "turn_bound_seconds": 3600
+  },
+  "prompt": {
+    "path": "continue-3.prompt.txt",
+    "bytes": 732,
+    "sha256": "0814d73f6874e009adfe55cb4d038a22b6632af4033fb275c5021d6a1d500e88"
+  },
+  "turn_index": 3,
+  "dispatched_at": "2026-09-19T23:17:53Z",
+  "ended_at": "2026-09-19T23:22:59Z",
+  "window": {
+    "before_dispatch_percent": 35,
+    "bound_percent": 45,
+    "status": "allowed",
+    "stream_first_percent": 36,
+    "stream_last_percent": 39,
+    "resets_at": "2026-09-20T02:10:00+00:00",
+    "seven_day": {
+      "first_percent": 9,
+      "last_percent": 9
+    },
+    "overage_disabled_reason": "out_of_credits"
+  },
+  "turn": {
+    "exit_code": 0,
+    "elapsed_seconds": 305.72157704713754
+  },
+  "turn_status": "completed",
+  "void": null,
+  "interruption": null,
+  "unreached": null,
+  "slot_consumed": true,
+  "continuations_used": 3,
+  "slots_spent": 4,
+  "void_calls_this_project": 0,
+  "interrupted_calls_this_project": 0,
+  "unreached_calls_this_project": 1,
+  "runner_status_after": "exhausted",
+  "remaining_after": {
+    "completed": 4,
+    "continuations_used": 3,
+    "continuations_unspent": 0,
+    "next_prompt": null,
+    "closed": "exhausted"
+  },
+  "actor_design_edits": 0,
+  "stream": {
+    "bytes": 187584,
+    "sha256": "4845a29492a7380df7ed3a10d37b6f89b6eadc51d85e589481c74ff7ea7814f4",
+    "frames": {
+      "system": 46,
+      "assistant": 9,
+      "user": 3,
+      "rate_limit_event": 2,
+      "tool_progress": 3,
+      "result": 1
+    },
+    "assistant_messages": 9,
+    "thinking_blocks": 3,
+    "tool_calls": 3,
+    "tool_calls_by_name": {
+      "inspect": 2,
+      "rebuild": 1
+    },
+    "inspect_scopes": {
+      "clearance": 1,
+      "script": 1
+    },
+    "result": {
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 4,
+      "duration_ms": 204382,
+      "total_cost_usd": 9.851038,
+      "output_tokens": 6677,
+      "thinking_tokens": 4294
+    }
+  },
+  "edits": {
+    "write_script_calls": 0,
+    "edit_script_calls": 0,
+    "accept_tool_calls": 0,
+    "rebuild_calls": 1,
+    "note": "no script was written or edited. The agent read /pairs at limit 50, read the script, then called rebuild, which re-ran the unchanged script into a fresh document, re-solved, re-measured and re-accepted it as a new attempt (1789860047622-6f21a6af7553) carrying the identical revision 0b438561 and the identical digest b933d905. Unlike continue-2, this turn did leave a fresh acceptance of the same text.",
+    "script_lines_after": 436,
+    "script_sha256_after": "f805fdc2bd886b5da8b01f3051bd2668497a2e53c8d7f9fba392ed2c3c9d30e8"
+  },
+  "accepted_before": {
+    "revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+    "static_failing": 0,
+    "pairs": 378,
+    "sweep": "complete, 0.0 mm3"
+  },
+  "accepted_after": {
+    "revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+    "digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c",
+    "changed": false
+  },
+  "static_fit": {
+    "verdict": "pass",
+    "pairs_checked": 378,
+    "counts": {
+      "clear": 378,
+      "intersection": 0,
+      "below clearance": 0,
+      "unknown": 0
+    },
+    "failing_count": 0,
+    "failing": [],
+    "thresholds": {
+      "minimum_clearance_mm": 0.1,
+      "maximum_common_volume_mm3": 1e-06
+    }
+  },
+  "attachments": {
+    "verdict": "touching",
+    "pairs_checked": 25,
+    "reported_count": 0,
+    "reported": [],
+    "thresholds": {
+      "contact_tolerance_mm": 0.001
+    }
+  },
+  "swept_fit": {
+    "verdict": "pass",
+    "coverage": "complete",
+    "step_degrees": 100.0,
+    "joints_checked": 2,
+    "joints_complete": 2,
+    "joints_skipped": 0,
+    "failing_count": 0,
+    "joints": [
+      {
+        "joint": "joint_wheel_l_axle",
+        "kind": "revolute",
+        "unit": "degrees",
+        "status": "complete",
+        "pairs_measured": 378,
+        "step": 100.0,
+        "sample_count": 37,
+        "range_degrees": [
+          -1800.0,
+          1800.0
+        ],
+        "initial_degrees": 0.0,
+        "pairs_moving": 75,
+        "minimum_distance_mm": 0.04999999999998494,
+        "maximum_common_volume_mm3": 0.0
+      },
+      {
+        "joint": "joint_wheel_r_axle",
+        "kind": "revolute",
+        "unit": "degrees",
+        "status": "complete",
+        "pairs_measured": 378,
+        "step": 100.0,
+        "sample_count": 37,
+        "range_degrees": [
+          -1800.0,
+          1800.0
+        ],
+        "initial_degrees": 0.0,
+        "pairs_moving": 75,
+        "minimum_distance_mm": 0.049999999999981504,
+        "maximum_common_volume_mm3": 0.0
+      }
+    ]
+  },
+  "inventory": {
+    "component_count": 28,
+    "catalog_counts": {
+      "board/pi-zero-2-w": 1,
+      "bolt/m2x4-socket": 8,
+      "bolt/m2x6.5-socket": 2,
+      "gearmotor/pololu-2367": 2,
+      "heat_insert/m2-standard": 10
+    },
+    "uncatalogued_sources": [
+      "chassis",
+      "clamp_l",
+      "clamp_r",
+      "wheel_l",
+      "wheel_r"
+    ],
+    "derived_catalog_sources": [],
+    "verdict": "unchanged through all four turns: every purchased part catalogued, five printed parts uncatalogued"
+  },
+  "smoke": {
+    "ran": true,
+    "evidence_dir": "smoke-retry-1",
+    "note": "the first closing smoke this run landed in a directory that already existed; ADR-391's first-free-name rule put it in smoke-retry-1 and left the iteration-157 smoke untouched.",
+    "verdict": "fail",
+    "mode": "hold",
+    "seconds": 1.0,
+    "keyframe": "solved",
+    "samples": 51,
+    "frames_per_second": 50,
+    "accepted_revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+    "model_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+    "checks": {
+      "finite": {
+        "pass": true
+      },
+      "components": {
+        "pass": true,
+        "source": "exact BREP solids at sampled MuJoCo poses",
+        "initial_pose_agrees": true,
+        "samples": 51,
+        "pairs_checked": 378,
+        "maximum_volume_mm3": 1e-06,
+        "failing": []
+      },
+      "penetration": {
+        "pass": false,
+        "breaches": 4,
+        "tolerance_mm": 0.5,
+        "worst": [
+          {
+            "depth_mm": 7.67601253239748,
+            "first": "comp_board",
+            "geoms": [
+              "environment/floor",
+              "comp_board/collision0"
+            ],
+            "second": "environment/floor",
+            "time_s": 0.74
+          },
+          {
+            "depth_mm": 5.31204943660628,
+            "first": "comp_chassis",
+            "geoms": [
+              "environment/floor",
+              "comp_chassis/collision9"
+            ],
+            "second": "environment/floor",
+            "time_s": 0.74
+          },
+          {
+            "depth_mm": 0.600736868917498,
+            "first": "comp_wheel_l",
+            "geoms": [
+              "environment/floor",
+              "comp_wheel_l/collision0"
+            ],
+            "second": "environment/floor",
+            "time_s": 0.06
+          },
+          {
+            "depth_mm": 0.600107163057334,
+            "first": "comp_wheel_r",
+            "geoms": [
+              "environment/floor",
+              "comp_wheel_r/collision0"
+            ],
+            "second": "environment/floor",
+            "time_s": 0.06
+          }
+        ],
+        "note": "every breach is against environment/floor, none between two components of the design"
+      },
+      "support": {
+        "pass": false,
+        "base": "comp_chassis",
+        "kind": "free",
+        "tilt_degrees": 102.23396705927162,
+        "max_tilt_degrees": 30.0,
+        "z_start_mm": 107.5,
+        "z_end_mm": 16.113020552458977,
+        "drop_mm": 91.38697944754102,
+        "touching_floor_at_end": true,
+        "speed_mm_s": 0.017854652204117586
+      },
+      "termination": {
+        "pass": false,
+        "rules": 1,
+        "fired": [
+          {
+            "above": null,
+            "at_s": 0.66,
+            "below": 75.25,
+            "expression": "chassis_pos_z",
+            "label": "fallen",
+            "value": 66.73278932091965
+          }
+        ]
+      }
+    },
+    "failing": [
+      "penetration: comp_board \u2229 environment/floor 7.676 mm at 0.740 s (tolerance 0.5 mm)",
+      "penetration: comp_chassis \u2229 environment/floor 5.312 mm at 0.740 s (tolerance 0.5 mm)",
+      "penetration: comp_wheel_l \u2229 environment/floor 0.601 mm at 0.060 s (tolerance 0.5 mm)",
+      "penetration: comp_wheel_r \u2229 environment/floor 0.600 mm at 0.060 s (tolerance 0.5 mm)",
+      "support: comp_chassis has turned 102.2\u00b0 away from its accepted pose (limit 30\u00b0)",
+      "termination: fallen fired at 0.660 s (value 66.7328)"
+    ],
+    "reading": "Robin is a free-base two-wheeled inverted pendulum with policy_on 0, so at zero action it topples: the design's own `fallen` rule fires at 0.66 s, the base ends 102.2 deg from its accepted attitude, and the four penetration breaches are the fallen body resting through the proxy floor. The check that speaks to fit -- exact BREP solids at 51 sampled MuJoCo poses, 378 pairs -- passes at 1e-06 mm3 with initial_pose_agrees true. This is the same outcome the retained ot6 balancer gave at zero torque (101.3 deg, recorded under ADR-377); it is a property of an uncontrolled balancer, not a new defect, and this run trains no policy."
+  },
+  "measured_result_against_f6": {
+    "static": "pass, 0 of 378 failing",
+    "attachments": "touching, 0 of 25 reported",
+    "swept": "pass, coverage complete, 2 of 2 joints, 0.0500 mm minimum distance, 0.0 mm3 maximum common volume",
+    "world_geometry": "none",
+    "catalog_hardware": "every purchased part catalogued",
+    "actor_edits": 0,
+    "continuations_used": 3,
+    "smoke": "fail -- support, termination and floor penetration; the component-pair check passes",
+    "verdict": "F6's bar is met on five of its six requirements and not on the sixth. The design is accepted, unassisted and free of failing static and swept fit checks within three continuations with zero actor edits and complete catalog hardware, and the smoke does not pass. F6 is exhausted: all four slots are spent."
+  },
+  "what_the_agent_did": [
+    "Three tool calls only: inspect scope=clearance path=/pairs at limit 50, inspect scope=script, then rebuild.",
+    "Refused to edit a second time, on the same ground as continue-2: the report for 0b438561 names no failing check, so an edit would change a design that measures correct in order to match the prompt's standing assertion that something is wrong.",
+    "Unlike continue-2 it did put the unchanged script back through rebuild, which re-ran it into a fresh document and returned the identical digest, so the refusal is backed by a fresh measurement rather than a cached one.",
+    "Wrote the documentation the prompt asked for: two DECISION: lines and three NOTE design_specs: lines, including the passing/failing counts (1159 passing, 0 failing) and the 0.0500 mm running-fit clearance held deliberately below the 0.1 mm undeclared default under its clearances= declaration.",
+    "One claim of its own is wider than what it paged: it says every one of the 378 rest-pose rows carries fit_failures: [], having paged 50 of them. The engine's own classification over the whole array (clear 378, intersection 0, below clearance 0, unknown 0) is what actually carries that, and it is in the same reply."
+  ]
+}

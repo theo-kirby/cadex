@@ -1,0 +1,417 @@
+{
+  "schema": "ot7-interim-smoke-v1",
+  "rule": "ADR-392",
+  "project": "ot7-plover-e",
+  "criterion": "F7",
+  "taken_at": "2026-09-20T00:00:11+00:00",
+  "slot_consumed": false,
+  "status_when_taken": "paused",
+  "after_turn": 1,
+  "remaining": {
+    "completed": 2,
+    "continuations_used": 1,
+    "continuations_unspent": 2,
+    "next_prompt": "continue-2.prompt.txt",
+    "closed": null
+  },
+  "accepted_revision": "0491ead7998a2d5b42cde770b2968df3d921baa2c3b7248a2bca19bb60cf9516",
+  "accepted_digest": "a00d1aea382ae292b4a217bd94c9c0365de4129e70b54cf73679d7fe92606588",
+  "script_sha256": "d14bfbaad98ff77d307d6b60a07d122b95a54ea2aa86bbefe7ac40b8d9c88450",
+  "command": [
+    "./cadex",
+    "smoke",
+    "--project",
+    "ot7-plover-e",
+    "--out",
+    "evidence/smoke-interim",
+    "--seconds",
+    "1",
+    "--timeout",
+    "240",
+    "--json"
+  ],
+  "exit_code": 1,
+  "elapsed_seconds": 0.365,
+  "verdict": "fail",
+  "verdict_cause": "exact-BREP geometry half: the frame-0 agreement gate raised; the dynamics half passed every check",
+  "dynamics": {
+    "verdict": "pass",
+    "mode": "hold",
+    "keyframe": "solved",
+    "seconds": 1.0,
+    "samples": 51,
+    "frames_per_second": 50,
+    "mujoco_version": "3.10.0",
+    "wall_time_s": 0.0231,
+    "checks": {
+      "finite": {
+        "nonfinite_at_s": null,
+        "pass": true,
+        "warnings": []
+      },
+      "penetration": {
+        "breaches": 0,
+        "omitted": 0,
+        "pairs_touching": 2,
+        "pass": true,
+        "tolerance_mm": 0.5
+      },
+      "support": {
+        "base": "c_pelvis",
+        "drop_mm": 0.2809635536117696,
+        "floor": "environment/floor",
+        "kind": "free",
+        "max_tilt_degrees": 30.0,
+        "pass": true,
+        "rest_speed_mm_s": 10.0,
+        "speed_mm_s": 1.1066594984190696e-07,
+        "tilt_degrees": 0.18551318079076604,
+        "tilt_from_start_degrees": 0.18551318079076604,
+        "touching_floor_at_end": true,
+        "z_end_mm": 159.71903644638823,
+        "z_start_mm": 160.0
+      },
+      "termination": {
+        "errors": [],
+        "fired": [],
+        "note": null,
+        "pass": true,
+        "rules": 1
+      }
+    },
+    "worst_penetration": [
+      {
+        "depth_mm": 0.33709254020588675,
+        "first": "c_shin_l",
+        "geoms": [
+          "environment/floor",
+          "c_shin_l/collision2"
+        ],
+        "second": "environment/floor",
+        "time_s": 0.08
+      },
+      {
+        "depth_mm": 0.33709254020588675,
+        "first": "c_shin_r",
+        "geoms": [
+          "environment/floor",
+          "c_shin_r/collision2"
+        ],
+        "second": "environment/floor",
+        "time_s": 0.08
+      }
+    ],
+    "failing": []
+  },
+  "geometry": {
+    "error": "ValueError: initial pose disagrees with published clearance: ('c_bearing_hip_l', 'c_bearing_hip_r')"
+  },
+  "geometry_finding": {
+    "pair": [
+      "c_bearing_hip_l",
+      "c_bearing_hip_r"
+    ],
+    "published_distance_mm": 33.8,
+    "published_common_volume_mm3": 0.0,
+    "trace_frame_0_placements": {
+      "c_bearing_hip_l": {
+        "position_mm": [
+          0.0,
+          0.0,
+          143.1
+        ],
+        "rotation_xyzw": [
+          0.7071067811865475,
+          0.0,
+          0.0,
+          0.7071067811865475
+        ]
+      },
+      "c_bearing_hip_r": {
+        "position_mm": [
+          0.0,
+          0.0,
+          143.1
+        ],
+        "rotation_xyzw": [
+          -0.7071067811865475,
+          0.0,
+          0.0,
+          0.7071067811865475
+        ]
+      }
+    },
+    "solved_positions_mm": {
+      "c_bearing_hip_l": [
+        -2.0148184130689457e-45,
+        16.9,
+        160.0
+      ],
+      "c_bearing_hip_r": [
+        -2.0148184130689457e-45,
+        -16.9,
+        160.0
+      ]
+    },
+    "mjcf_bodies": {
+      "c_bearing_hip_l": {
+        "pos": "0 0 -0.0169",
+        "quat": "0.707107 0.707107 0 0"
+      },
+      "c_bearing_hip_r": {
+        "pos": "0 0 -0.0169",
+        "quat": "0.707107 -0.707107 0 0"
+      },
+      "parent": "c_pelvis"
+    },
+    "note": "Every component whose solved placement carries a non-identity rotation -- 24 of this design's 29 -- is written into the MJCF at a different world pose than the assembly solved, by up to 121.9 mm and with a wholly different orientation. The five with an identity rotation are exact. Both hip bearings land at the same point below the pelvis, which is the pair the frame-0 agreement gate named; in the solved assembly they are 33.8 mm apart in y. Four of the misplaced bodies carry a collision geom (the servos), and all of them carry mass, so the dynamics half's pass is a pass on a model that does not match the design. Robin and Heron write no rotated body at all, so neither exercised this. Not a design defect: the design is unchanged, its fit report names no failing check, and the agent cannot reach this from its tools.",
+    "mjcf_vs_solved": {
+      "bodies": 29,
+      "rotated_in_cad": 24,
+      "disagreeing": 24,
+      "agreeing": [
+        "c_pelvis",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_shin_l",
+        "c_shin_r"
+      ],
+      "worst_translation_mm": 121.861,
+      "worst_translation_body": "c_tabscrew_knee_l_0",
+      "max_rotation_element_error": 2.0,
+      "disagreeing_with_a_collision_geom": [
+        "c_servo_hip_l",
+        "c_servo_hip_r",
+        "c_servo_knee_l",
+        "c_servo_knee_r"
+      ],
+      "method": "MJCF body world poses composed down the tree, against the solved component placements in turn-1/inventory.json",
+      "parent_relative_transform": {
+        "non_root_bodies": 28,
+        "matches_the_solved_parent_relative_transform": 4,
+        "matches_its_inverse": 24,
+        "neither": 0,
+        "the_four_that_agree": [
+          "c_thigh_l",
+          "c_thigh_r",
+          "c_shin_l",
+          "c_shin_r"
+        ],
+        "note": "The four that agree are exactly the four bodies carrying a revolute joint; all 24 that disagree are fixed attachments, and every one of them is written as the exact inverse of the transform the solved assembly implies. The frame is derived at CadexDynamics.py:3350 as parent_local_matrix * inverse(child_local_matrix) rather than from the solved placements, which the root body alone uses. That is where a fix and its fixture start."
+      }
+    }
+  },
+  "static_fit": {
+    "verdict": "pass",
+    "failing_count": 0,
+    "pairs_checked": 406
+  },
+  "swept_fit": {
+    "verdict": "pass",
+    "coverage": "complete",
+    "joints_checked": 4,
+    "joints_complete": 4,
+    "failing_count": 0
+  },
+  "inventory": {
+    "component_count": 29,
+    "catalog_counts": {
+      "bearing/mr128": 4,
+      "bolt/m2x12-socket": 4,
+      "bolt/m2x6-socket": 8,
+      "servo/mg90s": 4,
+      "servo_horn/mg90s-single_arm": 4
+    },
+    "catalogued_components": 24,
+    "uncatalogued_sources": [
+      "pelvis",
+      "shin_l",
+      "shin_r",
+      "thigh_l",
+      "thigh_r"
+    ],
+    "derived_catalog_sources": []
+  },
+  "artifacts": [
+    {
+      "path": "output-000.brep",
+      "bytes": 33907,
+      "sha256": "95912d481af009a78e182461c14a8f4260d46463a2ab72f60c23366709ca6f71"
+    },
+    {
+      "path": "output-001.brep",
+      "bytes": 31556,
+      "sha256": "a4dd5b47930a35f644da0f1a835792bfedf839a043954729a880ee68214eb9af"
+    },
+    {
+      "path": "output-002.brep",
+      "bytes": 20797,
+      "sha256": "02bcceff730b4a68c2cbbdab1e2531e734848aadc7e9412355fa8cea76cfecc5"
+    },
+    {
+      "path": "output-003.brep",
+      "bytes": 31013,
+      "sha256": "89712cff4395b5aeab4901dc1c1c4af4ec6493ef354539858a2a8f0206a46428"
+    },
+    {
+      "path": "output-004.brep",
+      "bytes": 22131,
+      "sha256": "d8be77c00854be05ed116c955870d95c515ad588e8d5d6792bcc10f8575b353c"
+    },
+    {
+      "path": "output-005.brep",
+      "bytes": 13070,
+      "sha256": "d331f3cfe9cbbe9aaa8e69661abde82cd6c261338591aee2634080e4eb5f94fb"
+    },
+    {
+      "path": "output-006.brep",
+      "bytes": 10919,
+      "sha256": "09a2daf34d88b913fe042ecfe05b81e335eadd0720f01c7b946066520d5573df"
+    },
+    {
+      "path": "output-007.brep",
+      "bytes": 1919,
+      "sha256": "0dd6d6cd6ffa4fd6fd476ba65be3e24f8fa37ad7d7df31e2efce6a1f0ac8039a"
+    },
+    {
+      "path": "output-008.brep",
+      "bytes": 2075,
+      "sha256": "890ad87952d141221b9c4b9d8ca51a3a79949b66554e505032a26698e405f753"
+    },
+    {
+      "path": "output-009.brep",
+      "bytes": 2067,
+      "sha256": "3b97f2d1d6969903d1626129d904134d963744662ef5a6d8587c75249263096a"
+    },
+    {
+      "path": "output-010.brep",
+      "bytes": 2067,
+      "sha256": "3b97f2d1d6969903d1626129d904134d963744662ef5a6d8587c75249263096a"
+    },
+    {
+      "path": "output-011.brep",
+      "bytes": 13070,
+      "sha256": "d331f3cfe9cbbe9aaa8e69661abde82cd6c261338591aee2634080e4eb5f94fb"
+    },
+    {
+      "path": "output-012.brep",
+      "bytes": 10919,
+      "sha256": "09a2daf34d88b913fe042ecfe05b81e335eadd0720f01c7b946066520d5573df"
+    },
+    {
+      "path": "output-013.brep",
+      "bytes": 1919,
+      "sha256": "0dd6d6cd6ffa4fd6fd476ba65be3e24f8fa37ad7d7df31e2efce6a1f0ac8039a"
+    },
+    {
+      "path": "output-014.brep",
+      "bytes": 2075,
+      "sha256": "890ad87952d141221b9c4b9d8ca51a3a79949b66554e505032a26698e405f753"
+    },
+    {
+      "path": "output-015.brep",
+      "bytes": 2067,
+      "sha256": "3b97f2d1d6969903d1626129d904134d963744662ef5a6d8587c75249263096a"
+    },
+    {
+      "path": "output-016.brep",
+      "bytes": 2067,
+      "sha256": "3b97f2d1d6969903d1626129d904134d963744662ef5a6d8587c75249263096a"
+    },
+    {
+      "path": "output-017.brep",
+      "bytes": 13070,
+      "sha256": "d331f3cfe9cbbe9aaa8e69661abde82cd6c261338591aee2634080e4eb5f94fb"
+    },
+    {
+      "path": "output-018.brep",
+      "bytes": 10919,
+      "sha256": "09a2daf34d88b913fe042ecfe05b81e335eadd0720f01c7b946066520d5573df"
+    },
+    {
+      "path": "output-019.brep",
+      "bytes": 1919,
+      "sha256": "0dd6d6cd6ffa4fd6fd476ba65be3e24f8fa37ad7d7df31e2efce6a1f0ac8039a"
+    },
+    {
+      "path": "output-020.brep",
+      "bytes": 2075,
+      "sha256": "890ad87952d141221b9c4b9d8ca51a3a79949b66554e505032a26698e405f753"
+    },
+    {
+      "path": "output-021.brep",
+      "bytes": 2067,
+      "sha256": "3b97f2d1d6969903d1626129d904134d963744662ef5a6d8587c75249263096a"
+    },
+    {
+      "path": "output-022.brep",
+      "bytes": 2067,
+      "sha256": "3b97f2d1d6969903d1626129d904134d963744662ef5a6d8587c75249263096a"
+    },
+    {
+      "path": "output-023.brep",
+      "bytes": 13070,
+      "sha256": "d331f3cfe9cbbe9aaa8e69661abde82cd6c261338591aee2634080e4eb5f94fb"
+    },
+    {
+      "path": "output-024.brep",
+      "bytes": 10919,
+      "sha256": "09a2daf34d88b913fe042ecfe05b81e335eadd0720f01c7b946066520d5573df"
+    },
+    {
+      "path": "output-025.brep",
+      "bytes": 1919,
+      "sha256": "0dd6d6cd6ffa4fd6fd476ba65be3e24f8fa37ad7d7df31e2efce6a1f0ac8039a"
+    },
+    {
+      "path": "output-026.brep",
+      "bytes": 2075,
+      "sha256": "890ad87952d141221b9c4b9d8ca51a3a79949b66554e505032a26698e405f753"
+    },
+    {
+      "path": "output-027.brep",
+      "bytes": 2067,
+      "sha256": "3b97f2d1d6969903d1626129d904134d963744662ef5a6d8587c75249263096a"
+    },
+    {
+      "path": "output-028.brep",
+      "bytes": 2067,
+      "sha256": "3b97f2d1d6969903d1626129d904134d963744662ef5a6d8587c75249263096a"
+    },
+    {
+      "path": "plover_model-model.xml",
+      "bytes": 16519,
+      "sha256": "c4c470941421592509b3d9d2781a3065cd4846160c6812dafb97c5420ac66057"
+    },
+    {
+      "path": "plover_stand-task.json",
+      "bytes": 8494,
+      "sha256": "ad634716fca0004cd1a8b2bd3c71da280c31ec3282a016b1a3667f3cf9939590"
+    },
+    {
+      "path": "smoke-dynamics.json",
+      "bytes": 2450,
+      "sha256": "33ca376fb3ff04101d895ec22816ce7355f2aa85c3e1066d700beb71565c4ea1"
+    },
+    {
+      "path": "smoke-geometry.json",
+      "bytes": 117,
+      "sha256": "6bf485f477c03092111a32c8fa14fd0a3eb5d451259873620317324d01c72191"
+    },
+    {
+      "path": "smoke-trace.json",
+      "bytes": 304684,
+      "sha256": "9ad80c801a9a7f5e36022f184e200cc65c0ae0b3afde35e157954c27f2f9da65"
+    },
+    {
+      "path": "smoke.stderr.txt",
+      "bytes": 84,
+      "sha256": "d36b2aec46de507e53b7c96f349ac923a140dc692895abf3f1a246da6c31d48e"
+    },
+    {
+      "path": "smoke.stdout.json",
+      "bytes": 2123,
+      "sha256": "d5a4a547b312880d543219b649bcc44e6c773d0ae0d982a2cbb89236f7ab39ff"
+    }
+  ]
+}

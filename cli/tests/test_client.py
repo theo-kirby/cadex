@@ -193,3 +193,42 @@ def test_the_lock_is_released_when_the_block_ends(tmp_path) -> None:
 def test_two_different_projects_do_not_block_each_other(tmp_path) -> None:
     with project_lock(tmp_path / "a"), project_lock(tmp_path / "b"):
         pass
+
+
+def test_every_page_of_the_live_contract_fits_one_tool_result(client, tmp_path) -> None:
+    """The model's view of ``describe_api`` stays under the harness cap (ADR-360).
+
+    The bound is the bridge's budget, set from measurement: the largest tool
+    result the harness accepted on ``ot7-heron-c`` (21,742 characters) —
+    it refused 163,200 and then 82,523. The index and every section must
+    each fit, and between them the sections carry every signature the
+    engine's reply does; what the view loses is documentation beyond the
+    first paragraph, which stays one ``inspect scope=api`` read away.
+    """
+
+    import json
+
+    from cadex_cli.bridge import API_VIEW_CHAR_BUDGET, api_sections, api_view
+
+    open_project(client, tmp_path / "project")
+    api = client.request("describe_api")
+    raw = {key: value for key, value in api.items() if key != "id"}
+
+    def rendered(view):
+        return json.dumps(view, indent=2, sort_keys=True, default=str)
+
+    sizes = {"index": len(rendered(api_view(raw)))}
+    for section in api_sections(raw):
+        sizes[section] = len(rendered(api_view(raw, section)))
+    assert all(size <= API_VIEW_CHAR_BUDGET for size in sizes.values()), sizes
+    assert set(api_sections(raw)) == set(raw["domains"]) | {"library"}
+    assert '"signature":' not in rendered(api_view(raw))
+
+    def signatures(exports):
+        return sorted((export["name"], export["signature"]) for export in exports)
+
+    for domain, listing in raw["domains"].items():
+        assert signatures(api_view(raw, domain)["exports"]) == signatures(listing["exports"])
+        assert signatures(listing["exports"])
+    assert signatures(api_view(raw, "library")["exports"]) == signatures(raw["library"]["exports"])
+    assert api_view(raw, "library")["catalog"] == raw["library"]["catalog"]

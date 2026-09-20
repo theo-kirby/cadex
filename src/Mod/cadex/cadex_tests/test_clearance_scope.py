@@ -201,3 +201,38 @@ def test_a_shape_placed_component_is_measured_where_it_is(tmp_path) -> None:
     # not the whole 10 x 10 x 10 the wrong frame gave.
     assert report["BD"][0] == pytest.approx(0.0, abs=1e-6), report
     assert report["BD"][1] == pytest.approx(200.0, rel=1e-9), report
+
+
+@pytest.mark.parametrize('status', ['complete', 'incomplete', None])
+def test_sweep_inspection_preserves_published_facts_and_accepted_bytes(tmp_path, status):
+    sweep = {'status': status, 'step_degrees': 5, 'step_mm': 1, 'elapsed_seconds': 1.25,
+             'joints': [{'joint': 'hinge', 'kind': 'revolute', 'unit': 'degrees', 'step': 5,
+                         'status': status, 'elapsed_seconds': 1.2,
+                         'reason': 'runtime budget exceeded' if status == 'incomplete' else '',
+                         'pairs': [{'first': 'a', 'second': 'b',
+                                    'minimum_distance_mm': 0, 'maximum_common_volume_mm3': 2.5,
+                                    'first_contact_degrees': 30}]},
+                        {'joint': 'slide', 'kind': 'slider', 'unit': 'mm', 'step': 1,
+                         'status': 'complete', 'elapsed_seconds': 0.05,
+                         'pairs': [{'first': 'a', 'second': 'c',
+                                    'minimum_distance_mm': 0.5, 'maximum_common_volume_mm3': 0,
+                                    'first_contact_mm': None}]}]}
+    output = {'name': 'asm', 'type': 'assembly'}
+    if status:
+        output['clearance_sweep'] = sweep
+    root = _store(tmp_path, {'ok': True, 'outputs': [output]})
+    before = {p: p.read_bytes() for p in root.rglob('*') if p.is_file()}
+    result = complete_inspection(capture_inspection(_service(root), {
+        'scope': 'clearance', 'path': '/clearance_sweep', 'limit': 50}))
+    assert result['ok'], result
+    if status:
+        from CadexInspection import _bounded_page
+        assert result['value'] == _bounded_page({'clearance_sweep': sweep}, {
+            'path': '/clearance_sweep', 'limit': 50})['value']
+        pair = complete_inspection(capture_inspection(_service(root), {
+            'scope': 'clearance', 'path': '/clearance_sweep/joints/0/pairs/0'}))
+        assert pair['value'] == sweep['joints'][0]['pairs'][0]
+    else:
+        assert result['value']['status'] == 'unavailable'
+        assert result['value']['reason']
+    assert {p: p.read_bytes() for p in root.rglob('*') if p.is_file()} == before

@@ -1,0 +1,274 @@
+{
+ "criterion": "F4",
+ "iteration": 53,
+ "project": "ot7-heron-repair-d",
+ "seed": "the same ot7-heron-repair-d project, resumed into the agent's own session (ADR-357); no actor edit",
+ "evidence_directory": "evidence/f4-repair",
+ "model": "claude-fable-5",
+ "prompt": {
+  "path": "continue-3.prompt.txt",
+  "bytes": 732,
+  "sha256": "0814d73f6874e009adfe55cb4d038a22b6632af4033fb275c5021d6a1d500e88"
+ },
+ "turn_index": 3,
+ "runner_status_after": "exhausted",
+ "remaining_after": {
+  "completed": 4,
+  "continuations_used": 3,
+  "continuations_unspent": 0,
+  "next_prompt": null,
+  "closed": null
+ },
+ "turn_status": "completed",
+ "void": null,
+ "interruption": null,
+ "slot_consumed": true,
+ "continuations_used": 3,
+ "slots_spent": 4,
+ "void_calls_this_project": 0,
+ "interrupted_calls_this_project": 0,
+ "turn": {
+  "exit_code": 0,
+  "elapsed_seconds": 104.85514954198152,
+  "runner_transcript": {
+   "path": "transcript.jsonl",
+   "bytes": 84817,
+   "sha256": "f4e09305e15c3bd4e589f254975a401fe05657fdb7a3938ae0f53e2ea656f323"
+  },
+  "captured": "frame by frame as it arrived (ADR-356)",
+  "frames": {
+   "system": 29,
+   "assistant": 10,
+   "rate_limit_event": 3,
+   "user": 4,
+   "tool_progress": 1,
+   "result": 1
+  },
+  "first_frame_utc": "2026-09-15T20:35:18.988Z",
+  "last_frame_utc": "2026-09-15T20:36:25.027Z",
+  "api_messages": 10,
+  "synthetic_error_messages": 0,
+  "tool_uses": 4,
+  "tools": {
+   "mcp__cadex__inspect": 3,
+   "mcp__cadex__rebuild": 1
+  },
+  "submit_calls": 0,
+  "text_output": 1,
+  "rate_limit_window_at_first_event": {
+   "status": "allowed_warning",
+   "five_hour": {
+    "utilization": 0.46,
+    "resetsAt": 1789521600
+   },
+   "seven_day": {
+    "utilization": 0.49,
+    "resetsAt": 1789538400
+   }
+  },
+  "rate_limit_window_at_last_event": {
+   "status": "allowed_warning",
+   "five_hour": {
+    "utilization": 0.48,
+    "resetsAt": 1789521600
+   },
+   "seven_day": {
+    "utilization": 0.5,
+    "resetsAt": 1789538400
+   }
+  },
+  "rate_limit_events": 3,
+  "result_frame": {
+   "subtype": "success",
+   "is_error": false,
+   "api_error_status": null,
+   "result": "The measured fit report for the re-accepted revision names no failing check, at rest and through both joints' full declared ranges. The unchanged script went through normal acceptance again (`rebuild` re-ran it into a fresh document) and re-accepted at revision `f03054d6c8fe…`, digest `bf167b32…` reproduced bit-identical, with the engine's verdict block reading **pass: 105 pairs checked — 105 clear, 0 intersection, 0 below clearance, 0 unknown, failing_count 0** at thresholds 0.1 mm / 1e-6 mm³, and `world_geometry` empty. The published exact-solid sweep is **complete** on both joints with `solved_pose_agreement: true` — shoulder [−90°, +65°] at 5° (32 samples) and elbow [−100°, +25°] at 5° (26 samples) — and every one of the 210 swept pair rows measures `maximum_common_volume_mm3: 0.0`, the only 0 mm minima being the declared contacts (tab-in-pocket, press-fit bearings, screw seats, horn",
+   "duration_ms": 70235,
+   "num_turns": 5
+  },
+  "usage": {
+   "input_tokens": 8,
+   "cache_creation_input_tokens": 12403,
+   "cache_read_input_tokens": 1694254,
+   "output_tokens": 2418,
+   "output_tokens_details": {
+    "thinking_tokens": 855
+   }
+  }
+ },
+ "measurement": {
+  "exit_code": 0,
+  "elapsed_seconds": 0.16374085191637278
+ },
+ "static_fit": {
+  "verdict": "pass",
+  "failing_count": 0,
+  "pairs_checked": 105
+ },
+ "accepted_after": {
+  "script_sha256": "59ff7c9509289eebea1d148f0dfbde8773d2cc12231eb8a42cd3f62480c075c2",
+  "accepted_revision": "f03054d6c8fe023d25d6913a8fdd4feb16049421a58825dd5251edc19d197703",
+  "accepted_digest": "bf167b329965d81d1f72a2a60e9aa4d4ccc895ef22315dd4a24332f558acd94b",
+  "working_revision": "f03054d6c8fe023d25d6913a8fdd4feb16049421a58825dd5251edc19d197703",
+  "updated_at": "2026-09-15T20:35:59Z"
+ },
+ "artifacts": [
+  {
+   "path": "clearance.json",
+   "bytes": 102412,
+   "sha256": "25847f78610e920c008ab8d46da8874df221bbee6346eb8186f7562a8799bfa3"
+  },
+  {
+   "path": "continue-3.prompt.txt",
+   "bytes": 732,
+   "sha256": "0814d73f6874e009adfe55cb4d038a22b6632af4033fb275c5021d6a1d500e88"
+  },
+  {
+   "path": "fit.json",
+   "bytes": 641,
+   "sha256": "9a0c13ae9f5b34349a51259dfd91990a65d31ae9870859e5b7c14fe7a790845d"
+  },
+  {
+   "path": "inventory.json",
+   "bytes": 19182,
+   "sha256": "f468f05d32607799b8ca8dc492655179b93087a52c58f21fb00d339ee22772ad"
+  },
+  {
+   "path": "measurement.stderr.txt",
+   "bytes": 0,
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "measurement.stdout.json",
+   "bytes": 0,
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "repair-assessment.json",
+   "bytes": 1487,
+   "sha256": "ab70a42b649c1c74c713061da2fe51a7c423716ebe178847793e627696c6a515"
+  },
+  {
+   "path": "transcript.jsonl",
+   "bytes": 84817,
+   "sha256": "f4e09305e15c3bd4e589f254975a401fe05657fdb7a3938ae0f53e2ea656f323"
+  },
+  {
+   "path": "turn.stderr.txt",
+   "bytes": 4151,
+   "sha256": "3c8c325a85d0d2dbc7098d3a83934141465199f332352a74259e7351b07dbd55"
+  },
+  {
+   "path": "turn.stdout.json",
+   "bytes": 14931,
+   "sha256": "f474986ae1aebad6e47cdba8c6a50e8bca206d6730e6ef22c24b853c73816660"
+  }
+ ],
+ "accepted_before": {
+  "accepted_revision": "f03054d6c8fe023d25d6913a8fdd4feb16049421a58825dd5251edc19d197703",
+  "note": "the design identity after the previous turn; resume verified it before dispatch"
+ },
+ "edits": {
+  "calls": 0,
+  "accepted": 0,
+  "rejected": 0,
+  "sequence": [],
+  "failing_count_by_accepted_revision": [],
+  "script_lines": {
+   "after": 557
+  }
+ },
+ "swept_fit": {
+  "status": "complete",
+  "step_degrees": 5.0,
+  "elapsed_seconds": 30.499596490059048,
+  "joints": [
+   {
+    "joint": "joint_shoulder",
+    "range_degrees": [
+     -90.0,
+     65.0
+    ],
+    "sample_count": 32,
+    "elapsed_seconds": 20.111766676185653,
+    "solved_pose_agreement": true,
+    "zero_distance_pairs": 18,
+    "maximum_common_volume_mm3": 0.0,
+    "first_contacts": 0,
+    "contacts_present_from_lower_limit": 18
+   },
+   {
+    "joint": "joint_elbow",
+    "range_degrees": [
+     -100.0,
+     25.0
+    ],
+    "sample_count": 26,
+    "elapsed_seconds": 10.38544002501294,
+    "solved_pose_agreement": true,
+    "zero_distance_pairs": 18,
+    "maximum_common_volume_mm3": 0.0,
+    "first_contacts": 0,
+    "contacts_present_from_lower_limit": 18
+   }
+  ],
+  "pairs_per_joint": 105
+ },
+ "inventory": {
+  "component_count": 15,
+  "catalog_counts": {
+   "bearing/mr128": 2,
+   "bolt/m2x16-socket": 2,
+   "bolt/m2x6-socket": 4,
+   "servo/mg90s": 2,
+   "servo_horn/mg90s-single_arm": 2
+  },
+  "uncatalogued_sources": [
+   "base",
+   "forearm",
+   "upper_arm"
+  ],
+  "world_geometry": []
+ },
+ "static_zero_distance_pairs": {
+  "count": 16,
+  "all_declared_contact": true
+ },
+ "assessment": {
+  "status_after": "fail",
+  "attachments_after": [
+   {
+    "first": "comp_horn_shoulder",
+    "second": "comp_upper_arm",
+    "status": "fail",
+    "reason": "missed contact",
+    "distance_mm": 0.19999999999999732,
+    "common_volume_mm3": 0.0
+   },
+   {
+    "first": "comp_horn_elbow",
+    "second": "comp_forearm",
+    "status": "fail",
+    "reason": "missed contact",
+    "distance_mm": 0.19999999999993,
+    "common_volume_mm3": 0.0
+   }
+  ],
+  "contact_tolerance_mm": 0.001,
+  "note": "the collector's ot6-informed attachment assessment, not a product check"
+ },
+ "actor_design_edits": 0,
+ "smoke": "not requested for F4",
+ "window": {
+  "runner_probe_before_dispatch": {
+   "five_hour_percent": 44,
+   "status": "allowed",
+   "read_at": "2026-09-15T20:34:41+00:00",
+   "bound_percent": 45
+  },
+  "five_hour_at_first_event": 0.46,
+  "five_hour_at_last_event": 0.48,
+  "seven_day_at_first_event": 0.49,
+  "seven_day_at_last_event": 0.5
+ }
+}

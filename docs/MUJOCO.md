@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-09-13
+Verified against source: 2026-09-19
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -2345,6 +2345,28 @@ Ranked by how quietly they fail.
     touch. **Note the escape that is not one:** `collides_with=[]` on one
     shape does not separate a pair — MuJoCo's mask test is an `or` over
     both directions, so the other side must omit the group too.
+
+21. **FreeCAD swaps a joint's two connector frames behind the script's back,
+    and a body then exports at the exact inverse of its pose** (ADR-393).
+    `JointObject.setJointConnectors` calls `ensureUnconnectedIsSecondRef`
+    (upstream issue 29355), which swaps `Reference1`/`Reference2` *together
+    with* `Placement1`/`Placement2` whenever the first reference's part is
+    the unconnected one. Reading `Placement{i}` at the script's own connector
+    index then pairs each component with the **other** component's frame, and
+    `L_p ∘ inv(L_c)` — correct arithmetic on mislabelled inputs — puts the
+    body at the inverse of its parent-relative transform. The trigger is the
+    ordinary weld: `joint("fixed", connector(part, "origin"),
+    connector(host, ...))`, the bought part first, is exactly the
+    unconnected-first order. `ot7-plover-e` wrote 24 of them and every one was
+    inverted — `c_tabscrew_knee_l_0` 121.9 mm out, both hip bearings on one
+    point — while its four hinges, written host-first, were right. **Nothing
+    refused**: the model compiled, carried mass and geoms, and stood for a
+    second. Static fit checks read component placements and saw nothing, so
+    the design reported zero failing checks. The worker now resolves the
+    native slot by the component its reference names; what caught it was
+    composing the exported body tree down to world and comparing it with the
+    solved placements, which is what `test_dynamics_connector_sides_live.py`
+    does and what no fixture built forwards ever could.
 
 ## 6. Open questions
 

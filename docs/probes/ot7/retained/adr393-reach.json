@@ -1,0 +1,188 @@
+{
+ "schema": "ot7-adr393-reach-v1",
+ "what": "ADR-393 inverted a welded body's MJCF pose only when the script wrote the weld hardware-first. These three retained ot6 designs all write it host-first, so every retained model and every fresh rebuild agrees with its solve exactly.",
+ "tool": {
+  "path": "docs/probes/ot7/runner/mjcf_agreement.py",
+  "sha256": "a776542327bb4b6a610f7e126855550dadb247f4104ddae70c876450ceca13e6",
+  "tolerance_mm": 0.0001,
+  "tolerance_degrees": 0.0001
+ },
+ "engine": "dev-tree at ADR-393 (commit 63236e54)",
+ "designs": {
+  "finch": {
+   "project": "ot7-open-finch",
+   "accepted_revision": "b6862234556355f799591f314cde6b1a7caadb7d4659a0051d18a442c098912f",
+   "pairs": 406,
+   "failing_published": 44,
+   "failing_after_restore": 44,
+   "counts": {
+    "clear": 362,
+    "intersection": 12,
+    "below clearance": 32,
+    "unknown": 0
+   },
+   "failing_sets_identical": true,
+   "revision_preserved": true,
+   "published_read_seconds": 0.149,
+   "restore_seconds": 7.209,
+   "mjcf_agreement": [
+    {
+     "attempt": "attempt-1789347612537-df5471bf6f04",
+     "model_sha256": "4514e2fb513289736f26d0507726017ae1b70dabf85c825b85becd3fb1eead48",
+     "bodies": 29,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    },
+    {
+     "attempt": "attempt-1789421112629-06ca5ba6e488",
+     "model_sha256": "4514e2fb513289736f26d0507726017ae1b70dabf85c825b85becd3fb1eead48",
+     "bodies": 29,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    },
+    {
+     "attempt": "attempt-1789421119955-f14278c0b69d",
+     "model_sha256": "4514e2fb513289736f26d0507726017ae1b70dabf85c825b85becd3fb1eead48",
+     "bodies": 29,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    },
+    {
+     "attempt": "attempt-1789865057711-93471bbd7e67",
+     "model_sha256": "4514e2fb513289736f26d0507726017ae1b70dabf85c825b85becd3fb1eead48",
+     "bodies": 29,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    }
+   ],
+   "welds_written": "host-first"
+  },
+  "robin": {
+   "project": "ot7-open-robin",
+   "accepted_revision": "8d727e18b58772c1bf46edd8ad5cd4a3c0302abdefc7456e8413278cc6253167",
+   "pairs": 276,
+   "failing_published": 39,
+   "failing_after_restore": 39,
+   "counts": {
+    "clear": 237,
+    "intersection": 8,
+    "below clearance": 31,
+    "unknown": 0
+   },
+   "failing_sets_identical": true,
+   "revision_preserved": true,
+   "published_read_seconds": 0.091,
+   "restore_seconds": 5.341,
+   "mjcf_agreement": [
+    {
+     "attempt": "attempt-1789354303693-60b590fc3624",
+     "model_sha256": "43660a9e3e587a2684764b93b47114fb77c8ee1adeef376f1fa6a67e02471ada",
+     "bodies": 24,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    },
+    {
+     "attempt": "attempt-1789421127148-c8eba312fdef",
+     "model_sha256": "43660a9e3e587a2684764b93b47114fb77c8ee1adeef376f1fa6a67e02471ada",
+     "bodies": 24,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    },
+    {
+     "attempt": "attempt-1789421132303-e56b403ff428",
+     "model_sha256": "43660a9e3e587a2684764b93b47114fb77c8ee1adeef376f1fa6a67e02471ada",
+     "bodies": 24,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    },
+    {
+     "attempt": "attempt-1789865065015-f085ce59bafd",
+     "model_sha256": "43660a9e3e587a2684764b93b47114fb77c8ee1adeef376f1fa6a67e02471ada",
+     "bodies": 24,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    }
+   ],
+   "welds_written": "host-first"
+  },
+  "heron": {
+   "project": "ot7-open-heron",
+   "accepted_revision": "0c8c64c92252711b630c3f86e381e9aa0788c62c7137186c8a9462912c286d5a",
+   "pairs": 105,
+   "failing_published": 20,
+   "failing_after_restore": 20,
+   "counts": {
+    "clear": 85,
+    "intersection": 6,
+    "below clearance": 14,
+    "unknown": 0
+   },
+   "failing_sets_identical": true,
+   "revision_preserved": true,
+   "published_read_seconds": 0.07,
+   "restore_seconds": 2.384,
+   "mjcf_agreement": [
+    {
+     "attempt": "attempt-1789360309780-8b76dd529d4d",
+     "model_sha256": "cc991b947c3554d99ae7971f4e93f2af3b5f23609c0820d8aad36e754aa2cc59",
+     "bodies": 15,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    },
+    {
+     "attempt": "attempt-1789421137425-8470c91ff5c7",
+     "model_sha256": "cc991b947c3554d99ae7971f4e93f2af3b5f23609c0820d8aad36e754aa2cc59",
+     "bodies": 15,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    },
+    {
+     "attempt": "attempt-1789421139679-a586b48b8219",
+     "model_sha256": "cc991b947c3554d99ae7971f4e93f2af3b5f23609c0820d8aad36e754aa2cc59",
+     "bodies": 15,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    },
+    {
+     "attempt": "attempt-1789865070429-eb0490797e66",
+     "model_sha256": "cc991b947c3554d99ae7971f4e93f2af3b5f23609c0820d8aad36e754aa2cc59",
+     "bodies": 15,
+     "disagreeing": 0,
+     "agrees": true,
+     "worst_position_error_mm": 0.0,
+     "worst_orientation_error_degrees": 0.0
+    }
+   ],
+   "welds_written": "host-first"
+  }
+ },
+ "control": {
+  "project": "ot7-plover-e",
+  "note": "The same tool on the pre-fix plover model the smoke read: 24 of 29 bodies disagree, worst c_tabscrew_knee_l_0 at 121.86102740417053 mm and 179.99999879258172 degrees. That is iteration 167's number, recomputed.",
+  "bodies": 29,
+  "disagreeing": 24,
+  "worst_position_error_mm": 121.86102740417053
+ }
+}

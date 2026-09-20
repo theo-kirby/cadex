@@ -1,0 +1,7 @@
+This project is an accepted, retained design. Keep its geometry, parameters, components, joints, limits, actuators, dynamics and task exactly as they are.
+
+Make one change to the script: declare an exact-solid joint sweep on the assembly so the published fit report covers every limited joint through its declared range, at a 5 degree step. Build and accept that revision.
+
+Then read the published sweep through inspect scope=clearance path=/clearance_sweep and report what it says, as published, not as the script prints it: the coverage status, and for each joint its status, elapsed seconds and, if it was not swept completely, the reason. For each joint that was swept, report every pair that has a first contact inside the range with its angle, and for each knee joint report the shin-to-thigh pair's minimum distance, maximum common volume and first-contact angle.
+
+If a joint's coverage is incomplete only because the runtime budget was exceeded, you may coarsen the step to at most 10 degrees and rebuild and accept once more, and report both results. Do not change anything else.

@@ -239,6 +239,10 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         # The subshape vocabulary the five selector-taking part ops resolve
         # against; the sandbox imports it, so it has to be staged (Phase 10b).
         "CadexSubshapeQuery.py",
+        # The digest material the worker hashes an accepted run with, and
+        # cadexd re-measures a retained one with when the bytes drift
+        # (ADR-389). Pure at module scope; `Part` is deferred.
+        "CadexGeometryDigest.py",
         "cadex_project_api.py",
         "cadex_sketcher_api.py",
         "cadex_sketcher_worker.py",

@@ -24532,3 +24532,2527 @@ does not scroll. One media query is shared by the stylesheet and
 `review.js`. Portrait phones, tablets and desk windows are unchanged. The
 desk title is also no longer overlapped by the accepted-identity line when
 the bar is short of room. `docs/REVIEW-DESIGN.md` §13 is the contract.
+
+## ADR-345 — The ot7 prompts are frozen before any design turn (2026-09-14)
+
+Run ot7 measures whether the product agent makes a design fit on its own
+(ADR-341). That measurement is only as honest as the asks are fixed, so every
+prompt a design turn may see is committed under `docs/probes/ot7/prompts/`
+before the first design turn, pinned by digest in
+`cli/tests/test_ot7_prompts.py`. The arm and balancer prompts are Heron's and
+Robin's ot6 create prompts, byte-identical to their ot6 receipts, because the
+closing report compares each unassisted ot7 design with its ot6 counterpart
+and a changed ask would compare two different things. The biped prompt is new,
+written in Heron's shape to the charter's F7 line: four MG90S from
+`lib.servo`, hip and knee pitch per leg, the same servo-on-parent,
+horn-on-child, bearing-opposite joint module Finch proved buildable, five
+modelled printable parts, a free base, no world geometry, declared joint
+limits, and a verification paragraph that names the measured fit checks the
+tools report as the evidence rather than the printout. Its name is Plover.
+
+Three continuation prompts and one repair prompt are frozen with them. Each is
+design-agnostic by construction and by test: no digit, no design name, none of
+the part and defect words of the three ot6 designs. A design gets at most three
+continuations, in order, each spent only after a turn that accepted with
+failing fit checks still reported; the seeded repair of Heron's first ot6
+revision gets one. A design that still fails after its last continuation is a
+measured result, and a changed byte in any prompt is a new attempt. The actor
+never edits a design in an `ot7-*` project.
+
+## ADR-346 — Every build reply carries the measured fit, and the agent is told a printout is a claim (2026-09-14)
+
+Run ot7's first product change (ADR-341, F1). ot6 found that the product
+agent's printed output said Heron's parts fit while its cheek buried 248.2
+mm³ of servo tab and a horn sat 0.2 mm from its link; the engine had
+measured both, because `_measure_clearance` runs on every accepted assembly
+and publishes every pair's minimum distance and common volume at the solved
+pose, but the agent's tool surface did not offer the `clearance` inspect
+scope, its build replies carried the script's stdout and nothing measured,
+and its system prompt told it to verify through `print(...)`.
+
+Three changes, all on the CLI side, no protocol change:
+
+- **The bridge attaches a `fit` block to every successful `write_script`,
+  `edit_script`, `set_params` and `rebuild` reply**, read from `inspect
+  scope=clearance` after the build under the same lock, so the measurements
+  describe the revision the reply accepted. The block is the check counts,
+  the thresholds, and every failing pair by name with its distance and
+  common volume — an intersection, a distance below the `cadex clearance`
+  minimum, or a pair the engine could not measure, which is failing too
+  because an unknown is not a fit. The list is whole: every failing pair,
+  however many, is in the reply with its own numbers (*amended the same
+  day* — the first cut stopped at forty and pointed at the scope for the
+  rest, and the critic rejected it against ADR-341's wording, "every
+  failing pair by name with its distance and common volume". A pointer is
+  not a pair: an agent that has to page a second tool to learn its
+  forty-first failure will not, and a design with sixty failing pairs is
+  exactly the design that needs all sixty in front of it. The bound and
+  its `failing_truncated` count are gone; two fixtures with sixty failing
+  pairs, one on `fit_summary` and one on the bridge reply the model
+  receives, pin every name, distance and volume, and both fail on the
+  bounded code). `unavailable` means no assembly
+  components were placed, or the measurement could not be read; it never
+  means pass, and **it never refuses the build** — a failing fit is
+  reported, on the terms ADR-341 sets, and acceptance is unchanged for
+  every existing script. The block's `source` names where its numbers come
+  from and says in so many words that it is not the script's stdout.
+- **`clearance` joins the CLI's inspect scopes**, so the model can read
+  every pair whole, with labels and catalog identity, the way `cadex
+  clearance` does.
+- **The system prompt says fit is measured, not printed.** The bullet that
+  told the agent to verify through stdout is gone; in its place the overlay
+  says a printout is a claim the script makes about itself, the `fit`
+  block is the evidence, and a `fit` naming a failing pair overrules any
+  printout that says the parts fit.
+
+The turn's `--json` envelope carries the last accepted build's block as
+`fit`, and the prose report prints it, one line per failing pair, which is
+what F5–F7's per-turn fit failure counts are read from. Evidence: a
+real-engine transaction test in which a script prints "fit check: no
+overlap" over two blocks sharing 100 mm³ and the model's reply carries both
+the printout and the 100 mm³ intersection by pair name; bridge tests on the
+fake engine for pass, fail, unavailable, refused-build and unreadable-
+measurement cases; `test_project_tool_surface.py` pins that `clearance` is
+a scope the engine serves and the CLI offers, reading the CLI's list by
+path so neither tree imports the other. Not done here, by design: fit
+intent (F2) and the swept check (F3) are the next units; the block's `pose`
+still says "initial solved pose (not swept motion)" and will until F3.
+
+
+## ADR-347 — Declared static fit is evidence, never an acceptance gate
+
+2026-09-14. F2 of the ot7 charter. `assembly.assembly` accepts contact pairs
+and clearance triples (two component values and a nonnegative minimum in mm).
+These declarations use existing graph values and output names, adding no op or
+dependency. Omitted defaults add no definition keys, preserving old digests.
+The existing exact-solid measurement annotates every pair with intent and all
+failing checks: overlap, missed contact, insufficient declared/default gap,
+and unknown geometry. This replaces the assumption that every touching pair
+needs separation; overlap is never excused by a contact declaration.
+
+Report world geometry separately: declared collision planes on design bodies,
+single planar CAD faces without solids, and explicit `world=True` components.
+A solid bench cannot be distinguished from a base by shape alone; its author
+must mark its purpose. Grounded bases are not automatically world geometry.
+Heron's first accepted revision used a collision plane, so the real-kernel
+fixture reproduces that actual failure as well as a 248.2 mm³ buried tab and
+a 0.2 mm missed horn/link contact. Passing touching contacts and declared and
+undeclared insufficient gaps have known-answer fixtures too.
+
+The published inspection scope and CLI summaries consume these findings;
+acceptance and accepted-state verification are unchanged. Tests cover malformed
+intent, legacy definition stability, exact kernel measurements, and a failing
+transaction that accepts and restores with the same accepted digest. The
+script API's existing generated description exposes the new keyword arguments.
+
+## ADR-348 — Measure the joint-sweep premise on retained geometry (2026-09-14)
+
+The first F3 unit is a read-only experiment before publication and CLI changes:
+reconstruct accepted BREPs, verify all solved pairs, then move a hinge's entire
+descendant branch about its solved local connector frame. Reuse the existing
+kinematic tree; do not use pre-solve global connector facts. A known-angle
+fixture, an independent accepted-MJCF pose witness and per-child runtime bounds
+make the measurement reviewable. No product behaviour changes in this unit.
+
+All four Finch sweeps finish within 180 seconds each. At 5° samples both knee
+ranges retain a 1 mm shin-to-thigh gap and no overlap, contrary to ot6's written
+prediction of contact past about 60°. Preserve that negative result rather than
+inventing the contact angle the charter expected. F3 stays open for the product
+checker, discoverability, general joint semantics and gates. The experiment and
+full artifact digests are in `docs/probes/ot7/sweep/README.md`.
+
+## ADR-349 — Publish bounded exact-solid hinge sweeps (2026-09-14)
+
+**Decision.** Opt-in `assembly.assembly(..., sweep_step_degrees=...)` publishes
+`clearance_sweep` beside static clearance. Limited rigid-tree hinges sweep their
+subtrees independently, with real BREP distance and volume, baseline agreement,
+endpoint-inclusive sampling, and explicit incomplete coverage for unsupported
+mechanisms or exhausted budgets. Acceptance and retained-result reads do not
+change. Agent and CLI exposure follow in a separate unit.
+
+**Bound.** Fresh FreeCAD children own native queries: 90 seconds per joint,
+180 shared seconds, 73 poses, 2,000 pairs. Serialization and cleanup add overhead.
+No dependency is added. A fork-only prototype blocked on a native lock after
+FreeCAD initialization; it was replaced before landing with fresh processes.
+The subprocess inherits the worker's OS sandbox. Tests cover analytic sphere
+contact, transformed source placement, baseline disagreement, unsupported joint,
+pose exhaustion, timeout, publication and byte-identical restoration.
+
+
+## ADR-350 — Read published sweeps through clearance inspection (2026-09-14)
+
+**Decision.** Extend the existing clearance scope with `clearance_sweep`,
+passing through the accepted output's measurements, coverage and timings.
+Absence is explicit `unavailable`, never a passing empty check. The CLI's
+`clearance --sweep` writes a separate report; complete coverage is explicitly
+not a fit verdict. No new protocol argument, op, dependency or geometry work
+is introduced. Agent instructions point to the paged sweep path. Static fit
+replies retain their solved-pose meaning. This removes no feature.
+
+**Evidence.** Known-result, missing/incomplete and pagination fixtures pin
+faithful reads. The packaged lifecycle test compares inspection against the
+retained sweep after restart and verifies accepted identity. F3 remains open
+for product Finch evidence and unsupported limited joints; ADR-348's negative
+Finch measurement is unchanged.
+
+
+## ADR-351 — Sweep limited sliders in millimetres (2026-09-14)
+
+**Decision.** `assembly.assembly(..., sweep_step_mm=...)` extends the ADR-349
+producer to limited, unsuppressed slider joints in rigid trees: the subtree
+translates along the solved connector +Z axis from the lower to the upper
+length limit, with the same exact-solid measurements, solved-pose agreement
+check, endpoint-inclusive sampling and per-joint, total, pose and pair
+budgets as hinges. Each joint entry now names its `kind`, `unit` and `step`,
+and reports `range_<unit>`, `initial_<unit>` and `first_contact_<unit>`, so
+degrees and millimetres are never mixed under one key. The assembly-level
+report carries both `step_degrees` and `step_mm`, null when undeclared. A
+limited joint whose kind's step is undeclared, an open-ended limit, or any
+other limited kind (cylindrical included) is reported `incomplete` with the
+reason rather than skipped, because the charter's F3 asks for every limited
+joint to be accounted for. Acceptance, retained-result reads, the inspect
+scope and the CLI command are unchanged; consumers pass the new fields
+through. No dependency is added.
+
+**Evidence.** A two-sphere slider fixture whose contact begins 2 mm before
+coincidence reports first contact within one 0.75 mm step of −2 mm, the
+analytic lens volume π(4r+d)(2r−d)²/12 at the nearest sample, the solved
+distance of 6 mm, and elapsed time under the per-joint bound; the same sweep
+with the connector order reversed reports the same overlap and contact. The
+hinge fixture pins the undeclared-step, open-ended and cylindrical reasons.
+The packaged lifecycle test publishes and restores a slider sweep beside the
+hinge one.
+
+
+## ADR-352 — Smoke the accepted design without accepting it again (2026-09-14)
+
+**Decision.** `cadex smoke --out DIR` copies the retained accepted artifacts
+under the project lock, runs stock MuJoCo with zero action or position-actuator
+hold, and measures every exact BREP component pair at the sampled poses in a
+trusted FreeCAD child. This uses the CLI export adapter's existing process
+seam: the child reads detached solids and numeric poses, never project source.
+No protocol or tool-surface change, shell change, dependency or training.
+Source placements compose with absolute component poses; first-frame distance
+and common volume must agree with published static measurements. Missing solids
+or disagreement cannot produce a passing receipt.
+
+**Why.** A smoke must not call `rebuild`: it is an accepting operation.
+MuJoCo contacts also cannot certify component fit: excluded pairs and parts
+without collision proxies are invisible. The uncommitted draft present at the
+start of iteration 15 did both. Its falling-arm fixture passed the contact
+check but intersected the base under exact measurement. The completed command
+uses the retained revision and exact solids, while floor penetration and
+support remain explicitly collision-proxy measurements.
+
+**Contract.** A full measurement exits zero and records a pass/fail verdict,
+accepted identity, failing checks and all exact pair maxima. Finite state is
+checked each solver step, with warning counters retained; geometry and floor
+checks sample at a declared rate, including first and last frames. Actual
+solver times are recorded, with duration rounded up by less than one step.
+The trace cap is 15,000 requested intervals. Simulation and exact measurement
+share at most 300 wall seconds; timeout kills the child. This is sampled
+collision checking, not a continuous-motion guarantee. Missing evidence is a
+command error. No receipt claims successful completion before both children
+finish. Accepted state is unchanged even when the working script is broken.
+
+**Evidence.** `cli/tests/test_smoke.py` includes a known 400 mm³ overlap with
+no collision geoms, a falling arm that reaches overlap after a clear initial
+pose, grounded and floor-supported passing designs, a block starting 2 mm
+below the floor, no floor, unstable dynamics, hold versus zero action, task
+termination, non-integral sampling intervals, timeout, manifest preservation
+with edited working source, and tampered MJCF rejection. Tolerances are finite
+and nonnegative. See this unit's graph record for full-suite and packaged
+verification results; no engine source changed, so no build was required.
+
+
+## ADR-353 — Allow numerical noise at clearance minima (2026-09-14)
+
+**Decision.** Engine static fit annotations and CLI fit verdicts flag a
+minimum-clearance deficit only when it exceeds an absolute 1e-9 mm. The rule
+applies equally to declared minima and the default (or CLI override), with no
+relative tolerance. Raw distances and volumes are never rounded or changed.
+Contact and intersection tolerances, advisory acceptance, and accepted identity
+are unchanged. No dependency or protocol change.
+
+**Why.** Retained Heron measured nominal 0.1 mm gaps as
+0.09999999999999952 and 0.09999999999999039 mm; strict comparison falsely
+flagged both. The fixed allowance is far below the 0.001 mm contact tolerance
+and does not grow with a large declared minimum. Deficits above 1e-9 mm,
+including the retained 0.05 mm gaps, still fail.
+
+**Evidence.** Known-answer tests cover both retained numbers, exact equality,
+inside and outside the allowance, and 0.0999/0.05 mm undersizing, with and
+without declarations. A real-kernel slider carries two boxes past each other
+at fixed 0.1, 0.0999 and 0.05 mm lateral gaps: static measurements and swept
+minima give the same minimum-clearance conclusions. Sweeps currently publish
+raw extrema, not fit verdicts; no second checker is added. CLI report tests
+pin the unchanged swept measurements and the corrected static verdicts.
+
+## ADR-354 — Bound the frozen ot7 evidence collection (2026-09-14)
+
+**Decision.** The off-product runner at `docs/probes/ot7/runner/run.py`
+collects one fresh frozen F5–F7 attempt: one create call and at most three
+ordered continuations. It validates prompt digests before dispatch, consumes
+slots durably, refuses existing project directories, captures provider frames
+through the existing CLI turn-factory seam, and blocks the CLI's unfrozen
+automatic follow-up. Accepted fit and inventory are read without restore;
+raw sweep coverage is preserved without inventing a swept verdict. A final
+bounded smoke retains its receipt even when fit fails. Only product-agent
+turns can change designs. No new dependency or product behavior change.
+
+**Why.** The critic requested this bounded evidence runner if F4's provider
+remained unavailable. The documented reset is still ahead of this unit; another
+retained-design audit would not advance the frontier. Four persistent slots
+and exclusive project creation prevent restarting a collector from granting
+an unnoticed fourth continuation. All interrupted attempts remain evidence.
+
+**Evidence.** `cli/tests/test_ot7_runner.py` exercises exhausted budgets,
+restart refusal, provider errors, changed prompts, suppressed automatic
+follow-ups, per-turn evidence hashes and process timeouts. This is tooling for
+F5–F7, not evidence that any of their designs passes. The runner README states
+how to run it and how to interpret incomplete or missing evidence.
+
+**F4 extension (iteration 25, 2026-09-14).** The same runner now accepts
+`repair` on the preserved first Heron seed. It pins script/revision/digest and
+empty overrides, captures unchanged before measurements, consumes exactly one
+frozen repair slot in a fresh session, and retains after measurements and
+identity. Exclusive `evidence/f4-repair` creation prevents redispatch; failed
+before evidence stops before the provider. No seed writer, new dependency,
+smoke, additional prompt or product behavior change. Known-answer fixtures
+pin seed preservation, seven-to-zero evidence collection, identity rejection,
+fresh prompting and failed-before stops. This is the critic's requested
+fallback before the recorded provider reset, not a repair result.
+
+**F4 assessment extension (iteration 31, 2026-09-14).** Repair evidence now
+checks the original shoulder-horn/upper-arm and elbow-horn/forearm contacts
+from published pair distances and common volumes, independently of declared
+intent. Zero static failures alone cannot establish a repair: the old seed's
+0.2 mm gaps pass the default clearance rule. Missing or renamed attachments
+remain unknown; static failures still fail. Before/after assessment artifacts
+are hashed alongside the measurements, with accepted-revision and successful
+read guards. Fixture-backed evidence interpretation only; no design, prompt,
+acceptance, dependency, or protocol change. F4 remains open.
+
+## ADR-355 — Usage-limit failures are void; restart ot7 (2026-09-15)
+
+Run ot7 stopped itself at 23:24 UTC on 2026-09-14, after 40 iterations. The
+tooling half of its charter (ADR-341) landed with evidence (F1–F3, F8, F9).
+The agent half, F4–F7, was never tried. The product agent runs on the same
+Claude account as the actor. Once that account's five-hour window was spent,
+the loop fell back to a Codex actor, and it dispatched all six frozen design
+calls into the limit. Each failed in two to four seconds with "You've hit your
+session limit". The run recorded them as provider refusals, the ot7 runner
+(ADR-354) consumed their slots, and the critic ruled the run out of authorized
+experiments. It told the actor to end the run, and the actor did so with a
+detached `ouroboros stop`.
+
+The owner amends the charter (`.ouroboros/goal.md`) with three rules. A call
+that ends on a usage, session or credit limit is void: it spends no slot, is
+not a design result, and is retried with the same frozen prompt in a fresh,
+suffixed project. Design turns are dispatched only while the product agent's
+harness is available. No role stops, starts or restarts the run. The six ot7
+calls are declared void, and the report's "exhausted" handoff is superseded
+and fixed forward. The actor loses its Codex fallback, so a spent Claude window
+makes the loop sleep until the reset instead of carrying on without the product
+agent. The critic keeps its own chain.
+
+This restart continues run ot7 on its branch. It claims nothing about F4–F7.
+
+**Implemented in the runner (2026-09-15).** `docs/probes/ot7/runner/run.py`
+now classifies every turn from its retained transcript, CLI envelope and
+stderr: a rejected `rate_limit_event`, a synthetic assistant frame tagged
+`rate_limit`, an HTTP 429 error result, or limit text in the envelope marks
+the call void, including a limit that lands mid-turn. A void row spends no
+slot, keeps its measurement and hashes, runs no smoke, stops further dispatch
+from that project, and names the fresh suffixed project the retry goes to.
+`run.py --classify` applies the same rule read-only; the six pre-restart calls
+so classified are `docs/probes/ot7/attempts/void-calls.json`, and
+`cli/tests/test_ot7_runner.py` pins the rule with known-answer fixtures. The
+runner README, the attempts narrative and `docs/probes/ot7/REPORT.md` are
+rewritten forward; their 2026-09-14 wording is kept and marked superseded.
+
+**Correction (2026-09-15, critic-found).** The first cut also voided any
+synthetic assistant frame by its `<synthetic>` model name alone, so an
+`authentication_failed` frame would have refunded its slot. The rule now
+requires explicit limit evidence on that frame: `error: rate_limit`, or limit
+text in its content. A negative fixture pins the authentication case as an
+ordinary provider failure with the slot spent; the six retained calls, which
+all carry `error: rate_limit`, classify unchanged.
+
+## ADR-356 — A runner-bound kill spends no slot; every turn is bounded per message (2026-09-15)
+
+**Context.** The first F4 product-agent call that reached a model
+(`ot7-heron-repair-b`, iteration 44) was killed by the ot7 evidence collector
+at its 30-minute bound after 17 reads and one 64,000-token message that was
+63,999 tokens of thinking, ended on the provider's output cap, and produced
+nothing. The collector of that day counted the repair slot as spent, and it
+lost the provider stream because it wrote `transcript.jsonl` only after the
+turn returned. The charter (ADR-355) counts only "a turn that reached the
+model and ended on its own"; a kill is neither a completed turn nor a
+provider limit. The critic ruled it (decision #44, iteration 44): an
+interrupted execution, zero frozen-prompt slots consumed, recorded apart from
+void calls.
+
+**Decision.** Three things, none of which touches a frozen prompt.
+
+1. **The collector applies decision #44.** In `docs/probes/ot7/runner/run.py`
+   a turn whose child exited `timeout` or `launch_failed`, and that is not
+   void, is `interrupted`: its slot is returned, `continuations_used` stays
+   at the count before the call, the receipt's `interrupted_calls` counts it
+   apart from `void_calls` and `slots_spent`, the measurement is still read
+   and hashed, no smoke runs, and `retry` names the next letter-suffixed
+   project. A provider error the call returned on its own (a nonzero exit
+   with a stream) is now `failed` rather than `interrupted`, and keeps its
+   slot, so the word means one thing. `--classify` reports interruptions
+   from the sibling `attempt.json`.
+2. **The stream is written as it arrives.** `CapturedTurn` appends each
+   frame in `_absorb`, so a kill loses nothing received; a stale-session
+   retry appends after the first attempt.
+3. **The CLI bounds every model message.** `ClaudeTurn` launches with
+   `--effort` (`$CADEX_EFFORT`, default `high`, the harness's own default)
+   and passes `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (`$CADEX_MAX_OUTPUT_TOKENS`,
+   default 32,000) in the child's environment. The installed harness (Claude
+   Code 2.1.271) documents both: effort is the per-step thinking control on
+   adaptive-reasoning models, and the output cap bounds thinking and text
+   together. It also documents that its fixed `MAX_THINKING_TOKENS` budget
+   has no effect on Fable models, which is why that variable is *not* the
+   bound chosen. 32,000 halves the observed worst case and still leaves a
+   30 KB script submission (about 10,000 tokens) room after 20,000 tokens of
+   thinking; 16,000 would not.
+
+**Consequences.** The iteration 44 receipt keeps its `slot_consumed: true`,
+`slots_spent: 1` and `continuations_used: 1` as historical collector output,
+with a `ruling` field carrying the decision; F4's repair prompt and all three
+continuations are unspent, and the retry is `ot7-heron-repair-c`. The
+30-minute turn bound is unchanged. Fixtures in `cli/tests/test_ot7_runner.py`
+pin a kill on a create, on a continuation after two completed turns and on
+the repair, frame-by-frame capture across a mid-stream kill, and that a limit
+seen before a kill is void rather than interrupted; `cli/tests/test_commands.py`
+pins the effort pin, the cap, their overrides and their refusals. `docs/CLI.md`
+§2 documents the two variables.
+
+## ADR-357 — The repair prompt is F4's first prompt, not its only one; the runner resumes (2026-09-15)
+
+**Context.** The ot7 evidence collector (`docs/probes/ot7/runner/run.py`)
+carried `repair.prompt.txt` as F4's whole schedule, counted it as a
+continuation, and wrote `status: exhausted` after the one turn that completed
+on `ot7-heron-repair-d` (iteration 48). The closing report repeated that F4's
+slot was spent, in a table whose next column granted every other design
+three continuations. The amended charter (ADR-355) is explicit: "A design is
+exhausted only after its create or repair prompt and all three continuations
+have reached the model." The critic of iteration 48 ruled the report's totals
+contradictory and F4 open, with three continuations after the repair prompt.
+
+**Decision.** Three things, none of which touches a frozen prompt or a design.
+
+1. **The schedule.** `frozen('repair')` is the repair prompt followed by the
+   same three continuations every design gets. The first prompt of any
+   schedule is not a continuation, so a completed repair row reads
+   `continuations_used: 0`. The prompt manifest's limits table says so; the
+   prompt digests are unchanged and still verified before every dispatch.
+2. **One turn per window, and resume.** A completed turn moved the five-hour
+   window from 8 % to 57 %, so a repair dispatches its first prompt alone
+   and pauses (`status: paused`, a `remaining` block naming the next prompt),
+   and `run.py resume PROJECT` dispatches exactly the next continuation into
+   the agent's own session without replaying earlier turns. `--turns N`
+   bounds either command; a design attempt still dispatches all four by
+   default and runs its smoke when it exhausts or fails. Every row now
+   snapshots the design identity after its turn (`accepted_after`), and a
+   resume refuses a project whose design differs from that snapshot, a
+   project closed by a void, interrupted or failed call (those still retry on
+   a fresh copy), and an exhausted one. A receipt written under the old rule
+   resumes from its rows and gains a `ruling` field.
+3. **The record is corrected forward.** `REPORT.md`, the runner README, the
+   retained index and `repair-completed-d.json` (a `ruling` field, as the
+   iteration 44 receipt carries decision #44) say F4 stands at one completed
+   turn, zero continuations used, three unspent, next `continue-1` on
+   `ot7-heron-repair-d`. The completed experiment and its receipts are
+   preserved as written. The record node that declared the slot spent is
+   superseded by the iteration 49 record's impact, not edited.
+
+**Consequences.** F4 remains open with three continuations, dispatched one
+per window only while the first `rate_limit_event` frame shows room. Fixtures
+in `cli/tests/test_ot7_runner.py` pin the paused repair, the three resumes
+without replay, the legacy receipt's ruling, the three refusals, a create
+paused per window, and the `--resume` flag on a continuation child. F5–F7
+gain the same per-window dispatch for free, which the window measurement of
+iteration 48 said they would need.
+
+## ADR-358 — The ot7 runner reads the window before every prompt (2026-09-15)
+
+**Context.** The amended charter (ADR-355) says a design turn is dispatched
+only while the product agent's harness is available, and never a frozen
+prompt while it is limited. The runner enforced the schedule (ADR-357) but
+left that reading to the operator: read the first `rate_limit_event` frame
+of a probe turn, compare it with what one completed turn costs (8 → 57 % and
+8 → 63 % of a five-hour window), then dispatch. `ot7-heron-repair-c` is what
+skipping it costs: an answering probe was taken as room at 95 %, and the
+model was cut off after six reads. Every record since has repeated the same
+manual rule, and the critic asks for current evidence of capacity before
+each continuation.
+
+**Decision.** `docs/probes/ot7/runner/run.py` reads the window itself before
+every frozen prompt and keeps the reading in the receipt. The probe is a
+one-word `claude -p` turn with no project, tools or MCP server, so it is not
+a product-agent call and spends no slot; its first `rate_limit_event` frame
+gives the five-hour utilization and reset time. Room is a frame the provider
+allowed at or under `--window-bound` (default 45 %). Without room the runner
+writes `status: paused` with a `deferred` block and stops before the slot is
+persisted or the turn directory exists, so `resume` sends the same prompt
+after the reset; a rejected frame, no frame or no binary is no room. Each
+dispatched row records the reading it started at. `run.py window` only reads.
+The function default reads nothing so provider-faking fixtures stay hermetic;
+the command line always passes a bound.
+
+**Consequences.** The evidence the critic asks for before each dispatch is
+now in the receipt rather than in a record's prose, and a whole-schedule
+design attempt pauses by itself at the first prompt that does not fit, which
+is the one-turn-per-window rule made mechanical. The bound is a number from
+two measured turns, not a contract with the provider; a turn that starts
+under it can still be cut off, and that call is void as before. Fixtures pin
+the real 84 % frame of 2026-09-15 15:45 UTC as no room. No prompt byte, no
+design and no product code outside the runner changed.
+
+## ADR-359 — describe_api fits one tool result; the ot7 collector dispatches at medium effort (2026-09-15)
+
+**Context.** The first ot7 create call that reached a model (iteration 55,
+`ot7-heron-b`) was interrupted at the runner's 30-minute bound with no
+design written. Two measured causes. `describe_api`'s reply, 163,200
+characters, exceeded the agent harness's MCP tool-result cap (25,000 tokens
+by default); the harness wrote it to a file the product agent has no tool
+to read, and the agent paged the contract through 44 `inspect scope=api`
+reads in 3 min 35 s. Then, at the CLI's default effort `high`, three
+consecutive thinking-only messages each hit the 32,000-token per-message
+output cap (ADR-356) and were auto-resumed, 24 minutes in all: the cap
+bounds a message, not a turn's thinking.
+
+**Decision.** Two changes, one in the product and one in the collector.
+
+1. **The bridge cuts `describe_api` to the size of one tool result.**
+   `cadex_cli.bridge.api_view` keeps every domain and library export's name
+   and full signature and the first paragraph of its description, and adds
+   a `descriptions` line naming the `inspect scope=api` path that holds the
+   full text. The engine's reply and the protocol are untouched; the trim
+   is the model's view only. `API_VIEW_CHAR_BUDGET` is 90,000 characters, a
+   margin under the harness's cap, and a live-engine test in
+   `cli/tests/test_client.py` holds the real contract under it (82,194
+   characters today, from 163,200), so growth past the cap fails a test
+   rather than a design turn. A fixture in `cli/tests/test_mcp_protocol.py`
+   pins the trim, the retained signatures and the note.
+2. **The ot7 collector launches every turn of an attempt at `medium`.**
+   The CLI's own default stays `high`. `run.py` passes `--effort` to each
+   child turn, which sets `CADEX_EFFORT` before the CLI starts, records the
+   effective settings (`effort`, `max_output_tokens`, `turn_bound_seconds`)
+   in the receipt and on every row, and reuses the receipt's level on
+   `resume`. The output cap and the 30-minute bound are unchanged. This is
+   the documented soft control (ADR-356) and changes no prompt byte; it is
+   reversible per attempt with `--effort`.
+
+**Consequences.** The F5 retry on `ot7-heron-c` sends the unchanged frozen
+create prompt at `medium`, after the window resets and only when the
+runner's probe reads room (ADR-358). Whether `medium` fits the bound is a
+measurement the retry makes; a further change of level is another recorded
+decision, and a changed prompt would be a new attempt. `docs/CLI.md` and
+the runner README document both changes. REPORT.md's F5 and F4 rows were
+corrected in the same unit (two of three probe scripts accepted; four
+completed F4 turns).
+
+## ADR-360 — describe_api reaches the model as an index and sections; `section` is the bridge's argument (2026-09-16)
+
+**Context.** ADR-359 cut the model's view of `describe_api` to one
+paragraph per export, 82,523 characters on the live engine under a
+90,000-character budget that assumed the harness counts about four
+characters per token. The first F5 create turn on `ot7-heron-c`
+(iteration 57) measured the assumption wrong: the harness refused the
+view ("exceeds maximum allowed tokens"), wrote it to a file the product
+agent has no tool to read, and the agent paged the contract through 43
+`inspect scope=api` reads in 2 min 40 s. The harness does not publish its
+cap in characters. What the two ot7-heron-c transcripts do establish is a
+bound: 82,523 refused, every accepted result at most 21,742 characters
+(turn-1's largest `inspect scope=document` reply). The compact rendering
+ADR-359 measured, 69,587 characters, is inside the unknown band and would
+be another guess.
+
+**Decision.** The contract is paged, and the bound is the measurement.
+
+1. **`describe_api` without an argument is the index**: everything above
+   the domains whole, each domain and the library with their globals and
+   output types and their exports **by name only**, the catalog as its
+   family names, and a `sections` line saying where the signatures are.
+   `describe_api section=<domain>` or `section=library` is **one
+   section**: the block's notes, every export's name, full signature and
+   first-paragraph description, the whole catalog for the library, and a
+   `descriptions` line naming the `inspect scope=api` path that holds the
+   rest of any docstring. A section the contract lacks is refused with
+   `NO_SUCH_SECTION` and the list of sections, after the engine has
+   answered the argument-free request: the section names come from that
+   reply, so the refusal cannot be decided before it. Only the `section`
+   argument itself never reaches the engine.
+2. **`section` is the bridge's argument, not the protocol's.** The engine's
+   op still takes nothing and returns the whole contract; the protocol, the
+   reply, the goldens and the shell client are untouched. The CLI's tool
+   schema offers `section` from `VIEW_ARGS` in `cadex_cli.tools`, the
+   bridge pops it before the request, and the schema drift test allows
+   exactly that allowlist. `test_project_tool_surface.py` pins that
+   `OP_ARG_SPECS["describe_api"]` takes no argument, so the page cannot
+   quietly become a protocol change without INTEGRATION.md moving with it.
+3. **`API_VIEW_CHAR_BUDGET` is 21,500 characters**, under the largest
+   result the harness has been seen to accept, and the live-engine test
+   holds the index and every section under it: 13,239 for the index,
+   20,502 for the largest section (assembly), on 2026-09-16. The test also
+   checks that the sections between them carry every signature of the
+   engine's reply. Growth in the assembly domain's notes or exports past
+   about a thousand characters fails that test rather than a design turn.
+4. **The system prompt says to read the index, then the section of every
+   domain used**, and the tool description says the same; the frozen ot7
+   prompts are not touched.
+
+**Consequences.** A design turn reads the contract in two to seven calls,
+each of a size the harness has accepted, instead of one refused call and
+forty-odd exports read one at a time. Whether every page is accepted is a
+measurement the next ot7 design turn makes from its transcript: an
+accepted page above 21,742 characters would not occur under this budget,
+and a refused page under it would mean the cap is lower than any result
+yet seen and would be recorded. The bound is reversible per measurement:
+if a later transcript accepts a larger result, the budget can rise to it
+under the same test. The runner's collector and the retained receipts are
+unchanged; `docs/CLI.md` documents the page shapes and the budget.
+
+## ADR-361 — Restore actor fallback and refresh account limits (2026-09-16)
+
+The owner requests restoring the actor's Codex fallback and a command to
+recheck accounts after changing login or restoring credits. This supersedes
+ADR-355's removal of actor fallback, not its design-attempt rules:
+usage-limit calls remain void and product-agent dispatch still requires
+Claude availability as checked by the collector.
+
+The actor chain is Claude Fable 5.1 followed by Codex gpt-6-astra; the critic,
+maintainer and planner retain their configured fallback chains. The local
+Ouroboros runner now accepts `ouroboros refresh` and `ouroboros --refresh`.
+It queues no-tool account probes, wakes backoff within one second, and waits
+for active calls to finish. Failed probes retain existing cooldowns.
+Configuration changes still require a restart; ot7 is continued on its
+existing branch after a controlled stop while sleeping.
+
+Validation: Ouroboros's full suite passes, 310 tests, including fresh account
+readings, CLI aliases, old-runner refusal and a refresh arriving during backoff.
+The runner checkout already contained automatic role-transition refresh
+changes; these were preserved. The installed tool uses that editable checkout.
+
+## ADR-362 — Every build reply carries the published catalog identity, advisory (2026-09-16)
+
+Run ot7's F5 measured the same blind spot four times (record
+`sunny-chart-5873`). Heron's create turn on `ot7-heron-c` cut a tap-drill
+bore into the two MG90S servo bodies and re-clocked the two horns on their
+splines; the engine's published inventory listed both servos and both
+horns as uncatalogued after that turn and after every one of the three
+continuations, and the agent's closing message said all twelve purchased
+parts were catalog parts after every one of them. It never read the
+inventory, and it had no reason to: nothing in a build reply carried
+catalog identity, and the fit block (ADR-346) is about geometry. F5 is
+exhausted with every count of its bar met except catalog hardware for
+every purchased part, and the critic ruled that before F6 the product
+should put that count in front of the agent.
+
+One change, on the CLI side, no protocol change and no engine change:
+
+- **The bridge attaches an `inventory` block to every successful
+  `write_script`, `edit_script`, `set_params` and `rebuild` reply**, read
+  from `inspect scope=inventory` under the same lock as the fit block, so
+  it describes the revision the reply accepted. The block is the component
+  count, the count of components placed from a catalog part, the catalog
+  roll-up by `family/part_number`, and the name of every placed output no
+  `lib.*` generator built as-is. Counts are per component and names are
+  per source output, so a drilled servo body placed twice is two
+  uncatalogued components and one name. The block's `source` says where it
+  comes from and that it is not the script's stdout.
+- **It is advisory.** It has no verdict, names no failure, and refuses
+  nothing. A printed part belongs under `uncatalogued_sources`; the block
+  says so, and says that a purchased part listed there has lost its catalog
+  identity. Whether a cut catalog body counts as catalog hardware stays the
+  owner's call on the F5 tick; the product reports the fact and takes no
+  side. An unreadable inventory is `available: false` with the error, and
+  the build is still accepted.
+- **The system prompt says catalog identity is measured too**, beside the
+  fit bullet: read the block before saying hardware comes from the catalog,
+  and if a purchased part is listed, place the untouched catalog body and
+  put the cut in the printed part that receives it.
+- **`inventory` is pinned as a served inspect scope the CLI offers**, in
+  `test_project_tool_surface.py`, the way ADR-346 pinned `clearance`. It
+  was already on the surface; what is new is that the reply summarises it.
+
+The turn's `--json` envelope carries the last accepted build's block as
+`inventory`, and the prose report prints it, one line per uncatalogued
+source. Evidence: a bridge test on a known-answer inventory in Heron's
+shape — six components, three catalogued, three uncatalogued over two
+sources — pinning every count and name on the text the model receives;
+tests for the partless, unreadable and refused-build cases; a unit test on
+the summary itself; the prompt test; the tool-surface test.
+
+**Product version for the remaining designs.** F5's four turns ran on a
+product without this block, and F5 is not re-run: its result stands as
+measured and no prompt is spent on it. F6 and F7 run on the product with
+it. Their frozen prompts are unchanged, so the comparison between F5 and
+F6/F7 on the catalog count is a comparison across this one product change,
+and the closing report says so.
+
+## ADR-363 — Ouroboros Claude roles use Opus 5 (2026-09-16)
+
+At the owner's request after switching Claude accounts, all Claude entries
+in the Ouroboros role configuration use `claude-opus-5`: actor,
+critic fallback, and the inactive maintainer/planner roles. Codex remains
+the critic and actor fallback. A no-tool live probe returned OK and reported
+`claude-opus-5` in model usage. The loop was stopped during backoff and
+continued on the same branch to load the model configuration; its original
+deadline remains. A manual refresh is queued for the new process.
+This is an orchestration-model change; the product-agent experiment model
+settings and frozen prompts are unchanged.
+
+## ADR-364 — A refused window probe is no room, whatever the window reads (2026-09-16)
+
+The ot7 evidence collector dispatches a frozen prompt only while a one-word
+probe reads the five-hour window at or under 45 % (ADR-358). On 2026-09-16 at
+14:29 UTC that probe, on the product agent's `claude-fable-5`, was **refused
+in 2.369 s with the five-hour window at 1 %**: the binding limit was
+`seven_day_overage_included` at 100 % with `overageDisabledReason:
+org_level_disabled`, and the provider said "You've reached your Fable limit."
+The five-hour window was nearly empty and entirely beside the point.
+
+The gate returned no room, but only because that frame's top-level `status`
+happened to carry the overage rejection, and that did not repeat: the next
+probe on the same account, twenty minutes later, returned `status: allowed`,
+`rateLimitType: five_hour` and five-hour at 2 %, and was refused just the
+same. The pre-ADR-364 gate reads that second frame as room and sends the
+prompt — verified against the retained stream. A fixture built from the real
+frames proves that dispatch on the old code: F6's create prompt **and all
+three continuations** go into a model the provider will not run.
+
+**Corrected 2026-09-16 (iteration 78).** That fixture's design calls are the
+suite's ordinary mocked-successful ones, so the four spent slots it ends with
+are the fixtures answering, not the provider. This ADR first read them as the
+real cost, and they are not: ADR-355 sits underneath, and a design call the
+provider refuses is void. Measured against the same Fable refusal frames
+(`test_a_room_reading_before_a_refused_model_costs_one_void_dispatch`), the
+old gate costs **one** dispatch, its receipt and a burned project name — the
+attempt goes void on its first turn, `slots_spent` stays 0 and the retry moves
+to `ot7-robin-c` — with all four frozen slots intact. So this gate is the
+earlier of two guards rather than the only one. It is still worth having: it
+spends no provider call, it leaves the frozen prompt in the project the report
+can still name, and it turns a refusal into a pause rather than into a retry
+chain of suffixed projects.
+
+The probe is a real model call on the product agent's model, so it is read as
+one. Its stream is classified by `void_reason`, the same ADR-355 rule a design
+call's stream gets, and `window_has_room` returns false on any refusal before
+it considers a number: the five-hour percentage forecasts what a turn will
+*cost*, while the probe's outcome measures whether one can *start*. The
+reading also keeps every `unifiedWindows` entry as a percentage beside
+`rate_limit_type` and the refusal, because a receipt reading `five_hour 1 %,
+no room` names no cause. The bound, the probe text, the one-probe-per-prompt
+schedule and the pause behaviour are unchanged, and an allowed probe still
+passes.
+
+The opposite error is guarded too, because closing this gate for good would
+strand every remaining frozen prompt: an organisation with overage disabled
+emits a rejected `seven_day_overage_included` frame beside an ordinary allowed
+window, so the classifier runs only on a probe that did **not** answer. A
+probe that reached the model and returned its own result is room, stray frames
+and all.
+
+Evidence: six fixtures in `cli/tests/test_ot7_runner.py` (the refused probe
+at 1 % with `status: allowed`, the named windows, an allowed probe keeping its
+room, the whole schedule pausing with zero slots spent, an answered probe
+keeping its room despite a stray rejected overage frame, and — added by the
+correction above — a room reading in front of a refused model costing one void
+dispatch and no slot), the first four failing on the old code and the sixth
+holding on both, 77 passed; the receipt
+`docs/probes/ot7/attempts/f6-window-refusal.json`; `docs/probes/ot7/runner/README.md`.
+
+F6's four slots are unspent and no `ot7-robin-b` exists. The product agent's
+model stays `claude-fable-5` — ADR-363 moved the Ouroboros roles to
+`claude-opus-5` and deliberately left the experiment's model alone, so F6 and
+F7 stay comparable with F5 — so F6 waits for that account's Fable capacity
+rather than for a five-hour reset.
+
+## ADR-365 — The Ouroboros reporter block is the operator's, not a role's (2026-09-16)
+
+Iteration 77's loop commit `ad774438` carries a 33-line addition to
+`.ouroboros/config.yml` — a `roles.reporter` entry (Codex first, a Claude
+fallback) and a commented `report:` block — that no unit in this run asked
+for and no record explains. Recording where it came from, since an
+unexplained configuration change on an unattended branch is the kind of thing
+a later reader has to treat as suspect.
+
+It is the operator's. The loop was sent SIGTERM at 14:28:00 UTC and continued
+at 14:28:36 (`.ouroboros/runs/ot7/loop.log`), which is when the phone reporter
+was started beside it; `.ouroboros/config.yml` was then modified at 14:37:05,
+in the middle of iteration 77's actor turn. The resolved snapshot the restart
+wrote, `.ouroboros/runs/ot7/run.yml`, has the identical `report:` values and
+**no** `roles.reporter` at all, so the block documents the configuration the
+run is already using — the `report:` half restating the CLI defaults in the
+config that `ouroboros watch` reads, and the reporter role naming the harness
+its digests should use. Its stated reason is that a digest must never compete
+with the actor for the Claude window.
+
+No unattended role authored it: the iteration-77 actor found the file dirty,
+ran `git diff` on it, described it as an unexpected change and deliberately
+left it unstaged — its own commit `02f6b246` does not contain it. The loop's
+end-of-iteration commit then swept the working tree, which is how an operator
+edit ended up inside `ouroboros #77`. Scanning the actor transcripts of
+iterations 75–77 for any write to that path returns nothing.
+
+Consequences: the run is unaffected — the reporter is an observer outside the
+loop, and the block changes no role the loop calls. The general point is that
+the loop's iteration commit is a working-tree sweep, so an operator edit made
+during a turn lands under the actor's commit message with the actor's
+attribution. When that happens, the provenance goes in an ADR rather than
+being left to look like unattributed drift.
+
+## ADR-366 — Every build reply carries the swept fit beside the static one (2026-09-16)
+
+Run ot7's F5 measured the cost of a reply that stops at the solved pose
+(records `flat-cove-2253`, `easy-otter-0439`). Heron's create turn on
+`ot7-heron-c` accepted an arm whose two revolute joints declared limits
+(±90°, ±100°) and whose assembly declared no `sweep_step_degrees`, so the
+engine ran no sweep and published none. The reply said nothing about it:
+the `fit` block (ADR-346) is the solved pose, and its own `source` line
+says so. The agent learned the gap a continuation later, and F5's bar —
+"zero failing static **and swept** fit checks" — had half of it invisible
+in the place the charter put the other half.
+
+Same shape as ADR-362, same side of the process boundary. One change, on
+the CLI side, no protocol change and no engine change:
+
+- **`fit.sweep` on every successful `write_script`, `edit_script`,
+  `set_params` and `rebuild` reply**, computed by `sweep_summary` from the
+  `clearance_sweep` the `inspect scope=clearance` value the bridge already
+  reads carries. **No second engine call**, and no second measurement: the
+  numbers are the engine's published sweep, unchanged.
+- **It keeps its own verdict**, because a number read from either block has
+  to mean one thing. `fit["verdict"]` stays the solved pose. `fit.sweep`'s
+  is `pass` only when every limited joint was swept to completion and no
+  pair interpenetrates anywhere in its range; `fail` names every
+  overlapping pair with the joint it is through and the value it first
+  touched at; `incomplete` carries the engine's per-joint reason; and
+  `unavailable` is the F5 case — no sweep published at all — carrying the
+  engine's reason, which names the declaration the design is missing.
+  Missing coverage is never a pass, and the block says so in a `note`.
+- **Each joint gets one compact row** with the three facts the charter's F3
+  asks for: minimum distance, maximum common volume, and the joint value of
+  first contact with the pair that reached it. Per-joint rows are O(joints);
+  the unbounded list is the failing pairs, on the same never-cut-short terms
+  as the static block.
+- **Advisory, like the block beside it.** A failing swept fit is reported,
+  never refused; acceptance is unchanged, and an old project reopens and
+  builds exactly as before, with `unavailable` where it published no sweep.
+- The system prompt, `docs/CLI.md` and the prose report move with it: the
+  agent is told that `fit.sweep` is measured motion fit, that an unswept
+  joint has been checked at one pose only, and how to acquire the
+  measurements.
+
+What this deliberately does **not** do: enumerate the limited joints an
+assembly declared no step for. The engine skips `_measure_joint_sweeps`
+entirely when neither step is declared, so nothing names those joints, and
+the reply says `unavailable` with the engine's declare-the-steps reason
+rather than counting them. Making the engine emit an `incomplete` row per
+limited joint in that case is an engine change with goldens behind it, and
+is a separate unit if a design turn shows the reason alone is not enough.
+
+Evidence: `cli/cadex_cli/clearance.py` (`sweep_summary`, folded into
+`fit_summary`), `cli/cadex_cli/bridge.py` (`_sweep_line`),
+`cli/cadex_cli/report.py`, `cli/cadex_cli/agent.py`; six tests in
+`cli/tests/test_clearance.py`, all six red on the previous code — two live
+against the real engine on one hinge built with and without its step, which
+is the F5 shape with its static verdict passing either way.
+
+## ADR-367 — Coverage is published whether or not a step is declared (2026-09-16)
+
+ADR-366 named what it did not do and said it was a separate unit "if a
+design turn shows the reason alone is not enough". A design turn already
+had. F5's create turn on `ot7-heron-c` (record `flat-cove-2253`) accepted
+an arm whose two revolute joints declared limits and whose assembly
+declared no `sweep_step_degrees`; the agent found the gap one continuation
+later (`easy-otter-0439`), spending a slot on it. This is that unit.
+
+The whole defect was one guard. `_measure_joint_sweeps` has always reported
+a limited joint whose kind's step is undeclared as `incomplete`, naming the
+joint and the missing declaration — that path is how a design declaring
+`sweep_step_mm` alone learns about its hinges. It was simply never reached
+when **neither** step was declared, because the dispatch site in
+`cadex_assembly_worker.py` guarded the call with `if sweep_steps:`.
+
+- **The guard is gone; `clearance_sweep` is published on every assembly.**
+  With no step to sweep at, every joint short-circuits on the step check
+  before any geometry call, so the report is an enumeration and nothing
+  else. Measured on the lifecycle fixture: `elapsed_seconds` under 1 ms.
+- **An assembly that declares neither step is now `incomplete`**, with one
+  row per limited joint naming it, its kind, its unit and the declaration
+  it is missing. The reply's line reads `sweep incomplete: 2 of 2 joint(s)
+  unswept` instead of `sweep unavailable`, so the agent is told *which*
+  joints went unchecked rather than only that a sweep is absent.
+- **An assembly with no limited joint reports complete coverage of an empty
+  set**, which is the honest answer to "what was swept" and is not the same
+  statement as a swept mechanism. `sweep_summary` already read that as
+  `unavailable` with its own reason (ADR-366), and `cadex clearance --sweep`
+  now says the same thing in its coverage line rather than printing a bare
+  "complete" a reader could take for a checked mechanism.
+- **`unavailable` keeps exactly one meaning**: a revision accepted by an
+  older engine, which published no sweep. The `CadexInspection` fallback is
+  unchanged and retained projects read as they did.
+
+No protocol change: no op, no argument and no page contract moves, the
+response is an additional key on an assembly output, and the shell passes
+the scope value through untouched. Acceptance is unchanged and advisory
+throughout — a limited joint nobody swept is reported, never refused — and
+the assembly *definition* is untouched, so omitting both steps still
+preserves legacy definitions and accepted identity.
+
+Evidence: two lifecycle tests (`test_cadexd_lifecycle.py`), both red on the
+previous code with `KeyError: 'clearance_sweep'`, covering the limited-joint
+and no-joint cases against a real build and through the `clearance` inspect
+scope; the live CLI test that builds the F5 shape both ways
+(`test_clearance.py`) now asserts the named joint and the `sweep incomplete:
+1 of 1 joint(s) unswept` line; and the legacy-project sweep report asserts
+its new coverage sentence. `pixi run test-engine` 2,144 passed, 53 skipped;
+`pixi run python -m pytest cli/tests` 783 passed, 1 skipped; the packaged
+gate `CADEX_ENGINE_ROOT=<payload> pytest test_cadexd_lifecycle.py` 20 passed
+against a freshly staged payload. `docs/XSCRIPT.md`, `docs/CLI.md` and
+`docs/INTEGRATION.md` move with it.
+
+## ADR-368 — A sweep that is `unavailable` says which of its two causes (2026-09-16)
+
+ADR-367 ended with the sentence "**`unavailable` keeps exactly one
+meaning**: a revision accepted by an older engine, which published no
+sweep." That is true of the *raw* published `clearance_sweep.status`, and
+not true of the `fit.sweep.verdict` the agent actually reads: the summary
+has no joint row to judge in **two** different situations, and calls both
+`unavailable`. The second is an assembly with no limited joint at all, which
+publishes complete coverage of an empty set (ADR-367 itself added that).
+Three surfaces said only one of the two, and each said a different one:
+`sweep_summary`'s docstring named the legacy case alone, the agent's system
+prompt named the no-joints case alone, and `docs/CLI.md` asserted the legacy
+case in one paragraph and the no-joints case in the next.
+
+Nothing about the measurement changes; this is what the measurement is
+called. The block already carried the discriminator — `coverage` is
+`unavailable` for the legacy case and `complete` for the no-joints one, and
+`reason` says which in words.
+
+- **The one-line phrase names the cause.** `_sweep_line` reads
+  `sweep unavailable: no published sweep` or `sweep unavailable: no limited
+  joint` instead of a bare `sweep unavailable`, so the progress log, the
+  runner's attempt rows and the turn report cannot record the two as the
+  same fact.
+- **The prompt and the docstring name both causes**, keyed to `coverage`,
+  and `docs/CLI.md` no longer contradicts itself between paragraphs.
+- **The fallback reason is one constant.** `SWEEP_NO_PUBLISHED` replaces the
+  string that was written twice in `clearance.py`.
+
+No protocol change, no engine change, no op and no argument: this is CLI
+wording and one phrase. Acceptance is untouched and the block stays advisory
+— an unswept mechanism is reported, never refused. The parametrised
+empty-sweep test now pins the coverage and the phrase for all three cases
+and fails on the old code; `pixi run python -m pytest cli/tests` is the
+evidence.
+
+## ADR-369 — A refused probe reads the frame that rejected (2026-09-16)
+
+**Context.** ADR-364 made the window probe's own outcome the reading: a probe
+the provider refused is no room, whatever the five-hour number says. It left
+the *description* of the refusal reading the first `rate_limit_event` frame in
+the stream, and the order of those frames is the provider's, not ours. On
+2026-09-16 at 14:29 UTC the rejected `seven_day_overage_included` frame came
+first, so the receipt named it. At 17:02 UTC the same account, still refused
+for the same `org_level_disabled` reason, put an **allowed** five-hour frame
+in front of it. The reading then printed `rate_limit_type: five_hour`,
+`status: allowed`, `resets_at: 2026-09-16T19:20:00Z` beside `room: false`, and
+its `windows` lost the `seven_day_overage_included: 100` that was the whole
+cause. A receipt that pairs a refusal with an unrelated window's reset is the
+raw material for exactly the inference two records in this run had to retract
+(`sage-isle-3511`, `soft-journey-2954`): that the gate opens when that clock
+strikes.
+
+**Decision.** In `window_reading` (`docs/probes/ot7/runner/run.py`):
+
+- **The binding frame is the one that rejected, on a refused probe only.**
+  Refusal is classified first, as before; if the probe was refused and any
+  frame carries `status: rejected`, that frame supplies `status`,
+  `rate_limit_type` and `resets_at`. A probe that answered still reads its
+  first frame, so the ADR-364 invariant holds unchanged — an organisation with
+  overage disabled emits a rejected frame beside an ordinary allowed window,
+  and that must never close the gate on an account with room.
+- **Windows merge, with the reading's own frame authoritative.** The chosen
+  frame wins for every window it names; the other frames contribute only the
+  names it omits. The window that refused therefore reaches the receipt
+  whichever frame carried it.
+- **`resets_at` is the reset of the window `rate_limit_type` names**, and on a
+  refusal the new `resets_at_is` says what that is in words: the schedule of
+  that usage window, *not* a date for the setting that refused. `disabled_reason`
+  is carried beside it.
+
+No gate arithmetic changes: `window_has_room` is untouched and still returns
+false on any refusal before it looks at a number. No slot is spent by any of
+this, no design call is affected, and no prompt moved.
+
+**Evidence.** Two tests in `cli/tests/test_ot7_runner.py` that fail on the old
+code: one on the measured 17:02 UTC frame order, asserting the refusing limit,
+its reset, the three windows and the `resets_at_is` sentence; one pinning that
+an answered probe with a stray rejected frame keeps its first frame, its
+`allowed` status and its room. `pixi run python -m pytest cli/tests` is green.
+The third probe is recorded in `docs/probes/ot7/attempts/f6-window-refusal.json`
+with both readings, old and new, and `docs/probes/ot7/runner/README.md` and
+`docs/probes/ot7/REPORT.md` carry the rule and the measurement.
+
+## ADR-370 — A fixed joint that holds nothing is measured and said (2026-09-16)
+
+**Context.** ot7's premise is that the agent designs badly because the product
+does not show it the measurements, and F4 is where that premise met its own
+residual. On `ot7-heron-repair-d` the product agent resolved two of Heron's
+three ot6 defects from measurements alone and stopped: both servo horns sit
+**0.2 mm from their links**, the ot6 defect verbatim, and the design's own fit
+report passes. It passes honestly. The script welds each horn to its link with
+a `fixed` joint and, in the same `assembly.assembly` call, declares the pair a
+**clearance of 0.05 mm**; measured at 0.2 mm, the pair clears every one of
+ADR-347's four checks. The agent's ledger lists it among four declared
+clearances that pass, and only the evidence collector disagreed — through a
+hard-coded pair list, `REPAIR_ATTACHMENTS` in
+`docs/probes/ot7/runner/run.py`, which knows two component names the product
+does not. A checker whose right answer lives in the harness is the run's own
+diagnosis pointed at itself: the cause is in the product, not the model.
+
+The fact the collector had and the product did not is that these two
+components are joined by a **fixed joint**. A fixed joint asserts that two
+parts are one rigid body. Whether their solids meet is a separate, measurable
+question, and on Heron the answer is that nothing meets: the horn floats in
+its pocket, held by a joint in the model and by nothing at all in the print.
+
+**Decision.** The engine measures it and every fit surface says it.
+
+- `_check_attachments` (`cadex_assembly_worker.py`) reports one row per
+  component pair joined by an **unsuppressed `fixed` joint** of this assembly:
+  the joint output names that declare it, the measured distance and common
+  volume from the pairs `_measure_clearance` already produced, and a status —
+  `touching` (within the same 0.001 mm tolerance a declared contact is held
+  to, or overlapping), `not touching`, or `unknown` with the engine's own
+  reason. It is published as `attachments` beside `world_geometry`, and the
+  `clearance` inspect scope carries it.
+- `attachment_summary` (`cli/cadex_cli/clearance.py`) is the block a build
+  reply carries inside `fit`, with its own verdict — `touching`, `reported`,
+  `unknown`, `none`, `unavailable` — so a number read from the static, swept
+  or attachment block means one thing only. The progress line ends
+  `welded: N of M pair(s) not touching` whenever the assembly welds anything,
+  and `cadex clearance` writes the same rows under its pair table.
+- **It is reported, never failed.** No `fit_failures` entry, no change to any
+  verdict, no change to acceptance: a standoff, a shim or a captive fastener
+  between two welded parts is a legitimate design and only the design knows
+  which it is. The charter's four checks stay four, every ot6 and ot7 receipt
+  keeps the failing set it was measured with, and F4's and F5's exhausted
+  results remain comparable with F6's and F7's. What the block removes is the
+  design whose every declared check passes while nothing holds two parts
+  together — and it says so in words the reading agent gets: *close the gap
+  and declare the pair a contact.*
+- **Absent is not empty.** A revision accepted before this ADR publishes no
+  `attachments` key and reads `unavailable` with the reason; an assembly with
+  no fixed joint publishes `[]` and reads `none`. Absence of the report is not
+  absence of a gap.
+
+**Consequences.** Tests that fail on the old code: the real-kernel fixture in
+`cadex_tests/test_fit_intent.py` now welds its 0.2 mm horn/link pair and
+declares it a 0.05 mm clearance — Heron's exact shape — so every fit check
+passes and the attachment row is what names it, beside a welded pair that
+really touches; a pure test pins the suppressed joint, the non-fixed joint, the
+other assembly's joint, two joints over one pair, and the unmeasured pair; and
+in `cli/tests/test_clearance.py` a rig whose script prints that everything fits
+gets `verdict: pass` with the gap under its weld in the same reply.
+`pixi run python -m pytest cli/tests` and `pixi run test-engine` are green.
+`docs/XSCRIPT.md`, `docs/CLI.md` and `docs/INTEGRATION.md`'s inspect row carry
+the contract. The collector's `REPAIR_ATTACHMENTS` is left alone on purpose:
+its seed's accepted revision predates this engine and publishes no report, and
+rewriting a receipt's own checker mid-run would make F4's evidence
+unreproducible.
+
+## ADR-371 — A suppressed joint is not missing coverage (2026-09-16)
+
+**Context.** The swept fit check (ADR-349, ADR-351, ADR-366, ADR-367) is the
+half of the measured fit that answers "does this still fit while it moves".
+Its coverage is the evidence, and the block says so in its own words: a joint
+that was not swept has been checked at one pose only, and missing coverage is
+never a pass. That rule only works if everything it counts as missing is
+actually missing.
+
+`_measure_joint_sweeps` counted a **suppressed** joint as missing. Any joint
+carrying limits was handed to the sweep child, which prepared every
+component's BREP, launched a `FreeCADCmd` subprocess, and refused the joint
+from inside it with `only unsuppressed limited tree hinges and sliders are
+supported`. The row came back `incomplete`, and one such row makes the whole
+assembly's coverage `incomplete` — permanently, since nothing the author can
+declare will change it. The CLI then told the agent to declare the
+`sweep_step_degrees` it had already declared, and `fit.sweep` could never read
+`pass` again.
+
+That is wrong on its own terms and contradicted two contracts already written
+down. A suppressed joint is not an edge of the mechanism: the solver ignores
+it (`CadexDynamics` treats it as no edge at all), so it holds no range to move
+through and there is nothing about it to sweep. `docs/XSCRIPT.md` already said
+the producer sweeps "each limited, **unsuppressed** revolute or slider joint",
+and the CLI's own no-joints wording already listed "suppressed" among the
+joints a sweep does not cover. ADR-370's attachment report had made the same
+call one iteration earlier, filtering to unsuppressed fixed joints.
+
+**Decision.** A suppressed limited joint is `skipped`, not `incomplete`.
+
+- `_measure_joint_sweeps` checks `suppressed` first and returns
+  `{"status": "skipped", "reason": "the assembly suppresses this <kind> joint,
+  so the solver ignores it and it holds no range to sweep"}`. No child process
+  runs for it and no geometry is touched, so the row carries no
+  `elapsed_seconds` and no pairs. Only a status that is neither `complete` nor
+  `skipped` degrades the report's coverage.
+- `sweep_summary` counts those rows as `joints_skipped`, apart from
+  `joints_complete`, and judges its verdict over the joints that are left:
+  `joints_checked - joints_complete - joints_skipped` is the coverage that is
+  actually missing. One suppressed joint beside a swept one is now a `pass`,
+  which it always should have been.
+- **Complete coverage of nothing swept is still not a pass.** An assembly
+  whose limited joints are *all* suppressed has rows and judges none: that is
+  a third fact wearing `unavailable` (after ADR-368's two), with its own
+  reason — a mechanism that declares motion and then holds it still has not
+  been swept. The progress phrase reads `sweep unavailable: every limited
+  joint suppressed (N)`, and `sweep pass: 1 joint(s) swept; 1 suppressed`
+  never says one count in the other's words.
+
+**Consequences.** No verdict, failing set or acceptance behaviour changes for
+any design without a suppressed limited joint, so every ot6 and ot7 receipt
+keeps the failing set it was measured with and F4's and F5's exhausted results
+stay comparable with F6's and F7's. A revision accepted before this ADR keeps
+its `incomplete` row and its unsupported-kind reason until it is rebuilt; no
+protocol op, argument or response shape changed. Tests that fail on the old
+code: the real-kernel driver in `cadex_tests/test_joint_fit_sweep.py` sweeps a
+suppressed hinge (coverage `complete`, row `skipped`, no `elapsed_seconds`,
+no pairs) and a suppressed joint beside a swept one; and in
+`cli/tests/test_clearance.py` the mixed case reads `pass` with its counts and
+its phrase, the all-suppressed case reads `unavailable` with its own reason,
+and `cadex clearance --sweep` writes that sentence beside its coverage line.
+`pixi run test-engine` and `pixi run python -m pytest cli/tests` are green.
+`docs/XSCRIPT.md`, `docs/CLI.md` and `docs/INTEGRATION.md` carry the contract.
+
+## ADR-372 — A welded pair is not an undeclared pair (2026-09-16)
+
+**Decision.** A component pair joined by an **unsuppressed `fixed` joint** is
+exempt from the default 0.1 mm minimum the fit checker holds an undeclared
+pair to. `_check_fit` publishes the implied intent
+`{"kind": "attached", "minimum_mm": 0.0, "joints": [...]}` on the row, and
+`cli/cadex_cli/clearance.py`'s `pair_status` reads it as `clear`.
+
+**Why.** The undeclared-pair minimum is the rule for two parts that merely
+stand near each other. A fixed joint is the design saying these two components
+are *one rigid body*, so their solids meeting face to face is what the
+declaration asks for, not a gap that has closed. Without the exemption the
+checker punished correct design: mounting hardware flush against what carries
+it — a servo on its bracket, a horn on its link, a screw against the tab it
+clamps — failed `below clearance` at 0.0 mm, and the only escape was a
+`contacts=` declaration that repeated the weld the script had already written.
+It also contradicted ADR-370 one iteration old: that report names a weld whose
+solids *never meet* as a finding, while this check failed the same pair for
+meeting. Measured on the retained ot6 biped: Finch's 44 failing rows include
+**32 `below clearance`**, and **16 of them are a `fix_*` weld** between a host
+and the part mounted flush on it, every one at 0.0 mm — a servo, a bearing, a
+horn or a centre screw doing exactly what its joint asked. That is the reading
+a design turn was asked to repair.
+
+The other 16 are outside this rule and stay failing, which is the boundary
+worth naming: 12 are two *purchased* parts at 0.0 mm that share a host but are
+welded only to it (a servo against the screws through its tabs, a servo against
+the horn on its output), and rigidity is not inferred transitively through a
+common host; 4 are the 0.05 mm bearing seats between a thigh and the bearing it
+turns on, which is a running clearance the design should declare rather than a
+weld. A design that means either can say so, but not with the same
+declaration, and the distinction is the contact tolerance: `contacts=[(a, b)]`
+holds a pair to **0.001 mm**, so it fits the 12 purchased pairs meeting at
+0.0 mm and would fail each 0.05 mm bearing seat as a `missed contact`. An
+intended gap narrower than the 0.1 mm undeclared default is
+`clearances=[(a, b, 0.05)]` (corrected in ADR-373, which also puts the
+distinction in the agent's instructions).
+
+**How.** `_fixed_joint_pairs` is factored out of `_check_attachments` so one
+reading of "these two are welded" serves both checks, suppressed joints
+excluded from it the way ADR-371 excludes them from the sweep. `_check_fit`
+takes `joint_data` and `assembly_output` and applies the implication only when
+the pair has **no** explicit declaration.
+
+**What it does not do.** The implication is the weakest one available: it
+exempts the pair from the gap and asserts nothing else.
+
+- Common volume above 1e-6 mm³ still fails, so Heron's buried servo tab is
+  still an `intersection`.
+- An unmeasured pair still fails as `unknown`.
+- An explicit `contacts=` or `clearances=` entry on the same pair still wins —
+  the author saying "0.5 mm here" outranks the joint.
+- A welded pair that does **not** touch is still not a fit failure: whether a
+  weld's solids meet stays the ADR-370 attachment report's separate advisory
+  fact, because a standoff, a shim or a captive fastener between two welded
+  parts is a legitimate design and only the design knows which it is.
+- A **suppressed** fixed joint grants no exemption: the solver ignores it, so
+  it is not an edge of the mechanism (ADR-371).
+
+**Consequences.** No protocol op, argument or response shape changed; `intent`
+is an existing advisory row field. Acceptance behaviour is unchanged — a
+failing fit was never refused and still is not. A revision accepted before this
+ADR keeps the rows it published, so the F9 regression floor and every retained
+ot6/ot7 receipt are untouched until a design is rebuilt; Finch rebuilt on this
+engine would report **16 fewer** failing pairs, 44 → 28, which is the defect
+being removed rather than a measurement changing; re-read today with the
+unchanged CLI it still reports 362 clear, 12 intersections, 32 below clearance
+and 44 failing, because every retained row carries `intent: null`. Publishing `minimum_mm: 0.0` beside the new
+kind means a reader that predates the `attached` branch reaches the same
+verdict from the number alone. `joints` names every weld on the pair, sorted.
+Tests that fail on the old code: `cadex_tests/test_fit_intent.py` gains
+`test_welded_pair_is_not_held_to_the_undeclared_gap` (the six pairs that are
+*not* exempt, beside the one that is) and a welded flush pair measured by the
+real kernel in the Heron-defect driver; `cli/tests/test_clearance.py` gains the
+same rig built and accepted twice, once with the weld and once without, and the
+`pair_status` table including the pre-ADR reader. The agent's system prompt in
+`cli/cadex_cli/agent.py` says the rule and tells it not to declare a contact
+that repeats a weld. `docs/XSCRIPT.md`, `docs/CLI.md` and `docs/INTEGRATION.md`
+carry the contract.
+
+## ADR-373 — A gap the design means is declared, not widened (2026-09-16)
+
+**Decision.** The agent's instructions now name the declaration for an
+intended gap narrower than the 0.1 mm undeclared-pair default: add
+`clearances=[(a, b, 0.05)]` to `assembly.assembly(...)` with the gap the
+design means. They also say what `contacts=` is not — it holds a pair to
+0.001 mm, so it fails a 0.05 mm running fit as a `missed contact` rather
+than clearing it — and that a declaration is not a way to silence a pair
+the design has not thought about. ADR-372's sentence offering `contacts=`
+for both of the cases it left outside the weld exemption is corrected here.
+
+**Why.** ADR-372 exempted welded pairs from the default gap and taught the
+agent, in its own prompt, that a weld needs no declaration. Then it stopped.
+The pairs it deliberately left failing include Finch's four bearing seats at
+0.05 mm — a thigh turning on the bearing it rides, which is correct design —
+and the only instruction the prompt gave for a failing pair was "fix the
+geometry and build again". For a running fit that is the wrong repair: it
+tells the agent to widen a seat that was right, to 0.1 mm it never chose,
+because nothing told it the number was a *default for pairs nobody declared*
+rather than a manufacturing rule. ADR-372's own remedy was wrong in the same
+direction and more precisely so: `contacts=` cannot express 0.05 mm at all.
+Against a 0.001 mm tolerance it converts `below clearance` into
+`missed contact`, so a design following that sentence would have moved a
+failing row from one status to another and read it as progress.
+
+**How.** One paragraph in `CLI_OVERLAY` (`cli/cadex_cli/agent.py`), beside the
+weld sentence it completes. No engine behaviour changed: `clearances=` already
+accepts any non-negative minimum (ADR-347) and the comparison already allowed
+its 1e-9 mm slack (ADR-353). `docs/DECISIONS.md`'s ADR-372 paragraph is
+corrected in place with a pointer here rather than rewritten, since the
+measurement it reports is unaffected.
+
+**Evidence.** `cli/tests/test_turn_loop.py` pins the three sentences and fails
+on the old prompt.
+`src/Mod/cadex/cadex_tests/test_fit_intent.py::test_a_running_gap_under_the_default_is_a_clearance_and_not_a_contact`
+pins the fact the correction rests on, at the one number ADR-372 named: the
+same 0.05 mm row is `below clearance` undeclared, `missed contact` under
+`contacts=`, clear under `clearances=[(a, b, 0.05)]`, and `below clearance`
+again once the seat closes to 0.02 mm. That test pins current behaviour rather
+than failing on the old code — the defect was in the instructions, not the
+checker.
+
+**What it does not do.** No new declaration kind, no per-pair contact
+tolerance, and no change to any threshold, default or published row. It does
+not declare anything on a retained design: Finch's four bearing seats still
+read `below clearance` until a design turn declares them, which is the
+unchanged rule that a failing fit is reported and never repaired by the tools.
+
+## ADR-374 — A welded pair does not define the joint it cannot move (2026-09-16)
+
+**Decision.** Every swept pair row carries `relative_motion`: true when one
+side of the pair sits inside the swept joint's moving subtree and the other
+does not, which is the only case that joint can change. The CLI's `fit.sweep`
+joint rows read their `minimum_distance_mm`, `maximum_common_volume_mm3` and
+`first_contact` over the moving pairs alone, and report how many those were as
+`pairs_moving` beside `pairs_measured`. The per-pair rows, the `failing` list
+and every threshold are unchanged.
+
+**Why.** The three numbers a joint row carries are the three facts F3 asks for,
+and on any mechanism with welded hardware they were none of them. A pair the
+joint cannot move holds its solved-pose measurement at every sample, so a horn
+welded flush against the link it turns with — exactly what ADR-372 established
+is *correct* design, and exactly what a balancer does to horns, bearings and
+fasteners — reads 0.0 mm at every angle and takes `first_contact` at the first
+sample, which is the bottom of the declared range. The roll-up took the
+minimum, so the weld won every time. A knee whose shin first touches its thigh
+at 62° reported first contact at −90° between two parts bolted together, and
+the agent reading the block learned nothing about the motion. The engine
+already distinguishes the two cases on the line that decides whether to measure
+a pair or reuse its cached value; it simply never said which it had done.
+
+**How.** One key on the row in `_sweep_joint` (`cadex_assembly_worker.py`),
+computed where the distinction was already being made, and the same expression
+then reused to choose measure-or-cache so there is one source of truth. In
+`sweep_summary` (`cli/cadex_cli/clearance.py`) the three extrema updates are
+guarded by it and `pairs_moving` is counted, the way ADR-371 counted
+`joints_skipped` apart from `joints_complete`. A row with no flag — a revision
+accepted before this — counts as moving, so an older receipt reads exactly as
+it did. No protocol op, no threshold, no acceptance behaviour and no
+`shell/` diff. *Added 2026-09-16:* the key is an additive field inside an
+existing advisory scope value, and `docs/INTEGRATION.md`'s published-sweep
+section names it — the rule, and its absence on a revision accepted before
+this — which that commit should have carried and did not. *Added 2026-09-16:*
+and that sentence is now test-pinned. `test_joint_fit_sweep.py`'s
+`test_the_protocol_document_carries_the_swept_row_motion_flag` reads the row's
+keys out of `_sweep_joint` with `ast` and holds them against the contract
+section: the key must be published, the section must name it, and a sentence
+naming it must say it is absent on an older revision. It runs headless, unlike
+the real-kernel fixture that pins the flag's value, so a bare checkout still
+fails if either half is dropped.
+
+**Evidence.**
+`src/Mod/cadex/cadex_tests/test_joint_fit_sweep.py::test_welded_pair_is_marked_as_holding_still_through_the_sweep`
+is a real-kernel three-sphere fixture — `fixed` at 90° on a radius-10 circle,
+`moving` hinged over [20°, 70°], `carried` welded to `moving` and touching it —
+where nothing the hinge moves ever contacts (the two moving pairs meet only at
+78.5° and 90°, both outside the range) and the weld still reports 0.0 mm and
+first contact at 20°. It pins the flag on all three pairs and both analytic
+minima, and fails on the old code with a `KeyError`.
+`cli/tests/test_clearance.py::test_a_welded_pair_does_not_define_the_joint_it_cannot_move`
+summarises that fixture: the joint row reads 1.472964 mm and **no** first
+contact, `pairs_moving` is 1 of 2, and the same rows without the flag still
+read 0.0 mm and 20°. It fails on the old code too. `pixi run test-engine` and
+`cli/tests` are green.
+
+**What it does not do.** It does not drop a pair from the sweep, hide a
+failing check or change what fails: `failing` still spans every pair, because
+an overlap is an overlap and a rigid pair that interpenetrates is a real
+finding the static block reports as well. It does not decide whether a weld's
+solids *should* meet — that stays the `attachments` report's separate advisory
+fact (ADR-370), measured at the solved pose where it means something.
+
+## ADR-375 — A joint nobody bounded is a coverage hole, not a silence (2026-09-16)
+
+**Context.** The swept check answers F3: for every joint with declared limits,
+where the solids first meet through the motion. `_measure_joint_sweeps` opened
+by dropping every joint that declared neither limit —
+
+```python
+if joint.get("angle_limits_degrees") is None and joint.get("length_limits_mm") is None:
+    continue
+```
+
+— so such a joint reached no row, and coverage stayed `complete`. That is
+correct for a weld, which declares no motion at all, and it was wrong for
+everything else that moves. A continuously rotating wheel, a free spinner, a
+loop-closure hinge: each is an edge the solver moves and none of them declares
+where it may go, and the report said nothing about any of them. Reproduced
+before the change: an assembly with one suppressed hinge and one unlimited
+revolute published `status: complete` with a single `skipped` row and no
+mention of the wheel.
+
+The shape of the reading is what makes it costly. `sweep_summary` judges its
+verdict over the rows it is given, so one limited joint sweeping clean beside
+two unlimited wheels reads `sweep pass: 1 joint(s) swept`, and
+`SWEEP_COVERAGE_NOTE` — the sentence that says coverage is not fit — is
+printed only when the verdict is not a pass. The agent is told the motion was
+checked. This is the third instance of one defect class in this run's tooling,
+after ADR-371 and ADR-374: a clean reading taken over a set that silently
+excludes the thing that matters. It reaches **F6** directly, a two-wheeled
+balancer being the mechanism whose moving parts are exactly the joints with no
+natural limit.
+
+**Decision.** Every joint that could move is named; only the two that hold no
+range by construction stay silent.
+
+- An unsuppressed joint of a sweepable kind that declares neither
+  `angle_limits_degrees` nor `length_limits_mm` is `incomplete`, with a reason
+  saying the assembly states no range, that the pairs it moves were measured
+  at the solved pose only, and which limit to declare for it to be swept. The
+  assembly's coverage is `incomplete`, which is what makes the CLI print the
+  coverage note.
+- An unlimited joint of a kind no sweep supports keeps the existing
+  unsupported-kind reason: no limit it could declare would have it swept.
+- A `fixed` joint and a suppressed joint the assembly also left unlimited are
+  omitted as before. A weld declares no motion and its pair is the attachment
+  report's fact (ADR-370); a suppressed joint is not an edge the solver moves
+  (ADR-371). An assembly whose every joint is one of those still reports
+  complete coverage of an empty set.
+- **Reported, never refused.** No `fit_failures` entry, no acceptance change,
+  no protocol op or argument change, and no `shell/` diff. A revision accepted
+  before this publishes no such row, so retained receipts read exactly as they
+  were measured.
+- `cadex_cli.clearance.SWEEP_NO_JOINTS` no longer offers "unlimited" as a
+  reason an empty sweep found nothing: such a joint now has a row of its own,
+  so the empty sweep is the assembly whose every joint is welded or
+  suppressed.
+
+**Consequences.** Two known-answer tests, both red on the old code: the engine
+one (`cadex_tests/test_joint_fit_sweep.py`) pins two wheels, a slider, an
+unlimited ball, a weld, a suppressed unlimited hinge and a suppressed limited
+one, and the reason each gets; the CLI one (`cli/tests/test_clearance.py`)
+pins the balancer-shaped roll-up — `incomplete`, 3 checked, 1 complete, 0
+skipped, `sweep incomplete: 2 of 3 joint(s) unswept`, nothing failing — and
+the changed wording. `docs/XSCRIPT.md`, `docs/CLI.md` and `docs/INTEGRATION.md`
+carry the rule. `test_cadexd_lifecycle.py`'s ADR-367 coverage test moves with
+the behaviour: its unlimited-hinge case expected `complete` and now expects
+`incomplete` naming the limit, and a third case welds the same pair so
+"complete coverage of an empty set" keeps an end-to-end fixture of its own. Existing designs whose joints are all bounded are unaffected;
+a design with an unbounded movable joint moves from a swept pass to a swept
+`incomplete` naming it, which is the finding.
+
+## ADR-376 — The frame that bound the call is the reading, in both directions (2026-09-16)
+
+**Status.** Accepted. Fixes the answered half of the window gate ADR-358
+introduced, ADR-364 narrowed and ADR-369 half-corrected.
+
+**Context.** F6's create prompt is dispatched only while `window_reading`'s
+one-word probe says the product agent's account has room. A probe's stream
+carries several `rate_limit_event` frames, and **their order is the
+provider's**: ADR-369 measured both orders on this same account minutes
+apart — at 14:29 UTC the rejected frame came first, at 17:02 UTC an allowed
+five-hour frame came in front of it. ADR-369 fixed one direction: on a probe
+the provider *refused*, read the frame that did the rejecting rather than
+whichever arrived first. The other direction was left reading `infos[0]`.
+
+That matters here and not in general, because this organisation has overage
+disabled at the organisation level. A rejected `seven_day_overage_included`
+frame therefore rides along on **every** probe, answered or not — ADR-364
+already named it and called it stray, and made `refused` ignore it so it
+could not close the gate on an account that has room. But the frame it then
+read for `status` was still `infos[0]`, so the stray frame decided the
+verdict whenever the provider happened to send it first. Reproduced: one
+answered probe, five-hour at 8 %, two `rate_limit_event` frames; with the
+allowed frame in front the gate reads `allowed` and dispatches, with the
+rejected frame in front it reads `rejected` and defers. Same account, same
+answer, same numbers — only the order differs. The deferral is not a
+one-probe delay: it repeats on every probe for as long as overage stays
+disabled, so it withholds F6's and F7's eight frozen prompts from a model
+that would have answered them, and writes a `deferred` block citing an
+overage window's reset date as the reason.
+
+**Decision.** The reading's frame is the frame that **bound the call**,
+whichever way the provider ordered them. On a refused probe that is the frame
+that rejected (ADR-369, unchanged); on an answered probe it is the frame that
+allowed. Position in the stream decides nothing in either direction. A probe
+carrying no frame of the kind it needs falls back to the first frame, which is
+the previous behaviour and is conservative both ways: an answered probe with
+only rejected frames still reads `rejected` and still does not dispatch.
+
+Everything else is unchanged. Window merging is unchanged, so the 100 % window
+that is not available still reaches the receipt by name from the frame that
+named it; `refused`, `resets_at_is`, the bound, the probe text, the
+one-probe-per-prompt schedule and the pause behaviour are untouched. No engine,
+CLI, protocol, payload, acceptance or dashboard behaviour changes — the runner
+is evidence-collection machinery under `docs/probes/`. No frozen prompt, no
+slot accounting and no design result is affected.
+
+**Consequences.** Two known-answer tests in `cli/tests/test_ot7_runner.py`,
+both red on the old code. `test_an_answered_probe_reads_the_frame_that_allowed_it_whatever_the_order`
+sends the same answered probe's two frames in both orders and requires one
+reading: `allowed`, `five_hour`, 8 %, `seven_day_overage_included` still named
+at 100 %, room true.
+`test_a_stray_rejected_frame_in_front_still_dispatches_the_frozen_prompt`
+takes it to the level that matters — the old reading pauses Robin's schedule on
+its create prompt with all four slots unspent, the new one dispatches all four.
+The two existing stray-frame tests keep the allowed frame in front and are
+unchanged, which is the point: they passed throughout and never covered the
+order that fails. `docs/probes/ot7/runner/README.md` carries the rule beside
+ADR-364's. CLI suite green at 812 passed, 1 skipped.
+
+This is a gate correction, not availability: at 21:37 UTC on 2026-09-16 the
+probe was still **refused** outright (`seven_day_overage_included` 100 %,
+`org_level_disabled`, five-hour 11 %), which ADR-364's rule reads as no room
+and this change does not touch. F6's and F7's eight slots remain unspent.
+
+## ADR-377 — A design that toppled and settled is not resting on the floor (2026-09-16)
+
+**Status.** Accepted. Extends the `support` check `cadex smoke` got in
+ADR-352; no protocol, engine, payload or shell change.
+
+**Context.** F8's smoke rollout passes a design when its state stays finite,
+no component pair interpenetrates, no declared termination fires, and — for a
+free base — it "rests on the environment floor". `support` read that as three
+facts: an environment floor exists, something of the design is touching it at
+the end, and the base's *linear* speed is under `--rest-speed-mm-s`. A design
+that falls over satisfies all three the moment it stops moving. The receipt
+already measured the fourth fact, `tilt_degrees`, and no check read it.
+
+Measured on the retained ot6 balancer, copied to `ot7-robin-smoke` and smoked
+for the first time in this run: at zero torque Robin topples in 0.38 s and
+comes to rest **101.3° over, 43.5 mm lower, chassis on the floor** — and
+`support` reported `pass: true`. Robin's whole verdict still failed, but only
+because Robin happens to declare a termination rule and to bury its chassis
+2.7 mm in the floor. A design with no exported task and a softer landing would
+have passed `cadex smoke` lying on its side. F6 and F7, the balancer and the
+biped, are the two designs left to run, and both fail by falling over.
+
+**Decision.** The support check reads the base's attitude, against the pose
+the accepted keyframe gave it. `tilt_from_start_degrees` is the angle between
+the base's local +Z at the keyframe and at the last sample, and a free base
+passes only when it is within `--max-tilt-degrees`, default **30°**. The
+failing line names the base, the angle and the limit. The absolute
+`tilt_degrees` field keeps its old meaning and is still reported.
+
+Measured against the keyframe, not the world, so a design whose base is
+*modelled* lying down and holds that pose reads zero rather than 90°. The
+default is a threshold, not a guess: Finch standing ends 9×10⁻⁶ ° from its
+keyframe attitude and the resting-block fixture 0°, while the toppled
+balancer reads 101.3°. Thirty degrees is orders of magnitude above every
+settled measurement and well under any topple; a design that genuinely holds a
+leaning pose raises the flag.
+
+**Consequences.** Two known-answer fixtures in `cli/tests/test_smoke.py`.
+`TOPPLING_TOWER` is a 100 mm tower standing 15° over — past the 11.3° its own
+footprint can hold — under a tenth of Earth's gravity with stiff contact, so
+it topples and lands sinking 0.2 mm, under tolerance: at the end the *only*
+thing wrong is that it is lying down. On the old child that rollout is
+`verdict: pass, failing: []`; on the new one it fails with
+`support: comp_tower has turned 75.0° away from its accepted pose (limit 30°)`,
+and passes again at `--max-tilt-degrees 120`. `LYING_TOWER` is the same tower
+accepted on its side and holding: absolute tilt 90°, tilt from its keyframe
+0°, pass. Finch's real standing smoke is unchanged and still passes support.
+`docs/CLI.md` carries the flag and the check. CLI suite green.
+
+This is a checker correction, not a design result: no `ot7-*` design was
+edited, no frozen prompt was spent, and Robin's copy is `ot7-robin-smoke`, not
+the retained project.
+
+## ADR-378 — A gap the motion closes is a failing fit (2026-09-16)
+
+**Status.** Accepted. Extends the swept fit block `fit.sweep` got in ADR-366;
+CLI only — no engine, protocol, payload or shell change.
+
+**Context.** F2 gives the checker four things to report: an overlap on any
+pair, a declared contact that is not touching, a declared clearance below its
+minimum, and an undeclared pair closer than the default 0.1 mm. F3 sweeps
+every limited joint and measures, per pair, the minimum distance, the maximum
+common volume and the joint value of first contact. The two were never joined.
+`sweep_summary` could fail a swept pair on exactly two things: a common volume
+over the threshold, and a pair the engine could not measure. The minimum
+distance it measured — the whole point of sweeping — was reported and held
+against nothing, so F2's third and fourth checks existed at one pose only.
+
+Reproduced on real OCCT solids, not argued from the code. Two unit spheres on
+a hinge: the fixed centre 12.04 mm from the axis, the moving centre 10 mm from
+it, swept from the solved 20° to 90° at 1°. At the solved pose they are
+**10.751594 mm** apart; at 90° the centres are exactly 2.04 mm apart, so the
+surfaces close to **0.04 mm** and never touch — zero common volume at every
+one of the 71 samples. The static block reads `pass, 0 failing`, correctly:
+the solved pose is clear by two orders of magnitude. The swept block reads
+`pass, 0 failing` and prints the 0.04 mm beside it. That gap is a quarter of
+what the same undeclared pair is held to at the solved pose, and a block that
+can only fail on interpenetration is blind to it by construction. F6 and F7,
+the two designs left, are judged on "zero failing static and swept fit
+checks".
+
+**Decision.** A swept pair fails `below clearance` when its minimum distance
+through the range misses the pair's own minimum — its declared `clearances=`
+value, or `minimum_clearance_mm` for a pair with nothing declared — by more
+than the ADR-353 slack. The row carries `minimum_mm` and the solved pose's
+`distance_mm` beside the swept extrema, so the reply says what closed and from
+where. `sweep_summary` takes `minimum` and publishes it in `thresholds`.
+
+The rule is the narrowest one that closes the hole, so the swept block stays
+strictly additive to the static one:
+
+- Only a pair **this joint moves** is judged (ADR-374). A rigid pair repeats
+  its solved-pose number, which the static block already judged.
+- Only a pair the static block calls **clear** is judged. A pair that already
+  fails at the solved pose is named there, once; repeating it here would say
+  nothing about the motion.
+- A pair declared `contact`, or welded by a fixed joint and so carrying the
+  implied `attached` intent (ADR-372), is exempt exactly as it is at the
+  solved pose. Parts a design asks to touch are not held to a gap.
+
+Those three together are why **no retained ot7 receipt changes**: replayed
+over all twenty-one retained `clearance.json` files, the new rule adds zero
+failures. The phrase `sweep fail: N overlapping pair(s)` becomes `N failing
+pair(s)` in the progress line and the prose report, and each swept pair line
+now carries its status, because "overlapping" is no longer the only way to
+fail.
+
+**Consequences.** Two known-answer fixtures. The engine one
+(`test_joint_fit_sweep.py`) is the grazing hinge above on real OCCT solids,
+pinning that a real sweep produces a close approach with zero common volume.
+The CLI ones (`test_clearance.py`) carry those measured numbers through
+`fit_summary`: static `pass`, sweep `fail` at 0.04 mm against 0.1 mm; a
+declared 0.02 mm minimum passing and a declared 2 mm minimum failing on the
+same geometry; and the four pairs the rule must leave alone. The first two are
+red on the previous module. `docs/CLI.md` and `docs/XSCRIPT.md` carry the
+check. CLI suite green; engine suite green.
+
+This is a checker correction, not a design result: no `ot7-*` design was
+edited and no frozen prompt was spent. The product-agent harness was refused
+again on the same organisation-level setting (`org_level_disabled`, sixth
+refusal), so no F6 dispatch was possible.
+
+## ADR-379 — A weld and a declared gap on the same pair contradict each other (2026-09-16)
+
+> **Superseded by ADR-380 (2026-09-16).** The premise below — that a weld and
+> a declared running gap cannot both be true of one pair — is wrong. A fixed
+> joint fixes a *relative pose* and does not require the solids to touch, and
+> a declared minimum is a floor on a distance rather than a claim that the
+> pair moves. The rule and the `clearance under weld` status it introduced
+> were withdrawn the same day; the entry stays as the record of what was
+> tried and why it was wrong. Its reading of F4's measured numbers still
+> stands: the horn really is 0.2 mm off its link, and what names that is the
+> `attachments` report, not a fit check.
+
+**Status.** Superseded by ADR-380. Narrowed ADR-372's "an explicit
+declaration still wins".
+Engine `_check_fit` plus the CLI blocks that read its rows; no new op, no
+`OP_ARG_SPECS` change, no payload or `shell/` change.
+
+**Context.** ADR-372 stopped holding a welded pair to the undeclared-pair
+0.1 mm gap, because an unsuppressed `fixed` joint is the design saying the two
+components are one rigid body. It kept one escape hatch, stated in its own
+words: "an explicit `contacts=` or `clearances=` declaration on the same pair
+still wins — the author saying '0.5 mm here' outranks the joint."
+
+That hatch is how ot6's floating-horn defect survived F4. The seeded repair
+run on `ot7-heron-repair-d` spent its prompt and all three continuations, each
+asking for every failing check to be resolved, and ended with
+`comp_horn_shoulder` 0.2 mm from `comp_upper_arm` and `comp_horn_elbow` 0.2 mm
+from `comp_forearm` — the same gap ot6's hand-run probe found. Both pairs are
+welded (`weld_horn_shoulder`, `weld_horn_elbow`) and both carry
+`{"kind": "clearance", "minimum_mm": 0.05}`. The static block read 0 of 105
+failing, the swept block read 0, and the agent's own ledger wrote the outcome
+down: "4 declared ≥0.05 mm clearances measure 0.0999999–0.2 mm (…horn pockets
+both joints)". Two continuations that named no failure left the design
+unchanged, correctly, because nothing named one.
+
+The declaration did not outrank the joint. It contradicted it, and the product
+resolved the contradiction in favour of whichever one silenced the pair.
+
+**Decision.** A `clearances=` declaration on a pair an **unsuppressed** fixed
+joint welds is itself the failing check, `clearance under weld`. The declared
+minimum is not consulted: no measured gap makes "one rigid body" and "a running
+gap" both true, so the pair fails below its minimum and above it alike. The
+engine publishes the welding joints on that declaration —
+`{"kind": "clearance", "minimum_mm": …, "joints": [...]}` — so a reader reaches
+the same verdict without the joint table, and the key appears nowhere it did
+not appear before. The `fit` block carries a note naming the two repairs: close
+the gap and declare the pair with `contacts=`, or stop welding two components
+that are meant to stay apart. Neither repair is a wider gap, and removing only
+the declaration is not a repair either — it leaves the gap, reported by
+`attachments` (ADR-370) instead of hidden behind a passing check.
+
+Narrowly, and nothing else moves:
+
+- A `contacts=` declaration on a welded pair **agrees** with the joint and is
+  checked as written, at its 0.001 mm tolerance. Only `clearances=` contradicts.
+- A **suppressed** fixed joint is not an edge of the mechanism (ADR-371,
+  ADR-372) and raises no contradiction: a clearance declared across one is
+  judged by its minimum exactly as an unwelded pair's is.
+- Overlap is still overlap and is still named first; an unmeasured pair is
+  still `unknown`.
+- The swept block (ADR-378) judges only pairs the static block calls clear, so
+  a `clearance under weld` pair is named once, at the pose where it means
+  something, and not again per joint.
+- Reported, never refused. A design carrying the contradiction still builds,
+  still accepts, and still opens.
+
+**Consequences.** `fit.verdict`, `cadex clearance`'s table and the review's
+`offending_pairs` gain the status. A revision accepted before this change
+carries no `joints` on a clearance intent, so its retained rows read exactly
+as they did — the counts in `docs/probes/ot7/REPORT.md` are what the accepting
+engine published and do not move. What a **rebuild** of `ot7-heron-repair-d`
+would now report is two failing pairs where it reported none, which is the
+point: F4's measured result stands as recorded, and the defect it left behind
+is now nameable.
+
+Evidence: the real-OCCT fixture in `cadex_tests/test_fit_intent.py` already
+carried Heron's shape — `horn` welded to `link`, declared 0.05 mm, measured
+0.2 mm — asserting `fit_failures == []`; it now asserts
+`['clearance under weld']` and was red on the old worker. Eight parametrised
+engine cases cover the contradiction at three gaps, under an overlap, across a
+suppressed weld and against a contact declaration. `test_clearance.py` pins the
+CLI status, the reply's counts, note and named pair, and the report's detail
+line. `test_welded_pair_is_not_held_to_the_undeclared_gap` keeps ADR-372's
+exemption and had its one "outranks the joint" assertion reversed here.
+ADR-370's `test_a_weld_holding_nothing_is_reported_…` is the same shape
+end to end through a real engine: it asserted `verdict: pass` with an empty
+failing list and now asserts the named pair, its `joints` and the note,
+while the attachment report beside it is unchanged. Replayed over the
+twenty `clearance.json` receipts in the operator's `ot7-*` projects the new
+rule finds **zero** rows, because no accepted revision was built by an
+engine that published `joints` on a clearance intent;
+`test_adr_379_moves_no_retained_number` pins the same fact on the three
+committed retained receipts, which carry no `intent` key at all.
+
+No `ot7-*` design was edited and no frozen prompt was spent: this is a checker
+correction found in F4's own measured result. The product-agent harness stayed
+refused on the organisation-level setting, so no F6 dispatch was possible.
+
+## ADR-380 — A fixed joint holds a pose; it does not require touching (2026-09-16)
+
+**Status.** Accepted. Withdraws ADR-379 and restores ADR-372's rule that an
+explicit declaration outranks the joint. Engine `_check_fit` plus the CLI
+blocks that read its rows; no new op, no `OP_ARG_SPECS` change, no payload or
+`shell/` change.
+
+**Context.** ADR-379, landed hours earlier, read a pair that is welded by an
+unsuppressed `fixed` joint *and* declared a running `clearances=` minimum as a
+self-contradiction, and made the contradiction itself the failing check —
+`clearance under weld`, at any measured gap, with `minimum_mm` never
+consulted. Its argument was "no measured gap makes 'one rigid body' and 'a
+running gap' both true".
+
+**Decision.** The argument does not hold, and the rule is withdrawn. A fixed
+joint fixes the **relative pose** of two components; it does not assert that
+their solids meet — which is exactly why ADR-370 made "does this weld's gap
+close?" a separate advisory fact rather than a check, "because a standoff or a
+captive fastener between them is a legitimate design and only the design knows
+which it is". And a declared minimum clearance is a floor on a distance, not a
+claim that the pair is in relative motion. A board rigidly held 2 mm over its
+standoffs, a shroud around a pulley, a magnet over its sensor: each is one
+rigid body *and* meant to stay apart, and the `clearances=` declaration is the
+only place the design can say by how much. ADR-379 would have failed every one
+of them at every gap, and told the author to repair a design that has nothing
+wrong with it.
+
+So a `clearances=` declaration on a welded pair is judged by the minimum it
+declares, exactly as an unwelded pair's is. The `clearance under weld` status
+is gone from the engine, from `pair_status`, from the walk's offending set and
+from the agent's instructions.
+
+**What is kept.** The publication, not the verdict: a welded pair carrying a
+`clearances=` declaration still publishes `{"kind": "clearance",
+"minimum_mm": …, "joints": [...]}`, so a reader sees both facts about the pair
+on one row and `cadex clearance` still writes `declared minimum <n> mm, and
+welded by <joint names>` as its detail. That is a join, not a judgement, and
+it is what a person needs to tell a standoff from a floating horn. The
+`joints` key rides on a `clearance` intent only where an unsuppressed fixed
+joint welds the pair.
+
+**What this leaves of F4's defect.** The floating horn on
+`ot7-heron-repair-d` is real and unrepaired: `weld_horn_shoulder` holds the
+horn 0.2 mm off its link, and nothing spans that gap. It is named by
+`fit.attachments` as `not touching` with its joint — reported beside the four
+checks, never counted among them (ADR-370) — and the agent's instructions now
+say to read that block and treat a `not touching` weld as a connection the
+geometry does not make unless a standoff or fastener spans it. Whether an
+unspanned weld gap should become a check of its own is a real question and is
+**not** decided here; it would need a way for a design to declare the spanner,
+and ADR-370 deliberately left it advisory for that reason. What is decided is
+that punishing the *declaration* was the wrong way to reach it.
+
+**Evidence.** The real-OCCT fixture in `test_fit_intent.py` reads
+`fit_failures == []` on Heron's horn pair again, with its published intent
+carrying both the declared 0.05 mm and `weld_horn`. Nine parametrised engine
+cases now cover the corrected rule, including the regression this entry exists
+for — two components rigidly separated by 2.0 mm with a declared 0.5 mm
+minimum fail nothing — and the paired negative, the same shape at 0.02 mm
+failing `below clearance`; both were red under ADR-379, which failed them
+alike. On the CLI side `test_a_clearance_declared_on_a_welded_pair_is_judged_by_its_minimum`
+and `test_a_welded_pair_that_meets_its_declared_minimum_reaches_the_reply_clear`
+pin the reader and the written report, and the end-to-end weld rig is back to
+`verdict == 'pass'` with its attachment row unchanged. No retained receipt
+moves under either decision: none carries an `intent` key at all, which
+`test_the_weld_rule_moves_no_retained_number` holds.
+
+No `ot7-*` design was edited and no frozen prompt was spent.
+
+
+---
+
+## ADR-381 — A modified purchase says what it was cut from (2026-09-16)
+
+**Context.** ot7's F5 is exhausted with one failing count out of six:
+*catalog hardware for every purchased part*. Across four turns the arm
+placed two MG90S servos and two 25T horns it had drilled and re-clocked,
+the published inventory listed all four under `uncatalogued_sources`, and
+the agent's closing message said every purchased part was a catalog part
+each time. ADR-362 put the inventory block in every build reply so the
+agent would see those names at all, which is the half F6 and F7 will run
+on. What the block still could not say is **which** name is the defect. An
+uncatalogued source is one of two very different things — a printed part,
+which belongs there and is the ordinary case, or a purchased part the
+script modified, which is the failing count — and `["base_plate",
+"servo_drilled"]` reads the same either way. A design with a dozen printed
+parts hides its two modified servos in the list.
+
+**Decision.** The engine names the catalog body a modified output came off,
+and both readers carry it.
+
+1. **`_stamp_catalog_identity` also stamps `catalog_derived_from`** on an
+   output that matched no catalog definition exactly but whose **base
+   operand spine** holds one: follow `arguments[0]` down from the
+   definition — through the first member where that argument is the single
+   list `part.fuse([a, b])` passes — and take the nearest catalog match.
+   The distinction is positional and is the one the CLI's design
+   instructions have drawn in words since ADR-243's follow-up:
+   `part.cut(base, tools)` puts the body being modified first and its
+   cutters after, so a catalog definition on the spine is what the output
+   *is*, while one reachable only as a tool is a clearance cutter and
+   implies no purchase. Written beside the definition like `catalog`
+   itself, so no content digest moves (ADR-064), and absent rather than
+   null where nothing derives.
+2. **`inspect scope=inventory` carries it both ways**: per component row as
+   `catalog_derived_from` beside the absent `catalog`, and as a top-level
+   `derived_catalog_sources` roll-up of `{"source_output", "family",
+   "part_number"}` sorted by source, so a reader that pages the component
+   list does not have to page it to learn this.
+3. **The build reply's `inventory` block repeats it** (`inventory_summary`),
+   empty list rather than missing key, and its `note` names each row in
+   words — "servo_drilled (cut from servo/MG90S)" — with the repair the
+   prompt already asks for: place the untouched catalog body as the
+   component and put the cut in the printed part that receives it. The
+   system prompt gains one clause saying a name there is a purchased part
+   to repair, a name absent from it is a printed part, and a catalog body
+   used only as a cutter is neither. **The middle third of that clause is
+   withdrawn by ADR-382**: it contradicts this entry's own limits, and the
+   prompt now calls an absent name provenance unknown.
+4. **`cadex inventory`'s document says it too**: the catalog column of a
+   derived row reads *cut from servo `MG90S`* rather than an em dash, and
+   the "Not from the catalog" list marks the same rows.
+
+**Still advisory, and still not a check.** Nothing here has a verdict,
+nothing is refused, and no fit count moves: this is the same footing
+ADR-362 put the block on. Whether a cut catalog body counts as catalog
+hardware remains the owner's call on F5's tick; what changes is that the
+agent can see which parts the question is about.
+
+**What it does not claim.** ADR-243's boundary stands except on the base
+spine: a catalog body fused into a printed solid as a *second* operand, or
+used as a tool, is still not identified, and absence of a row still does
+not prove absence of hardware. Nor does a derived row assert the modification
+was wrong — a transformed catalog body that is only ever a cutter is not
+placed as a component and so never reaches the inventory at all.
+
+**Evidence.** Seven engine cases in `test_inventory_scope.py`, all red on
+the old code: a drilled catalog body named, the same body used only as a
+cutter *not* named, the nearest ancestor winning through a transform, the
+`fuse` list read positionally in both orders, the definition the digest
+hashes unmoved, and the inventory join reporting one derived source beside
+one printed part. On the CLI side `test_inventory.py` pins the block and
+the rendered document, and `test_mcp_protocol.py` pins the whole path to
+the model on the F5 fixture itself — the drilled servo placed twice now
+reaches the reply as `derived_catalog_sources` and in the note.
+
+No `ot7-*` design was edited and no frozen prompt was spent.
+
+## ADR-382 — Absent provenance is unknown, not printed (2026-09-16)
+
+**Context.** ADR-381 gave the build reply `derived_catalog_sources`, the
+roll-up naming every uncatalogued output whose **base operand spine** holds
+a catalog body, and added one clause to the system prompt: *a name there is
+a purchased part to repair, a name absent from it is a printed part, and a
+catalog body used only as a cutter is neither.* The middle third of that
+clause is false, and ADR-381's own "what it does not claim" paragraph says
+so in the same entry: the producer follows `arguments[0]` down and nothing
+else, so a catalog body fused into a printed solid as a **second** operand
+is a purchase it never names. That bound is deliberate and test-pinned
+(`test_a_fuse_reads_the_first_operand_of_its_one_list_argument`). Told that
+absence means printed, the agent reads a known blind spot as a clean bill
+of health — the same failure ADR-362 and ADR-381 were each written to
+remove, reintroduced one clause later.
+
+**Decision.** The prompt describes an absent name as **provenance
+unknown**. It says why — the base operand is the only path followed, so a
+second-operand fuse is a purchase the engine cannot name — keeps the one
+absence that *is* conclusive (a body used only as a cutter is a clearance
+tool, not a purchase), and tells the agent to read the script that built an
+unlisted name before calling it printed. `docs/CLI.md` says the same beside
+the `derived_catalog_sources` description.
+
+**Bounded, and staying bounded.** No detection is expanded: the producer,
+the scope value, the block, the document and every ADR-381 test are
+unchanged, and ADR-243's boundary stands where ADR-381 left it. This
+corrects clause 3 of ADR-381 and nothing else in it.
+
+**Evidence.** `test_the_prompt_reads_absent_provenance_as_unknown_not_printed`
+in `cli/tests/test_turn_loop.py`, red on the old overlay — it holds the
+false sentence out and the bound in, and cites the engine fixture that
+makes the bound real. `pixi run python -m pytest cli/tests` green.
+
+No `ot7-*` design was edited and no frozen prompt was spent.
+
+
+## ADR-383 — Resume ot7 on Fable for every role (2026-09-17)
+
+The owner restored provider access and authorized continuation of ot7's
+remaining balancer and biped experiments with everything set to Fable.
+All configured roles now use `claude-fable-5`, without other-model fallbacks
+or automatic model rotation; product experiments pass the same model
+explicitly. The expired absolute stop is cleared for a fresh 48-hour budget,
+retaining the two accepted done verdicts as the completion stop. The charter
+supersedes the hold only after a successful product-model availability check.
+F4/F5 outcomes, frozen prompts, unspent F6/F7 slots and the prohibition on
+actor edits to designs are preserved. Further capacity loss means waiting,
+not unrelated tooling work. No product or protocol behavior changes.
+
+
+## ADR-384 — Continue ot7 on Opus without rewriting model history (2026-09-17)
+
+The owner requested Opus after the refreshed account refused Fable for
+exhausted credits. All run roles now select `claude-opus-5`, with the existing
+deadline retained. The experiment runner previously ignored `--model` on
+resume, which would have sent Robin back to Fable. Resume now honors an
+explicit override, records the transition and each turn's model, and keeps
+the prior model when no override is supplied. Earlier turns, frozen prompts,
+accepted designs and continuation allowances are preserved. Robin therefore
+has a Fable create turn followed by Opus continuations, not a single-model
+result. A regression checks the executed models, legacy receipt history and
+slot accounting. No engine or protocol changes are involved.
+
+
+## ADR-385 — Recover ot7 with a relative deadline (2026-09-19)
+
+The timezone-bearing absolute deadline introduced for the Opus restart
+triggered a TypeError in Ouroboros's naive/aware datetime comparison after
+iteration 151's reconciliation. No subsequent design turn ran. The owner
+authorized recovery with a renewed budget: keep Opus and the existing branch,
+set `after: 48h` and `until: null`, and preserve all experiment slots and
+results. The runner's own BudgetClock is checked at startup, before expiry,
+and at expiry against this configuration. This avoids the incompatible
+absolute-deadline path without modifying the external runner installation.
+The notifier outlived the loop and sent a process-gone alert; restart it only
+after the loop is live to avoid the known stale-terminal-status launch race.
+
+
+## ADR-386 — A call that never reached the model spends no frozen slot (2026-09-19)
+
+F6's first continuation was dispatched on Opus into `ot7-robin-c` with the
+five-hour window at 2 %. It never reached the model: the CLI refused at
+project open in six seconds — "The restore pass digest does not match the
+accepted digest" — before a provider session existed, so no transcript was
+written at all. The evidence runner had two no-slot classes, a provider usage
+limit (ADR-355) and a runner-bound kill (ADR-356), and neither fits a local
+refusal; the call fell through to "a provider error the call returned on its
+own", which spends its slot and closes the design. That booked a frozen
+continuation the model never saw and forfeited Robin's other two.
+
+The charter's rule is that only a turn that reached the model and ended on its
+own counts, so the runner now recognises a third class. A turn is `unreached`
+when its child exited nonzero for neither of the other two reasons, wrote no
+provider frames at all, and left a CLI envelope carrying an error and no
+session id. Both halves are required: an `authentication_failed` synthetic
+frame is a stream and stays a failed turn, a call that crashed after the model
+spoke stays failed, and a call that wrote no envelope proves nothing and stays
+failed on the same rule that missing evidence never means a passing result.
+
+An unreached call is unlike a void or interrupted one in what happens next.
+Nothing was consumed and no fresh project is named: the attempt is *paused*
+with a `blocked` block naming the refusal, the same prompt is still next in
+the same project, and `resume` re-sends it into a `turn-N-retry-M` directory
+that leaves the refusal's evidence in place. `remaining()` skips unreached
+rows entirely. `run.py reclassify PROJECT` re-reads a retained attempt's own
+streams and corrects a receipt written before this rule, keeping the
+superseded copy beside it; it can only ever demote a row whose evidence proves
+the model was never reached. Applied to `ot7-robin-c`, it returned the design
+to one completed create turn with three continuations unspent.
+
+**The refusal itself is a product defect and is not fixed here**
+(`docs/probes/ot7/DIGEST-DRIFT.md`). `part.offset` — OCCT's
+`BRepOffset_MakeOffset` — exports different BREP bytes on every process for
+the same input, while the shape is identical: same volume, same face, edge and
+vertex counts, same edge-length multiset, and four of five faces differing in
+bytes alone. `compute_project_digest` identifies a BREP output by those bytes,
+so any accepted design using `part.offset` can never be reopened, and the
+digest differs differently each time. Robin's two wheels are the only outputs
+affected; Heron, Finch and the retained ot6 designs use no `part.offset` and
+open normally. Sorting a solid's faces before export does not stabilize it —
+the instability is inside each face — so the fix is not a shape-level
+canonicalization. The precedent to follow is the mesh branch of the same
+function, which already uses an order-insensitive fingerprint instead of
+artifact bytes (ADR-016); redefining the BREP branch invalidates every stored
+`accepted_digest`, so it needs a migration and its own unit. **F6 is blocked
+on that fix, not exhausted.**
+
+## ADR-387 — The operator dashboard follows dispatched work (2026-09-19)
+
+The owner asked that the website always show the current run. Its transient
+service was still pinned to ot6 Heron while ot7 was designing Plover. Deploy
+`tools/operator_review.py` as a persistent user service at the existing address:
+read the configured run and select its latest explicitly dispatched product
+project from identity-checked experiment receipts. Ignore diagnostic copies and
+file mtimes, preserve selection across partial writes, and show a waiting page
+when a new run has no project. Open tabs reload on selection changes and show
+run/iteration/state beside the existing read-only review. The ordinary
+single-project CLI is unchanged. Drivers must publish the documented receipt
+contract; arbitrary project-directory activity is not dispatch evidence.
+
+The selection/HTTP regression checks pass, including a run transition with no
+project and subsequent dispatch. Live Tailscale HTTP verification confirms ot7
+Plover is served. Deployment and receipt contract: `docs/OPERATOR-REVIEW.md`.
+
+## ADR-388 — The turn bound is an hour, and a dead runner finalises (2026-09-19)
+
+Two facts about ot7's collector, measured on F7.
+
+**The bound.** `TURN_BOUND_SECONDS` rises from 1800 to 3600 s. A create turn
+costs more the larger the design: Heron 1,530.4 s at 120 static pairs, Robin
+1,676.4 s at 276, Plover 1,800.0 s at 435 — and the last of those *is* the old
+bound, reached mid-repair while the agent was reading its own clearance
+numbers, not an end of its own. A ceiling just above the largest measurement
+buys another interruption, so it doubles. Every receipt now records the bound
+at each invocation and every row copies it, so `classify` rules a pre-ADR-388
+kill against 1,800 s and cross-design timings stay comparable.
+
+**The runner's own death.** `dispatch` persists a row as `started` before it
+launches the child and rewrites it when the child returns; a runner killed in
+between leaves `status: running` with no outcome, which is what iteration 154
+left on `ot7-plover-b`. `reclassify` now finalises such a row as an ADR-356
+interruption with `kind: runner_died`: no slot, evidence kept, the same frozen
+prompt retried in a fresh project. The evidence is the receipt's own mtime,
+which no running turn touches — silence longer than the turn's whole budget
+(bound + measurement + a 600 s grace) is proof no live runner holds the row,
+and a row that could still be in flight is left alone. A finalisation this
+late names a retry project whose letter is not already taken, so
+`ot7-plover-b` reclassified beside `ot7-plover-c` names `ot7-plover-d`.
+
+Fixtures in `cli/tests/test_ot7_runner.py` pin the bound against the three
+measured create turns and reproduce the `ot7-plover-b` shape;
+`docs/probes/ot7/runner/README.md` carries both rules. No engine, CLI,
+protocol or acceptance behaviour changes.
+
+## ADR-389 — A geometry digest, for bytes that are not a function of the inputs (2026-09-19)
+
+`compute_project_digest` identifies a BREP output by its exported bytes, and
+`part.offset` — OCCT's `BRepOffset_MakeOffset` — does not produce the same
+bytes twice. Every `open_project` re-runs the accepted script and asserts
+digest equality, so **any accepted design using `part.offset` could never be
+reopened**. Robin, ot7's balancer, was shut for good by exactly this: three
+rebuilds of its 26 outputs gave three different digests, differing only in
+`wheel_l` and `wheel_r`, at the same byte length, in the order of the geometry
+table (`docs/probes/ot7/DIGEST-DRIFT.md`, record `terse-dew-6200`). F6's
+frozen continuation could not be sent, and would have refused identically, in
+six seconds, forever.
+
+The guard was right about what it could see and wrong about what it meant. So
+the guard is unchanged and a second opinion is added.
+
+**The byte digest is untouched.** `cadex-project-digest-v1` is every stored
+`accepted_digest` in every project on disk; its material moved from
+`cadex_project_worker` to a new `CadexGeometryDigest` — so `cadexd` can build
+the same entries without importing the sandboxed worker — and a frozen fixture
+pins the result bit-for-bit against the implementation it replaced.
+
+**`cadex-project-geometry-digest-v1`** is the same entries with one thing
+changed: a BREP output is identified by its canonical definition *plus* what
+the kernel measures on the shape — counts, the exact vertex set, the exact
+edge-length and face-area multisets, the bounding box and the total area.
+Nothing is rounded, for the mesh fingerprint's reason (ADR-016): an exact
+quantity has no boundary to flip across. **Volume is excluded by name**, and
+that is measured rather than cautious: over four processes on the offending
+solid, every quantity above was bit-identical and the volume moved in its last
+two digits. Including the definition is what keeps this from being a weaker
+guard — a hand-edited script fails on the recipe before the geometry is
+consulted, which `test_a_changed_script_is_still_refused_at_the_restore_pass`
+pins against the real kernel.
+
+**Where it is consulted: only on a mismatch.** `open_project` re-measures the
+two retained attempts, and opens when they agree, reporting
+`matched_by: "geometry"` and `geometry_digest` in `restore`. A byte-for-byte
+match reports neither, so the ordinary reply — and its golden — is unchanged.
+Missing evidence is never an agreement: an absent staging directory, an
+unreadable result or a kernel that will not read an artifact back each refuse,
+and say which.
+
+**What it persists, and why it must.** A project whose bytes drift learns
+`accepted_geometry` — `{accepted_digest, geometry_digest}` — the first time it
+opens this way. Without that the fix would have a fuse: `prune_artifacts`
+keeps the three most recent attempts and pins whatever `accepted_attempt` says
+*during the rerun*, which by then is the candidate — so the retained accepted
+artifacts are on a clock, and a sixth reopen would shut a project the fifth
+one opened. Learning the value once takes the project off that clock, and a
+project accepted before any of this existed is rescued by the same read. The
+measurement carries the accepted digest it was learned under because it would
+otherwise outlive its own model: `rebuild` and `write_script` both re-accept,
+and a remembered measurement of the *previous* design would refuse the current
+one — reintroducing the defect one design change later. No migration:
+`read_state` merges the declared keys over whatever the file has.
+
+Evidence: `test_geometry_digest.py` (19 tests, including the frozen byte
+digest, the four refusals and the staleness rule); two real-kernel tests in
+`test_cadexd_lifecycle.py`, both failing on the old `cadexd`, the first of
+which reopens five times so `ATTEMPT_KEEP` really collects the accepted
+attempt and only the remembered measurement gets it open; and the
+measurement that motivated it — a copy of `ot7-robin-c` refuses to export
+before the change and exports after it, with the two retained attempts
+agreeing on all 24 BREP outputs by geometry and definition while disagreeing
+on two by bytes.
+
+`CadexdProtocol` gains two optional `restore` keys, `docs/INTEGRATION.md`
+moves with it, and the shell's client reads `matches_accepted` and is
+unaffected by an added key.
+
+## ADR-390 — A worker bundle that cannot import itself is never published (2026-09-19)
+
+**Context.** ot7's F7 create turn on `ot7-plover-d` reached the model, ran
+1,310.0 s, ended on its own with exit 0 — and built no biped. From frame 997
+of 1,034 onward every build path failed identically with
+`DOMAIN_WORKER_NO_RESULT`, `cadex_project_worker.py` line 31:
+`ModuleNotFoundError: No module named 'CadexGeometryDigest'`.
+
+The cause is a skew this repo made under its own live turn. The CLI's dev-tree
+engine root **is** the source tree (`cli/cadex_cli/engine.py`,
+`DEV_MODULE_DIR = src/Mod/cadex`). `cadexd` reads `_DOMAIN_WORKER_BUNDLES` once,
+when it imports `CadexScriptedRuntime`, and keeps that member *list* in memory
+for the life of the session; `shared_worker_bundle` reads each member's *bytes*
+from disk on every cache miss. ADR-389 added the `CadexGeometryDigest` import
+to `cadex_project_worker.py` while that turn was live, so the resident service
+hashed the new worker bytes against its old list, got a key that had never
+existed, and published a 32-member bundle holding a worker that imports a
+module the bundle does not carry. The poisoned directory's mtime and the first
+failing frame are 58 milliseconds apart.
+
+The shape of the defect is what made it fatal rather than annoying: the bundle
+is **content-addressed over exactly the members it holds**, so an incomplete
+one is a perfectly valid cache entry. Every retry in the session recomputed the
+same key, found it populated, and failed the same way. Nothing inside the turn
+could recover, and the agent — correctly — spent its remaining reads proving
+the engine was broken rather than claiming a fit.
+
+**Decision.** `shared_worker_bundle` checks, before it publishes and before it
+trusts a cache hit, that the snapshot can import itself: for every staged
+member, every module-scope absolute import naming a module that exists beside
+the members must itself be a member. A violation raises, naming the member, the
+module and the skew, and telling the caller to restart the engine. No bundle
+directory is created. `cadexd`'s handler wrapper turns that into one readable
+protocol failure, so what was an unrecoverable `DOMAIN_WORKER_NO_RESULT` for
+the rest of a session is now a message that says what to do.
+
+Only module scope, and only absolute imports: `CadexStress`, `CadexRouting`,
+`CadexBundle` and the kernel itself are reached inside the one function that
+needs them, and a deferred import is not a bundle-import requirement. The
+check is keyed by the digest that already keys the bundle
+(`_CHECKED_BUNDLE_DIGESTS`), so a warm cache pays nothing and the 16-`compile()`
+cost the shared bundle was built to remove stays removed.
+
+**Consequences.** The hand-kept member list — a literal with a paragraph of
+comment per entry, exactly the kind that invites this bug — now has a
+mechanical guard against the class it invites, in two forms: the runtime check
+above, and `test_project_bundle_stages_every_module_its_members_import`, which
+asserts the invariant on the real tree and so fails the moment a staged worker
+grows an import the list does not name. Two fixtures reproduce the incident on
+a fake module root: a member that starts importing a late-arriving engine
+module raises after a good bundle was already published, and a function-scope
+import of the same module does not.
+
+This does not make the mistake free. It cost a whole Opus turn, and the run's
+process fact stands beside the guard: **never edit `src/Mod/cadex` while a
+design turn is live.** The receipt is
+`docs/probes/ot7/attempts/plover-d-engine-mutated.json`; the report's section
+is "F7's third Opus call".
+
+*Amended 2026-09-19 (iteration 160), by the critic's ruling on the call this
+ADR came from.* The collecting iteration recorded `ot7-plover-d` as a **spent**
+create slot, because the charter voids a call only on a provider usage, session
+or credit limit, and said the reading was the critic's or the owner's to
+confirm. The ruling is **void as a design result**: the charter's void list
+describes calls that never became a fair measurement of the agent, and this
+call measured this repository breaking its own engine 58 ms into the turn. So
+it consumes no slot, it is listed apart from F7's attempts in the report's slot
+table, **F7's create prompt is unspent**, and the retry sends the same frozen
+create text into a fresh `ot7-plover-e`. The receipt's measurements are
+unchanged; its `ruling` field carries the ruling.
+
+No protocol op, arg spec or response shape changes, and no payload content
+changes: this is one engine-side function and a set of tests.
+
+## ADR-391 — A second closing smoke gets its own directory (2026-09-19)
+
+**Context.** The ot7 evidence collector runs one bounded holding smoke when an
+attempt closes, exhausted or failed, and wrote it into `evidence/smoke` with a
+bare `mkdir()`. That was safe while an attempt closed once. It stopped being
+safe when ADR-386 gave a refused call its slot back: `reclassify` reopens a
+receipt that had closed as `failed` on a call the model never saw, the same
+frozen prompt is retried in the same project, and the retry can close the
+attempt a second time. A runner that died inside its own first smoke (ADR-388)
+leaves the same directory behind without the closing write.
+
+The cost is not the lost smoke. `dispatch` persists each turn's row before and
+after the provider call, but the status that *closes* an attempt — `failed` or
+`exhausted`, and the `remaining` block beside it — is written after the smoke.
+A `FileExistsError` there raises after the model has already spoken, leaving a
+receipt that still says `running` with every row completed. `remaining` reads
+its closure from the rows and the status together, so a receipt stuck at
+`running` after a failed turn reports a live schedule, and the next `resume`
+spends a frozen continuation on an attempt the charter had already closed.
+
+**Decision.** The closing smoke takes the first free name, on the same rule the
+turn directories use: `evidence/smoke`, then `evidence/smoke-retry-1`, and so
+on. The receipt names the one it used in `smoke.evidence_dir`, and its artifact
+paths are relative to that directory. Earlier smoke evidence is never
+overwritten and never deleted.
+
+**Consequences.** `cli/tests/test_ot7_runner.py::
+test_a_reopened_attempt_closes_again_beside_its_first_smoke` walks the whole
+chain — a pre-ADR-386 receipt closed on a refusal, `reclassify` giving the slot
+back, the retry closing on a provider failure — and fails on the old code with
+the `FileExistsError` this fixes. It asserts the closing status reached the
+disk, that both smokes exist, and that the closed attempt refuses to spend
+anything further. Receipts written before this change have no
+`smoke.evidence_dir`; theirs is `evidence/smoke`.
+
+This is the collector only: no engine, CLI, protocol, acceptance or dashboard
+behaviour changes, and no design is touched.
+
+## ADR-392 — A paused attempt can be smoked without spending a slot (2026-09-19)
+
+**Context.** The ot7 collector runs its one bounded holding smoke only when an
+attempt *closes* — exhausted, or failed. That was the whole rule while a design
+needed its remaining prompts anyway. F7 broke it: `ot7-plover-e` reached zero
+failing static and zero failing swept fit checks on its create prompt plus one
+continuation, with `continue-2` and `continue-3` unspent, so the attempt sat at
+`paused` and the design had no smoke result at all. F5's and F6's bar asks for
+a passing smoke rollout, and the only way to reach one was to spend a frozen
+continuation on a turn with nothing left to fix — buying a measurement with a
+design slot, on a design whose own fit report names no failing check.
+
+A smoke is not a design turn. It sends no prompt, reaches no model, and cannot
+change the design: `cadex smoke` reads the accepted revision, exports it, holds
+it for a bounded second and measures what happened.
+
+**Decision.** `docs/probes/ot7/runner/run.py smoke PROJECT` takes that
+measurement on an open attempt and records it in the receipt under
+`interim_smokes`, beside the design identity it measured, the status it was
+taken at and the schedule it left untouched. It spends no slot, changes no
+status and advances nothing. Its evidence goes to `evidence/smoke-interim`,
+then `smoke-interim-retry-N`, so the canonical `evidence/smoke` stays free for
+whatever closes the attempt later (ADR-391).
+
+It refuses what it cannot honestly measure: a project with no attempt; a repair
+attempt, whose F4 bar is its fit report and has no smoke in it; an attempt
+closed by a void, interrupted or failed call, whose closure already smoked it
+and whose retry is a fresh project; an attempt with no completed turn, which
+has no product-agent design to measure; and a design that changed since its
+last turn, because the actor never edits a design.
+
+**Consequences.** The closing-smoke block in `dispatch` becomes `run_smoke`,
+called by both paths, so the first-free-name rule ADR-391 established is shared
+rather than copied. `cli/tests/test_ot7_runner.py::
+test_a_paused_attempt_is_smoked_without_spending_a_slot` and
+`::test_smoke_refuses_what_it_cannot_honestly_measure` fail on the old code.
+A receipt that never took an interim smoke has no `interim_smokes` key.
+
+This is the collector only: no engine, CLI, protocol, acceptance or dashboard
+behaviour changes, and no design is touched.
+
+**Addendum (measured the same iteration).** The first use of `run.py smoke`,
+on `ot7-plover-e`, returned a measurement worth naming here because it is the
+reason the interim smoke exists at all rather than a frozen continuation: the
+dynamics half passed every check, and the exact-BREP half's frame-0 agreement
+gate raised. Composed against the solved component placements, 24 of the 29
+MJCF bodies are at the wrong world pose — all 24 whose placement carries a
+rotation, by up to 121.9 mm — and of the 28 non-root bodies, 4 carry the
+parent-relative transform the assembly implies and 24 carry its exact inverse,
+none anything else. The four correct ones are the four with a revolute joint;
+the 24 inverted ones are fixed attachments. `CadexDynamics.py` derives a
+non-root body's frame from the joint connector frames as `parent_local_matrix ×
+inverse(child_local_matrix)`, while the root body alone uses the solved
+placement. Robin and Heron write no rotated body, so this is the first design
+to reach it. It is a repository defect, not a design defect, and no frozen
+prompt was spent on it. Evidence:
+`docs/probes/ot7/retained/plover-smoke-e.json`.
+
+## ADR-393 — A connector frame belongs to the component FreeCAD left it on (2026-09-19)
+
+**Context.** ADR-392's interim smoke on `ot7-plover-e` failed its frame-0
+agreement gate, and the addendum blamed `CadexDynamics.py`'s derivation of a
+non-root body's frame, `parent_local_matrix × inverse(child_local_matrix)`.
+That reading is wrong, and a fixture built forwards says so: given connector
+frames labelled with the components they belong to, that expression is exactly
+the parent-relative transform the solved assembly holds, for a weld and for a
+hinge alike. It is the **labelling** that was wrong.
+
+`JointObject.setJointConnectors` calls `ensureUnconnectedIsSecondRef`
+(upstream FreeCAD issue 29355), which swaps `Reference1`/`Reference2`
+*together with* `Placement1`/`Placement2`, `Offset1`/`Offset2` and
+`Detach1`/`Detach2` whenever the first reference's part is the unconnected one
+and the second's is connected. `cadex_assembly_worker._build_joint` then read
+`Placement{i}` at the **script's** own connector index while naming the
+component from the script's own connector list, so after a swap each component
+was handed the other one's connector frame. Every consumer of those frames
+inherited it: the dynamics tree, the MJCF export, the swept-clearance sweep and
+the published `global_frame`.
+
+The shape that triggers it is the ordinary one. A script that fixes a bought
+part to the printed part carrying it writes
+`assembly.joint("fixed", connector(part, "origin"), connector(host, ...))` —
+the unconnected part first — and FreeCAD swaps. `ot7-plover-e` does it 24
+times, and all 24 bodies were exported at the **exact inverse** of their
+parent-relative transform: `c_tabscrew_knee_l_0` 121.9 mm from where the
+solver put it, both hip bearings collapsed onto one point 16.9 mm below the
+pelvis. Nothing refused. The model compiled, carried mass and collision geoms,
+and stood for a second on a floor. The four revolute joints, written host-first,
+were never swapped and were always right — which is why Robin, Heron and every
+fixture in the suite missed this, and why the failure looked like a
+`CadexDynamics` bug rather than a worker one.
+
+**Decision.** `_native_connector_sides` maps each script connector to the
+native slot FreeCAD actually left its frame in, by the component the native
+reference names, and `_build_joint` reads `Reference`/`Placement` through that
+map. A joint whose native references cannot be matched one-to-one against the
+components the script connected is refused with
+`stage: native_connector_frames` rather than published — a swap we cannot
+follow is not a model to simulate.
+
+**Consequences.** `test_dynamics_connector_sides_live.py` carries both orders
+in one assembly and composes the exported body tree down to world against the
+placements the solver produced; both tests fail on the old code. The welded
+tab lands at its host-side connector frame rather than 41.2 mm away, and the
+host-first hinge is unmoved. Rebuilt from the fixed engine, all 29 of
+`ot7-plover-e`'s bodies agree with their solved placements to a tenth of a
+micrometre, against 24 wrong before.
+
+Historically this touched **only assemblies with a weld written
+unconnected-first**, and only through frames: a swapped joint's published
+`local_frame`/`global_frame`, its MJCF body pose, and any swept-clearance row
+that used them. Solved placements, clearance measurements and every static fit
+check read component placements and were never affected — which is why
+`ot7-plover-e` reported zero failing fit checks on a model whose bodies were
+inverted. Retained artifacts keep the pose they were exported with: an
+accepted revision's stored MJCF is not rebuilt, so `ot7-plover-e`'s own smoke
+still reads the old file and still fails its agreement gate until that design
+is built again. F9's regression pass states this.
+
+## ADR-394 — ADR-393's reach is measured, not argued (2026-09-20)
+
+**Context.** ADR-393 changed how every joint's connector frames are read, and
+three retained ot6 designs — Finch, Robin and Heron — are read back through
+that engine whenever F9's regression opens them. ADR-393 states its own
+historical reach in prose: only assemblies with a weld written
+unconnected-first, and only through frames. Prose is a claim. F9's bar is that
+every difference from the ot6 probes is *explained*, and "no difference"
+is the one answer that is worthless unless it was looked for.
+
+The obstacle is that nothing in the fit surface can see this defect. Static
+clearance, the sweep and the inventory all read component placements, which the
+swap never touched; `ot7-plover-e` reported zero failing fit checks on a model
+with 24 bodies at the inverse of their pose. The only surface that shows it is
+the exported body tree composed down to world.
+
+**Decision.** `docs/probes/ot7/runner/mjcf_agreement.py` is that composition as
+a standalone probe: it reads an exported `*-model.xml` and the
+`component_placements` of the `result.json` beside it, and reports per body the
+world-position error in millimetres and the world-orientation error in degrees,
+with a verdict at 1e-4 mm and 1e-4°. It measures a retained artifact and never
+rebuilds or re-accepts anything, so it can be pointed at an accepted revision's
+stored model without touching the design — which the ot7 charter's
+no-actor-design-edits rule requires. It is a probe under `docs/probes`, not
+engine or CLI surface: no op, no protocol change, nothing staged into a payload.
+
+**Consequences.** Measured on all four retained attempts of each of the three
+designs — the ot6-era export, the two the ot7 restore audit produced, and a
+rebuild under the fixed engine — **every body agrees exactly**: 0 of 29, 0 of
+24 and 0 of 15 disagreeing, at 0.0 mm and 0.0°, and each design's MJCF is
+byte-identical across all four attempts. ADR-393 changed nothing these three
+export. The reason is visible in their scripts and now stated with its
+measurement: Finch's `purchase()`, Robin's `fix_{name}` and Heron's `weld()`
+all pass the carrying component's connector first, so FreeCAD never swapped
+their 24, 21 and 12 fixed joints.
+
+The control matters as much as the result: the same probe on `ot7-plover-e`'s
+pre-fix model reports 24 of 29 disagreeing, worst `c_tabscrew_knee_l_0` at
+121.86102740417053 mm and 179.99999879258172° — iteration 167's number,
+recomputed by an independent route. A tool that returns zero on three designs
+is evidence only once it has been shown returning the right nonzero.
+`cli/tests/test_mjcf_agreement.py` pins the probe's arithmetic against four
+hand-written fixtures whose answers are stated in the file before they run.
+
+The same pass re-read each `ot7-open-*` copy twice in a fresh process, once
+from published measurements and once through `open_project`'s full restore,
+which re-runs the accepted script and so exercises ADR-393's new refusal path:
+406/44, 276/39 and 105/20, pair-for-pair identical between the two reads, with
+accepted revisions preserved and no joint refused at
+`stage: native_connector_frames`. `docs/probes/ot7/REGRESSION.md` carries both
+tables and `docs/probes/ot7/retained/adr393-reach.json` is the receipt.
+
+## ADR-395 — The fixed exporter shuts the project it fixed (2026-09-20)
+
+**Context.** ADR-393 corrected the exported pose of a welded body.
+`ot7-plover-e` — F7's biped, at zero failing static and zero failing swept fit
+checks — was accepted *before* that fix, so its pinned accepted attempt holds
+the defective model, and `cadex smoke` reads exactly that pin. Iteration 168
+concluded that closing F7's smoke therefore needs a turn that re-accepts the
+design, which would spend a frozen continuation on a fit report that names
+nothing to fix. The question this pass had to answer is whether the
+measurement can be taken without one.
+
+**Decision.** `docs/probes/ot7/runner/reexport_smoke.py` splits the two halves
+`cadex smoke` joins. `restore PROJECT` opens a copy with the ordinary restore
+pass — which re-runs the accepted script and re-exports every artifact under
+today's engine — and reports what `open_project` made of it, refusal included.
+`smoke PROJECT --attempt DIR` then runs the shipped `command_smoke` with one
+substitution: the digest-checked bundle is read from a named attempt directory
+of the same accepted revision rather than from the accepted pin. Everything
+after that — the MuJoCo rollout, the exact-solid geometry check and its
+first-frame agreement against the published clearance — is the product's own
+code, and the receipt is an ordinary `cadex-smoke-v1`. `compare FIRST SECOND`
+is the third half-question: which of an attempt's outputs moved the digest.
+
+The substitution keeps every check the shipped reader makes except the one
+that cannot hold here — that the result's digest equals the project's accepted
+digest — and `cli/tests/test_reexport_smoke.py` holds it to that: an artifact
+must hash to its entry, must not escape the attempt directory, must come from
+an attempt that built, and must not be copied over the project or the attempt.
+Six fixtures, no engine, no MuJoCo.
+
+**Consequences, measured on a copy (`ot7-plover-e-reexport`).** The rebuild
+under the fixed engine **agrees exactly**: 0 of 29 bodies disagreeing, worst
+8.6e-33 mm and 1.2e-6°, against the accepted pin's 24 of 29 at 121.86102740417053 mm.
+And it smokes **pass** — the first passing smoke this biped has had. Finite
+throughout; penetration 0 breaches with both shins on the floor at
+0.3214283954748017 mm against a 0.5 mm tolerance; resting after a
+0.2683688948842189 mm drop at 0.18159412499621788° of tilt, base `c_pelvis`;
+the one termination rule unfired; and the exact-solid check passing **406 of
+406 pairs across 51 samples with its first-frame agreement gate satisfied**,
+which is the gate the accepted pin's model cannot get past. The same probe on
+the accepted pin reproduces that refusal —
+`initial pose disagrees with published clearance: ('c_bearing_hip_l',
+'c_bearing_hip_r')` — so the pass is measured against a control, not alone.
+Receipt: `docs/probes/ot7/retained/plover-e-reexport.json`.
+
+**And the finding that outlives F7: `ot7-plover-e` can no longer be opened.**
+The restore pass refused in 89.4 s with `CADEXD_RESTORE_FAILED` — accepted
+digest `a00d1aea…`, restored `9ef44502…` — and the ADR-389 geometry fallback
+refused with it, `the rebuilt model is not the accepted one`. It is right on
+what it can see and wrong about what happened: exactly **2 of 90 outputs**
+changed, the MJCF and the training task that pins the MJCF's digest, while
+every BREP artifact, every canonical definition and every solved placement is
+byte-identical, and two independent rebuilds produced the same bytes, so
+nothing here is serialization noise. Both digests include a non-BREP output's
+artifact bytes (`project_digest`'s ADR-068 clause, and `_entries`' `else`
+branch, which the geometry digest shares), so the fallback that exists for
+*the same model serialized twice* cannot answer *the same model exported
+better*.
+
+The consequence is a real one and is left open rather than fixed here: any
+project accepted before an engine change to a derived artifact is shut the way
+ADR-389's projects were, and for F7 specifically, `continue-2` and
+`continue-3` can no longer be dispatched on `ot7-plover-e` at all — a design
+turn opens with `restore=True` and would be refused before a provider session
+exists, which is the ADR-386 `unreached` shape. F7's remaining slots are
+unspendable until that is fixed, and this ADR does not spend them.
+
+## ADR-396 — The geometry fallback stops reading derived artifact bytes (2026-09-19)
+
+**Decision.** `project_geometry_digest` no longer carries a derived output's
+artifact bytes. `_entries` gains one keyword, `derived_artifact_bytes`, true
+for `project_digest` and false for `project_geometry_digest`; nothing else
+moves. A non-BREP, non-mesh output that retained a file is now identified, in
+the geometry digest only, by its canonical definition alone.
+
+**`project_digest` is untouched, and that is the whole shape of this change.**
+The byte digest is every stored `accepted_digest` in every project on disk, it
+is the accepted-state guard, and ADR-068's bytes clause is exactly right there:
+two traces from two solver versions must not share a digest. The frozen-digest
+test still pins it to the value it had before the material moved into this
+module. The geometry digest is consulted only *after* the byte digest has
+already refused, and only to answer one question — is the disagreement the
+serialization or the model?
+
+**Why.** ADR-389 built that fallback for *the same model serialized twice*.
+ADR-393 then produced a case it had no answer for: *the same model exported
+better*. The MJCF exporter had been writing a weld's body at the inverse of
+its pose, and fixing it changed the bytes of every model containing one. On
+`ot7-plover-e`, re-running the accepted script under the fixed engine moved
+exactly **2 of 90 outputs** — the MJCF, and the training task whose only two
+differing fields are that MJCF's `sha256` and `bytes` — while every BREP
+artifact, every canonical definition and every solved placement stayed
+identical, and two independent rebuilds wrote the same bytes, so none of it was
+noise [rec: fresh-dawn-0892]. Both digests refused, the project could not be
+opened, and F7's two unspent continuations became undispatchable, because a
+design turn opens with `restore=True`.
+
+The generalisation is worse than the instance: **any** project accepted before
+**any** engine change to a derived artifact is shut the same way, permanently,
+with its design provably unchanged. That is the failure ADR-389 exists to
+prevent, arriving through a door it did not cover.
+
+**Why this is not a weaker guard.** A derived artifact — an MJCF model, a
+training task, a trace, a render — is a function of the definitions, the BREP
+shapes, the solved placements and the engine that exported it. This digest
+compares the first three exactly: a BREP by its kernel fingerprint *and* its
+recipe, a mesh by its vertex set, everything else by its canonical definition,
+every output by its rounded solved placement. So nothing a **script** can
+change becomes invisible here; what becomes invisible is the engine version,
+which is precisely what this digest exists to forgive. A hand-edited script
+still fails on a definition before any measurement is consulted.
+
+**Consequences.** `ot7-plover-e` and its class reopen: the byte digest refuses,
+the geometry fallback accepts, `restore` reports `matched_by: "geometry"`, and
+the accepted digest is not rewritten. Evidence:
+`test_the_geometry_digest_forgives_a_re_exported_derived_artifact` builds a
+design whose MJCF and model-pinning training task are re-exported with every
+definition and placement held fixed, and asserts the byte digest moves while
+the geometry digest does not — it fails on the pre-ADR-396 code.
+`test_the_geometry_digest_still_sees_every_non_brep_definition` replaces the
+old bytes assertion with the three that still hold: the derived output's
+recipe, its solved placement, and a mesh's vertex set each move the digest.
+`docs/INTEGRATION.md`'s restore paragraph and the module docstring say so.
+
+## ADR-397 — ot7's closing report is one row per design, and a test holds it there (2026-09-20)
+
+**Decision.** `docs/probes/ot7/REPORT.md` is rewritten forward into the
+closing report F10 asks for: a summary table with **one row per design**
+(frozen prompts and their digests, turns that reached the model,
+continuations used, static fit per turn, final static and swept checks, smoke
+result, inventory, actor edits and the ot6 comparison), a complete list of
+**every call that was not an attempt**, the F1–F9 evidence table brought up to
+date, and a closing section that claims done and names what remains open.
+The chronology below those sections is unchanged — it is the record of what
+happened, and where it calls a refusal an attempt, the restart amendment
+already supersedes it.
+
+**The numbers, taken from the committed receipts rather than restated.** F4:
+four turns on `ot7-heron-repair-d`, seed 15 of 120 failing to 0 of 105, sweep
+complete at 5°, two of three ot6 defects resolved and the third declared as a
+0.2 mm clearance. F5: four turns on `ot7-heron-c`, 7 of 120 to 0 of 105, sweep
+complete, smoke passing, and **two servos and two horns left uncatalogued**
+after the agent modified their bodies — the one count of its bar it missed.
+F6: four turns on `ot7-robin-c`, 0 of 378 with 25 of 25 attachments touching
+and the wheel-axle limits the agent declared itself, every purchased part
+catalogued, and a **failing** smoke: support 102.2°, its own `fallen` rule at
+0.660 s. F7: **two** turns on `ot7-plover-e`, 12 of 406 to 0 of 406, sweep
+complete at 15° on four joints, smoke passing on the re-exported model
+(ADR-395), 24 catalogued components against five printed sources, and
+`continue-2`/`continue-3` **unspent**. Fourteen calls reached the model and
+ended on their own; fourteen others were void, interrupted or unreached
+(ADR-355, ADR-356, ADR-386, ADR-390) and spent no slot.
+
+**Why F7's two remaining continuations are not spent.** Its bar is *at most*
+three continuations, and it was met in one: accepted biped, zero failing
+static and swept checks, a passing smoke and a catalogued inventory. Spending
+a frozen prompt on a fit report that names nothing to fix buys no evidence,
+and the exhaustion policy forbids repeating an attempt to fill the run.
+ADR-396 unblocked those slots; that they stay unspent is the measurement.
+
+**What the report does not claim.** It does not claim ot7's designs are better
+mechanisms than ot6's — the two runs' checkers use different rules, so their
+failure counts are not comparable. It does not claim a smoke verdict on F7's
+accepted pin; the pin holds the pre-ADR-393 MJCF, moving it costs a design
+turn, and the report prints the control beside the measurement. It does not
+claim F5's catalog failure or F6's topple away.
+
+**Evidence that fails on the old code.** `cli/tests/test_ot7_report.py` pins
+the four sections, the per-design table's eleven columns and their values, the
+fourteen-row non-attempt list with each receipt resolving, the F1–F9 rows, the
+open-items list and the done claim, plus every relative link, anchor, record
+slug and ADR the report cites. Five of its six tests fail against the report
+as it stood at commit `7ae8760a`. Suite: `pixi run python -m pytest cli/tests`.
+
+
+## ADR-398 — Restore retains the accepted artifacts until its pin is settled (2026-09-20)
+
+**Decision.** The restore replay defers `accept_project_candidate`'s artifact
+pruning. After comparing the replay with the accepted design, `cadexd` first
+settles the accepted pin and only then runs the existing bounded collector.
+Normal write/edit/rebuild acceptance still prunes immediately. No request or
+response schema changes.
+
+**Why.** The ot7 merge review found that the geometry fallback restored the
+accepted locator after the accepting lifecycle had already collected its
+artifacts. Repeated opens succeeded through the cached geometry digest but
+left the accepted locator dangling: display and retained-artifact readers
+lost their evidence. The previous offset lifecycle test explicitly expected
+the accepted directory to disappear, testing reopen success while missing
+this data loss.
+
+**Evidence.** The corrected offset lifecycle regression failed on the ot7
+tip (`restore pruned the pinned accepted artifacts`). It now opens in five
+fresh processes, checks every retained file's SHA-256 against the original,
+and bounds remaining attempts to `ATTEMPT_KEEP + 1`. The changed-script
+regression also makes five refused restore attempts and checks that the
+accepted pin and retained result survive. Both targeted source tests pass
+after the fix. `docs/INTEGRATION.md` records the retention contract.

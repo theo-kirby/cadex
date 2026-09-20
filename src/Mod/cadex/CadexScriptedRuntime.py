@@ -15,6 +15,7 @@ with the Phase 2.4 tool-surface swap (docs/DECISIONS.md ADR-013).
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import inspect as _inspect
 import json
@@ -44,6 +45,12 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
     "project": (
         "cadex_domain_worker.py",
         "CadexSubshapeQuery.py",
+        # The digest material (ADR-389). In the bundle *and* in cadexd's
+        # closure, which is CadexNets' standing exactly: the project worker
+        # hashes an accepted run with it, and the service re-measures a
+        # retained one with it when the bytes disagree. Pure at module scope
+        # -- `Part` is imported inside the one function that needs a kernel.
+        "CadexGeometryDigest.py",
         "cadex_project_api.py",
         "cadex_sketcher_api.py",
         "cadex_sketcher_worker.py",
@@ -276,6 +283,60 @@ def _bundle_members(domain: str) -> tuple[str, tuple[str, ...]]:
     return entry_module, filenames
 
 
+#: Bundle digests whose members have already been checked against each other.
+#: The check is a function of the bytes, so the digest that keys the bundle
+#: directory keys the check too, and a warm cache pays nothing for it.
+_CHECKED_BUNDLE_DIGESTS: set[str] = set()
+
+
+def _top_level_imports(source: bytes) -> set[str]:
+    """Top-level module names one staged member imports at module scope.
+
+    Only module scope, and only absolute imports: a member that imports a
+    sibling inside a function (``CadexRouting`` in ``cadex_part_worker``, and
+    the kernel in ``CadexGeometryDigest``) is not asking for it at import
+    time, which is the only moment this guard is about.
+    """
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        # It will fail on import with a better message than this guard's.
+        return set()
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            names.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            names.add(node.module.split(".")[0])
+    return names
+
+
+def _unstaged_member_imports(
+    module_root: Path, snapshot: Mapping[str, bytes]
+) -> list[tuple[str, str]]:
+    """``(member, module)`` pairs a bundle would fail to import.
+
+    An engine module that lives beside the bundle's members, is imported by
+    one of them at module scope, and is not itself a member. There is no such
+    pair in a consistent engine, and the one way to make one is the one that
+    cost F7 a frozen create prompt: the member *list* is read from
+    ``_DOMAIN_WORKER_BUNDLES`` once, when the service imports this module,
+    while the member *bytes* are read from disk on every cache miss. Edit the
+    tree under a live ``cadexd`` and the two disagree -- a new worker naming a
+    module the old list never staged. The bundle that results is keyed by the
+    bytes of what it does hold, so it publishes cleanly, caches, and then
+    fails identically on every attempt for the life of the session.
+    """
+
+    return sorted(
+        (member, name)
+        for member, data in snapshot.items()
+        for name in _top_level_imports(data)
+        if f"{name}.py" not in snapshot and (module_root / f"{name}.py").is_file()
+    )
+
+
 def _link_or_copy(source: Path, target: Path) -> None:
     """Hardlink, falling back to a copy that preserves mtime.
 
@@ -325,7 +386,28 @@ def shared_worker_bundle(module_root: Path, domain: str) -> tuple[Path, str]:
 
     clean_domain = str(domain or "").strip().lower()
     root = Path(tempfile.gettempdir()) / _BUNDLE_CACHE_DIRNAME
-    bundle = root / f"{clean_domain}-{digest.hexdigest()[:24]}"
+    fingerprint = digest.hexdigest()
+    # Before publishing, and before trusting a cache hit: a bundle whose own
+    # members cannot import each other must never become a directory. It would
+    # be keyed by the bytes it holds, so it would cache, and every retry in the
+    # session would recompute the same key and fail the same way.
+    if fingerprint not in _CHECKED_BUNDLE_DIGESTS:
+        unstaged = _unstaged_member_imports(module_root, snapshot)
+        if unstaged:
+            raise RuntimeError(
+                f"The {clean_domain!r} XScript worker bundle cannot import "
+                "itself: "
+                + ", ".join(f"{member} imports {name}" for member, name in unstaged)
+                + ", and "
+                + ", ".join(f"{name}.py" for name in sorted({n for _, n in unstaged}))
+                + " is not staged. The engine tree at "
+                f"{module_root} has changed since this service imported its "
+                "bundle list, so the list and the files on disk disagree. "
+                "Restart the engine; if it recurs, the module is missing from "
+                "_DOMAIN_WORKER_BUNDLES."
+            )
+        _CHECKED_BUNDLE_DIGESTS.add(fingerprint)
+    bundle = root / f"{clean_domain}-{fingerprint[:24]}"
 
     def populated() -> bool:
         """Validate identity and reject mutable legacy hardlinks/symlinks."""
@@ -2042,6 +2124,8 @@ def accept_project_candidate(
     prepared: Mapping[str, Any],
     publication: Mapping[str, Any],
     validated: Mapping[str, Any],
+    *,
+    prune_artifacts: bool = True,
 ) -> dict[str, Any]:
     """Persist the accepted project revision/contract/digest; return the tool payload."""
 
@@ -2103,10 +2187,11 @@ def accept_project_candidate(
         store.record_history(revision, source, contract)
     except OSError:
         pass
-    try:
-        store.prune_artifacts()
-    except OSError:
-        pass
+    if prune_artifacts:
+        try:
+            store.prune_artifacts()
+        except OSError:
+            pass
     return {
         "ok": True,
         "tool": str(prepared["tool_name"]),
@@ -2226,6 +2311,7 @@ def run_project_lifecycle(
     cancellation_check: Callable[[], bool] | None = None,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
     result_sink: dict[str, Any] | None = None,
+    prune_artifacts: bool = True,
 ) -> dict[str, Any]:
     """One complete inline project lifecycle: capture → prepare → execute →
     validate → publish → accept.
@@ -2237,6 +2323,8 @@ def run_project_lifecycle(
     produced, so protocol clients see an unchanged contract. When
     ``result_sink`` is given, ``prepared`` and ``validated`` are stored in it
     on success so the caller can reach staged artifacts (display buffers).
+    A restore caller passes ``prune_artifacts=False`` and prunes only after
+    settling the accepted pin: this acceptance is provisional until then.
     """
 
     from CadexScriptedDomainPublication import publish_project_candidate
@@ -2327,7 +2415,9 @@ def run_project_lifecycle(
             record_project_candidate_failure(prepared, failure)
             failure["model_state"] = candidate_model_state(prepared)
             return failure
-        payload = accept_project_candidate(prepared, publication, validated)
+        payload = accept_project_candidate(
+            prepared, publication, validated, prune_artifacts=prune_artifacts
+        )
         if result_sink is not None:
             result_sink["prepared"] = prepared
             result_sink["validated"] = validated

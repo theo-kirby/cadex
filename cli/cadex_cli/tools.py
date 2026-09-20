@@ -13,7 +13,14 @@ benefit the model can feel.
 type comes from the engine's own ``OP_ARG_SPECS``, so a tool schema cannot
 drift from the protocol: adding an argument to an op adds it here, and
 removing one removes it here. What is hand-written is only the prose — the
-descriptions, which the protocol does not carry.
+descriptions, which the protocol does not carry — and the one exception
+below.
+
+**``describe_api``'s ``section`` is the bridge's, not the protocol's
+(ADR-360).** The engine's op takes no argument and returns the whole
+contract; the bridge offers ``section`` so the model can ask for one page
+of it at a time, consumes it, and never sends it on. :data:`VIEW_ARGS` is
+that allowlist, and the drift test reads it.
 
 **``expected_revision`` is not in the schemas.** The guard exists for
 concurrent writers and a CLI run has exactly one writer, so
@@ -63,6 +70,18 @@ CLI_TOOL_OPS = (
 #: request as a constant — so never asked of the model.
 INJECTED_ARGS = frozenset({"expected_revision", "display"})
 
+#: Offered to the model and consumed by the bridge (ADR-360): ``(op, name)``
+#: to the JSON type and the prose. These never reach the engine, whose
+#: ``OP_ARG_SPECS`` do not carry them; the drift test allows exactly these.
+VIEW_ARGS: dict[tuple[str, str], tuple[type, str]] = {
+    ("describe_api", "section"): (
+        str,
+        "One page of the contract: a domain name from the index's `domains`, "
+        "or `library` for the catalog and the lib exports. Omit it for the "
+        "index, which lists every export by name and names the sections.",
+    ),
+}
+
 #: The tessellation request every modelling op carries: what `cadex params`
 #: asks for (ADR-293), and what the review dashboard draws (ADR-312).
 STANDARD_DISPLAY: dict[str, Any] = {"quality": "standard", "edges": False}
@@ -78,11 +97,16 @@ _JSON_TYPES: dict[type, str] = {
 
 TOOL_DESCRIPTIONS: dict[str, str] = {
     "describe_api": (
-        "Return the xscript authoring contract live from the engine: the "
-        "program schema, the globals a script may use, and every domain's "
-        "exported functions with their signatures. Call this before writing "
-        "your first script, and again whenever you need an exact signature. "
-        "Never write an xscript API from memory."
+        "Return the xscript authoring contract live from the engine, one "
+        "page at a time so each fits one tool result. Without `section`: the "
+        "index — the program schema, the globals a script may use, and every "
+        "domain's exports by name. With `section=<domain>` or "
+        "`section=library`: that section's notes and every export's full "
+        "signature with the first paragraph of its documentation; the "
+        "page's `descriptions` line says which inspect scope=api path holds "
+        "the rest. Call the index before writing your first script, then the "
+        "section of every domain you use, and again whenever you need an "
+        "exact signature. Never write an xscript API from memory."
     ),
     "write_script": (
         "Replace the whole project script and rebuild. The engine parses, "
@@ -106,7 +130,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
     "inspect": (
         "Read engine state. This is how you verify your work: there is no "
-        "viewport here and no screenshot to look at."
+        "viewport here and no screenshot to look at. scope=clearance is the "
+        "measured fit of the accepted assembly, every pair; a build reply's "
+        "`fit` block is its summary."
     ),
     "link_part": (
         "Pull one accepted solid out of ANOTHER project directory and store "
@@ -196,8 +222,13 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "`set_params` a `nets` or `boards` list; `inventory` is what the "
         "assembly is MADE OF — one row per component with the output it "
         "places, that output's catalog family and part number when a lib.* "
-        "generator built it, and the pose the solver settled on; `api` is "
-        "the tool surface."
+        "generator built it, and the pose the solver settled on; `clearance` "
+        "is the MEASURED FIT of the accepted assembly — every component "
+        "pair's minimum distance (mm) and common volume (mm³), measured by "
+        "the engine from the exact solids at the solved pose, with each "
+        "pair's label and catalog identity — the evidence that parts fit, "
+        "where a script's printout is only a claim; `api` is the tool "
+        "surface."
     ),
     ("inspect", "target"): (
         "The exact name the scope keys on — an output name for `output`, an "
@@ -236,6 +267,10 @@ INSPECT_SCOPES = (
     "history",
     "wiring",
     "inventory",
+    # The measured fit (ADR-346): the same published pair measurements
+    # `cadex clearance` reports, offered to the model whole because the
+    # `fit` block on a build reply is a summary of them.
+    "clearance",
     "blueprint",
     "api",
 )
@@ -308,6 +343,9 @@ def tool_definitions(protocol: ModuleType) -> list[dict[str, Any]]:
             if name in INJECTED_ARGS:
                 continue
             properties[name] = _property_schema(op, name, python_type)
+        for (view_op, name), (python_type, description) in VIEW_ARGS.items():
+            if view_op == op:
+                properties[name] = {"type": _json_type(python_type), "description": description}
         definitions.append(
             {
                 "name": op,
