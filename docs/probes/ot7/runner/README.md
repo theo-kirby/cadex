@@ -8,6 +8,29 @@ previous turns and prompt allowances are preserved. Without `--model`, resume
 keeps the receipt's model. This permits the owner-authorized Opus continuation
 of Robin after its Fable create turn without replaying that turn.
 
+## Run ot8 uses this collector too (ADR-400)
+
+`--run ot8` selects run ot8's own frozen prompts
+(`docs/probes/ot8/prompts/`), its `ot8-*` project prefix and its two **seeded**
+designs -- `plover` and `robin`, which start from an independent copy of an ot7
+baseline rather than an empty project, on the same terms as ot7's `repair`.
+The contract is [`../../ot8/README.md`](../../ot8/README.md); the pins a seeded
+copy must reproduce are `docs/probes/ot8/baselines.json`; and
+`cli/tests/test_ot8_runner.py` covers its slot accounting and the preservation
+of the `evidence/` directory a copy inherits. Three things are worth knowing
+here:
+
+- A seeded attempt keeps its receipt in its own directory (`g3-rebuild`,
+  `g4-resolve`) so a copy's inherited `evidence/attempt.json` is never read or
+  written as this attempt's; `attempt_dir()` is the single lookup.
+- A seeded attempt measures its baseline before it sends anything: fit,
+  inventory **and one bounded smoke**, with the seed identity held equal across
+  them. Unlike the measurement, the smoke never gates dispatch -- G3 and G4
+  exist because these baselines fail it.
+- Everything else -- void, interrupted and unreached classification, the window
+  gate, `resume`, `smoke`, `reclassify`, the bounds and the effort level -- is
+  ot7's, unchanged, and a receipt with no `run` field is ot7's.
+
 This is the F4–F7 evidence collector (ADR-354), amended for the ot7 restart
 (ADR-355). **Every product-agent call ot7 dispatched before the restart was
 void**: all six ended on the provider's session limit in two to four seconds,

@@ -1,0 +1,31 @@
+{
+  "schema": "ot8-window-probe-v1",
+  "criterion": "G1",
+  "rule": "ADR-358/ADR-364: a window probe carries no project, no tools and no MCP server, so it is not a product-agent call and spends no slot.",
+  "model": "claude-opus-5",
+  "bound_percent": 45,
+  "read_at": "2026-09-20T19:01:14+00:00",
+  "reading": {
+    "status": "allowed",
+    "five_hour_percent": 10,
+    "resets_at": "2026-09-20T23:30:00+00:00",
+    "windows": {
+      "five_hour": 10,
+      "seven_day": 16
+    },
+    "rate_limit_type": "five_hour",
+    "refused": null,
+    "disabled_reason": "out_of_credits",
+    "resets_at_is": null,
+    "probe": {
+      "exit_code": 0,
+      "elapsed_seconds": 3.7269370418507606
+    },
+    "room": true
+  },
+  "transcript": {
+    "path": "probe.stdout.json",
+    "bytes": 11719,
+    "sha256": "f52a23b5fd9ff537f1de7e15fcfe15ce74202b27136e6294cb5771b2fdc8e1ba"
+  }
+}

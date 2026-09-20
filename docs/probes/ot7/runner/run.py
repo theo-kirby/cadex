@@ -17,6 +17,30 @@ import time
 
 REPO = Path(__file__).resolve().parents[4]
 PROMPTS = REPO / 'docs/probes/ot7/prompts'
+#: Run ot8 freezes its own prompts beside ot7's and reuses this collector
+#: (ADR-400). The create prompt it dispatches is byte-identical to ot7's, so
+#: the arm comparison is a comparison of one ask; its continuations differ,
+#: because ot8's charter directs the agent to inventory and smoke evidence as
+#: well as fit; and two of its designs start from a preserved ot7 baseline
+#: rather than an empty project. Nothing under ``docs/probes/ot7/prompts`` or
+#: in an ot7 project is read or written differently for it.
+OT8_PROMPTS = REPO / 'docs/probes/ot8/prompts'
+#: Where the identity of each preserved ot8 baseline is pinned, so a seeded
+#: attempt refuses to start on a copy that is not the accepted design it names.
+OT8_BASELINES = REPO / 'docs/probes/ot8/baselines.json'
+DEFAULT_RUN = 'ot7'
+#: Attempts that start from a preserved accepted design rather than an empty
+#: project, by run and design: the first prompt each dispatches, and the
+#: evidence directory that keeps the attempt apart from the inherited
+#: ``evidence/`` a copied project already carries.
+SEEDED = {
+    ('ot7', 'repair'): {'prompt': 'repair.prompt.txt', 'evidence': 'f4-repair'},
+    ('ot8', 'plover'): {'prompt': 'rebuild.prompt.txt', 'evidence': 'g3-rebuild'},
+    ('ot8', 'robin'): {'prompt': 'resolve.prompt.txt', 'evidence': 'g4-resolve'},
+}
+#: Every seeded evidence directory, searched before the plain one so a copied
+#: project's inherited receipt can never be mistaken for this attempt's.
+ATTEMPT_DIRS = tuple(seed['evidence'] for seed in SEEDED.values())
 sys.path.insert(0, str(REPO / 'cli'))
 
 #: The wall-clock bound on one product-agent call. A call killed here is an
@@ -60,16 +84,29 @@ def digest(path):
             'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
-def frozen(design):
-    # The first prompt is the create prompt, or the repair prompt on the
-    # preserved seed; each is followed by the same three continuations
-    # (ADR-357: the repair prompt is not itself a continuation).
-    first = 'repair.prompt.txt' if design == 'repair' else f'{design}.create.prompt.txt'
+def prompt_root(run=DEFAULT_RUN):
+    """A run's frozen prompt directory, read through the module globals so a
+    fixture can replace either root without touching the other's."""
+    if run == 'ot7':
+        return PROMPTS
+    if run == 'ot8':
+        return OT8_PROMPTS
+    raise ValueError(f'unknown run: {run}')
+
+
+def frozen(design, run=DEFAULT_RUN):
+    # The first prompt is the create prompt, or the seeded design's own first
+    # prompt on the preserved baseline; each is followed by the same three
+    # continuations of its run (ADR-357: the first prompt is not a
+    # continuation, whichever it is).
+    root = prompt_root(run)
+    seeded = SEEDED.get((run, design))
+    first = seeded['prompt'] if seeded else f'{design}.create.prompt.txt'
     names = [first] + [f'continue-{i}.prompt.txt' for i in range(1, 4)]
     table = dict(re.findall(r'\| `([^`]+\.prompt\.txt)` \| .*? \| \d+ \| `([a-f0-9]{64})`',
-                            (PROMPTS / 'README.md').read_text()))
+                            (root / 'README.md').read_text()))
     for name in names:
-        if digest(PROMPTS / name)['sha256'] != table[name]:
+        if digest(root / name)['sha256'] != table[name]:
             raise ValueError(f'frozen prompt changed: {name}')
     return names
 
@@ -563,39 +600,43 @@ def retain_repair_assessment(out, revision, measurement_ok):
 
 
 def run(design, project, model, execute_call=execute, turns=None, window_bound=None,
-        effort=EFFORT_LEVEL):
+        effort=EFFORT_LEVEL, run_id=DEFAULT_RUN):
     """Start an attempt: create the project (or validate the seed), then
     dispatch up to ``turns`` frozen prompts. A design attempt dispatches its
-    whole schedule by default; a repair dispatches the repair prompt alone,
-    because one completed turn uses about half a five-hour window, and its
-    continuations follow one per window through ``resume``. With a
+    whole schedule by default; a seeded attempt dispatches its first prompt
+    alone, because one completed turn uses about half a five-hour window, and
+    its continuations follow one per window through ``resume``. With a
     ``window_bound`` (percent), every prompt is preceded by a window probe and
     is dispatched only while the reading shows room (ADR-358); ``None`` reads
     nothing, for fixtures that fake the provider, and the command line always
     passes a bound. ``effort`` is the level every turn of the attempt is
-    launched at (ADR-359); the receipt's ``settings`` records it."""
-    names = frozen(design)
+    launched at (ADR-359); the receipt's ``settings`` records it. ``run_id``
+    selects the frozen prompt set and the project-name prefix (ADR-400)."""
+    names = frozen(design, run_id)
     project = project.resolve()
-    if project.is_relative_to(REPO) or project.parent.name != 'cadex-projects' or not project.name.startswith('ot7-'):
-        raise ValueError('Use a new ot7-* project in the external cadex-projects directory.')
+    if (project.is_relative_to(REPO) or project.parent.name != 'cadex-projects'
+            or not project.name.startswith(f'{run_id}-')):
+        raise ValueError(f'Use a new {run_id}-* project in the external cadex-projects directory.')
+    seeded = SEEDED.get((run_id, design))
     repair = design == 'repair'
     if turns is None:
-        turns = 1 if repair else len(names)
-    if repair:
+        turns = 1 if seeded else len(names)
+    if seeded:
         seed = seed_identity(project)
-        validate_seed(seed)
+        validate_seed(seed, run_id, design)
     else:
         project.mkdir()
     # Exclusive evidence creation guards the preserved seed against redispatch.
-    evidence = evidence_dir(project, repair)
+    evidence = evidence_dir(project, seeded)
     evidence.mkdir()
-    receipt = {'schema': 'ot7-design-evidence-v1', 'design': design, 'project': project.name,
+    receipt = {'schema': 'ot7-design-evidence-v1', 'run': run_id, 'design': design,
+               'project': project.name,
                'model': model, 'actor_design_edits': 0, 'turns': [], 'status': 'running',
                'slots_spent': 0, 'void_calls': 0, 'interrupted_calls': 0, 'unreached_calls': 0,
                'turn_bound_seconds': TURN_BOUND_SECONDS, 'settings': settings(effort)}
     save = lambda: write(evidence / 'attempt.json', receipt)
     save()
-    if repair:
+    if seeded:
         receipt['seed'] = seed
         save()
         before = evidence / 'before'
@@ -603,8 +644,15 @@ def run(design, project, model, execute_call=execute, turns=None, window_bound=N
         receipt['before'] = execute_call(
             [sys.executable, str(Path(__file__).resolve()), '--child-measure', str(project), str(before)],
             before, 'measurement', MEASUREMENT_BOUND_SECONDS)
-        receipt['before']['repair_assessment'] = retain_repair_assessment(
-            before, seed['metadata']['accepted_revision'], receipt['before']['exit_code'] == 0)
+        if repair:
+            receipt['before']['repair_assessment'] = retain_repair_assessment(
+                before, seed['metadata']['accepted_revision'], receipt['before']['exit_code'] == 0)
+        else:
+            # The baseline's own bounded smoke, before any ot8 turn (ADR-400).
+            # It is evidence, never a gate: a seeded ot8 design is taken up
+            # precisely because its accepted artifacts fail this, and a
+            # failure here must reach the report rather than stop the run.
+            receipt['before']['smoke'] = run_smoke(project, evidence, execute_call, 'smoke-before')
         receipt['before']['artifacts'] = [digest(p) for p in sorted(before.iterdir()) if p.is_file()]
         # Measurement must preserve the complete metadata and script bytes.
         receipt['before']['seed_unchanged'] = seed_identity(project) == seed
@@ -618,8 +666,19 @@ def run(design, project, model, execute_call=execute, turns=None, window_bound=N
     return dispatch(receipt, project, evidence, execute_call, turns, window_bound)
 
 
-def evidence_dir(project, repair):
-    return project / 'evidence' / 'f4-repair' if repair else project / 'evidence'
+def evidence_dir(project, seeded):
+    """Where an attempt keeps its receipt: a seeded attempt gets its own
+    directory, because the project it starts from is a copy that already
+    carries the baseline's ``evidence/``."""
+    return project / 'evidence' / seeded['evidence'] if seeded else project / 'evidence'
+
+
+def attempt_dir(project):
+    """This attempt's evidence directory, or None. Seeded directories are
+    searched first, so a copy's inherited receipt is never read as ours."""
+    candidates = [Path(project) / 'evidence' / name for name in ATTEMPT_DIRS]
+    candidates.append(Path(project) / 'evidence')
+    return next((d for d in candidates if (d / 'attempt.json').is_file()), None)
 
 
 def remaining(receipt):
@@ -630,7 +689,7 @@ def remaining(receipt):
     never sent, so the same one is still next in the same project. Computed
     from the rows, never from the receipt's status, so a receipt written
     under the superseded one-slot repair rule reads right."""
-    names = frozen(receipt['design'])
+    names = frozen(receipt['design'], receipt.get('run', DEFAULT_RUN))
     # An unreached call never sent its prompt, so it is transparent here: it
     # neither closes the project nor advances the schedule (ADR-386).
     rows = [row for row in receipt['turns'] if row['status'] != 'unreached']
@@ -649,8 +708,10 @@ def remaining(receipt):
 
 
 def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None):
-    names = frozen(receipt['design'])
+    run_id = receipt.get('run', DEFAULT_RUN)
+    names = frozen(receipt['design'], run_id)
     repair = receipt['design'] == 'repair'
+    seeded = (run_id, receipt['design']) in SEEDED
     left = remaining(receipt)
     if left['closed'] or not left['next_prompt']:
         raise ValueError(f"nothing to dispatch: {left['closed'] or 'exhausted'}")
@@ -699,7 +760,7 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
             out = evidence / f'turn-{index}-retry-{retry}'
         out.mkdir()
         prompt = out / name
-        prompt.write_bytes((PROMPTS / name).read_bytes())
+        prompt.write_bytes((prompt_root(run_id) / name).read_bytes())
         counts = index > 0  # the create or repair prompt is not a continuation
         row = {'index': index, 'continuations_used': continuations + counts,
                'prompt': digest(prompt), 'status': 'started', 'window': reading,
@@ -765,7 +826,7 @@ def dispatch(receipt, project, evidence, execute_call, turns, window_bound=None)
             receipt['slots_spent'] += 1
         # The design identity after the turn, so a resume can prove nothing
         # but a product-agent turn changed the design in between.
-        row['accepted_after'] = seed_identity(project) if repair else design_identity(project)
+        row['accepted_after'] = seed_identity(project) if seeded else design_identity(project)
         if repair:
             row['repair_assessment'] = retain_repair_assessment(
                 out, row['accepted_after']['metadata'].get('accepted_revision'),
@@ -864,8 +925,7 @@ def smoke(project, execute_call=execute):
     turn, because the actor never edits a design.
     """
     project = Path(project).resolve()
-    evidence = next((d for d in (project / 'evidence' / 'f4-repair', project / 'evidence')
-                     if (d / 'attempt.json').is_file()), None)
+    evidence = attempt_dir(project)
     if evidence is None:
         raise ValueError('no attempt to smoke: start one with the design name')
     receipt = json.loads((evidence / 'attempt.json').read_text())
@@ -897,8 +957,7 @@ def resume(project, execute_call=execute, turns=1, window_bound=None, model=None
     fresh copy), an exhausted one, and one whose design changed since its
     last turn (the actor never edits a design)."""
     project = project.resolve()
-    evidence = next((d for d in (project / 'evidence' / 'f4-repair', project / 'evidence')
-                     if (d / 'attempt.json').is_file()), None)
+    evidence = attempt_dir(project)
     if evidence is None:
         raise ValueError('no attempt to resume: start one with the design name')
     receipt = json.loads((evidence / 'attempt.json').read_text())
@@ -949,8 +1008,7 @@ def reclassify(project):
     have taken; a row that could still be in flight is left exactly as it is.
     """
     project = Path(project).resolve()
-    evidence = next((d for d in (project / 'evidence' / 'f4-repair', project / 'evidence')
-                     if (d / 'attempt.json').is_file()), None)
+    evidence = attempt_dir(project)
     if evidence is None:
         raise ValueError('no attempt to reclassify')
     receipt = json.loads((evidence / 'attempt.json').read_text())
@@ -1043,17 +1101,41 @@ def seed_identity(project):
             'metadata': json.loads((project / 'script.json').read_text())}
 
 
-def validate_seed(seed):
-    original = json.loads((REPO / 'docs/probes/ot7/retained/repair-refusal.json').read_text())['seed']
+def seed_pin(run=DEFAULT_RUN, design='repair'):
+    """The identity a seeded attempt's project must already have.
+
+    ot7's repair pins the preserved first Heron seed from its own retained
+    receipt, including the five empty value lists that seed carried. ot8's two
+    seeded designs pin an ot7 baseline by the four identity fields a project
+    copy must reproduce exactly (ADR-400); their value lists are not empty and
+    are not part of the pin, because the pin is the accepted design's identity
+    and nothing else.
+    """
+    if (run, design) == ('ot7', 'repair'):
+        original = json.loads((REPO / 'docs/probes/ot7/retained/repair-refusal.json').read_text())['seed']
+        return {'script_sha256': original['script_sha256'],
+                'accepted_revision': original['accepted_revision'],
+                'accepted_digest': 'ce35f4d3ae95b082ec54d862d8bc2fbfe59898cd37ddb30d4416918bfbc9603c',
+                'empty_values': ['board_values', 'cage_values', 'mount_values',
+                                 'net_values', 'param_values'],
+                'label': 'the preserved first Heron seed'}
+    pins = json.loads(OT8_BASELINES.read_text())['baselines']
+    if design not in pins:
+        raise ValueError(f'no pinned baseline for {run} {design}')
+    pin = pins[design]
+    return dict(pin, empty_values=[], label=f"the accepted {pin['project']} design")
+
+
+def validate_seed(seed, run=DEFAULT_RUN, design='repair'):
+    pin = seed_pin(run, design)
     metadata = seed['metadata']
-    if (seed['script_sha256'] != original['script_sha256'] or
-            metadata.get('accepted_revision') != original['accepted_revision'] or
-            metadata.get('working_revision') != original['accepted_revision'] or
-            metadata.get('accepted_digest') != 'ce35f4d3ae95b082ec54d862d8bc2fbfe59898cd37ddb30d4416918bfbc9603c' or
-            any(metadata.get(key) != value for key, value in
-                {'board_values': [], 'cage_values': [], 'mount_values': [],
-                 'net_values': [], 'param_values': {}}.items())):
-        raise ValueError('F4 requires the preserved first Heron seed identity.')
+    empty = {key: [] if key != 'param_values' else {} for key in pin['empty_values']}
+    if (seed['script_sha256'] != pin['script_sha256'] or
+            metadata.get('accepted_revision') != pin['accepted_revision'] or
+            metadata.get('working_revision') != pin['accepted_revision'] or
+            metadata.get('accepted_digest') != pin['accepted_digest'] or
+            any(metadata.get(key) != value for key, value in empty.items())):
+        raise ValueError(f"this attempt requires {pin['label']} identity.")
 
 
 if __name__ == '__main__':
@@ -1090,9 +1172,12 @@ if __name__ == '__main__':
     parser.add_argument('--window-bound', type=int, default=WINDOW_BOUND_PERCENT, metavar='PERCENT',
                         help='dispatch a prompt only while a probe reads the five-hour window at or '
                              f'under this (default {WINDOW_BOUND_PERCENT}); the reading is kept in the receipt')
+    parser.add_argument('--run', default=DEFAULT_RUN, choices=sorted({DEFAULT_RUN, 'ot8'}),
+                        help=f'the run whose frozen prompts and project prefix a new attempt uses '
+                             f'(default {DEFAULT_RUN}, ADR-400); a resume reads it from the receipt')
     args = parser.parse_args()
     if args.design == 'window':
-        out = Path(os.environ.get('TMPDIR', '/tmp')) / f'ot7-window-{os.getpid()}'
+        out = Path(os.environ.get('TMPDIR', '/tmp')) / f'{args.run}-window-{os.getpid()}'
         out.mkdir()
         reading = window_reading(execute, out, 'probe', args.model or 'claude-fable-5')
         reading['room'] = window_has_room(reading, args.window_bound)
@@ -1100,8 +1185,7 @@ if __name__ == '__main__':
     elif args.project is None:
         parser.error(f'{args.design} needs a project')
     elif args.design == 'remaining':
-        evidence = next(d for d in (args.project / 'evidence' / 'f4-repair', args.project / 'evidence')
-                        if (d / 'attempt.json').is_file())
+        evidence = attempt_dir(args.project)
         print(json.dumps(remaining(json.loads((evidence / 'attempt.json').read_text())), indent=2))
     elif args.design == 'reclassify':
         print(json.dumps(reclassify(args.project), indent=2))
@@ -1112,4 +1196,5 @@ if __name__ == '__main__':
                                 window_bound=args.window_bound, model=args.model), indent=2))
     else:
         print(json.dumps(run(args.design, args.project, args.model or 'claude-fable-5', turns=args.turns,
-                             window_bound=args.window_bound, effort=args.effort), indent=2))
+                             window_bound=args.window_bound, effort=args.effort,
+                             run_id=args.run), indent=2))

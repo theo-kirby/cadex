@@ -27079,3 +27079,64 @@ new `ot8-*` identities. Capacity waits produce no repeated bookkeeping.
 two missed design bars. Reusing its exhausted slots would obscure that
 result. A fresh run can make the remaining evidence explicit without
 quietly authorizing the parked training or printability work.
+
+
+## ADR-400 — ot8's experiment contract, and one collector for two runs (2026-09-20)
+
+**Decision.** Run ot8's bounded experiments are frozen before any product
+turn, in `docs/probes/ot8/`: the contract (`README.md`), the prompts
+(`prompts/`, pinned by digest), and the ot7 baselines each experiment measures
+against (`baselines.json`). The ot7 evidence collector is **reused rather than
+copied**: `docs/probes/ot7/runner/run.py --run ot8` selects ot8's frozen
+prompts, its `ot8-*` project prefix and its two **seeded** designs, and every
+other rule — void (ADR-355), interrupted (ADR-356, ADR-388), unreached
+(ADR-386), the window gate (ADR-358), bounds and effort — is ot7's, unchanged.
+A receipt with no `run` field is an ot7 receipt.
+
+**The freeze.** Each design gets one initial prompt and at most three
+continuations. The arm's create prompt is **byte-identical to ot7's**, so G2
+compares one ask against two products. The continuations are ot8's own,
+because this charter directs the agent to its measured fit, **inventory** and
+**smoke** evidence where ot7's pointed at fit alone — which is exactly the gap
+ot7's arm left open, two servos and two horns modified out of catalog
+identity. Every design-agnostic prompt carries one invariant sentence in the
+same words: no purchased part is modified, nothing from the world enters the
+design, nothing free becomes fixed to the world, no support the machine does
+not have appears, and no declared limit, task rule or rollout bound moves.
+That is the charter's "a design may fail" rule written where the agent reads
+it. `resolve.prompt.txt` (G4) is the one prompt that says a behaviour check is
+failing, because G4's question is which of two things that failure is; it
+gives "change nothing and state the missing control contract" equal standing
+with a repair, so the experiment cannot be one the agent passes only by
+cheating.
+
+**Seeded attempts.** G3 and G4 start from an independent copy of `ot7-plover-e`
+and `ot7-robin-c`. A copy arrives carrying the source project's own
+`evidence/`, so a seeded attempt writes its receipt in `evidence/g3-rebuild/`
+or `evidence/g4-resolve/` beside it, refuses to start unless the copy
+reproduces its pinned identity (script bytes, accepted revision, working
+revision, accepted digest) exactly, and measures the baseline before it sends
+anything: fit, inventory and one bounded smoke, with the seed identity held
+equal across them. **That smoke is evidence and never a gate** — G3 and G4
+exist because these baselines fail it, and a gate there would stop the
+experiment the run is for.
+
+**Why not a second runner.** A copied collector would have been a second place
+for the slot rules to drift, and those rules are the whole value of ot7's
+receipts. The generalisation is a run id threaded through the receipt, a
+prompt root per run, a seeded-design table and one `attempt_dir()` lookup
+replacing three duplicated ones; `frozen()`, `remaining()`, `resume()`,
+`smoke()` and `reclassify()` are otherwise untouched, and ot7's 100 tests pass
+unchanged.
+
+**Evidence.** `cli/tests/test_ot8_prompts.py` (8 tests) is the freeze: every
+digest, the arm prompt's byte-identity with ot7's, the forbidden vocabulary,
+and the invariant sentence. `cli/tests/test_ot8_runner.py` (22 tests) covers
+ot8 slot accounting — one create plus exactly three continuations, and void,
+interrupted and unreached calls spending nothing — and prior-evidence
+preservation: an inherited `evidence/attempt.json` unchanged byte for byte, a
+non-baseline copy refused before any prompt, a mutating measurement stopping
+dispatch, and ot7's own freeze unaffected by a changed ot8 prompt. Access was
+verified before the freeze: a `claude-opus-5` window probe answered with the
+five-hour window at 10 % and the seven-day at 16 %
+(`docs/probes/ot8/retained/g1-window-probe.json`).
