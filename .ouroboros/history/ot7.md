@@ -1,66 +1,66 @@
 ---
 run: ot7
 machine: sb1x
-started: 2026-09-17T10:53:10
-ended: 2026-09-17T16:11:11+00:00
-hours: 1.3
-state: killed
-iterations: 148
-commits: 175
+started: 2026-09-19T13:29:36
+ended: 2026-09-20T03:03:15+00:00
+hours: 9.6
+state: stopped
+iterations: 172
+commits: 220
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 10
 merged: no
 branch: ouroboros/ot7
 memory: hypergraph
-actor: claude:claude-fable-5
+actor: claude:claude-opus-5
 ---
 
 # Run ot7
 
-148 iterations in 1.3h on `sb1x`, killed (limit resets in 29 min: sage credits at claude.ai/settings/usage?from=cc_cli_limit_message, to continue.). Branch `ouroboros/ot7`, not merged.
+172 iterations in 9.6h on `sb1x`, stopped (critic accepted done 2x in a row). Branch `ouroboros/ot7`, not merged.
 
 ## The numbers
 
 | | |
 |---|---|
-| iterations | 148 (changed 111, recorded 77) |
-| commits | 175 — 206 files changed, 29910 insertions(+), 114 deletions(-) |
+| iterations | 172 (changed 134, recorded 92) |
+| commits | 220 — 265 files changed, 41169 insertions(+), 236 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 10 checked at the tip |
 | reverts | 0 |
-| verdicts | answer 5, continue 89, looping 8, reject 9, stuck 37 |
+| verdicts | answer 5, continue 110, done_accepted 2, looping 8, reject 9, stuck 38 |
 | loop detector | no_frontier ×38 (longest streak 67) |
-| roles | actor claude:claude-fable-5, critic claude:claude-fable-5 |
-| usage | claude seven_day 7% -> 50% (+43 this run); claude seven_day_overage_included 13% -> 100% (+87 this run); claude five_hour 11% -> 5% (-6 this run) |
+| roles | actor claude:claude-opus-5, critic claude:claude-opus-5 |
+| usage | claude seven_day 1% -> 15% (+14 this run); claude five_hour 7% -> 13% (+6 this run) |
 
 ## What landed
 
+- ot7's closing report: one row per design, and a test that holds it (ADR-397)
+- The geometry fallback stops reading derived artifact bytes (ADR-396)
+- Smoke the model the fixed engine exports, without spending a slot (ADR-395)
+- Measure ADR-393's reach on the three retained ot6 designs (ADR-394)
+- Pair a connector frame with the component FreeCAD left it on (ADR-393)
+- Smoke a paused attempt without spending a slot (ADR-392)
+- Collect F7's continue-1: the biped's twelve buried fasteners removed
+- Collect F6's continue-3: Robin exhausted, fit clean, smoke failed
+- Collect F7's plover-e create turn: the biped the agent actually built
+- A second closing smoke gets its own directory (ADR-391)
+- Dispatch and collect F6's continue-2: the turn that refused to edit
+- Collect F6's continue-1 turn: the sweep the create turn left unmeasured
+- Rule ot7-plover-d void as a design result (ADR-390 amendment)
+- Collect F7's plover-d create turn, and never publish a bundle that cannot import itself (ADR-390)
+- A geometry digest for bytes that are not a function of the inputs (ADR-389)
+- Raise the ot7 turn bound to an hour and finalise a dead runner (ADR-388)
+- F7's create turn reaches the model and runs out of clock (ADR-356)
+- Follow the active run in the operator review dashboard (ADR-387)
+- A call that never reached the model spends no frozen slot (ADR-386)
+- Recover ot7 deadline crash with relative 48h budget (ADR-385)
+- Continue ot7 on Opus with explicit resume model history (ADR-384)
 - F6: Robin's create dispatched on Fable — b interrupted at launch, c completed with 0 of 276 failing
 - Resume ot7 remaining experiments on Fable (ADR-383)
 - Absent provenance is unknown, not printed (ADR-382)
 - A modified purchase says what it was cut from (ADR-381)
-- A fixed joint holds a pose; it does not require touching (ADR-380)
-- A weld and a declared gap on the same pair contradict each other (ADR-379)
-- F6 window probe five: still refused, and the fixed gate read it right
-- Cite ADR-378's own commit in the closing report
-- A gap the motion closes is a failing fit (ADR-378)
-- Cite ADR-377's own commit in the closing report
-- A design that toppled and settled is not resting on the floor (ADR-377)
-- Cite ADR-376's own commit in the closing report
-- The frame that bound the call is the reading, in both directions (ADR-376)
-- Cite ADR-375's own commit in the closing report
-- A joint nobody bounded is a coverage hole, not a silence (ADR-375)
-- The swept row's motion flag is pinned against its contract (ADR-374)
-- The closing receipts count ADR-374, and the contract names its field
-- A welded pair does not define the joint it cannot move (ADR-374)
-- F9's weld-exemption table says only what it models
-- F9's regression receipt says what the checker now does, and pins both columns
-- A gap the design means is declared, not widened (ADR-373)
-- A welded pair is not an undeclared pair (ADR-372)
-- A suppressed joint is not missing coverage (ADR-371)
-- A fixed joint that holds nothing is measured and said (ADR-370)
-- A refused probe reads the frame that rejected (ADR-369)
-- ... and 61 more
+- ... and 82 more
 
 ## Decisions the critic made
 
@@ -102,3 +102,20 @@ stop or start the run.
 ## What this taught — owner-directed wait (2026-09-17)
 
 The live charter reload worked: the loop finished its correction and reconciliation, then preserved the unspent design slots while access remained unproven. A charter-directed wait still dispatches actor and critic turns and triggers generic no-frontier model rotation; a future runner-level waiting state should suppress both, rather than spending subscriptions to reconfirm the hold. One forbidden waiting record was rejected and reverted, so review the final tree rather than treating every rejection as an outstanding defect; this run stopped on its time limit, not successful completion.
+
+
+## What this taught — final review (2026-09-20)
+
+The completed follow-up did reach the product model: all four designs reached
+zero failing static checks, but the arm's purchased-part identity and the
+balancer's holding smoke missed their success bars. The biped's smoke used a
+re-exported model, leaving an accepted-artifact evidence gap for the next run.
+Completion therefore means the bounded experiment finished, not universal
+design success; the zero tick count also reflects owner-owned checkboxes.
+
+Review found that successful repeated restores could still prune the accepted
+artifacts. ADR-398 defers collection until the accepted pin is settled and
+tests retention as well as reopen success. Future lifecycle evidence must
+check that the data behind a pin survives, not just that the service says yes.
+Keep capacity waits out of the work log and separate a balancer's feedback
+requirement from mechanical fit; neither is solved by more bookkeeping.
