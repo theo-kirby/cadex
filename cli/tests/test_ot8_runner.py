@@ -7,13 +7,15 @@ design gets one initial prompt and at most three continuations, and only a
 turn that reached the model and ended on its own spends one -- void,
 interrupted and unreached calls spend nothing, exactly as in ot7.
 **Preserving prior evidence**: two of the three ot8 designs start from a copy
-of an ot7 project, which arrives carrying that project's own ``evidence/``
-directory and its accepted design; the attempt must write beside them, refuse
-a copy that is not the pinned baseline, and leave both untouched.
+of an ot7 project and its accepted design. The copy may arrive carrying that
+project's own ``evidence/`` directory or without it; the attempt must write
+its own directory either way, refuse a copy that is not the pinned baseline,
+and leave whatever the copy does carry untouched.
 """
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 
 import pytest
 
@@ -203,6 +205,21 @@ def test_a_seeded_attempt_writes_beside_the_copys_evidence_and_leaves_it_alone(t
     assert runner.seed_identity(target) == before == report['seed']
     assert report['before']['seed_unchanged'] is True
     assert report['turns'][0]['accepted_after'] == before
+
+
+def test_a_seeded_attempt_starts_on_a_copy_that_carries_no_evidence(tmp_path, monkeypatch):
+    """An ot8 seed copy is prepared without the baseline's ``evidence/``, so
+    that no ot7 receipt rides into an ot8 attempt. The attempt directory is
+    still created exclusively: a second dispatch on the same copy refuses."""
+    target = seeded(tmp_path, monkeypatch)
+    shutil.rmtree(target / 'evidence')
+    calls = []
+    report = runner.run('plover', target, 'fixture', executor(calls), run_id='ot8')
+    assert (target / 'evidence/g3-rebuild/attempt.json').is_file()
+    assert runner.attempt_dir(target).name == 'g3-rebuild'
+    assert report['slots_spent'] == 1
+    with pytest.raises(FileExistsError):
+        runner.run('plover', target, 'fixture', executor(calls), run_id='ot8')
 
 
 def test_a_seeded_attempt_measures_and_smokes_the_baseline_before_any_turn(tmp_path, monkeypatch):

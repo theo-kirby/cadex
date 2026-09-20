@@ -27140,3 +27140,69 @@ dispatch, and ot7's own freeze unaffected by a changed ot8 prompt. Access was
 verified before the freeze: a `claude-opus-5` window probe answered with the
 five-hour window at 10 % and the seven-day at 16 %
 (`docs/probes/ot8/retained/g1-window-probe.json`).
+
+## ADR-401 — G3: the biped's smoke passes on its own accepted pin (2026-09-20)
+
+**Context.** ot7 left F7 with a passing smoke that nobody could point at the
+project: the pass was measured on a model re-exported outside the accepted pin
+(ADR-395), because `ot7-plover-e` was accepted *before* ADR-393 fixed the
+exported pose of a welded body, and `cadex smoke` reads exactly the pin. The
+ot8 charter's G3 asks for the ordinary measurement instead — an accepted
+artifact smoke with no substituted bundle — on an independent copy, with the
+rebuild and re-acceptance coming from a product-agent turn rather than the
+actor.
+
+**Decision and what was run.** `ot8-plover` is a mechanical copy of
+`ot7-plover-e` with its `evidence/`, `agent.json` and `.cadex-cli.lock` left
+behind, so no ot7 receipt and no ot7 session rides into an ot8 attempt; the
+collector validated it against `baselines.json` before sending anything. It
+measured the copy first: static fit **pass, 406 of 406 pairs, 0 failing**,
+sweep **complete on 4 of 4 joints at 15°, 0 failing**, 24 of 24 attachments
+touching, inventory **29 components, 24 catalogued** (4 `servo/mg90s`, 4
+`servo_horn/mg90s-single_arm`, 4 `bearing/mr128`, 8 `bolt/m2x6-socket`, 4
+`bolt/m2x12-socket`) — and its ordinary smoke **failed**, reproducing ot7's
+refusal word for word: `initial pose disagrees with published clearance:
+('c_bearing_hip_l', 'c_bearing_hip_r')`, on MJCF `c4c47094…`.
+
+Then one frozen `rebuild.prompt.txt` (`1dbff8e3…`) on `claude-opus-5`, the
+five-hour window read at 16 % against a 45 % bound. It **completed on its own
+in 211.6 s**, spending G3's first slot and leaving three continuations
+unspent. Zero actor design edits: the script is still `d14bfbaad9…`, byte for
+byte the pin, and the accepted revision is still `0491ead7…`. What moved is
+the accepted **digest** — `a00d1aea…` → `9ef44502…`, exactly the digest the
+ot7 restore produced and ADR-395 predicted — because the same source now
+exports the fixed MJCF.
+
+**Consequence: the ordinary smoke passes on the accepted pin.** Taken with
+`cadex smoke` under ADR-392, spending no slot and substituting nothing: MJCF
+`71b8b39c…` (the digest ot7's re-export probe predicted; the baseline's was
+`c4c47094…`), task `a3a060e5…`, MuJoCo 3.10.0, verdict **pass** in 34.3 s.
+Finite throughout; penetration **0 breaches** with both shins touching the
+floor at 0.3214283954748017 mm against a 0.5 mm tolerance; support **pass**,
+base `c_pelvis`, kind `free`, resting after a 0.2683688948842189 mm drop at
+0.18159412499621788° of tilt; the one termination rule unfired; and the
+exact-BREP check passing **406 of 406 pairs across 51 samples with its
+first-frame agreement gate satisfied** — the gate the pre-fix pin could not
+get past. Fit and inventory after the turn read as they did before it, and two
+**fresh-process** reopens with restore (`cadex inventory`, `cadex clearance`)
+both returned `ok: true` under the new pin. `ot7-plover-e` is untouched:
+script `d14bfbaad9…`, accepted digest still `a00d1aea…`.
+
+Nothing was grounded, supported, suppressed, weakened or shortened: the base
+is free, the declared rollout is the design's own bounded one, and the only
+state a product-agent turn wrote is a re-acceptance of unchanged source.
+
+**One collector fix, with a regression.** `run()` created the attempt's
+evidence directory with a non-recursive `mkdir`, so a seed copy prepared
+*without* the baseline's `evidence/` — which is how an ot8 seed is prepared —
+raised `FileNotFoundError` before the first measurement. The parent is now
+created with `exist_ok=True` while the attempt's own directory stays
+exclusive, so a second dispatch on the same copy still refuses.
+`test_a_seeded_attempt_starts_on_a_copy_that_carries_no_evidence` fails on the
+old code with that `FileNotFoundError` and passes on the new one, and asserts
+the refusal too. `docs/probes/ot8/README.md` now states how a seed copy is
+prepared, because that preparation is part of what G3 measured.
+
+**Evidence.** `docs/probes/ot8/retained/g3-plover-rebuild.json` (7,005 bytes)
+carries the chain; the full evidence is project-local under
+`<projects>/ot8-plover/evidence/g3-rebuild/`.

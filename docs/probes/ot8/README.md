@@ -121,7 +121,21 @@ The ot7 collector is the ot8 collector (ADR-400): one `--run ot8` selects the
 ot8 freeze, the `ot8-*` project prefix and the two seeded designs. Nothing
 under `docs/probes/ot7/` or in an ot7 project is written by an ot8 attempt.
 
+The copy a seeded design starts from is prepared **mechanically**, by the
+actor, before the collector is invoked: every file of the baseline except its
+`evidence/` directory, its `agent.json` and its `.cadex-cli.lock`. The
+receipts stay behind because an ot7 receipt may never be read as an ot8
+attempt's, and the session state stays behind because the ot8 turn is a new
+conversation. Nothing else is filtered, and nothing is edited — the collector
+refuses the copy outright unless its script bytes, accepted revision, working
+revision and accepted digest all reproduce the pin above.
+
 ```bash
+# prepare the copy: the accepted design, without ot7's receipts or session
+mkdir "$PROJECTS/ot8-plover" && (cd "$PROJECTS/ot7-plover-e" && tar cf - \
+  --exclude=./evidence --exclude=./agent.json --exclude=./.cadex-cli.lock .) \
+  | tar xf - -C "$PROJECTS/ot8-plover"
+
 # G2: a new arm, its create prompt and as many continuations as the window allows
 pixi run python docs/probes/ot7/runner/run.py --run ot8 heron \
   "$PROJECTS/ot8-heron" --model claude-opus-5 --turns 1
@@ -143,8 +157,10 @@ G3 and G4 exist because these baselines fail it.
 
 Receipts live in the external project under
 `evidence/` (a create attempt), `evidence/g3-rebuild/` or
-`evidence/g4-resolve/` (a seeded one, kept apart from the `evidence/` the copy
-inherits). Committed copies land in [`retained/`](retained/), at most 16 KB
+`evidence/g4-resolve/` (a seeded one, kept apart from any `evidence/` the copy
+carries — the attempt's own directory is created exclusively, so a second
+dispatch on the same copy refuses, while a copy prepared without one is
+started rather than refused). Committed copies land in [`retained/`](retained/), at most 16 KB
 each, with full evidence left project-local and cited by path and digest.
 
 ## Access

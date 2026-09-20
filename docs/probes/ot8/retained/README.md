@@ -12,3 +12,4 @@ never committed. The contract these receipts answer to is
 | receipt | criterion | what it is |
 |---|---|---|
 | [`g1-window-probe.json`](g1-window-probe.json) | G1 | the `claude-opus-5` access and window reading taken at the freeze, before any product turn. A probe carries no project and no tools, so it is not a product-agent call and spends no slot (ADR-358, ADR-364) |
+| [`g3-plover-rebuild.json`](g3-plover-rebuild.json) | G3 | the biped's whole evidence chain on `ot8-plover`: the pinned seed, the baseline's fit, inventory and refused smoke measured before any prompt, the one completed `rebuild.prompt.txt` turn, and the accepted identity, fit, inventory, ordinary `cadex smoke` and two fresh-process reopens measured after it |

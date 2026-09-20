@@ -627,7 +627,12 @@ def run(design, project, model, execute_call=execute, turns=None, window_bound=N
     else:
         project.mkdir()
     # Exclusive evidence creation guards the preserved seed against redispatch.
+    # Only the attempt's own directory is exclusive: a copy prepared without
+    # the baseline's ``evidence/`` -- which is how an ot8 seed is prepared, so
+    # that no ot7 receipt rides into an ot8 attempt -- has no parent to write
+    # beside, and one that carries it keeps every byte of it.
     evidence = evidence_dir(project, seeded)
+    evidence.parent.mkdir(exist_ok=True)
     evidence.mkdir()
     receipt = {'schema': 'ot7-design-evidence-v1', 'run': run_id, 'design': design,
                'project': project.name,

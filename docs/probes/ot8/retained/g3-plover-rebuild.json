@@ -1,0 +1,239 @@
+{
+  "schema": "ot8-experiment-evidence-v1",
+  "criterion": "G3",
+  "run": "ot8",
+  "design": "plover",
+  "project": "ot8-plover",
+  "model": "claude-opus-5",
+  "taken_at": "2026-09-20T19:26:16+00:00",
+  "seed": {
+    "baseline": "ot7-plover-e",
+    "prepared": "mechanical copy; evidence/, agent.json and .cadex-cli.lock excluded",
+    "script_sha256": "d14bfbaad98ff77d307d6b60a07d122b95a54ea2aa86bbefe7ac40b8d9c88450",
+    "accepted_revision": "0491ead7998a2d5b42cde770b2968df3d921baa2c3b7248a2bca19bb60cf9516",
+    "accepted_digest_before": "a00d1aea382ae292b4a217bd94c9c0365de4129e70b54cf73679d7fe92606588",
+    "validated_against": "docs/probes/ot8/baselines.json"
+  },
+  "before": {
+    "note": "the accepted ot7 pin, measured on the copy before any ot8 prompt",
+    "measurement_exit_code": 0,
+    "seed_unchanged": true,
+    "static_fit": {
+      "verdict": "pass",
+      "pairs_checked": 406,
+      "failing_count": 0
+    },
+    "swept_fit": {
+      "verdict": "pass",
+      "coverage": "complete",
+      "joints_complete": 4,
+      "failing_count": 0
+    },
+    "inventory": {
+      "component_count": 29,
+      "catalog_counts": {
+        "bearing/mr128": 4,
+        "bolt/m2x12-socket": 4,
+        "bolt/m2x6-socket": 8,
+        "servo/mg90s": 4,
+        "servo_horn/mg90s-single_arm": 4
+      }
+    },
+    "smoke": {
+      "exit_code": 1,
+      "verdict": "fail",
+      "elapsed_seconds": 0.4,
+      "geometry_error": "ValueError: initial pose disagrees with published clearance: ('c_bearing_hip_l', 'c_bearing_hip_r')",
+      "mjcf_sha256": "c4c470941421592509b3d9d2781a3065cd4846160c6812dafb97c5420ac66057"
+    }
+  },
+  "turn": {
+    "index": 0,
+    "status": "completed",
+    "slot_consumed": true,
+    "continuations_used": 0,
+    "prompt": {
+      "path": "rebuild.prompt.txt",
+      "bytes": 1078,
+      "sha256": "1dbff8e3c660ddc3fffb79f3e283bd6e135d8f9caa9f8f3abc50c636788f6276"
+    },
+    "settings": {
+      "effort": "medium",
+      "max_output_tokens": 32000,
+      "turn_bound_seconds": 3600
+    },
+    "elapsed_seconds": 211.6,
+    "exit_code": 0,
+    "window": {
+      "five_hour_percent": 16,
+      "bound_percent": 45,
+      "read_at": "2026-09-20T19:18:32+00:00",
+      "dispatched": true
+    },
+    "actor_design_edits": 0,
+    "script_sha256_after": "d14bfbaad98ff77d307d6b60a07d122b95a54ea2aa86bbefe7ac40b8d9c88450",
+    "accepted_revision_after": "0491ead7998a2d5b42cde770b2968df3d921baa2c3b7248a2bca19bb60cf9516",
+    "accepted_digest_after": "9ef44502db06d838a2f401c7ec70e6dba5958878e1be7128e91831af29225867",
+    "static_fit": {
+      "verdict": "pass",
+      "failing_count": 0,
+      "pairs_checked": 406
+    },
+    "swept_fit": {
+      "verdict": "pass",
+      "coverage": "complete",
+      "joints_checked": 4,
+      "joints_complete": 4,
+      "failing_count": 0
+    }
+  },
+  "after": {
+    "inventory": {
+      "component_count": 29,
+      "catalog_counts": {
+        "bearing/mr128": 4,
+        "bolt/m2x12-socket": 4,
+        "bolt/m2x6-socket": 8,
+        "servo/mg90s": 4,
+        "servo_horn/mg90s-single_arm": 4
+      }
+    },
+    "smoke": {
+      "rule": "ADR-392 \u2014 a measurement, not a design turn",
+      "command": [
+        "./cadex",
+        "smoke",
+        "--project",
+        "ot8-plover",
+        "--out",
+        "evidence/g3-rebuild/smoke-interim",
+        "--seconds",
+        "1",
+        "--timeout",
+        "240",
+        "--json"
+      ],
+      "slot_consumed": false,
+      "substituted_bundle": false,
+      "exit_code": 0,
+      "verdict": "pass",
+      "accepted_revision": "0491ead7998a2d5b42cde770b2968df3d921baa2c3b7248a2bca19bb60cf9516",
+      "accepted_digest": "9ef44502db06d838a2f401c7ec70e6dba5958878e1be7128e91831af29225867",
+      "mjcf": {
+        "path": "plover_model-model.xml",
+        "sha256": "71b8b39c9ae655985cb1aa92b900240022b2033d121c02e45e29a111829d8453"
+      },
+      "task": {
+        "label": "plover_stand",
+        "path": "plover_stand-task.json",
+        "sha256": "a3a060e58676cf8e03eefa26508917ed1199020c8cfcc4d34080257b04733d38"
+      },
+      "mujoco_version": "3.10.0",
+      "seconds": 1.0,
+      "samples": 51,
+      "checks": {
+        "finite": {
+          "pass": true
+        },
+        "penetration": {
+          "pass": true,
+          "breaches": 0,
+          "tolerance_mm": 0.5,
+          "worst_depth_mm": 0.3214283954748017,
+          "pairs_touching": 2
+        },
+        "support": {
+          "pass": true,
+          "kind": "free",
+          "base": "c_pelvis",
+          "drop_mm": 0.2683688948842189,
+          "tilt_degrees": 0.18159412499621788,
+          "touching_floor_at_end": true,
+          "z_start_mm": 160.0,
+          "z_end_mm": 159.73163110511578,
+          "max_tilt_degrees": 30.0,
+          "speed_mm_s": 1.1830173478808238e-07
+        },
+        "termination": {
+          "pass": true,
+          "rules": 1,
+          "fired": []
+        },
+        "components": {
+          "pass": true,
+          "source": "exact BREP solids at sampled MuJoCo poses",
+          "initial_pose_agrees": true,
+          "samples": 51,
+          "pairs_checked": 406,
+          "failing": []
+        }
+      }
+    },
+    "reopen": [
+      {
+        "command": [
+          "./cadex",
+          "inventory",
+          "--project",
+          "ot8-plover",
+          "--json"
+        ],
+        "process": "fresh",
+        "restore": true,
+        "exit_code": 0,
+        "ok": true,
+        "notes": [
+          "inventory: 29 component(s), 24 catalogued, written to /home/theo/cadex-projects/ot8-plover/docs/inventory.md.",
+          "committed 44d853a."
+        ]
+      },
+      {
+        "command": [
+          "./cadex",
+          "clearance",
+          "--project",
+          "ot8-plover",
+          "--json"
+        ],
+        "process": "fresh",
+        "restore": true,
+        "exit_code": 0,
+        "ok": true,
+        "notes": [
+          "clearance: 406 static pair(s), written to /home/theo/cadex-projects/ot8-plover/docs/clearance.md.",
+          "committed f002f13."
+        ]
+      }
+    ]
+  },
+  "baseline_untouched": {
+    "project": "ot7-plover-e",
+    "script_sha256": "d14bfbaad98ff77d307d6b60a07d122b95a54ea2aa86bbefe7ac40b8d9c88450",
+    "accepted_digest": "a00d1aea382ae292b4a217bd94c9c0365de4129e70b54cf73679d7fe92606588"
+  },
+  "remaining": {
+    "completed": 1,
+    "continuations_used": 0,
+    "continuations_unspent": 3,
+    "next_prompt": "continue-1.prompt.txt",
+    "closed": null
+  },
+  "evidence_root": "<projects>/ot8-plover/evidence/g3-rebuild",
+  "artifacts": [
+    {
+      "path": "attempt.json",
+      "sha256": "7b7ffd971e224cc836c23ebeb4b3daae617b146b7e5d735f9f2ef537c313ee7f",
+      "bytes": 86593
+    },
+    {
+      "path": "smoke-interim/smoke.json",
+      "sha256": "9561192922708481304acb61e245732ab1c2362d713c3dde7177ab8160f798b6",
+      "bytes": 67011
+    },
+    {
+      "path": "turn-0/transcript.jsonl",
+      "sha256": "c7ad6b15d824c37045fcb6a9c63c807f102692376ced7e7c7f16b553207238fc",
+      "bytes": 133160
+    }
+  ]
+}
