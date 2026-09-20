@@ -192,7 +192,9 @@ def test_the_geometry_digest_refuses_a_changed_recipe_before_it_measures(
     assert module.project_geometry_digest(root, edited) != before
 
 
-def test_the_geometry_digest_still_sees_every_non_brep_output(tmp_path, monkeypatch):
+def test_the_geometry_digest_still_sees_every_non_brep_definition(
+    tmp_path, monkeypatch
+):
     import CadexGeometryDigest as module
 
     root = _fixture_root(tmp_path)
@@ -200,12 +202,60 @@ def test_the_geometry_digest_still_sees_every_non_brep_output(tmp_path, monkeypa
         module, "brep_geometry_fingerprint", lambda _path: "same-solid"
     )
     before = module.project_geometry_digest(root, _fixture_outputs())
-    (root / "t.json").write_bytes(b'{"trace": 2}')
-    assert module.project_geometry_digest(root, _fixture_outputs()) != before
 
+    # The recipe that asked for the derived output.
+    redefined = _fixture_outputs()
+    redefined[2]["definition"] = {"operation": "rollout", "steps": 400}
+    assert module.project_geometry_digest(root, redefined) != before
+
+    # The pose the solver put it at.
     moved = _fixture_outputs()
     moved[2]["solved_placement_matrix"] = [1.0, 0.0, 0.0, 9.0]
     assert module.project_geometry_digest(root, moved) != before
+
+    # ...and a mesh's vertex set, which is geometry and not a derived export.
+    retriangulated = _fixture_outputs()
+    retriangulated[1]["geometry_sha256"] = "cafef00d"
+    assert module.project_geometry_digest(root, retriangulated) != before
+
+
+def test_the_geometry_digest_forgives_a_re_exported_derived_artifact(
+    tmp_path, monkeypatch
+):
+    # ADR-396, measured on ot7-plover-e: the ADR-393 fix made the engine
+    # export a *better* MJCF for an unchanged design -- 2 of 90 outputs moved,
+    # the model and the training task that pins the model's digest, with every
+    # BREP artifact, every canonical definition and every solved placement
+    # identical. The byte digest must refuse that and the geometry fallback
+    # must accept it, or the project can never be opened again.
+    import CadexGeometryDigest as module
+
+    root = _fixture_root(tmp_path)
+    monkeypatch.setattr(
+        module, "brep_geometry_fingerprint", lambda _path: "same-solid"
+    )
+    design = _fixture_outputs() + [
+        {
+            "name": "epsilon",
+            "domain": "assembly",
+            "type": "training_task",
+            "artifact_path": "task.json",
+            "artifact_kind": "assembly_training_task_json",
+            "definition": {"operation": "task", "model": "gamma"},
+        }
+    ]
+    (root / "task.json").write_bytes(b'{"model": {"sha256": "one", "bytes": 11}}')
+    bytes_before = project_digest(root, design)
+    geometry_before = module.project_geometry_digest(root, design)
+
+    # The same script, re-exported by an engine that fixed its exporter.
+    (root / "t.json").write_bytes(b'{"trace": 1, "weld": "fixed"}')
+    (root / "task.json").write_bytes(b'{"model": {"sha256": "two", "bytes": 22}}')
+
+    assert project_digest(root, design) != bytes_before, (
+        "the accepted-state guard must still see the changed export"
+    )
+    assert module.project_geometry_digest(root, design) == geometry_before
 
 
 def test_a_retained_attempt_is_measured_from_the_result_it_kept(

@@ -13,8 +13,11 @@ That is the accepted-state guard and it does not change here: every stored
 ``cadex-project-geometry-digest-v1`` identifies the same output by what the
 kernel measures on the shape instead — counts, the exact vertex set, the exact
 edge-length and face-area multisets, the bounding box, the total area — plus
-its canonical definition, the recipe that asked for it. It exists because the
-bytes are not a function of the inputs alone. ``part.offset`` is OCCT's
+its canonical definition, the recipe that asked for it. It drops one more
+thing the byte digest keeps: a **derived** output's artifact bytes, which are
+a function of the model *and the engine that exported it* (ADR-396).
+
+It exists because the bytes are not a function of the inputs alone. ``part.offset`` is OCCT's
 ``BRepOffset_MakeOffset``, and it writes a different geometry table every
 process for an identical solid (ADR-389, ``docs/probes/ot7/DIGEST-DRIFT.md``),
 so a project that used it could never be reopened. This digest is consulted
@@ -137,7 +140,17 @@ def _entries(
     root: Path,
     outputs: list[dict[str, Any]],
     brep_entry: Callable[[dict[str, Any], Path], dict[str, str]],
+    *,
+    derived_artifact_bytes: bool = True,
 ) -> list[dict[str, Any]]:
+    """The shared entry material for both digests.
+
+    ``derived_artifact_bytes`` is the *only* thing the two digests disagree
+    about besides BREP identity. With it, a non-BREP output that retained a
+    file is identified by its definition **and** those bytes (ADR-068);
+    without it, by its definition alone (ADR-396).
+    """
+
     entries = []
     for item in outputs:
         entry: dict[str, Any] = {
@@ -165,7 +178,7 @@ def _entries(
             # its bytes are the last thing that should identify it. Excluding
             # the kind rather than the missing fingerprint is what keeps that
             # true.
-            if artifact and kind != "mesh":
+            if derived_artifact_bytes and artifact and kind != "mesh":
                 entry["artifact_sha256"] = file_sha256(root / artifact)
         placement = _round_placement(item.get("solved_placement_matrix"))
         if placement is not None:
@@ -202,6 +215,10 @@ def project_digest(root: Path, outputs: list[dict[str, Any]]) -> str:
     known kinds, so an output kind invented later joins the digest by writing
     a file rather than by someone remembering to add it here. `mesh` is the
     single exception and is excluded by name, for the reason given below.
+
+    This digest is unchanged by ADR-396: the clause is dropped only from
+    :func:`project_geometry_digest`, which is consulted *after* this one has
+    already said no.
     """
 
     entries = _entries(
@@ -221,6 +238,19 @@ def project_geometry_digest(root: Path, outputs: list[dict[str, Any]]) -> str:
     moves, so this digest is not a weaker guard that happens to ignore
     serialization -- a hand-edited script fails it on the recipe before the
     geometry is even consulted.
+
+    A **derived** output -- an MJCF model, a training task, a trace, a render
+    -- is identified here by its canonical definition and nothing else
+    (ADR-396). ``project_digest`` still carries its bytes, and must: there,
+    the bytes are what distinguishes two traces from two solver versions
+    (ADR-068). Here, the engine version is precisely what this digest exists
+    to forgive. An accepted MJCF export that a later engine writes *better*
+    -- ADR-393's inverted weld frame -- is byte-different and model-identical,
+    and asking it to match its own bytes shut `ot7-plover-e` against
+    ``open_project`` for good. The design is still pinned: a derived artifact
+    is a function of the definitions, the BREP shapes and the solved
+    placements, all three of which this digest compares exactly, so nothing a
+    *script* can change becomes invisible.
     """
 
     def brep_entry(item: dict[str, Any], path: Path) -> dict[str, str]:
@@ -231,7 +261,7 @@ def project_geometry_digest(root: Path, outputs: list[dict[str, Any]]) -> str:
             ).hexdigest(),
         }
 
-    entries = _entries(root, outputs, brep_entry)
+    entries = _entries(root, outputs, brep_entry, derived_artifact_bytes=False)
     material = canonical_json(
         {"schema": GEOMETRY_DIGEST_SCHEMA, "outputs": entries}
     )

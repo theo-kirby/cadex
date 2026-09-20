@@ -206,7 +206,17 @@ area; never volume, which drifts) — and opens when those agree, adding
 `matched_by: "geometry"` and `geometry_digest` to `restore`. A byte-for-byte
 match reports neither and is unchanged. The accepted digest is untouched,
 nothing re-accepts changed geometry, and a hand-edited script fails on the
-definition before the measurements are consulted. A stored script that will
+definition before the measurements are consulted.
+
+That digest also drops a **derived** output's artifact bytes — an MJCF model,
+a training task, a trace, a render — identifying it by its canonical
+definition alone (ADR-396). `cadex-project-digest-v1` still carries them
+(ADR-068) and still refuses. The reason is the mirror of the offset one: those
+bytes are a function of the model *and the engine that exported it*, so an
+exporter fix (ADR-393's inverted weld frame) shut every project containing a
+weld out of `open_project` with its design provably unchanged. The definitions,
+the BREP fingerprints, the mesh vertex sets and the solved placements are all
+still compared exactly, so nothing a script can change becomes invisible. A stored script that will
 not run at all
 is not that: it is a store left broken by something with no business writing
 it, so the pass retries once from the accepted revision's pinned source and,

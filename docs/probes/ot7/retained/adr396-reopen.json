@@ -1,0 +1,130 @@
+{
+ "schema": "ot7-adr396-reopen-v1",
+ "what": "ADR-396 drops a derived output's artifact bytes from project_geometry_digest only. ot7-plover-e, shut by ADR-393's corrected MJCF export, opens again through the geometry fallback with its accepted digest untouched; the three retained ot6 copies are unmoved.",
+ "tools": {
+  "reexport_smoke.py": "a0261f3da91a3b171a86112a838563b2ca0b2cd30ab380b6a7a62d6f8b460857",
+  "clearance": "./cadex clearance --json (published measurements, no rebuild)",
+  "engine": "dev-tree at ADR-396"
+ },
+ "plover": {
+  "project": "ot7-plover-e",
+  "copy_measured_first": "ot7-plover-e-adr396",
+  "accepted_revision": "0491ead7998a2d5b42cde770b2968df3d921baa2c3b7248a2bca19bb60cf9516",
+  "before_adr396": {
+   "ok": false,
+   "failure_code": "CADEXD_RESTORE_FAILED",
+   "seconds": 89.424,
+   "accepted_digest": "a00d1aea382ae292b4a217bd94c9c0365de4129e70b54cf73679d7fe92606588",
+   "restored_digest": "9ef44502db06d838a2f401c7ec70e6dba5958878e1be7128e91831af29225867",
+   "accepted_geometry_digest": "a4c4cc281bbfc6ab4780267309e0afb3fce31c0c71ef5afe39cc81cc22c02db4",
+   "restored_geometry_digest": "bb33c4205713479c13eb5e5ce9e3a1caecafc2459e2d0d852b857d338f637bbf",
+   "geometry_comparison": "the rebuilt model is not the accepted one",
+   "source": "docs/probes/ot7/retained/plover-e-reexport.json (ADR-395)"
+  },
+  "after_adr396": [
+   {
+    "project": "ot7-plover-e-adr396",
+    "run": "first open, accepted attempt re-measured",
+    "ok": true,
+    "seconds": 89.3,
+    "matched_by": "geometry",
+    "matches_accepted": true,
+    "restored_digest": "9ef44502db06d838a2f401c7ec70e6dba5958878e1be7128e91831af29225867",
+    "geometry_digest": "8c09313f27a618dda28abbd8706ed8674fc24ec849a23d526110f0d2859335df",
+    "accepted_pin_preserved": true
+   },
+   {
+    "project": "ot7-plover-e-adr396",
+    "run": "second open, through the remembered accepted_geometry",
+    "ok": true,
+    "seconds": 89.3,
+    "matched_by": "geometry",
+    "accepted_pin_preserved": true
+   },
+   {
+    "project": "ot7-plover-e",
+    "run": "the project itself",
+    "ok": true,
+    "seconds": 89.527,
+    "matched_by": "geometry",
+    "matches_accepted": true,
+    "restored_digest": "9ef44502db06d838a2f401c7ec70e6dba5958878e1be7128e91831af29225867",
+    "geometry_digest": "8c09313f27a618dda28abbd8706ed8674fc24ec849a23d526110f0d2859335df",
+    "accepted_digest_before": "a00d1aea382ae292b4a217bd94c9c0365de4129e70b54cf73679d7fe92606588",
+    "accepted_digest_after": "a00d1aea382ae292b4a217bd94c9c0365de4129e70b54cf73679d7fe92606588",
+    "accepted_revision_after": "0491ead7998a2d5b42cde770b2968df3d921baa2c3b7248a2bca19bb60cf9516",
+    "accepted_pin_preserved": true,
+    "accepted_geometry_learned": "8c09313f27a618dda28abbd8706ed8674fc24ec849a23d526110f0d2859335df",
+    "rebuilt_attempt": "attempt-1789871019450-44998a90b73d",
+    "note": "No script, parameter or accepted state changed. The only state written is the learned geometry measurement, keyed on the unchanged accepted digest."
+   }
+  ]
+ },
+ "ot6_copies": [
+  {
+   "design": "finch",
+   "project": "ot7-open-finch",
+   "accepted_revision": "b6862234556355f799591f314cde6b1a7caadb7d4659a0051d18a442c098912f",
+   "pairs": 406,
+   "failing": 44,
+   "counts": {
+    "clear": 362,
+    "intersection": 12,
+    "below clearance": 32
+   },
+   "restore": {
+    "ok": true,
+    "matched_by": "bytes",
+    "seconds": 7.387,
+    "digest": "232c4cd164665464b234e12db612cbb6a3e71ea90af998c03173603b4514b436",
+    "accepted_pin_preserved": true
+   },
+   "clearance_md_identical_before_and_after_restore": true
+  },
+  {
+   "design": "robin",
+   "project": "ot7-open-robin",
+   "accepted_revision": "8d727e18b58772c1bf46edd8ad5cd4a3c0302abdefc7456e8413278cc6253167",
+   "pairs": 276,
+   "failing": 39,
+   "counts": {
+    "clear": 237,
+    "intersection": 8,
+    "below clearance": 31
+   },
+   "restore": {
+    "ok": true,
+    "matched_by": "bytes",
+    "seconds": 5.249,
+    "digest": "d8d70ac8b9b8300ec6bff8a71fca4d1c6af3ce288021d4f1fd96e740db7855e2",
+    "accepted_pin_preserved": true
+   },
+   "clearance_md_identical_before_and_after_restore": true
+  },
+  {
+   "design": "heron",
+   "project": "ot7-open-heron",
+   "accepted_revision": "0c8c64c92252711b630c3f86e381e9aa0788c62c7137186c8a9462912c286d5a",
+   "pairs": 105,
+   "failing": 20,
+   "counts": {
+    "clear": 85,
+    "intersection": 6,
+    "below clearance": 14
+   },
+   "restore": {
+    "ok": true,
+    "matched_by": "bytes",
+    "seconds": 2.41,
+    "digest": "b33f9ec1778797331f0a4f0d71f1d5462605905116a5f2d886af4989ae8cb69d",
+    "accepted_pin_preserved": true
+   },
+   "clearance_md_identical_before_and_after_restore": true
+  }
+ ],
+ "suites": {
+  "test-engine": "2196 passed, 53 skipped in 295.61s (2195 before this unit)",
+  "packaged_gate": "23 passed in 18.19s, CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-linux-x64, freshly staged",
+  "cli": "855 passed, 1 skipped in 551.66s (unchanged; no CLI code in this unit)"
+ }
+}

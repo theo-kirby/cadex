@@ -2141,3 +2141,47 @@ cannot answer *the same model exported better*. A design turn opens with
 `restore=True`, so **F7's two remaining continuations are unspendable on this
 project until that is fixed** — the ADR-386 `unreached` shape, and the next
 engine-side unit.
+
+## Iteration 172: the red line is gone — `ot7-plover-e` opens again (ADR-396)
+
+The defect iteration 170 named is fixed in one keyword. `project_geometry_digest`
+no longer reads a derived output's artifact bytes — an MJCF model, a training
+task, a trace, a render are each identified there by their canonical definition
+alone. `project_digest` is untouched: it still carries those bytes (ADR-068), it
+is still every stored `accepted_digest` on disk, and it still refuses the
+changed export. The second opinion now measures the *model*, which is what it
+was always for.
+
+`ot7-plover-e` **opens**, measured on a fresh copy first and then on the project
+itself: `ok: true` in 89.5 s, `matched_by: "geometry"`, `matches_accepted: true`.
+The byte digests are the same two numbers that refused before — accepted
+`a00d1aea…`, restored `9ef44502…` — and the geometry digests now agree at
+`8c09313f…` on both sides. The accepted pin, digest and revision are unchanged;
+the only state written is the learned `accepted_geometry` measurement, keyed on
+the unchanged accepted digest, and a second open of the copy reproduced
+`ok: true` through it. No script, parameter or accepted state moved, so the
+charter's no-actor-design-edits rule is intact.
+
+**F7's `continue-2` and `continue-3` are spendable again.** That is the whole
+operational point: a design turn opens with `restore=True`, and this project
+refused before a provider session could exist.
+
+**F9's one exception is closed.** The three retained ot6 copies, re-measured
+under the ADR-396 engine with `cadex clearance` before and after a full
+`open_project` restore, report **406/44, 276/39 and 105/20** with the same
+clear/intersection/below breakdowns as every previous reading, accepted pins
+preserved, and each `docs/clearance.md` byte-identical across its restore. All
+three still match on bytes alone, so the fallback is never consulted for them.
+
+Evidence that fails on the old code:
+`test_the_geometry_digest_forgives_a_re_exported_derived_artifact` builds a
+design whose MJCF and model-pinning training task are re-exported with every
+definition, BREP fingerprint and solved placement held fixed, and asserts the
+byte digest moves while the geometry digest does not.
+`test_the_geometry_digest_still_sees_every_non_brep_definition` replaces the old
+bytes assertion with the three that still hold — the derived output's recipe,
+its solved placement, and a mesh's vertex set each move the digest. Suites:
+`pixi run test-engine` **2196 passed, 53 skipped in 295.61 s**; packaged gate
+**23 passed in 18.19 s** on a freshly staged payload. Receipt:
+[`retained/adr396-reopen.json`](retained/adr396-reopen.json), and the tables are
+in [`REGRESSION.md`](REGRESSION.md).

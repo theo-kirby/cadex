@@ -26924,3 +26924,60 @@ ADR-389's projects were, and for F7 specifically, `continue-2` and
 turn opens with `restore=True` and would be refused before a provider session
 exists, which is the ADR-386 `unreached` shape. F7's remaining slots are
 unspendable until that is fixed, and this ADR does not spend them.
+
+## ADR-396 — The geometry fallback stops reading derived artifact bytes (2026-09-19)
+
+**Decision.** `project_geometry_digest` no longer carries a derived output's
+artifact bytes. `_entries` gains one keyword, `derived_artifact_bytes`, true
+for `project_digest` and false for `project_geometry_digest`; nothing else
+moves. A non-BREP, non-mesh output that retained a file is now identified, in
+the geometry digest only, by its canonical definition alone.
+
+**`project_digest` is untouched, and that is the whole shape of this change.**
+The byte digest is every stored `accepted_digest` in every project on disk, it
+is the accepted-state guard, and ADR-068's bytes clause is exactly right there:
+two traces from two solver versions must not share a digest. The frozen-digest
+test still pins it to the value it had before the material moved into this
+module. The geometry digest is consulted only *after* the byte digest has
+already refused, and only to answer one question — is the disagreement the
+serialization or the model?
+
+**Why.** ADR-389 built that fallback for *the same model serialized twice*.
+ADR-393 then produced a case it had no answer for: *the same model exported
+better*. The MJCF exporter had been writing a weld's body at the inverse of
+its pose, and fixing it changed the bytes of every model containing one. On
+`ot7-plover-e`, re-running the accepted script under the fixed engine moved
+exactly **2 of 90 outputs** — the MJCF, and the training task whose only two
+differing fields are that MJCF's `sha256` and `bytes` — while every BREP
+artifact, every canonical definition and every solved placement stayed
+identical, and two independent rebuilds wrote the same bytes, so none of it was
+noise [rec: fresh-dawn-0892]. Both digests refused, the project could not be
+opened, and F7's two unspent continuations became undispatchable, because a
+design turn opens with `restore=True`.
+
+The generalisation is worse than the instance: **any** project accepted before
+**any** engine change to a derived artifact is shut the same way, permanently,
+with its design provably unchanged. That is the failure ADR-389 exists to
+prevent, arriving through a door it did not cover.
+
+**Why this is not a weaker guard.** A derived artifact — an MJCF model, a
+training task, a trace, a render — is a function of the definitions, the BREP
+shapes, the solved placements and the engine that exported it. This digest
+compares the first three exactly: a BREP by its kernel fingerprint *and* its
+recipe, a mesh by its vertex set, everything else by its canonical definition,
+every output by its rounded solved placement. So nothing a **script** can
+change becomes invisible here; what becomes invisible is the engine version,
+which is precisely what this digest exists to forgive. A hand-edited script
+still fails on a definition before any measurement is consulted.
+
+**Consequences.** `ot7-plover-e` and its class reopen: the byte digest refuses,
+the geometry fallback accepts, `restore` reports `matched_by: "geometry"`, and
+the accepted digest is not rewritten. Evidence:
+`test_the_geometry_digest_forgives_a_re_exported_derived_artifact` builds a
+design whose MJCF and model-pinning training task are re-exported with every
+definition and placement held fixed, and asserts the byte digest moves while
+the geometry digest does not — it fails on the pre-ADR-396 code.
+`test_the_geometry_digest_still_sees_every_non_brep_definition` replaces the
+old bytes assertion with the three that still hold: the derived output's
+recipe, its solved placement, and a mesh's vertex set each move the digest.
+`docs/INTEGRATION.md`'s restore paragraph and the module docstring say so.

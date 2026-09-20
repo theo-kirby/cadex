@@ -89,6 +89,16 @@ a dead end at the shape level.
   (measured: the exact vertex set, edge-length and face-area multisets,
   counts, bounds and area; never volume). No stored `accepted_digest` moved,
   so no migration was needed.
+- **The same fault has a second door, and ADR-396 shut it.** `part.offset`'s
+  bytes are not a function of its inputs *within one engine*; a **derived**
+  output's bytes — an MJCF model, a training task, a trace, a render — are not
+  a function of its inputs *across engine versions*. ADR-393 fixed the MJCF
+  exporter's welded-body pose and thereby shut `ot7-plover-e`, whose design was
+  provably unchanged: 2 of 90 outputs moved, both derived, with every BREP
+  artifact, definition and solved placement identical. So
+  `cadex-project-geometry-digest-v1` stopped reading those bytes too, and the
+  project opens with `matched_by: "geometry"`. `cadex-project-digest-v1` still
+  reads them, still refuses, and is still the accepted-state guard.
 
 ## Reproducing it
 

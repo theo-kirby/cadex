@@ -251,3 +251,52 @@ unchanged, because ADR-393 changes nothing they export. The immediate cost is
 F7's: a design turn opens with `restore=True`, so its two unspent continuations
 cannot be dispatched on this project until the digest question is answered.
 Receipt: [`retained/plover-e-reexport.json`](retained/plover-e-reexport.json).
+
+## Iteration 172 — the exception is closed: the geometry fallback stops reading derived bytes (ADR-396)
+
+The row above is answered. `project_geometry_digest` no longer carries a
+derived output's artifact bytes; `project_digest` still does and still refuses.
+One keyword on the shared `_entries` is the whole diff.
+
+**`ot7-plover-e` opens.** Measured first on the fresh copy
+`ot7-plover-e-adr396`, then on the project itself:
+
+| | before (ADR-395) | after (ADR-396) |
+|---|---|---|
+| `open_project(restore=True)` | `CADEXD_RESTORE_FAILED`, 89.4 s | **`ok: true`**, 89.5 s |
+| `restore.matched_by` | — (refused) | `geometry` |
+| Accepted digest / restored | `a00d1aea…` / `9ef44502…` | unchanged, still `a00d1aea…` / `9ef44502…` |
+| Geometry digest, accepted / restored | `a4c4cc28…` / `bb33c420…` | `8c09313f…` / **`8c09313f…`** |
+| Accepted pin preserved | yes | yes |
+| Accepted revision | `0491ead7…` | `0491ead7…` |
+
+The byte digests are the same numbers as before — the exporter fix still moves
+them and the accepted-state guard still sees it. What changed is that the
+second opinion now measures the model rather than the export, and the two sides
+agree. The project learned `accepted_geometry` on that open, so the next reopen
+needs no retained accepted attempt, and a second restore of the copy reproduced
+`ok: true` at 89.3 s through the remembered value. No script, parameter or
+accepted state moved; F7's `continue-2` and `continue-3` are spendable again.
+
+**The three ot6 copies are unmoved**, re-measured under the ADR-396 engine with
+`cadex clearance` before and after a full `open_project` restore:
+
+| Design | Accepted revision | Pairs | Failing | clear / intersection / below | Restore |
+|---|---|---:|---:|---|---|
+| Finch | `b6862234` | 406 | 44 | 362 / 12 / 32 | byte match, 7.387 s |
+| Robin | `8d727e18` | 276 | 39 | 237 / 8 / 31 | byte match, 5.249 s |
+| Heron | `0c8c64c9` | 105 | 20 | 85 / 6 / 14 | byte match, 2.410 s |
+
+Same counts and same breakdowns as every previous reading, accepted pins
+preserved, and each `docs/clearance.md` **byte-identical** before and after its
+restore. All three still match on bytes alone, so the geometry fallback is not
+even consulted for them — which is the point: this change can only be reached
+by a project the byte digest has already refused.
+
+Suites: `pixi run test-engine` **2196 passed, 53 skipped in 295.61 s** (2195
+before, plus this unit's fixture); packaged gate
+`CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-linux-x64 pytest
+test_cadexd_lifecycle.py` **23 passed in 18.19 s** on a freshly staged payload;
+`pixi run python -m pytest cli/tests` **855 passed, 1 skipped in 551.66 s**,
+unchanged, since this unit touches no CLI code.
+Receipt: [`retained/adr396-reopen.json`](retained/adr396-reopen.json).
