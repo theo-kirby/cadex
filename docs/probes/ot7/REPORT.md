@@ -1,6 +1,6 @@
 # ot7 closing report — measured checks, agent outcomes not yet tried
 
-Verified against source: 2026-09-19. [Cadex-new]
+Verified against source: 2026-09-20. [Cadex-new]
 
 **The measured-fit tools are implemented, and the agent has now completed
 all four of F4's turns from measurements alone on `ot7-heron-repair-d`: the
@@ -2086,3 +2086,58 @@ own arithmetic pinned by
 
 This claims no swept verdict and no smoke pass for these three revisions: they
 still publish no sweep, and F9 never required these old designs to fit.
+
+## Iteration 170: F7's biped smokes pass, on the model the fixed engine exports (ADR-395)
+
+**No design turn was dispatched and no slot was spent.** F7 keeps `continue-2`
+and `continue-3` unspent; `ot7-plover-e` is untouched, and everything below was
+measured on the copy `ot7-plover-e-reexport`.
+
+Iteration 168 left F7's smoke unproven for a procedural reason: `cadex smoke`
+reads the *accepted* attempt's retained artifacts, and this design was accepted
+before ADR-393, so its stored `plover_model-model.xml` (`c4c47094…`) is the one
+with 24 bodies at the inverse of their solved pose. The route it named — a turn
+that re-accepts the design — costs a frozen continuation on a fit report that
+names nothing to fix. [`runner/reexport_smoke.py`](runner/reexport_smoke.py)
+takes the measurement without one: it re-runs the same accepted script through
+today's engine, and runs the shipped `cadex smoke` with its digest-checked
+bundle read from that rebuilt attempt instead of from the pin.
+
+| Model measured | MJCF agreement (bodies disagreeing) | Worst body error | Smoke |
+|---|---:|---:|---|
+| Accepted pin `c4c47094…` (pre-ADR-393) | 24 of 29 | 121.86102740417053 mm, 179.99999879258172° | **no verdict** — the geometry check's frame-0 gate refuses |
+| Rebuilt `71b8b39c…` (ADR-393 engine) | **0 of 29** | 8.620781476393591e-33 mm, 1.2074182697257333e-06° | **pass** |
+
+**The biped stands, and the geometry agrees with it.** Verdict `pass` in 35.0 s:
+state finite throughout; penetration **0 breaches**, both shins touching the
+floor at 0.3214283954748017 mm against a 0.5 mm tolerance; support resting on
+the floor after a 0.2683688948842189 mm drop at 0.18159412499621788° of tilt,
+base `c_pelvis`, `kind: free`, end speed 1.2e-07 mm/s; the one termination rule
+unfired; 51 samples over 1.0 s at 50 Hz on MuJoCo 3.10.0. The half that never
+produced a verdict before now does: the exact-BREP check passes **406 of 406
+pairs across all 51 samples**, `initial_pose_agrees: true`. The control is the
+same probe on the accepted pin, which reproduces iteration 167's refusal on
+`('c_bearing_hip_l', 'c_bearing_hip_r')` exactly.
+
+**What this is and is not.** It is the product's own smoke code on the model
+the design's own script exports under the current engine, with a control and a
+receipt. It is **not** a `run.py smoke` receipt against the accepted pin: the
+pin still holds the pre-fix model, and only a product-agent turn may move it.
+F7's sixth requirement now has a measured verdict; whether a verdict taken off
+the pin satisfies the bar is the reader's call, and this report claims only
+what it measured. Receipt:
+[`retained/plover-e-reexport.json`](retained/plover-e-reexport.json).
+
+**And the new red line: `ot7-plover-e` can no longer be opened.** The restore
+pass refuses in 89.4 s with `CADEXD_RESTORE_FAILED` (accepted `a00d1aea…`,
+restored `9ef44502…`), and the ADR-389 geometry fallback refuses with it. It is
+right about the bytes and wrong about the design: exactly **2 of 90 outputs**
+changed — the MJCF, and the training task whose only two differing fields are
+the MJCF's digest and byte count — while every BREP artifact, every canonical
+definition and every solved placement is identical, and two independent
+rebuilds wrote the same model bytes. Both digests carry a non-BREP output's
+artifact bytes, so the fallback built for *the same model serialized twice*
+cannot answer *the same model exported better*. A design turn opens with
+`restore=True`, so **F7's two remaining continuations are unspendable on this
+project until that is fixed** — the ADR-386 `unreached` shape, and the next
+engine-side unit.

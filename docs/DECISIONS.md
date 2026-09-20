@@ -26857,3 +26857,70 @@ which re-runs the accepted script and so exercises ADR-393's new refusal path:
 accepted revisions preserved and no joint refused at
 `stage: native_connector_frames`. `docs/probes/ot7/REGRESSION.md` carries both
 tables and `docs/probes/ot7/retained/adr393-reach.json` is the receipt.
+
+## ADR-395 — The fixed exporter shuts the project it fixed (2026-09-20)
+
+**Context.** ADR-393 corrected the exported pose of a welded body.
+`ot7-plover-e` — F7's biped, at zero failing static and zero failing swept fit
+checks — was accepted *before* that fix, so its pinned accepted attempt holds
+the defective model, and `cadex smoke` reads exactly that pin. Iteration 168
+concluded that closing F7's smoke therefore needs a turn that re-accepts the
+design, which would spend a frozen continuation on a fit report that names
+nothing to fix. The question this pass had to answer is whether the
+measurement can be taken without one.
+
+**Decision.** `docs/probes/ot7/runner/reexport_smoke.py` splits the two halves
+`cadex smoke` joins. `restore PROJECT` opens a copy with the ordinary restore
+pass — which re-runs the accepted script and re-exports every artifact under
+today's engine — and reports what `open_project` made of it, refusal included.
+`smoke PROJECT --attempt DIR` then runs the shipped `command_smoke` with one
+substitution: the digest-checked bundle is read from a named attempt directory
+of the same accepted revision rather than from the accepted pin. Everything
+after that — the MuJoCo rollout, the exact-solid geometry check and its
+first-frame agreement against the published clearance — is the product's own
+code, and the receipt is an ordinary `cadex-smoke-v1`. `compare FIRST SECOND`
+is the third half-question: which of an attempt's outputs moved the digest.
+
+The substitution keeps every check the shipped reader makes except the one
+that cannot hold here — that the result's digest equals the project's accepted
+digest — and `cli/tests/test_reexport_smoke.py` holds it to that: an artifact
+must hash to its entry, must not escape the attempt directory, must come from
+an attempt that built, and must not be copied over the project or the attempt.
+Six fixtures, no engine, no MuJoCo.
+
+**Consequences, measured on a copy (`ot7-plover-e-reexport`).** The rebuild
+under the fixed engine **agrees exactly**: 0 of 29 bodies disagreeing, worst
+8.6e-33 mm and 1.2e-6°, against the accepted pin's 24 of 29 at 121.86102740417053 mm.
+And it smokes **pass** — the first passing smoke this biped has had. Finite
+throughout; penetration 0 breaches with both shins on the floor at
+0.3214283954748017 mm against a 0.5 mm tolerance; resting after a
+0.2683688948842189 mm drop at 0.18159412499621788° of tilt, base `c_pelvis`;
+the one termination rule unfired; and the exact-solid check passing **406 of
+406 pairs across 51 samples with its first-frame agreement gate satisfied**,
+which is the gate the accepted pin's model cannot get past. The same probe on
+the accepted pin reproduces that refusal —
+`initial pose disagrees with published clearance: ('c_bearing_hip_l',
+'c_bearing_hip_r')` — so the pass is measured against a control, not alone.
+Receipt: `docs/probes/ot7/retained/plover-e-reexport.json`.
+
+**And the finding that outlives F7: `ot7-plover-e` can no longer be opened.**
+The restore pass refused in 89.4 s with `CADEXD_RESTORE_FAILED` — accepted
+digest `a00d1aea…`, restored `9ef44502…` — and the ADR-389 geometry fallback
+refused with it, `the rebuilt model is not the accepted one`. It is right on
+what it can see and wrong about what happened: exactly **2 of 90 outputs**
+changed, the MJCF and the training task that pins the MJCF's digest, while
+every BREP artifact, every canonical definition and every solved placement is
+byte-identical, and two independent rebuilds produced the same bytes, so
+nothing here is serialization noise. Both digests include a non-BREP output's
+artifact bytes (`project_digest`'s ADR-068 clause, and `_entries`' `else`
+branch, which the geometry digest shares), so the fallback that exists for
+*the same model serialized twice* cannot answer *the same model exported
+better*.
+
+The consequence is a real one and is left open rather than fixed here: any
+project accepted before an engine change to a derived artifact is shut the way
+ADR-389's projects were, and for F7 specifically, `continue-2` and
+`continue-3` can no longer be dispatched on `ot7-plover-e` at all — a design
+turn opens with `restore=True` and would be refused before a provider session
+exists, which is the ADR-386 `unreached` shape. F7's remaining slots are
+unspendable until that is fixed, and this ADR does not spend them.

@@ -213,3 +213,41 @@ accepted seed. [Two provider refusals](retained/README.md#portable-regression-an
 are not repair attempts with completed design turns. This receipt claims no
 repair, new unassisted design, swept-fit pass or smoke pass, and does not close
 the run or substitute for its eventual F10 report.
+
+## The one project ADR-393 did shut: `ot7-plover-e` (ADR-395)
+
+The section above measured ADR-393's reach on the three *retained ot6* designs
+at zero. Its reach on the design that found the defect is not zero, and F9's
+"existing projects keep opening" clause is what names it.
+
+`ot7-plover-e` was accepted before the fix. Re-running its accepted script
+through the fixed engine — the ordinary restore pass `open_project` performs on
+every open — now produces a different project digest, so **the project refuses
+to open**:
+
+| What | Value |
+|---|---|
+| Restore | `CADEXD_RESTORE_FAILED`, 89.4 s |
+| Accepted digest / restored | `a00d1aea…` / `9ef44502…` |
+| Accepted geometry digest / restored | `a4c4cc28…` / `bb33c420…` |
+| Geometry fallback (ADR-389) | `the rebuilt model is not the accepted one` |
+| Outputs differing | **2 of 90** |
+
+The two are `plover_model` (the MJCF, 16,519 → 16,521 bytes, `c4c47094…` →
+`71b8b39c…`) and `plover_stand` (the training task, whose only two differing
+fields are that MJCF's `sha256` and `bytes`). Every BREP artifact, every
+canonical definition and every solved placement is identical, and two
+independent rebuilds wrote the same model bytes, so this is not the
+serialization noise ADR-389 was built for. Both the project digest and the
+geometry digest include a non-BREP output's artifact bytes — `project_digest`'s
+ADR-068 clause, and the `else` branch of `_entries` that the geometry digest
+shares — so the fallback for *the same model serialized twice* has no answer for
+*the same model exported better*.
+
+This generalises: any project accepted before an engine change to a derived
+artifact is shut the same way. Nothing else measured in this receipt moves —
+the three ot6 copies open, restore and report their 406/44, 276/39 and 105/20
+unchanged, because ADR-393 changes nothing they export. The immediate cost is
+F7's: a design turn opens with `restore=True`, so its two unspent continuations
+cannot be dispatched on this project until the digest question is answered.
+Receipt: [`retained/plover-e-reexport.json`](retained/plover-e-reexport.json).

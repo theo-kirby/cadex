@@ -1,6 +1,6 @@
 # Frozen-design evidence runner
 
-Verified against source: 2026-09-19. [Cadex-new]
+Verified against source: 2026-09-20. [Cadex-new]
 
 An explicit `resume PROJECT --model MODEL` switches subsequent calls to that
 model (ADR-384). The receipt records the transition and each turn's model;
@@ -965,3 +965,43 @@ What it measured for F9 is in
 [`../REGRESSION.md`](../REGRESSION.md#adr-393s-historical-reach-on-the-three-retained-designs--none):
 every body of Finch, Robin and Heron agrees exactly, in all four retained
 attempts each, and `ot7-plover-e`'s pre-fix model is the nonzero control.
+
+## Smoking the model today's engine exports (iteration 170, ADR-395)
+
+`reexport_smoke.py` is the third probe beside `run.py`, and like the second it
+sends no prompt and spends no slot. It exists because `cadex smoke` reads the
+*accepted* attempt's retained artifacts, which is right — a historical view
+never rebuilds an old run — and leaves a design accepted before an engine fix
+measurable only through the artifact that fix corrected.
+
+```bash
+pixi run python docs/probes/ot7/runner/reexport_smoke.py restore COPY
+pixi run python docs/probes/ot7/runner/reexport_smoke.py compare ATTEMPT_A ATTEMPT_B
+pixi run python docs/probes/ot7/runner/reexport_smoke.py smoke COPY \
+    --attempt COPY/script_artifacts/<revision>/attempt-<id> --out DIR
+```
+
+`restore` opens the project with the ordinary restore pass, which re-runs the
+accepted script and re-exports every artifact under today's engine, and prints
+what `open_project` made of it — refusal included, since a digest that moved is
+the measurement. `compare` says which of the attempt's outputs moved it, by
+canonical definition, solved placement and artifact bytes. `smoke` runs the
+shipped `command_smoke` with one substitution: the digest-checked bundle comes
+from the named attempt rather than from the accepted pin, keeping every check
+the shipped reader makes except the accepted-digest equality that cannot hold.
+The rollout, the exact-solid geometry check and its first-frame agreement gate
+are the product's own code, and the receipt is an ordinary `cadex-smoke-v1`.
+
+**Point it at a copy.** Neither half writes a script, a parameter or an
+accepted state — a refused restore rolls the accepted state back — but a
+restore still leaves a rebuilt attempt and a moved `latest_candidate` behind,
+and under this charter the actor does not touch a design project.
+`cli/tests/test_reexport_smoke.py` pins the substituted reader: an artifact
+must hash to its entry, must not escape its attempt, must come from an attempt
+that built, and must not be copied over the project or the attempt.
+
+What it measured for F7 is in [`../REPORT.md`](../REPORT.md) and
+[`../retained/plover-e-reexport.json`](../retained/plover-e-reexport.json):
+the rebuilt `ot7-plover-e` model agrees with its solve (0 of 29 bodies out) and
+smokes **pass**, where the accepted pin's model cannot get past the geometry
+check's frame-0 gate.
