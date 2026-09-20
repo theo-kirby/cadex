@@ -1,4 +1,4 @@
-run: ot7
+run: ot8
 goal: .ouroboros/goal.md
 memory: auto            # -> hypergraph (config + CLI present)
 backend: headless       # tmux: one streaming window per harness call in the run session
@@ -35,7 +35,7 @@ roles:
     model: claude-opus-5
     timeout: 10m
 git:
-  branch: null            # -> ouroboros/ot7
+  branch: null            # -> ouroboros/ot8
   tag_on_accept: true
   revert_on_reject: false # fix forward: the charter forbids reverting this run's own
                           # commits. A rejected commit stays, gets no ok tag, and the
@@ -96,7 +96,7 @@ report:                   # the reporter: an observer outside the loop (ouroboro
   silent_after: 2h        # the actor's timeout is 90m, so quiet for longer than that is a call
                           # that outlived its own kill, not a long iteration
   poll: 30s
-  max_chars: 1000         # one notification; the whole digest is kept in runs/ot7/reports/
+  max_chars: 1000         # one notification; the whole digest is kept in runs/ot8/reports/
 plan:                     # only with planner: true
   every: 5
   view: plan

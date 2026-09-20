@@ -27056,3 +27056,26 @@ and bounds remaining attempts to `ATTEMPT_KEEP + 1`. The changed-script
 regression also makes five refused restore attempts and checks that the
 accepted pin and retained result survive. Both targeted source tests pass
 after the fix. `docs/INTEGRATION.md` records the retention contract.
+
+
+## ADR-399 — ot8 follows the remaining unassisted-design evidence gaps (2026-09-20)
+
+**Decision.** After the owner's review/merge/next-run instruction, ot7 is
+merged with `fa75c531`. The operator selects a conservative ot8 follow-up:
+measure the arm's catalog identity, the biped's actual accepted-artifact
+smoke, and the cause of the balancer's failed holding smoke. The new charter
+freezes bounded experiments before dispatch and preserves every ot7 result.
+The owner was offered alternate scopes; this is the stated default, not an
+assertion that the owner separately approved each experimental detail.
+
+**Scope.** Opus-only roles/product calls, no fallback, no actor design edits,
+no training or dashboard changes, 48 hours maximum and two accepted done
+verdicts. A missing feedback controller may be a measured out-of-scope
+requirement; it is not permission to stabilize the robot with extra supports
+or weaken the smoke. Existing projects are read-only; new experiments get
+new `ot8-*` identities. Capacity waits produce no repeated bookkeeping.
+
+**Why.** ot7 completed its bounded experiment with real fit improvements and
+two missed design bars. Reusing its exhausted slots would obscure that
+result. A fresh run can make the remaining evidence explicit without
+quietly authorizing the parked training or printability work.

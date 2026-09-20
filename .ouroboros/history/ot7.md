@@ -6,11 +6,11 @@ ended: 2026-09-20T03:03:15+00:00
 hours: 9.6
 state: stopped
 iterations: 172
-commits: 220
+commits: 222
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 10
-merged: no
+merged: fa75c5318eb226da0e297dd9341a59e58ef8b669
 branch: ouroboros/ot7
 memory: hypergraph
 actor: claude:claude-opus-5
@@ -18,14 +18,14 @@ actor: claude:claude-opus-5
 
 # Run ot7
 
-172 iterations in 9.6h on `sb1x`, stopped (critic accepted done 2x in a row). Branch `ouroboros/ot7`, not merged.
+172 iterations in 9.6h on `sb1x`, stopped (critic accepted done 2x in a row). Branch `ouroboros/ot7`, merged as `fa75c531`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 172 (changed 134, recorded 92) |
-| commits | 220 — 265 files changed, 41169 insertions(+), 236 deletions(-) |
+| commits | 222 — 268 files changed, 41411 insertions(+), 241 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 10 checked at the tip |
 | reverts | 0 |
 | verdicts | answer 5, continue 110, done_accepted 2, looping 8, reject 9, stuck 38 |
@@ -35,6 +35,8 @@ actor: claude:claude-opus-5
 
 ## What landed
 
+- Record ot7 merge review and final verification
+- Preserve accepted artifacts across restore comparisons (ADR-398)
 - ot7's closing report: one row per design, and a test that holds it (ADR-397)
 - The geometry fallback stops reading derived artifact bytes (ADR-396)
 - Smoke the model the fixed engine exports, without spending a slot (ADR-395)
@@ -58,9 +60,7 @@ actor: claude:claude-opus-5
 - Continue ot7 on Opus with explicit resume model history (ADR-384)
 - F6: Robin's create dispatched on Fable — b interrupted at launch, c completed with 0 of 276 failing
 - Resume ot7 remaining experiments on Fable (ADR-383)
-- Absent provenance is unknown, not printed (ADR-382)
-- A modified purchase says what it was cut from (ADR-381)
-- ... and 82 more
+- ... and 84 more
 
 ## Decisions the critic made
 

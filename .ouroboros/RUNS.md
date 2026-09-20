@@ -10,6 +10,6 @@ Every Ouroboros run against this repo. Generated from `.ouroboros/history/*.md` 
 | [ot4](history/ot4.md) | 2026-09-08 | sb1x | 56 | 146 | 0 of 13 | 18.6 | `f80b607f` |
 | [ot5](history/ot5.md) | 2026-09-12 | sb1x | 111 | 137 | 0 of 11 | 19.4 | `33d499b8` |
 | [ot6](history/ot6.md) | 2026-09-13 | sb1x | 32 | 47 | 0 of 10 | 8.3 | `cab6d341` |
-| [ot7](history/ot7.md) | 2026-09-19 | sb1x | 172 | 220 | 0 of 10 | 9.6 | no |
+| [ot7](history/ot7.md) | 2026-09-19 | sb1x | 172 | 222 | 0 of 10 | 9.6 | `fa75c531` |
 
-Written 2026-09-20T14:29.
+Written 2026-09-20T14:44.
