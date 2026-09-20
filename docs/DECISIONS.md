@@ -26805,3 +26805,55 @@ inverted. Retained artifacts keep the pose they were exported with: an
 accepted revision's stored MJCF is not rebuilt, so `ot7-plover-e`'s own smoke
 still reads the old file and still fails its agreement gate until that design
 is built again. F9's regression pass states this.
+
+## ADR-394 — ADR-393's reach is measured, not argued (2026-09-20)
+
+**Context.** ADR-393 changed how every joint's connector frames are read, and
+three retained ot6 designs — Finch, Robin and Heron — are read back through
+that engine whenever F9's regression opens them. ADR-393 states its own
+historical reach in prose: only assemblies with a weld written
+unconnected-first, and only through frames. Prose is a claim. F9's bar is that
+every difference from the ot6 probes is *explained*, and "no difference"
+is the one answer that is worthless unless it was looked for.
+
+The obstacle is that nothing in the fit surface can see this defect. Static
+clearance, the sweep and the inventory all read component placements, which the
+swap never touched; `ot7-plover-e` reported zero failing fit checks on a model
+with 24 bodies at the inverse of their pose. The only surface that shows it is
+the exported body tree composed down to world.
+
+**Decision.** `docs/probes/ot7/runner/mjcf_agreement.py` is that composition as
+a standalone probe: it reads an exported `*-model.xml` and the
+`component_placements` of the `result.json` beside it, and reports per body the
+world-position error in millimetres and the world-orientation error in degrees,
+with a verdict at 1e-4 mm and 1e-4°. It measures a retained artifact and never
+rebuilds or re-accepts anything, so it can be pointed at an accepted revision's
+stored model without touching the design — which the ot7 charter's
+no-actor-design-edits rule requires. It is a probe under `docs/probes`, not
+engine or CLI surface: no op, no protocol change, nothing staged into a payload.
+
+**Consequences.** Measured on all four retained attempts of each of the three
+designs — the ot6-era export, the two the ot7 restore audit produced, and a
+rebuild under the fixed engine — **every body agrees exactly**: 0 of 29, 0 of
+24 and 0 of 15 disagreeing, at 0.0 mm and 0.0°, and each design's MJCF is
+byte-identical across all four attempts. ADR-393 changed nothing these three
+export. The reason is visible in their scripts and now stated with its
+measurement: Finch's `purchase()`, Robin's `fix_{name}` and Heron's `weld()`
+all pass the carrying component's connector first, so FreeCAD never swapped
+their 24, 21 and 12 fixed joints.
+
+The control matters as much as the result: the same probe on `ot7-plover-e`'s
+pre-fix model reports 24 of 29 disagreeing, worst `c_tabscrew_knee_l_0` at
+121.86102740417053 mm and 179.99999879258172° — iteration 167's number,
+recomputed by an independent route. A tool that returns zero on three designs
+is evidence only once it has been shown returning the right nonzero.
+`cli/tests/test_mjcf_agreement.py` pins the probe's arithmetic against four
+hand-written fixtures whose answers are stated in the file before they run.
+
+The same pass re-read each `ot7-open-*` copy twice in a fresh process, once
+from published measurements and once through `open_project`'s full restore,
+which re-runs the accepted script and so exercises ADR-393's new refusal path:
+406/44, 276/39 and 105/20, pair-for-pair identical between the two reads, with
+accepted revisions preserved and no joint refused at
+`stage: native_connector_frames`. `docs/probes/ot7/REGRESSION.md` carries both
+tables and `docs/probes/ot7/retained/adr393-reach.json` is the receipt.

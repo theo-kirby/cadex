@@ -937,3 +937,31 @@ bodies with a revolute joint, and the 24 are the fixed attachments.
 That is a repository defect, not a design defect, so it is not something a
 frozen continuation can ask the agent to fix. The receipt is
 [`retained/plover-smoke-e.json`](../retained/plover-smoke-e.json).
+
+## Does the model agree with its own solve? (iteration 169, ADR-394)
+
+`mjcf_agreement.py` beside `run.py` is a second, smaller probe, and it
+dispatches nothing at all:
+
+```bash
+pixi run python docs/probes/ot7/runner/mjcf_agreement.py MODEL.xml RESULT.json
+```
+
+It composes an exported `*-model.xml`'s body tree down to world and holds each
+body against the `component_placements` the same solve published in the
+`result.json` beside it, reporting the position error in millimetres and the
+orientation error in degrees, with a verdict at 1e-4 of each. Exit 0 when every
+body agrees; exit 1 otherwise, naming the worst.
+
+It exists because ADR-393's defect is invisible in the fit surface: static
+clearance, the sweep and the inventory all read component placements, which the
+swapped connector frame never touched. It reads retained artifacts only — it
+never rebuilds a project, never re-accepts one, and so may be pointed at an
+`ot7-*` design's stored model without breaching the charter's
+no-actor-design-edits rule. `cli/tests/test_mjcf_agreement.py` pins its
+arithmetic on hand-written fixtures.
+
+What it measured for F9 is in
+[`../REGRESSION.md`](../REGRESSION.md#adr-393s-historical-reach-on-the-three-retained-designs--none):
+every body of Finch, Robin and Heron agrees exactly, in all four retained
+attempts each, and `ot7-plover-e`'s pre-fix model is the nonzero control.

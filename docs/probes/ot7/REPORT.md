@@ -2038,3 +2038,51 @@ smoke read the same file and failed the same agreement gate. A freshly built
 plover writes `71b8b39c…`, which passes the comparison. Closing the smoke needs
 the design built again under a turn that re-accepts it — a design slot — so
 `continue-2` and `continue-3` remain unspent and the decision stays open.
+
+## Iteration 169: the window shut, and F9 re-measured under the fixed engine (ADR-394)
+
+**No design turn was dispatched.** A window probe on `claude-opus-5` read the
+five-hour window at **70 %** against the runner's 45 % gate — `room: false`,
+resetting 2026-09-20T02:10Z — and the charter's rule is that design turns wait
+for the product agent. F7 keeps `continue-2` and `continue-3` unspent, its
+receipt stays `paused`, and its smoke stays unproven for the reason iteration
+168 recorded: closing it needs the design built again under a turn that
+re-accepts it.
+
+So the unit was F9's other half, and the question ADR-393 left it: does an
+engine that now reads every joint's connector frames differently change
+anything about the three retained ot6 designs?
+
+**It changes nothing, and that was measured rather than argued.** ADR-393's
+defect fires only on a weld written hardware-first, and all three scripts write
+theirs host-first — Finch's `purchase()`, Robin's `fix_{name}`, Heron's
+`weld()` — so none of their 24, 21 and 12 fixed joints was ever swapped. The
+new probe [`runner/mjcf_agreement.py`](runner/mjcf_agreement.py) composes an
+exported body tree down to world and holds it against the placements the same
+solve published:
+
+| Design | Bodies | Attempts measured | Disagreeing | Worst error | Distinct model digests |
+|---|---:|---:|---:|---:|---:|
+| Finch | 29 | 4 | 0 | 0.0 mm, 0.0° | 1 |
+| Robin | 24 | 4 | 0 | 0.0 mm, 0.0° | 1 |
+| Heron | 15 | 4 | 0 | 0.0 mm, 0.0° | 1 |
+
+The four per design are the ot6-era export, the two from the ot7 restore audit,
+and a rebuild taken under the fixed engine; each design's MJCF is byte-identical
+across all four. The nonzero control is `ot7-plover-e`'s pre-fix model at
+**24 of 29 disagreeing, worst 121.86102740417053 mm** — iteration 167's figure
+recomputed by an independent route.
+
+Each `ot7-open-*` copy was then read twice in a fresh process, once from the
+published measurements and once through `open_project`'s full restore, which
+re-runs the accepted script and exercises ADR-393's new refusal path:
+**406/44, 276/39 and 105/20**, pair-for-pair identical between the two reads,
+accepted revisions preserved, and no joint refused at
+`stage: native_connector_frames`. Tables and caveats in
+[REGRESSION.md](REGRESSION.md#adr-393s-historical-reach-on-the-three-retained-designs--none);
+receipt [`retained/adr393-reach.json`](retained/adr393-reach.json); the probe's
+own arithmetic pinned by
+[`cli/tests/test_mjcf_agreement.py`](../../../cli/tests/test_mjcf_agreement.py).
+
+This claims no swept verdict and no smoke pass for these three revisions: they
+still publish no sweep, and F9 never required these old designs to fit.

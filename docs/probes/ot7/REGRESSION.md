@@ -1,6 +1,6 @@
 # ot7 regression receipt — F9
 
-Verified against source: 2026-09-16. [Cadex-new]
+Verified against source: 2026-09-20. [Cadex-new]
 
 **F9 has its required evidence:** both suites are green, the relevant packaged
 gate is green, all three retained ot6 designs restore and reopen with accepted
@@ -10,18 +10,19 @@ to write it. The human owns the charter checkbox.
 
 | Gate | Existing result | Evidence, including log paths and SHA-256 digests |
 |---|---|---|
-| Engine: `pixi run test-engine` | 2,142 passed, 53 skipped; 315.52 s | [Threshold-fix record](../../../.hypergraph/graph/record/hidden-lodge-4550.md) |
-| Build and stage: `pixi run build-engine`, `pixi run stage-engine` | Both exited 0; staged worker hash equals source | [Same build record](../../../.hypergraph/graph/record/hidden-lodge-4550.md) |
-| Latest CLI: `pixi run python -m pytest cli/tests` | 693 passed, 1 skipped; 530.97 s | [Runner validation record](../../../.hypergraph/graph/record/peaceful-hill-3013.md) |
-| Latest packaged lifecycle gate | 18 passed; 11.52 s | [Restore receipt](retained/restore-open.json), [restore record](../../../.hypergraph/graph/record/still-raven-7629.md) |
+| Engine: `pixi run test-engine` | **2,195 passed, 53 skipped** (iteration 168, under ADR-393) | [Connector-sides record](../../../.hypergraph/graph/record/glad-chart-3979.md) |
+| Build and stage: `pixi run build-engine`, `pixi run stage-engine` | Both exited 0 (iteration 168) | [Same record](../../../.hypergraph/graph/record/glad-chart-3979.md) |
+| CLI: `pixi run python -m pytest cli/tests` | **849 passed, 1 skipped; 554.00 s** (iteration 169, this pass) | This receipt's [ADR-393 reach section](#adr-393s-historical-reach-on-the-three-retained-designs--none) |
+| Packaged lifecycle gate | **23 passed** (iteration 168, under ADR-393) | [Connector-sides record](../../../.hypergraph/graph/record/glad-chart-3979.md) |
+| Earlier checkpoint, superseded | engine 2,142 / 53, CLI 693 / 1, gate 18 passed | [Threshold-fix record](../../../.hypergraph/graph/record/hidden-lodge-4550.md), [runner validation](../../../.hypergraph/graph/record/peaceful-hill-3013.md), [restore receipt](retained/restore-open.json) |
 
 The packaged command was `CADEX_ENGINE_ROOT=<payload> pixi run python -m pytest
 src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`. The payload was
 `build/engine/cadex-engine-0.0.0-linux-x64`; its 56 top-level Python modules
-matched source during the restore audit. Later units added tests, documentation
-and the experiment runner, without changing the engine or payload. The engine
-and packaged results above are carried evidence, not newly run checks. Skips
-remain skips; this receipt does not claim those cases ran.
+matched source during the restore audit. The engine and packaged rows are
+iteration 168's runs against the ADR-393 code these measurements exercise, not
+re-run here; the CLI row is this pass's own run. Skips remain skips; this
+receipt does not claim those cases ran.
 
 | Retained design | Accepted revision prefix | Restore / reopen seconds | Pairs per open | Changed published / rebuilt pairs | Static failures |
 |---|---|---:|---:|---:|---:|
@@ -51,6 +52,76 @@ The remaining static failures are expected under the new checker:
   `comp_upper_arm` / `comp_bearing_shoulder` at 0.09999999999999952 mm and
   `comp_forearm` / `comp_bearing_elbow` at 0.09999999999999039 mm, both with zero
   common volume, using the absolute 1e-9 mm minimum-comparison allowance.
+
+## ADR-393's historical reach on the three retained designs — none
+
+ADR-393 fixed an engine defect that put a welded body at the **exact inverse**
+of its parent-relative transform in the exported MJCF. It fires only on a weld
+the script writes **hardware-first** — `joint("fixed", connector(part, ...),
+connector(host, ...))` — because that is the order FreeCAD's
+`ensureUnconnectedIsSecondRef` swaps. A defect in an engine that these three
+accepted revisions are read back through has to be measured against them, not
+argued about, so F9 owes this row.
+
+**All three write their welds host-first, and all three are untouched.** Finch's
+`purchase()` helper passes `connector(host, "origin")` first; Robin's
+`fix_{name}` joints pass `chassis_conn()` first; Heron's `weld(hw, carrier, …)`
+puts `connector(carrier, "origin")` first inside the joint despite naming the
+hardware first in its own signature. So FreeCAD never swapped any of their 24,
+21 and 12 fixed joints (of 28, 23 and 14 joints, the remainder being the four,
+two and two revolutes), and the pre-fix worker read the right frame at the
+right index by luck of the calling order.
+
+Measured rather than read off the source, with
+[`mjcf_agreement.py`](runner/mjcf_agreement.py) — the exported body tree
+composed down to world and held against the `component_placements` the same
+solve published, at 1e-4 mm and 1e-4°:
+
+| Design | Bodies | Retained attempts measured | Disagreeing bodies | Worst error | Distinct model digests |
+|---|---:|---:|---:|---:|---:|
+| Finch | 29 | 4 | 0 | 0.0 mm, 0.0° | 1 (`4514e2fb…`) |
+| Robin | 24 | 4 | 0 | 0.0 mm, 0.0° | 1 (`43660a9e…`) |
+| Heron | 15 | 4 | 0 | 0.0 mm, 0.0° | 1 (`cc991b94…`) |
+
+The four attempts per design are the ot6-era export, the two the ot7 restore
+audit produced, and the rebuild taken for this section under the ADR-393
+engine. **Each design's MJCF is byte-identical across all four**, so the fix
+changed nothing these designs export, and the agreement holds exactly rather
+than within tolerance.
+
+The control is the design that found the defect: the same tool on
+`ot7-plover-e`'s pre-fix model reports **24 of 29 bodies disagreeing, worst
+`c_tabscrew_knee_l_0` at 121.86102740417053 mm and 179.99999879258172°** — the
+number iteration 167 measured by other means, recomputed. A tool that returns
+zero on three designs must be shown returning the right nonzero somewhere.
+
+The probe's own arithmetic is pinned by
+[`cli/tests/test_mjcf_agreement.py`](../../../cli/tests/test_mjcf_agreement.py):
+four hand-written fixtures whose answers are stated in the file before they are
+run — a matching body tree, the inverted-frame shape at its exact 28.284 mm and
+180°, a body whose placement is missing (never a pass), and the tolerance
+deciding a borderline body.
+
+**The fit half, re-measured under the fixed engine.** Each `ot7-open-*` copy was
+read twice in a fresh process: once from the published measurements, once
+through `open_project`'s full restore pass, which re-runs the accepted script
+and so exercises ADR-393's new refusal path.
+
+| Design | Accepted revision | Pairs | Failing, published | Failing, after restore | Failing sets identical | Published read / restore |
+|---|---|---:|---:|---:|---|---:|
+| Finch | `b6862234` | 406 | 44 | 44 | yes | 0.149 s / 7.209 s |
+| Robin | `8d727e18` | 276 | 39 | 39 | yes | 0.091 s / 5.341 s |
+| Heron | `0c8c64c9` | 105 | 20 | 20 | yes | 0.070 s / 2.384 s |
+
+Same counts as the table above, same accepted revisions, and pair-for-pair the
+same failing sets between the published read and the rebuilt one. No joint was
+refused at `stage: native_connector_frames`. The receipt is
+[`retained/adr393-reach.json`](retained/adr393-reach.json).
+
+**What this does not claim.** It is not a swept verdict and not a smoke result:
+these revisions still publish no sweep, exactly as the sections above say. It
+measures agreement between a model and its own solve, which is what ADR-393
+broke — not whether these designs fit, which the 44/39/20 rows already answer.
 
 The checker reports every overlap. It has exactly one implicit exception,
 added after these numbers were taken: a pair welded by an **unsuppressed fixed
