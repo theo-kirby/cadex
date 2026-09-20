@@ -26744,3 +26744,64 @@ placement. Robin and Heron write no rotated body, so this is the first design
 to reach it. It is a repository defect, not a design defect, and no frozen
 prompt was spent on it. Evidence:
 `docs/probes/ot7/retained/plover-smoke-e.json`.
+
+## ADR-393 — A connector frame belongs to the component FreeCAD left it on (2026-09-19)
+
+**Context.** ADR-392's interim smoke on `ot7-plover-e` failed its frame-0
+agreement gate, and the addendum blamed `CadexDynamics.py`'s derivation of a
+non-root body's frame, `parent_local_matrix × inverse(child_local_matrix)`.
+That reading is wrong, and a fixture built forwards says so: given connector
+frames labelled with the components they belong to, that expression is exactly
+the parent-relative transform the solved assembly holds, for a weld and for a
+hinge alike. It is the **labelling** that was wrong.
+
+`JointObject.setJointConnectors` calls `ensureUnconnectedIsSecondRef`
+(upstream FreeCAD issue 29355), which swaps `Reference1`/`Reference2`
+*together with* `Placement1`/`Placement2`, `Offset1`/`Offset2` and
+`Detach1`/`Detach2` whenever the first reference's part is the unconnected one
+and the second's is connected. `cadex_assembly_worker._build_joint` then read
+`Placement{i}` at the **script's** own connector index while naming the
+component from the script's own connector list, so after a swap each component
+was handed the other one's connector frame. Every consumer of those frames
+inherited it: the dynamics tree, the MJCF export, the swept-clearance sweep and
+the published `global_frame`.
+
+The shape that triggers it is the ordinary one. A script that fixes a bought
+part to the printed part carrying it writes
+`assembly.joint("fixed", connector(part, "origin"), connector(host, ...))` —
+the unconnected part first — and FreeCAD swaps. `ot7-plover-e` does it 24
+times, and all 24 bodies were exported at the **exact inverse** of their
+parent-relative transform: `c_tabscrew_knee_l_0` 121.9 mm from where the
+solver put it, both hip bearings collapsed onto one point 16.9 mm below the
+pelvis. Nothing refused. The model compiled, carried mass and collision geoms,
+and stood for a second on a floor. The four revolute joints, written host-first,
+were never swapped and were always right — which is why Robin, Heron and every
+fixture in the suite missed this, and why the failure looked like a
+`CadexDynamics` bug rather than a worker one.
+
+**Decision.** `_native_connector_sides` maps each script connector to the
+native slot FreeCAD actually left its frame in, by the component the native
+reference names, and `_build_joint` reads `Reference`/`Placement` through that
+map. A joint whose native references cannot be matched one-to-one against the
+components the script connected is refused with
+`stage: native_connector_frames` rather than published — a swap we cannot
+follow is not a model to simulate.
+
+**Consequences.** `test_dynamics_connector_sides_live.py` carries both orders
+in one assembly and composes the exported body tree down to world against the
+placements the solver produced; both tests fail on the old code. The welded
+tab lands at its host-side connector frame rather than 41.2 mm away, and the
+host-first hinge is unmoved. Rebuilt from the fixed engine, all 29 of
+`ot7-plover-e`'s bodies agree with their solved placements to a tenth of a
+micrometre, against 24 wrong before.
+
+Historically this touched **only assemblies with a weld written
+unconnected-first**, and only through frames: a swapped joint's published
+`local_frame`/`global_frame`, its MJCF body pose, and any swept-clearance row
+that used them. Solved placements, clearance measurements and every static fit
+check read component placements and were never affected — which is why
+`ot7-plover-e` reported zero failing fit checks on a model whose bodies were
+inverted. Retained artifacts keep the pose they were exported with: an
+accepted revision's stored MJCF is not rebuilt, so `ot7-plover-e`'s own smoke
+still reads the old file and still fails its agreement gate until that design
+is built again. F9's regression pass states this.

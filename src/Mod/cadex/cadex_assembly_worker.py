@@ -1708,6 +1708,65 @@ def _native_reference(reference: Any) -> dict[str, Any]:
     }
 
 
+def _native_connector_sides(
+    joint: Any, connectors: Sequence[Mapping[str, Any]], *, output_name: str
+) -> list[int]:
+    """Which native slot on ``joint`` carries each script connector's frame.
+
+    ``setJointConnectors`` calls ``ensureUnconnectedIsSecondRef``
+    (``JointObject.py``, upstream FreeCAD issue 29355), which swaps
+    ``Reference1``/``Reference2`` *together with* ``Placement1``/``Placement2``
+    and ``Offset1``/``Offset2`` whenever the first reference's part is the
+    unconnected one. That is every weld written hardware-first -- the shape
+    ``assembly.connector(part, "origin"), assembly.connector(host, ...)``
+    takes when a script fixes a bought part to the printed part carrying it.
+
+    Reading ``Placement{i}`` at the *script's* connector index after such a
+    swap hands each component the **other** component's connector frame, so
+    the dynamics tree derives that body's parent-relative transform as the
+    exact inverse of the one the solved assembly holds (ADR-393). This maps
+    each script connector to the slot FreeCAD actually left its frame in, by
+    the component the native reference names.
+    """
+
+    native = []
+    for index in (1, 2):
+        reference = getattr(joint, f"Reference{index}", None)
+        obj = reference[0] if isinstance(reference, tuple) and reference else None
+        native.append(str(getattr(obj, "Name", "") or ""))
+    sides: list[int] = []
+    for connector in connectors:
+        name = str(getattr(connector["component"], "Name", "") or "")
+        matched = [index + 1 for index, item in enumerate(native) if item and item == name]
+        if len(matched) != 1:
+            raise AssemblyCandidateError(
+                f"FreeCAD's connector frames for joint output {output_name!r} name "
+                f"components this joint was not given: the script connected "
+                f"{[str(getattr(item['component'], 'Name', '') or '') for item in connectors]} "
+                f"and the solved joint references {native}.",
+                details={
+                    "stage": "native_connector_frames",
+                    "joint_output": output_name,
+                    "script_components": [
+                        str(item["component_output"]) for item in connectors
+                    ],
+                    "native_references": native,
+                },
+            )
+        sides.append(matched[0])
+    if sorted(sides) != [1, 2]:
+        raise AssemblyCandidateError(
+            f"FreeCAD's connector frames for joint output {output_name!r} both "
+            f"resolve to native slot {sides[0]}.",
+            details={
+                "stage": "native_connector_frames",
+                "joint_output": output_name,
+                "native_references": native,
+            },
+        )
+    return sides
+
+
 def _graph_contract(
     raw_result: Mapping[str, Any],
 ) -> tuple[
@@ -6389,9 +6448,14 @@ def validate_and_solve_assembly(
         if hasattr(joint, "Suppressed"):
             joint.Suppressed = bool(properties.get("suppressed"))
         frames = []
-        for connector_index, connector in enumerate(connectors, start=1):
-            native_reference = getattr(joint, f"Reference{connector_index}")
-            local_frame = getattr(joint, f"Placement{connector_index}")
+        native_sides = _native_connector_sides(
+            joint, connectors, output_name=output_name
+        )
+        for connector_index, (connector, native_side) in enumerate(
+            zip(connectors, native_sides), start=1
+        ):
+            native_reference = getattr(joint, f"Reference{native_side}")
+            local_frame = getattr(joint, f"Placement{native_side}")
             try:
                 global_frame = UtilsAssembly.getJcsGlobalPlc(
                     local_frame,
