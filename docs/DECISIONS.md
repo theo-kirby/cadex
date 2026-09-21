@@ -27206,3 +27206,106 @@ prepared, because that preparation is part of what G3 measured.
 **Evidence.** `docs/probes/ot8/retained/g3-plover-rebuild.json` (7,005 bytes)
 carries the chain; the full evidence is project-local under
 `<projects>/ot8-plover/evidence/g3-rebuild/`.
+
+## ADR-402 — G4: the balancer's smoke is a control requirement, measured (2026-09-20)
+
+**Context.** ot7 left F6 with a balancer whose ordinary holding smoke failed
+and no account of why. The ot8 charter's G4 asks for the account, and asks it
+as three measurements rather than an argument: is the failure a geometry or
+export mismatch, a defect in the design, or behaviour the design declares and
+cannot produce without feedback control it does not have? The freeze
+(`docs/probes/ot8/README.md`) makes the answer decide what happens next —
+G4's initial prompt is dispatched **only if** the actor's own no-slot
+diagnosis finds an actionable design defect.
+
+**What was prepared and measured, spending nothing.** `ot8-robin` is a
+mechanical copy of `ot7-robin-c` with `evidence/`, `agent.json` and
+`.cadex-cli.lock` left behind; the collector validated it against
+`baselines.json` and was invoked with `--turns 0`, so it took the seeded
+"before" measurement and dispatched no prompt. Static fit **pass, 378 of 378
+pairs, 0 failing**; sweep **complete on 2 of 2 joints, 0 failing**; inventory
+**28 components, 23 catalogued** (2 `gearmotor/pololu-2367`, 1
+`board/pi-zero-2-w`, 10 `heat_insert/m2-standard`, 8 `bolt/m2x4-socket`, 2
+`bolt/m2x6.5-socket`) with five modelled printable parts and nothing
+uncatalogued that should not be. The ordinary `cadex smoke` **failed**, with
+six lines: four floor penetrations, `support: comp_chassis has turned 102.2°
+away from its accepted pose (limit 30°)`, and `termination: fallen fired at
+0.660 s`.
+
+**Ruled out: a geometry or export mismatch.** The smoke's own exact-BREP check
+**passes** — 378 pairs across 51 sampled MuJoCo poses with its first-frame
+agreement gate satisfied — and `mjcf_agreement.py` puts all **28 bodies** of
+the accepted export within `1.35e-29` mm and `0.0°` of the placements the
+solve published. The model the smoke ran (`933b1ac6…`) is byte-identical to
+the accepted attempt's export.
+
+**Ruled out: a design defect.** Measured from the model's own mass properties
+at the accepted pose: the machine rests on **two** floor contacts 96 mm apart
+— a *line*, so it has no static margin about that axis at any mass
+distribution. Its whole-body centre of mass is **0.365 mm** off that line and
+**52.40 mm** above it; holding the accepted pose costs **0.672 N·mm** against
+the **184.365 N·mm** its own two motors declare about the same axis — a
+**274×** margin, enough to oppose gravity statically out to **89.6°** of tilt.
+Nothing about the mass distribution or the actuator sizing is what the smoke
+reports.
+
+**Confirmed: a missing feedback control.** The unstable eigenvalue about the
+contact line is **11.59 /s**, an **86.3 ms** time constant; replaying the same
+zero-command rollout reproduces the published fall to the receipt's own digits
+(final tilt 102.2339672°, against the receipt's 102.2339671°) with a measured
+exponential growth of **9.53 /s**. Both actuators are commanded **0.0**,
+because `cli/cadex_cli/smoke_runner.py` holds position servos and a torque
+motor has no pose to hold — so the rollout is the free response of an inverted
+pendulum, and the fall is what the model declares.
+
+**The four penetrations are not a fifth finding.** Two are post-fall ground
+impacts at 0.740 s (`comp_board` 7.676 mm, `comp_chassis` 5.312 mm), after the
+machine has already toppled. Two are the standing contact compression under
+the machine's own weight: the wheels are exactly tangent to the floor at
+t = 0, peak at **0.601 mm** at 0.06 s and settle at **0.576 mm** against a
+0.5 mm tolerance. Measured under scaled load it follows the load (0.212 mm at
+¼, 1.645 mm at 4×, every sample taken within 0.35° of the same pose), so it is
+the engine's contact spring — `CadexDynamics.CONTACT_TIMECONST_S = 0.02 s`,
+which the script surface does not expose — compressed, not geometry
+intersecting the floor. The design already sits at the stiffest contact its
+surface allows: restitution 0 maps to a critically damped `solref` dampratio
+of 1.0, the maximum. Repairing it could not change the verdict, which fails on
+support and termination regardless.
+
+**Decision: the experiment ends here, and no slot was spent.** The diagnosis
+reproduces an out-of-scope control requirement rather than an actionable
+design defect, so under the freeze `resolve.prompt.txt` was **not**
+dispatched: `ot8-robin` is paused with all four prompts unspent and its seed
+unchanged. The missing control contract, stated exactly from the design's own
+task bundle: read the **20 channels** already exported as nine sensors
+(chassis quaternion, angular velocity and position, both wheel velocities,
+subtree centre of mass and its velocity, both actuator forces); command
+**two wheel torques at ±92.18 N·mm** at **50 Hz**, which is **4.3 samples per
+e-fold** and **1.26×** of tilt growth per control interval; hold
+`chassis_pos_z ≥ 75.25 mm` — **45.573°** of tilt, since the chassis origin
+stands 107.5 mm above the contact line — and stay inside the smoke's 30°
+support limit, for the declared 8 s episode, from resets that already vary
+tilt to 3° and height by 3–5 mm. The only things that could supply that are a
+trained policy or a hand-authored feedback controller, and this charter
+forbids both. **A no-feedback inverted pendulum that topples is not a failure
+of this experiment and is not a success of the design**; nothing was grounded,
+supported, suppressed, weakened or shortened to make a check pass.
+
+**The tool.** `docs/probes/ot8/runner/balance_diagnosis.py` is that
+measurement, so the result is reproducible rather than asserted: it finds the
+support set from MuJoCo's own contacts with no part names in it, measures the
+lever arm, inertia, holding torque, actuator authority about the topple axis
+and the unstable eigenvalue, replays the zero-command rollout, and sweeps the
+standing contact depth under load. It rebuilds nothing, accepts nothing,
+trains nothing and writes no controller.
+`cli/tests/test_balance_diagnosis.py` pins it against a hand-written fixture
+whose centre of mass, inertia about the contact line, holding torque and
+eigenvalue are arithmetic stated before the tool is run, and exercises both
+sides of its one decision: the same fixture with motors that dwarf the holding
+torque reads `missing_feedback_control`, and with motors inside the margin
+reads `design_defect`.
+
+**Evidence.** `docs/probes/ot8/retained/g4-robin-diagnosis.json` (14,249
+bytes) carries the chain; the full evidence is project-local under
+`<projects>/ot8-robin/evidence/g4-resolve/`. `ot7-robin-c` is untouched:
+script `f805fdc2…`, accepted digest still `b933d905…`.

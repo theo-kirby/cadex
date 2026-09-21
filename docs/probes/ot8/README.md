@@ -150,6 +150,24 @@ pixi run python docs/probes/ot7/runner/run.py smoke "$PROJECTS/ot8-plover"
 pixi run python docs/probes/ot7/runner/run.py window --model claude-opus-5
 ```
 
+G4's no-slot diagnosis is one more command, and it is the reason that
+experiment may end without a prompt. It reads the retained model, the task
+beside it and the smoke receipt that failed, and it measures rather than
+argues: the support set at the accepted pose, the lever arm and holding
+torque against the torque the design's own actuators declare, the unstable
+eigenvalue, a replay of the same zero-command rollout, and the standing
+contact depth under scaled load. It rebuilds nothing, accepts nothing, trains
+nothing and writes no controller.
+
+```bash
+pixi run python docs/probes/ot8/runner/balance_diagnosis.py MODEL.xml \
+  --task TASK.json --smoke smoke.json --out diagnosis.json
+```
+
+`cli/tests/test_balance_diagnosis.py` pins it against a hand-written fixture
+whose centre of mass, inertia, holding torque and eigenvalue are arithmetic
+stated before the tool is run, and exercises both sides of its one decision.
+
 A seeded attempt measures its baseline **before** it sends anything: fit,
 inventory and one bounded smoke, all recorded in the receipt, with the seed
 identity held equal across them. That smoke is evidence and never a gate —

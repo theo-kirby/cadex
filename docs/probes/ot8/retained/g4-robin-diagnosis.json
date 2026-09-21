@@ -1,0 +1,386 @@
+{
+  "schema": "ot8-experiment-evidence-v1",
+  "criterion": "G4",
+  "run": "ot8",
+  "design": "robin",
+  "project": "ot8-robin",
+  "model": "claude-opus-5",
+  "taken_at": "2026-09-21T00:57:00+00:00",
+  "outcome": "diagnosed; no prompt dispatched, no slot spent",
+  "seed": {
+    "baseline": "ot7-robin-c",
+    "prepared": "mechanical copy; evidence/, agent.json and .cadex-cli.lock excluded",
+    "script_sha256": "f805fdc2bd886b5da8b01f3051bd2668497a2e53c8d7f9fba392ed2c3c9d30e8",
+    "accepted_revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+    "accepted_digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c",
+    "validated_against": "docs/probes/ot8/baselines.json",
+    "seed_unchanged_after_measurement": true
+  },
+  "dispatch": {
+    "turns": 0,
+    "slots_spent": 0,
+    "continuations_used": 0,
+    "continuations_unspent": 3,
+    "next_prompt": "resolve.prompt.txt",
+    "status": "paused",
+    "rule": "docs/probes/ot8/README.md: G4's initial prompt is dispatched only if the actor's own no-slot diagnosis finds an actionable design defect. It did not: the diagnosis reproduces an out-of-scope control requirement, so the experiment ends here and spends nothing."
+  },
+  "before": {
+    "note": "the accepted ot7 pin, measured on the copy; no ot8 prompt was ever sent",
+    "measurement_exit_code": 0,
+    "static_fit": {
+      "verdict": "pass",
+      "pairs_checked": 378,
+      "failing_count": 0
+    },
+    "swept_fit": {
+      "verdict": "pass",
+      "coverage": "complete",
+      "joints_complete": 2,
+      "failing_count": 0
+    },
+    "inventory": {
+      "component_count": 28,
+      "catalog_counts": {
+        "board/pi-zero-2-w": 1,
+        "bolt/m2x4-socket": 8,
+        "bolt/m2x6.5-socket": 2,
+        "gearmotor/pololu-2367": 2,
+        "heat_insert/m2-standard": 10
+      },
+      "uncatalogued_sources": [
+        "chassis",
+        "clamp_l",
+        "clamp_r",
+        "wheel_l",
+        "wheel_r"
+      ]
+    },
+    "smoke": {
+      "command": "./cadex smoke --seconds 1 --timeout 240 (collector default; the design declares an 8 s episode and the charter bounds a smoke to five minutes of wall time)",
+      "exit_code": 0,
+      "verdict": "fail",
+      "mode": "hold",
+      "seconds": 1.0,
+      "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+      "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+      "failing": [
+        "penetration: comp_board \u2229 environment/floor 7.676 mm at 0.740 s (tolerance 0.5 mm)",
+        "penetration: comp_chassis \u2229 environment/floor 5.312 mm at 0.740 s (tolerance 0.5 mm)",
+        "penetration: comp_wheel_l \u2229 environment/floor 0.601 mm at 0.060 s (tolerance 0.5 mm)",
+        "penetration: comp_wheel_r \u2229 environment/floor 0.600 mm at 0.060 s (tolerance 0.5 mm)",
+        "support: comp_chassis has turned 102.2\u00b0 away from its accepted pose (limit 30\u00b0)",
+        "termination: fallen fired at 0.660 s (value 66.7328)"
+      ],
+      "checks": {
+        "components": {
+          "pass": true,
+          "initial_pose_agrees": true,
+          "pairs_checked": 378,
+          "samples": 51,
+          "source": "exact BREP solids at sampled MuJoCo poses"
+        },
+        "finite": true,
+        "support": {
+          "pass": false,
+          "kind": "free",
+          "base": "comp_chassis",
+          "tilt_degrees": 102.23396705927162,
+          "max_tilt_degrees": 30.0,
+          "z_start_mm": 107.5,
+          "z_end_mm": 16.113020552458977,
+          "drop_mm": 91.38697944754102,
+          "touching_floor_at_end": true
+        },
+        "termination": {
+          "pass": false,
+          "fired": [
+            {
+              "above": null,
+              "at_s": 0.66,
+              "below": 75.25,
+              "expression": "chassis_pos_z",
+              "label": "fallen",
+              "value": 66.73278932091965
+            }
+          ]
+        },
+        "penetration": {
+          "pass": false,
+          "breaches": 4,
+          "tolerance_mm": 0.5,
+          "worst": [
+            {
+              "depth_mm": 7.67601253239748,
+              "first": "comp_board",
+              "geoms": [
+                "environment/floor",
+                "comp_board/collision0"
+              ],
+              "second": "environment/floor",
+              "time_s": 0.74
+            },
+            {
+              "depth_mm": 5.31204943660628,
+              "first": "comp_chassis",
+              "geoms": [
+                "environment/floor",
+                "comp_chassis/collision9"
+              ],
+              "second": "environment/floor",
+              "time_s": 0.74
+            },
+            {
+              "depth_mm": 0.600736868917498,
+              "first": "comp_wheel_l",
+              "geoms": [
+                "environment/floor",
+                "comp_wheel_l/collision0"
+              ],
+              "second": "environment/floor",
+              "time_s": 0.06
+            },
+            {
+              "depth_mm": 0.600107163057334,
+              "first": "comp_wheel_r",
+              "geoms": [
+                "environment/floor",
+                "comp_wheel_r/collision0"
+              ],
+              "second": "environment/floor",
+              "time_s": 0.06
+            }
+          ]
+        }
+      }
+    }
+  },
+  "diagnosis": {
+    "tool": "docs/probes/ot8/runner/balance_diagnosis.py (pinned by cli/tests/test_balance_diagnosis.py)",
+    "verdict": "missing_feedback_control",
+    "reasons": [
+      "the machine rests on a line of 2 contact points, so it has no static margin about that axis",
+      "its centre of mass is 0.365 mm off that line and 52.40 mm above it: an inverted pendulum with an unstable time constant of 86.3 ms",
+      "the declared actuators have 274.2x the torque needed to hold it and could oppose gravity statically out to 89.6 degrees, so authority is not what is missing",
+      "the smoke commands zero to both, because a torque motor has no pose to hold, so the rollout is the free response and the fall is what the model declares"
+    ],
+    "geometry_and_export": {
+      "ruled_out": true,
+      "smoke_components_check": {
+        "pass": true,
+        "initial_pose_agrees": true,
+        "pairs_checked": 378,
+        "samples": 51
+      },
+      "mjcf_agreement": {
+        "tool": "docs/probes/ot7/runner/mjcf_agreement.py",
+        "bodies": 28,
+        "disagreeing": 0,
+        "agrees": true,
+        "worst_position_error_mm": 1.354203396113116e-29,
+        "worst_orientation_error_degrees": 0.0
+      },
+      "smoked_model_is_the_accepted_export": true,
+      "accepted_export_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614"
+    },
+    "design_defect": {
+      "ruled_out": true,
+      "support_kind": "line",
+      "distinct_contact_points": 2,
+      "wheelbase_mm": 96.0,
+      "mass_kg": 0.18792635200000005,
+      "lever_arm_mm": 0.3646761702263021,
+      "height_above_support_mm": 52.39964209326001,
+      "inertia_about_support_kg_m2": 0.0007186662969309492,
+      "holding_torque_nmm": 0.6723014934765275,
+      "declared_torque_nmm": 184.365,
+      "torque_margin": 274.22964516504805,
+      "static_tilt_authority_degrees": 89.60125551857178,
+      "note": "the declared motors are 274x the torque that holding the accepted pose costs and could oppose gravity statically out to 89.6 degrees, so nothing about the mass distribution or the actuator sizing is what the smoke reports."
+    },
+    "missing_feedback_control": {
+      "confirmed": true,
+      "unstable_eigenvalue_per_s": 11.593881749197593,
+      "time_constant_ms": 86.25238911628622,
+      "replicated_growth_rate_per_s": 9.526546968636278,
+      "replicated_final_tilt_degrees": 102.23396723861195,
+      "published_final_tilt_degrees": 102.23396705927162,
+      "commanded": [
+        {
+          "actuator": "joint_wheel_l_axle/motor",
+          "kind": "other",
+          "ctrl": 0.0
+        },
+        {
+          "actuator": "joint_wheel_r_axle/motor",
+          "kind": "other",
+          "ctrl": 0.0
+        }
+      ],
+      "note": "the smoke commands zero to both actuators because a torque motor has no pose to hold (cli/cadex_cli/smoke_runner.py holds position servos only), so the rollout is the free response of an inverted pendulum and the replication reproduces the published fall to the receipt's own digits."
+    },
+    "floor_penetration": {
+      "classification": "two post-fall ground impacts and two standing contact compressions; neither is a geometric intersection",
+      "post_fall": [
+        "comp_board 7.676 mm at 0.740 s",
+        "comp_chassis 5.312 mm at 0.740 s"
+      ],
+      "standing": {
+        "peak_mm": 0.600736868917498,
+        "peak_at_s": 0.06,
+        "settled_mm": 0.576268487968698,
+        "tolerance_mm": 0.5,
+        "wheels_tangent_at_t0": true
+      },
+      "load_sweep": {
+        "settled_after_s": 0.3,
+        "loads": [
+          {
+            "load_scale": 0.25,
+            "standing_depth_mm": 0.21218112033191683,
+            "tilt_degrees": 3.5616305513613837
+          },
+          {
+            "load_scale": 0.5,
+            "standing_depth_mm": 0.37666889963972744,
+            "tilt_degrees": 3.5954183189087834
+          },
+          {
+            "load_scale": 1.0,
+            "standing_depth_mm": 0.576268487968698,
+            "tilt_degrees": 3.644445432358032
+          },
+          {
+            "load_scale": 2.0,
+            "standing_depth_mm": 0.8566607933159498,
+            "tilt_degrees": 3.722943922288362
+          },
+          {
+            "load_scale": 4.0,
+            "standing_depth_mm": 1.6446107207937974,
+            "tilt_degrees": 3.912231742507228
+          }
+        ]
+      },
+      "note": "the depth follows the load, so it is the engine contact spring (CadexDynamics.CONTACT_TIMECONST_S = 0.02 s, not script-declarable) compressed under the machine's own weight rather than geometry intersecting the floor. The design already sits at the stiffest contact its surface allows: restitution 0 maps to a critically damped solref dampratio of 1.0, the maximum. Repairing it could not change the smoke verdict, which fails on support and termination regardless."
+    }
+  },
+  "missing_control_contract": {
+    "why_it_is_required": "a wheeled inverted pendulum resting on a two-point line has no static margin about that line at any mass distribution; holding it upright is a closed loop, not a shape.",
+    "reads": [
+      "chassis_orient_qw",
+      "chassis_orient_qx",
+      "chassis_orient_qy",
+      "chassis_orient_qz",
+      "chassis_angvel_x",
+      "chassis_angvel_y",
+      "chassis_angvel_z",
+      "chassis_pos_x",
+      "chassis_pos_y",
+      "chassis_pos_z",
+      "wheel_l_vel",
+      "wheel_r_vel",
+      "com_x",
+      "com_y",
+      "com_z",
+      "com_vel_x",
+      "com_vel_y",
+      "com_vel_z",
+      "wheel_l_torque",
+      "wheel_r_torque"
+    ],
+    "sensors": "already exported: nine sensors, twenty channels, adr 0-19",
+    "commands": [
+      {
+        "actuator": "joint_wheel_l_axle/motor",
+        "low": -92.18251,
+        "high": 92.18251,
+        "unit": "nmm"
+      },
+      {
+        "actuator": "joint_wheel_r_axle/motor",
+        "low": -92.18251,
+        "high": 92.18251,
+        "unit": "nmm"
+      }
+    ],
+    "at_hz": 50,
+    "control_interval_s": 0.02,
+    "samples_per_e_fold": 4.312619455814311,
+    "tilt_growth_per_control_interval": 1.2609654213335848,
+    "must_hold": [
+      {
+        "above": null,
+        "below": 75.25,
+        "expression": "chassis_pos_z",
+        "label": "fallen"
+      }
+    ],
+    "fallen_rule_in_degrees": 45.573,
+    "smoke_support_limit_degrees": 30.0,
+    "for_seconds": {
+      "smoke": 1.0,
+      "declared_episode": 8.0
+    },
+    "from_these_resets": [
+      {
+        "angular_velocity_high_rad_s": 0.0,
+        "angular_velocity_low_rad_s": 0.0,
+        "body": "comp_chassis",
+        "body_id": 1,
+        "clearance_mm": -0.0,
+        "height_high_m": 0.005,
+        "height_low_m": 0.003,
+        "label": "reset_variation",
+        "linear_velocity_high_m_s": 0.0,
+        "linear_velocity_low_m_s": 0.0,
+        "qpos_adr": 0,
+        "qvel_adr": 0,
+        "tilt_high_rad": 0.05235987755982989,
+        "tilt_low_rad": 0.0
+      }
+    ],
+    "authority_available_nmm": 184.365,
+    "authority_required_to_hold_nmm": 0.6723014934765275,
+    "out_of_scope_because": "the only things that could supply it are a trained policy or a hand-authored feedback controller, and the ot8 charter forbids both. The experiment stops here rather than grounding the machine, adding a support, weakening the 0.5 mm tolerance or the 30 degree support limit, or shortening the declared rollout.",
+    "fallen_rule_derivation": "the chassis origin stands 107.5 mm above the contact line, so a tilt of theta about it puts the origin at 107.5*cos(theta); the design's own rule fires at 75.25 mm."
+  },
+  "baseline_untouched": {
+    "project": "ot7-robin-c",
+    "script_sha256": "f805fdc2bd886b5da8b01f3051bd2668497a2e53c8d7f9fba392ed2c3c9d30e8",
+    "accepted_digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c"
+  },
+  "evidence_root": "<projects>/ot8-robin/evidence/g4-resolve",
+  "artifacts": [
+    {
+      "path": "attempt.json",
+      "sha256": "1783d31656573abacef7c9a9122ef3126405ff446902b1ccf121be704a88d0fb",
+      "bytes": 24164
+    },
+    {
+      "path": "before/fit.json",
+      "sha256": "5eacc6f470fc635e7b081809fad70270fe35d4904131162563e107f52f31a768",
+      "bytes": 2714
+    },
+    {
+      "path": "before/inventory.json",
+      "sha256": "5a95bcc81d91c158659ec984c669c67dbc05ebbbc556d5ce26e2525e56f9d1ee",
+      "bytes": 34893
+    },
+    {
+      "path": "smoke-before/smoke.json",
+      "sha256": "ca41916ffa4ecb7f9ec0859e04a9de623db9cfba57eda23d38bad0058e4ac549",
+      "bytes": 65121
+    },
+    {
+      "path": "balance-diagnosis.json",
+      "sha256": "efdaaa5eb2059427488b3c62642e5d04c47755d8146eb6a9b895617c9bf6a9ad",
+      "bytes": 12794
+    },
+    {
+      "path": "mjcf-agreement.json",
+      "sha256": "70992d5f5dcc9fab7820448d75eae41034837e0f137dac0ffc7be74d3e46c2d0",
+      "bytes": 385
+    }
+  ]
+}
