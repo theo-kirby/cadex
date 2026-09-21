@@ -168,6 +168,23 @@ pixi run python docs/probes/ot8/runner/balance_diagnosis.py MODEL.xml \
 whose centre of mass, inertia, holding torque and eigenvalue are arithmetic
 stated before the tool is run, and exercises both sides of its one decision.
 
+G5's regression floor is one more probe that spends no slot, and it never
+touches a source project: for every design this run used it copies the
+accepted script, metadata and accepted attempt into a fresh `ot8-open-*`
+project, restores it, reopens it in a second process, and compares the
+identity fields, the accepted artifacts and every clearance pair against what
+the receipts published. Each source is hashed before and after, and the probe
+fails if one moved. It lives project-local at
+`<projects>/ot8-retained-open/evidence/restore.py`, the way ot7's did
+(`ot7-retained-open/evidence/restore.py`, ADR-394), with one deliberate
+difference: where ot7 asserted a restore agreed, ot8 records the reply, so a
+refusal would be reported rather than crash the probe.
+
+```bash
+PYTHONPATH=cli pixi run python \
+  "$PROJECTS/ot8-retained-open/evidence/restore.py" "$PROJECTS"
+```
+
 A seeded attempt measures its baseline **before** it sends anything: fit,
 inventory and one bounded smoke, all recorded in the receipt, with the seed
 identity held equal across them. That smoke is evidence and never a gate —
