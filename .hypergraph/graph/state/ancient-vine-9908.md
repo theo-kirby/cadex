@@ -29,6 +29,10 @@ Standing rules carry from ot7: committed receipts at most 16 KB and images 200 K
 
 The six done criteria G1-G6 are child state nodes: G1 `wise-aspen-8848`, G2 `tender-bay-4302`, G3 `empty-arrow-8425`, G4 `scarlet-hill-8037`, G5 `lucid-flame-4255`, G6 `smooth-vine-2389`. A record may say "ticks Gn" when its evidence exists; the human owns the checkbox edit [rec: keen-stone-1720].
 
+**Run progress as of the third reconcile pass.** The contract is frozen and the run has a dispatch path: ADR-400 reuses the ot7 collector under `--run ot8` rather than forking it, so the slot rules ot7's receipts rest on keep one home, and a receipt with no `run` field is still ot7's [rec: honest-ash-4208]. Three of the six criteria now carry measured evidence and are `working`: **G1** frozen with 30 new tests [rec: honest-ash-4208]; **G3** met on the independent copy `ot8-plover`, where one rebuild turn re-accepted unchanged source and the ordinary `cadex smoke` passes against that pin [rec: sunny-quill-9617]; and **G2** met on `ot8-heron-b`, where the byte-identical create prompt reached zero failing static and swept fit with all four purchased parts catalogued and a passing smoke, on the create turn alone [rec: winter-creek-7660]. **G4 is the last experiment with an open measurement**, and it spends a slot only if its no-slot diagnosis finds an actionable design defect; G5 and G6 follow [rec: winter-creek-7660].
+
+Two things the charter's rules have already been made to do rather than merely asserted [rec: winter-creek-7660] [rec: sunny-quill-9617]. A void call really did cost no slot: `ot8-heron` was cut off mid-turn by a five-hour session limit after 51 model messages, was classified void under ADR-355, and its evidence is retained and never reportable as a design outcome in either direction. And the no-actor-edit rule held through both product turns — `actor_design_edits: 0` on G2's create and on G3's rebuild, with `ot7-plover-e` and `ot7-heron-c` read read-only throughout.
+
 *Reconcile judgement*: this umbrella node was **not** declared by any impact — `keen-stone-1720` declared only the six gaps. It is created anyway, under the state root, because ot5 (`crisp-sun-1239`), ot6 (`round-sun-8398`) and ot7 (`mild-ledge-7157`) each hold their criteria under a charter node, and six parentless gaps would leave the charter's constraints — frozen prompts, slot accounting, the no-actor-edit rule, the control/fit distinction — with nowhere to live. Every sentence above is from the charter text carried verbatim in `keen-stone-1720` or from `humble-fox-6370`; nothing is inferred beyond that [rec: keen-stone-1720] [rec: humble-fox-6370].
 
 ## Negative knowledge
@@ -39,3 +43,6 @@ None yet.
 
 - keen-stone-1720 — the ot8 operator directive: the charter (ADR-399) verbatim, the six criteria G1-G6 declared as gaps
 - humble-fox-6370 — ot7 merged as fa75c531 and this charter prepared: Opus-only with no fallback, a 48-hour ceiling, two accepted done verdicts, the model and window checks that passed before launch
+- honest-ash-4208 — ot8's contract frozen before any product turn, and the collector reused under `--run ot8` (ADR-400) rather than forked
+- sunny-quill-9617 — G3 met: the biped's ordinary smoke passes on its own accepted pin
+- winter-creek-7660 — G2 met on the create prompt alone, and the void/no-actor-edit rules exercised for real
