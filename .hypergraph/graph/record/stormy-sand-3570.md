@@ -129,8 +129,9 @@ For the next iteration:
   later reader disagrees, the receipt carries the load sweep to argue from.
 - No new dependency. `mujoco` is already in the pixi environment and is what
   the smoke itself runs on; the new test skips without it.
-- Three unreconciled records now (`honest-ash-4208`, `sunny-quill-9617`,
-  `winter-creek-7660` were folded; this is the first since). The tail is thin.
+- One unreconciled record now: this one. `honest-ash-4208`,
+  `sunny-quill-9617` and `winter-creek-7660` are all at or behind the
+  high-water mark. The tail is thin.
 
 Dispatch closed: 1 unit — G4 diagnosed and closed on a measured out-of-scope
 control requirement, no prompt dispatched, no slot spent, ADR-402.
