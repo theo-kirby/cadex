@@ -27309,3 +27309,55 @@ reads `design_defect`.
 bytes) carries the chain; the full evidence is project-local under
 `<projects>/ot8-robin/evidence/g4-resolve/`. `ot7-robin-c` is untouched:
 script `f805fdc2…`, accepted digest still `b933d905…`.
+
+## ADR-403 — ot8's closing report separates a met bar from a finished experiment (2026-09-20)
+
+**Decision.** `docs/probes/ot8/REPORT.md` is the closing report G6 asks for:
+one row per *experiment* rather than per design, carrying the frozen prompts
+and their digests, the turns that reached the model, the model, continuations
+used, the accepted identity, static fit per turn, final static and swept
+checks, smoke, inventory, actor edits, the remaining defects and the **ot7**
+comparison — plus an explicit slot ledger, every call that was not an attempt,
+the G1–G5 evidence table with each receipt linked by path, and a closing
+section that claims done and names what remains open. It mirrors ADR-397's
+shape deliberately, so the two runs' reports read against each other.
+
+**The one column ot7's table did not have, and why.** ot8's rows open with an
+**Outcome** cell, and it is the point of the report. Two of the three
+experiments met every count of their bars; the third finished and its design
+did not succeed. A table that prints "turns: 0, static: pass, swept: pass"
+for the balancer beside two successes reads as a third success unless the row
+says otherwise, so it says otherwise — `control-blocked — not a design
+success` — and the report states the rule in its own words above the table.
+The charter's words are the test's: never claim the requested design succeeded
+merely because its experiment finished.
+
+**The numbers, taken from the committed receipts rather than restated.** G2:
+one completed turn on `ot8-heron-b` from the create prompt alone, 0 of 105
+failing static, sweep complete on 2 of 2 joints, a passing ordinary smoke, and
+four purchased parts placed as unmodified catalog rows against
+`ot7-heron-c`'s two hand-modelled servos and two hand-modelled horns. G3: one
+completed rebuild turn on `ot8-plover`, unchanged script, accepted digest
+`a00d1aea…` → `9ef44502…`, and a passing ordinary `cadex smoke` on the pin
+with no substituted bundle. G4: **nothing dispatched** — the freeze sends its
+prompt only on an actionable design defect, and the diagnosis found a control
+requirement instead. Three dispatches, two slots spent, one void (ADR-355),
+and **nine of nine continuations unspent**.
+
+**What the report does not claim.** It does not claim the balancer works, or
+that its 0.576 mm standing wheel compression is a fit defect — that depth
+follows the applied load and is the engine's contact spring. It does not
+re-open ot7: its F4–F7 stay exhausted, its receipts stay unedited, and the
+three ot7 projects were read read-only and hashed before and after in G5's
+receipt. It does not tick an owner checkbox.
+
+**Evidence that fails on the old code.** `cli/tests/test_ot8_report.py` is the
+sibling of `test_ot7_report.py`: it pins the six sections, the per-experiment
+table's fifteen columns and their values, the slot ledger's totals, the
+one-row non-attempt list with its receipt resolving, the G1–G5 rows each
+linking evidence, the open-items list and the done claim, plus every relative
+link, anchor, record slug and ADR the report cites — and one assertion that is
+not about shape, that exactly two rows read as a success and the balancer's
+may not. All eleven tests fail with `FileNotFoundError` against the tree at
+commit `a51169cc`, where `docs/probes/ot8/REPORT.md` does not exist. Suite:
+`pixi run python -m pytest cli/tests`.
