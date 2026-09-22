@@ -339,6 +339,29 @@ def test_a_remembered_measurement_belongs_to_one_accepted_digest():
     assert cadexd._remembered_geometry({}, "x") == ""
 
 
+def test_the_store_drops_a_measurement_once_its_accepted_digest_moves_on(tmp_path):
+    from CadexScriptStore import CadexProjectScriptStore
+
+    store = CadexProjectScriptStore(tmp_path)
+    learned = {"accepted_digest": "accepted-one", "geometry_digest": "same-model"}
+    store.write(
+        state_updates={"accepted_digest": "accepted-one", "accepted_geometry": learned}
+    )
+    # Unrelated writes under the same accepted digest keep what was learned.
+    store.write(state_updates={"working_revision": "abc"})
+    assert store.read_state()["accepted_geometry"] == learned
+    # A re-accept moves the digest on. The old measurement can never be read
+    # again, so script.json must stop naming it (ot9 REPORT, remaining defect 3).
+    store.write(state_updates={"accepted_digest": "accepted-two"})
+    assert store.read_state()["accepted_geometry"] is None
+    # A copy carried in from another project heals on its first write.
+    state = json.loads(store.state_path.read_text(encoding="utf-8"))
+    state["accepted_geometry"] = learned
+    store.state_path.write_text(json.dumps(state), encoding="utf-8")
+    store.write(state_updates={"working_revision": "def"})
+    assert store.read_state()["accepted_geometry"] is None
+
+
 def test_a_learned_geometry_digest_outlives_the_attempt_it_came_from(
     tmp_path, monkeypatch
 ):

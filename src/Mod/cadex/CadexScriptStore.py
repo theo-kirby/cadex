@@ -220,6 +220,15 @@ class CadexProjectScriptStore:
             if key not in state or key == "schema":
                 raise ValueError(f"Unknown project script state field {key!r}.")
             state[key] = value
+        # A learned measurement describes one accepted digest. Once the
+        # accepted digest moves on without it, it is only ever ignored
+        # (``_remembered_geometry``), so keeping it would leave script.json
+        # naming a model the project no longer has.
+        remembered = state.get("accepted_geometry")
+        if isinstance(remembered, dict) and str(
+            remembered.get("accepted_digest") or ""
+        ) != str(state.get("accepted_digest") or ""):
+            state["accepted_geometry"] = None
         state["updated_at"] = now_iso()
         atomic_write_json(self.state_path, state)
         return state

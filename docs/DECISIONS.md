@@ -27393,3 +27393,24 @@ training job or a high reward number.
 replaced the proposed Fable 5.1 plus Codex fallback chain with
 `claude-opus-5-5` for every Ouroboros role and product-agent call, with no
 fallback. The experiment bar and stop rules are unchanged.
+
+## ADR-405 — A learned geometry measurement leaves with its accepted digest (2026-09-22)
+
+**Decision.** `CadexProjectScriptStore.write` sets `accepted_geometry` to
+`None` whenever the measurement it holds is keyed on an accepted digest other
+than the one the state now carries. The restore path is unchanged: it writes
+the accepted digest and the learned measurement together, so it keeps what
+it learns.
+
+**Reason.** ADR-389 keyed the measurement on its accepted digest so that a
+re-accept could never be refused by the previous model's geometry, and
+`_remembered_geometry` ignores a mismatched key. But nothing ever removed it,
+so a project that re-accepted — or, as ot9 found, a mechanical copy carrying
+another project's `script.json` — kept naming a model it no longer had
+(`docs/probes/ot9/REPORT.md`, remaining defect 3). The value was dead data
+that read like a pin.
+
+**Consequences.** A stale measurement heals on the project's next store
+write, with no migration. Regression:
+`test_the_store_drops_a_measurement_once_its_accepted_digest_moves_on`,
+which fails on the old store.
