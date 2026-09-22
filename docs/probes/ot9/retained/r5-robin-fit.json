@@ -1,0 +1,524 @@
+{
+ "schema": "ot9-experiment-evidence-v1",
+ "rung": "B4: the final accepted design measured for static fit, complete swept fit of both wheel joints and component inventory, compared with the frozen ot8 baseline; standing contact compression reported apart from intersections",
+ "run": "ot9",
+ "project": "ot9-robin",
+ "taken_at": "2026-09-22",
+ "model": "none: no product turn dispatched; no design, task or reward change",
+ "project_store": {
+  "git_head": "152410c",
+  "git_status": "clean (only .gitignore'd traces and the CLI lock untracked)",
+  "script_json_last_commit": "997ac9e",
+  "interrupted_residue": "the four iteration-6 attempts under script_artifacts/df58d4ff.../ are no longer on disk (removed by the rebuild retention during the r4 seed runs), and script.json's latest_candidate was committed by those seed runs: it now names the accepted attempt 1790104833266-10da85105e8f with status accepted. Nothing was discarded or committed by hand for this unit. script_artifacts/ still holds two attempts of superseded revision 842bd631... (rollout_seed=8), a git-ignored rebuild cache that the accepted revision does not depend on",
+  "accepted_equals_working": true
+ },
+ "final": {
+  "accepted_revision": "ae889a9b81e4c9f442f63f70cefaca06883d2c997bacca459b785166157585f8",
+  "accepted_attempt": "1790104833266-10da85105e8f",
+  "accepted_digest": "078ebe8788fc1a8f0a85420b6b2f0d68c96512a78a242ecf1fd732782319847c",
+  "script_sha256": "82e1b01dfd961782dc48fecba379a173dea7161b34dab874ebaf143bdff80b3c",
+  "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+  "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+  "measurement_command": "pixi run python docs/probes/ot7/runner/run.py --child-measure $PROJECTS/ot9-robin $PROJECTS/ot9-robin/evidence/b4-final",
+  "measurement_source": "inspect scope=clearance and scope=inventory on the accepted revision: engine measurements published with it, not the script's stdout",
+  "evidence_root": "<projects>/ot9-robin/evidence/b4-final",
+  "artifacts": [
+   {
+    "path": "clearance.json",
+    "sha256": "85dc1dc28ccd1ecc836958d70d33d5db951ac9338c51d1894fd9b88d497d419a",
+    "bytes": 397611
+   },
+   {
+    "path": "fit.json",
+    "sha256": "e918672af551857d7dd4f631d62f85f76c9d7b85c4f4fce41de794935ef47998",
+    "bytes": 2714
+   },
+   {
+    "path": "inventory.json",
+    "sha256": "d1190cca055077afb16706a2354570b9091bb43753e64d838598438ea2bbf737",
+    "bytes": 34893
+   },
+   {
+    "path": "contact-compression.json",
+    "sha256": "b025e88151bee2c5aa2ed483af07408baf4a979e8b1c3735cf5b60c811401f88",
+    "bytes": 5373
+   }
+  ],
+  "static_fit": {
+   "verdict": "pass",
+   "pose": "initial solved pose (not swept motion)",
+   "pairs_checked": 378,
+   "counts": {
+    "clear": 378,
+    "intersection": 0,
+    "below clearance": 0,
+    "unknown": 0
+   },
+   "failing_count": 0,
+   "thresholds": {
+    "minimum_clearance_mm": 0.1,
+    "maximum_common_volume_mm3": 1e-06
+   }
+  },
+  "swept_fit": {
+   "verdict": "pass",
+   "coverage": "complete",
+   "joints_checked": 2,
+   "joints_complete": 2,
+   "joints_skipped": 0,
+   "failing_count": 0,
+   "joints": [
+    {
+     "joint": "joint_wheel_l_axle",
+     "kind": "revolute",
+     "status": "complete",
+     "pairs_measured": 378,
+     "pairs_moving": 75,
+     "sample_count": 37,
+     "step": 100.0,
+     "range_degrees": [
+      -1800.0,
+      1800.0
+     ],
+     "minimum_distance_mm": 0.04999999999998494,
+     "maximum_common_volume_mm3": 0.0
+    },
+    {
+     "joint": "joint_wheel_r_axle",
+     "kind": "revolute",
+     "status": "complete",
+     "pairs_measured": 378,
+     "pairs_moving": 75,
+     "sample_count": 37,
+     "step": 100.0,
+     "range_degrees": [
+      -1800.0,
+      1800.0
+     ],
+     "minimum_distance_mm": 0.049999999999981504,
+     "maximum_common_volume_mm3": 0.0
+    }
+   ]
+  },
+  "attachments": {
+   "verdict": "touching",
+   "pairs_checked": 25,
+   "reported_count": 0
+  },
+  "inventory": {
+   "component_count": 28,
+   "catalog_counts": {
+    "board/pi-zero-2-w": 1,
+    "bolt/m2x4-socket": 8,
+    "bolt/m2x6.5-socket": 2,
+    "gearmotor/pololu-2367": 2,
+    "heat_insert/m2-standard": 10
+   },
+   "catalogued_components": 23,
+   "uncatalogued_sources": [
+    "chassis",
+    "clamp_l",
+    "clamp_r",
+    "wheel_l",
+    "wheel_r"
+   ],
+   "derived_catalog_sources": [],
+   "catalog_provenance": [
+    {
+     "catalog": "board/pi-zero-2-w",
+     "count": 1,
+     "manufacturer": "Raspberry Pi",
+     "sources": [
+      "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf"
+     ]
+    },
+    {
+     "catalog": "bolt/m2x4-socket",
+     "count": 8,
+     "standard": "ISO 4762 socket head cap screw",
+     "sources": [
+      "CadexCatalog.SOCKET_HEAD_SCREWS (ISO 4762 dk max, k, s)"
+     ]
+    },
+    {
+     "catalog": "bolt/m2x6.5-socket",
+     "count": 2,
+     "standard": "ISO 4762 socket head cap screw",
+     "sources": [
+      "CadexCatalog.SOCKET_HEAD_SCREWS (ISO 4762 dk max, k, s)"
+     ]
+    },
+    {
+     "catalog": "gearmotor/pololu-2367",
+     "count": 2,
+     "manufacturer": "Pololu",
+     "sources": [
+      "https://www.pololu.com/product/2367/specs",
+      "https://www.pololu.com/file/0J949/micro-metal-gearmotors-dimensions.pdf"
+     ]
+    },
+    {
+     "catalog": "heat_insert/m2-standard",
+     "count": 10,
+     "standard": "brass heat-set insert, Ruthex/CNC Kitchen M2 standard length",
+     "sources": [
+      "CadexCatalog.HEAT_SET_INSERTS (cnckitchen.store and ruthex vendor tables, 2026-08; od_mm is a modelling envelope, not a datasheet figure)"
+     ]
+    }
+   ]
+  }
+ },
+ "baseline": {
+  "project": "ot8-robin",
+  "accepted_revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+  "accepted_digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c",
+  "script_sha256": "f805fdc2bd886b5da8b01f3051bd2668497a2e53c8d7f9fba392ed2c3c9d30e8",
+  "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+  "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+  "evidence_root": "<projects>/ot8-robin/evidence/g4-resolve/before",
+  "read_only": true,
+  "artifacts": [
+   {
+    "path": "clearance.json",
+    "sha256": "7e5a57437abcfb24a1480bc8ffe765aa99ba6d8bb9dd573b4b908ed4d502500d",
+    "g4_receipt_sha256": "not listed in the g4 receipt: taken by the same child_measure call as fit.json and inventory.json, whose hashes the receipt pins"
+   },
+   {
+    "path": "fit.json",
+    "sha256": "5eacc6f470fc635e7b081809fad70270fe35d4904131162563e107f52f31a768",
+    "g4_receipt_sha256": "5eacc6f470fc635e7b081809fad70270fe35d4904131162563e107f52f31a768"
+   },
+   {
+    "path": "inventory.json",
+    "sha256": "5a95bcc81d91c158659ec984c669c67dbc05ebbbc556d5ce26e2525e56f9d1ee",
+    "g4_receipt_sha256": "5a95bcc81d91c158659ec984c669c67dbc05ebbbc556d5ce26e2525e56f9d1ee"
+   }
+  ],
+  "static_fit": {
+   "verdict": "pass",
+   "pose": "initial solved pose (not swept motion)",
+   "pairs_checked": 378,
+   "counts": {
+    "clear": 378,
+    "intersection": 0,
+    "below clearance": 0,
+    "unknown": 0
+   },
+   "failing_count": 0,
+   "thresholds": {
+    "minimum_clearance_mm": 0.1,
+    "maximum_common_volume_mm3": 1e-06
+   }
+  },
+  "swept_fit": {
+   "verdict": "pass",
+   "coverage": "complete",
+   "joints_checked": 2,
+   "joints_complete": 2,
+   "joints_skipped": 0,
+   "failing_count": 0,
+   "joints": [
+    {
+     "joint": "joint_wheel_l_axle",
+     "kind": "revolute",
+     "status": "complete",
+     "pairs_measured": 378,
+     "pairs_moving": 75,
+     "sample_count": 37,
+     "step": 100.0,
+     "range_degrees": [
+      -1800.0,
+      1800.0
+     ],
+     "minimum_distance_mm": 0.04999999999998494,
+     "maximum_common_volume_mm3": 0.0
+    },
+    {
+     "joint": "joint_wheel_r_axle",
+     "kind": "revolute",
+     "status": "complete",
+     "pairs_measured": 378,
+     "pairs_moving": 75,
+     "sample_count": 37,
+     "step": 100.0,
+     "range_degrees": [
+      -1800.0,
+      1800.0
+     ],
+     "minimum_distance_mm": 0.049999999999981504,
+     "maximum_common_volume_mm3": 0.0
+    }
+   ]
+  },
+  "attachments": {
+   "verdict": "touching",
+   "pairs_checked": 25,
+   "reported_count": 0
+  },
+  "inventory": {
+   "component_count": 28,
+   "catalog_counts": {
+    "board/pi-zero-2-w": 1,
+    "bolt/m2x4-socket": 8,
+    "bolt/m2x6.5-socket": 2,
+    "gearmotor/pololu-2367": 2,
+    "heat_insert/m2-standard": 10
+   },
+   "catalogued_components": 23,
+   "uncatalogued_sources": [
+    "chassis",
+    "clamp_l",
+    "clamp_r",
+    "wheel_l",
+    "wheel_r"
+   ],
+   "derived_catalog_sources": [],
+   "catalog_provenance": [
+    {
+     "catalog": "board/pi-zero-2-w",
+     "count": 1,
+     "manufacturer": "Raspberry Pi",
+     "sources": [
+      "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf"
+     ]
+    },
+    {
+     "catalog": "bolt/m2x4-socket",
+     "count": 8,
+     "standard": "ISO 4762 socket head cap screw",
+     "sources": [
+      "CadexCatalog.SOCKET_HEAD_SCREWS (ISO 4762 dk max, k, s)"
+     ]
+    },
+    {
+     "catalog": "bolt/m2x6.5-socket",
+     "count": 2,
+     "standard": "ISO 4762 socket head cap screw",
+     "sources": [
+      "CadexCatalog.SOCKET_HEAD_SCREWS (ISO 4762 dk max, k, s)"
+     ]
+    },
+    {
+     "catalog": "gearmotor/pololu-2367",
+     "count": 2,
+     "manufacturer": "Pololu",
+     "sources": [
+      "https://www.pololu.com/product/2367/specs",
+      "https://www.pololu.com/file/0J949/micro-metal-gearmotors-dimensions.pdf"
+     ]
+    },
+    {
+     "catalog": "heat_insert/m2-standard",
+     "count": 10,
+     "standard": "brass heat-set insert, Ruthex/CNC Kitchen M2 standard length",
+     "sources": [
+      "CadexCatalog.HEAT_SET_INSERTS (cnckitchen.store and ruthex vendor tables, 2026-08; od_mm is a modelling envelope, not a datasheet figure)"
+     ]
+    }
+   ]
+  }
+ },
+ "comparison": {
+  "method": "each measurement file loaded as JSON with every revision and elapsed_seconds key removed, then compared for equality; the script by line diff; parameters by value; the MJCF by sha256 and by mass and actuator limits read with MuJoCo from each file",
+  "equal_after_normalisation": {
+   "clearance.json": true,
+   "fit.json": true,
+   "inventory.json": true
+  },
+  "script_diff": [
+   "- pol = assembly.policy(task, weights=\"robin.cxpolicy\", sha256=\"0\"*64)",
+   "+ pol = assembly.policy(task, weights=\"r3-ppo-1.cxpolicy\", sha256=\"ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e\")"
+  ],
+  "script_diff_note": "the only changed line pair is the policy literal pair the README's installation step rewrites; no geometry, joint, task or reward line differs",
+  "parameter_changes": {
+   "policy_on": {
+    "baseline": "unset: script default 0.0",
+    "final": 1.0
+   },
+   "rollout_seed": {
+    "baseline": "unset: script default 0.0",
+    "final": 9.0
+   }
+  },
+  "mjcf_identical": true,
+  "mass_kg": {
+   "baseline": 0.187926352,
+   "final": 0.187926352
+  },
+  "actuator_forcerange_nm": {
+   "baseline": [
+    [
+     -0.0921825,
+     0.0921825
+    ],
+    [
+     -0.0921825,
+     0.0921825
+    ]
+   ],
+   "final": [
+    [
+     -0.0921825,
+     0.0921825
+    ],
+    [
+     -0.0921825,
+     0.0921825
+    ]
+   ]
+  },
+  "verdict": "unchanged: the design ot9 accepted is the ot8 baseline design, with the policy literals and two parameters (policy_on, rollout_seed) as the only differences",
+  "parameter_note": "policy_on=1 declares the installed policy (B2); rollout_seed is the evaluation seed literal, left at 9 by the last B3 seed run. Neither is read by geometry, joints, the MJCF or the task: the MJCF and task hashes are the pins"
+ },
+ "contact_compression": {
+  "classification": "MuJoCo soft-contact compression of the two wheel collision spheres into the floor plane under load: the engine contact spring, not a geometry intersection. Exact-BREP static fit reports 0 intersections of 378 pairs, and neither wheel has a BREP pair with the floor",
+  "reader": "docs/probes/ot9/runner/contact_compression.py (pinned by cli/tests/test_ot9_contact_compression.py)",
+  "command": "pixi run python docs/probes/ot9/runner/contact_compression.py --model $PROJECTS/ot9-robin/bundle/robin_model-model.xml $PROJECTS/ot9-robin/eval/r3-ppo-1/seed-{0..9}/assembly-simulation-trace.json --out $PROJECTS/ot9-robin/evidence/b4-final/contact-compression.json",
+  "keyframe_contact_dist_mm": {
+   "comp_wheel_l/collision0": 0.0,
+   "comp_wheel_r/collision0": 0.0
+  },
+  "spheres": [
+   {
+    "geom": "comp_wheel_l/collision0",
+    "body": "comp_wheel_l",
+    "radius_mm": 32.5,
+    "local_mm": [
+     0.0,
+     48.0,
+     32.5
+    ]
+   },
+   {
+    "geom": "comp_wheel_r/collision0",
+    "body": "comp_wheel_r",
+    "radius_mm": 32.5,
+    "local_mm": [
+     0.0,
+     -48.0,
+     32.5
+    ]
+   }
+  ],
+  "settled_after_s": 1.0,
+  "seeds": [
+   {
+    "seed": 0,
+    "frames": 401,
+    "peak_compression_mm": 1.8269,
+    "peak_geom": "comp_wheel_r/collision0",
+    "peak_at_s": 0.06,
+    "settled_median_mm": 0.5798,
+    "settled_max_mm": 0.582,
+    "settled_min_mm": 0.5776,
+    "settled_samples": 702
+   },
+   {
+    "seed": 1,
+    "frames": 401,
+    "peak_compression_mm": 2.293,
+    "peak_geom": "comp_wheel_l/collision0",
+    "peak_at_s": 0.06,
+    "settled_median_mm": 0.5798,
+    "settled_max_mm": 0.582,
+    "settled_min_mm": 0.5775,
+    "settled_samples": 702
+   },
+   {
+    "seed": 2,
+    "frames": 401,
+    "peak_compression_mm": 2.0696,
+    "peak_geom": "comp_wheel_l/collision0",
+    "peak_at_s": 0.06,
+    "settled_median_mm": 0.5798,
+    "settled_max_mm": 0.582,
+    "settled_min_mm": 0.5776,
+    "settled_samples": 702
+   },
+   {
+    "seed": 3,
+    "frames": 401,
+    "peak_compression_mm": 1.9164,
+    "peak_geom": "comp_wheel_l/collision0",
+    "peak_at_s": 0.04,
+    "settled_median_mm": 0.5798,
+    "settled_max_mm": 0.582,
+    "settled_min_mm": 0.5775,
+    "settled_samples": 702
+   },
+   {
+    "seed": 4,
+    "frames": 401,
+    "peak_compression_mm": 1.9648,
+    "peak_geom": "comp_wheel_l/collision0",
+    "peak_at_s": 0.06,
+    "settled_median_mm": 0.5798,
+    "settled_max_mm": 0.582,
+    "settled_min_mm": 0.5776,
+    "settled_samples": 702
+   },
+   {
+    "seed": 5,
+    "frames": 401,
+    "peak_compression_mm": 2.2968,
+    "peak_geom": "comp_wheel_r/collision0",
+    "peak_at_s": 0.06,
+    "settled_median_mm": 0.5798,
+    "settled_max_mm": 0.582,
+    "settled_min_mm": 0.5776,
+    "settled_samples": 702
+   },
+   {
+    "seed": 6,
+    "frames": 401,
+    "peak_compression_mm": 1.9937,
+    "peak_geom": "comp_wheel_l/collision0",
+    "peak_at_s": 0.06,
+    "settled_median_mm": 0.5798,
+    "settled_max_mm": 0.582,
+    "settled_min_mm": 0.5776,
+    "settled_samples": 702
+   },
+   {
+    "seed": 7,
+    "frames": 401,
+    "peak_compression_mm": 2.1641,
+    "peak_geom": "comp_wheel_l/collision0",
+    "peak_at_s": 0.06,
+    "settled_median_mm": 0.5798,
+    "settled_max_mm": 0.582,
+    "settled_min_mm": 0.5775,
+    "settled_samples": 702
+   },
+   {
+    "seed": 8,
+    "frames": 401,
+    "peak_compression_mm": 1.8322,
+    "peak_geom": "comp_wheel_r/collision0",
+    "peak_at_s": 0.04,
+    "settled_median_mm": 0.5798,
+    "settled_max_mm": 0.582,
+    "settled_min_mm": 0.5776,
+    "settled_samples": 702
+   },
+   {
+    "seed": 9,
+    "frames": 401,
+    "peak_compression_mm": 1.8188,
+    "peak_geom": "comp_wheel_r/collision0",
+    "peak_at_s": 0.06,
+    "settled_median_mm": 0.5798,
+    "settled_max_mm": 0.582,
+    "settled_min_mm": 0.5775,
+    "settled_samples": 702
+   }
+  ],
+  "baseline": {
+   "source": "docs/probes/ot8/retained/g4-robin-diagnosis.json diagnosis.floor_penetration.standing (zero-torque hold from the solved pose, before the fall)",
+   "peak_mm": 0.600736868917498,
+   "settled_mm": 0.576268487968698,
+   "smoke_tolerance_mm": 0.5
+  },
+  "note": "Settled standing compression under the policy is 0.5775-0.5820 mm on every seed, within 0.006 mm of ot8's zero-torque 0.5763 mm, which the ot8 load sweep showed follows the applied load. The 1.8-2.3 mm peaks all fall at 0.04-0.06 s, when the robot lands from the task's reset height of 3-5 mm. ot8's hold started from the solved pose with no drop, so its peak was 0.60 mm. None of this is a geometry intersection, and none of it is part of the B3 bar"
+ }
+}

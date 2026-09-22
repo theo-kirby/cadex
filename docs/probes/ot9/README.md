@@ -184,6 +184,35 @@ with no `fallen`; peak tilt ranges from 2.78° to 5.35°, always in the first
 policy also drives about 0.84 m in the same direction on every seed. The bar
 does not measure that, and it is reported in the receipt, not judged.
 
+## Measured for B4: the final design against the baseline
+
+[`retained/r5-robin-fit.json`](retained/r5-robin-fit.json). The accepted
+revision the last seed left, `ae889a9b…` (digest `078ebe87…`, `accepted` =
+`working`, project store clean), was read by the ot7 runner's
+`--child-measure`, the same call that took ot8's `before/` files. Static fit
+**passes**: 0 failing of 378 pairs, 0 intersections and 0 unknown. Swept fit
+is **complete and passes**: both wheel axles are swept over ±1800° in 100°
+steps, 37 samples each, with a minimum distance of 0.050 mm and 0 mm³ of
+common volume. All 25 welds touch. The inventory has 28 components, and 23
+of them are catalog rows with their sources cited: `gearmotor/pololu-2367`
+×2, `board/pi-zero-2-w`, `bolt/m2x4-socket` ×8, `bolt/m2x6.5-socket` ×2 and
+`heat_insert/m2-standard` ×10. `derived_catalog_sources` is empty, and the
+five printed parts are the only uncatalogued sources. With every `revision`
+and `elapsed_seconds` key set aside, all three measurement files **equal
+ot8's** `before/` files. The script differs only in the two policy literals,
+and the parameters only in `policy_on` and `rollout_seed`. The MJCF is
+byte-identical, so mass (0.18793 kg) and torque (±0.0921825 N·m) are the
+same. The design is unchanged, and that was measured.
+
+Standing contact compression is reported apart from those counts by
+[`runner/contact_compression.py`](runner/contact_compression.py), which is
+pinned by `cli/tests/test_ot9_contact_compression.py`. It is the MuJoCo
+contact spring under load, not an intersection: the wheel spheres touch the
+floor at exactly 0.000 mm in the solved keyframe. Under the policy, the
+settled compression is 0.578–0.582 mm on all ten seeds, against ot8's
+0.576 mm zero-torque hold. Peaks of 1.8–2.3 mm occur only at 0.04–0.06 s,
+when the robot lands from the task's 3–5 mm reset height.
+
 ## Run accounting
 
 Every run is listed in the report with its receipt, whatever its class.
