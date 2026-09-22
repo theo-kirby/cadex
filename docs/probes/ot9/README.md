@@ -7,7 +7,7 @@ every ot9 training and evaluation run is measured against, written before any
 of them. The machine-readable copy is [`contract.json`](contract.json), and
 `cli/tests/test_ot9_contract.py` holds this page and that file equal. A
 changed seed, bar value or baseline pin is a new experiment, not a revision of
-this one. The closing report will be `REPORT.md`, written last.
+this one. The closing report is [`REPORT.md`](REPORT.md), written last.
 
 ot8 ended with Robin **control-blocked** (`docs/probes/ot8/REPORT.md`, G4):
 fit, swept fit and exact-BREP smoke geometry all pass, and the zero-command
