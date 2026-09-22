@@ -240,3 +240,38 @@ def test_the_first_training_receipt_ran_what_it_planned_on_the_pins():
     assert rollout['layout_check']['solver_output'] == rollout['reader']['steps'] + 1 == 401
     # One seed is a diagnostic, never the bar.
     assert rollout['reader']['seed'] == 0 and 'NOT the frozen ten-seed' in rollout['note']
+
+
+def test_the_first_ten_seed_evaluation_is_every_seed_on_one_reopened_policy():
+    probes = PATH.parents[2]
+    contract = json.loads((probes / 'ot9/contract.json').read_text())
+    trained = json.loads((probes / 'ot9/retained/r3-robin-train-1.json').read_text())
+    receipt = json.loads((probes / 'ot9/retained/r4-robin-eval-1.json').read_text())
+    policy = trained['training']['policy']['sha256']
+    mjcf, task = contract['baseline']['mjcf']['sha256'], contract['baseline']['task']['sha256']
+    # B2's missing half: a fresh process rebuilt the installed revision to the same identity.
+    reopen = receipt['reopen']
+    installed = trained['installation']['policy_on']
+    assert (reopen['accepted_revision'], reopen['accepted_digest']) == (
+        installed['accepted_revision'], installed['digest'])
+    assert reopen['policy_receipt']['policy_sha256'] == reopen['stored_policy_sha256'] == policy
+    assert (reopen['policy_receipt']['model_sha256'], reopen['mjcf_sha256']) == (mjcf, mjcf)
+    assert (reopen['policy_receipt']['task_sha256'], reopen['task_sha256']) == (task, task)
+    assert reopen['policy_receipt']['witness_error'] < reopen['policy_receipt']['witness_tolerance']
+    assert reopen['trace_sha256'] == trained['rollout_seed_0']['trace_sha256']
+    # B3: the verdict is recomputed from the rows against the bar, never copied.
+    evaluation, the_bar = receipt['evaluation'], contract['bar']
+    rows = evaluation['seeds']
+    assert [r['seed'] for r in rows] == contract['evaluation_seeds'] == list(range(10))
+    for r in rows:
+        assert (r['policy_sha256'], r['mjcf_sha256'], r['task_sha256']) == (policy, mjcf, task)
+        assert r['class'] == 'completed' and not r['void']
+        assert r['frames'] == r['steps'] + 1 == the_bar['steps'] + 1
+        assert r['duration_s'] == the_bar['episode_seconds']
+        assert r['termination'] != the_bar['forbidden_termination']
+        ok = (r['truncated'] and not r['termination'] and r['steps'] == the_bar['steps']
+              and r['peak_tilt_degrees'] <= the_bar['max_tilt_degrees'])
+        assert r['pass'] is ok and (r['failing'] == []) is ok
+    assert len({r['trace_sha256'] for r in rows}) == 10
+    assert rows[0]['trace_sha256'] == trained['rollout_seed_0']['trace_sha256']
+    assert reader.candidate_verdict(rows)['verdict'] == evaluation['candidate']['verdict'] == 'pass'

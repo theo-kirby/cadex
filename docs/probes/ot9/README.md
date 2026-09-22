@@ -171,6 +171,19 @@ G4's values to 1e-9 — then peaks at 108.1° on the floor impact at 0.74 s and
 lies at 102.2° to the end. `cadex export` rebuilt the accepted digest and
 wrote the training bundle (`bundle/`) with the pinned MJCF and task.
 
+## Evaluated: `r3-ppo-1`
+
+[`retained/r4-robin-eval-1.json`](retained/r4-robin-eval-1.json). A fresh
+`cadex export` process rebuilt the installed revision `df58d4ff…` to digest
+`6ff77527…`, with policy `ef71f370…` (witness error 6.9e-8), MJCF `933b1ac6…`
+and task `1f8c1040…`. Its rollout trace is byte-identical to the installing
+chain's seed-0 trace. The ten contract seeds then ran by the loop above:
+**all ten pass**. Every seed ran 400 steps / 8.0 s and ended by truncation,
+with no `fallen`; peak tilt ranges from 2.78° to 5.35°, always in the first
+0.08 s reset transient; the lowest minimum chassis height is 105.05 mm. The
+policy also drives about 0.84 m in the same direction on every seed. The bar
+does not measure that, and it is reported in the receipt, not judged.
+
 ## Run accounting
 
 Every run is listed in the report with its receipt, whatever its class.
