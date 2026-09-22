@@ -1,0 +1,35 @@
+{
+  "schema": "ot9-experiment-evidence-v1",
+  "rung": "short-term 3: first bounded offboard PPO run, install its policy, one rollout",
+  "run": "ot9",
+  "project": "ot9-robin",
+  "training_run": "r3-ppo-1",
+  "plan": {
+    "written": "before the trainer started; committed ahead of the run so the ordering is in git",
+    "command": "./cadex train --project $PROJECTS/ot9-robin --out $PROJECTS/ot9-robin/runs/r3-ppo-1 --put --name r3-ppo-1.cxpolicy --iterations 300 --envs 1024 --seed 1001 --label r3-ppo-1 --timeout 2400 --json",
+    "trainer": "training/cadex_train.py under ~/cadex-train-venv (jax backend gpu, checked); offboard, the engine is not in the process",
+    "task": "the accepted balance_task, unchanged: task sha256 1f8c1040..., MJCF 933b1ac6...",
+    "training_seed": 1001,
+    "training_seed_note": "outside 0-9 so no one mistakes it for an evaluation seed; the trainer draws resets from jax.random, not random.Random(seed)",
+    "settings": {
+      "iterations": 300,
+      "envs": 1024,
+      "unroll": 20,
+      "epochs": 4,
+      "hidden": [64, 64],
+      "learning_rate": 0.0003,
+      "discount": 0.97,
+      "entropy": 0.001,
+      "initial_std": 0.3,
+      "action_filter_alpha": 1.0,
+      "command_slew_deg": 0.0,
+      "warm_start": null,
+      "note": "iterations, envs, seed, label are cadex train flags; the rest are the trainer's defaults, which cadex train does not override"
+    },
+    "step_budget": "300 iterations x 1024 envs x 20 unroll = 6,144,000 environment steps (control steps at 50 Hz)",
+    "stop_rule": "the trainer stops at 300 iterations or at the 2400 s --timeout, whichever comes first; no early stop on reward, no restart inside this unit. Timeout without a policy = interrupted; non-zero exit or non-finite curve = failed; either is kept and reported and the next unit decides the next run",
+    "success_is_not": "trainer exit, reward, or a single rollout; only the frozen ten-seed evaluation (rung 4) can pass the bar",
+    "after_training": "install by the README's digest edit (cadex script literals -> stored name and sha256, cadex script --set, cadex params --set policy_on=1), witness-verified at rebuild; then one rollout at rollout_seed=0 read by runner/balance_eval.py after checking the trace has 401 frames for 400 steps",
+    "accounting": "per README Run accounting: completed / failed / interrupted / void; void if the bundle's MJCF or task sha256 differs from the pin"
+  }
+}
