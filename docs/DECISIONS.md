@@ -27388,3 +27388,8 @@ actuator torque and a zero-command fall. ot8 deliberately stopped before
 control; this run tests the missing link in the product's design-to-policy
 path. The bar distinguishes a verified behavioral result from a completed
 training job or a high reward number.
+
+**Launch amendment (2026-09-22).** Before the first ot9 launch, the owner
+replaced the proposed Fable 5.1 plus Codex fallback chain with
+`claude-opus-5-5` for every Ouroboros role and product-agent call, with no
+fallback. The experiment bar and stop rules are unchanged.

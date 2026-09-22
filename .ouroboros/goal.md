@@ -13,10 +13,8 @@ accepted task and model, then pass ten recorded reset seeds without firing
 revise mechanics, task and reward when measurements justify it. A completed
 experiment is not a successful balance unless this behavioral bar is met.
 
-Keep the 48-hour ceiling and two-accepted-done stop. Ouroboros roles use
-`claude-fable-5-1` with Codex `gpt-6-astra` fallback. The headless product
-CLI drives Claude, so product design calls use Fable 5.1 and wait for its
-availability rather than silently changing models.
+Keep the 48-hour ceiling and two-accepted-done stop. Every Ouroboros role and
+headless product-agent call uses `claude-opus-5-5`, with no model fallback.
 
 ## Done criteria
 
@@ -92,9 +90,9 @@ accepted-state guards and the original ot7/ot8 projects.
 
 **This run:**
 
-- Ouroboros roles prefer Fable 5.1; Codex `gpt-6-astra` is their fallback.
-  Product-agent calls through `./cadex` use `claude-fable-5-1` and record
-  their model explicitly.
+- Every Ouroboros role and product-agent call through `./cadex` uses
+  `claude-opus-5-5`, with no model fallback, and records its model
+  explicitly.
 - Only the product agent authors changes to Robin's mechanics, task and
   reward. The actor may write measurement and product tooling with regressions
   and install a trained policy through the supported CLI path. Each project
@@ -119,11 +117,9 @@ accepted-state guards and the original ot7/ot8 projects.
 Resolve reversible choices autonomously using the smallest measured step
 toward B1-B5. Code and accepted artifacts outrank docs; update docs with
 behavior. If the policy misses an evaluation seed, record the failure and
-diagnose it before another training or design revision. If Fable is
-unavailable for a product turn, retain the
-receipt and wait for capacity; Codex fallback applies to Ouroboros roles,
-not the Claude-only headless CLI. Never invent a measurement or treat
-provider refusal as a design verdict.
+diagnose it before another training or design revision. If Opus 5.5 is
+unavailable, retain the receipt and wait for capacity. Never invent a
+measurement or treat provider refusal as a design verdict.
 
 ## Exhaustion policy
 

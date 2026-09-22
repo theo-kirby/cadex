@@ -12,38 +12,28 @@ maintainer: false       # true: a separate maintainer call instead of actor hous
 planner: false          # true: a planner writes bets after each reconcile
 idle_interval: 30m
 roles:
-  # Owner-directed restart: Fable 5.1 first, Codex fallback for role calls.
+  # Owner-directed launch: Opus 5.5 for every role, with no fallback.
   actor:
     harness: claude
-    model: claude-fable-5-1
+    model: claude-opus-5-5
     timeout: 90m
     resume_for: 1
-    fallback:
-      - { harness: codex, model: gpt-6-astra }
   critic:
     harness: claude
-    model: claude-fable-5-1
+    model: claude-opus-5-5
     timeout: 10m
-    fallback:
-      - { harness: codex, model: gpt-6-astra }
   maintainer:             # disabled above
     harness: claude
-    model: claude-fable-5-1
+    model: claude-opus-5-5
     timeout: 30m
-    fallback:
-      - { harness: codex, model: gpt-6-astra }
   planner:                # disabled above
     harness: claude
-    model: claude-fable-5-1
+    model: claude-opus-5-5
     timeout: 20m
-    fallback:
-      - { harness: codex, model: gpt-6-astra }
   reporter:
     harness: claude
-    model: claude-fable-5-1
+    model: claude-opus-5-5
     timeout: 10m
-    fallback:
-      - { harness: codex, model: gpt-6-astra }
 git:
   branch: null            # -> ouroboros/ot9
   tag_on_accept: true
@@ -82,7 +72,7 @@ loop:                     # motion without progress (ouroboros DESIGN.md section
   frontier_after: 30      # iterations with no node moving and no criterion ticked
   repeat_bet_after: 3     # only measured with the planner on
   escalate_every: 5
-  rotate: false           # fallback handles provider limits; no loop rotation
+  rotate: false           # all roles stay on the owner-selected Opus model
                           # Nothing here stops the run.
 report:                   # the reporter: an observer outside the loop (ouroboros DESIGN.md section 15).
                           # It reads this run directory and never the loop, so nothing it
