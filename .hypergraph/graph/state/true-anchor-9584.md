@@ -13,13 +13,15 @@ Status: working
 
 **B5. Regressions and a closing report are complete.** Both full suites, the packaged lifecycle gate for any engine/payload change, and a fresh reopen of the final ot9 project pass at the final revision. The report at `docs/probes/ot9/REPORT.md` lists every training and evaluation run, checkpoint choice, accepted identity, changed design/task/reward, failed attempt, achieved bar and remaining defect. Reconcile, then claim done for critic review without ticking owner boxes. [rec: curious-branch-9704]
 
-**Final fresh reopen [rec: falling-fountain-6090].** A new process rebuilt accepted ae889a9b to digest 078ebe87 with policy ef71f370, model 933b1ac6, task 1f8c1040 (witness 6.9e-8); its trace is byte-identical to evaluation seed 9 and passes the reader (8.0 s, truncated, peak 2.783 deg, min height 105.83 mm) [rec: falling-fountain-6090].
+**Final revision is ADR-405, commit `ae588e82` [rec: lively-eagle-0275].** ADR-405 (iteration 11, `c2f1c802`) made `CadexProjectScriptStore.write` drop an `accepted_geometry` keyed on a different accepted digest, with a regression that fails on the old store; that moved the final revision, so B5 was retaken there [rec: lively-eagle-0275].
 
-**Suites at the final revision [rec: falling-fountain-6090].** `pixi run test-engine` 2196 passed, 53 skipped; `cli/tests` 938 passed, 1 skipped; 0 failed. The packaged gate was not required: no change under `src/`, `package/`, `shell/` or `pixi.toml` in ot9 [rec: falling-fountain-6090].
+**Suites and packaged gate at the final revision [rec: lively-eagle-0275].** `pixi run test-engine` 2197 passed, 53 skipped; `cli/tests` 939 passed, 1 skipped; 0 failed. Because `CadexScriptStore.py` ships in the payload, the engine was rebuilt and staged and the packaged lifecycle gate passed 23/23 [rec: lively-eagle-0275].
 
-**Closing report [rec: falling-fountain-6090].** `docs/probes/ot9/REPORT.md` (commit aecab84e), pinned to the r3-r6 receipts by `cli/tests/test_ot9_report.py`, lists every run with its accounting class (r2 no-policy fall, r3-ppo-1 training, interrupted iteration 6, the 10/10 evaluation, the r4 reopen, B4, the B5 reopen), the checkpoint choice, all ten seed rows, no design/task/reward change, contact compression, and remaining defects: ~0.84 m systematic drift, robustness unmeasured, stale `accepted_geometry` in script.json. It claims done for critic review and ticks no boxes [rec: falling-fountain-6090].
+**Final fresh reopen [rec: lively-eagle-0275].** A new process (`./cadex export`, exit 0, project commit `9a0b669`) rebuilt accepted ae889a9b to digest 078ebe87 with stored policy ef71f370 (witness 6.9e-8), MJCF 933b1ac6, task 1f8c1040 and trace 5d64a9ee — identical to the earlier B5 reopen [rec: falling-fountain-6090] and to evaluation seed 9, which the reader passes (8.0 s, 400 steps, peak tilt 2.783 deg, no termination). Its `script.json` stale `accepted_geometry` was cleared on that first write [rec: lively-eagle-0275].
 
-**The reconcile it named as its last step is this pass**, folding candid-wood-6113, long-glacier-5252 and falling-fountain-6090. *Reconcile judgement*: B5's declared evidence is complete once this pass lands; status stays `working` because only the owner ticks the checkbox [rec: falling-fountain-6090].
+**Closing report [rec: falling-fountain-6090] [rec: lively-eagle-0275].** `docs/probes/ot9/REPORT.md`, pinned by `cli/tests/test_ot9_report.py` to receipts r3-r7 (r7 = `r7-robin-adr405.json`), lists every run with its accounting class, the checkpoint choice, all ten seed rows, no design/task/reward change, contact compression, the ADR-405 reopen, and remaining defects: ~0.84 m systematic drift and unmeasured robustness; defect 3 (stale `accepted_geometry`) is marked fixed by ADR-405. It claims done for critic review and ticks no boxes [rec: lively-eagle-0275].
+
+**The reconcile it names as its last step is this pass**, folding lively-eagle-0275 and scarlet-bramble-6134 (the latter declared no state change: it deferred this fold to housekeeping and re-verified nothing moved since `ae588e82`) [rec: scarlet-bramble-6134]. *Reconcile judgement*: B5's declared evidence is complete at the final revision once this pass lands; status stays `working` because only the owner ticks the checkbox [rec: lively-eagle-0275].
 
 ## Negative knowledge
 
@@ -29,3 +31,5 @@ None yet.
 
 - curious-branch-9704 — the criterion as the ot9 charter declares it
 - falling-fountain-6090 — final reopen, both suites green, REPORT.md written; done claimed, reconcile owed
+- lively-eagle-0275 — B5 retaken at ADR-405: suites, packaged gate 23/23, fresh reopen heals script.json, REPORT defect 3 fixed
+- scarlet-bramble-6134 — reconcile deferred to housekeeping; no state change, done re-claimed
