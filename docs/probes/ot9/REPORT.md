@@ -6,7 +6,7 @@ Verified against source: 2026-09-22. [Cadex-new]
 policy that keeps Robin upright for the whole 8.0 s episode on **all ten**
 frozen evaluation seeds, at 50 Hz, never firing `fallen`, with a worst peak
 tilt of 5.35° against the 30° limit. It was installed through the ordinary
-script path, witness-verified by the engine, and reopened in two fresh
+script path, witness-verified by the engine, and reopened in three fresh
 processes with the same policy and model identity. Robin's design, task and
 reward are the ot8 baseline's, unchanged and measured unchanged.
 
@@ -42,6 +42,7 @@ and task are the same on every revision from installation onward.
 | r4 reopen | fresh-process `cadex export` | completed | [`r4-robin-eval-1.json`](retained/r4-robin-eval-1.json) `reopen` | `df58d4ff…` → `6ff77527…`, trace byte-identical to the installing chain's seed 0 |
 | B4 measurement | fit, swept fit, inventory | completed | [`r5-robin-fit.json`](retained/r5-robin-fit.json) | equal to ot8's `before/`; see below |
 | B5 reopen | fresh-process `cadex export` | completed | [`r6-robin-final.json`](retained/r6-robin-final.json) | `ae889a9b…` → `078ebe87…`, trace byte-identical to seed 9's |
+| ADR-405 reopen | fresh-process `cadex export` | completed | [`r7-robin-adr405.json`](retained/r7-robin-adr405.json) | same revision, digest, policy, MJCF, task and trace as the B5 reopen; `script.json`'s stale `accepted_geometry` cleared on its first write |
 
 No training run failed, was interrupted or was void. There was one training
 run, and so one candidate.
@@ -99,11 +100,16 @@ at 0.04–0.06 s, on landing from the reset drop.
 
 ## Regressions at the final revision
 
-`pixi run test-engine`: 2196 passed, 53 skipped, 0 failed.
-`pixi run python -m pytest cli/tests`: 938 passed, 1 skipped, 0 failed,
-including this report's own test. The packaged
-lifecycle gate was not run because ot9 changed nothing under `src/`,
-`package/`, `shell/` or `pixi.toml`.
+The final revision is ADR-405's (commit `c2f1c802`), which changed
+`src/Mod/cadex/CadexScriptStore.py` after the B5 reopen, so everything was
+taken again there ([`r7-robin-adr405.json`](retained/r7-robin-adr405.json)):
+`pixi run test-engine`: 2197 passed, 53 skipped, 0 failed.
+`pixi run python -m pytest cli/tests`: 939 passed, 1 skipped, 0 failed,
+including this report's own tests. Because the store ships in the payload,
+the engine was rebuilt and staged and the packaged lifecycle gate
+(`test_cadexd_lifecycle.py` against the staged payload) ran: 23 passed, 0
+failed. The earlier B5 counts (2196 / 938, gate not required) are kept in
+[`r6-robin-final.json`](retained/r6-robin-final.json).
 
 ## Remaining defects
 
@@ -117,13 +123,17 @@ lifecycle gate was not run because ot9 changed nothing under `src/`,
 2. **Robustness is unmeasured.** Only reset variation (0–3° tilt, 3–5 mm drop)
    was evaluated. Shove recovery and printability are later rungs and were
    not attempted.
-3. **`script.json`'s learned `accepted_geometry` is stale**, carried from the
-   baseline (README, "The baseline"). It is not the pin and blocked nothing.
+3. **Fixed (ADR-405): `script.json`'s learned `accepted_geometry` was
+   stale**, carried from the baseline (README, "The baseline"), keyed on
+   `0a6fe0f5…` rather than the accepted `078ebe87…`. The store now drops a
+   measurement whose accepted digest has moved on; the fresh reopen's first
+   store write cleared it to `null` with the accepted revision and digest
+   unchanged ([`r7-robin-adr405.json`](retained/r7-robin-adr405.json)).
 
 ## Claim
 
 With this report, B1–B5 all have measured, causally parented evidence, and
 ot9 **claims done for critic review**. The owner holds the checkboxes, and
-none is ticked here. The one B5 step still owed is a reconcile pass that folds
-this run's records into the state graph. A work iteration may not run one, so
-it is left to the loop's reconcile iteration.
+none is ticked here. The ADR-405 record still needs a reconcile pass to fold
+it into the state graph; a work iteration may not run one, so it is left to
+the loop's reconcile iteration.

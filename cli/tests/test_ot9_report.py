@@ -75,9 +75,28 @@ def test_the_report_names_every_identity_run_and_the_checkpoint_choice():
     assert '**interrupted**' in report and 'No mechanical, task or reward change' in report
 
 
-def test_the_suite_counts_on_the_page_are_the_receipt():
-    regressions = _load('r6-robin-final.json')['regressions']
+def test_the_suite_counts_on_the_page_are_the_latest_receipt():
+    latest = _load('r7-robin-adr405.json')
+    regressions = latest['regressions']
     for key in ('engine', 'cli'):
         suite = regressions[key]
         assert suite['failed'] == 0
         assert f"`{suite['command']}`: {suite['passed']} passed, {suite['skipped']} skipped" in _report()
+    gate = regressions['packaged_gate']
+    assert gate['failed'] == 0 and f"{gate['passed']} passed" in _report()
+    assert '(retained/r7-robin-adr405.json)' in _report()
+
+
+def test_the_adr405_reopen_is_the_evaluated_identity_and_heals_script_json():
+    latest = _load('r7-robin-adr405.json')
+    final = _load('r6-robin-final.json')['reopen']
+    reopen, heal = latest['reopen'], latest['script_json_heal']
+    assert reopen['exit_code'] == 0
+    for key in ('accepted_revision', 'accepted_digest', 'mjcf_sha256', 'task_sha256',
+                'stored_policy_sha256', 'trace_sha256'):
+        assert reopen[key] == final[key]
+    assert reopen['policy_receipt_sha256'] == final['policy_receipt']['sha256']
+    assert reopen['reader']['pass'] and reopen['reader']['peak_tilt_degrees'] == final['reader']['peak_tilt_degrees']
+    stale = heal['before']['accepted_geometry']
+    assert stale['accepted_digest'] != heal['before']['accepted_digest']
+    assert heal['after'] == dict(heal['after'], accepted_digest=reopen['accepted_digest'], accepted_geometry=None)
