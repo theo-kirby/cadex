@@ -220,3 +220,23 @@ def test_the_retained_no_policy_receipt_agrees_with_the_pins_and_with_g4():
     assert fall['agreement_with_g4']['reader_tilt_at_1s_degrees'] == pytest.approx(
         smoke['checks']['support']['tilt_degrees'], abs=1e-9)
     assert fall['reader']['pass'] is False
+
+
+def test_the_first_training_receipt_ran_what_it_planned_on_the_pins():
+    probes = PATH.parents[2]
+    contract = json.loads((probes / 'ot9/contract.json').read_text())
+    receipt = json.loads((probes / 'ot9/retained/r3-robin-train-1.json').read_text())
+    plan, ran = receipt['plan'], receipt['training']
+    assert ran['bundle']['mjcf_sha256'] == contract['baseline']['mjcf']['sha256']
+    assert ran['bundle']['task_sha256'] == contract['baseline']['task']['sha256']
+    assert (ran['seed'], ran['iterations_run'], ran['envs']) == (
+        plan['training_seed'], plan['settings']['iterations'], plan['settings']['envs'])
+    assert plan['training_seed'] not in contract['evaluation_seeds']
+    # The installed policy is the one the script names and the rollout ran.
+    policy = ran['policy']['sha256']
+    rollout = receipt['rollout_seed_0']
+    assert rollout['reader']['policy_sha256'] == policy
+    assert rollout['reader']['task_sha256'] == contract['baseline']['task']['sha256']
+    assert rollout['layout_check']['solver_output'] == rollout['reader']['steps'] + 1 == 401
+    # One seed is a diagnostic, never the bar.
+    assert rollout['reader']['seed'] == 0 and 'NOT the frozen ten-seed' in rollout['note']
