@@ -1,0 +1,32 @@
+{
+  "schema": "ot8-baselines-v1",
+  "verified_at": "2026-09-20",
+  "source": "the operator external cadex-projects directory, read read-only",
+  "rule": "A seeded ot8 attempt refuses to start unless script_sha256, accepted_revision, working_revision and accepted_digest all match the pin for its design.",
+  "baselines": {
+    "heron": {
+      "project": "ot7-heron-c",
+      "role": "comparison",
+      "script_sha256": "91ace2bb5f59915beab245e3eea361954fcb0758c9d54b52418501f781bfef7c",
+      "accepted_revision": "58ff41b4ab576b62c1662acf72ef7a74e2c16e4e36b99dd3281c9663481734bd",
+      "accepted_digest": "2c42c943fbc0a70082e1bf4455a820e90f6ba2bc1392f3176d79f5505e63f864",
+      "note": "G2 compares a fresh ot8 arm against this ot7 result; it is never copied or reopened by an ot8 attempt."
+    },
+    "plover": {
+      "project": "ot7-plover-e",
+      "role": "seed",
+      "script_sha256": "d14bfbaad98ff77d307d6b60a07d122b95a54ea2aa86bbefe7ac40b8d9c88450",
+      "accepted_revision": "0491ead7998a2d5b42cde770b2968df3d921baa2c3b7248a2bca19bb60cf9516",
+      "accepted_digest": "a00d1aea382ae292b4a217bd94c9c0365de4129e70b54cf73679d7fe92606588",
+      "note": "G3 works on an independent copy of this project; the copy must reproduce this identity exactly."
+    },
+    "robin": {
+      "project": "ot7-robin-c",
+      "role": "seed",
+      "script_sha256": "f805fdc2bd886b5da8b01f3051bd2668497a2e53c8d7f9fba392ed2c3c9d30e8",
+      "accepted_revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+      "accepted_digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c",
+      "note": "G4 works on an independent copy of this project; the copy must reproduce this identity exactly."
+    }
+  }
+}

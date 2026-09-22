@@ -33,6 +33,8 @@ Status: open
 
 Charter criterion: **F5. The arm is designed unassisted.** Heron's ot6 create prompt, in a fresh project, reaches an accepted design with zero failing static and swept fit checks, zero actor edits, at most three frozen continuation prompts, catalog hardware for every purchased part, and a passing smoke rollout. Evidence: prompts and continuation count, per-turn fit failure counts, final fit report, inventory, smoke result, and the comparison with ot6. Declared target `gap-f5-arm-designed-unassisted-heron`; the human owns the checkbox edit [rec: kind-dusk-1609]. The ot6 comparison point is Heron (`civic-creek-8215`): one 9,648-byte prompt, a 24-minute turn, three measured corrections fed back by hand before acceptance. No policy training this run — smoke rollouts only, bounded to five minutes (F8) [rec: kind-dusk-1609].
 
+**Cross-reference: F5 is exhausted and is not to be re-run. The arm's one remaining failing count — catalog identity for every purchased part — is carried forward by ot8's G2 (`tender-bay-4302`), which designs a fresh arm in a new ot8 project from the byte-identical create prompt and compares the result against `ot7-heron-c` [rec: honest-ash-4208].** That comparison has since been made and G2's bar is met: `ot8-heron-b` placed `servo/mg90s` ×2 and `servo_horn/mg90s-single_arm` ×2 as unmodified catalog parts where this node's design modelled all four by hand [rec: winter-creek-7660].
+
 ## Negative knowledge
 
 - [scope: the frozen Heron create prompt at effort `high` under the 32,000-token per-message cap and the runner's 30-minute bound | confidence: medium | evidence: mellow-summit-9733, flat-cove-2253] The cap bounds a message, not a turn's thinking: at `high` the turn produced three consecutive cap-limited thinking-only messages and was killed with no design written, where the same prompt at `medium` completed in 1,530.4 s with no cap hit. One pair of runs; a further level change is a recorded decision, and a changed prompt is a new attempt.
@@ -63,3 +65,5 @@ Charter criterion: **F5. The arm is designed unassisted.** Heron's ot6 create pr
 - lawful-grotto-1291 — ADR-362 after F5: build replies carry the inventory block for F6 and F7; F5 stays as measured on the older product and is not re-run
 - still-rock-6891 — ADR-381 gives F5's one failing count a producer: the engine names the catalog body a modified purchase was cut from; F5 unchanged and still exhausted
 - restless-slope-6471 — ADR-382 bounds that claim in the prompt: an absent name is provenance unknown, not a printed part
+- honest-ash-4208 — cross-reference: F5's remaining catalog-identity gap is carried by ot8's G2 (`tender-bay-4302`); F5 itself stays exhausted and is not re-run
+- winter-creek-7660 — G2 measured the same ask on a fresh project and reached catalog identity for all four purchased parts, closing the count F5 left open

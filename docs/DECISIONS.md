@@ -27079,3 +27079,285 @@ new `ot8-*` identities. Capacity waits produce no repeated bookkeeping.
 two missed design bars. Reusing its exhausted slots would obscure that
 result. A fresh run can make the remaining evidence explicit without
 quietly authorizing the parked training or printability work.
+
+
+## ADR-400 — ot8's experiment contract, and one collector for two runs (2026-09-20)
+
+**Decision.** Run ot8's bounded experiments are frozen before any product
+turn, in `docs/probes/ot8/`: the contract (`README.md`), the prompts
+(`prompts/`, pinned by digest), and the ot7 baselines each experiment measures
+against (`baselines.json`). The ot7 evidence collector is **reused rather than
+copied**: `docs/probes/ot7/runner/run.py --run ot8` selects ot8's frozen
+prompts, its `ot8-*` project prefix and its two **seeded** designs, and every
+other rule — void (ADR-355), interrupted (ADR-356, ADR-388), unreached
+(ADR-386), the window gate (ADR-358), bounds and effort — is ot7's, unchanged.
+A receipt with no `run` field is an ot7 receipt.
+
+**The freeze.** Each design gets one initial prompt and at most three
+continuations. The arm's create prompt is **byte-identical to ot7's**, so G2
+compares one ask against two products. The continuations are ot8's own,
+because this charter directs the agent to its measured fit, **inventory** and
+**smoke** evidence where ot7's pointed at fit alone — which is exactly the gap
+ot7's arm left open, two servos and two horns modified out of catalog
+identity. Every design-agnostic prompt carries one invariant sentence in the
+same words: no purchased part is modified, nothing from the world enters the
+design, nothing free becomes fixed to the world, no support the machine does
+not have appears, and no declared limit, task rule or rollout bound moves.
+That is the charter's "a design may fail" rule written where the agent reads
+it. `resolve.prompt.txt` (G4) is the one prompt that says a behaviour check is
+failing, because G4's question is which of two things that failure is; it
+gives "change nothing and state the missing control contract" equal standing
+with a repair, so the experiment cannot be one the agent passes only by
+cheating.
+
+**Seeded attempts.** G3 and G4 start from an independent copy of `ot7-plover-e`
+and `ot7-robin-c`. A copy arrives carrying the source project's own
+`evidence/`, so a seeded attempt writes its receipt in `evidence/g3-rebuild/`
+or `evidence/g4-resolve/` beside it, refuses to start unless the copy
+reproduces its pinned identity (script bytes, accepted revision, working
+revision, accepted digest) exactly, and measures the baseline before it sends
+anything: fit, inventory and one bounded smoke, with the seed identity held
+equal across them. **That smoke is evidence and never a gate** — G3 and G4
+exist because these baselines fail it, and a gate there would stop the
+experiment the run is for.
+
+**Why not a second runner.** A copied collector would have been a second place
+for the slot rules to drift, and those rules are the whole value of ot7's
+receipts. The generalisation is a run id threaded through the receipt, a
+prompt root per run, a seeded-design table and one `attempt_dir()` lookup
+replacing three duplicated ones; `frozen()`, `remaining()`, `resume()`,
+`smoke()` and `reclassify()` are otherwise untouched, and ot7's 100 tests pass
+unchanged.
+
+**Evidence.** `cli/tests/test_ot8_prompts.py` (8 tests) is the freeze: every
+digest, the arm prompt's byte-identity with ot7's, the forbidden vocabulary,
+and the invariant sentence. `cli/tests/test_ot8_runner.py` (22 tests) covers
+ot8 slot accounting — one create plus exactly three continuations, and void,
+interrupted and unreached calls spending nothing — and prior-evidence
+preservation: an inherited `evidence/attempt.json` unchanged byte for byte, a
+non-baseline copy refused before any prompt, a mutating measurement stopping
+dispatch, and ot7's own freeze unaffected by a changed ot8 prompt. Access was
+verified before the freeze: a `claude-opus-5` window probe answered with the
+five-hour window at 10 % and the seven-day at 16 %
+(`docs/probes/ot8/retained/g1-window-probe.json`).
+
+## ADR-401 — G3: the biped's smoke passes on its own accepted pin (2026-09-20)
+
+**Context.** ot7 left F7 with a passing smoke that nobody could point at the
+project: the pass was measured on a model re-exported outside the accepted pin
+(ADR-395), because `ot7-plover-e` was accepted *before* ADR-393 fixed the
+exported pose of a welded body, and `cadex smoke` reads exactly the pin. The
+ot8 charter's G3 asks for the ordinary measurement instead — an accepted
+artifact smoke with no substituted bundle — on an independent copy, with the
+rebuild and re-acceptance coming from a product-agent turn rather than the
+actor.
+
+**Decision and what was run.** `ot8-plover` is a mechanical copy of
+`ot7-plover-e` with its `evidence/`, `agent.json` and `.cadex-cli.lock` left
+behind, so no ot7 receipt and no ot7 session rides into an ot8 attempt; the
+collector validated it against `baselines.json` before sending anything. It
+measured the copy first: static fit **pass, 406 of 406 pairs, 0 failing**,
+sweep **complete on 4 of 4 joints at 15°, 0 failing**, 24 of 24 attachments
+touching, inventory **29 components, 24 catalogued** (4 `servo/mg90s`, 4
+`servo_horn/mg90s-single_arm`, 4 `bearing/mr128`, 8 `bolt/m2x6-socket`, 4
+`bolt/m2x12-socket`) — and its ordinary smoke **failed**, reproducing ot7's
+refusal word for word: `initial pose disagrees with published clearance:
+('c_bearing_hip_l', 'c_bearing_hip_r')`, on MJCF `c4c47094…`.
+
+Then one frozen `rebuild.prompt.txt` (`1dbff8e3…`) on `claude-opus-5`, the
+five-hour window read at 16 % against a 45 % bound. It **completed on its own
+in 211.6 s**, spending G3's first slot and leaving three continuations
+unspent. Zero actor design edits: the script is still `d14bfbaad9…`, byte for
+byte the pin, and the accepted revision is still `0491ead7…`. What moved is
+the accepted **digest** — `a00d1aea…` → `9ef44502…`, exactly the digest the
+ot7 restore produced and ADR-395 predicted — because the same source now
+exports the fixed MJCF.
+
+**Consequence: the ordinary smoke passes on the accepted pin.** Taken with
+`cadex smoke` under ADR-392, spending no slot and substituting nothing: MJCF
+`71b8b39c…` (the digest ot7's re-export probe predicted; the baseline's was
+`c4c47094…`), task `a3a060e5…`, MuJoCo 3.10.0, verdict **pass** in 34.3 s.
+Finite throughout; penetration **0 breaches** with both shins touching the
+floor at 0.3214283954748017 mm against a 0.5 mm tolerance; support **pass**,
+base `c_pelvis`, kind `free`, resting after a 0.2683688948842189 mm drop at
+0.18159412499621788° of tilt; the one termination rule unfired; and the
+exact-BREP check passing **406 of 406 pairs across 51 samples with its
+first-frame agreement gate satisfied** — the gate the pre-fix pin could not
+get past. Fit and inventory after the turn read as they did before it, and two
+**fresh-process** reopens with restore (`cadex inventory`, `cadex clearance`)
+both returned `ok: true` under the new pin. `ot7-plover-e` is untouched:
+script `d14bfbaad9…`, accepted digest still `a00d1aea…`.
+
+Nothing was grounded, supported, suppressed, weakened or shortened: the base
+is free, the declared rollout is the design's own bounded one, and the only
+state a product-agent turn wrote is a re-acceptance of unchanged source.
+
+**One collector fix, with a regression.** `run()` created the attempt's
+evidence directory with a non-recursive `mkdir`, so a seed copy prepared
+*without* the baseline's `evidence/` — which is how an ot8 seed is prepared —
+raised `FileNotFoundError` before the first measurement. The parent is now
+created with `exist_ok=True` while the attempt's own directory stays
+exclusive, so a second dispatch on the same copy still refuses.
+`test_a_seeded_attempt_starts_on_a_copy_that_carries_no_evidence` fails on the
+old code with that `FileNotFoundError` and passes on the new one, and asserts
+the refusal too. `docs/probes/ot8/README.md` now states how a seed copy is
+prepared, because that preparation is part of what G3 measured.
+
+**Evidence.** `docs/probes/ot8/retained/g3-plover-rebuild.json` (7,005 bytes)
+carries the chain; the full evidence is project-local under
+`<projects>/ot8-plover/evidence/g3-rebuild/`.
+
+## ADR-402 — G4: the balancer's smoke is a control requirement, measured (2026-09-20)
+
+**Context.** ot7 left F6 with a balancer whose ordinary holding smoke failed
+and no account of why. The ot8 charter's G4 asks for the account, and asks it
+as three measurements rather than an argument: is the failure a geometry or
+export mismatch, a defect in the design, or behaviour the design declares and
+cannot produce without feedback control it does not have? The freeze
+(`docs/probes/ot8/README.md`) makes the answer decide what happens next —
+G4's initial prompt is dispatched **only if** the actor's own no-slot
+diagnosis finds an actionable design defect.
+
+**What was prepared and measured, spending nothing.** `ot8-robin` is a
+mechanical copy of `ot7-robin-c` with `evidence/`, `agent.json` and
+`.cadex-cli.lock` left behind; the collector validated it against
+`baselines.json` and was invoked with `--turns 0`, so it took the seeded
+"before" measurement and dispatched no prompt. Static fit **pass, 378 of 378
+pairs, 0 failing**; sweep **complete on 2 of 2 joints, 0 failing**; inventory
+**28 components, 23 catalogued** (2 `gearmotor/pololu-2367`, 1
+`board/pi-zero-2-w`, 10 `heat_insert/m2-standard`, 8 `bolt/m2x4-socket`, 2
+`bolt/m2x6.5-socket`) with five modelled printable parts and nothing
+uncatalogued that should not be. The ordinary `cadex smoke` **failed**, with
+six lines: four floor penetrations, `support: comp_chassis has turned 102.2°
+away from its accepted pose (limit 30°)`, and `termination: fallen fired at
+0.660 s`.
+
+**Ruled out: a geometry or export mismatch.** The smoke's own exact-BREP check
+**passes** — 378 pairs across 51 sampled MuJoCo poses with its first-frame
+agreement gate satisfied — and `mjcf_agreement.py` puts all **28 bodies** of
+the accepted export within `1.35e-29` mm and `0.0°` of the placements the
+solve published. The model the smoke ran (`933b1ac6…`) is byte-identical to
+the accepted attempt's export.
+
+**Ruled out: a design defect.** Measured from the model's own mass properties
+at the accepted pose: the machine rests on **two** floor contacts 96 mm apart
+— a *line*, so it has no static margin about that axis at any mass
+distribution. Its whole-body centre of mass is **0.365 mm** off that line and
+**52.40 mm** above it; holding the accepted pose costs **0.672 N·mm** against
+the **184.365 N·mm** its own two motors declare about the same axis — a
+**274×** margin, enough to oppose gravity statically out to **89.6°** of tilt.
+Nothing about the mass distribution or the actuator sizing is what the smoke
+reports.
+
+**Confirmed: a missing feedback control.** The unstable eigenvalue about the
+contact line is **11.59 /s**, an **86.3 ms** time constant; replaying the same
+zero-command rollout reproduces the published fall to the receipt's own digits
+(final tilt 102.2339672°, against the receipt's 102.2339671°) with a measured
+exponential growth of **9.53 /s**. Both actuators are commanded **0.0**,
+because `cli/cadex_cli/smoke_runner.py` holds position servos and a torque
+motor has no pose to hold — so the rollout is the free response of an inverted
+pendulum, and the fall is what the model declares.
+
+**The four penetrations are not a fifth finding.** Two are post-fall ground
+impacts at 0.740 s (`comp_board` 7.676 mm, `comp_chassis` 5.312 mm), after the
+machine has already toppled. Two are the standing contact compression under
+the machine's own weight: the wheels are exactly tangent to the floor at
+t = 0, peak at **0.601 mm** at 0.06 s and settle at **0.576 mm** against a
+0.5 mm tolerance. Measured under scaled load it follows the load (0.212 mm at
+¼, 1.645 mm at 4×, every sample taken within 0.35° of the same pose), so it is
+the engine's contact spring — `CadexDynamics.CONTACT_TIMECONST_S = 0.02 s`,
+which the script surface does not expose — compressed, not geometry
+intersecting the floor. The design already sits at the stiffest contact its
+surface allows: restitution 0 maps to a critically damped `solref` dampratio
+of 1.0, the maximum. Repairing it could not change the verdict, which fails on
+support and termination regardless.
+
+**Decision: the experiment ends here, and no slot was spent.** The diagnosis
+reproduces an out-of-scope control requirement rather than an actionable
+design defect, so under the freeze `resolve.prompt.txt` was **not**
+dispatched: `ot8-robin` is paused with all four prompts unspent and its seed
+unchanged. The missing control contract, stated exactly from the design's own
+task bundle: read the **20 channels** already exported as nine sensors
+(chassis quaternion, angular velocity and position, both wheel velocities,
+subtree centre of mass and its velocity, both actuator forces); command
+**two wheel torques at ±92.18 N·mm** at **50 Hz**, which is **4.3 samples per
+e-fold** and **1.26×** of tilt growth per control interval; hold
+`chassis_pos_z ≥ 75.25 mm` — **45.573°** of tilt, since the chassis origin
+stands 107.5 mm above the contact line — and stay inside the smoke's 30°
+support limit, for the declared 8 s episode, from resets that already vary
+tilt to 3° and height by 3–5 mm. The only things that could supply that are a
+trained policy or a hand-authored feedback controller, and this charter
+forbids both. **A no-feedback inverted pendulum that topples is not a failure
+of this experiment and is not a success of the design**; nothing was grounded,
+supported, suppressed, weakened or shortened to make a check pass.
+
+**The tool.** `docs/probes/ot8/runner/balance_diagnosis.py` is that
+measurement, so the result is reproducible rather than asserted: it finds the
+support set from MuJoCo's own contacts with no part names in it, measures the
+lever arm, inertia, holding torque, actuator authority about the topple axis
+and the unstable eigenvalue, replays the zero-command rollout, and sweeps the
+standing contact depth under load. It rebuilds nothing, accepts nothing,
+trains nothing and writes no controller.
+`cli/tests/test_balance_diagnosis.py` pins it against a hand-written fixture
+whose centre of mass, inertia about the contact line, holding torque and
+eigenvalue are arithmetic stated before the tool is run, and exercises both
+sides of its one decision: the same fixture with motors that dwarf the holding
+torque reads `missing_feedback_control`, and with motors inside the margin
+reads `design_defect`.
+
+**Evidence.** `docs/probes/ot8/retained/g4-robin-diagnosis.json` (14,249
+bytes) carries the chain; the full evidence is project-local under
+`<projects>/ot8-robin/evidence/g4-resolve/`. `ot7-robin-c` is untouched:
+script `f805fdc2…`, accepted digest still `b933d905…`.
+
+## ADR-403 — ot8's closing report separates a met bar from a finished experiment (2026-09-20)
+
+**Decision.** `docs/probes/ot8/REPORT.md` is the closing report G6 asks for:
+one row per *experiment* rather than per design, carrying the frozen prompts
+and their digests, the turns that reached the model, the model, continuations
+used, the accepted identity, static fit per turn, final static and swept
+checks, smoke, inventory, actor edits, the remaining defects and the **ot7**
+comparison — plus an explicit slot ledger, every call that was not an attempt,
+the G1–G5 evidence table with each receipt linked by path, and a closing
+section that claims done and names what remains open. It mirrors ADR-397's
+shape deliberately, so the two runs' reports read against each other.
+
+**The one column ot7's table did not have, and why.** ot8's rows open with an
+**Outcome** cell, and it is the point of the report. Two of the three
+experiments met every count of their bars; the third finished and its design
+did not succeed. A table that prints "turns: 0, static: pass, swept: pass"
+for the balancer beside two successes reads as a third success unless the row
+says otherwise, so it says otherwise — `control-blocked — not a design
+success` — and the report states the rule in its own words above the table.
+The charter's words are the test's: never claim the requested design succeeded
+merely because its experiment finished.
+
+**The numbers, taken from the committed receipts rather than restated.** G2:
+one completed turn on `ot8-heron-b` from the create prompt alone, 0 of 105
+failing static, sweep complete on 2 of 2 joints, a passing ordinary smoke, and
+four purchased parts placed as unmodified catalog rows against
+`ot7-heron-c`'s two hand-modelled servos and two hand-modelled horns. G3: one
+completed rebuild turn on `ot8-plover`, unchanged script, accepted digest
+`a00d1aea…` → `9ef44502…`, and a passing ordinary `cadex smoke` on the pin
+with no substituted bundle. G4: **nothing dispatched** — the freeze sends its
+prompt only on an actionable design defect, and the diagnosis found a control
+requirement instead. Three dispatches, two slots spent, one void (ADR-355),
+and **nine of nine continuations unspent**.
+
+**What the report does not claim.** It does not claim the balancer works, or
+that its 0.576 mm standing wheel compression is a fit defect — that depth
+follows the applied load and is the engine's contact spring. It does not
+re-open ot7: its F4–F7 stay exhausted, its receipts stay unedited, and the
+three ot7 projects were read read-only and hashed before and after in G5's
+receipt. It does not tick an owner checkbox.
+
+**Evidence that fails on the old code.** `cli/tests/test_ot8_report.py` is the
+sibling of `test_ot7_report.py`: it pins the six sections, the per-experiment
+table's fifteen columns and their values, the slot ledger's totals, the
+one-row non-attempt list with its receipt resolving, the G1–G5 rows each
+linking evidence, the open-items list and the done claim, plus every relative
+link, anchor, record slug and ADR the report cites — and one assertion that is
+not about shape, that exactly two rows read as a success and the balancer's
+may not. All eleven tests fail with `FileNotFoundError` against the tree at
+commit `a51169cc`, where `docs/probes/ot8/REPORT.md` does not exist. Suite:
+`pixi run python -m pytest cli/tests`.

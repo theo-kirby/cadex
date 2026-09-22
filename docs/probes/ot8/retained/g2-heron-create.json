@@ -1,0 +1,164 @@
+{
+  "after": {
+    "accepted_digest": "9cec3cc6a59aac3aab28243d3e37fa5168246354401ac141b7eec1535b8690b2",
+    "accepted_revision": "957044aec544194e0b3dd605b7e04289301429b8635f355378a76eff1e8d84df",
+    "attachments": {
+      "pairs_checked": 12,
+      "reported_count": 0,
+      "verdict": "touching"
+    },
+    "inventory": {
+      "catalog_counts": {
+        "bearing/mr128": 2,
+        "bolt/m2x16-socket": 2,
+        "bolt/m2x6-socket": 4,
+        "servo/mg90s": 2,
+        "servo_horn/mg90s-single_arm": 2
+      },
+      "component_count": 15,
+      "derived_catalog_sources": [],
+      "revision": "957044aec544194e0b3dd605b7e04289301429b8635f355378a76eff1e8d84df",
+      "uncatalogued_sources": [
+        "base",
+        "forearm",
+        "upper_arm"
+      ]
+    },
+    "script_sha256": "aed8a0d365cac7a0c8810c9afd0ca4d28bca343a0b995622700733a536e06aeb",
+    "smoke": {
+      "accepted_digest": "9cec3cc6a59aac3aab28243d3e37fa5168246354401ac141b7eec1535b8690b2",
+      "accepted_revision": "957044aec544194e0b3dd605b7e04289301429b8635f355378a76eff1e8d84df",
+      "checks": {
+        "components": true,
+        "finite": true,
+        "penetration": true,
+        "support": true,
+        "termination": true
+      },
+      "failing": [],
+      "mjcf_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8",
+      "mode": "hold",
+      "mujoco_version": "3.10.0",
+      "note": "ordinary `cadex smoke` on the accepted artifacts; spends no slot",
+      "samples": 51,
+      "seconds": 1.0,
+      "task_sha256": "00ff17a13d27e66d62689ed55de5190b8a3a211867426c0ecec0d49521297c5a",
+      "verdict": "pass",
+      "wall_time_s": 0.0108
+    },
+    "static_fit": {
+      "counts": {
+        "below clearance": 0,
+        "clear": 105,
+        "intersection": 0,
+        "unknown": 0
+      },
+      "failing_count": 0,
+      "pairs_checked": 105,
+      "verdict": "pass"
+    },
+    "swept_fit": {
+      "coverage": "complete",
+      "failing_count": 0,
+      "joints_checked": 2,
+      "joints_complete": 2,
+      "joints_skipped": 0,
+      "step_degrees": 10.0,
+      "verdict": "pass"
+    },
+    "working_revision": "957044aec544194e0b3dd605b7e04289301429b8635f355378a76eff1e8d84df"
+  },
+  "bars": {
+    "every_purchased_component_unmodified_catalog": true,
+    "smoke_passes": true,
+    "static_fit_zero_failing": true,
+    "swept_fit_zero_failing": true,
+    "verdict": "success on the initial create prompt, with all three continuations unspent",
+    "zero_actor_design_edits": true
+  },
+  "comparison_ot7": {
+    "baseline_accepted_revision": "58ff41b4ab576b62c1662acf72ef7a74e2c16e4e36b99dd3281c9663481734bd",
+    "baseline_catalog_counts": {
+      "bearing/mr128": 2,
+      "bolt/m2x16-socket": 2,
+      "bolt/m2x6-socket": 4
+    },
+    "baseline_component_count": 15,
+    "baseline_project": "ot7-heron-c",
+    "baseline_uncatalogued_sources": [
+      "base_solid",
+      "forearm_solid",
+      "horn_elbow_solid",
+      "horn_shoulder_solid",
+      "servo_elbow_solid",
+      "servo_shoulder_solid",
+      "upper_arm_solid"
+    ],
+    "modified_purchased_parts": {
+      "ot7": [
+        "servo_shoulder_solid",
+        "servo_elbow_solid",
+        "horn_shoulder_solid",
+        "horn_elbow_solid"
+      ],
+      "ot8": []
+    },
+    "note": "ot7's accepted pin carries no servo and no servo_horn catalog row: both servos and both horns were modelled by hand and appear in uncatalogued_sources. ot8's carries servo/mg90s x2 and servo_horn/mg90s-single_arm x2, and its uncatalogued_sources are exactly the three printed structural parts."
+  },
+  "criterion": "G2",
+  "design": "heron",
+  "full_evidence": {
+    "attempt_json_sha256": "c4973ffe0af95ba2a074c07c7e6b9e65081d6df3016e3145798e456f1c965802",
+    "committed": "this file only; transcripts and streams stay project-local",
+    "root": "ot8-heron-b/evidence"
+  },
+  "model": "claude-opus-5",
+  "origin": {
+    "comparison_baseline": "ot7-heron-c",
+    "note": "a new empty project; nothing copied. The ot7 arm is comparison only.",
+    "validated_against": "docs/probes/ot8/baselines.json"
+  },
+  "project": "ot8-heron-b",
+  "run": "ot8",
+  "schema": "ot8-experiment-evidence-v1",
+  "taken_at": "2026-09-21T00:35:00+00:00",
+  "turn": {
+    "actor_design_edits": 0,
+    "continuations_unspent": 3,
+    "continuations_used": 0,
+    "elapsed_seconds": 3015,
+    "exit_code": 0,
+    "index": 0,
+    "prompt": {
+      "bytes": 9648,
+      "path": "heron.create.prompt.txt",
+      "sha256": "bcda5af55c50459968d87d4651cf0123e7f996227c6c80895365078860514e37"
+    },
+    "slot_consumed": true,
+    "status": "completed",
+    "transcript_sha256": "db4b2b385f989e9657258bc027237204bcb7fe1d008ecf46dd71a93b02565d37",
+    "window_at_dispatch": {
+      "bound_percent": 45,
+      "dispatched": true,
+      "five_hour_percent": 1,
+      "status": "allowed",
+      "windows": {
+        "five_hour": 1,
+        "seven_day": 23
+      }
+    }
+  },
+  "void_before": {
+    "cut_off_mid_turn": true,
+    "elapsed_seconds": 2867,
+    "kind": "usage_limit",
+    "model_messages_before_limit": 51,
+    "note": "the same frozen create prompt, cut off by a five-hour session limit (429). Void under ADR-355: no slot spent, project closed, retried in ot8-heron-b. Its evidence is neither a design failure nor a design success.",
+    "project": "ot8-heron",
+    "rule": "ADR-355",
+    "slot_consumed": false,
+    "status": "void",
+    "transcript_sha256": "60881a1a50d07a4d38c4a462668897931a819749d11842140c64d97c63f1a8ee",
+    "window_at_dispatch": 20
+  }
+}
