@@ -6,11 +6,11 @@ ended: 2026-09-21T02:26:29+00:00
 hours: 7.7
 state: stopped
 iterations: 10
-commits: 18
+commits: 19
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 6
-merged: no
+merged: f76b2be1a37aee4f47dec2874981cd1657e74ace
 branch: ouroboros/ot8
 memory: hypergraph
 actor: claude:claude-opus-5
@@ -18,14 +18,14 @@ actor: claude:claude-opus-5
 
 # Run ot8
 
-10 iterations in 7.7h on `sb1x`, stopped (critic accepted done 2x in a row). Branch `ouroboros/ot8`, not merged.
+10 iterations in 7.7h on `sb1x`, stopped (critic accepted done 2x in a row). Branch `ouroboros/ot8`, merged as `f76b2be1`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 10 (changed 10, recorded 7) |
-| commits | 18 — 47 files changed, 4652 insertions(+), 57 deletions(-) |
+| commits | 19 — 49 files changed, 4712 insertions(+), 58 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 6 checked at the tip |
 | reverts | 0 |
 | verdicts | continue 7, done_accepted 2, done_rejected 1 |
