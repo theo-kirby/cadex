@@ -139,9 +139,37 @@ the time it occurred, minimum chassis height, total reward, and the policy,
 MJCF and task sha256 of the artifacts that ran. Peak tilt and minimum height
 are read from the exported trace's `comp_chassis` poses at every control
 step (one frame per control step, `assembly.rollout`'s default) and from the episode block's
-`termination`; the reader that computes them is its own unit, pinned by its
-own test against a trace whose answers are stated before it runs, and no
-evaluation is reported before it exists.
+`termination`. The reader is
+[`runner/balance_eval.py`](runner/balance_eval.py), pinned by
+`cli/tests/test_ot9_balance_eval.py` against traces whose answers are stated
+before it runs. It takes the tilt reference from the model's `solved`
+keyframe — never from the trace, whose first frame is the *reset* pose — and
+it calls a trace **void** when the model it ran is not the model read or not
+the pin. It reports every seed and a candidate verdict that is `pass` only
+for all ten contract seeds, each passing:
+
+```bash
+pixi run python docs/probes/ot9/runner/balance_eval.py \
+  --model "$PROJECTS/ot9-robin/bundle/robin_model-model.xml" \
+  --expect-mjcf <pin> --expect-task <pin> \
+  "$PROJECTS"/ot9-robin/eval/<candidate>/seed-*/assembly-simulation-trace.json
+```
+
+It also reads a `cadex smoke` trace (beside its `smoke.json`), which is how
+the no-policy fall was re-measured on `ot9-robin`; a smoke trace never
+passes, because it has no policy in it.
+
+## Reproduced on `ot9-robin`
+
+[`retained/r2-robin-no-policy.json`](retained/r2-robin-no-policy.json).
+`ot9-robin` was prepared by the command above and every pin reproduced on the
+copy: script, revisions, attempt, accepted digest (`project_digest`),
+geometry digest (`staged_geometry_digest` under `FreeCADCmd`), MJCF and task.
+An 8 s zero-torque `cadex smoke` read by the reader fires `fallen` at
+**0.66 s** with the chassis at 66.7328 mm and reads **102.234°** at 1.0 s —
+G4's values to 1e-9 — then peaks at 108.1° on the floor impact at 0.74 s and
+lies at 102.2° to the end. `cadex export` rebuilt the accepted digest and
+wrote the training bundle (`bundle/`) with the pinned MJCF and task.
 
 ## Run accounting
 
