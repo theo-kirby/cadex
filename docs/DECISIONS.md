@@ -27361,3 +27361,30 @@ not about shape, that exactly two rows read as a success and the balancer's
 may not. All eleven tests fail with `FileNotFoundError` against the tree at
 commit `a51169cc`, where `docs/probes/ot8/REPORT.md` does not exist. Suite:
 `pixi run python -m pytest cli/tests`.
+
+## ADR-404 — ot9 tests trained balancing on Robin (2026-09-22)
+
+**Decision.** The owner directs ot9 to train a policy for Robin, the accepted
+wheel balancer whose uncontrolled smoke failed in ot8 (ADR-402). Success is
+an accepted, witness-verified policy running the task's full eight seconds
+at 50 Hz on ten recorded reset seeds, with chassis tilt within 30 degrees
+and no `fallen` event on every seed. The evaluation set is fixed before
+training; every failed attempt remains visible. The product agent may revise
+mechanics, task and reward from measurements, but the episode, tilt and fall
+bar may not be weakened. It works on new ot9 projects and leaves ot7/ot8
+projects read-only. Fit, swept fit and catalog provenance stay part of the
+closing evidence.
+
+**Run shape.** The owner selects `claude-fable-5-1` as the primary
+Ouroboros role model with Codex `gpt-6-astra` fallback, a 48-hour ceiling
+and two accepted done verdicts to stop. The headless product CLI drives
+Claude only, so its product turns use Fable 5.1; a Codex role fallback does
+not silently change the product model. The exact charter is
+`.ouroboros/goal.md`, and `.ouroboros/config.yml` pins the role order.
+This designs the run; launch is a separate operator action.
+
+**Reason.** ADR-402 measured an unstable wheel balancer with adequate
+actuator torque and a zero-command fall. ot8 deliberately stopped before
+control; this run tests the missing link in the product's design-to-policy
+path. The bar distinguishes a verified behavioral result from a completed
+training job or a high reward number.

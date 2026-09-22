@@ -1,163 +1,152 @@
-# Goal: finish the unassisted-design evidence
+# Goal: teach Robin to balance
 
-Verified against source: 2026-09-20. Operator charter for ot8, following the
-owner's request to review and merge ot7 and start the next run. The selected
-scope is a bounded follow-up on ot7's remaining gaps. The human owns this
-file; unattended roles never edit it. ot7's charter and outcomes remain in
-git history and `docs/probes/ot7/REPORT.md`; this run does not rewrite them.
+Verified against source: 2026-09-22. Operator charter for ot9, following
+ot8's measured control diagnosis. The human owns this file; unattended roles
+never edit it. Prior projects and receipts remain read-only baselines.
 
 ## Mission
 
-Make the remaining unassisted-design claims reviewable against accepted
-artifacts. First establish the new experiment's prompts and slot accounting,
-then measure an arm whose purchased hardware retains catalog identity, a
-biped whose accepted MJCF passes the shipped smoke command, and the cause
-of the balancer's failed holding smoke. Preserve the difference between fit,
-support, and controlled behavior. A wheel balancer that needs feedback is a
-measured control requirement, not permission to hide the failure with a
-grounded base, extra supports, a weakened tolerance, or a shorter rollout.
+Train a policy that keeps Robin upright on its accepted design for the task's
+declared eight-second episode. Install and verify the policy against its
+accepted task and model, then pass ten recorded reset seeds without firing
+`fallen` or exceeding 30 degrees of chassis tilt. The product agent may
+revise mechanics, task and reward when measurements justify it. A completed
+experiment is not a successful balance unless this behavioral bar is met.
 
-No training or dashboard work is authorized. Keep the existing Opus-only
-configuration, a 48-hour ceiling, and the two-accepted-done stop.
+Keep the 48-hour ceiling and two-accepted-done stop. Ouroboros roles use
+`claude-fable-5-1` with Codex `gpt-6-astra` fallback. The headless product
+CLI drives Claude, so product design calls use Fable 5.1 and wait for its
+availability rather than silently changing models.
 
 ## Done criteria
 
-Each criterion requires a record with measured evidence. The human owns
-checkboxes; a bounded experiment can close with a clearly reported negative
-result. Never claim the requested design succeeded merely because its
-experiment finished.
+Each criterion requires a causally parented record with measured evidence.
+The human owns the checkboxes; roles report results and do not tick them.
 
-- [ ] **G1. The follow-up has a frozen, bounded experiment contract.**
-  `docs/probes/ot8/README.md` identifies the ot7 baselines, freezes prompts
-  before any product turn, lists success and failure bars, and allocates one
-  initial product prompt plus at most three continuations per design. The
-  report distinguishes ot8 from ot7 and every failed, void, interrupted or
-  unreached call. Reuse the ot7 runner where practical; any minimal extension
-  has tests for slot accounting and preserving prior evidence.
-- [ ] **G2. The arm's catalog-provenance gap has a bounded measured outcome.**
-  In a fresh ot8 project, run the original Heron create prompt with today's
-  product instructions. Measure static fit, swept fit, inventory and an
-  ordinary accepted-artifact smoke after each relevant turn. Success means
-  zero failing static and swept checks, every purchased component placed as
-  an unmodified catalog part, zero actor design edits, and a passing smoke.
-  Otherwise report the exact remaining defects after the allowed turns.
-  Compare with ot7's two modified servos and two modified horns.
-- [ ] **G3. The biped's smoke is measured against its accepted artifacts.**
-  Work on a new independent copy of ot7-plover-e. A product-agent turn may
-  explicitly rebuild and accept the unchanged design with the fixed engine;
-  the actor may not change its script, parameters, or accepted state. Run
-  ordinary `cadex smoke` against that pin, without the re-export probe's
-  substituted bundle. Record accepted digest, MJCF digest, fit, inventory,
-  smoke and a fresh-process reopen. Success requires matching accepted
-  evidence and a passing smoke; report any bounded failure without hiding it.
-- [ ] **G4. The balancer's failed smoke has an actionable measured diagnosis.**
-  On an independent ot8 copy of Robin, reproduce the ordinary holding smoke
-  and distinguish geometry/export mismatch, a design defect, and missing
-  feedback control using published measurements and the MJCF/task contract.
-  If a design defect is actionable, use only the frozen product prompts and
-  allowed turns to repair it and remeasure. If the required behavior needs
-  feedback outside this charter, record the exact missing control contract
-  and stop that experiment. A no-feedback inverted pendulum need not pass;
-  never call it a success or silently introduce training or a controller.
-- [ ] **G5. The regression floor still holds.** Both full suites and the
-  packaged lifecycle gate pass at the final code revision. Reopen copies of
-  the retained ot6/ot7 designs used by this run and verify their accepted
-  pins and artifacts remain intact. Explain every measured difference. The
-  ADR-398 repeated-restore retention regressions stay green.
-- [ ] **G6. A closing report carries every outcome and is accepted by the critic.**
-  `docs/probes/ot8/REPORT.md` contains one row per experiment with prompts,
-  turns, model, accepted identities, static/swept fit, inventory, smoke,
-  before/after comparisons and remaining defects. Link G1-G5 evidence.
-  Separate achieved success bars from exhausted or control-blocked outcomes.
-  Write this last, reconcile, and claim done without ticking owner boxes.
+- [ ] **B1. The experiment has a frozen baseline and evaluation contract.**
+  `docs/probes/ot9/README.md` names ot8 Robin's script, accepted revision,
+  geometry digest, MJCF and task digests. It fixes ten evaluation seeds before
+  training, the 8 s / 30 degree / no-`fallen` bar, training and evaluation
+  commands, and accounting for failed, interrupted and void runs. Keep the
+  same seeds across revisions and publish every result, including failures.
+- [ ] **B2. Robin's policy is trained and installed on accepted artifacts.**
+  At least one offboard PPO run produces a `.cxpolicy` with recorded task and
+  model digests, seed, settings, checkpoint identity and training curve. Store
+  it in a new `ot9-*` project, witness-verify it in the engine, accept it
+  through the ordinary script path, and reopen it in a fresh process with
+  the same policy and model identity. Trainer exit alone is not success.
+- [ ] **B3. Robin balances across the declared evaluation set.** On each of
+  ten frozen reset seeds, the accepted policy runs the full 8 s at the task's
+  50 Hz control rate, stays within 30 degrees of accepted chassis attitude
+  throughout, and never fires `fallen`. Report all ten trajectories'
+  duration, peak tilt, minimum chassis height, termination, and policy/model
+  digests. One failed seed fails this criterion; do not average it away.
+- [ ] **B4. Changes remain mechanically and causally reviewable.** The final
+  accepted design has zero failing static fit checks, complete passing swept
+  fit for both wheel joints, and a component inventory with catalog
+  provenance. Compare it with the frozen baseline. Every mechanical, task
+  or reward change comes from a product-agent turn on an ot9 project and has
+  a before/after measurement. No actor design edit, grounded base, added
+  stabilizer, hidden joint, shorter episode or weaker tilt/fall threshold
+  may satisfy B3.
+- [ ] **B5. Regressions and a closing report are complete.** Both full suites,
+  the packaged lifecycle gate for any engine/payload change, and a fresh
+  reopen of the final ot9 project pass at the final revision. The report at
+  `docs/probes/ot9/REPORT.md` lists every training and evaluation run,
+  checkpoint choice, accepted identity, changed design/task/reward, failed
+  attempt, achieved bar and remaining defect. Reconcile, then claim done
+  for critic review without ticking owner boxes.
 
 ## Horizon ladder
 
 - **short-term:**
-  1. Freeze the ot8 experiment contract and prompts; verify product access.
-  2. Close the biped accepted-artifact smoke measurement on an independent copy.
-  3. Run the arm experiment with catalog identity visible to the product agent.
-  4. Diagnose the balancer with the same published checks and preserved receipts.
+  1. Freeze the baseline, ten evaluation seeds and receipt shape.
+  2. Reproduce Robin's no-policy fall on an independent copy and export its
+     accepted training bundle.
+  3. Run a first bounded training job, install its policy and measure the
+     declared episode on training-side diagnostics.
+  4. Evaluate the accepted policy on frozen seeds and record all failures.
 - **medium-term:**
-  1. Compare arm hardware identity, static fit and motion fit with ot7.
-  2. Establish the biped's accepted MJCF, reopen and smoke as one evidence chain.
-  3. Separate the balancer's mechanical feasibility from its control requirement.
-  4. Run regressions and publish the closing comparison.
+  1. Improve policy behavior from measured failures while preserving the
+     eight-second, tilt and fall requirements.
+  2. If learning exposes a mechanical limit, let the product agent revise
+     the mechanism and compare fit, mass, torque and behavior.
+  3. Verify policy identity through export, acceptance, reopen and a fresh
+     process; publish the final comparison.
 - **long-term:**
-  1. Park printability checks: wall thickness, screw engagement and connected mounts.
-  2. Park trained behavior: a balancing controller, reaching and walking rewards.
-  3. Keep every gate green and every changed behavior documented. Parked work
-     is not authorization to expand this run after its bounded experiments.
+  1. Repeat trained balancing on another mechanically independent design
+     after Robin is proven; this is a future direction, not an ot9 bar.
+  2. Extend robustness toward shove recovery and printability only after
+     declared hold behavior is measured; neither substitutes for B3.
+  3. Keep every gate green and every changed behavior documented.
 
 ## Constraints
 
-**Standing:** obey AGENTS.md and licensing/process/sandbox boundaries. No
-replacement engine or shell. Training stays offboard. Never commit secrets,
-machine paths, private hostnames, build outputs, full transcripts or traces.
-Committed receipts are at most 16 KB and images at most 200 KB. Keep full
-evidence project-local and cite paths plus digests. Never hand-edit STATE.md,
-PLAN.md, ROADMAP.md or state nodes. Accepted-state guards remain in force.
+**Standing:** obey AGENTS.md, licensing and process boundaries. Training stays
+offboard; do not import JAX/MJX into the engine or build a replacement engine
+or shell. Never commit secrets, machine paths, private hostnames, build
+outputs, full transcripts, policy binaries or rollout traces. Keep full
+evidence project-local and commit compact receipts with paths and digests.
+Do not hand-edit STATE.md, PLAN.md, ROADMAP.md or state nodes. Preserve
+accepted-state guards and the original ot7/ot8 projects.
 
 **This run:**
 
-- All roles and product calls use `claude-opus-5`, with no model fallback.
-- The actor never edits a test design's source, parameters or accepted state.
-  An unchanged copy may be prepared mechanically; changes and reacceptance
-  come only from a product-agent turn. Preserve all prior projects read-only.
-- Use external projects named `ot8-*` under the established projects root.
-  Every experiment has a new identity; ot7's exhausted slots stay exhausted.
-- Freeze initial and continuation prompts before any design turn. Continuation
-  prompts name no specific part, dimension or defect. They direct the agent
-  to its measured fit, inventory and smoke evidence. At most three per design.
-- Usage-limit calls are void and spend no slot. Interrupted/unreached calls
-  retain their evidence and cannot masquerade as design failures or successes.
-  Verify product-model access and window headroom before each design turn.
-- When provider capacity blocks the next turn, do not manufacture tooling or
-  waiting records. Keep the existing receipt, return no change, and let the
-  runner back off. Probe again only after a reset or evidence of restored access.
-- No role starts, stops or restarts the loop, or signals its process.
-- No policy training, reward redesign, hand-authored feedback controller,
-  dashboard/service edits, visual changes, unrelated catalog expansion or
-  inherited-tree removals. Smoke rollouts stay bounded to five minutes.
-- A design may fail. Do not ground a free robot, add stabilizers, suppress
-  required joints, weaken tolerances, or shorten its declared smoke to make
-  a result pass. An explicit measured blocker is an acceptable outcome.
-- Fix product defects only when a reproduced failure blocks these experiments
-  or violates an existing contract; pin each with a meaningful regression.
+- Ouroboros roles prefer Fable 5.1; Codex `gpt-6-astra` is their fallback.
+  Product-agent calls through `./cadex` use `claude-fable-5-1` and record
+  their model explicitly.
+- Only the product agent authors changes to Robin's mechanics, task and
+  reward. The actor may write measurement and product tooling with regressions
+  and install a trained policy through the supported CLI path. Each project
+  copy has a new `ot9-*` identity; baseline projects stay read-only.
+- Keep the ten evaluation seeds fixed across revisions. Record training seeds
+  and any additional tuning evaluations separately; show each candidate's
+  outcome on all ten, not only the winning policy's.
+- Keep the eight-second episode, 50 Hz control rate, 30-degree tilt limit and
+  `fallen` termination. No world fixture, stabilizer, joint suppression or
+  silent tolerance change. Report known standing contact compression
+  separately; do not mislabel it as a geometry intersection.
+- Record each training run's planned settings and stop rule before it starts.
+  Preserve failed and interrupted runs. Do not claim success from reward
+  alone or from the zero-torque `cadex smoke` hold mode.
+- No dashboard, visual redesign, unrelated catalog expansion or inherited
+  tree removal. Fix product defects only when reproduced failures block this
+  lifecycle, with a meaningful regression.
+- No role starts, stops or restarts the loop or signals its process.
 
 ## Question policy
 
-Resolve routine reversible choices autonomously, with code as truth and docs
-updated alongside behavior. Work on the highest-ranked unblocked criterion.
-Never guess a measurement. If closing a design success bar requires training
-under the current no-training constraint, record that boundary and finish the
-bounded diagnosis; do not spend the run repeatedly rediscovering it. A new
-objective requires an owner revision.
+Resolve reversible choices autonomously using the smallest measured step
+toward B1-B5. Code and accepted artifacts outrank docs; update docs with
+behavior. If the policy misses an evaluation seed, record the failure and
+diagnose it before another training or design revision. If Fable is
+unavailable for a product turn, retain the
+receipt and wait for capacity; Codex fallback applies to Ouroboros roles,
+not the Claude-only headless CLI. Never invent a measurement or treat
+provider refusal as a design verdict.
 
 ## Exhaustion policy
 
-`report_done`. After G1-G5 have evidence, write G6, reconcile and claim done.
-Two consecutive critic acceptances stop the run. Do not repeat an exhausted
-experiment, invent another mechanism or advance parked work to fill time.
-A negative design result counts as evidence only after its allowed relevant
-turns are exhausted, or a reproduced out-of-scope control requirement
-justifies ending that experiment. Provider refusal alone proves neither.
+`report_done`. After B1-B5 have evidence, write the closing report,
+reconcile and claim done. Two consecutive critic acceptances stop the run.
+If the 48-hour ceiling arrives first, report the highest achieved bar and
+every failed seed; do not redefine success or start another mechanism. A
+trained policy that misses the ten-seed bar is an honest incomplete result.
 
 ## Quality bar
 
-- `pixi run test-engine` and `pixi run python -m pytest cli/tests`. Engine
-  protocol/payload changes also rebuild and stage, then run
-  `CADEX_ENGINE_ROOT=<payload> pixi run python -m pytest
-  src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`.
-- Each fix has a regression that fails before the fix. Distinguish actual
-  passes from skips and do not call an unavailable measurement a pass.
-- Record every unit causally with State Impact; removals and direction changes
-  earn ADRs. One logical change per commit, critic rejects fixed forward.
-- Preserve old evidence and list every attempted experiment, including failures.
+- Run `pixi run test-engine` and `pixi run python -m pytest cli/tests` at
+  the final revision. For protocol or payload changes, rebuild and stage,
+  then run the packaged lifecycle gate. Report skips and failures as such.
+- A product fix needs a regression that fails before it. Keep code changes
+  coherent. Record each unit with State Impact; direction changes and
+  removals also earn ADR entries.
+- Measure every accepted design and policy from its own pinned artifacts.
+  Preserve old evidence and list all training and evaluation attempts.
 
 ## Reconcile
 
-Every five work iterations or three unreconciled records, perform the
-reconcile pass: fold impacts, advance the high-water mark, regenerate views,
-export and check. Separate maintainer/planner roles stay off; the critic
-names the next unit. Unattended roles never edit this charter.
+Every five work iterations or three unreconciled records, fold impacts,
+advance the high-water mark, regenerate views, export and check. Separate
+maintainer and planner roles stay off; the critic names the next unit.
+Unattended roles never edit this charter.

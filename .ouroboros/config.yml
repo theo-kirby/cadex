@@ -1,4 +1,4 @@
-run: ot8
+run: ot9
 goal: .ouroboros/goal.md
 memory: auto            # -> hypergraph (config + CLI present)
 backend: headless       # tmux: one streaming window per harness call in the run session
@@ -12,30 +12,40 @@ maintainer: false       # true: a separate maintainer call instead of actor hous
 planner: false          # true: a planner writes bets after each reconcile
 idle_interval: 30m
 roles:
-  # Owner-directed restart: every role uses Opus, with no other-model fallback.
+  # Owner-directed restart: Fable 5.1 first, Codex fallback for role calls.
   actor:
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5-1
     timeout: 90m
     resume_for: 1
+    fallback:
+      - { harness: codex, model: gpt-6-astra }
   critic:
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5-1
     timeout: 10m
+    fallback:
+      - { harness: codex, model: gpt-6-astra }
   maintainer:             # disabled above
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5-1
     timeout: 30m
+    fallback:
+      - { harness: codex, model: gpt-6-astra }
   planner:                # disabled above
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5-1
     timeout: 20m
+    fallback:
+      - { harness: codex, model: gpt-6-astra }
   reporter:
     harness: claude
-    model: claude-opus-5
+    model: claude-fable-5-1
     timeout: 10m
+    fallback:
+      - { harness: codex, model: gpt-6-astra }
 git:
-  branch: null            # -> ouroboros/ot8
+  branch: null            # -> ouroboros/ot9
   tag_on_accept: true
   revert_on_reject: false # fix forward: the charter forbids reverting this run's own
                           # commits. A rejected commit stays, gets no ok tag, and the
@@ -72,7 +82,7 @@ loop:                     # motion without progress (ouroboros DESIGN.md section
   frontier_after: 30      # iterations with no node moving and no criterion ticked
   repeat_bet_after: 3     # only measured with the planner on
   escalate_every: 5
-  rotate: false           # all roles stay on the owner-selected Opus model
+  rotate: false           # fallback handles provider limits; no loop rotation
                           # Nothing here stops the run.
 report:                   # the reporter: an observer outside the loop (ouroboros DESIGN.md section 15).
                           # It reads this run directory and never the loop, so nothing it
@@ -96,7 +106,7 @@ report:                   # the reporter: an observer outside the loop (ouroboro
   silent_after: 2h        # the actor's timeout is 90m, so quiet for longer than that is a call
                           # that outlived its own kill, not a long iteration
   poll: 30s
-  max_chars: 1000         # one notification; the whole digest is kept in runs/ot8/reports/
+  max_chars: 1000         # one notification; the whole digest is kept in runs/ot9/reports/
 plan:                     # only with planner: true
   every: 5
   view: plan
