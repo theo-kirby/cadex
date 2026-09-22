@@ -7,7 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
@@ -27,9 +27,9 @@ The owner's fixed choices [rec: curious-branch-9704]:
 
 Exhaustion policy `report_done`; a reconcile every five work iterations or three unreconciled records, with the separate maintainer and planner off and the critic naming the next unit [rec: curious-branch-9704]. The five done criteria B1-B5 are child state nodes: B1 `twilight-flint-8205`, B2 `tidy-arbor-3203`, B3 `early-rain-5934`, B4 `strong-arrow-1143`, B5 `true-anchor-9584`; the human owns the checkboxes [rec: curious-branch-9704].
 
-**Run progress as of the first reconcile pass: nothing measured yet [rec: curious-branch-9704].** The charter, model policy and directive are recorded; no baseline has been frozen, no training job run and no policy installed [rec: silver-cloud-5850] [rec: shy-fjord-4367].
+**Run progress: all five criteria carry measured evidence and done is claimed for critic review [rec: falling-fountain-6090].** Policy r3-ppo-1 (ef71f370; seed 1001, 300 iterations) is installed in ot9-robin, engine-verified and reopened in fresh processes with the same identity [rec: candid-wood-6113]; the frozen ten-seed evaluation passed 10/10 — 8.0 s by truncation, no `fallen`, peak tilt at most 5.35 deg [rec: candid-wood-6113]. The final design is measured equal to the ot8 baseline with no mechanical, task or reward change [rec: long-glacier-5252]. Both suites are green at the final revision and `docs/probes/ot9/REPORT.md` is written; remaining defects it names are a systematic ~0.84 m drift and unmeasured robustness [rec: falling-fountain-6090]. Owner boxes are unticked [rec: falling-fountain-6090].
 
-*Reconcile judgement*: status `open` because both declared impacts describe a committed charter and an unlaunched run [rec: silver-cloud-5850] [rec: shy-fjord-4367]; the B1-B5 gaps, declared by `curious-branch-9704`, are parented here following the ot5-ot8 precedent of criteria under their charter node [rec: curious-branch-9704].
+*Reconcile judgement*: status flipped `open` → `working` — the run has measured evidence on every criterion, and completion is the owner's and critic's call, not this pass's (the B1 precedent). The charter itself is recorded by `silver-cloud-5850` and `shy-fjord-4367`; the B1-B5 gaps, declared by `curious-branch-9704`, are parented here following the ot5-ot8 precedent [rec: curious-branch-9704].
 
 ## Negative knowledge
 
@@ -40,3 +40,6 @@ None yet.
 - silver-cloud-5850 — the ot9 charter (ADR-404): train Robin under the accepted 8 s task, ten fixed reset seeds, existing 30-degree and fallen limits; committed, not launched
 - shy-fjord-4367 — before first launch, claude-opus-5-5 for every role and product call with no fallback; bars unchanged
 - curious-branch-9704 — the ot9 operator directive: the charter verbatim, B1-B5 declared as gaps
+- candid-wood-6113 — B2 identity reopened; B3 ten-seed evaluation 10/10
+- long-glacier-5252 — B4 measured, design unchanged from ot8
+- falling-fountain-6090 — B5 closing report; done claimed for critic review
