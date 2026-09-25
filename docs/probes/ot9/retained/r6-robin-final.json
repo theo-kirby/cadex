@@ -1,0 +1,54 @@
+{
+  "schema": "ot9-experiment-evidence-v1",
+  "rung": "B5: final fresh reopen and regressions at the final revision",
+  "run": "ot9",
+  "project": "ot9-robin",
+  "taken_at": "2026-09-22",
+  "model": "none: no product turn dispatched; a reopen and two test suites",
+  "reopen": {
+    "command": "./cadex export --project $PROJECTS/ot9-robin --out $PROJECTS/ot9-robin/reopen/b5-final --json",
+    "process": "a new ./cadex process and a new cadexd/worker, started after every earlier process chain had exited; rebuilt the accepted revision from the project store",
+    "exit_code": 0,
+    "wall_time_s": 274.9,
+    "project_commit": "46ad96c",
+    "accepted_revision": "ae889a9b81e4c9f442f63f70cefaca06883d2c997bacca459b785166157585f8",
+    "accepted_digest": "078ebe8788fc1a8f0a85420b6b2f0d68c96512a78a242ecf1fd732782319847c",
+    "expected": {
+      "accepted_revision": "ae889a9b81e4c9f442f63f70cefaca06883d2c997bacca459b785166157585f8",
+      "accepted_digest": "078ebe8788fc1a8f0a85420b6b2f0d68c96512a78a242ecf1fd732782319847c",
+      "source": "r5-robin-fit.json final revision (the seed-9 evaluation revision)"
+    },
+    "policy_receipt": {
+      "sha256": "8df0c267aa5705fd6d70ffb684d8ec36215188a9377cb488333659ee85fe8c67",
+      "weights": "r3-ppo-1.cxpolicy",
+      "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+      "model_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+      "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+      "trained_label": "r3-ppo-1",
+      "witness_error": 6.932228413556528e-08,
+      "witness_tolerance": 0.0001,
+      "witness_samples": 32
+    },
+    "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+    "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+    "stored_policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+    "trace_sha256": "5d64a9ee7ad3091e5c3c5e2a09cd6ac752904c9f6c8963bb98464a58b6a96f72",
+    "trace_equals_r4_seed9": true,
+    "policy_receipt_equals_r4_reopen": true,
+    "reader": {
+      "seed": 9,
+      "steps": 400,
+      "duration_s": 8.0,
+      "truncated": true,
+      "termination": "",
+      "peak_tilt_degrees": 2.783130117749139,
+      "min_chassis_height_mm": 105.82703100918212,
+      "pass": true
+    }
+  },
+  "regressions": {
+    "engine": {"command": "pixi run test-engine", "passed": 2196, "skipped": 53, "failed": 0},
+    "cli": {"command": "pixi run python -m pytest cli/tests", "passed": 938, "skipped": 1, "failed": 0},
+    "packaged_gate": "not required: ot9 changed nothing under src/, package/, shell/ or pixi.toml (git diff from the run's merge base is empty there)"
+  }
+}

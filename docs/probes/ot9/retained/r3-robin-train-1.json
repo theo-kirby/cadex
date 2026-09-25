@@ -1,0 +1,154 @@
+{
+  "schema": "ot9-experiment-evidence-v1",
+  "rung": "short-term 3: first bounded offboard PPO run, install its policy, one rollout",
+  "run": "ot9",
+  "project": "ot9-robin",
+  "training_run": "r3-ppo-1",
+  "plan": {
+    "written": "before the trainer started; committed ahead of the run so the ordering is in git",
+    "command": "./cadex train --project $PROJECTS/ot9-robin --out $PROJECTS/ot9-robin/runs/r3-ppo-1 --put --name r3-ppo-1.cxpolicy --iterations 300 --envs 1024 --seed 1001 --label r3-ppo-1 --timeout 2400 --json",
+    "trainer": "training/cadex_train.py under ~/cadex-train-venv (jax backend gpu, checked); offboard, the engine is not in the process",
+    "task": "the accepted balance_task, unchanged: task sha256 1f8c1040..., MJCF 933b1ac6...",
+    "training_seed": 1001,
+    "training_seed_note": "outside 0-9 so no one mistakes it for an evaluation seed; the trainer draws resets from jax.random, not random.Random(seed)",
+    "settings": {
+      "iterations": 300,
+      "envs": 1024,
+      "unroll": 20,
+      "epochs": 4,
+      "hidden": [
+        64,
+        64
+      ],
+      "learning_rate": 0.0003,
+      "discount": 0.97,
+      "entropy": 0.001,
+      "initial_std": 0.3,
+      "action_filter_alpha": 1.0,
+      "command_slew_deg": 0.0,
+      "warm_start": null,
+      "note": "iterations, envs, seed, label are cadex train flags; the rest are the trainer's defaults, which cadex train does not override"
+    },
+    "step_budget": "300 iterations x 1024 envs x 20 unroll = 6,144,000 environment steps (control steps at 50 Hz)",
+    "stop_rule": "the trainer stops at 300 iterations or at the 2400 s --timeout, whichever comes first; no early stop on reward, no restart inside this unit. Timeout without a policy = interrupted; non-zero exit or non-finite curve = failed; either is kept and reported and the next unit decides the next run",
+    "success_is_not": "trainer exit, reward, or a single rollout; only the frozen ten-seed evaluation (rung 4) can pass the bar",
+    "after_training": "install by the README's digest edit (cadex script literals -> stored name and sha256, cadex script --set, cadex params --set policy_on=1), witness-verified at rebuild; then one rollout at rollout_seed=0 read by runner/balance_eval.py after checking the trace has 401 frames for 400 steps",
+    "accounting": "per README Run accounting: completed / failed / interrupted / void; void if the bundle's MJCF or task sha256 differs from the pin"
+  },
+  "taken_at": "2026-09-22",
+  "model": "none: no product turn dispatched; training is the offboard PPO trainer",
+  "training": {
+    "class": "completed",
+    "exit_code": 0,
+    "project_commit": "9175e4b",
+    "device": "gpu",
+    "wall_time_s": 308.9,
+    "bundle": {
+      "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+      "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+      "equal_to_pin": true
+    },
+    "seed": 1001,
+    "iterations_run": 300,
+    "envs": 1024,
+    "parameters": 5634,
+    "policy": {
+      "stored_name": "r3-ppo-1.cxpolicy",
+      "sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+      "bytes": 84067,
+      "checkpoint": "final iteration (299), not the best-iteration checkpoint"
+    },
+    "best_checkpoint": {
+      "file": "runs/r3-ppo-1/r3-ppo-1.best.cxpolicy",
+      "sha256": "dc4d392e6a73ead1a3ae1d9eca3a21ea0785f64f49b550cb4d25c2948e157fb8",
+      "iteration": 255,
+      "reward_per_step": 0.9836126565933228,
+      "installed": false
+    },
+    "trainer_witness": {
+      "error": 6.932228413556528e-08,
+      "tolerance": 0.0001,
+      "samples": 32
+    },
+    "cadex_importable": false,
+    "curve": {
+      "file": "runs/r3-ppo-1/progress.json",
+      "points": 300,
+      "reward_per_step_at": {
+        "0": 0.7637,
+        "25": 0.7377,
+        "50": 0.9366,
+        "100": 0.9482,
+        "200": 0.9686,
+        "299": 0.9686
+      },
+      "final_reward_per_step": 0.9686048626899719,
+      "final_action_std": 0.2509515881538391
+    },
+    "episode_steps_note": "the trainer's 'episode' figure exceeds 400 late in training (409.6 at the last iteration, 1861.8 at 295), so it is not an 8 s truncated-episode length; it is not read as a balance measurement here"
+  },
+  "installation": {
+    "method": "README Installation: cadex script (read) -> cadex_cli.walk.declare_policy rewrote the two literals only (weights, sha256) -> cadex script --set -> cadex params --set policy_on=1",
+    "declare": {
+      "exit_code": 0,
+      "project_commit": "301cd22",
+      "accepted_revision": "cefc5898f172e782f34356a1e7729dde51b15127bcae4501dca5ca6c99b4d63e",
+      "digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c",
+      "digest_note": "unchanged: the switch is still 0, so the rollout is not built"
+    },
+    "policy_on": {
+      "exit_code": 0,
+      "project_commit": "9e2bb4a",
+      "accepted_revision": "df58d4ff825e3c029506fb661dfea18ef98e02b36f1894370241031578d21c96",
+      "digest": "6ff77527a39e22f4cbe985daeee6cbed4654aade80096ab0ab6ad4988b0ad96e",
+      "engine_verified": "the rebuild ran assembly.policy against the stored file and its sha256 and accepted, so the engine's witness check passed"
+    }
+  },
+  "rollout_seed_0": {
+    "note": "one diagnostic rollout at the script's default rollout_seed=0; NOT the frozen ten-seed evaluation (rung 4), and not reported as B3 evidence",
+    "command": "./cadex params --project $PROJECTS/ot9-robin --set policy_on=1 --out $PROJECTS/ot9-robin/runs/r3-rollout-seed0 --json",
+    "trace_sha256": "6db76948acf040d5efdfdf06e971a9a31bd00f99b84f8e32dbaa4a5341e6d745",
+    "policy_output_sha256": "8df0c267aa5705fd6d70ffb684d8ec36215188a9377cb488333659ee85fe8c67",
+    "layout_check": {
+      "frames": 402,
+      "solver_output": 401,
+      "input": 1,
+      "steps": 400,
+      "first_s": 0.0,
+      "last_s": 8.0,
+      "agrees_with_reader": true,
+      "reader_changed": false
+    },
+    "reader": {
+      "dialect": "rollout",
+      "seed": 0,
+      "steps": 400,
+      "duration_s": 8.0,
+      "termination": "",
+      "terminated_at_s": null,
+      "peak_tilt_degrees": 5.351710635177104,
+      "peak_tilt_time_s": 0.06,
+      "final_tilt_degrees": 1.8151321211926343,
+      "min_chassis_height_mm": 105.36761715441725,
+      "min_chassis_height_time_s": 0.06,
+      "total_reward": 393.4713405630257,
+      "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+      "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+      "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+      "class": "completed",
+      "failing": [],
+      "pass": true
+    },
+    "diagnostics": {
+      "reset_tilt_degrees": 2.533,
+      "tilt_after_0.2s_below_1_deg": true,
+      "max_tilt_last_2s_degrees": 1.923,
+      "chassis_xy_drift_max_mm": 838.5,
+      "chassis_xy_at_8s_mm": [
+        -367.0,
+        753.9
+      ],
+      "drift_note": "the task rewards alive and pitch only; nothing holds position or heading, so the policy balances while wandering ~0.84 m and turning. Not part of the bar; recorded for the next diagnosis"
+    }
+  }
+}

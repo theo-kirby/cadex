@@ -1,0 +1,68 @@
+{
+  "schema": "ot9-experiment-evidence-v1",
+  "rung": "B5 again: fresh reopen and regressions at the ADR-405 revision",
+  "run": "ot9",
+  "project": "ot9-robin",
+  "taken_at": "2026-09-22",
+  "model": "none: no product turn dispatched; a reopen, two test suites and the packaged gate",
+  "repo_revision": "c2f1c802 (ADR-405: CadexProjectScriptStore.write drops an accepted_geometry keyed on another accepted digest)",
+  "reopen": {
+    "command": "./cadex export --project $PROJECTS/ot9-robin --out $PROJECTS/ot9-robin/reopen/b5-adr405 --json",
+    "process": "a new ./cadex process and a new cadexd/worker, dev-tree engine at c2f1c802, no earlier cadexd or worker running; rebuilt the accepted revision from the project store",
+    "exit_code": 0,
+    "wall_time_s": 199.3,
+    "project_commit": "9a0b669",
+    "accepted_revision": "ae889a9b81e4c9f442f63f70cefaca06883d2c997bacca459b785166157585f8",
+    "accepted_digest": "078ebe8788fc1a8f0a85420b6b2f0d68c96512a78a242ecf1fd732782319847c",
+    "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+    "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+    "policy_receipt_sha256": "8df0c267aa5705fd6d70ffb684d8ec36215188a9377cb488333659ee85fe8c67",
+    "stored_policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+    "trace_sha256": "5d64a9ee7ad3091e5c3c5e2a09cd6ac752904c9f6c8963bb98464a58b6a96f72",
+    "reader": {
+      "seed": 9,
+      "steps": 400,
+      "duration_s": 8.0,
+      "truncated": true,
+      "termination": "",
+      "peak_tilt_degrees": 2.783130117749139,
+      "pass": true
+    }
+  },
+  "script_json_heal": {
+    "before": {
+      "sha256": "670202188b260fae1a2f5dc5d0e0d60d9eebdeb30ae5ae9fe17999b9080f4f98",
+      "accepted_digest": "078ebe8788fc1a8f0a85420b6b2f0d68c96512a78a242ecf1fd732782319847c",
+      "accepted_geometry": {
+        "accepted_digest": "0a6fe0f501ec345c96b4df5f5446ac10c0daeecbf3206fc65354624afe59aa08",
+        "geometry_digest": "4c75ff5378231d8a7185e2127689508e56d73ca16817e4b7bae98a10fce2bcd4"
+      }
+    },
+    "after": {
+      "sha256": "9ed318629b525d360798574b252949f2fb1602f52b806b21dc4d410e520acd63",
+      "accepted_digest": "078ebe8788fc1a8f0a85420b6b2f0d68c96512a78a242ecf1fd732782319847c",
+      "accepted_geometry": null
+    },
+    "write": "the reopen's first store write (latest_candidate, updated_at); accepted revision and digest unchanged"
+  },
+  "regressions": {
+    "engine": {
+      "command": "pixi run test-engine",
+      "passed": 2197,
+      "skipped": 53,
+      "failed": 0
+    },
+    "cli": {
+      "command": "pixi run python -m pytest cli/tests",
+      "passed": 939,
+      "skipped": 1,
+      "failed": 0
+    },
+    "packaged_gate": {
+      "command": "pixi run build-engine && pixi run stage-engine && CADEX_ENGINE_ROOT=<payload> pytest src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py",
+      "reason": "ADR-405 changed src/Mod/cadex/CadexScriptStore.py, which the payload carries",
+      "passed": 23,
+      "failed": 0
+    }
+  }
+}

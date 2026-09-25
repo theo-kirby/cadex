@@ -1,0 +1,83 @@
+{
+  "schema": "ot9-experiment-evidence-v1",
+  "rung": "short-term 2: prepare ot9-robin, reproduce the no-policy fall, export the training bundle",
+  "run": "ot9",
+  "project": "ot9-robin",
+  "taken_at": "2026-09-22",
+  "model": "none: no product turn dispatched, no training",
+  "preparation": {
+    "from": "ot8-robin",
+    "method": "mechanical copy (docs/probes/ot9/README.md, Commands): every file except evidence/, agent.json and .cadex-cli.lock; the baseline was only read",
+    "pins_checked": {
+      "script_sha256": "f805fdc2bd886b5da8b01f3051bd2668497a2e53c8d7f9fba392ed2c3c9d30e8",
+      "accepted_revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+      "working_revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+      "accepted_attempt": "1789860047622-6f21a6af7553",
+      "accepted_digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c",
+      "accepted_digest_method": "CadexGeometryDigest.project_digest over the copy's accepted attempt",
+      "geometry_digest": "34898ebcf359f1403070b9bf13a4c0b702bc0b7cf4bf82a5ba2e657664d918bb",
+      "geometry_digest_method": "CadexGeometryDigest.staged_geometry_digest over the copy's accepted attempt, under build/release/bin/FreeCADCmd",
+      "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+      "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+      "project_git_head_at_copy": "b75dd2d5d66e417b3544be67f31603f9fe420545",
+      "all_equal_to_contract": true
+    }
+  },
+  "no_policy_rollout": {
+    "command": "./cadex smoke --project $PROJECTS/ot9-robin --out $PROJECTS/ot9-robin/runs/no-policy-8s --seconds 8 --mode hold --timeout 300 --json",
+    "note": "hold and zero are the same command on Robin: both actuators are wheel torque motors, so every command is 0. 8 s is the task's episode; G4 ran 1 s.",
+    "exit_code": 0,
+    "project_commit": "78331a5",
+    "smoke_json_sha256": "a18e0f750488691b78c9221742fa6c89f3dac639892506af1aa890a0948c3365",
+    "smoke_trace_sha256": "74019653361be80d3c864c1c58383ccd9186523ead4a84f8e8e3a44ff8b7c615",
+    "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+    "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+    "verdict": "fail",
+    "components_exact_brep_pass": true,
+    "samples": 401,
+    "reader": {
+      "tool": "docs/probes/ot9/runner/balance_eval.py",
+      "dialect": "smoke",
+      "base": "comp_chassis",
+      "reference_xyzw": [0.0, 0.0, 0.0, 1.0],
+      "steps": 400,
+      "duration_s": 8.0,
+      "termination": "fallen",
+      "terminated_at_s": 0.66,
+      "peak_tilt_degrees": 108.12238566338881,
+      "peak_tilt_time_s": 0.74,
+      "final_tilt_degrees": 102.23364039774532,
+      "min_chassis_height_mm": 8.944934069886656,
+      "min_chassis_height_time_s": 0.74,
+      "class": "completed",
+      "failing": [
+        "no policy: only a policy rollout can pass",
+        "fallen fired",
+        "tilted 108.122 deg at 0.740 s (limit 30 deg)"
+      ],
+      "pass": false
+    },
+    "agreement_with_g4": {
+      "g4_receipt": "docs/probes/ot8/retained/g4-robin-diagnosis.json",
+      "g4_fallen_at_s": 0.66,
+      "g4_fallen_value_mm": 66.73278932091965,
+      "g4_tilt_at_1s_degrees": 102.23396705927162,
+      "reader_fallen_at_s": 0.66,
+      "reader_height_at_0_66_s_mm": 66.73278932091965,
+      "reader_tilt_at_1s_degrees": 102.23396705927158,
+      "smoke_support_tilt_at_8s_degrees": 102.23364039774515,
+      "agrees": true,
+      "note": "G4's 102.2 deg is the tilt at the end of its 1 s smoke, not a peak. The same physics run 8 s peaks at 108.1 deg on the floor impact at 0.74 s, and lies at 102.2 deg to the end."
+    }
+  },
+  "training_bundle": {
+    "command": "./cadex export --project $PROJECTS/ot9-robin --out $PROJECTS/ot9-robin/bundle --json",
+    "exit_code": 0,
+    "project_commit": "9eee743",
+    "rebuilt_digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c",
+    "revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+    "mjcf": {"path": "bundle/robin_model-model.xml", "sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614"},
+    "task": {"path": "bundle/balance_task-task.json", "sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246"},
+    "equal_to_pins": true
+  }
+}

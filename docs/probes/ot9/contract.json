@@ -1,0 +1,145 @@
+{
+  "schema": "ot9-contract-v1",
+  "run": "ot9",
+  "frozen_at": "2026-09-22",
+  "rule": "Frozen before any ot9 training run. A changed seed, bar value or baseline pin is a new experiment, not a revision of this one; cli/tests/test_ot9_contract.py is the freeze.",
+  "baseline": {
+    "project": "ot8-robin",
+    "lineage": "an independent mechanical copy of ot7-robin-c (docs/probes/ot8/baselines.json); ot8 dispatched no product turn on it and accepted nothing",
+    "access": "read-only; every ot9 project is a new ot9-* copy",
+    "script": "script.py",
+    "script_sha256": "f805fdc2bd886b5da8b01f3051bd2668497a2e53c8d7f9fba392ed2c3c9d30e8",
+    "accepted_revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+    "working_revision": "0b4385616eb1610b5e8aeaec2dff56f2c073e6c1451b8975b4d9e08236975b3b",
+    "accepted_attempt": "1789860047622-6f21a6af7553",
+    "accepted_digest": "b933d905ae51ef908af6bcb6fe677b1713b4b8e75e532410f138fd7f58d5638c",
+    "geometry_digest": "34898ebcf359f1403070b9bf13a4c0b702bc0b7cf4bf82a5ba2e657664d918bb",
+    "geometry_digest_method": "CadexGeometryDigest.staged_geometry_digest over the accepted attempt's result.json and outputs/, under build/release/bin/FreeCADCmd; identical in two processes",
+    "stale_learned_geometry": "script.json accepted_geometry carries geometry_digest 4c75ff53... keyed on accepted_digest 0a6fe0f5..., which is not this project's accepted digest; it is stale and is not the pin",
+    "mjcf": {
+      "output": "robin_model",
+      "path": "outputs/robin_model-model.xml",
+      "sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+      "mujoco_version": "3.10.0"
+    },
+    "task": {
+      "output": "balance_task",
+      "path": "outputs/balance_task-task.json",
+      "sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246"
+    },
+    "project_git_head": "b75dd2d5d66e417b3544be67f31603f9fe420545",
+    "no_policy_smoke": {
+      "receipt": "docs/probes/ot8/retained/g4-robin-diagnosis.json",
+      "verdict": "fail",
+      "fallen_at_s": 0.66,
+      "peak_tilt_degrees": 102.23396705927162
+    },
+    "rollout_seed_param": {
+      "name": "rollout_seed",
+      "default": 0.0,
+      "min": 0.0,
+      "max": 9.0,
+      "step": 1.0
+    },
+    "policy_switch_param": {
+      "name": "policy_on",
+      "default": 0.0,
+      "declared_policy": "robin.cxpolicy"
+    }
+  },
+  "task_contract": {
+    "episode_seconds": 8.0,
+    "control_hz": 50,
+    "max_steps": 400,
+    "actions": [
+      "joint_wheel_l_axle/motor",
+      "joint_wheel_r_axle/motor"
+    ],
+    "torque_limit_nmm": 92.18251,
+    "termination": [
+      {
+        "label": "fallen",
+        "expression": "chassis_pos_z",
+        "below": 75.25
+      }
+    ],
+    "reset_variation": {
+      "body": "comp_chassis",
+      "tilt_rad": [
+        0.0,
+        0.05235987755982989
+      ],
+      "height_m": [
+        0.003,
+        0.005
+      ]
+    },
+    "reward": [
+      {
+        "label": "alive",
+        "expression": "1.0",
+        "weight": 1.0
+      },
+      {
+        "label": "pitch_penalty",
+        "expression": "abs(asin(chassis_orient_qy))",
+        "weight": -3.0
+      },
+      {
+        "label": "control_cost",
+        "expression": "wheel_l_torque*wheel_l_torque + wheel_r_torque*wheel_r_torque",
+        "weight": -2e-06
+      }
+    ]
+  },
+  "bar": {
+    "episode_seconds": 8.0,
+    "control_hz": 50,
+    "steps": 400,
+    "max_tilt_degrees": 30.0,
+    "tilt_reference": "comp_chassis attitude in the accepted solved pose, before reset variation",
+    "forbidden_termination": "fallen",
+    "seeds_required": 10,
+    "aggregation": "every seed must pass; one failed seed fails the candidate"
+  },
+  "evaluation_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "seed_rule": "The ten values the baseline script's own rollout_seed parameter admits (num 0..9, step 1, script.py line 24), so every evaluation runs through the design's declared assembly.rollout(pol, seed=int(p.rollout_seed)) and the engine's own rollout_policy. Fixed before any training and before any seed's reset draw was computed; never re-chosen, extended or subset, and held across design revisions even if a revision changes that parameter's range. Trainer --seed values are a separate random stream (the trainer's own PRNG, not the engine's random.Random(seed) reset draws) and are recorded separately.",
+  "per_seed_report": [
+    "seed",
+    "steps",
+    "duration_s",
+    "termination",
+    "peak_tilt_degrees",
+    "peak_tilt_time_s",
+    "min_chassis_height_mm",
+    "total_reward",
+    "policy_sha256",
+    "mjcf_sha256",
+    "task_sha256",
+    "pass"
+  ],
+  "run_classes": {
+    "training": [
+      "completed",
+      "failed",
+      "interrupted",
+      "void"
+    ],
+    "evaluation": [
+      "completed",
+      "interrupted",
+      "void"
+    ]
+  }
+}
