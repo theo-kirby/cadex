@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-25. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-26. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -270,6 +270,15 @@ of doing any of them:
    relative to `DIR`). Run the walk **under the project** — `--out
    <project>/runs/<name>` — and the review is in the project: the walk's
    own commit includes that file, `docs/inventory.md` and `docs/clearance.md`, after the legs' commits.
+   The `gait` block (ADR-409) judges a model with a free-floating body on
+   what total reward cannot show: the body's tilt from its starting
+   attitude (tipped at 45°), its unwrapped heading (turned at 90°), a
+   termination in the rollout, and the trainer's last mean episode length
+   against the horizon (under 90% is "ended early"). Any finding makes
+   `walked` false; the walk still succeeds, and its last note and the
+   dashboard's `rollout gait` row say the robot did not walk. Planar travel
+   and speed are reported, never judged. A model with no free body, or
+   several and no single observed one, is declined with the reason.
    The `inventory` block saves `available`, `component_count`, `catalogued_count`
    and a project-relative `path` to the **latest** `docs/inventory.md`.
    Later inventory calls overwrite that report's revision and named rows;

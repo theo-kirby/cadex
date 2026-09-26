@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-16
+Verified against source: 2026-09-26
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -469,6 +469,10 @@ Three rules the library holds itself to:
   the manufacturer's stall figure at a rated voltage (default the lowest;
   an unrated voltage is refused naming the rated ones — nothing is
   interpolated), converted from kg·cm once, in the library.
+  `servo.joint_dynamics(joint)` gives the joint the damping
+  `stall torque / no-load speed` at a voltage rated for both, which with
+  that clamp is the motor's torque-speed line: flat out, the joint settles
+  at the datasheet speed (ADR-409).
 - **A spec correction is an engine change** (ADR-181): it moves geometry
   under an unchanged script revision, the accepted digest detects the
   drift, and the correction is logged like any behaviour change.

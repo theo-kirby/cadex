@@ -459,6 +459,43 @@ def test_servo_actuator_carries_the_datasheet_torque() -> None:
         unstaged.actuator(joint, control_deg="30")
 
 
+def test_servo_joint_dynamics_is_the_datasheet_torque_speed_line() -> None:
+    lib = _servo_lib()
+    api = _assembly_api()
+    base = api.component({"document_uid": "doc", "object_name": "base"}, grounded=True)
+    arm = api.component({"document_uid": "doc", "object_name": "arm"})
+    joint = api.joint("revolute", api.connector(base), api.connector(arm))
+    servo = lib.servo("mg90s")
+    stall = 1.8 * catalog.KG_CM_TO_NMM
+    dynamics = servo.joint_dynamics(joint, friction_loss_nmm=2.0)
+    # 4.8 V is the only voltage the MG90S rates for both: 0.10 s per 60 deg.
+    damping = dynamics.properties["damping_nmms_per_deg"]
+    assert damping == pytest.approx(stall / 600.0)
+    assert dynamics.properties["friction_loss_nmm"] == 2.0
+    with pytest.raises(LibraryError, match="4.8 V"):
+        servo.joint_dynamics(joint, voltage=6.0)
+
+    # The claim, in MuJoCo itself: a light link driven flat out by the servo's
+    # own actuator settles at the datasheet no-load speed, not above it.
+    mujoco = pytest.importorskip("mujoco")
+    actuator = servo.actuator(joint, control_deg="0").properties
+    per_deg = 180.0 / math.pi / 1000.0  # N*mm per deg -> N*m per rad
+    model = mujoco.MjModel.from_xml_string(f"""
+<mujoco><option timestep="0.0005"/><worldbody><body>
+  <joint name="j" type="hinge" damping="{damping * per_deg}"/>
+  <geom type="capsule" fromto="0 0 0 0.02 0 0" size="0.002" mass="0.002"/>
+</body></worldbody><actuator>
+  <position joint="j" kp="{actuator['stiffness_nmm_per_deg'] * per_deg}"
+            kv="{actuator['damping_nmms_per_deg'] * per_deg}"
+            forcerange="-{stall / 1000.0} {stall / 1000.0}" forcelimited="true"/>
+</actuator></mujoco>""")
+    data = mujoco.MjData(model)
+    data.ctrl[0] = 100.0  # far enough that the actuator saturates throughout
+    for _ in range(400):
+        mujoco.mj_step(model, data)
+    assert math.degrees(data.qvel[0]) == pytest.approx(600.0, rel=0.02)
+
+
 @pytest.mark.parametrize("sku,count", [("esp32-devkitc-v4", 38),
                                        ("pi-zero-2-w", 40),
                                        ("pca9685-adafruit-rev-c", 62),

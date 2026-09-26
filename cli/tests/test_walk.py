@@ -187,6 +187,98 @@ def test_section_misses_incomplete_travel_is_unknown(travel):
     assert misses["arm"]["moved"] is None
 
 
+def _rolling_trace(steps, *, roll_per_frame=0.0, yaw_per_frame=0.0,
+                   metres_per_frame=0.0, terminated=None):
+    """A body frame by frame: rolling about +X, yawing about +Z, moving in +X."""
+
+    import math as _math
+
+    frames = [{"frame_kind": "input", "component_placements": {}}]
+    for index in range(steps):
+        roll = _math.radians(roll_per_frame * index)
+        yaw = _math.radians(yaw_per_frame * index)
+        # yaw then roll: q = q_yaw * q_roll, as xyzw
+        cr, sr = _math.cos(roll / 2), _math.sin(roll / 2)
+        cy, sy = _math.cos(yaw / 2), _math.sin(yaw / 2)
+        quaternion = [cy * sr, sy * sr, sy * cr, cy * cr]
+        frames.append({
+            "frame_kind": "solver_output", "nominal_time_s": index * 0.02,
+            "component_placements": {
+                "c_floor": {"position_mm": [0, 0, 0], "rotation_xyzw": [0, 0, 0, 1]},
+                "c_body": {"position_mm": [1000.0 * metres_per_frame * index, 0, 40],
+                           "rotation_xyzw": quaternion},
+            },
+        })
+    return {"frames": frames,
+            "policy": {"terminated_step": terminated,
+                       "termination": "tipped" if terminated is not None else ""}}
+
+
+def _model(tmp_path, *free):
+    bodies = "".join(
+        f'<body name="{name}"><joint name="{name}/free" type="free"/></body>'
+        for name in free
+    )
+    path = tmp_path / "rig-model.xml"
+    path.write_text('<mujoco><worldbody><body name="c_floor"/><body name="c_arm">'
+                    f'<joint type="hinge"/></body>{bodies}</worldbody></mujoco>')
+    return path
+
+
+def test_the_gait_check_names_hex2_s_tumble_as_not_walking(tmp_path) -> None:
+    """ADR-409: total reward 3,492 "not terminated" was a body rolling over."""
+
+    task = {"episode": {"max_steps": 500}}
+    progress = {"episode_steps_curve": [[0, 40960.0], [1999, 216.7]]}
+    gait = walk_module.gait_from_trace(
+        _rolling_trace(101, roll_per_frame=2.0, yaw_per_frame=-3.0,
+                       metres_per_frame=0.01),
+        bases=walk_module.floating_bases(_model(tmp_path, "c_body")),
+        task=task, progress=progress,
+    )
+    assert gait["available"] and gait["base"] == "c_body"
+    assert not gait["walked"]
+    assert gait["max_tilt_deg"] == pytest.approx(180.0, abs=1.0)
+    assert gait["tipped_at_s"] == pytest.approx(0.46)
+    assert gait["heading_final_deg"] == pytest.approx(-300.0, abs=1.0)
+    assert gait["planar_travel_mm"] == pytest.approx(1000.0)
+    assert gait["training_survival"]["final_episode_steps"] == pytest.approx(216.7)
+    assert [finding.split(":")[0] for finding in gait["findings"]] == [
+        "tipped", "turned", "training episodes ended early"]
+
+
+def test_a_level_straight_walk_that_survived_training_walked(tmp_path) -> None:
+    gait = walk_module.gait_from_trace(
+        _rolling_trace(101, roll_per_frame=0.1, metres_per_frame=0.001),
+        bases=["c_body"], task={"episode": {"max_steps": 500}},
+        progress={"episode_steps_curve": [[0, 40960.0], [99, 40960.0]]},
+    )
+    assert gait["walked"] and gait["findings"] == []
+    # An iteration with no ending reports the whole unroll; it is capped.
+    assert gait["training_survival"]["final_episode_steps"] == 500
+    assert gait["upright_fraction"] == 1.0
+    assert gait["planar_speed_m_per_s"] == pytest.approx(0.05)
+
+
+def test_a_termination_in_the_rollout_is_a_finding() -> None:
+    gait = walk_module.gait_from_trace(_rolling_trace(10, terminated=9), bases=["c_body"])
+    assert gait["findings"] == ["terminated: tipped at step 9"]
+    assert gait["training_survival"]["available"] is False
+
+
+def test_the_gait_check_declines_without_one_free_body_it_can_name(tmp_path) -> None:
+    trace = _rolling_trace(5)
+    arm = walk_module.gait_from_trace(
+        trace, bases=walk_module.floating_bases(_model(tmp_path)))
+    assert arm == {"available": False,
+                   "reason": "no free-floating body in the model: not a locomotion run"}
+    two = ["c_body", "c_box"]
+    assert not walk_module.gait_from_trace(trace, bases=two)["available"]
+    observed = {"observations": [{"kind": "component_orientation", "target": "c_body"}]}
+    assert walk_module.gait_from_trace(trace, bases=two, task=observed)["base"] == "c_body"
+    assert walk_module.floating_bases(tmp_path / "missing.xml") == []
+
+
 def test_travel_is_two_channels_because_the_hinged_arm_only_rotates() -> None:
     """The arm goes nowhere and turns 178.8°; a mm-only report is wrong."""
 

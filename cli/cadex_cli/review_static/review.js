@@ -334,6 +334,12 @@
     row('policy', (policy.name || 'not recorded') + (policy.sha256 ? ' · ' + policy.sha256 : ''));
     row('rollout seed', fmt(rollout.seed));
     row('rollout total reward', fmt(rollout.total_reward));
+    // The verdict the reward cannot give (ADR-409): a tumble scores too.
+    var gait = rollout.gait;
+    if (gait && gait.available) {
+      row('rollout gait', gait.walked ? 'walked' : 'did not walk \u2014 ' + gait.findings.join('; '));
+      row('rollout body travel', fmt(gait.planar_travel_mm) + ' mm \u00b7 tilt \u2264 ' + fmt(gait.max_tilt_deg) + '\u00b0 \u00b7 heading ' + fmt(gait.heading_final_deg) + '\u00b0');
+    } else if (gait) row('rollout gait', 'not judged: ' + (gait.reason || 'unavailable'));
   }
 
   function diskFor(run) {

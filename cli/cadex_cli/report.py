@@ -308,6 +308,11 @@ def human_lines(report: RunReport) -> list[str]:
                 str(review.get("policy_sha256") or ""),
             )
         )
+    gait = review.get("gait") or {}
+    if gait.get("available"):
+        lines.append("review gait {:s}".format(
+            "walked" if gait.get("walked")
+            else "DID NOT WALK: " + "; ".join(gait.get("findings") or ())))
     for note in report.notes:
         lines.append(f"note   {note}")
     if report.revision:

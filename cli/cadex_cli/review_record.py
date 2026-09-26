@@ -365,6 +365,7 @@ def write_run_record(
             "seed": review.get("rollout_seed",
                                (review.get("comparison") or {}).get("rollout_seed")),
             "total_reward": review.get("total_reward"),
+            "gait": review.get("gait"),
         },
         "artifacts": artifacts,
         "project_artifacts": project_artifacts,
@@ -605,7 +606,8 @@ def _legacy_record(run_dir: Path, review: dict[str, Any]) -> dict[str, Any]:
         "policy": {"name": review.get("weights"), "sha256": review.get("sha256"),
                    "asset": None},
         "rollout": {"trace": review.get("trace"), "seed": None,
-                    "total_reward": review.get("total_reward")},
+                    "total_reward": review.get("total_reward"),
+                    "gait": review.get("gait")},
         "artifacts": {"review": "review.json", "trace": review.get("trace")},
         "project_artifacts": {
             "render": (review.get("render") or {}).get("path"),

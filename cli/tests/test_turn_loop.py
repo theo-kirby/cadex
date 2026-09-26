@@ -664,3 +664,12 @@ def test_the_prompt_says_how_to_ground_what_the_policy_reads() -> None:
     for phrase in ('role="privileged"', 'assembly.sensor(', '"joint_encoder"',
                    '"imu"', "potentiometer"):
         assert phrase in CLI_OVERLAY
+
+
+def test_the_prompt_says_a_walking_task_pays_for_walking() -> None:
+    """ADR-409: hex2's task paid for forward speed alone, and a tumble won."""
+
+    assert "A WALKING TASK PAYS FOR WALKING, NOT FOR DISTANCE" in CLI_OVERLAY
+    for phrase in ("servo.joint_dynamics(joint)", "1 - 2*(rot_qx^2 + rot_qy^2)",
+                   "below=0.7", "tanh(comv_x / 60)", "abs(gyro_z)", "DECISION:"):
+        assert phrase in CLI_OVERLAY

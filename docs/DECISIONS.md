@@ -27525,3 +27525,44 @@ Regressions: `test_dynamics_sensor_grounding.py`,
 `test_training_refuses_inputs_the_robot_cannot_read_unless_told_to`, the
 real-trainer test's header assertion (one grounded channel of five), and
 `test_the_prompt_says_how_to_ground_what_the_policy_reads`.
+
+## ADR-409 — A walk is judged on whether the robot walked (2026-09-26)
+
+**Decision.** `cadex walk`'s review gains a `gait` block. For a model with
+a free-floating body (an MJCF body with a free joint; with several, the
+one the task observes the orientation of) it reads the rollout trace and
+reports the body's tilt from its starting attitude, its unwrapped heading,
+planar travel and speed, and the trainer's last mean episode length
+against the horizon. It lists findings: tipped (45°), turned (90°), a
+rollout termination, and training episodes under 90% of the horizon. No
+finding means `walked: true`. The walk's closing note, its text report and
+the dashboard's `rollout gait` row say when the robot did not walk. The
+library gains `servo.joint_dynamics(joint)`: joint damping of stall torque
+divided by no-load speed, at a voltage the manufacturer rates for both,
+so a servo's actuator clamp and that damping reproduce the motor's
+torque-speed line and the joint cannot outrun the datasheet. The overlay
+gains "A WALKING TASK PAYS FOR WALKING, NOT FOR DISTANCE": the servo
+dynamics, an upright reward and a 45° tipping termination written on the
+IMU quaternion, a bounded forward term at a stated target speed, and a
+heading cost.
+
+**Reason.** hex2 (2026-09-25) rewarded forward centre-of-mass speed with
+only a height termination. Its policy tumbled 5.1 m in 10 s: past 45° at
+0.88 s, 127° at worst, 521° of net yaw. Training episodes averaged 217 of
+500 steps from iteration 40 to 2000 while reward/step rose. The walk
+reported "total_reward 3,492, not terminated", which read as success. The
+data to see the failure was already in the trace and in `progress.json`,
+and nothing read it. Joint damping was 1.0 N·mm·s/deg, picked by hand;
+the MG90S datasheet line is 0.29.
+
+**Consequences.** Judging is by thresholds, not by a learned or
+task-specific score. The thresholds are constants in `walk.py` and are
+written into the block. Speed is reported but not judged: nothing here
+knows how fast a leg of a given size may honestly go. `walked: false` is a
+finding, not a walk failure, so the exit code is unchanged. Arms and
+carriages are declined with the reason. Regressions:
+`test_the_gait_check_names_hex2_s_tumble_as_not_walking` and its three
+siblings,
+`test_servo_joint_dynamics_is_the_datasheet_torque_speed_line` (which
+steps MuJoCo and finds 600°/s), and
+`test_the_prompt_says_a_walking_task_pays_for_walking`.
