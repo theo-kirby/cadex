@@ -631,3 +631,27 @@ def test_the_prompt_holds_printed_parts_to_a_design_language() -> None:
                  "PRINTABLE"):
         assert rule in CLI_OVERLAY
     assert "BE DONE WHEN IT IS BUILT AND YOU HAVE LOOKED AT IT" in CLI_OVERLAY
+
+
+def test_the_prompt_says_a_robot_carries_its_brain_sensors_and_power() -> None:
+    """ADR-407: hex2 had twelve servos and nothing to drive them."""
+
+    assert "A ROBOT IS A COMPLETE MACHINE" in CLI_OVERLAY
+    for sku in ("esp32-devkitc-v4", "pca9685-adafruit-rev-c", "bno085-adafruit-4754",
+                "gensace-gea2s100045d", "pololu-d36v50f6"):
+        assert sku in CLI_OVERLAY
+    assert "never leave them out silently" in CLI_OVERLAY
+
+
+def test_every_sku_the_prompt_names_is_in_the_catalog() -> None:
+    """A prompt that names a part the catalog lacks sends the agent to a refusal."""
+    import re
+    import sys
+    from cadex_cli.engine import REPO_ROOT
+    sys.path.insert(0, str(REPO_ROOT / "src" / "Mod" / "cadex"))
+    import CadexCatalog as catalog
+
+    named = set(re.findall(r'lib\.(board|battery)\("([a-z0-9-]+)"\)', CLI_OVERLAY))
+    assert named
+    for family, sku in named:
+        (catalog.board_spec if family == "board" else catalog.battery_spec)(sku)

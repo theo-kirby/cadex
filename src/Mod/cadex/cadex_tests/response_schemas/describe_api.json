@@ -91,6 +91,12 @@
  "library": {
   "api_global": "str",
   "catalog": {
+   "batteries": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
    "bearings": {
     "codes": [
      "str"

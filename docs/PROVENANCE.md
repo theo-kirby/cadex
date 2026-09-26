@@ -395,11 +395,40 @@ software is redistributed. PCB axes match XSCRIPT's lower-left datum.
   The source hardware design is by Limor Fried/Ladyada for Adafruit
   Industries, published under CC BY-SA; it remains upstream, not vendored.
 
-All three replace rounded board outlines with rectangular bounds and omit
+- **Adafruit 4754 BNO085 IMU** (ADR-407): outline, four 2.5 mm mounting
+  holes, the JP1/JP2 header pads and the chip's centre are parsed from the
+  manufacturer's
+  [EAGLE board at commit be9dc998](https://github.com/adafruit/Adafruit-BNO08x-PCB/blob/be9dc9984bb19b1e8ba31e8744917d0952993ef2/Adafruit_BNO08x.brd),
+  and the 2.5 g mass from the [product page](https://www.adafruit.com/product/4754),
+  checked 2026-09-25. The page notes a 2023-12 silkscreen revision the
+  repository does not carry; the mechanical layout is assumed unchanged.
+  1.6 mm thickness, the chip body size and density are approximate; the
+  STEMMA QT edge connectors are surface-mount and carry no terminal rows.
+  Same CC BY-SA upstream, not vendored.
+- **Pololu 4092 D36V50F6 regulator** (ADR-407): board, 1.57 mm thickness,
+  three 2.18 mm mounting holes and the twelve-hole pin grid from Pololu's
+  [dimension drawing 0J1732](https://www.pololu.com/file/0J1732/d36v50fx-step-down-voltage-regulator-dimensions.pdf)
+  (mil, converted exactly); mass and ratings from the
+  [specifications](https://www.pololu.com/product/4092/specs). The pin
+  *signals* are read off Pololu's labelled photo and are approximate until
+  checked against the published STEP model, as are the component marker
+  and the dropout read off Pololu's graph.
+
+All five replace rounded board outlines with rectangular bounds and omit
 connector bodies, detailed components, traces and silkscreen. The body is
 an interface model, not an enclosure-clearance certification or a measured
 mass model. `spec["approximate"]` lists the numeric assumptions; this
 paragraph records the geometric omissions.
+
+## 8b. Catalog battery data `[Cadex-new, ADR-407]`
+
+- **Gens Ace GEA2S100045D, 1000 mAh 2S 45C LiPo:** dimensions
+  (72 × 36 × 13 mm), 64 g mass, C ratings and both leads as the
+  manufacturer's [official store](https://genstattu.com/gens-ace-2s-1000mah-45c-lipo-battery-pack-with-deans-plug/)
+  states them, checked 2026-09-25. `lib.battery` models the stated
+  rectangular envelope only; the density is that mass over that envelope,
+  and the 8.4 V full charge is the LiPo per-cell convention, not a
+  sourced figure.
 
 ## 9. Where this goes
 

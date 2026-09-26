@@ -27453,3 +27453,37 @@ hex2. Regressions: `cli/tests/test_look.py` (framing, colours, focus,
 refusals, the off-canvas pixel count, the bridge path and the look-first
 fallback) and `test_the_prompt_holds_printed_parts_to_a_design_language`.
 
+## ADR-407 — A self-moving design carries its brain, sensor and power (2026-09-25)
+
+**Decision.** The catalog gains an Adafruit 4754 BNO085 IMU and a Pololu
+4092 D36V50F6 6 V regulator as `lib.board` rows, and a new `batteries`
+family with one pack, the Gens Ace GEA2S100045D 2S 1000 mAh LiPo, served by
+`lib.battery` as its stated envelope with the density its stated mass
+implies. The agent overlay adds "a robot is a complete machine": a design
+that moves itself carries a controller (ESP32-DevKitC by default, the Pi
+Zero 2 W when the task needs Linux), a servo driver when needed (PCA9685),
+an IMU, and a battery through a regulator, each enclosed and given its mass;
+a tethered or bench-only design says so in a `DECISION:` line instead.
+
+**Reason.** hex2 (2026-09-25) had twelve servos and nothing to drive,
+power or sense them, although the catalog already carried an ESP32, a Pi
+Zero 2 W and a PCA9685: the prompt did not ask for a complete robot and
+nothing told the agent one needs them. The owner chose the parts: BNO085
+because its on-chip fusion yields orientation directly, which is what a
+policy observes; a 2S LiPo through a 6 V regulator for twelve MG90S; the
+ESP32 as the default brain. A D24V90F6, first proposed, does not exist;
+the D36V50F6 holds 6 V down to about 7 V in and sags to about 5.5 V on a
+nearly empty pack, still inside the MG90S range.
+
+**Consequences.** `describe_api`'s library catalog gains a `batteries`
+key (the response-shape golden is updated). The pack is the heaviest part
+on a small robot, so the physics model now sees it wherever a design
+places it. The regulator's pin signals are approximate until checked
+against Pololu's STEP model. This does not yet tie the task's observations
+to these sensors: the policy still observes joint state and the centre of
+mass directly, which the real robot cannot. That is the next decision.
+Regressions: `test_imu_and_regulator_manufacturer_pins`,
+`test_battery_envelope_mass_and_density`, the two new board rows in
+`test_board_interfaces_and_terminal_rows`, and
+`test_every_sku_the_prompt_names_is_in_the_catalog`.
+

@@ -304,6 +304,26 @@ each what reads as crude — a sharp edge, a floating bar, a primitive stuck \
 on — and fix it, then look again. Stop when it reads as a product someone \
 designed, not a fit check that passed.
 
+A ROBOT IS A COMPLETE MACHINE. When a design moves itself -- it has \
+actuators and is meant to run untethered -- it carries what runs it, placed \
+as purchased catalog components like any other and enclosed in printed \
+bays with room for their leads and connectors:
+- a controller: `lib.board("esp32-devkitc-v4")` by default, or \
+`lib.board("pi-zero-2-w")` when the task needs Linux;
+- a servo driver when there are more servos than the controller drives \
+cleanly: `lib.board("pca9685-adafruit-rev-c")`, sixteen channels;
+- an IMU for orientation and rotation rate: \
+`lib.board("bno085-adafruit-4754")`, mounted rigidly to the body frame near \
+its centre, its X axis along the body's forward axis;
+- power: `lib.battery("gensace-gea2s100045d")` (2S LiPo, 64 g) through \
+`lib.board("pololu-d36v50f6")` (6 V, 5.5 A) for hobby servos.
+The battery is the heaviest part on a small robot: carry it low and central, \
+where it steadies the machine instead of tipping it, and give every one of \
+these parts its catalog mass or density in the physics model. Wire them with \
+`boards(...)`/`nets(...)` when the design declares a harness. If the caller \
+says the machine is tethered or bench-only, say so in a `DECISION:` line and \
+leave them out; never leave them out silently.
+
 WHEN A CALL IS REFUSED, read the failure envelope. `failure_code`, \
 `observed` and `retry` say what went wrong and whether trying again could \
 help. Fix the script and write again; do not repeat the same call unchanged.
