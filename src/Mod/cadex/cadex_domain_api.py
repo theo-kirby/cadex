@@ -130,6 +130,9 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # and a script has exactly one thing that is (ADR-077, ADR-085).
         "rollout": "simulation",
         "observation": "observation",
+        # An onboard sensor (ADR-408): an argument to an observation, which
+        # it grounds, and never published on its own.
+        "sensor": "sensor",
         "reward": "reward",
         "termination": "termination",
         "randomise": "randomise",

@@ -963,6 +963,20 @@ _DISTURBANCE_DIRECTIONS = frozenset({"horizontal", "vertical"})
 #: An observation's name, which becomes a name a reward formula writes. The
 #: same shape as a Python identifier because that is what it turns into,
 #: and short enough that the suffixed forms stay readable.
+#: What each onboard sensor can measure, and off what (ADR-408). A policy
+#: channel is *grounded* when it names the sensor that measures it: an IMU
+#: measures its own component's orientation and rotation rate, and a joint
+#: encoder -- a servo's potentiometer tapped out, or a feedback servo --
+#: its own joint's position and rate. Everything else a task observes is
+#: `privileged`: the reward, the terminations and the critic may read it,
+#: and the robot it deploys to cannot.
+_SENSOR_KINDS: dict[str, tuple[str, frozenset[str]]] = {
+    "imu": ("component_link",
+            frozenset({"component_orientation", "component_angular_velocity"})),
+    "joint_encoder": ("joint", frozenset({"position", "velocity"})),
+}
+_OBSERVATION_ROLES = ("policy", "privileged")
+
 _CHANNEL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,47}$")
 
 #: What a control formula may name. ``initialValue`` is deliberately absent
@@ -1006,6 +1020,7 @@ class AssemblyDomainAPI:
         "joint_dynamics",
         "actuator",
         "observation",
+        "sensor",
         "reward",
         "termination",
         "randomise",
@@ -2700,6 +2715,49 @@ class AssemblyDomainAPI:
             label=label,
         )
 
+    def sensor(
+        self,
+        target: DomainValue,
+        kind: str,
+        *,
+        name: str,
+        motion_type: str = "auto",
+        label: str = "",
+    ) -> DomainValue:
+        """Declare one onboard sensor, so a policy channel can say what measures it.
+
+        ``kind`` is ``imu`` -- ``target`` is the ``api.component`` the IMU
+        board is, and it measures that component's own orientation and
+        rotation rate -- or ``joint_encoder`` -- ``target`` is an
+        ``api.joint``, and it measures that joint's position and rate (a
+        servo's potentiometer tapped out, or a servo that reports position).
+        A stock hobby servo reports nothing: its joint has no encoder unless
+        one is declared.
+
+        A sensor is an argument to ``api.observation(..., sensor=...)`` and
+        nothing else: pass it there, and do not return it. A channel the
+        policy reads (``role="policy"``, the default) that names no sensor
+        is *ungrounded* -- the exported task says so, and ``cadex train``
+        refuses to train on it, because the robot the policy deploys to
+        could not feed it that input (ADR-408).
+        """
+
+        operation = "sensor"
+        clean_kind = str(kind or "").strip().lower()
+        wanted = _SENSOR_KINDS.get(clean_kind)
+        if wanted is None:
+            raise _error(operation, "kind", f"must be one of {sorted(_SENSOR_KINDS)}", kind)
+        value = _domain_value(operation, "target", target, output_type=wanted[0])
+        clean_name = str(name or "").strip()
+        if not _CHANNEL_NAME.fullmatch(clean_name):
+            raise _error(operation, "name",
+                         "must be a short identifier: a letter followed by up to 47 "
+                         "letters, digits or underscores", name)
+        properties: dict[str, Any] = {"kind": clean_kind, "name": clean_name}
+        if wanted[0] == "joint":
+            properties["motion_type"] = _coordinate(operation, value, motion_type)
+        return self._value(operation, "sensor", value, label=label, **properties)
+
     def observation(
         self,
         target: DomainValue,
@@ -2707,6 +2765,8 @@ class AssemblyDomainAPI:
         *,
         name: str,
         motion_type: str = "auto",
+        role: str = "policy",
+        sensor: DomainValue | None = None,
         label: str = "",
     ) -> DomainValue:
         """Declare one channel of a task's observation space.
@@ -2754,6 +2814,17 @@ class AssemblyDomainAPI:
         this API. The conversion is one number per channel carried in the
         task bundle, so the trainer multiplies rather than converts.
 
+        **Who reads it is ``role``** (ADR-408). ``policy``, the default, is
+        an input the trained network reads on the robot, so it must name the
+        ``sensor=`` (an ``api.sensor``) that measures it there: an IMU for
+        the orientation or rotation rate of the component it is, a joint
+        encoder for a joint's position or rate. ``privileged`` is a
+        simulation-only quantity -- a centre of mass, a world position, a
+        velocity no onboard sensor reads -- which rewards, terminations and
+        the trainer's critic may use and the policy never sees. A policy
+        channel with no sensor still builds, and the exported task marks it
+        ungrounded; ``cadex train`` refuses it.
+
         An observation is an intermediate value like ``api.collision``: pass
         it to ``api.mjcf``, and do not return it as an output of its own.
         """
@@ -2800,6 +2871,38 @@ class AssemblyDomainAPI:
             # "the position" of one says nothing about which -- the same
             # reason api.actuator and api.joint_dynamics ask.
             properties["motion_type"] = _coordinate(operation, value, motion_type)
+        clean_role = str(role or "").strip().lower()
+        if clean_role not in _OBSERVATION_ROLES:
+            raise _error(operation, "role", f"must be one of {list(_OBSERVATION_ROLES)}", role)
+        # Only a non-default role or a sensor reaches the entry, so a task
+        # written before ADR-408 exports byte-identical and every policy
+        # trained on it still verifies against its digest.
+        if clean_role != "policy":
+            properties["role"] = clean_role
+        if sensor is not None:
+            if not isinstance(sensor, DomainValue) or sensor.operation != "sensor":
+                raise _error(operation, "sensor", "must be an api.sensor value", sensor)
+            sensor_kind = str(sensor.properties.get("kind"))
+            measures = _SENSOR_KINDS[sensor_kind][1]
+            if clean_kind not in measures:
+                raise _error(
+                    operation, "sensor",
+                    f"a {sensor_kind} measures {sorted(measures)}, not {clean_kind}",
+                    sensor.properties.get("name"),
+                )
+            if sensor.arguments[0] is not value or (
+                wanted == "joint"
+                and sensor.properties.get("motion_type") != properties.get("motion_type")
+            ):
+                raise _error(
+                    operation, "sensor",
+                    f"{sensor.properties.get('name')!r} measures its own "
+                    f"{'joint' if wanted == 'joint' else 'component'}, not this "
+                    "observation's target: observe what the sensor is mounted on",
+                    sensor.properties.get("name"),
+                )
+            properties["grounded_sensor"] = str(sensor.properties.get("name"))
+            properties["grounded_kind"] = sensor_kind
         return self._value(operation, "observation", value, label=label, **properties)
 
     def reward(

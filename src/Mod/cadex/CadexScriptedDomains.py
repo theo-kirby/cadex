@@ -318,6 +318,7 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "joint_dynamics",
             "actuator",
             "observation",
+            "sensor",
             "reward",
             "termination",
             "randomise",

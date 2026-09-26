@@ -655,3 +655,12 @@ def test_every_sku_the_prompt_names_is_in_the_catalog() -> None:
     assert named
     for family, sku in named:
         (catalog.board_spec if family == "board" else catalog.battery_spec)(sku)
+
+
+def test_the_prompt_says_how_to_ground_what_the_policy_reads() -> None:
+    """ADR-408: the agent learns the rule before `cadex train` refuses it."""
+
+    assert "GROUND WHAT THE POLICY READS" in CLI_OVERLAY
+    for phrase in ('role="privileged"', 'assembly.sensor(', '"joint_encoder"',
+                   '"imu"', "potentiometer"):
+        assert phrase in CLI_OVERLAY

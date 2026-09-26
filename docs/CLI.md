@@ -2065,6 +2065,16 @@ review dashboard draws always retains tessellation (ADR-312). Anything the
 model supplies for either is overruled, and the reply's `display` block is
 dropped before the model sees it.
 
+### Training refuses inputs the robot cannot read (ADR-408)
+
+`cadex train` and `cadex walk` read the exported task before the trainer
+starts, and refuse when a policy channel names no `api.sensor` that
+measures it on the robot, listing the channels and both ways out: declare
+the sensor, or mark a simulation-only channel `role="privileged"`.
+`--allow-ungrounded` trains anyway and says so in the envelope's notes.
+The build is not where this bites: a task written before ADR-408 still
+builds, and the policies trained on it still verify.
+
 ### `look`: the agent sees its design (ADR-406)
 
 `look` is listed after the op-named tools and is answered by the bridge

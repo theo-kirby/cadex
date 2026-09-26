@@ -324,6 +324,22 @@ these parts its catalog mass or density in the physics model. Wire them with \
 says the machine is tethered or bench-only, say so in a `DECISION:` line and \
 leave them out; never leave them out silently.
 
+GROUND WHAT THE POLICY READS. A task's observations are of two kinds. \
+`role="policy"` (the default) is what the trained network reads on the \
+robot, so it must name the onboard sensor that measures it there; \
+`role="privileged"` is a simulation-only quantity -- a centre of mass, a \
+world position, a velocity nothing on board reads -- which the reward, the \
+terminations and the trainer's critic may use and the policy never sees. \
+Declare the sensors the machine really carries and pass them in: \
+`imu = assembly.sensor(c_imu, "imu", name="imu")` on the IMU board's own \
+component grounds `component_orientation` and `component_angular_velocity` \
+of that component (`assembly.observation(c_imu, "component_orientation", \
+name="rot", sensor=imu)`). A stock hobby servo reports nothing back, so a \
+joint's angle is a policy input only through `assembly.sensor(joint, \
+"joint_encoder", name=...)`, which means the build taps out that servo's \
+potentiometer: say so in a `DECISION:` line. `cadex train` refuses a task \
+whose policy reads a channel no declared sensor measures.
+
 WHEN A CALL IS REFUSED, read the failure envelope. `failure_code`, \
 `observed` and `retry` say what went wrong and whether trying again could \
 help. Fix the script and write again; do not repeat the same call unchanged.

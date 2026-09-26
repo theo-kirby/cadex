@@ -5891,6 +5891,39 @@ def _observation_unit(kind: str, motion_type: str | None) -> tuple[str, float]:
     return str(unit), float(convert(1.0))
 
 
+#: The observation keys ADR-408 adds, each present only when it is not the
+#: default: ``role`` (``privileged``; absent is ``policy``) and the sensor a
+#: policy channel names as what measures it on the robot.
+_GROUNDING_KEYS = ("role", "grounded_sensor", "grounded_kind")
+
+
+def policy_channels(task: Mapping[str, Any]) -> list[str]:
+    """The channels a trained network reads, in task order (ADR-408).
+
+    Every channel whose row is not ``role: privileged``. For a task written
+    before ADR-408 that is every channel, which is what its policies read.
+    """
+
+    return [
+        str(channel)
+        for record in task["observations"]
+        if str(record.get("role") or "policy") == "policy"
+        for channel in record["channels"]
+    ]
+
+
+def ungrounded_policy_channels(task: Mapping[str, Any]) -> list[str]:
+    """Policy channels no declared onboard sensor measures (ADR-408)."""
+
+    return [
+        str(channel)
+        for record in task["observations"]
+        if str(record.get("role") or "policy") == "policy"
+        and not record.get("grounded_sensor")
+        for channel in record["channels"]
+    ]
+
+
 def observation_records(
     entries: Sequence[Mapping[str, Any]],
     tree: Mapping[str, Any],
@@ -6036,6 +6069,7 @@ def observation_records(
                 # keeping them separate means a rename cannot collide with
                 # anything MuJoCo already carries.
                 "mujoco_sensor": f"obs/{index}",
+                **{key: str(entry[key]) for key in _GROUNDING_KEYS if entry.get(key)},
             }
         )
     if len(taken) > MAXIMUM_OBSERVATION_CHANNELS:
@@ -7129,6 +7163,10 @@ def task_records(
                 "channels": [str(name) for name in record["channels"]],
                 "unit": str(record["unit"]),
                 "scale": float(record["scale"]),
+                # Who reads the channel and what measures it on the robot
+                # (ADR-408). Absent means the defaults -- a policy input with
+                # no sensor named -- so a pre-ADR-408 task keeps its bytes.
+                **{key: str(record[key]) for key in _GROUNDING_KEYS if record.get(key)},
             }
         )
         channels.extend(str(name) for name in record["channels"])
@@ -8652,12 +8690,15 @@ def verify_policy(
             model_sha256=model_sha256,
         )
 
-    channels = _task_channels(task)
+    # The channels the network reads: a task's privileged channels feed its
+    # reward, terminations and critic, never the policy (ADR-408). For a task
+    # with none this is every channel, as it always was.
+    channels = policy_channels(task)
     declared_channels = [str(name) for name in header.get("observations") or ()]
     if declared_channels != channels:
         raise _policy_error(
             f"{context} observes {len(declared_channels)} channels where this "
-            f"task declares {len(channels)}.",
+            f"task's policy reads {len(channels)}.",
             reason="policy_channels_mismatch",
             correction=(
                 "The observation vector is positional: the policy's first "

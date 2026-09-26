@@ -142,6 +142,28 @@ def find_task(
     return tasks[0]
 
 
+def ungrounded_channels(task_json: Path | str) -> list[str]:
+    """Policy channels no declared onboard sensor measures (ADR-408).
+
+    Read from the exported task: a row marked ``role: privileged`` is read by
+    the reward and the critic only, and a policy row is grounded when it
+    names the ``grounded_sensor`` that measures it on the robot. The engine's
+    ``CadexDynamics.ungrounded_policy_channels`` is the same rule.
+    """
+
+    try:
+        task = json.loads(Path(task_json).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise TrainError(f"cannot read the exported task {task_json}: {exc}") from exc
+    return [
+        str(channel)
+        for record in task.get("observations") or ()
+        if str(record.get("role") or "policy") == "policy"
+        and not record.get("grounded_sensor")
+        for channel in record.get("channels") or ()
+    ]
+
+
 def trainer_flags(
     *,
     iterations: int,

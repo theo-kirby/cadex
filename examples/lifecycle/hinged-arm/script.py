@@ -21,13 +21,16 @@ asm = assembly.assembly([base, swing], [j])
 diag = assembly.solve(asm)
 motor = assembly.actuator(j, kind="motor", control_nmm="120*sin(2*pi*time)",
                           torque_limit_nmm=400)
+# The encoder is what the policy reads on the machine; the centre of mass
+# and the motor effort are simulation-only, for the reward (ADR-408).
+encoder = assembly.sensor(j, "joint_encoder", name="encoder")
 model = assembly.mjcf(asm, [
     assembly.body(base, density_kg_m3=2700),
     assembly.body(swing, density_kg_m3=7850),
 ], actuators=[motor], observations=[
-    assembly.observation(j, "position", name="angle"),
-    assembly.observation(swing, "centre_of_mass", name="com"),
-    assembly.observation(motor, "actuator_force", name="effort"),
+    assembly.observation(j, "position", name="angle", sensor=encoder),
+    assembly.observation(swing, "centre_of_mass", name="com", role="privileged"),
+    assembly.observation(motor, "actuator_force", name="effort", role="privileged"),
 ])
 job = assembly.task(model, actions=[motor],
                     reward=[assembly.reward("-(com_z - 60)^2", weight=p.lift_weight,

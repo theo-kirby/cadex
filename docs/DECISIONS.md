@@ -27487,3 +27487,41 @@ Regressions: `test_imu_and_regulator_manufacturer_pins`,
 `test_board_interfaces_and_terminal_rows`, and
 `test_every_sku_the_prompt_names_is_in_the_catalog`.
 
+## ADR-408 — A policy reads only what an onboard sensor measures (2026-09-26)
+
+**Decision.** The assembly API gains `api.sensor(target, kind, name=)`,
+with kinds `imu` (on a component; grounds its orientation and rotation
+rate) and `joint_encoder` (on a joint; grounds its position and rate), and
+`api.observation` gains `role="policy"|"privileged"` and `sensor=`. A
+policy channel is grounded when it names the sensor that measures it; the
+API refuses a sensor passed to a channel it does not measure, or to a
+target it is not mounted on. The trainer becomes an asymmetric
+actor-critic: the actor reads the policy channels, the critic and the
+normaliser read everything, and the policy header lists the actor's
+channels, which is what the engine now verifies a policy against
+(`CadexDynamics.policy_channels`). `cadex train` and `cadex walk` refuse a
+task with an ungrounded policy channel unless given `--allow-ungrounded`.
+The overlay tells the agent how to ground what the policy reads. The two
+shipped lifecycle examples and the CLI's training fixture now declare a
+joint encoder and mark their centre of mass and effort privileged.
+
+**Reason.** hex2 (2026-09-25) trained a hexapod policy on joint angles and
+velocities its stock MG90S servos cannot report, and on a centre-of-mass
+position and velocity nothing on the robot measures: a policy that could
+not run on the machine it was designed for, trained without a word of
+warning. The owner chose the refusal over a warning, chose to allow a
+declared potentiometer tap as a joint encoder, and chose to enforce at
+training rather than at build, so no existing project stops building.
+
+**Consequences.** The task rows carry `role`, `grounded_sensor` and
+`grounded_kind` only when they are not the default, so every task written
+before this exports byte-identical and every trained policy still verifies
+against its digest; retraining one needs `--allow-ungrounded` or a script
+change. `sensor` is a new assembly intermediate (registered as one, never
+published). Linear acceleration from the IMU is not an observation kind
+yet — `accelerometer` stays deferred until a site placement exists — and a
+policy cannot yet read its own last command; both are follow-ups.
+Regressions: `test_dynamics_sensor_grounding.py`,
+`test_training_refuses_inputs_the_robot_cannot_read_unless_told_to`, the
+real-trainer test's header assertion (one grounded channel of five), and
+`test_the_prompt_says_how_to_ground_what_the_policy_reads`.

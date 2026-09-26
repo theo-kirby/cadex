@@ -493,7 +493,7 @@ def check_policy_fits(
     model = header.get("model") or {}
     if model.get("sha256") != bundle["model_sha256"]:
         refuse("the model digest", bundle["model_sha256"], model.get("sha256"))
-    wanted_channels = channels(bundle["task"])
+    wanted_channels = actor_channels(bundle["task"])
     if list(header.get("observations") or []) != wanted_channels:
         refuse(
             "the observation channels, in order",
@@ -585,6 +585,25 @@ def channels(task: dict[str, Any]) -> list[str]:
     return [
         str(channel)
         for record in task["observations"]
+        for channel in record["channels"]
+    ]
+
+
+def actor_channels(task: dict[str, Any]) -> list[str]:
+    """The channels the policy network reads (ADR-408).
+
+    A row marked ``role: privileged`` is a simulation-only quantity: the
+    reward, the terminations and the critic read it, and the actor -- the
+    only network that ships -- never does. A task written before ADR-408
+    marks none, so this is every channel, which is what it always was.
+    The engine's ``CadexDynamics.policy_channels`` is the same rule; this
+    copy is here because the trainer imports nothing from the engine.
+    """
+
+    return [
+        str(channel)
+        for record in task["observations"]
+        if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
     ]
 
@@ -799,6 +818,16 @@ def train(
     task = bundle["task"]
     episode = task["episode"]
     names = channels(task)
+    # The actor reads the policy channels only; the critic and the running
+    # normaliser see every channel, privileged ones included (ADR-408).
+    actor_names = actor_channels(task)
+    if not actor_names:
+        raise SystemExit(
+            "every observation in this task is privileged, so the policy "
+            "would read nothing. Mark at least one sensor-grounded channel "
+            "role='policy'."
+        )
+    actor_idx = np.asarray([names.index(name) for name in actor_names], dtype=np.int32)
     actions = list(task["actions"])
 
     low = jnp.asarray([float(a["low"]) for a in actions], dtype=jnp.float32)
@@ -1188,8 +1217,9 @@ def train(
         else jax.vmap(mjx.forward, in_axes=(model_axes, 0))
     )
 
-    shapes = layer_shapes(len(names), len(actions), options.hidden)
+    shapes = layer_shapes(len(actor_names), len(actions), options.hidden)
     critic_shapes = layer_shapes(len(names), 1, options.hidden)
+    actor_take = jnp.asarray(actor_idx)
     key = jax.random.PRNGKey(int(options.seed))
     key, start_key, actor_key, critic_key = jax.random.split(key, 4)
 
@@ -1292,11 +1322,14 @@ def train(
         # would be worse than one that can.
         stats = decoded["header"].get("normaliser") or {}
         if stats.get("mean") is not None and stats.get("std") is not None:
-            mean = jnp.asarray(stats["mean"], dtype=jnp.float32)
-            variance = jnp.asarray(
+            # The header carries the actor's channels only (ADR-408); the
+            # critic's privileged channels start from the fresh statistics.
+            mean = mean.at[actor_take].set(
+                jnp.asarray(stats["mean"], dtype=jnp.float32))
+            variance = variance.at[actor_take].set(jnp.asarray(
                 np.square(np.asarray(stats["std"], dtype=np.float32)),
                 dtype=jnp.float32,
-            )
+            ))
 
         source_training = decoded["header"].get("training") or {}
         init_from_provenance = {
@@ -1391,7 +1424,7 @@ def train(
             key, act_key = jax.random.split(key)
             vector = jax.vmap(observe)(data)
             normalised = normalise(vector, mean, variance)
-            raw = net(params["actor"], normalised)
+            raw = net(params["actor"], jnp.take(normalised, actor_take, axis=-1))
             noise = jax.random.normal(act_key, raw.shape, dtype=jnp.float32)
             sampled = raw + noise * jnp.exp(params["log_std"])
             logp = gaussian_logp(sampled, raw, params["log_std"])
@@ -1523,7 +1556,7 @@ def train(
 
     def loss(params, vectors, sampled, old_logp, target, advantage, mean, variance):
         normalised_obs = normalise(vectors, mean, variance)
-        raw = net(params["actor"], normalised_obs)
+        raw = net(params["actor"], jnp.take(normalised_obs, actor_take, axis=-1))
         log_std = params["log_std"]
         logp = gaussian_logp(sampled, raw, log_std)
         ratio = jnp.exp(logp - old_logp)
@@ -1637,7 +1670,7 @@ def train(
             ).astype(int)
         else:
             picks = np.arange(seen_vectors.shape[0])
-        witness_obs = seen_vectors[picks].astype(np.float32)
+        witness_obs = seen_vectors[picks][:, actor_idx].astype(np.float32)
 
         # The weights are rounded to float32 *before* the witness is
         # computed, because float32 is what the container stores and what
@@ -1648,9 +1681,9 @@ def train(
             for w, b in params["actor"]
         ]
         stored_jax = [(jnp.asarray(w), jnp.asarray(b)) for w, b in stored]
-        stored_mean = np.asarray(mean, dtype=np.float32)
+        stored_mean = np.asarray(mean, dtype=np.float32)[actor_idx]
         stored_std = np.sqrt(
-            np.maximum(np.asarray(variance, dtype=np.float32), 1.0e-8)
+            np.maximum(np.asarray(variance, dtype=np.float32)[actor_idx], 1.0e-8)
         ).astype(np.float32)
         stored_std = np.where(stored_std == 0.0, np.float32(1.0), stored_std)
 
@@ -1935,7 +1968,7 @@ def policy_header(
         "task": {"sha256": bundle["task_sha256"],
                  "label": str(task.get("label") or "")},
         "model": {"sha256": bundle["model_sha256"], "path": bundle["model_path"]},
-        "observations": channels(task),
+        "observations": actor_channels(task),
         "actions": list(task["actions"]),
         "network": {
             "kind": "mlp",

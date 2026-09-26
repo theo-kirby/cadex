@@ -102,6 +102,7 @@ from .session import (
 from .train import (
     TrainError,
     find_task,
+    ungrounded_channels,
     remote_trainer_command,
     training_plan,
     resolve_trainer_python,
@@ -428,6 +429,7 @@ def build_parser() -> argparse.ArgumentParser:
         "Does not verify or store a policy; --out must be inside the project.",
     )
     _remote_flags(train_parser)
+    _grounding_flag(train_parser)
 
     smoke_parser = subparsers.add_parser(
         "smoke",
@@ -599,6 +601,7 @@ def build_parser() -> argparse.ArgumentParser:
         "turn and no trainer.",
     )
     _remote_flags(walk_parser)
+    _grounding_flag(walk_parser)
 
     review_parser = subparsers.add_parser(
         "review",
@@ -620,6 +623,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="TCP port. Default 8765; 0 takes a free port and reports it.",
     )
     return parser
+
+
+def _grounding_flag(parser: argparse.ArgumentParser) -> None:
+    """``--allow-ungrounded``, the same on ``train`` and ``walk`` (ADR-408)."""
+
+    parser.add_argument(
+        "--allow-ungrounded",
+        dest="allow_ungrounded",
+        action="store_true",
+        default=False,
+        help="Train even though a policy channel names no onboard sensor that "
+        "measures it. Without this the leg refuses: the policy would learn "
+        "from an input the robot it deploys to cannot read.",
+    )
 
 
 def _remote_flags(parser: argparse.ArgumentParser) -> None:
@@ -1445,9 +1462,30 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
                 return EXIT_REJECTED
     try:
         task = find_task(report.outputs, args.task_name)
+        ungrounded = ungrounded_channels(task.files["json"])
     except TrainError as exc:
         report.error = str(exc)
         return EXIT_REJECTED
+    if ungrounded and not getattr(args, "allow_ungrounded", False):
+        # ADR-408: the refusal bites here, at training, and not at the build
+        # -- a task written before it still builds and its policies still
+        # verify, but nothing new trains on inputs the robot cannot read.
+        report.error = (
+            f"{len(ungrounded)} policy channel(s) name no onboard sensor that "
+            f"measures them: {', '.join(ungrounded[:8])}"
+            + (" ..." if len(ungrounded) > 8 else "")
+            + ". Declare api.sensor(...) for what the robot really carries and "
+            "pass it as observation(..., sensor=...), or mark a simulation-only "
+            "channel role='privileged' so only the reward and the critic read "
+            "it. --allow-ungrounded trains anyway."
+        )
+        return EXIT_REJECTED
+    if ungrounded:
+        report.notes.append(
+            "trained with --allow-ungrounded: the policy reads "
+            + ", ".join(ungrounded[:8]) + (" ..." if len(ungrounded) > 8 else "")
+            + ", which no declared onboard sensor measures."
+        )
 
     out_dir = Path(report.out_dir)
     policy_path = out_dir / (policy_name or f"{task.name}.cxpolicy")
@@ -1942,7 +1980,8 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         ):
             if value:
                 argv += [flag, str(value)]
-        for flag, on in (("--remote", args.remote), ("--allow-cpu", args.allow_cpu)):
+        for flag, on in (("--remote", args.remote), ("--allow-cpu", args.allow_cpu),
+                         ("--allow-ungrounded", args.allow_ungrounded)):
             if on:
                 argv.append(flag)
         _progress(" · walk  train" + (" (remote)" if args.remote else ""))
