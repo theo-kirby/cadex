@@ -11,6 +11,8 @@ Status: open
 
 ## Current
 
+**The trainer is an asymmetric actor-critic, and training refuses inputs the robot cannot read (ADR-408) [rec: nimble-meadow-6874].** The actor reads only policy channels (every task row not `role: privileged`); the critic and normaliser read every channel; the header lists the actor's channels. `cadex train`/`walk` refuse a policy channel no declared `api.sensor` measures unless `--allow-ungrounded`. A real CPU run produced a policy reading 1 grounded channel of 5, engine-verified. **Negative knowledge from hex2 [rec: polished-path-3774]:** a `walk_forward` task rewarding +X CoM velocity with only a CoM-height termination trains a tumbling policy (reward/step ~12.2, mean episode flat at ~215 of 500 steps from iteration 40 to 2000); it has no upright or heading term, no tipping termination, and the MG90S actuators are torque-limited but not speed-limited.
+
 **The training loop itself is proven, locally, end to end** — what remains blocked is gait scale. The whole arc (agent-authored mechanism → MJCF export → task → CPU training → verified policy → rollout → live plot in the editor) ran on the M4 Mac Mini in one afternoon at toy scale, twice: once hand-driven (ADR-170), once as a single prompt to the product agent [rec: staid-valley-0501] [rec: gilded-trail-2519]. The **GPU box** still runs its own checkout of `training/cadex_train.py` that predates ADR-104, so dispatching the next mg-legs run (B7) would silently ignore two new draws while recording the new algorithm string in the policy header — that dispatch stays blocked until the box's checkout is updated [rec: western-badger-3023].
 
 The local CPU leg, now first-class [rec: stormy-cedar-1763]:
@@ -79,3 +81,5 @@ What works, and is not in doubt:
 - dusty-peak-9330 — the owner retired mg-legs from the active charter and acceptance workflow (ADR-284); gait/shove work is outside the ot5 mission, history preserved
 - lucky-comet-0031 — the ot5 directive: a fresh biped, built without the old mechanism, checkpoints or history
 - mild-hill-0753 — ADR-340: Heron, a third fresh mechanism, trained end to end at the default rate with the reach met on every seed; the trainer's episode_steps metric is uninformative on time-limit-only tasks
+- polished-path-3774 — hex2's tumbling walk_forward policy: reward rose, survival stayed flat
+- nimble-meadow-6874 — ADR-408: asymmetric actor-critic and the training-time grounding refusal

@@ -11,6 +11,8 @@ Status: open
 
 ## Current
 
+**A robot's missing electronics are catalogued (ADR-407, commit `bdda55cb`) [rec: smooth-heron-8904].** A new `batteries` family serves `lib.battery("gensace-gea2s100045d")` (2S 1000 mAh LiPo, 72 × 36 × 13 mm, 64 g, density from stated mass over envelope), and two `lib.board` rows add the Adafruit 4754 BNO085 IMU and the Pololu 4092 D36V50F6 6 V regulator, each manufacturer-sourced with approximations listed. The motivation: hex2 had twelve servos and nothing to drive, power or sense them [rec: polished-path-3774].
+
 Catalogued hardware is available as the **lib script namespace** over `CadexCatalog`, composed as parametric BREP values with source-qualified mounting interfaces and deliberately simple cosmetics (ADR-181, Phase 17) [rec: twilight-lake-8164].
 
 **L0 fasteners/bearings and L1 servos work**: bolts, nuts, washers, inserts, clearance/tap-drill data, ball bearings, bushings, SG90/MG90S/MG996R/DS3218 servos and measured micro horns. Catalog rows cite sources and label approximate dimensions; servo actuators use rated-voltage stall torque converted once into engine units. Twenty-seven library tests include a real-kernel build of all generators, and the packaged lifecycle gate passed [rec: twilight-lake-8164].
@@ -92,3 +94,4 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - fair-rose-5950 — ADR-236: LibraryPart family and part number stamped onto the matching output beside its definition as a `catalog` key; join by canonical definition so no project digest moves
 - fierce-falcon-2378 — ADR-373: the `clearances=` declaration for a catalog running fit reaches the agent's instructions; no catalog row moved and no retained design was re-declared
 - winter-creek-7660 — ot8's arm places both servos and both horns as unmodified catalog parts from the same frozen prompt that left ot7's four hand-modelled
+- smooth-heron-8904 — ADR-407: batteries family, BNO085 and D36V50F6 rows

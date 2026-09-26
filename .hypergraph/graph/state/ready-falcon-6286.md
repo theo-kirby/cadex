@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**The boards family has five rows (ADR-407) [rec: smooth-heron-8904].** Added: Adafruit 4754 BNO085 IMU (outline, four Ø2.5 holes, JP1/JP2 pads and chip centre from Adafruit's EAGLE board at `be9dc998`; 2.5 g) and Pololu 4092 D36V50F6 regulator (25.4 × 25.4 × 1.57, three Ø2.18 holes and pin grid from drawing 0J1732; pin signals approximate until checked against the STEP). `_board_pin` takes a pad height for the 1.57 mm board.
+
 L2 boards exist over `CadexCatalog` through `lib.board`: ESP32-DevKitC V4 (WROOM-32E), Pi Zero 2 W and Adafruit 815 PCA9685 revision C. Sourced mounting interfaces and 38/40/62 solder-pad terminals follow origin/direction/roll and feed the existing `boards(...)` declarations. ADR-202 records the approximation ledger; ROADMAP marks L2 complete. [rec: stormy-quill-5350]
 
 Real-kernel coverage builds all three boards and their transformed wiring tables. The completed staged payload passed 47 lifecycle/library tests; the final engine suite passed 1973 tests with 52 skips after staging finished. This satisfies the declared L2 criterion. [rec: stormy-quill-5350]
@@ -23,3 +25,4 @@ Real-kernel coverage builds all three boards and their transformed wiring tables
 
 - empty-wolf-3962 — operator-declared charter gap
 - stormy-quill-5350 — L2 sourced board interfaces, real-kernel builds and completed-payload verification satisfy the criterion
+- smooth-heron-8904 — ADR-407: two new board rows
