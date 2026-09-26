@@ -19,7 +19,7 @@ import pytest
 
 from cadex_cli import mcp
 from cadex_cli.bridge import Bridge
-from cadex_cli.tools import CLI_TOOL_OPS, tool_definitions
+from cadex_cli.tools import BRIDGE_TOOLS, CLI_TOOL_OPS, tool_definitions
 
 from fake_cadexd import (
     inventory_value,
@@ -76,7 +76,7 @@ def test_an_unknown_notification_is_silently_ignored(bridge) -> None:
 
 def test_tools_list_relays_the_generated_surface(bridge) -> None:
     tools = _rpc(bridge, "tools/list")["result"]["tools"]
-    assert [tool["name"] for tool in tools] == list(CLI_TOOL_OPS)
+    assert [tool["name"] for tool in tools] == list(CLI_TOOL_OPS) + list(BRIDGE_TOOLS)
     for tool in tools:
         assert tool["description"]
         assert tool["inputSchema"]["type"] == "object"
@@ -93,6 +93,11 @@ def test_the_schemas_cannot_drift_from_op_arg_specs(protocol) -> None:
     from cadex_cli.tools import VIEW_ARGS
 
     for tool in tool_definitions(protocol):
+        if tool["name"] in BRIDGE_TOOLS:
+            # Answered by the bridge itself (ADR-406): no engine op to drift
+            # from, and never a name the engine serves.
+            assert tool["name"] not in protocol.OP_ARG_SPECS
+            continue
         required, optional = protocol.OP_ARG_SPECS[tool["name"]]
         declared = set(required) | set(optional)
         # The one allowed drift is the bridge's own view arguments
@@ -690,7 +695,7 @@ def test_serve_reads_newline_delimited_messages(bridge) -> None:
 
     replies = [json.loads(line) for line in stdout.getvalue().splitlines() if line]
     assert [reply["id"] for reply in replies] == [1, 2]
-    assert len(replies[1]["result"]["tools"]) == len(CLI_TOOL_OPS)
+    assert len(replies[1]["result"]["tools"]) == len(CLI_TOOL_OPS) + len(BRIDGE_TOOLS)
 
 
 def test_tools_list_reports_an_unreachable_bridge_rather_than_hanging() -> None:

@@ -95,9 +95,15 @@ def test_the_system_prompt_carries_the_engines_own_contract() -> None:
 
 def test_the_prompt_states_the_headless_limits_rather_than_leaving_them(
 ) -> None:
-    """The agent is told it cannot see; it should not find out by failing."""
+    """The agent is told how it sees; it should not find out by failing.
 
-    assert "no screenshot" in CLI_OVERLAY
+    Until ADR-406 this pinned "no screenshot": the agent was blind and was
+    told so. It now has `look`, and a prompt that still said it could not
+    see would stop it from calling the one tool that shows it crude parts.
+    """
+
+    assert "no screenshot" not in CLI_OVERLAY
+    assert "`look`" in CLI_OVERLAY
     assert "MILLIMETRES" in CLI_OVERLAY
     assert "describe_api" in CLI_OVERLAY
     # And that it must not pass the guard the bridge supplies.
@@ -614,3 +620,14 @@ def test_turn_resolves_model_after_reading_project(
     assert factory.made[0].model == (expected or DEFAULT_MODEL)
     assert report.model == factory.made[0].model
     assert read_agent_state(report.project_root).model == report.model
+
+
+def test_the_prompt_holds_printed_parts_to_a_design_language() -> None:
+    """ADR-406: passing fit is the floor; the agent is told what designed means."""
+
+    assert "DESIGN IT; DO NOT ONLY MAKE IT FIT" in CLI_OVERLAY
+    for rule in ("NO SHARP OUTSIDE CORNERS", "ENCLOSE, DO NOT BOLT ON",
+                 "ONE CONTINUOUS FORM PER PART", "MIRROR WHAT HAS SIDES",
+                 "PRINTABLE"):
+        assert rule in CLI_OVERLAY
+    assert "BE DONE WHEN IT IS BUILT AND YOU HAVE LOOKED AT IT" in CLI_OVERLAY

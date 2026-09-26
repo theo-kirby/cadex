@@ -27414,3 +27414,42 @@ that read like a pin.
 write, with no migration. Regression:
 `test_the_store_drops_a_measurement_once_its_accepted_digest_moves_on`,
 which fails on the old store.
+
+## ADR-406 — The product agent sees its design, and is held to a design language (2026-09-25)
+
+**Decision.** The CLI agent gets a `look` tool, answered by the bridge
+rather than an engine op: it renders the last accepted build with the
+`cadex render` rasteriser and returns the images to the model as MCP image
+content — printed parts in one filament orange, purchased parts in dark
+grey, world geometry (a floor) left out, and `focus` for a close-up. The
+overlay stops telling the agent it cannot see, adds a short design language
+for printed parts (no sharp outside corners, enclose rather than bolt on,
+one continuous form per part, mirror what has sides, proportion and
+clearance, printable), and makes "look, name what is crude, fix, look
+again" part of being done. The renderer's caps rise to 400,000 placed
+triangles and 1,200,000 placed vertices, and its per-view pixel count no
+longer bills off-canvas triangles.
+
+**Reason.** The first owner-driven unattended hexapod run (hex2, no
+Ouroboros) produced a design that passed every fit check — 703 pairs,
+twelve swept joints, 24 welds — and was, in the owner's words, "really,
+really ugly": a slab with servos on it, flat bars for femurs, balls stuck
+on bars for feet, no fillets anywhere. The agent had called `inspect` 26
+times and never seen an image: the only signals it had were numbers, and
+boxes satisfy numbers. `cadex render` existed, as a subcommand the agent
+could not call, and refused hex2 at 110,688 triangles anyway. ADR-150 kept
+reference *images* shell-only because they are a shell input; this is the
+reverse direction — the headless client producing an image of its own
+accepted state — and it does not change that decision.
+
+**Consequences.** `BRIDGE_TOOLS` is a second, short list beside
+`CLI_TOOL_OPS`; the drift test skips it and asserts no engine op shares its
+name, so the protocol surface is unchanged and nothing crosses to the
+shell. A look costs about 2 s per view on hex2 and no rebuild; a turn that
+looks before it builds rebuilds once. Four 768-pixel images are about 3,000
+image tokens. Whether the design language changes what the agent produces
+is not yet measured: that is the next hexapod run's job, compared against
+hex2. Regressions: `cli/tests/test_look.py` (framing, colours, focus,
+refusals, the off-canvas pixel count, the bridge path and the look-first
+fallback) and `test_the_prompt_holds_printed_parts_to_a_design_language`.
+

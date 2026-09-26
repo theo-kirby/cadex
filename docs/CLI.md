@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-16. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-25. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -1871,10 +1871,13 @@ ties follow sorted output/triangle order. Standard tessellation approximates
 curves. Thin/subpixel features can disappear; no dimensions, analytic edges,
 transparency, smooth shading or engineering-drawing accuracy is promised.
 Limits are 4,096 display entries, 32 MiB total binary/sidecar input, 4 MiB per
-sidecar, 300,000 vertices per source, 600,000 placed vertices, 100,000 placed triangles and 20 million
+sidecar, 300,000 vertices per source, 1,200,000 placed vertices, 400,000 placed triangles and 20 million
 bounding-box pixel visits **per view**, including overdraw. Excessive, missing
 or malformed buffers, missing solved poses and empty geometry fail explicitly.
 Dense assemblies can exceed the pixel budget even below the triangle cap.
+The triangle and placed-vertex caps were 100,000 and 600,000 until ADR-406:
+hex2, a twelve-servo hexapod, is 110,688 placed triangles and was refused,
+while the same renderer draws it in under a second per view.
 
 The CLI snapshots buffers while holding its project lock, before any further
 engine request can invalidate attempt paths. The shell does not share this
@@ -2019,7 +2022,8 @@ fail on it.
 ### Tool names are op names
 
 `describe_api`, `write_script`, `edit_script`, `set_params`, `rebuild`,
-`inspect`, `link_part`, `put_asset`. The shell invented friendlier names because it had Blender's
+`inspect`, `link_part`, `put_asset` — and then `look`, the one tool no engine
+op backs (below). The shell invented friendlier names because it had Blender's
 vocabulary to reconcile; a third vocabulary would be a third thing to keep
 in sync. The input schemas are **generated from `OP_ARG_SPECS`**, so they
 cannot drift from the protocol — only the prose is hand-written, and the
@@ -2060,6 +2064,29 @@ standard`, no edges) on every modelling op, so the accepted attempt the
 review dashboard draws always retains tessellation (ADR-312). Anything the
 model supplies for either is overruled, and the reply's `display` block is
 dropped before the model sees it.
+
+### `look`: the agent sees its design (ADR-406)
+
+`look` is listed after the op-named tools and is answered by the bridge
+itself (`BRIDGE_TOOLS` in `cadex_cli.tools`); no request reaches the engine
+for it unless the turn has not built yet. It renders the last accepted
+modelling reply's display block with the `cadex render` rasteriser — so it
+costs no rebuild — and returns MCP `image` content blocks, one 768×768 PNG
+per view, after one text block of facts. Views are `iso`, `iso_back`,
+`front`, `right` and `top` (default `iso` and `iso_back`, at most five);
+`focus` names components or outputs to frame a close-up on. Components the
+`fit` block reports as `world geometry` (a floor) are left out, and the
+`inventory` block colours parts: every output in `uncatalogued_sources` is
+drawn as printed, in one filament orange, and every other as purchased, in
+dark grey. A turn that opens with `look` rebuilds once and reads the fit and
+inventory a modelling reply would have carried, so the first look is drawn
+the same way. hex2's four views take about 7 s.
+
+Before ADR-406 the agent had no picture at all: its whole design
+verification was `inspect` and the fit block, and hex2 (2026-09-25) passed
+every check as a plate of bars and boxes. A live turn against a copy of hex2
+confirmed Claude Code hands the images to the model: it described the
+orange bars and the ball feet it had not been told about.
 
 ### Every build reply carries the measured fit (ADR-346)
 
@@ -2300,13 +2327,19 @@ The system prompt is the CLI's own overlay plus `describe_api`'s live
 API.** Both front ends ask the engine for it, which is what keeps one
 contract from becoming two.
 
-The overlay says three things the engine does not:
+The overlay says things the engine does not:
 
 - **Build it parametric**, because the cheap sweep only exists if the
   expensive turn made one possible.
-- **You cannot see your work.** No viewport, no screenshot, no render, no
-  pin — the agent verifies through `inspect scope=output` facts, and is
-  told so rather than discovering it by failing.
+- **You see your work with `look`, and prove it with facts** (ADR-406).
+  Until ADR-406 this said the agent could not see; it now renders the
+  accepted design for itself, and `inspect scope=output` and the fit block
+  remain the evidence for numbers.
+- **Design it; do not only make it fit** (ADR-406). A short design
+  language for printed parts — no sharp outside corners, enclose rather
+  than bolt on, one continuous form per part, mirror what has sides, keep
+  proportion and clearance, stay printable — and a look-critique-fix loop
+  before the agent may call a design done.
 - **Fit is measured, not printed** (ADR-346). The `fit` block on every
   build reply is the evidence that parts fit; the script's `stdout` is a
   claim the script makes about itself, and a `fit` naming a failing pair
