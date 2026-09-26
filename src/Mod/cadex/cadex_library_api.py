@@ -289,6 +289,38 @@ class ServoPart(LibraryPart):
         )
 
 
+    def joint_dynamics(
+        self,
+        joint: Any,
+        *,
+        voltage: float | None = None,
+        armature_kgmm2: float | None = None,
+        friction_loss_nmm: float | None = None,
+        label: str = "",
+    ) -> Any:
+        """This servo's top speed, as the joint damping its motor really has.
+
+        A DC motor's torque falls linearly from stall at rest to nothing at
+        its no-load speed. A position actuator clamped at the stall torque
+        and a passive damping of ``stall torque / no-load speed`` on the
+        joint is that line in MuJoCo: flat out, the joint settles at the
+        datasheet speed and never above it (ADR-409). Both numbers are read
+        at one ``voltage`` the manufacturer rates for torque **and** speed
+        (default the lowest such), and nothing is interpolated.
+        ``armature_kgmm2`` and ``friction_loss_nmm`` pass through to
+        ``assembly.joint_dynamics``, whose refusals these are.
+        """
+
+        return self._lib._servo_joint_dynamics(
+            self,
+            joint,
+            voltage=voltage,
+            armature_kgmm2=armature_kgmm2,
+            friction_loss_nmm=friction_loss_nmm,
+            label=label,
+        )
+
+
 class BoardPart(LibraryPart):
     """A board whose solder-pad rows can enter the existing wiring table."""
 
@@ -1242,6 +1274,57 @@ class LibraryAPI:
             stiffness_nmm_per_deg=stiffness,
             damping_nmms_per_deg=damping,
             torque_limit_nmm=torque,
+            label=label,
+            **extra,
+        )
+
+    def _servo_joint_dynamics(
+        self,
+        servo: ServoPart,
+        joint: Any,
+        *,
+        voltage: float | None,
+        armature_kgmm2: float | None,
+        friction_loss_nmm: float | None,
+        label: str,
+    ) -> Any:
+        operation = "servo.joint_dynamics"
+        if self._assembly is None:
+            raise LibraryError(
+                f"lib.{operation}: the assembly API is not staged here."
+            )
+        torques = {entry["volts"]: entry["nmm"]
+                   for entry in servo.spec["stall_torque_nmm"]}
+        speeds = {entry["volts"]: 60.0 / entry["s_per_60_deg"]
+                  for entry in servo.spec["speed"]}
+        both = sorted(set(torques) & set(speeds))
+        if not both:
+            raise LibraryError(
+                f"lib.{operation}: {servo.part_number} rates no voltage for "
+                "both stall torque and speed, and nothing is interpolated."
+            )
+        if voltage is None:
+            chosen = both[0]
+        else:
+            matches = [volts for volts in both
+                       if abs(volts - float(voltage)) <= 1.0e-6]
+            if not matches:
+                raise LibraryError(
+                    f"lib.{operation}: {servo.part_number} rates torque and "
+                    "speed together only at "
+                    + ", ".join(f"{volts:g} V" for volts in both)
+                    + f"; {voltage!r} is not one of them and nothing is "
+                    "interpolated."
+                )
+            chosen = matches[0]
+        extra: dict[str, Any] = {}
+        if armature_kgmm2 is not None:
+            extra["armature_kgmm2"] = armature_kgmm2
+        if friction_loss_nmm is not None:
+            extra["friction_loss_nmm"] = friction_loss_nmm
+        return self._assembly.joint_dynamics(
+            joint,
+            damping_nmms_per_deg=torques[chosen] / speeds[chosen],
             label=label,
             **extra,
         )

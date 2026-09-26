@@ -809,6 +809,203 @@ def review_from_outputs(outputs: Sequence[dict[str, Any]]) -> dict[str, Any]:
     return {}
 
 
+#: Where a gait stops being one (ADR-409). hex2 (2026-09-25) earned a total
+#: reward of 3,492 "not terminated" from a hexapod that tipped past 45° at
+#: 0.88 s, reached 127°, and turned 521° while it tumbled 5.1 m, and every
+#: number the walk printed read as success. The body's tilt is the angle
+#: between its starting up axis and where that axis points now; heading is
+#: its starting forward axis projected onto the floor, unwrapped.
+TIPPED_DEG = 45.0
+UPRIGHT_DEG = 30.0
+TURNED_DEG = 90.0
+#: The share of the horizon a trained episode must reach on average before
+#: the training is said to survive: below it, most episodes end in a
+#: termination however the reward curve looks.
+SURVIVAL_FRACTION = 0.9
+
+
+def floating_bases(model_xml: Path | str | None) -> list[str]:
+    """The MJCF bodies that carry a free joint: what a locomotion run moves."""
+
+    if model_xml is None:
+        return []
+    try:
+        root = ElementTree.parse(model_xml).getroot()
+    except (OSError, ElementTree.ParseError):
+        return []
+    return [
+        str(body.get("name"))
+        for body in root.iter("body")
+        if any(joint.get("type") == "free" for joint in body.findall("joint"))
+        or body.find("freejoint") is not None
+    ]
+
+
+def _qmul(a: Sequence[float], b: Sequence[float]) -> tuple[float, ...]:
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return (aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+            aw * bw - ax * bx - ay * by - az * bz)
+
+
+def _rotate(q: Sequence[float], v: Sequence[float]) -> tuple[float, ...]:
+    inverse = (-q[0], -q[1], -q[2], q[3])
+    return _qmul(_qmul(q, (*v, 0.0)), inverse)[:3]
+
+
+def _training_survival(progress: dict[str, Any], horizon: int | None) -> dict[str, Any]:
+    curve = [
+        (int(point[0]), float(point[1]))
+        for point in progress.get("episode_steps_curve") or ()
+        if isinstance(point, (list, tuple)) and len(point) == 2
+    ]
+    if not curve or not horizon:
+        return {"available": False,
+                "reason": "the trainer recorded no episode lengths"
+                if not curve else "the task bundle states no horizon"}
+    # The trainer divides the steps it ran by the episodes that ended, so an
+    # iteration in which none ended reports the whole unroll: capped here.
+    final = min(curve[-1][1], float(horizon))
+    return {
+        "available": True,
+        "horizon_steps": int(horizon),
+        "final_episode_steps": final,
+        "final_fraction": final / horizon,
+        "survives": final >= SURVIVAL_FRACTION * horizon,
+    }
+
+
+def gait_from_trace(
+    payload: dict[str, Any],
+    *,
+    bases: Sequence[str],
+    task: dict[str, Any] | None = None,
+    progress: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Whether the rollout's free-floating body walked, or only travelled.
+
+    Declined, with the reason, for a model with no free body, because an arm
+    or a carriage has no gait to judge. With several free bodies the one the
+    task reads orientation of is the robot; with none of them observed the
+    check declines rather than guessing. The speed is reported and never
+    judged: nothing here knows how fast a leg that size may honestly go.
+    """
+
+    task = task or {}
+    if not bases:
+        return {"available": False,
+                "reason": "no free-floating body in the model: not a locomotion run"}
+    if len(bases) == 1:
+        base = bases[0]
+    else:
+        observed = [
+            str(row.get("target")) for row in task.get("observations") or ()
+            if row.get("kind") == "component_orientation"
+            and str(row.get("target")) in bases
+        ]
+        if len(set(observed)) != 1:
+            return {"available": False,
+                    "reason": "{:d} free bodies and no single one the task observes "
+                              "the orientation of".format(len(bases))}
+        base = observed[0]
+    frames = [
+        frame for frame in payload.get("frames") or ()
+        if isinstance(frame, dict) and frame.get("frame_kind") != INPUT_FRAME_KIND
+        and base in (frame.get("component_placements") or {})
+    ]
+    if len(frames) < 2:
+        return {"available": False, "base": base,
+                "reason": "the trace placed the body in fewer than two solved frames"}
+
+    first = frames[0]["component_placements"][base]
+    start = [float(value) for value in first.get("position_mm") or (0.0, 0.0, 0.0)]
+    q0 = [float(value) for value in first.get("rotation_xyzw") or (0.0, 0.0, 0.0, 1.0)]
+    q0_inverse = (-q0[0], -q0[1], -q0[2], q0[3])
+    tilts: list[float] = []
+    heading = previous = 0.0
+    headings: list[float] = []
+    for frame in frames:
+        place = frame["component_placements"][base]
+        relative = _qmul([float(value) for value in place.get("rotation_xyzw") or q0],
+                         q0_inverse)
+        up = _rotate(relative, (0.0, 0.0, 1.0))
+        tilts.append(math.degrees(math.acos(min(1.0, max(-1.0, up[2])))))
+        forward = _rotate(relative, (1.0, 0.0, 0.0))
+        angle = math.atan2(forward[1], forward[0])
+        heading += (angle - previous + math.pi) % (2.0 * math.pi) - math.pi
+        previous = angle
+        headings.append(math.degrees(heading))
+    end = [float(value) for value in
+           frames[-1]["component_placements"][base].get("position_mm") or start]
+    times = [float(frame["nominal_time_s"]) for frame in frames
+             if isinstance(frame.get("nominal_time_s"), (int, float))]
+    duration = (max(times) - min(times)) if times else None
+    travel = [b - a for a, b in zip(start, end)]
+    planar = math.hypot(travel[0], travel[1])
+    tipped_at = next(
+        (float(frame["nominal_time_s"]) for frame, tilt in zip(frames, tilts)
+         if tilt >= TIPPED_DEG and isinstance(frame.get("nominal_time_s"), (int, float))),
+        None,
+    )
+
+    findings: list[str] = []
+    if max(tilts) >= TIPPED_DEG:
+        findings.append(
+            "tipped: the body passed {:.0f}° at {:s} and reached {:.0f}°".format(
+                TIPPED_DEG,
+                "t={:.2f} s".format(tipped_at) if tipped_at is not None else "some frame",
+                max(tilts)))
+    if max(abs(value) for value in headings) >= TURNED_DEG:
+        findings.append("turned: heading swung to {:+.0f}° and ended at {:+.0f}°".format(
+            max(headings, key=abs), headings[-1]))
+    policy = payload.get("policy") if isinstance(payload.get("policy"), dict) else {}
+    if policy.get("terminated_step") is not None:
+        findings.append("terminated: {:s} at step {:d}".format(
+            str(policy.get("termination") or "a termination"),
+            int(policy["terminated_step"])))
+    horizon = (task.get("episode") or {}).get("max_steps")
+    survival = _training_survival(progress or {}, horizon)
+    if survival.get("available") and not survival["survives"]:
+        findings.append(
+            "training episodes ended early: {:.0f} of {:d} steps on average at the "
+            "last iteration".format(survival["final_episode_steps"],
+                                    survival["horizon_steps"]))
+    return {
+        "available": True,
+        "base": base,
+        "frames_counted": len(frames),
+        "duration_s": duration,
+        "travel_mm": travel,
+        "planar_travel_mm": planar,
+        "planar_speed_m_per_s": (planar / 1000.0 / duration) if duration else None,
+        "max_tilt_deg": max(tilts),
+        "final_tilt_deg": tilts[-1],
+        "upright_fraction": sum(tilt < UPRIGHT_DEG for tilt in tilts) / len(tilts),
+        "tipped_at_s": tipped_at,
+        "heading_final_deg": headings[-1],
+        "heading_extent_deg": [min(headings), max(headings)],
+        "training_survival": survival,
+        "thresholds": {"tipped_deg": TIPPED_DEG, "upright_deg": UPRIGHT_DEG,
+                       "turned_deg": TURNED_DEG, "survival_fraction": SURVIVAL_FRACTION},
+        "findings": findings,
+        "walked": not findings,
+    }
+
+
+def read_json(path: Path | str | None) -> dict[str, Any]:
+    """A JSON object from ``path``, or ``{}`` when it is missing or unreadable."""
+
+    if path is None:
+        return {}
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def section_misses(section: dict[str, Any], motion: dict[str, Any]) -> dict[str, Any]:
     """Join published object identities only; shared source shapes are not instances."""
     components = motion.get("components") or {}
@@ -872,6 +1069,8 @@ def write_review(
         "clearance": dict(review.get("clearance") or {}),
         "motion": dict(review.get("motion") or {"available": False,
                                                 "reason": "no trace was exported."}),
+        "gait": dict(review.get("gait") or {"available": False,
+                                            "reason": "no trace was exported."}),
         "weights": review.get("weights"),
         "sha256": review.get("sha256"),
         "total_reward": review.get("total_reward"),

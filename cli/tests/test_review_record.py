@@ -137,7 +137,7 @@ def test_the_record_carries_identities_and_only_relative_paths(tmp_path) -> None
     # The walk fixture retains no trainer copy under train/: not recorded.
     assert record["artifacts"]["policy"] is None
     assert record["rollout"] == {"trace": "rollout/assembly-simulation-trace.json",
-                                 "seed": 7, "total_reward": 12.5}
+                                 "seed": 7, "total_reward": 12.5, "gait": None}
     assert record["artifacts"]["progress"] == "train/progress.json"
     assert record["artifacts"]["receipt"] is None
     assert record["project_artifacts"]["render"] == f"review/render/{REVISION_A}"

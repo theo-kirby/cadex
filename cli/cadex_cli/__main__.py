@@ -135,6 +135,7 @@ from .smoke import (
 from .tools import STANDARD_DISPLAY
 from .walk import (
     DEFAULT_LEG_TIMEOUT_S,
+    PROGRESS_FILENAME,
     POLICY_SWITCH,
     ROLLOUT_DIRNAME,
     SCRIPT_FILENAME,
@@ -144,6 +145,9 @@ from .walk import (
     collect_detached,
     declare_policy,
     declared_note_subjects,
+    floating_bases,
+    gait_from_trace,
+    read_json,
     read_pending,
     review_from_outputs,
     run_leg,
@@ -2170,6 +2174,17 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     # are the design turn's to write, so a gap is reported, never filled.
     subjects, model_path = declared_note_subjects(out_dir / TRAIN_DIRNAME)
     known["model_xml"] = model_path
+    # Whether it walked (ADR-409): judged on the free body's tilt and
+    # heading and on how long training episodes lasted, never on the reward
+    # the task happened to pay.
+    train_dir = out_dir / TRAIN_DIRNAME
+    review["gait"] = gait_from_trace(
+        read_json(review.get("trace")) if review.get("trace") else {},
+        bases=floating_bases(model_path),
+        task=read_json(known.get("task_bundle")),
+        progress=read_json(train_dir / "progress.json")
+        or read_json(train_dir / PROGRESS_FILENAME),
+    ) if review.get("trace") else {"available": False, "reason": "no trace was exported."}
     documentation = documentation_status(report.project_root, subjects)
     if model_path is not None:
         documentation["model"] = str(model_path)
@@ -2223,6 +2238,16 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         ).removeprefix("; motion ")
         + "."
     )
+    gait = review["gait"]
+    if gait.get("available"):
+        report.notes.append(
+            "gait: {:s}; {:.0f} mm in {:.1f} s, tilt ≤{:.0f}°, heading {:+.0f}°.".format(
+                "walked" if gait["walked"]
+                else "DID NOT WALK — " + "; ".join(gait["findings"]),
+                gait["planar_travel_mm"], gait["duration_s"] or 0.0,
+                gait["max_tilt_deg"], gait["heading_final_deg"],
+            )
+        )
     # A model that declares nothing asks the project for nothing, and the
     # run says nothing rather than reporting an empty check.
     if documentation["expected"]:
@@ -2247,8 +2272,10 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         )
     else:
         report.notes.append(
-            "walk: {:s} ({:s}) verified; total_reward {:.6g} over {:d} legs.".format(
-                weights, sha256[:12], float(review["total_reward"]), len(legs)
+            "walk: {:s} ({:s}) verified; total_reward {:.6g} over {:d} legs{:s}.".format(
+                weights, sha256[:12], float(review["total_reward"]), len(legs),
+                "" if not review["gait"].get("available") or review["gait"]["walked"]
+                else ", but the robot did not walk (see gait)",
             )
         )
     report.ok = True

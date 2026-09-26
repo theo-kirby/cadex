@@ -340,6 +340,27 @@ joint's angle is a policy input only through `assembly.sensor(joint, \
 potentiometer: say so in a `DECISION:` line. `cadex train` refuses a task \
 whose policy reads a channel no declared sensor measures.
 
+A WALKING TASK PAYS FOR WALKING, NOT FOR DISTANCE. A reward that only \
+grows with forward speed is maximised by tumbling, and PPO finds that \
+first. For anything with a free-floating body:
+- Every servo joint gets `servo.joint_dynamics(joint)` beside \
+`servo.actuator(...)`: the damping is the datasheet torque-speed line, so \
+no joint moves faster than the real servo. Never pick a damping by hand.
+- Upright is a reward and a termination. With the IMU's orientation \
+channels `rot_q*`, the body's up axis points `1 - 2*(rot_qx^2 + rot_qy^2)` \
+of the way to vertical: reward it, and add \
+`assembly.termination("1 - 2*(rot_qx^2 + rot_qy^2)", below=0.7)` so that a \
+body tilted past 45 degrees ends the episode.
+- Forward progress is bounded. Pick a target speed you can defend from \
+the stride and the servo's rated speed, state it in a `DECISION:` line, and \
+reward closeness to it (`-abs(comv_x / 60 - 1)` for 60 mm/s) or a \
+saturating term (`tanh(comv_x / 60)`), never raw speed. Keep every term of \
+order one.
+- Hold the heading: charge yaw rate (`abs(gyro_z)`) and sideways speed.
+- The walk judges the rollout on the body's tilt and heading and on how \
+long training episodes lasted, never on total reward, and reports a robot \
+that tipped or spun as one that did not walk.
+
 WHEN A CALL IS REFUSED, read the failure envelope. `failure_code`, \
 `observed` and `retry` say what went wrong and whether trying again could \
 help. Fix the script and write again; do not repeat the same call unchanged.

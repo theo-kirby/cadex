@@ -27,6 +27,7 @@ watching; this page is the summary.
 | `cadex render` refused a 110,688-triangle model, which killed hex2's review leg | ADR-406 caps |
 | Twelve servos and no controller, driver, IMU or power | ADR-407 catalog rows and overlay |
 | The policy read joint angles an MG90S cannot report and a CoM velocity nothing measures | ADR-408 sensors, roles, asymmetric actor-critic, refusal at training |
+| The task paid for tumbling; the walk called a 5 m tumble a verified run; servo speed was a hand-picked damping | ADR-409 `gait` review block, `servo.joint_dynamics`, walking-task overlay |
 
 ## Still open (from the logs)
 
@@ -44,13 +45,6 @@ watching; this page is the summary.
   suspected engine defect, not yet reproduced in isolation.
 - **Each build with a 12-joint sweep costs about 2.7 minutes**, which is
   most of the design phase.
-- **The task pays for tumbling.** Forward CoM velocity with only a
-  CoM-height termination: no upright or heading term, no tipping
-  termination, no servo speed limit (the actuators are torque-limited
-  only), and no plausibility check on 0.5 m/s for a 20 cm robot.
-- **Reward rose while survival stayed flat** from iteration 40 to 2000,
-  and nothing surfaced it; the walk's only behavioural readout is total
-  reward, and "3,492, not terminated" reads as success.
 - **`fit fail: 1 failing of 703`** is the floor's advisory world-geometry
   row counted as a failure.
 - **The persistent dashboard follows Ouroboros runs only**, and
