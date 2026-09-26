@@ -27414,3 +27414,114 @@ that read like a pin.
 write, with no migration. Regression:
 `test_the_store_drops_a_measurement_once_its_accepted_digest_moves_on`,
 which fails on the old store.
+
+## ADR-406 — The product agent sees its design, and is held to a design language (2026-09-25)
+
+**Decision.** The CLI agent gets a `look` tool, answered by the bridge
+rather than an engine op: it renders the last accepted build with the
+`cadex render` rasteriser and returns the images to the model as MCP image
+content — printed parts in one filament orange, purchased parts in dark
+grey, world geometry (a floor) left out, and `focus` for a close-up. The
+overlay stops telling the agent it cannot see, adds a short design language
+for printed parts (no sharp outside corners, enclose rather than bolt on,
+one continuous form per part, mirror what has sides, proportion and
+clearance, printable), and makes "look, name what is crude, fix, look
+again" part of being done. The renderer's caps rise to 400,000 placed
+triangles and 1,200,000 placed vertices, and its per-view pixel count no
+longer bills off-canvas triangles.
+
+**Reason.** The first owner-driven unattended hexapod run (hex2, no
+Ouroboros) produced a design that passed every fit check — 703 pairs,
+twelve swept joints, 24 welds — and was, in the owner's words, "really,
+really ugly": a slab with servos on it, flat bars for femurs, balls stuck
+on bars for feet, no fillets anywhere. The agent had called `inspect` 26
+times and never seen an image: the only signals it had were numbers, and
+boxes satisfy numbers. `cadex render` existed, as a subcommand the agent
+could not call, and refused hex2 at 110,688 triangles anyway. ADR-150 kept
+reference *images* shell-only because they are a shell input; this is the
+reverse direction — the headless client producing an image of its own
+accepted state — and it does not change that decision.
+
+**Consequences.** `BRIDGE_TOOLS` is a second, short list beside
+`CLI_TOOL_OPS`; the drift test skips it and asserts no engine op shares its
+name, so the protocol surface is unchanged and nothing crosses to the
+shell. A look costs about 2 s per view on hex2 and no rebuild; a turn that
+looks before it builds rebuilds once. Four 768-pixel images are about 3,000
+image tokens. Whether the design language changes what the agent produces
+is not yet measured: that is the next hexapod run's job, compared against
+hex2. Regressions: `cli/tests/test_look.py` (framing, colours, focus,
+refusals, the off-canvas pixel count, the bridge path and the look-first
+fallback) and `test_the_prompt_holds_printed_parts_to_a_design_language`.
+
+## ADR-407 — A self-moving design carries its brain, sensor and power (2026-09-25)
+
+**Decision.** The catalog gains an Adafruit 4754 BNO085 IMU and a Pololu
+4092 D36V50F6 6 V regulator as `lib.board` rows, and a new `batteries`
+family with one pack, the Gens Ace GEA2S100045D 2S 1000 mAh LiPo, served by
+`lib.battery` as its stated envelope with the density its stated mass
+implies. The agent overlay adds "a robot is a complete machine": a design
+that moves itself carries a controller (ESP32-DevKitC by default, the Pi
+Zero 2 W when the task needs Linux), a servo driver when needed (PCA9685),
+an IMU, and a battery through a regulator, each enclosed and given its mass;
+a tethered or bench-only design says so in a `DECISION:` line instead.
+
+**Reason.** hex2 (2026-09-25) had twelve servos and nothing to drive,
+power or sense them, although the catalog already carried an ESP32, a Pi
+Zero 2 W and a PCA9685: the prompt did not ask for a complete robot and
+nothing told the agent one needs them. The owner chose the parts: BNO085
+because its on-chip fusion yields orientation directly, which is what a
+policy observes; a 2S LiPo through a 6 V regulator for twelve MG90S; the
+ESP32 as the default brain. A D24V90F6, first proposed, does not exist;
+the D36V50F6 holds 6 V down to about 7 V in and sags to about 5.5 V on a
+nearly empty pack, still inside the MG90S range.
+
+**Consequences.** `describe_api`'s library catalog gains a `batteries`
+key (the response-shape golden is updated). The pack is the heaviest part
+on a small robot, so the physics model now sees it wherever a design
+places it. The regulator's pin signals are approximate until checked
+against Pololu's STEP model. This does not yet tie the task's observations
+to these sensors: the policy still observes joint state and the centre of
+mass directly, which the real robot cannot. That is the next decision.
+Regressions: `test_imu_and_regulator_manufacturer_pins`,
+`test_battery_envelope_mass_and_density`, the two new board rows in
+`test_board_interfaces_and_terminal_rows`, and
+`test_every_sku_the_prompt_names_is_in_the_catalog`.
+
+## ADR-408 — A policy reads only what an onboard sensor measures (2026-09-26)
+
+**Decision.** The assembly API gains `api.sensor(target, kind, name=)`,
+with kinds `imu` (on a component; grounds its orientation and rotation
+rate) and `joint_encoder` (on a joint; grounds its position and rate), and
+`api.observation` gains `role="policy"|"privileged"` and `sensor=`. A
+policy channel is grounded when it names the sensor that measures it; the
+API refuses a sensor passed to a channel it does not measure, or to a
+target it is not mounted on. The trainer becomes an asymmetric
+actor-critic: the actor reads the policy channels, the critic and the
+normaliser read everything, and the policy header lists the actor's
+channels, which is what the engine now verifies a policy against
+(`CadexDynamics.policy_channels`). `cadex train` and `cadex walk` refuse a
+task with an ungrounded policy channel unless given `--allow-ungrounded`.
+The overlay tells the agent how to ground what the policy reads. The two
+shipped lifecycle examples and the CLI's training fixture now declare a
+joint encoder and mark their centre of mass and effort privileged.
+
+**Reason.** hex2 (2026-09-25) trained a hexapod policy on joint angles and
+velocities its stock MG90S servos cannot report, and on a centre-of-mass
+position and velocity nothing on the robot measures: a policy that could
+not run on the machine it was designed for, trained without a word of
+warning. The owner chose the refusal over a warning, chose to allow a
+declared potentiometer tap as a joint encoder, and chose to enforce at
+training rather than at build, so no existing project stops building.
+
+**Consequences.** The task rows carry `role`, `grounded_sensor` and
+`grounded_kind` only when they are not the default, so every task written
+before this exports byte-identical and every trained policy still verifies
+against its digest; retraining one needs `--allow-ungrounded` or a script
+change. `sensor` is a new assembly intermediate (registered as one, never
+published). Linear acceleration from the IMU is not an observation kind
+yet — `accelerometer` stays deferred until a site placement exists — and a
+policy cannot yet read its own last command; both are follow-ups.
+Regressions: `test_dynamics_sensor_grounding.py`,
+`test_training_refuses_inputs_the_robot_cannot_read_unless_told_to`, the
+real-trainer test's header assertion (one grounded channel of five), and
+`test_the_prompt_says_how_to_ground_what_the_policy_reads`.

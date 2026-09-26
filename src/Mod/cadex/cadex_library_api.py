@@ -842,6 +842,28 @@ class LibraryAPI:
                            self._place("gearmotor", body, origin, direction, roll_degrees),
                            spec)
 
+    def battery(
+        self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """A catalogued battery pack as its stated rectangular envelope.
+
+        Datum: centre of the base face; height along +direction, length along
+        local X, width along local Y. The envelope is the manufacturer's
+        stated size, so a bay cut to it is a tight fit: leave margin, and room
+        for the discharge and balance leads, which are not modelled.
+        ``spec['density_kg_m3']`` is the stated mass over this envelope, what
+        ``assembly.body`` wants for the pack; it is not a measured inertia.
+        """
+        spec = catalog.battery_spec(sku)
+        length, width, height = (spec[k] for k in ("length_mm", "width_mm", "height_mm"))
+        body = self._part.box(length, width, height, origin=(-length/2, -width/2, 0.0),
+                              label=label)
+        return LibraryPart("battery", sku.strip().lower(),
+                           self._place("battery", body, origin, direction, roll_degrees),
+                           spec)
+
     def joint(
         self, sku: str, *, tilt_degrees: float = 0.0,
         origin: Sequence[float] = _DEFAULT_ORIGIN,

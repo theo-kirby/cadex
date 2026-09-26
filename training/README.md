@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-09-12. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-09-26. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -128,6 +128,20 @@ on and publishes a receipt.
 > makes on purpose rather than one that rides along. ADR-086 §4 named it
 > available-and-not-taken and ADR-102 §4 left it that way; the engine-side
 > refusals carry the correct advice in the meantime.
+
+## The actor reads what the robot can; the critic reads everything (ADR-408)
+
+A task row marked `role: privileged` is a simulation-only quantity -- a
+centre of mass, a world velocity -- that the reward and the terminations
+may use. The trainer is an asymmetric actor-critic: the **actor** reads
+only the policy channels (every row not marked privileged, in task order),
+and the **critic** and the running normaliser read every channel. The
+container's header lists the actor's channels and carries the actor's
+slice of the normaliser, so the engine, the witness and every rollout see
+exactly what the policy reads. A task with no privileged rows -- every
+task before ADR-408 -- trains exactly as it always did. `actor_channels`
+here and `CadexDynamics.policy_channels` in the engine are the same rule,
+written twice because this file imports nothing from the engine.
 
 ## Options that matter
 

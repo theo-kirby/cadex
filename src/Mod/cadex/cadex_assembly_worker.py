@@ -3697,6 +3697,11 @@ def _observation_input(
         resolved["motion_type"] = str(properties.get("motion_type"))
     else:
         resolved["component"] = component_outputs[id(target)]
+    # ADR-408: present only when not the default, so an entry -- and the task
+    # it exports into -- is byte-identical for a script written before it.
+    for key in ("role", "grounded_sensor", "grounded_kind"):
+        if properties.get(key):
+            resolved[key] = str(properties[key])
     return resolved
 
 

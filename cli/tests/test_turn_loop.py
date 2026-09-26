@@ -95,9 +95,15 @@ def test_the_system_prompt_carries_the_engines_own_contract() -> None:
 
 def test_the_prompt_states_the_headless_limits_rather_than_leaving_them(
 ) -> None:
-    """The agent is told it cannot see; it should not find out by failing."""
+    """The agent is told how it sees; it should not find out by failing.
 
-    assert "no screenshot" in CLI_OVERLAY
+    Until ADR-406 this pinned "no screenshot": the agent was blind and was
+    told so. It now has `look`, and a prompt that still said it could not
+    see would stop it from calling the one tool that shows it crude parts.
+    """
+
+    assert "no screenshot" not in CLI_OVERLAY
+    assert "`look`" in CLI_OVERLAY
     assert "MILLIMETRES" in CLI_OVERLAY
     assert "describe_api" in CLI_OVERLAY
     # And that it must not pass the guard the bridge supplies.
@@ -614,3 +620,47 @@ def test_turn_resolves_model_after_reading_project(
     assert factory.made[0].model == (expected or DEFAULT_MODEL)
     assert report.model == factory.made[0].model
     assert read_agent_state(report.project_root).model == report.model
+
+
+def test_the_prompt_holds_printed_parts_to_a_design_language() -> None:
+    """ADR-406: passing fit is the floor; the agent is told what designed means."""
+
+    assert "DESIGN IT; DO NOT ONLY MAKE IT FIT" in CLI_OVERLAY
+    for rule in ("NO SHARP OUTSIDE CORNERS", "ENCLOSE, DO NOT BOLT ON",
+                 "ONE CONTINUOUS FORM PER PART", "MIRROR WHAT HAS SIDES",
+                 "PRINTABLE"):
+        assert rule in CLI_OVERLAY
+    assert "BE DONE WHEN IT IS BUILT AND YOU HAVE LOOKED AT IT" in CLI_OVERLAY
+
+
+def test_the_prompt_says_a_robot_carries_its_brain_sensors_and_power() -> None:
+    """ADR-407: hex2 had twelve servos and nothing to drive them."""
+
+    assert "A ROBOT IS A COMPLETE MACHINE" in CLI_OVERLAY
+    for sku in ("esp32-devkitc-v4", "pca9685-adafruit-rev-c", "bno085-adafruit-4754",
+                "gensace-gea2s100045d", "pololu-d36v50f6"):
+        assert sku in CLI_OVERLAY
+    assert "never leave them out silently" in CLI_OVERLAY
+
+
+def test_every_sku_the_prompt_names_is_in_the_catalog() -> None:
+    """A prompt that names a part the catalog lacks sends the agent to a refusal."""
+    import re
+    import sys
+    from cadex_cli.engine import REPO_ROOT
+    sys.path.insert(0, str(REPO_ROOT / "src" / "Mod" / "cadex"))
+    import CadexCatalog as catalog
+
+    named = set(re.findall(r'lib\.(board|battery)\("([a-z0-9-]+)"\)', CLI_OVERLAY))
+    assert named
+    for family, sku in named:
+        (catalog.board_spec if family == "board" else catalog.battery_spec)(sku)
+
+
+def test_the_prompt_says_how_to_ground_what_the_policy_reads() -> None:
+    """ADR-408: the agent learns the rule before `cadex train` refuses it."""
+
+    assert "GROUND WHAT THE POLICY READS" in CLI_OVERLAY
+    for phrase in ('role="privileged"', 'assembly.sensor(', '"joint_encoder"',
+                   '"imu"', "potentiometer"):
+        assert phrase in CLI_OVERLAY

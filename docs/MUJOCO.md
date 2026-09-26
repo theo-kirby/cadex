@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-09-19
+Verified against source: 2026-09-26
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -1021,6 +1021,33 @@ visible:
 * **A one-sided limit reports its declared pair intact** (`[None, 95.0]`),
   so the refusal says *which* endpoint is missing rather than merely that
   one is.
+
+**Who reads a channel, and what measures it (ADR-408).** Every channel
+above is something MuJoCo can read; far fewer are something a small robot
+can. An observation carries a `role`: `policy` (the default) is an input the
+trained network reads on the machine, and `privileged` is a
+simulation-only quantity the reward, the terminations and the trainer's
+critic may read and the shipped policy never does. A policy channel is
+*grounded* when it names the `api.sensor` that measures it on the robot:
+
+| sensor kind | declared on | grounds |
+|---|---|---|
+| `imu` | the IMU board's own `api.component` | that component's `component_orientation` and `component_angular_velocity` |
+| `joint_encoder` | an `api.joint` | that joint's `position` and `velocity` (a servo's potentiometer tapped out, or a servo that reports position) |
+
+The API refuses a sensor that does not measure what it is passed to, or
+that is mounted on something else. An ungrounded policy channel still
+builds, and the exported task marks it, and **`cadex train` refuses to
+train on it** unless given `--allow-ungrounded`. The keys this adds to a
+task row (`role`, `grounded_sensor`, `grounded_kind`) appear only when they
+are not the default, so a task written before ADR-408 exports
+byte-identical and every policy trained on it still verifies. The trainer
+is an asymmetric actor-critic: the actor reads the policy channels, the
+critic and the running normaliser read every channel, and the policy
+header lists the actor's channels only, which is what
+`CadexDynamics.policy_channels` verifies it against. The motivation is
+hex2 (2026-09-25): a hexapod whose policy read joint angles its MG90S
+servos cannot report and a centre-of-mass velocity nothing on it measures.
 
 **Deferred, and named rather than half-built:** `touch` and
 `accelerometer` need a *site* with a placement the assembly graph does not

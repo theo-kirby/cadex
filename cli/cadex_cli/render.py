@@ -21,8 +21,9 @@ from .inventory import InventoryError
 SIZE = 512
 MAX_BYTES = 32 * 1024 * 1024
 MAX_VERTICES = 300_000
-MAX_PLACED_VERTICES = 600_000
-MAX_TRIANGLES = 100_000
+# hex2 (2026-09-25), a 12-servo hexapod, is 110,688 placed triangles; 100k refused it.
+MAX_PLACED_VERTICES = 1_200_000
+MAX_TRIANGLES = 400_000
 MAX_SAMPLES = 20_000_000  # bounding-box pixel visits per view, including overdraw
 IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 s2, s3, s6 = math.sqrt(2), math.sqrt(3), math.sqrt(6)
@@ -32,6 +33,15 @@ BASES = {
     'right': ((0, 1, 0), (0, 0, 1), (1, 0, 0)),
     'iso': ((1/s2, 1/s2, 0), (-1/s6, 1/s6, 2/s6), (1/s3, -1/s3, 1/s3)),
 }
+#: What the agent's `look` tool may ask for: the four review views plus the
+#: opposite three-quarter view, so the far side of a design is not unseen.
+LOOK_VIEWS = {**BASES, 'iso_back': ((-1/s2, -1/s2, 0), (1/s6, -1/s6, 2/s6), (-1/s3, 1/s3, 1/s3))}
+LOOK_SIZE = 768
+#: `look` colours by what a part is, not by its index: printed parts in one
+#: filament colour so a design reads as the object it would be, purchased
+#: parts in a neutral dark grey.
+PRINTED_COLOR = (222, 124, 64)
+PURCHASED_COLOR = (74, 78, 86)
 PALETTE = [(91, 157, 205), (230, 151, 76), (115, 182, 135), (180, 134, 200)]
 LIMITS = {'buffer_bytes': MAX_BYTES, 'triangles': MAX_TRIANGLES, 'vertices_per_source': MAX_VERTICES,
           'placed_vertices': MAX_PLACED_VERTICES,
@@ -128,8 +138,9 @@ def snapshot(reply):
             if not indices:
                 continue
             color = PALETTE[len(objects) % len(PALETTE)]
+            first = len(triangles)
             triangles.extend((color, tuple(points[i] for i in tri)) for tri in indices)
-            objects[name] = {'triangles': len(indices), 'source': source, 'placement': matrix, 'color': color,
+            objects[name] = {'triangles': len(indices), 'first': first, 'source': source, 'placement': matrix, 'color': color,
                              'bounds_mm': [[fn(p[j] for p in points) for j in range(3)]
                                            for fn in (min, max)]}
     except (OSError, KeyError, TypeError, ValueError, struct.error) as exc:
@@ -140,7 +151,7 @@ def snapshot(reply):
                        'approximation': APPROXIMATION, 'limits': LIMITS}
 
 
-def rasterize(triangles, basis, *, bounds=None):
+def rasterize(triangles, basis, *, bounds=None, size=SIZE):
     projected = [(color, [tuple(sum(p[j]*axis[j] for j in range(3)) for axis in basis)
                           for p in points]) for color, points in triangles]
     points = [p for _, tri in projected for p in tri]
@@ -149,19 +160,21 @@ def rasterize(triangles, basis, *, bounds=None):
         lo, hi = bounds
     extent = max(hi[j] - lo[j] for j in range(2))
     _require(extent > 0, 'zero projected extent')
-    scale = (SIZE - 64) / extent
-    pixels = bytearray(bytes((246, 247, 250)) * SIZE * SIZE)
-    depth = [-math.inf] * (SIZE * SIZE)
+    scale = (size - 64) / extent
+    pixels = bytearray(bytes((246, 247, 250)) * size * size)
+    depth = [-math.inf] * (size * size)
     samples = 0
     for color, tri in projected:
-        a, b, c = [(SIZE/2 + (p[0]-(lo[0]+hi[0])/2)*scale,
-                    SIZE/2 - (p[1]-(lo[1]+hi[1])/2)*scale, p[2]) for p in tri]
+        a, b, c = [(size/2 + (p[0]-(lo[0]+hi[0])/2)*scale,
+                    size/2 - (p[1]-(lo[1]+hi[1])/2)*scale, p[2]) for p in tri]
         area = (b[1]-c[1])*(a[0]-c[0]) + (c[0]-b[0])*(a[1]-c[1])
         if abs(area) < 1e-12:
             continue
-        xmin, xmax = max(0, math.floor(min(a[0], b[0], c[0]))), min(SIZE-1, math.ceil(max(a[0], b[0], c[0])))
-        ymin, ymax = max(0, math.floor(min(a[1], b[1], c[1]))), min(SIZE-1, math.ceil(max(a[1], b[1], c[1])))
-        samples += (xmax-xmin+1)*(ymax-ymin+1)
+        xmin, xmax = max(0, math.floor(min(a[0], b[0], c[0]))), min(size-1, math.ceil(max(a[0], b[0], c[0])))
+        ymin, ymax = max(0, math.floor(min(a[1], b[1], c[1]))), min(size-1, math.ceil(max(a[1], b[1], c[1])))
+        # Off-canvas triangles (a focused `look`) clamp to zero, never to a
+        # product of two negative spans.
+        samples += max(0, xmax-xmin+1)*max(0, ymax-ymin+1)
         _require(samples <= MAX_SAMPLES, 'pixel work budget exceeded')
         u, v = ([tri[1][j]-tri[0][j] for j in range(3)], [tri[2][j]-tri[0][j] for j in range(3)])
         normal = (u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0])
@@ -177,7 +190,7 @@ def rasterize(triangles, basis, *, bounds=None):
                 if min(w0, w1, w2) < -1e-10:
                     continue
                 z = w0*a[2] + w1*b[2] + w2*c[2]
-                i = y*SIZE+x
+                i = y*size+x
                 # Equal-depth ties are stable in sorted output/triangle order.
                 if z > depth[i]:
                     depth[i] = z
@@ -186,12 +199,50 @@ def rasterize(triangles, basis, *, bounds=None):
                     'covered_pixels': sum(d > -math.inf for d in depth)}
 
 
-def png(pixels):
+def png(pixels, size=SIZE):
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind+data))
-    rows = b''.join(b'\0' + pixels[y*SIZE*3:(y+1)*SIZE*3] for y in range(SIZE))
-    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>2I5B', SIZE, SIZE, 8, 2, 0, 0, 0)) +
+    rows = b''.join(b'\0' + pixels[y*size*3:(y+1)*size*3] for y in range(size))
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>2I5B', size, size, 8, 2, 0, 0, 0)) +
             chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+
+
+def look(triangles, summary, views, *, focus=(), exclude=(), purchased=None, size=LOOK_SIZE):
+    """The agent's own views of a snapshot: PNG bytes per requested view.
+
+    ``exclude`` names objects left out entirely (environment geometry: a floor
+    would otherwise set the framing and shrink the design to a speck);
+    ``focus`` names the objects the view is framed on, with everything else
+    still drawn; ``purchased`` is the set of objects to colour as bought
+    hardware, every other one being printed. ``None`` keeps the index palette.
+    """
+    objects = summary['objects']
+    unknown = sorted(set(focus) - set(objects))
+    _require(not unknown, 'unknown focus ' + ', '.join(unknown) + '; drawable: ' + ', '.join(sorted(objects)))
+    _require(all(v in LOOK_VIEWS for v in views),
+             'unknown view; choose from ' + ', '.join(LOOK_VIEWS))
+    drawn, framed = [], []
+    for name, item in objects.items():
+        if name in exclude:
+            continue
+        part = triangles[item['first']:item['first'] + item['triangles']]
+        if purchased is not None:
+            color = PURCHASED_COLOR if name in purchased else PRINTED_COLOR
+            part = [(color, points) for _, points in part]
+        drawn.extend(part)
+        if not focus or name in focus:
+            framed.extend(part)
+    _require(bool(framed), 'nothing to draw once environment geometry is left out')
+    shots = []
+    for view in views:
+        basis = LOOK_VIEWS[view]
+        points = [[sum(p[j]*axis[j] for j in range(3)) for axis in basis[:2]]
+                  for _, tri in framed for p in tri]
+        lo, hi = ([fn(p[j] for p in points) for j in range(2)] for fn in (min, max))
+        pad = 0.04 * max(hi[0] - lo[0], hi[1] - lo[1])
+        pixels, details = rasterize(drawn, basis, bounds=([lo[0]-pad, lo[1]-pad], [hi[0]+pad, hi[1]+pad]), size=size)
+        shots.append((view, png(pixels, size), details))
+    return shots
 
 
 def acquire_snapshot(client):

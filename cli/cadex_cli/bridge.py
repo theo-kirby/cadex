@@ -26,6 +26,7 @@ The token is kept anyway — belt and braces cost one comparison.
 from __future__ import annotations
 
 from collections.abc import Callable
+import base64
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
@@ -39,9 +40,11 @@ from typing import Any
 
 from .clearance import read_fit
 from .client import CadexdClient
-from .inventory import read_inventory_summary
+from .inventory import InventoryError, read_inventory_summary
+from . import render
 from .tools import (
-    STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision, tool_definitions,
+    BRIDGE_TOOLS, STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision,
+    tool_definitions,
 )
 
 #: Long enough that a slow rebuild is not a broken pipe; the engine's own
@@ -194,6 +197,8 @@ class Bridge:
         """Run one tool against the engine and answer in MCP content blocks."""
 
         protocol = self.client.engine.protocol
+        if tool in BRIDGE_TOOLS:
+            return self._look(arguments)
         if tool not in protocol.OP_ARG_SPECS:
             return _content(f"No such tool: {tool!r}.", is_error=True)
 
@@ -276,6 +281,104 @@ class Bridge:
             json.dumps(view, indent=2, sort_keys=True, default=str),
             is_error=not ok,
         )
+
+    def _look(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Render the accepted design and hand the model the pictures (ADR-406).
+
+        Drawn from the last accepted modelling reply's display block when the
+        bridge holds one -- the tessellation the build already published, so
+        looking costs no rebuild -- and from a ``rebuild`` only when a turn
+        opens on a revision this bridge has not built yet. World geometry the
+        fit block names is left out, and the inventory block decides which
+        parts are drawn as printed and which as purchased.
+        """
+
+        views = [str(v) for v in (arguments.get("views") or ["iso", "iso_back"])]
+        focus = [str(v) for v in (arguments.get("focus") or [])]
+        unknown = set(arguments) - {"views", "focus"}
+        if unknown or not views or len(views) > 5:
+            return _content(
+                "look takes `views` (1 to 5 of iso, iso_back, front, right, top) and "
+                "`focus` (names), nothing else.", is_error=True,
+            )
+        with self._lock:
+            reply = self.state.last_accepted
+            if reply is None:
+                args: dict[str, Any] = {"display": dict(STANDARD_DISPLAY)}
+                if injects_revision(self.client.engine.protocol, "rebuild"):
+                    args["expected_revision"] = self.state.revision
+                try:
+                    reply = self.client.request("rebuild", args)
+                except Exception as exc:
+                    return _content(f"look could not rebuild to get geometry: {exc}", is_error=True)
+                self._track("rebuild", reply)
+                if reply.get("ok") is True:
+                    # What a modelling reply would have carried: without them
+                    # the floor frames the view and every part is one palette.
+                    self.state.last_fit = self._read_fit()
+                    self.state.last_inventory = self._read_inventory()
+            fit, inventory = self.state.last_fit, self.state.last_inventory
+            try:
+                triangles, summary = render.snapshot(reply)
+                world = {
+                    str(row.get("first") or "")
+                    for row in (fit or {}).get("failing") or []
+                    if row.get("status") == "world geometry"
+                }
+                printed_sources = (
+                    set(inventory.get("uncatalogued_sources") or [])
+                    if inventory and inventory.get("available") else None
+                )
+                purchased = None
+                if printed_sources is not None:
+                    purchased = {
+                        name for name, item in summary["objects"].items()
+                        if item["source"] not in printed_sources
+                    }
+                # Focus names may be outputs as well as the components that
+                # place them; accept either.
+                by_source = {item["source"]: name for name, item in summary["objects"].items()}
+                focus_objects = [by_source.get(name, name) for name in focus]
+                shots = render.look(
+                    triangles, summary, views, focus=focus_objects,
+                    exclude=world, purchased=purchased,
+                )
+            except InventoryError as exc:
+                call = ToolCall("look", dict(arguments), False, str(exc))
+                self._record(call)
+                return _content(str(exc), is_error=True)
+        text = json.dumps(
+            {
+                "ok": True,
+                "revision": summary["revision"],
+                "views": [view for view, _, _ in shots],
+                "focus": focus,
+                "left_out_as_environment": sorted(world),
+                "colours": (
+                    "orange = printed, dark grey = purchased"
+                    if purchased is not None else
+                    "index palette (no inventory to tell printed from purchased)"
+                ),
+                "components_drawn": len(summary["objects"]) - len(world & set(summary["objects"])),
+                "triangles": summary["triangles"],
+                "approximation": "orthographic, flat-shaded tessellation at the solved pose; "
+                                 "no edges, dimensions or transparency",
+            },
+            indent=2,
+        )
+        content = [{"type": "text", "text": text}]
+        for _view, data, _details in shots:
+            content.append({
+                "type": "image",
+                "data": base64.b64encode(data).decode("ascii"),
+                "mimeType": "image/png",
+            })
+        self._record(ToolCall(
+            "look", dict(arguments), True,
+            f"{', '.join(views)}{' focus ' + ', '.join(focus) if focus else ''} "
+            f"({summary['revision'][:12]})",
+        ))
+        return {"content": content, "is_error": False}
 
     def _read_fit(self) -> dict[str, Any]:
         """The fit block for a build that just succeeded; never a raised error.

@@ -43,6 +43,8 @@ __all__ = [
     "SERVOS",
     "BOARDS",
     "board_spec",
+    "BATTERIES",
+    "battery_spec",
     "BLDC_MOTORS",
     "bldc_spec",
     "linear_actuator_spec",
@@ -499,8 +501,8 @@ def normalise_servo_sku(sku: Any) -> str:
 # Full source/version and approximation ledger: docs/PROVENANCE.md §8a.
 # Local frame: PCB lower-left corner, bottom face z=0, component side +Z.
 # Terminals describe solder pads, not the free ends of optional pin headers.
-def _board_pin(name: str, signal: str, x: float, y: float, drill: float) -> dict:
-    return {"name": name.lower().replace("+", "plus"), "signal": signal, "origin": [x, y, 1.6],
+def _board_pin(name: str, signal: str, x: float, y: float, drill: float, z: float = 1.6) -> dict:
+    return {"name": name.lower().replace("+", "plus"), "signal": signal, "origin": [x, y, z],
             "axis": [0.0, 0.0, -1.0], "hole_dia": drill}
 
 
@@ -568,7 +570,93 @@ BOARDS = {
         ] + [_board_pin("J1_1", "V+_IN", 29.315, 21.59, 1.0),
              _board_pin("J1_2", "GND", 32.815, 21.59, 1.0)],
     },
+    # Adafruit 4754, BNO085 9-DoF fusion IMU (ADR-407). Outline, holes, header
+    # pads and the chip's centre are parsed from the published EAGLE board.
+    # STEMMA QT connectors are surface-mount and carry no terminal rows.
+    "bno085-adafruit-4754": {
+        "manufacturer": "Adafruit", "variant": "4754 BNO085 9-DoF orientation IMU fusion breakout",
+        "width_mm": 25.4, "length_mm": 22.86, "thickness_mm": 1.6,
+        "mount_holes": [[x, y] for x in (2.54, 22.86) for y in (2.54, 20.32)],
+        "mount_hole_dia_mm": 2.5,
+        "cosmetic_origin": [10.1, 10.3555, 1.6], "cosmetic_size": [5.2, 3.8, 1.1],
+        "density_kg_m3": 1850.0, "mass_g": 2.5,
+        "approximate": ["thickness_mm", "cosmetic_size", "density_kg_m3", "outline_corner_radius",
+                        "revision_2023_12_silkscreen_update_unpublished"],
+        "source": "https://github.com/adafruit/Adafruit-BNO08x-PCB/blob/be9dc9984bb19b1e8ba31e8744917d0952993ef2/Adafruit_BNO08x.brd",
+        "sources": ["https://github.com/adafruit/Adafruit-BNO08x-PCB/blob/be9dc9984bb19b1e8ba31e8744917d0952993ef2/Adafruit_BNO08x.brd",
+                    "https://www.adafruit.com/product/4754"],
+        "notes": "Sensor axes per silkscreen: X along +x, Y along +y, Z out of the component side. I2C on JP1 (SDA, SCL) or either STEMMA QT edge connector.",
+        "terminals": [
+            _board_pin(f"{header}_{i+1}", signal, round(6.35+i*2.54, 4), y, 1.0)
+            for header, y, signals in [("JP1", 2.54, "VIN 3Vo GND SCL SDA INT"),
+                                       ("JP2", 20.32, "BOOT P0 P1 RST DI CS")]
+            for i, signal in enumerate(signals.split())
+        ],
+    },
+    # Pololu 4092, D36V50F6 6 V 5.5 A step-down regulator (ADR-407). Board,
+    # holes and pin grid from Pololu's dimension drawing 0J1732 (mil, converted
+    # exactly); the pin map is read off Pololu's labelled photo, so it is
+    # approximate until checked against the published STEP. Holds 6 V down to
+    # about 7 V in; from a nearly empty 2S pack the output sags to about 5.5 V.
+    "pololu-d36v50f6": {
+        "manufacturer": "Pololu", "variant": "4092 D36V50F6 6 V 5.5 A step-down regulator",
+        "width_mm": 25.4, "length_mm": 25.4, "thickness_mm": 1.57,
+        "mount_holes": [[2.159, 2.159], [23.241, 2.159], [23.241, 23.241]],
+        "mount_hole_dia_mm": 2.18,
+        "cosmetic_origin": [7.0, 8.0, 1.57], "cosmetic_size": [11.4, 12.0, 6.1],
+        "density_kg_m3": 1850.0, "mass_g": 7.0,
+        "output_voltage_v": 6.0, "input_voltage_range_v": [6.5, 50.0],
+        "continuous_current_a": 5.5, "dropout_v_at_5a": 1.1,
+        "approximate": ["cosmetic_origin", "cosmetic_size", "density_kg_m3", "terminal_signals",
+                        "dropout_v_at_5a", "bottom_side_components_1_8_mm"],
+        "source": "https://www.pololu.com/file/0J1732/d36v50fx-step-down-voltage-regulator-dimensions.pdf",
+        "sources": ["https://www.pololu.com/file/0J1732/d36v50fx-step-down-voltage-regulator-dimensions.pdf",
+                    "https://www.pololu.com/product/4092/specs",
+                    "https://a.pololu-files.com/picture/0J10742.1200.png",
+                    "https://a.pololu-files.com/picture/0J10753.600.png"],
+        "notes": "5.5 A is Pololu's typical rating at 36 V in; its graph shows about 7.5-8 A continuous from 7-8.4 V. Components rise 6.1 mm above the board and 1.8 mm below it.",
+        "terminals": [
+            _board_pin(f"{signal}_{row+1}", signal.upper(), x, y, 1.02, 1.57)
+            for signal, x in (("vout", 6.35), ("gnd_a", 8.89), ("gnd_b", 11.43), ("vin", 13.97), ("vrp", 16.51))
+            for row, y in enumerate((1.27, 3.81))
+        ] + [_board_pin("EN", "EN", 19.05, 1.27, 1.02, 1.57),
+             _board_pin("PG", "PG", 19.05, 3.81, 1.02, 1.57)],
+    },
 }
+
+
+# Gens Ace GEA2S100045D (ADR-407): dimensions, mass, ratings and leads as
+# the manufacturer's official store states them. A soft pack, modelled as its
+# stated rectangular envelope.
+BATTERIES = {
+    "gensace-gea2s100045d": {
+        "manufacturer": "Gens Ace", "manufacturer_part_number": "GEA2S100045D",
+        "variant": "1000 mAh 2S 45C 7.4 V Air Classic, Deans",
+        "chemistry": "LiPo", "cells_series": 2, "nominal_voltage_v": 7.4,
+        "full_voltage_v": 8.4, "capacity_mah": 1000.0,
+        "c_rating_continuous": 45.0, "c_rating_burst": 90.0,
+        "length_mm": 72.0, "width_mm": 36.0, "height_mm": 13.0, "mass_g": 64.0,
+        "discharge_connector": "Deans (T-plug), 14 AWG, 100 mm lead",
+        "balance_connector": "JST-XHR-3P, 45 mm lead",
+        "sources": ["https://genstattu.com/gens-ace-2s-1000mah-45c-lipo-battery-pack-with-deans-plug/"],
+        "approximate": [
+            "Rectangular envelope of the stated dimensions: soft-pack rounding, swelling, wrap and leads are not modelled; leave room for the leads.",
+            "full_voltage_v is the LiPo 4.2 V per cell convention, not stated by the source.",
+            "density_kg_m3 is the stated mass over the envelope volume, uniform; not a measured inertia.",
+        ],
+    },
+}
+
+
+def battery_spec(sku: Any) -> dict[str, Any]:
+    """One manufacturer pack; the density is its stated mass over its envelope."""
+    if not isinstance(sku, str) or sku.strip().lower() not in BATTERIES:
+        raise CatalogError(f"Unknown battery {sku!r}; catalogued batteries: "
+                           + ", ".join(sorted(BATTERIES)) + ".")
+    spec = deepcopy(BATTERIES[sku.strip().lower()])
+    volume_m3 = spec["length_mm"] * spec["width_mm"] * spec["height_mm"] * 1e-9
+    spec["density_kg_m3"] = round(spec["mass_g"] * 1e-3 / volume_m3, 1)
+    return spec
 
 
 def board_spec(sku: Any) -> dict[str, Any]:
@@ -991,6 +1079,10 @@ def catalog_families() -> dict[str, Any]:
             "pressure_angle_degrees": GEAR_STANDARD["pressure_angle_degrees"],
             "teeth_range": [GEAR_STANDARD["minimum_teeth"], GEAR_STANDARD["maximum_teeth"]],
             "notes": "lib.spur_gear(module, teeth, face_width, bore=None) and lib.rack(module, teeth, face_width, height): ISO 53 type A profile on ISO 54 series I modules, one sampled-involute polygon extruded; spec carries the pitch, base, root and tip diameters and the undercut warning below 17 teeth. No fillets, backlash, strength rating or density. lib.rack_and_pinion(module, pinion_teeth, rack_teeth, face_width, backlash=0, bore=None, rack_height=None, rotation_degrees=0) composes both at the standard centre distance as one compound; spec carries centre distance, travel per revolution and the datums.",
+        },
+        "batteries": {
+            "skus": sorted(BATTERIES),
+            "notes": "lib.battery(sku): the pack's stated rectangular envelope, base face on the datum, length along local X; spec carries voltage, capacity, C ratings, leads, stated mass and the density that mass implies. Leads and connectors are not modelled.",
         },
         "boards": {
             "skus": sorted(BOARDS),

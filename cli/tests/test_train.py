@@ -41,7 +41,9 @@ TRAINER_SOURCE = REPO_ROOT / "training" / "cadex_train.py"
 REMOTE_SOURCE = REPO_ROOT / "training" / "remote_train.sh"
 
 #: The smallest script that exports a training task: one revolute joint,
-#: one motor, three observations. Lifted from the engine's lifecycle gate.
+#: one motor, three observations. Lifted from the engine's lifecycle gate;
+#: since ADR-408 the policy reads the encoder-grounded angle and the reward
+#: alone reads the privileged centre of mass and effort.
 TASK_SCRIPT = """
 plate = part.box(60, 60, 6)
 arm = part.box(80, 8, 8)
@@ -60,13 +62,14 @@ asm = assembly.assembly([base, swing], [j])
 diag = assembly.solve(asm)
 motor = assembly.actuator(j, kind="motor", control_nmm="120*sin(2*pi*time)",
                           torque_limit_nmm=400)
+encoder = assembly.sensor(j, "joint_encoder", name="encoder")
 model = assembly.mjcf(asm, [
     assembly.body(base, density_kg_m3=2700),
     assembly.body(swing, density_kg_m3=7850),
 ], actuators=[motor], observations=[
-    assembly.observation(j, "position", name="angle"),
-    assembly.observation(swing, "centre_of_mass", name="com"),
-    assembly.observation(motor, "actuator_force", name="effort"),
+    assembly.observation(j, "position", name="angle", sensor=encoder),
+    assembly.observation(swing, "centre_of_mass", name="com", role="privileged"),
+    assembly.observation(motor, "actuator_force", name="effort", role="privileged"),
 ])
 job = assembly.task(model, actions=[motor],
                     reward=[assembly.reward("-(com_z - 60)^2", weight=1.0e-4,
@@ -503,6 +506,45 @@ def task_project(engine, tmp_path, capsys) -> Path:
     return root
 
 
+#: ``TASK_SCRIPT`` as it was written before ADR-408: no sensor, no role --
+#: so every channel is a policy input and none of them is grounded.
+LEGACY_TASK_SCRIPT = (
+    TASK_SCRIPT
+    .replace('encoder = assembly.sensor(j, "joint_encoder", name="encoder")\n', "")
+    .replace(', sensor=encoder)', ')')
+    .replace(', role="privileged")', ')')
+)
+assert "sensor" not in LEGACY_TASK_SCRIPT and "privileged" not in LEGACY_TASK_SCRIPT
+
+
+def test_training_refuses_inputs_the_robot_cannot_read_unless_told_to(
+    engine, fake_trainer, tmp_path, capsys
+) -> None:
+    """ADR-408: an ungrounded policy channel still builds, but does not train."""
+
+    script = tmp_path / "legacy.py"
+    script.write_text(LEGACY_TASK_SCRIPT, encoding="utf-8")
+    root = tmp_path / "legacy"
+    code, envelope = _run(capsys, "script", "--set", str(script), "--project", str(root))
+    assert code == EXIT_OK, envelope  # the build accepts it
+    code, envelope = _run(
+        capsys, "train", "--project", str(root), "--out", str(tmp_path / "refused"),
+        "--trainer-python", sys.executable, "--iterations", "1", "--envs", "2",
+    )
+    assert code != EXIT_OK
+    assert "name no onboard sensor" in envelope["error"]
+    for channel in ("angle", "com_x", "effort"):
+        assert channel in envelope["error"]
+    assert not (tmp_path / "refused" / "job.cxpolicy").exists()
+    code, envelope = _run(
+        capsys, "train", "--project", str(root), "--out", str(tmp_path / "allowed"),
+        "--trainer-python", sys.executable, "--iterations", "1", "--envs", "2",
+        "--allow-ungrounded",
+    )
+    assert code == EXIT_OK, envelope
+    assert any("--allow-ungrounded" in note for note in envelope["notes"])
+
+
 def test_the_leg_runs_as_one_command_and_the_policy_comes_home(
     task_project, fake_trainer, tmp_path, capsys
 ) -> None:
@@ -739,6 +781,16 @@ def test_the_real_trainer_trains_the_toy_and_the_engine_digests_agree(
     ).hexdigest()
     assert (out / "progress.json").is_file()
     assert json.loads((out / "progress.json").read_text())["state"] == "done"
+    # ADR-408: the policy reads the encoder-grounded angle and nothing the
+    # robot cannot measure; the centre of mass and effort fed the critic.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("cadex_train_for_test", TRAINER_SOURCE)
+    trainer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(trainer)
+    header = trainer.decode_policy((out / "job.cxpolicy").read_bytes())["header"]
+    assert header["observations"] == ["angle"]
+    assert header["network"]["layers"][0][0] == 1
+    assert len(header["normaliser"]["mean"]) == 1
 
 
 # -- the iterate shape (ADR-192) -------------------------------------------

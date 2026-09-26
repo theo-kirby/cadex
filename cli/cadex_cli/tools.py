@@ -42,6 +42,7 @@ staged for every declared output regardless, which is what
 
 from __future__ import annotations
 
+import json
 from types import ModuleType
 from typing import Any
 
@@ -129,8 +130,8 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "content digest. Use it to confirm the model still reproduces."
     ),
     "inspect": (
-        "Read engine state. This is how you verify your work: there is no "
-        "viewport here and no screenshot to look at. scope=clearance is the "
+        "Read engine state. This is how you verify your work in numbers; "
+        "`look` is how you see it. scope=clearance is the "
         "measured fit of the accepted assembly, every pair; a build reply's "
         "`fit` block is its summary."
     ),
@@ -155,6 +156,47 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "This changes no geometry by itself: a rebuild or a script change "
         "is what makes the file take effect."
     ),
+}
+
+#: Tools the bridge answers itself, with no engine op behind them (ADR-406).
+#: Listed after the protocol-derived ones, so CLI_TOOL_OPS stays exactly the
+#: ops the engine serves and the drift test keeps meaning what it says.
+BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
+    "look": {
+        "description": (
+            "SEE the accepted design: rendered images of the last accepted "
+            "revision, returned to you as pictures. Printed parts are drawn "
+            "in one filament orange and purchased parts in dark grey, so the "
+            "design reads as the object it would be; environment geometry "
+            "(a floor) is left out. Views: `iso` (front-right, from above), "
+            "`iso_back` (back-left, from above), `front`, `right`, `top`. "
+            "Orthographic, flat-shaded, no edges or dimensions. Pass `focus` "
+            "with component or output names to frame a close-up on them. "
+            "Look after every accepted shape change and before you say a "
+            "design is done: numbers prove it fits, only a look shows "
+            "whether it is well designed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "views": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["iso", "iso_back", "front", "right", "top"]},
+                    "description": "Which views, in order; default iso and iso_back. At most 5.",
+                },
+                "focus": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Names to frame the view on (component or output names from the "
+                        "build reply); everything else is still drawn. Omit for the whole design."
+                    ),
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    },
 }
 
 ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
@@ -327,7 +369,8 @@ def _property_schema(op: str, name: str, python_type: type) -> dict[str, Any]:
 
 
 def tool_definitions(protocol: ModuleType) -> list[dict[str, Any]]:
-    """MCP tool definitions for :data:`CLI_TOOL_OPS`, from ``OP_ARG_SPECS``."""
+    """MCP tool definitions for :data:`CLI_TOOL_OPS`, from ``OP_ARG_SPECS``,
+    followed by :data:`BRIDGE_TOOLS`, which no engine op backs."""
 
     definitions: list[dict[str, Any]] = []
     for op in CLI_TOOL_OPS:
@@ -358,6 +401,8 @@ def tool_definitions(protocol: ModuleType) -> list[dict[str, Any]]:
                 },
             }
         )
+    for name, definition in BRIDGE_TOOLS.items():
+        definitions.append({"name": name, **json.loads(json.dumps(definition))})
     return definitions
 
 

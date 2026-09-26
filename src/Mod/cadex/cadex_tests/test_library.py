@@ -461,7 +461,9 @@ def test_servo_actuator_carries_the_datasheet_torque() -> None:
 
 @pytest.mark.parametrize("sku,count", [("esp32-devkitc-v4", 38),
                                        ("pi-zero-2-w", 40),
-                                       ("pca9685-adafruit-rev-c", 62)])
+                                       ("pca9685-adafruit-rev-c", 62),
+                                       ("bno085-adafruit-4754", 12),
+                                       ("pololu-d36v50f6", 12)])
 def test_board_interfaces_and_terminal_rows(sku, count):
     board = _lib().board(sku)
     spec = board.spec
@@ -500,6 +502,38 @@ def test_board_manufacturer_dimension_pins():
     assert rows["j1_1"]["signal"] == "V+_IN"
     with pytest.raises(CatalogError, match="Unknown board"):
         _lib().board("generic-esp32")
+
+
+def test_imu_and_regulator_manufacturer_pins():
+    """ADR-407: the pins a robot's brain, sensor and power are wired by."""
+    imu = catalog.board_spec("bno085-adafruit-4754")
+    assert (imu["width_mm"], imu["length_mm"], imu["mount_hole_dia_mm"]) == (25.4, 22.86, 2.5)
+    assert imu["mount_holes"] == [[2.54, 2.54], [2.54, 20.32], [22.86, 2.54], [22.86, 20.32]]
+    rows = {r["name"]: r for r in imu["terminals"]}
+    assert rows["jp1_4"]["signal"] == "SCL" and rows["jp1_5"]["signal"] == "SDA"
+    assert rows["jp1_1"]["origin"] == [6.35, 2.54, 1.6]
+    assert imu["mass_g"] == 2.5 and "be9dc998" in imu["source"]
+    reg = catalog.board_spec("pololu-d36v50f6")
+    assert (reg["width_mm"], reg["thickness_mm"], reg["output_voltage_v"]) == (25.4, 1.57, 6.0)
+    assert len(reg["mount_holes"]) == 3 and reg["mount_hole_dia_mm"] == 2.18
+    rows = {r["name"]: r for r in reg["terminals"]}
+    assert rows["vin_1"]["signal"] == "VIN" and rows["vout_2"]["origin"] == [6.35, 3.81, 1.57]
+    assert rows["en"]["signal"] == "EN" and rows["pg"]["origin"][1] == 3.81
+    assert "terminal_signals" in reg["approximate"]
+
+
+def test_battery_envelope_mass_and_density():
+    """ADR-407: the heaviest part on a small robot carries its stated mass."""
+    pack = _lib().battery(" GENSACE-GEA2S100045D ")
+    assert (pack.family, pack.part_number) == ("battery", "gensace-gea2s100045d")
+    spec = pack.spec
+    assert (spec["length_mm"], spec["width_mm"], spec["height_mm"], spec["mass_g"]) == (72.0, 36.0, 13.0, 64.0)
+    assert spec["cells_series"] == 2 and spec["nominal_voltage_v"] == 7.4
+    assert spec["density_kg_m3"] == pytest.approx(64e-3 / (72 * 36 * 13 * 1e-9), rel=1e-4)
+    assert spec["sources"] and all(u.startswith("https://") for u in spec["sources"])
+    assert "batteries" in catalog.catalog_families()
+    with pytest.raises(CatalogError, match="Unknown battery"):
+        _lib().battery("generic-2s")
 
 
 def test_board_terminals_follow_placement_and_enter_wiring_table():
@@ -745,6 +779,7 @@ def test_library_listing_serves_exports_and_catalog() -> None:
         "bearing",
         "bushing",
         "board",
+        "battery",
         "clearance_hole",
         "tap_drill",
         "insert_hole",
