@@ -590,8 +590,12 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
     assert on_disk["documentation"]["expected"] == []
     assert "model" not in on_disk["documentation"]
     # This toy walk publishes no assembly, so the review has nothing to
-    # cross-check and says so (ADR-248) beside the walk's own note.
+    # cross-check and says so (ADR-248) beside the walk's own note. Its
+    # one part is uncatalogued nowhere, so the hero is all hardware in one
+    # material, and the design-language measures say so (ADR-414).
     assert envelope["notes"] == [
+        "measures: hardware share of hero silhouette 100.0% (over 20%); "
+        "1 material(s) #2F3237 (outside 2-3).",
         "clearance bounds check: unavailable, 0 comparison(s) over 0 pair(s).",
         "motion: travel_mm 0 on swing, travel_deg 60 on swing over 2 solved frame(s).",
         "walk: job.cxpolicy ({:s}) verified; total_reward -12.5 over 3 legs.".format(sha[:12]),

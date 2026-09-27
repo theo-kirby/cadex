@@ -178,9 +178,9 @@ shell (T1), no joint features (T3), only plates and bars (T4), no face
 render (T7). The two colours follow printed versus purchased, which the
 judge read as partly by role (T2).
 
-The proxies are not measured on hex3 yet, because A3 builds them. P3 is
-2 by construction of the ADR-406 colouring. A3 re-measures hex3 on all
-three and adds the values to this section.
+hex3's proxies were not measured when it was scored, because A3 builds
+them. P1 and P3 now are (ADR-414; see *A3* below): P1 **0.373**, over the
+bar, and P3 **2**, within it. P2 is still to be measured.
 
 | view | file | bytes |
 |---|---|---|
@@ -214,3 +214,26 @@ is unchanged by the renderer. The whole command took 6 min 59 s.
 hex3 is not re-scored here. The rubric scores the design as shown, and
 only T7 (presentation) is about the render. The baseline stays as
 frozen. The first scored studio renders are A5's.
+
+## A3: the image proxies, measured on hex3
+
+ADR-414 implements P1 and P3 as frozen above. `cadex render`'s summary,
+the review's `render` block and the agent's `look` all report them,
+measured on the hero at 512 px with 2×2 subsamples by a depth pass alone
+(`render.design_proxies`). The floor is left out, and the inventory decides
+printed and purchased. P2 is a BREP measure and comes in its own unit.
+
+| proxy | hex3 before (A1) | hex3 after (ADR-414) | bar | meets |
+|---|---|---|---|---|
+| P1 `hardware_silhouette_share` | not measured | **0.373** (76,170 of 204,356 subsamples) | ≤ 0.20 | no |
+| P2 `sharp_outside_edge_share` | not measured | not measured yet | ≤ 0.25 | — |
+| P3 `material_count` | 2 by construction | **2** (`#2F3237`, `#E9E6DF`) | 2 or 3 | yes |
+
+That is the same `/tmp` copy at revision `c1704bfcb631…`, from
+`./cadex render --project <copy> --json` (7 min 2 s in all, 207 s of it the
+rebuild). Measuring does not change a pixel: the hero it wrote is byte for
+byte [`hex3-studio_hero.png`](hex3-studio_hero.png) (sha256 `83cc8beb…`),
+so there is no new image for this unit. Over a third of what hex3 shows
+from the hero angle is bought servos and boards. That is T1's 0 in a
+number. Its two materials pass P3 while the judge gave T2 only a 1, which
+is the README's point that the proxies are necessary, not sufficient.

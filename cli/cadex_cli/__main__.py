@@ -56,7 +56,7 @@ from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportedOutput, ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, write_inventory
-from .render import acquire_snapshot, write_render
+from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
 from .clearance import (
     MAXIMUM_COMMON_VOLUME_MM3,
@@ -1115,7 +1115,8 @@ def command_render(args: argparse.Namespace, report: RunReport) -> int:
         path, value = write_render(client, report.project_root)
         report.revision = report.accepted_revision = value["revision"]
         report.digest = value["digest"] or ""
-        report.notes.append(f"render: {value['triangles']} triangles, four views; {path}.")
+        report.notes.append(f"render: {value['triangles']} triangles, four views and a hero; {path}.")
+        report.notes.append("measures: " + describe_proxies(value["proxies"]) + ".")
         report.ok = True
         return EXIT_OK
 
@@ -2189,6 +2190,8 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     if render_path is None:
         report.notes.append("render: unavailable ({:s}); the rest of the review stands.".format(
             rendering["reason"]))
+    else:
+        report.notes.append("measures: " + describe_proxies(rendering["proxies"]) + ".")
     review["section"] = {
         **section, "summary_path": section_path.relative_to(Path(report.project_root)).as_posix(),
     }

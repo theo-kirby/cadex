@@ -369,3 +369,91 @@ def test_bridge_look_draws_and_reports_the_declared_roles(tmp_path):
         assert '2 component(s) declare a role' in facts['colours']
         pixels = _colours(base64.b64decode(image['data']))
         assert any(_teal(p) for p in pixels)
+
+
+def _design(tmp_path, boxes):
+    """A snapshot of named boxes: ``name -> (size, offset)``, each its own output."""
+    display = {}
+    for name, (size, offset) in boxes.items():
+        display['o_' + name] = {'artifact_kind': 'brep', 'artifact_path': f'/staging/{name}.brep',
+                                'placement': None, 'tessellation': _mesh(tmp_path, name, *_box(size))}
+        display[name] = {'artifact_kind': None, 'artifact_path': None, 'tessellation': None,
+                         'source_output': 'o_' + name,
+                         'placement': [1, 0, 0, offset[0], 0, 1, 0, offset[1], 0, 0, 1, offset[2], 0, 0, 0, 1]}
+    revision = 'a' * 64
+    return render.snapshot({'ok': True, 'revision': revision, 'accepted_revision': revision,
+                            'digest': 'd' * 64, 'display': display})
+
+
+def test_hardware_silhouette_share_fails_exposed_hardware_and_passes_a_shell(tmp_path):
+    """P1: a servo on a plate is mostly hardware in the hero; the same servo
+    inside a printed shell is none of it."""
+    crude = _design(tmp_path, {'plate': ((60, 30, 3), (0, 0, 0)), 'servo': ((40, 20, 40), (10, 5, 3))})
+    p1 = render.design_proxies(*crude, purchased={'servo'})['hardware_silhouette_share']
+    assert p1['value'] > 0.5 and p1['meets'] is False and p1['bar'] == {'max': 0.2}
+    designed = _design(tmp_path, {'shell': ((60, 30, 50), (0, 0, 0)), 'servo': ((40, 20, 40), (10, 5, 3))})
+    p1 = render.design_proxies(*designed, purchased={'servo'})['hardware_silhouette_share']
+    assert p1['value'] == 0.0 and p1['meets'] is True
+    assert p1['design_subsamples'] > 0.2 * (2 * render.PROXY_SIZE) ** 2
+    # With no inventory nothing says what was purchased: unmeasured, not zero.
+    p1 = render.design_proxies(*designed)['hardware_silhouette_share']
+    assert p1['value'] is None and p1['meets'] is None and 'no inventory' in p1['reason']
+
+
+def test_hardware_share_counts_only_what_is_in_front(tmp_path):
+    """A servo half hidden behind a printed wall counts only its visible half."""
+    snap = _design(tmp_path, {'wall': ((40, 2, 20), (0, -10, 0)), 'servo': ((40, 20, 40), (0, 0, 0))})
+    hidden = render.design_proxies(*snap, purchased={'servo'})['hardware_silhouette_share']
+    alone = render.design_proxies(*_design(tmp_path, {'servo': ((40, 20, 40), (0, 0, 0))}),
+                                  purchased={'servo'})['hardware_silhouette_share']
+    assert alone['value'] == 1.0 and 0.2 < hidden['value'] < 0.9
+
+
+def test_material_count_fails_one_colour_and_a_rainbow_and_passes_roles(tmp_path):
+    """P3: one colour and four colours are both outside 2-3; shell,
+    mechanism and accent declared by role are three."""
+    boxes = {name: ((10, 10, 10), (20 * i, 0, 0)) for i, name in enumerate(['a', 'b', 'c', 'd'])}
+    snap = _design(tmp_path, boxes)
+    one = render.design_proxies(*snap, purchased=set())['material_count']
+    assert one['value'] == 1 and one['meets'] is False and one['materials'] == ['#E9E6DF']
+    rainbow = render.design_proxies(*snap)['material_count']  # index colours
+    assert rainbow['value'] == 4 and rainbow['meets'] is False
+    roles = render.design_proxies(*snap, purchased={'b'}, appearance={'c': 'accent', 'd': 'shell'})
+    assert roles['material_count']['value'] == 3 and roles['material_count']['meets'] is True
+    # Only what the hero shows counts: a part left out as environment is not a material.
+    left_out = render.design_proxies(*snap, exclude={'c'}, purchased={'b'}, appearance={'c': 'accent'})
+    assert left_out['material_count']['value'] == 2
+
+
+def test_proxies_do_not_depend_on_the_size_look_draws_at(tmp_path):
+    snap = _design(tmp_path, {'plate': ((60, 30, 3), (0, 0, 0)), 'servo': ((40, 20, 40), (10, 5, 3))})
+    first = render.design_proxies(*snap, purchased={'servo'})
+    render.look(*snap, ['hero'], purchased={'servo'}, size=64)
+    assert render.design_proxies(*snap, purchased={'servo'}) == first
+    assert first['view'] == 'hero' and first['size'] == render.PROXY_SIZE
+
+
+def test_render_and_bridge_look_report_the_proxies(tmp_path, monkeypatch):
+    (tmp_path / 'mesh').mkdir()
+    reply = _reply(tmp_path / 'mesh')
+
+    class Client:
+        def request(self, op, args=None):
+            return reply
+
+    fit = {'failing': [{'first': 'c_floor', 'second': '', 'status': 'world geometry'}]}
+    monkeypatch.setattr(render, '_published_blocks', lambda client: [fit, _declared_inventory()])
+    path, summary = render.write_render(Client(), tmp_path / 'project')
+    proxies = summary['proxies']
+    assert json.loads(path.read_text())['proxies'] == proxies
+    assert proxies['material_count']['materials'] == ['#179C98', '#C9AE86']
+    assert 0 < proxies['hardware_silhouette_share']['value'] < 1
+    line = render.describe_proxies(proxies)
+    assert 'hardware share of hero silhouette' in line and '2 material(s)' in line
+    with Bridge(FakeCadexd()) as bridge:
+        bridge.state.last_accepted = reply
+        bridge.state.last_fit = fit
+        bridge.state.last_inventory = _declared_inventory()
+        facts = json.loads(bridge.call('look', {'views': ['top']})['content'][0]['text'])
+    assert facts['measures'] == {key: {k: proxies[key][k] for k in ('value', 'bar', 'meets')}
+                                 for key in ('hardware_silhouette_share', 'material_count')}

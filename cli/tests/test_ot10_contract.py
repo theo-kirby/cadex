@@ -132,3 +132,13 @@ def test_baseline_is_scored_and_committed():
         assert path.stat().st_size <= 300 * 1024
         assert hashlib.sha256(path.read_bytes()).hexdigest() == shot["sha256"]
     assert [c["sha256"] for c in score["candidates"]] == [s["sha256"] for s in baseline["renders"]]
+
+
+def test_the_image_proxies_measure_against_the_frozen_bars():
+    from cadex_cli import render
+
+    p1, p3 = CONTRACT["proxies"]["P1"], CONTRACT["proxies"]["P3"]
+    assert render.PROXY_BARS == {
+        p1["name"]: {"max": p1["max"]},
+        p3["name"]: {"min": p3["min"], "max": p3["max"]},
+    }

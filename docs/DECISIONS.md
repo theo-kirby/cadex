@@ -27758,3 +27758,36 @@ silhouette, sharp printed outside edges, material count) are the next
 unit. The agent is told the keyword exists — in the `look` description
 and one sentence of the overlay that had gone stale under ADR-412 — but
 is not yet *taught* the language; that is A4.
+
+## ADR-414 — `render`, `look` and review measure P1 and P3 on the hero (2026-09-27)
+
+**Context.** A1 froze three proxies (`docs/probes/ot10/README.md`) and A3
+asks that `look` and review report them, computed from the accepted
+solids and renders. ADR-413 made the roles declarable. Two of the three
+are image measures (P1, the hardware share of the hero silhouette; P3,
+the material count); P2, the share of printed outside edge length left
+sharp, needs the BREP edges and their faces, which only the worker holds.
+
+**Decision.**
+- `render.design_proxies` measures P1 and P3 on the hero view with the
+  studio renderer's own depth pass (extracted as `_depth_pass`; the
+  shading pass is unchanged and hex3's hero is byte-identical), at a fixed
+  512 px and 2×2 subsamples, so `render`, `look` and review report the
+  same numbers whatever size they draw at. Environment geometry is left
+  out as in the image. Each proxy carries its frozen bar and `meets`;
+  `render.PROXY_BARS` is held equal to `contract.json` by a test.
+- With no readable inventory P1 is `null` with a reason: nothing says what
+  was purchased, and zero would be a false pass.
+- `cadex render` writes them to `summary.json` as `proxies`; the walk's
+  review carries that summary as its `render` block (so `review.json` has
+  the roles of ADR-413 and the proxies), and both add a `measures:` note.
+  The agent's `look` reply gains a `measures` fact.
+- **P2 is split out**, not stubbed: it is an engine measure (a per-output
+  fact from the worker, carried by inventory) with its own packaged gate,
+  and it is the next unit. No field for it is emitted until it is measured.
+- No protocol op, no engine change and no dependency.
+
+**Consequences.** hex3 measures P1 0.373 (over 0.20) and P3 2 (within 2–3).
+The agent now sees, on every `look`, how much of its silhouette is bought
+hardware against the bar — a measure in the language's terms, not the
+judge's words.

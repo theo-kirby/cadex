@@ -331,6 +331,10 @@ class Bridge:
                     triangles, summary, views, focus=focus_objects,
                     exclude=world, purchased=purchased, appearance=appearance, palette=palette,
                 )
+                proxies = render.design_proxies(
+                    triangles, summary, exclude=world, purchased=purchased,
+                    appearance=appearance, palette=palette,
+                )
             except InventoryError as exc:
                 call = ToolCall("look", dict(arguments), False, str(exc))
                 self._record(call)
@@ -352,6 +356,13 @@ class Bridge:
                     "index palette (no inventory to tell printed from purchased)"
                 ),
                 "components_drawn": len(summary["objects"]) - len(world & set(summary["objects"])),
+                # The design-language measures (docs/DESIGN-LANGUAGE.md):
+                # how much of the hero silhouette is bought hardware, and how
+                # many materials it shows, each against its bar.
+                "measures": {
+                    key: {k: proxies[key][k] for k in ("value", "bar", "meets")}
+                    for key in ("hardware_silhouette_share", "material_count")
+                },
                 "triangles": summary["triangles"],
                 "approximation": "orthographic studio render of the tessellation at the solved "
                                  "pose: lit, antialiased, contact shadow; no edges, dimensions "

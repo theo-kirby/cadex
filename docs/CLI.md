@@ -1868,7 +1868,10 @@ camera bases, projected bounds, coverage, limits and acquisition/render timing,
 plus `environment` (world geometry left out), `appearance` (each drawn
 object's role, colour and `source` — `declared` by the script, `supplier`
 from the inventory, or `index` with no inventory), `palette` (the colour in
-effect for each role) and `hero` (its path, size and seconds).
+effect for each role), `hero` (its path, size and seconds) and `proxies`
+(below). A walk's review carries the whole summary as its `render` block, so
+the roles and the proxies reach `review.json` with it, and both commands add
+a `measures:` note.
 A failed command must not be treated as a fresh report: old successful files
 can remain, and their revision identifies what they describe.
 
@@ -1917,6 +1920,19 @@ walk's review. hex3 now draws as 106,326 triangles at a 0.24 mm cell; its
 four studio views and the 1024 px hero take 6.5 s together, the hero 2.2 s
 (ADR-412), after a 207 s rebuild to acquire the tessellation. A render that still fails in a walk's review is recorded as
 `render.available: false` with the reason, and the rest of the review stands.
+
+**The design-language proxies (ADR-414).** `summary.proxies` measures two of
+A1's frozen proxies (`docs/probes/ot10/README.md`) from the drawn design in
+the hero view: `hardware_silhouette_share` (P1), of the subsamples the design
+covers, the fraction whose front-most surface is a purchased component, and
+`material_count` (P3), the distinct colours of the objects visible there,
+with the list. Each carries its frozen `bar` and whether it `meets` it. The
+hero is measured by a depth pass alone at 512 px and 2×2 subsamples
+(`render.PROXY_SIZE`), whatever size it is drawn at, so `render`, `look` and
+review agree. Environment geometry is left out as in the image. With no
+readable inventory nothing says what was purchased, and P1's `value` and
+`meets` are `null` with a `reason`. P2, the sharp printed outside edges, is
+a BREP measure and is not reported here yet.
 
 The CLI snapshots buffers while holding its project lock, before any further
 engine request can invalidate attempt paths. The shell does not share this
@@ -2138,7 +2154,9 @@ role is drawn in that role, in the assembly's palette (ADR-413); an
 undeclared one is drawn as printed, in the `shell` bone, when its output is
 in `uncatalogued_sources`, and as purchased, in the `mechanism` graphite,
 otherwise (ADR-412; before it, filament orange and dark grey). The reply's
-`colours` fact names each role's colour and how many components declared one. A turn that opens with `look` rebuilds once and reads the fit and
+`colours` fact names each role's colour and how many components declared one,
+and its `measures` fact gives the two image proxies above (P1 and P3, each
+`value`, `bar`, `meets`), measured on the hero whatever views were asked for. A turn that opens with `look` rebuilds once and reads the fit and
 inventory a modelling reply would have carried, so the first look is drawn
 the same way. hex2's four views take about 7 s.
 

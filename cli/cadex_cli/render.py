@@ -77,6 +77,11 @@ FINISH = {'shell': (0.16, 20.0), 'mechanism': (0.30, 16.0), 'accent': (0.22, 28.
 #: A tessellation corner keeps its face's normal when the smoothed normal
 #: turns further than this from it: fillets shade smooth, box edges stay crisp.
 CREASE_DEGREES = 40.0
+#: A1's frozen bars for the image proxies (docs/probes/ot10/contract.json;
+#: test_ot10_contract holds them equal). P2 is a BREP measure, not an image one.
+PROXY_BARS = {'hardware_silhouette_share': {'max': 0.2}, 'material_count': {'min': 2, 'max': 3}}
+#: The hero is measured at this size, whatever size it is drawn at.
+PROXY_SIZE = 512
 BACKDROP_TOP = (208, 211, 216)
 BACKDROP_BOTTOM = (243, 243, 241)
 PALETTE = [(91, 157, 205), (230, 151, 76), (115, 182, 135), (180, 134, 200)]
@@ -403,55 +408,10 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
     right, up, toward = basis
     lo, hi = bounds
     extent = max(hi[0] - lo[0], hi[1] - lo[1])
-    _require(extent > 0, 'zero projected extent')
     n = size * samples
-    scale = n / extent
     cx0, cy0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
-    depth, owner = [-math.inf] * (n * n), [-1] * (n * n)
-    shading, visits = [], 0
-    budget = MAX_SAMPLES * (size / SIZE) ** 2
     rx, ry, rz = right; ux, uy, uz = up; tx, ty, tz = toward
-    for material, tri, normals in prepared:
-        s = [(n/2 + ((p[0]*rx + p[1]*ry + p[2]*rz) - cx0) * scale,
-              n/2 - ((p[0]*ux + p[1]*uy + p[2]*uz) - cy0) * scale,
-              p[0]*tx + p[1]*ty + p[2]*tz) for p in tri]
-        (ax, ay, az), (bx, by, bz), (qx, qy, qz) = s
-        area = (bx-ax)*(qy-ay) - (qx-ax)*(by-ay)
-        if abs(area) < 1e-12:
-            continue
-        # z as a plane over the screen, and the barycentric weights of b and
-        # c as two more; the shading pass reads them back per subsample.
-        w1x, w1y = (qy-ay) / area, -(qx-ax) / area
-        w2x, w2y = -(by-ay) / area, (bx-ax) / area
-        dzdx = (bz-az)*w1x + (qz-az)*w2x
-        dzdy = (bz-az)*w1y + (qz-az)*w2y
-        t = len(shading)
-        vn = [(m[0]*rx + m[1]*ry + m[2]*rz, m[0]*ux + m[1]*uy + m[2]*uz, m[0]*tx + m[1]*ty + m[2]*tz)
-              for m in normals]
-        shading.append((material, ax, ay, w1x, w1y, w2x, w2y, vn))
-        top, mid, bot = sorted(s, key=lambda v: v[1])
-        j0, j1 = max(0, math.ceil(top[1] - .5)), min(n, math.ceil(bot[1] - .5))
-        for j in range(j0, j1):
-            py = j + .5
-            xl = top[0] + (py - top[1]) * (bot[0] - top[0]) / (bot[1] - top[1])
-            if py < mid[1]:
-                xr = top[0] + (py - top[1]) * (mid[0] - top[0]) / (mid[1] - top[1])
-            else:
-                xr = mid[0] + (py - mid[1]) * (bot[0] - mid[0]) / (bot[1] - mid[1]) if bot[1] > mid[1] else mid[0]
-            if xr < xl:
-                xl, xr = xr, xl
-            i0, i1 = max(0, math.ceil(xl - .5)), min(n, math.ceil(xr - .5))
-            if i1 <= i0:
-                continue
-            visits += i1 - i0
-            z = az + (i0 + .5 - ax) * dzdx + (py - ay) * dzdy
-            row = j * n
-            for k in range(row + i0, row + i1):
-                if z > depth[k]:
-                    depth[k] = z
-                    owner[k] = t
-                z += dzdx
-        _require(visits <= budget, 'pixel work budget exceeded')
+    owner, shading, visits = _depth_pass(prepared, basis, bounds, size, samples)
     # Lights in view space: x right, y up, z towards the viewer.
     key = _unit((-0.45, 0.6, 0.66)); fill = _unit((0.8, 0.05, 0.6))
     half = _unit((key[0], key[1], key[2] + 1.0))
@@ -504,6 +464,114 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
     return image, {'projection_bounds_mm': [list(lo), list(hi)], 'pixel_visits': visits,
                    'covered_pixels': round(covered * inv), 'samples_per_pixel': samples * samples,
                    'contact_shadow': lookup is not None}
+
+
+def _depth_pass(prepared, basis, bounds, size, samples):
+    """``(owner, shading, visits)``: the nearest triangle per subsample.
+
+    ``owner`` holds an index into ``shading`` (or -1 for backdrop), whose
+    entries are ``(material, ax, ay, w1x, w1y, w2x, w2y, view_normals)``:
+    the screen plane each visible subsample reads its weights back from.
+    Triangles with no normals (a measurement pass) carry ``None`` for them.
+    """
+    right, up, toward = basis
+    lo, hi = bounds
+    extent = max(hi[0] - lo[0], hi[1] - lo[1])
+    _require(extent > 0, 'zero projected extent')
+    n = size * samples
+    scale = n / extent
+    cx0, cy0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
+    depth, owner = [-math.inf] * (n * n), [-1] * (n * n)
+    shading, visits = [], 0
+    budget = MAX_SAMPLES * (size / SIZE) ** 2
+    rx, ry, rz = right; ux, uy, uz = up; tx, ty, tz = toward
+    for material, tri, normals in prepared:
+        s = [(n/2 + ((p[0]*rx + p[1]*ry + p[2]*rz) - cx0) * scale,
+              n/2 - ((p[0]*ux + p[1]*uy + p[2]*uz) - cy0) * scale,
+              p[0]*tx + p[1]*ty + p[2]*tz) for p in tri]
+        (ax, ay, az), (bx, by, bz), (qx, qy, qz) = s
+        area = (bx-ax)*(qy-ay) - (qx-ax)*(by-ay)
+        if abs(area) < 1e-12:
+            continue
+        # z as a plane over the screen, and the barycentric weights of b and
+        # c as two more; the shading pass reads them back per subsample.
+        w1x, w1y = (qy-ay) / area, -(qx-ax) / area
+        w2x, w2y = -(by-ay) / area, (bx-ax) / area
+        dzdx = (bz-az)*w1x + (qz-az)*w2x
+        dzdy = (bz-az)*w1y + (qz-az)*w2y
+        t = len(shading)
+        vn = None if normals is None else [
+            (m[0]*rx + m[1]*ry + m[2]*rz, m[0]*ux + m[1]*uy + m[2]*uz, m[0]*tx + m[1]*ty + m[2]*tz)
+            for m in normals]
+        shading.append((material, ax, ay, w1x, w1y, w2x, w2y, vn))
+        top, mid, bot = sorted(s, key=lambda v: v[1])
+        j0, j1 = max(0, math.ceil(top[1] - .5)), min(n, math.ceil(bot[1] - .5))
+        for j in range(j0, j1):
+            py = j + .5
+            xl = top[0] + (py - top[1]) * (bot[0] - top[0]) / (bot[1] - top[1])
+            if py < mid[1]:
+                xr = top[0] + (py - top[1]) * (mid[0] - top[0]) / (mid[1] - top[1])
+            else:
+                xr = mid[0] + (py - mid[1]) * (bot[0] - mid[0]) / (bot[1] - mid[1]) if bot[1] > mid[1] else mid[0]
+            if xr < xl:
+                xl, xr = xr, xl
+            i0, i1 = max(0, math.ceil(xl - .5)), min(n, math.ceil(xr - .5))
+            if i1 <= i0:
+                continue
+            visits += i1 - i0
+            z = az + (i0 + .5 - ax) * dzdx + (py - ay) * dzdy
+            row = j * n
+            for k in range(row + i0, row + i1):
+                if z > depth[k]:
+                    depth[k] = z
+                    owner[k] = t
+                z += dzdx
+        _require(visits <= budget, 'pixel work budget exceeded')
+    return owner, shading, visits
+
+
+def design_proxies(triangles, summary, *, exclude=(), purchased=None, appearance=None, palette=None):
+    """A1's image proxies of the drawn design, measured in the hero view.
+
+    P1 ``hardware_silhouette_share``: of the hero pixels the design covers,
+    the fraction whose front-most surface is a purchased component (``None``
+    when there is no inventory to say what was purchased). P3
+    ``material_count``: the distinct colours of the objects visible in the
+    hero. Both are frozen in docs/probes/ot10/README.md with their bars;
+    the hero is measured at PROXY_SIZE by a depth pass alone, so ``look``
+    and review report the same numbers whatever size they draw at.
+    ``exclude`` and the material arguments are :func:`look`'s.
+    """
+    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
+    names = [name for name in summary['objects'] if name not in exclude]
+    prepared = [(name, points, None) for name in names
+                for _, points in triangles[summary['objects'][name]['first']:
+                                           summary['objects'][name]['first'] + summary['objects'][name]['triangles']]]
+    owner, shading, _ = _depth_pass(prepared, HERO, _frame(prepared, HERO, 0.10), PROXY_SIZE, SUPERSAMPLE)
+    pixels = {}
+    for t in owner:
+        if t >= 0:
+            name = shading[t][0]
+            pixels[name] = pixels.get(name, 0) + 1
+    covered = sum(pixels.values())
+    hardware = None if purchased is None else sum(c for name, c in pixels.items() if name in purchased)
+    share = None if hardware is None or not covered else hardware / covered
+    colours = sorted({'#%02X%02X%02X' % tuple(looks[name][1]) for name in pixels})
+    p1, p3 = PROXY_BARS['hardware_silhouette_share'], PROXY_BARS['material_count']
+    return {
+        'view': 'hero', 'size': PROXY_SIZE, 'samples_per_pixel': SUPERSAMPLE * SUPERSAMPLE,
+        'definitions': 'docs/probes/ot10/README.md',
+        'hardware_silhouette_share': {
+            'value': None if share is None else round(share, 4), 'bar': dict(p1),
+            'meets': None if share is None else share <= p1['max'],
+            'design_subsamples': covered, 'hardware_subsamples': hardware,
+            **({} if purchased is not None else {'reason': 'no inventory to tell purchased from printed'}),
+        },
+        'material_count': {
+            'value': len(colours), 'materials': colours, 'bar': dict(p3),
+            'meets': p3['min'] <= len(colours) <= p3['max'],
+        },
+    }
 
 
 def _unit(v):
@@ -666,6 +734,8 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
     summary['hero'] = {**details, 'basis': HERO, 'size': HERO_SIZE, 'path': f'{relative_dir}/hero.png',
                        'seconds': time.perf_counter() - hero_start}
     summary['render_seconds'] = time.perf_counter() - start
+    summary['proxies'] = design_proxies(triangles, summary, exclude=environment, purchased=purchased,
+                                        appearance=appearance, palette=palette)
     files['summary.json'] = json.dumps(summary, indent=2) + '\n'
     # Do not leave partial new views on geometry/render refusal.
     directory = Path(root) / relative_dir
@@ -679,3 +749,13 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
     except OSError as exc:
         raise InventoryError('render: cannot write views: ' + str(exc)) from exc
     return directory / 'summary.json', summary
+
+
+def describe_proxies(proxies):
+    """One line for a report: each image proxy's value against its bar."""
+    p1, p3 = proxies['hardware_silhouette_share'], proxies['material_count']
+    share = 'unmeasured (' + p1['reason'] + ')' if p1['value'] is None else (
+        '{:.1%} ({:s} {:.0%})'.format(p1['value'], 'meets' if p1['meets'] else 'over', p1['bar']['max']))
+    return 'hardware share of hero silhouette {:s}; {:d} material(s) {:s} ({:s} {:d}-{:d})'.format(
+        share, p3['value'], ', '.join(p3['materials']), 'meets' if p3['meets'] else 'outside',
+        p3['bar']['min'], p3['bar']['max'])
