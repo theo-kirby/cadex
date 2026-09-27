@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-09-19
+Verified against source: 2026-09-27
 
 **Native Blender geometry (ADR-185).** The mesh domain now includes
 `mesh.blender`: an xscript-owned recipe with named mesh inputs and JSON
@@ -120,7 +120,9 @@ NDJSON client with no cadex imports.
   and `RLIMIT_AS` in different units — see `docs/XSCRIPT.md` and ADR-250).
   Its environment is a closed allowlist (`worker_environment`) that pins
   `PYTHONHASHSEED` and the BLAS thread pool, so a worker's address-space
-  footprint does not vary with the host's core count. The project bundle
+  footprint does not vary with the host's core count; `_resource_limits`
+  pins the worker to four CPUs for the same reason, so its CPU-second
+  charge does not either (ADR-418). The project bundle
   (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`) stages
   all five domain api/worker modules with entry `cadex_project_worker.py`
   — **and fifteen more modules by filename**, which is the pattern worth

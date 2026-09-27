@@ -27934,3 +27934,54 @@ the report; the ordering test fails on the previous source.
 **Consequences.** No engine, protocol or payload change. `docs/CLI.md` and
 `docs/DESIGN-LANGUAGE.md` (its stale *exists today* paragraph) move with
 it. Whether the agent follows the order is A5's measurement.
+
+## ADR-418 — A worker runs on four CPUs, so its CPU-second cap means the same everywhere (2026-09-27)
+
+**Context.** ot10's first A5 hexapod (`ot10-hexapod-1`) took 19 refusals
+at the worker's 300 CPU-second `RLIMIT_CPU`. To fit, the agent stripped its
+joint caps, leg fillets and swept fit, and that cost it the bar. The
+refused candidates were rebuilt from the turn's transcript and replayed
+through the project worker, uncapped, with the same request. Measured on
+the accepted revision (46 components, 1,035 pairs), with 32 CPUs visible:
+
+| phase | wall s |
+|---|---|
+| total | 28.7 |
+| pairwise fit (`_measure_clearance`) | 24.3, of which `distToShape` is 21.2 and `common` is 2.0 |
+| part build | 1.7 |
+| publish (serialise) | 2.1 |
+| display tessellation | 1.3 |
+
+The largest refused candidate splits the same way: 107 s of `distToShape`
+in 138 s of wall. The FreeCAD binding runs `BRepExtrema_DistShapeShape`
+with `SetMultiThread(true)`, and OCCT sizes its pool from the CPUs it can
+see. On this 32-CPU box, the accepted revision cost **280 CPU-s** for 28 s
+of wall. Pinned to four CPUs it cost **94 CPU-s** for 31 s, and on one CPU
+70 CPU-s for 71 s. The cap was charging for thread overhead: the design
+that passed at 93% of the cap here would pass at a third of it on a laptop.
+ADR-250 named this unit asymmetry and pinned BLAS for address space; it
+left CPU count to the host.
+
+**Decision.** `cadex_domain_worker._resource_limits` first pins the worker
+to `WORKER_CPUS = 4` by affinity. Its threads and children inherit the pin,
+so the sweep's child `FreeCADCmd` is pinned too. Which four rotates with the
+pid, and a host with four or fewer keeps what it has. The caps themselves
+are unchanged: 300 s of wall and 300 CPU-s. On four CPUs the CPU cap now
+binds at 75 s of wall rather than about 10 s.
+
+**Measured.** The 19 refused candidates were replayed on the fixed worker
+under the real 300 CPU-s cap. **15 are accepted** (86–223 CPU-s, 31–79 s of
+wall). **4 are still refused**: the first assembly attempts (15, 16 and
+17) and one loft revision (21). Their single-CPU cost is 390 s or more,
+which is real `distToShape` work rather than overhead. The accepted
+revision's output digest is identical before and after (`ab571337…`).
+
+**Consequences.** Engine zone only: no protocol op, no payload layout. The
+wall cost is about 10% on the accepted revision (28.1 → 32.1 s). Exact
+pairwise distance remains the dominant cost of a many-part fit. Making
+far-apart pairs cheaper would change what `distance_mm` promises, which the
+review table and `smoke_geometry` read, so it is a separate decision.
+`docs/XSCRIPT.md` and `docs/ARCHITECTURE.md` move with this. There are
+three regressions in `cadex_tests/test_scripted_process.py`. Two fail on
+the previous source (the pin itself, and the pin reaching a real worker's
+threads and children on a host with more than four CPUs).

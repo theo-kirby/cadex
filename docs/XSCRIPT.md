@@ -1379,7 +1379,11 @@ Source is validated before any worker runs (AST policy in
   `result.json`; those deaths surface as `DOMAIN_CPU_LIMIT_EXCEEDED` and
   `DOMAIN_OUTPUT_LIMIT_EXCEEDED` rather than as a missing result, and the
   worker's BLAS thread pool is pinned so `RLIMIT_AS` does not depend on the
-  host's core count (ADR-250).
+  host's core count (ADR-250). The worker is also pinned to four CPUs
+  (`WORKER_CPUS`, by affinity, inherited by its threads and by the sweep's
+  child), so `RLIMIT_CPU` does not depend on the core count either: OCCT
+  sizes its pools from the CPUs it can see, and on 32 of them the same
+  pairwise fit cost three times the CPU-seconds (ADR-418).
 - The worker executes the script ONCE, evaluates outputs per domain, and
   produces **detached** results (BREP and mesh artifacts, records, collected
   `param_specs`, per-output validations, the content digest) on the

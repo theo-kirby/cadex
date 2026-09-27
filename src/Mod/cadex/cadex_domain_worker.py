@@ -99,7 +99,36 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+#: How many CPUs a worker may run on. RLIMIT_CPU is charged across every
+#: thread, and OCCT sizes its pools from the CPUs it can see, so without this
+#: the same script costs four times the CPU-seconds on a 32-core box that it
+#: costs on a laptop (ADR-418). Same four everywhere, as ADR-250 pins BLAS.
+WORKER_CPUS = 4
+
+
+def _pin_worker_cpus() -> None:
+    """Confine this worker, and every thread and child it starts, to four CPUs.
+
+    Which four rotates with the pid, so a preview worker and a run worker
+    started together do not queue on the same cores.
+    """
+
+    try:
+        allowed = sorted(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return
+    if len(allowed) <= WORKER_CPUS:
+        return
+    start = os.getpid() % len(allowed)
+    chosen = {allowed[(start + index) % len(allowed)] for index in range(WORKER_CPUS)}
+    try:
+        os.sched_setaffinity(0, chosen)
+    except OSError:
+        return
+
+
 def _resource_limits(request: dict[str, Any]) -> None:
+    _pin_worker_cpus()
     try:
         import resource
     except ImportError:
