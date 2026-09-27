@@ -1696,8 +1696,18 @@ names its `kind`, its `unit` (`degrees` or `mm`), the `step` it used, its
 maximum common volume, and the first sample at distance <= 0.001 mm
 (`first_contact_degrees` or `first_contact_mm`, null if absent). Contact at the
 lower limit is reported there. Sampling cannot exclude contact between samples
-and is not a continuous collision proof. The solved-pose measurements must
-first agree with static clearance within 0.0001 mm and 0.001 mm³.
+and is not a continuous collision proof. Every pair the sweep measures
+exactly must first agree at the solved pose with static clearance within
+0.0001 mm and 0.001 mm³.
+
+Only the pairs a joint moves are measured, and only the near ones exactly
+(ADR-419). A pair rigid for this sweep carries its static solved-pose
+measurement unchanged. A moving pair whose exact-geometry bounding boxes
+stay more than 10 mm apart at every sample carries `culled: true`: its
+minimum distance is that smallest box gap, a lower bound on the true
+minimum; its maximum common volume is 0.0 and it has no first contact, both
+proved by the boxes. A lower bound can only make a fit verdict stricter.
+Each component's BREP is serialised once per assembly, not once per joint.
 
 A limited joint whose kind's step is undeclared (a slider under
 `sweep_step_degrees` alone, or a hinge under `sweep_step_mm` alone) is

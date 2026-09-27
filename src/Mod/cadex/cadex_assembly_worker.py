@@ -5744,18 +5744,25 @@ _SWEEP_JOINT_SECONDS = 90.0
 _SWEEP_TOTAL_SECONDS = 180.0
 _SWEEP_MAX_POSES = 73
 _SWEEP_MAX_PAIRS = 2000
+#: A moving pair whose exact-geometry boxes stay this far apart at every
+#: sample is bounded, not measured (ADR-419): no fit floor reaches it.
+_SWEEP_CULL_MM = 10.0
 
 
-def _bounded_sweep_call(components, component_data, joint_data, baseline, name, step, seconds):
+def _sweep_payload_components(components):
+    """Each component's world BREP and placement, serialised once per sweep."""
+    return {n: {"brep": _component_world_shape(obj).exportBrepToString(),
+                "placement": list(obj.Placement.toMatrix().A)} for n, obj in components.items()}
+
+
+def _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step, seconds):
     import FreeCAD as App
     import subprocess
     import tempfile
     import time
     start = time.monotonic()
     try:
-        payload = {"components": {n: {
-            "brep": _component_world_shape(obj).exportBrepToString(),
-            "placement": list(obj.Placement.toMatrix().A)} for n, obj in components.items()},
+        payload = {"components": serialised,
             "component_data": component_data, "joint_data": joint_data,
             "baseline": baseline, "name": name, "step": step}
         with tempfile.TemporaryDirectory(prefix="cadex-fit-sweep-") as directory:
@@ -5819,6 +5826,16 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     0.0 mm here and first contact at the bottom of the range, which is the
     weld and not the motion. The flag is what lets a reader keep the two
     apart; the rows themselves are unchanged.
+
+    **Only the pairs this joint moves are measured, and only the near ones
+    exactly** (ADR-419). A rigid pair's row carries its solved-pose
+    measurement from ``baseline`` unchanged, since the sweep cannot move it.
+    A moving pair whose exact-geometry bounding boxes stay more than
+    :data:`_SWEEP_CULL_MM` apart at every sample is ``culled``: its minimum
+    distance is that box gap, a lower bound on the true minimum; its
+    common volume is 0.0 and it has no first contact, both proved by the
+    boxes. A lower bound can only make a verdict stricter. Solved-pose
+    agreement is checked on every pair the sweep measures exactly.
     """
     import FreeCAD as App
     from CadexDynamics import extract_tree, joint_transform, joint_coordinates, length_mm
@@ -5852,6 +5869,18 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     poses = {n: obj.Placement for n, obj in components.items()}
     shapes = {n: _component_world_shape(obj).copy() for n, obj in components.items()}
     solved_shapes = {n: shape.Placement for n, shape in shapes.items()}
+    boxes = {}
+
+    def corners(n):
+        # Exact geometry, not triangulation: a tessellated BoundBox can sit
+        # inside the surface and would not bound the distance from below.
+        if n not in boxes:
+            if shapes[n].isNull():
+                raise ValueError("sweep requires solid components")
+            box = shapes[n].optimalBoundingBox(False, True)
+            boxes[n] = [App.Vector(x, y, z) for x in (box.XMin, box.XMax)
+                        for y in (box.YMin, box.YMax) for z in (box.ZMin, box.ZMax)]
+        return boxes[n]
 
     def measure(a, b):
         a, b = shapes[a], shapes[b]
@@ -5866,12 +5895,9 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     cached = {}
     for row in baseline:
         key = row["first"], row["second"]
-        d, v = measure(*key)
-        if (row.get("error") or row["distance_mm"] is None or row["common_volume_mm3"] is None
-                or abs(d - row["distance_mm"]) > 1e-4
-                or abs(v - row["common_volume_mm3"]) > 1e-3):
+        if row.get("error") or row["distance_mm"] is None or row["common_volume_mm3"] is None:
             raise ValueError("solved-pose clearance disagreement")
-        cached[key] = d, v
+        cached[key] = row["distance_mm"], row["common_volume_mm3"]
     connectors = joint["connectors"]
     a, b = [c["component"] for c in connectors]
     coords = joint_coordinates(joint["kind"], joint_transform(
@@ -5895,15 +5921,40 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
              "minimum_distance_mm": None,
              "maximum_common_volume_mm3": None, contact_key: None}
             for a, b in cached]
+    deltas = []
     for value in values:
         travel = (value - initial) * (1 if side == 0 else -1)
         motion = (App.Placement(App.Vector(), App.Rotation(App.Vector(0, 0, 1), travel))
                   if unit == "degrees" else App.Placement(App.Vector(0, 0, travel), App.Rotation()))
-        delta = frame.multiply(motion).multiply(frame.inverse())
+        deltas.append(frame.multiply(motion).multiply(frame.inverse()))
+    # The moving side's box at a sample is the box of its solved box's
+    # corners carried by the rigid motion, which still contains the solid.
+    sample_boxes = [{n: [f(delta.multVec(c)[i] for c in corners(n)) for f in (min, max) for i in range(3)]
+                     for n in moving} for delta in deltas]
+    for row in rows:
+        a, b = row["first"], row["second"]
+        if not row["relative_motion"]:
+            continue
+        gaps = []
+        for boxes_at in sample_boxes:
+            first = boxes_at.get(a) or [f(c[i] for c in corners(a)) for f in (min, max) for i in range(3)]
+            second = boxes_at.get(b) or [f(c[i] for c in corners(b)) for f in (min, max) for i in range(3)]
+            gaps.append(math.sqrt(sum(max(0.0, first[i] - second[i + 3], second[i] - first[i + 3]) ** 2
+                                      for i in range(3))))
+        if min(gaps) > _SWEEP_CULL_MM:
+            row.update(culled=True, minimum_distance_mm=min(gaps), maximum_common_volume_mm3=0.0)
+            continue
+        d, v = measure(a, b)
+        distance, volume = cached[a, b]
+        if abs(d - distance) > 1e-4 or abs(v - volume) > 1e-3:
+            raise ValueError("solved-pose clearance disagreement")
+    for value, delta in zip(values, deltas):
         for n in moving:
             shapes[n].Placement = delta.multiply(solved_shapes[n])
         for row in rows:
             a, b = row["first"], row["second"]
+            if row.get("culled"):
+                continue
             d, v = (measure(a, b) if row["relative_motion"] else cached[a, b])
             if row["minimum_distance_mm"] is None or d < row["minimum_distance_mm"]:
                 row["minimum_distance_mm"] = d
@@ -5953,6 +6004,7 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
               "per_joint_seconds": _SWEEP_JOINT_SECONDS, "total_seconds": _SWEEP_TOTAL_SECONDS,
               "max_poses": _SWEEP_MAX_POSES, "max_pairs": _SWEEP_MAX_PAIRS, "joints": []}
     start = time.monotonic()
+    serialised = None
     for name, joint in joint_data.items():
         kind = joint.get("kind")
         limited = (joint.get("angle_limits_degrees") is not None
@@ -5984,7 +6036,9 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
         elif not solved or remaining <= 0:
             result = {"status": "incomplete", "reason": "unsolved assembly or total runtime budget exceeded"}
         else:
-            result = _bounded_sweep_call(components, component_data, joint_data, baseline, name, step,
+            if serialised is None:
+                serialised = _sweep_payload_components(components)
+            result = _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step,
                 min(remaining, _SWEEP_JOINT_SECONDS))
         report["joints"].append({"joint": name, "kind": kind, "unit": unit, **result})
         if result["status"] not in ("complete", "skipped"):

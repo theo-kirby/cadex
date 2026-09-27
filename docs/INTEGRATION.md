@@ -638,7 +638,13 @@ the link it turns with reports 0.0 mm at every value and takes first contact
 at the bottom of the range. Per-pair rows are unchanged and every pair is
 still published. The `relative_motion` key is **absent** on a revision accepted
 before ADR-374, which a reader counts as moving so an older receipt reads as it
-always did.
+always did. Since ADR-419 a moving pair whose exact-geometry boxes stay more
+than 10 mm apart at every sample carries `culled: true`. Its
+`minimum_distance_mm` is that box gap, a lower bound rather than a
+measurement; its common volume is 0.0 and its first contact is null, both
+proved by the boxes. A rigid pair's row repeats the static solved-pose
+measurement. The `culled` key is absent on every exactly measured row and on
+a revision accepted before ADR-419. No op argument changed.
 
 `cadex clearance --sweep` writes these facts and the accepted revision to
 `docs/clearance-sweep.md`. Exit 0 means the report was written, including when

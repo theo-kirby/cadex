@@ -484,3 +484,65 @@ def test_a_hinge_that_grazes_closes_a_gap_the_solved_pose_cannot_see(tmp_path, m
     # common volume anywhere in the range.
     assert pair['maximum_common_volume_mm3'] == 0
     assert pair['first_contact_degrees'] is None
+
+
+_CULL_DRIVER = r'''
+import json, sys
+import FreeCAD as App
+import Part
+sys.path.insert(0, sys.argv[-1])
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps
+D = App.newDocument('Cull')
+fixed = D.addObject('Part::Feature','fixed')
+fixed.Shape = Part.makeSphere(1, App.Vector(0, 12.04, 0))
+far = D.addObject('Part::Feature','far')
+far.Shape = Part.makeSphere(1, App.Vector(0, -60, 0))
+moving = D.addObject('Part::Feature','moving')
+moving.Shape = Part.makeSphere(1, App.Vector(10, 0, 0))
+moving.Placement = App.Placement(App.Vector(), App.Rotation(App.Vector(0,0,1), 20))
+D.recompute()
+components = {'fixed': fixed, 'far': far, 'moving': moving}
+data = {'fixed': {'grounded': True}, 'far': {'grounded': True}, 'moving': {'grounded': False}}
+joints = {'hinge': {'kind':'revolute','suppressed':False,'parameters':{},
+  'angle_limits_degrees':[20,90],'length_limits_mm':None,
+  'connectors':[{'component_output':'fixed','local_frame':{'matrix':list(App.Matrix().A)}},
+                {'component_output':'moving','local_frame':{'matrix':list(App.Matrix().A)}}]}}
+baseline = _measure_clearance(components)
+report = _measure_joint_sweeps(components, data, joints, baseline,
+                               {'sweep_step_degrees': 1}, True)
+print('CLEARANCE-FRAME ' + json.dumps(dict(baseline=baseline, report=report)))
+'''
+
+
+@pytest.mark.skipif(kernel.FREECADCMD is None, reason='Needs real OCCT')
+def test_a_pair_the_motion_cannot_bring_near_is_bounded_not_measured(tmp_path, monkeypatch):
+    """ADR-419: a far moving pair is culled with a lower bound; near pairs stay exact.
+
+    hexapod-2's hip sweep spent 280 of its 287 s in ``distToShape``, most of
+    it on pairs over 100 mm apart (0.8 s each), and re-measured every rigid
+    pair at the solved pose. A pair whose exact-geometry boxes never come
+    within ``_SWEEP_CULL_MM`` carries that box gap instead: a lower bound, so
+    a fit floor read against it can only fail harder, never pass wrongly.
+    """
+
+    monkeypatch.setattr(kernel, '_FRAME_DRIVER', _CULL_DRIVER)
+    result = kernel._drive_frame(tmp_path)
+    (joint,) = result['report']['joints']
+    assert joint['status'] == 'complete' and joint['solved_pose_agreement']
+    rows = {(row['first'], row['second']): row for row in joint['pairs']}
+    baseline = {(row['first'], row['second']): row for row in result['baseline']}
+    near, far = rows['fixed', 'moving'], rows['far', 'moving']
+    # The near pair is measured exactly, as before this change.
+    assert 'culled' not in near
+    assert near['minimum_distance_mm'] == pytest.approx(0.04, abs=1e-9)
+    # The far pair is bounded: above the cull margin, and no more than the
+    # true minimum over the same samples.
+    exact = min(math.hypot(10 * math.cos(math.radians(a)), 10 * math.sin(math.radians(a)) + 60) - 2
+                for a in range(20, 91))
+    assert far['culled'] is True and far['relative_motion'] is True
+    assert 10.0 < far['minimum_distance_mm'] <= exact + 1e-9
+    assert far['maximum_common_volume_mm3'] == 0.0 and far['first_contact_degrees'] is None
+    # A rigid pair is the solved-pose measurement, carried rather than redone.
+    rigid = rows['fixed', 'far']
+    assert rigid['relative_motion'] is False and 'culled' not in rigid
+    assert rigid['minimum_distance_mm'] == baseline['fixed', 'far']['distance_mm']

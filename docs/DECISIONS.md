@@ -27985,3 +27985,61 @@ review table and `smoke_geometry` read, so it is a separate decision.
 three regressions in `cadex_tests/test_scripted_process.py`. Two fail on
 the previous source (the pin itself, and the pin reaching a real worker's
 threads and children on a host with more than four CPUs).
+
+## ADR-419 — A joint sweep measures near moving pairs exactly and bounds the far ones (2026-09-27)
+
+**Context.** Neither ot10 A5 hexapod attempt 2 (`ot10-hexapod-2`, 63
+components, 1,953 pairs) nor the quadruped (`ot10-quadruped-2`) could
+declare a sweep that finished. At 15° steps the first hip joint used its
+whole 90 s and both knees got nothing, so both agents turned the sweep off
+and both missed A5. The hip's own payload, profiled on one CPU:
+
+| | before | after |
+|---|---|---|
+| hip sweep, 5 samples | 287 s | 7.3 s |
+| `distToShape` calls | 4,153 (280.6 s) | 114 (5.1 s) |
+| knee sweep, 6 samples | not reached | 19.5 s |
+| all 12 joints in a real rebuild | 0 complete, 180 s | **12 complete, 112 s** |
+
+The calls went two places. 1,953 of them re-measured *every* pair at the
+solved pose for the agreement check, once per joint, including pairs the
+joint cannot move. The rest measured all 440 moving pairs at every sample,
+and `distToShape` is slowest on far pairs: a hip cap against the opposite
+tibia, 114 mm apart, costs 0.8 s. BREP import is 0.02 s, so serialising
+was not the cost.
+
+**Decision.** In `_sweep_joint`:
+1. A rigid pair's row takes its value from the static measurement without
+   measuring again.
+2. A moving pair's exact-geometry boxes (`optimalBoundingBox`, not the
+   triangulation box, which sits inside a curved surface) are carried to
+   each sample by the rigid motion. A pair whose box gap stays above
+   `_SWEEP_CULL_MM` (10 mm) at every sample is `culled`. It keeps that gap
+   as a lower-bound `minimum_distance_mm`, 0.0 common volume and no first
+   contact.
+3. Every other moving pair is checked for solved-pose agreement, then
+   measured exactly at every sample, as before.
+
+`_measure_joint_sweeps` serialises the BREPs once per assembly, not once
+per joint.
+
+This is the separate decision ADR-418 named. It is scoped to swept rows:
+the static `distance_mm` still promises an exact measurement of every pair.
+The bound errs one way only: the client's `below clearance` check can fail
+a culled pair whose declared floor exceeds 10 mm, and never passes one
+wrongly.
+
+**Measured.**
+- On the hexapod, 421 of 440 hip pairs are culled, and 215 to 227 of 236
+  knee pairs. Every culled bound is 10.1 mm or more.
+- The complete sweep now reports a real failure the agent could not see: at
+  15° each knee drives its tibia and foot into `c_floor`, up to 111 mm³.
+  The CLI's swept verdict is `fail` on those 12 pairs alone. Whether a
+  swept limb against the declared floor should count is a separate
+  decision; this ADR does not make it.
+
+**Consequences.** Engine zone. A response row gains one optional key
+(`culled`), documented in `docs/INTEGRATION.md`. No op argument changed,
+and no reader needed a change. `docs/XSCRIPT.md` moves with it. There is one
+regression in `cadex_tests/test_joint_fit_sweep.py`, and it fails on the
+previous source.
