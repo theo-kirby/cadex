@@ -22,9 +22,17 @@ SIZE = 512
 MAX_BYTES = 32 * 1024 * 1024
 MAX_VERTICES = 300_000
 # hex2 (2026-09-25), a 12-servo hexapod, is 110,688 placed triangles; 100k refused it.
-MAX_PLACED_VERTICES = 1_200_000
+# hex3 (2026-09-26), the same robot with filleted brackets, is 589,268, and the
+# 400k cap refused it too (ADR-410). What is read is bounded at the INPUT caps;
+# what is drawn is bounded at MAX_TRIANGLES by clustering vertices into a grid
+# cell a fraction of a pixel wide, doubled until the model fits.
+MAX_PLACED_VERTICES = 4_000_000
+MAX_INPUT_TRIANGLES = 2_000_000
 MAX_TRIANGLES = 400_000
-MAX_SAMPLES = 20_000_000  # bounding-box pixel visits per view, including overdraw
+#: The first clustering cell, as a fraction of the model's largest extent:
+#: a quarter of a pixel at SIZE, so the first pass changes no pixel.
+FIRST_CELL_FRACTION = 1.0 / (4 * SIZE)
+MAX_SAMPLES = 20_000_000  # bounding-box pixel visits per SIZE view, including overdraw; scales with image area
 IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 s2, s3, s6 = math.sqrt(2), math.sqrt(3), math.sqrt(6)
 BASES = {
@@ -43,13 +51,15 @@ LOOK_SIZE = 768
 PRINTED_COLOR = (222, 124, 64)
 PURCHASED_COLOR = (74, 78, 86)
 PALETTE = [(91, 157, 205), (230, 151, 76), (115, 182, 135), (180, 134, 200)]
-LIMITS = {'buffer_bytes': MAX_BYTES, 'triangles': MAX_TRIANGLES, 'vertices_per_source': MAX_VERTICES,
+LIMITS = {'buffer_bytes': MAX_BYTES, 'triangles': MAX_TRIANGLES, 'input_triangles': MAX_INPUT_TRIANGLES,
+          'vertices_per_source': MAX_VERTICES,
           'placed_vertices': MAX_PLACED_VERTICES,
           'pixel_visits_per_view': MAX_SAMPLES, 'image_size': SIZE}
 APPROXIMATION = ('Opaque standard tessellation, initial solved pose; 512px pixel-center depth, '
                  'flat lighting, no transparency, edges, dimensions or subpixel guarantees. '
                  'Shell-only visibility is not carried by the protocol. Placed source copies '
-                 'are excluded; all other published triangle geometry is shown.')
+                 'are excluded; all other published triangle geometry is shown. Above the drawn '
+                 'triangle budget, vertices are clustered on a grid (summary: decimation).')
 
 
 def _require(condition, message):
@@ -69,9 +79,10 @@ def snapshot(reply):
     _require(all(isinstance(e.get('source_output', ''), str) for e in display.values()),
              'invalid component source')
     sources = {e['source_output'] for e in display.values() if e.get('source_output')}
-    cache, triangles, objects = {}, [], {}
+    cache, triangles, objects, parts = {}, [], {}, []
     budget = 0
     placed_vertices = 0
+    raw_triangles = 0
 
     def read(path, limit):
         nonlocal budget
@@ -102,13 +113,13 @@ def snapshot(reply):
                      count >= 0 and offset % 4 == 0 and count % 12 == 0 and
                      offset + count <= len(data) and layout['dtype'] == dtype,
                      'invalid ' + key + ' layout')
-            _require(count // 12 <= (MAX_VERTICES if key == 'vertices' else MAX_TRIANGLES),
+            _require(count // 12 <= (MAX_VERTICES if key == 'vertices' else MAX_INPUT_TRIANGLES),
                      key + ' count budget exceeded')
             arrays.append(list(struct.iter_unpack('<' + code * 3, data[offset:offset+count])))
         vertices, indices = arrays
         _require(all(math.isfinite(x) and abs(x) <= 1e9 for v in vertices for x in v),
                  'nonfinite or excessive coordinates')
-        _require(len(indices) <= MAX_TRIANGLES and
+        _require(len(indices) <= MAX_INPUT_TRIANGLES and
                  all(max(t) < len(vertices) for t in indices), 'invalid/excessive triangle indices')
         cache[source] = vertices, indices
         return vertices, indices
@@ -134,21 +145,65 @@ def snapshot(reply):
             points = [tuple(sum(matrix[4*r+c]*v[c] for c in range(3)) + matrix[4*r+3]
                             for r in range(3)) for v in vertices]
             _require(all(abs(x) <= 1e9 for v in points for x in v), 'excessive placed coordinates')
-            _require(len(triangles) + len(indices) <= MAX_TRIANGLES, 'triangle budget exceeded')
+            raw_triangles += len(indices)
+            _require(raw_triangles <= MAX_INPUT_TRIANGLES, 'triangle budget exceeded')
             if not indices:
                 continue
-            color = PALETTE[len(objects) % len(PALETTE)]
-            first = len(triangles)
-            triangles.extend((color, tuple(points[i] for i in tri)) for tri in indices)
-            objects[name] = {'triangles': len(indices), 'first': first, 'source': source, 'placement': matrix, 'color': color,
-                             'bounds_mm': [[fn(p[j] for p in points) for j in range(3)]
-                                           for fn in (min, max)]}
+            parts.append((name, source, matrix, points, indices))
     except (OSError, KeyError, TypeError, ValueError, struct.error) as exc:
         raise InventoryError('render: malformed or unreadable display: ' + str(exc)) from exc
-    _require(bool(triangles), 'no published triangle geometry')
+    _require(bool(parts), 'no published triangle geometry')
+    decimation = None
+    if raw_triangles > MAX_TRIANGLES:
+        extent = max(max(p[j] for *_, points, _ in parts for p in points)
+                     - min(p[j] for *_, points, _ in parts for p in points) for j in range(3))
+        _require(extent > 0, 'zero model extent')
+        cell = extent * FIRST_CELL_FRACTION
+        while True:
+            clustered = [_cluster(points, indices, cell) for *_, points, indices in parts]
+            kept = sum(len(tris) for tris in clustered)
+            if kept <= MAX_TRIANGLES:
+                break
+            _require(cell < extent, 'triangle budget exceeded')
+            cell *= 2.0
+        parts = [(*part[:4], tris) for part, tris in zip(parts, clustered)]
+        decimation = {'input_triangles': raw_triangles, 'cell_mm': cell,
+                      'cell_fraction_of_extent': cell / extent}
+    for name, source, matrix, points, indices in parts:
+        color = PALETTE[len(objects) % len(PALETTE)]
+        first = len(triangles)
+        triangles.extend((color, tuple(points[i] for i in tri)) for tri in indices)
+        objects[name] = {'triangles': len(indices), 'first': first, 'source': source, 'placement': matrix, 'color': color,
+                         'bounds_mm': [[fn(p[j] for p in points) for j in range(3)]
+                                       for fn in (min, max)]}
     return triangles, {'revision': revision, 'digest': reply.get('digest'), 'objects': objects,
                        'triangles': len(triangles), 'snapshot_bytes': budget,
+                       'decimation': decimation,
                        'approximation': APPROXIMATION, 'limits': LIMITS}
+
+
+def _cluster(points, indices, cell):
+    """Indices re-pointed at one vertex per grid cell; collapsed triangles dropped.
+
+    Each vertex maps to the first vertex seen in its cell, so an edge shorter
+    than the cell vanishes and the triangles on it with it. Duplicates, which
+    two faces of a thin wall can become, are kept once.
+    """
+    representative, first_in = [], {}
+    for index, point in enumerate(points):
+        key = (math.floor(point[0] / cell), math.floor(point[1] / cell), math.floor(point[2] / cell))
+        representative.append(first_in.setdefault(key, index))
+    kept, seen = [], set()
+    for tri in indices:
+        a, b, c = (representative[i] for i in tri)
+        if a == b or b == c or a == c:
+            continue
+        key = tuple(sorted((a, b, c)))
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append((a, b, c))
+    return kept
 
 
 def rasterize(triangles, basis, *, bounds=None, size=SIZE):
@@ -175,7 +230,7 @@ def rasterize(triangles, basis, *, bounds=None, size=SIZE):
         # Off-canvas triangles (a focused `look`) clamp to zero, never to a
         # product of two negative spans.
         samples += max(0, xmax-xmin+1)*max(0, ymax-ymin+1)
-        _require(samples <= MAX_SAMPLES, 'pixel work budget exceeded')
+        _require(samples <= MAX_SAMPLES * (size / SIZE) ** 2, 'pixel work budget exceeded')
         u, v = ([tri[1][j]-tri[0][j] for j in range(3)], [tri[2][j]-tri[0][j] for j in range(3)])
         normal = (u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0])
         norm = math.sqrt(sum(n*n for n in normal))

@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-26. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-27. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -1880,13 +1880,19 @@ ties follow sorted output/triangle order. Standard tessellation approximates
 curves. Thin/subpixel features can disappear; no dimensions, analytic edges,
 transparency, smooth shading or engineering-drawing accuracy is promised.
 Limits are 4,096 display entries, 32 MiB total binary/sidecar input, 4 MiB per
-sidecar, 300,000 vertices per source, 1,200,000 placed vertices, 400,000 placed triangles and 20 million
-bounding-box pixel visits **per view**, including overdraw. Excessive, missing
-or malformed buffers, missing solved poses and empty geometry fail explicitly.
-Dense assemblies can exceed the pixel budget even below the triangle cap.
-The triangle and placed-vertex caps were 100,000 and 600,000 until ADR-406:
-hex2, a twelve-servo hexapod, is 110,688 placed triangles and was refused,
-while the same renderer draws it in under a second per view.
+sidecar, 300,000 vertices per source, 4,000,000 placed vertices, 2,000,000
+placed triangles read, 400,000 drawn, and 20 million bounding-box pixel visits
+**per 512 px view** (scaled by image area for `look`'s 768 px), including
+overdraw. Excessive, missing or malformed buffers, missing solved poses and
+empty geometry fail explicitly. Above 400,000 triangles the snapshot clusters
+vertices on a grid, starting at a quarter pixel of the 512 px view over the
+model's largest extent and doubling until it fits; the summary's
+`decimation` names the input count and the cell (ADR-410). hex2 (110,688
+triangles) was refused at the old 100,000 cap, and hex3 (589,268, filleted
+brackets) at ADR-406's 400,000, which lost both the agent's `look` and the
+walk's review. hex3 now draws as 106,326 triangles at a 0.24 mm cell, four
+views in 3.6 s. A render that still fails in a walk's review is recorded as
+`render.available: false` with the reason, and the rest of the review stands.
 
 The CLI snapshots buffers while holding its project lock, before any further
 engine request can invalidate attempt paths. The shell does not share this
@@ -2081,6 +2087,12 @@ starts, and refuse when a policy channel names no `api.sensor` that
 measures it on the robot, listing the channels and both ways out: declare
 the sensor, or mark a simulation-only channel `role="privileged"`.
 `--allow-ungrounded` trains anyway and says so in the envelope's notes.
+
+`cadex train --stop-on-collapse` passes the trainer's flag of that name
+(ADR-410): the run stops, with the reason, once its mean episode has
+collapsed, meaning the policy is ending its own episodes. `cadex walk`
+always passes it, so an unattended walk fails at iteration ~60 rather than
+spending hours on a policy that has learned to fall over.
 The build is not where this bites: a task written before ADR-408 still
 builds, and the policies trained on it still verify.
 

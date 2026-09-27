@@ -1276,3 +1276,34 @@ def test_retained_telemetry_preserves_histories_on_training_failure(tmp_path, mo
         assert data[name][0] == [0, rows[0][key]]
         assert data[name][-1] == [599, rows[599][key]]
     assert not target.exists()
+
+
+def _curve(lengths):
+    return [{"episode_steps": float(steps)} for steps in lengths]
+
+
+def test_episode_collapse_names_hex3_s_self_terminating_policy() -> None:
+    """ADR-410: 28 steps early, 2 of 200 late, seven hours of training on."""
+
+    trainer = _trainer_module()
+    horizon = 200
+    # Iteration 0 reports the whole unroll (no episode has ended yet).
+    early = [40960.0] + [28.0] * 10
+    assert trainer.episode_collapse(_curve(early + [9.0] * 49), horizon) == ""
+    message = trainer.episode_collapse(_curve(early + [9.0] * 50), horizon)
+    assert message.startswith("episodes collapsed")
+    assert "alive bonus" in message
+    # One recovered iteration in the window is not a collapse.
+    recovered = early + [9.0] * 25 + [30.0] + [9.0] * 24
+    assert trainer.episode_collapse(_curve(recovered), horizon) == ""
+    # hex2's flat 215-of-500 is a failure the gait review names, not this one.
+    assert trainer.episode_collapse(_curve([40960.0] + [260.0] * 10 + [215.0] * 60), 500) == ""
+    # A run that was always short is not one that collapsed.
+    assert trainer.episode_collapse(_curve([40960.0] + [4.0] * 70), horizon) == ""
+
+
+def test_the_collapse_stop_is_a_flag_and_the_warning_is_additive() -> None:
+    source = TRAINER.read_text()
+    assert '"--stop-on-collapse", action="store_true"' in source
+    assert 'getattr(options, "stop_on_collapse", False)' in source
+    assert '"warning": str(fields.get("warning", ""))' in source

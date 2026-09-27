@@ -27566,3 +27566,58 @@ siblings,
 `test_servo_joint_dynamics_is_the_datasheet_torque_speed_line` (which
 steps MuJoCo and finds 600°/s), and
 `test_the_prompt_says_a_walking_task_pays_for_walking`.
+
+## ADR-410 — Draw every model, pay for survival, stop a collapsed run (2026-09-27)
+
+**Decision.**
+- **Render decimation.** The renderer reads up to 2,000,000 placed
+  triangles (4,000,000 placed vertices) and draws at most 400,000. Above
+  that, `render.snapshot` clusters each object's placed vertices on a
+  grid: the cell starts at a quarter pixel of the 512 px view over the
+  model's largest extent and doubles until the model fits. Triangles that
+  collapse are dropped and duplicates kept once, and the summary's
+  `decimation` records the input count and the cell. The per-source
+  triangle check now uses the input limit. The pixel-work budget scales
+  with image area, so `look`'s 768 px views get 2.25×.
+- **The review survives a render failure.** A render refusal in `cadex
+  walk`'s review is recorded as `render.available: false` with the reason,
+  and the rest of the review (gait, clearance, inventory) still lands.
+- **Alive bonus.** The walking-task overlay requires a positive per-step
+  reward (an alive bonus), costs written as positive quantities with
+  negative weights, and weights sized so that standing still nets positive.
+  Its forward example is now a cost.
+- **Collapse detection.** The trainer's `episode_collapse` fires when every
+  one of the last 50 iterations averaged under both 5% of the horizon and
+  half the run's own early length (iterations 1–10). It is always reported,
+  on stderr and as `progress.json`'s additive `warning`. `--stop-on-collapse`
+  (trainer and `cadex train`) stops the run with the reason, and `cadex
+  walk` always passes it.
+
+**Reason.** hex3 (2026-09-26, `docs/probes/hex/hex3-GAPS.md`) carried
+ADR-406 to 409 and designed a complete, grounded robot in 41 minutes. Then:
+- Every `look` call and the walk's review were refused, because filleted
+  brackets put the model at 589,268 triangles.
+- The task, written as ADR-409's overlay instructed, paid about −9 for
+  every step the robot survived, so the policy learned to trip a
+  termination at once. Mean episode fell from 28 to 2 of 200 steps by
+  iteration ~80.
+- Training ran on for 7.2 h. The gait check, run by hand afterwards, named
+  the failure correctly, but the walk had died before writing it.
+
+**Consequences.**
+- hex3 now draws as 106,326 triangles at a 0.24 mm cell, four views in
+  3.6 s. Thin features narrower than the cell can vanish, which the
+  approximation text states.
+- A plain `cadex train` runs exactly the trainer command it did before,
+  and the collapse stop is opt-in outside the walk. A task whose success
+  is an early termination would trip it inside a walk; none exists yet.
+- The detector does not catch hex2's failure (flat 215 of 500), which the
+  gait review names.
+
+Regressions:
+- `test_over_budget_geometry_is_clustered_not_refused` and its two
+  siblings;
+- `test_episode_collapse_names_hex3_s_self_terminating_policy`;
+- `test_stop_on_collapse_reaches_the_trainer_by_its_real_name`;
+- the walk's train-leg argv assertion;
+- the extended walking-task prompt test.

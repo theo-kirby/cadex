@@ -173,6 +173,7 @@ def trainer_flags(
     init_from: str = "",
     init_from_parent_task: str = "",
     init_from_task_change: str = "",
+    stop_on_collapse: bool = False,
 ) -> list[str]:
     """The trainer's flags, by their real names, without the bundle or
     ``--out`` — the part of the command that is the same wherever the
@@ -202,6 +203,8 @@ def trainer_flags(
         ]
     if init_from_task_change:
         flags += ["--init-from-task-change", init_from_task_change]
+    if stop_on_collapse:
+        flags.append("--stop-on-collapse")
     return flags
 
 

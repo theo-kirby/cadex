@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-09-26. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-09-27. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -220,6 +220,15 @@ while this falls is a policy failing sooner and being paid more for it** —
 which is what two runs did, unnoticed, before there was a number for it. It
 is additive under the same schema, so a `progress.json` from before ADR-101
 still reads; the panel draws it as a dash.
+
+**The trainer now watches it too (ADR-410).** When every one of the last 50
+iterations averaged under both 5% of the horizon and half of the run's own
+early episode length (iterations 1–10), the policy has learned that ending
+its episodes pays. It says so on stderr and as `progress.json`'s `warning`
+(additive, same schema), naming the fix: a positive per-step reward.
+`--stop-on-collapse` stops the run there instead of training on; `cadex
+walk` always passes it. hex3 (2026-09-26) fell from 28 to 2 of 200 steps by
+iteration ~80 and then trained for seven hours.
 
 `action_std` is the second row to watch (ADR-103): the mean of
 `exp(log_std)`, the width of the Gaussian the rollout samples its actions

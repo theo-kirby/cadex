@@ -560,6 +560,8 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
                         ("--envs", "3"), ("--seed", "5"), ("--timeout", "30.0")):
         assert train[train.index(flag) + 1] == value, train
     assert "--put" in train and "--json" in train
+    # ADR-410: an unattended walk stops a run whose episodes collapsed.
+    assert "--stop-on-collapse" in train
     assert read[-1] == "script"
     assert declare[-4:-1] == ["script", "--set", str(out / SCRIPT_FILENAME)]
     assert rollout[rollout.index("--set") + 1] == f"{POLICY_SWITCH}=1"
@@ -661,6 +663,31 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
     assert run["resolved"]["artifacts"]["trace"]["exists"] is True
     assert run["resolved"]["project_artifacts"]["policy"]["exists"] is True
     assert run["relation"] == "unknown" and reviewed["accepted"]["available"] is False
+
+
+def test_a_render_refusal_is_recorded_and_the_review_still_lands(
+    fake_cadex, toy_root, capsys, monkeypatch
+) -> None:
+    """ADR-410: hex2 and hex3 each lost their whole review to the renderer."""
+
+    import cadex_cli.__main__ as cli_main
+    from cadex_cli.inventory import InventoryError
+
+    def refuse(*args, **kwargs):
+        raise InventoryError("render: triangle budget exceeded")
+
+    monkeypatch.setattr(cli_main, "write_render", refuse)
+    out = toy_root / "runs" / "walk-1"
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out),
+        "--iterations", "2", "--envs", "3",
+    )
+    assert code == EXIT_OK, envelope
+    on_disk = json.loads((out / "review.json").read_text())
+    assert on_disk["render"]["available"] is False
+    assert on_disk["render"]["reason"] == "render: triangle budget exceeded"
+    assert "gait" in on_disk and on_disk["clearance"]["available"] is not None
+    assert any(note.startswith("render: unavailable") for note in envelope["notes"])
 
 
 def test_the_iterate_walk_sweeps_first_and_carries_the_warm_start(
@@ -1563,7 +1590,8 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
     assert argv[:5] == ["train", str(tmp_path / "remote/runs/baseline/train/job-task.json"),
                        str(tmp_path / "remote/runs/baseline/train/job.cxpolicy"),
                        "--allow-cpu", "--"]
-    assert argv[5:] == ["--iterations", "1", "--envs", "4", "--seed", "0"]
+    assert argv[5:] == ["--iterations", "1", "--envs", "4", "--seed", "0",
+                        "--stop-on-collapse"]
 
 
 def _assert_inventory(root, review):
