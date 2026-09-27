@@ -71,6 +71,15 @@ SWEEP_COVERAGE_NOTE = (
     "on the assembly and rebuild to acquire the missing measurements."
 )
 
+#: Said whenever the sweep drives a part into world geometry (ADR-420).
+SWEEP_WORLD_NOTE = (
+    "Reported, never a swept fit failure: these pairs involve world geometry "
+    "(a declared floor or plane), and each joint is swept with the body "
+    "held still, so a leg reaching below its stance meets the ground. If "
+    "the motion is meant to clear the ground at that pose, narrow the "
+    "joint's range; the printed and purchased pairs are judged in failing."
+)
+
 #: What a sweep block says when the accepted revision published no sweep at
 #: all. Since ADR-367 the engine publishes coverage on every assembly, so
 #: this is a revision accepted by an older engine and nothing else -- the
@@ -146,6 +155,15 @@ def sweep_summary(
       the implied ``attached`` intent (ADR-372), is exempt, exactly as it is
       at the solved pose: parts a design asks to touch are not held to a gap.
 
+    **A finding against world geometry is reported, never failed**
+    (ADR-420). A pair one side of which the static block names world
+    geometry -- a declared floor, a collision plane, ``world=True`` -- goes
+    to ``world_geometry`` with the engine's reason, and neither
+    ``failing_count`` nor the verdict counts it. Each joint is swept with
+    the rest of the body held at the solved pose, so a standing leg's knee
+    drives its foot into the ground by construction; that is the stance,
+    not a fit between two parts. A printed or a purchased pair still fails.
+
     A swept pair with no solved-pose row is judged by none of this, because
     there is no intent and no solved verdict to read. On a published value
     that cannot happen -- the engine builds every swept row from the same
@@ -197,8 +215,31 @@ def sweep_summary(
         if isinstance(row, dict):
             static[frozenset((str(row.get("first") or ""),
                               str(row.get("second") or "")))] = row
+    # Components the static block names world geometry -- a declared floor,
+    # a collision plane, a bench marked ``world=True`` -- by name, with the
+    # engine's reason (ADR-420). A swept finding against one of them is the
+    # environment, not the design: a knee swept with the body held still
+    # drives its foot into the floor it stands on, which is physically true
+    # and says nothing about whether two printed parts fit. Such a finding
+    # is published under ``world_geometry`` beside ``failing`` and never in
+    # it, exactly as the static block keeps the floor out of its pair
+    # checks. Every other pair, printed or purchased, still fails here.
+    world: dict[str, str] = {}
+    for row in value.get("world_geometry") or []:
+        if isinstance(row, dict) and row.get("component"):
+            world[str(row["component"])] = str(row.get("reason") or "")
     joints: list[dict[str, Any]] = []
     failing: list[dict[str, Any]] = []
+    advisory: list[dict[str, Any]] = []
+
+    def report(finding: dict[str, Any]) -> None:
+        against = [side for side in (finding["first"], finding["second"]) if side in world]
+        if against:
+            finding["world_geometry"] = {"component": against[0], "reason": world[against[0]]}
+            advisory.append(finding)
+        else:
+            failing.append(finding)
+
     complete = skipped = 0
     for joint in published.get("joints") or []:
         if not isinstance(joint, dict):
@@ -258,7 +299,7 @@ def sweep_summary(
             if moves and _finite(contact) and (first_contact is None or contact < first_contact):
                 first_contact, contact_pair = float(contact), [first, second]
             if not measured:
-                failing.append({
+                report({
                     "joint": name, "first": first, "second": second,
                     "status": "unknown",
                     "minimum_distance_mm": distance,
@@ -274,7 +315,7 @@ def sweep_summary(
                 }
                 if contact_key:
                     overlap[contact_key] = contact
-                failing.append(overlap)
+                report(overlap)
             elif moves:
                 # A gap the motion closes (ADR-378). The pair's own minimum
                 # is whatever the solved pose held it to, so the two blocks
@@ -300,7 +341,7 @@ def sweep_summary(
                         closed["intent"] = intent
                     if contact_key:
                         closed[contact_key] = contact
-                    failing.append(closed)
+                    report(closed)
         # Counted apart so `pairs_measured - pairs_moving` is answerable, the
         # way `joints_skipped` sits beside `joints_complete` (ADR-371): the
         # three numbers below are read over these pairs and no others.
@@ -340,7 +381,13 @@ def sweep_summary(
                        "maximum_common_volume_mm3": float(maximum_volume)},
         "failing_count": len(failing),
         "failing": failing,
+        # Findings against world geometry (ADR-420): measured, named, and
+        # never counted in `failing_count` or the verdict.
+        "world_geometry_count": len(advisory),
+        "world_geometry": advisory,
     }
+    if advisory:
+        summary["world_geometry_note"] = SWEEP_WORLD_NOTE
     if published.get("reason"):
         summary["reason"] = str(published["reason"])
     elif verdict == "unavailable" and coverage == "complete":

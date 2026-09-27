@@ -28043,3 +28043,44 @@ wrongly.
 and no reader needed a change. `docs/XSCRIPT.md` moves with it. There is one
 regression in `cadex_tests/test_joint_fit_sweep.py`, and it fails on the
 previous source.
+
+## ADR-420 — A swept finding against world geometry is reported, never failed (2026-09-27)
+
+**Context.** ADR-419 made the 63-component `ot10-hexapod-2` sweep complete,
+and its complete sweep then read `fail` on twelve pairs alone: each knee,
+swept across [-35°, 35°] at 15° with the rest of the body held at the solved
+pose, drives its tibia (65.309 mm³) and its foot (97.098–110.972 mm³) into
+`c_floor`. The static block already names `c_floor` world geometry — "collision
+plane declared on design component" — and keeps it apart from its pair
+checks, and the frozen A5 bar reads that static row as advisory. The swept
+block had no such rule, so no standing legged design could pass it: a leg
+reaching below its stance meets the ground by construction.
+
+**Decision.** In the CLI's `sweep_summary` (`cli/cadex_cli/clearance.py`), a
+swept finding — intersection, closed gap or unmeasured pair — one side of
+which the static block's `world_geometry` names is published under
+`fit.sweep.world_geometry` with the engine's reason and a
+`world_geometry_note`, and is counted in `world_geometry_count`, never in
+`failing` or `failing_count`. The verdict does not see it. A printed or
+purchased pair fails exactly as before. The progress line appends
+`; N against world geometry (advisory)` and the prose report prints each
+finding marked advisory. The overlay says so in one sentence.
+
+This is a client verdict change only: the engine, the protocol and the
+published measurements are untouched, the joint rows' extrema still include
+the floor, and the rule reuses the engine's existing world-geometry
+detection (`_check_fit`) rather than a name. Reversible by deleting one
+routing function.
+
+**Measured.** Replayed on a read-only copy of `ot10-hexapod-2` rebuilt with
+`sweep_step=15` (3 min 27 s wall, exit 0): before, `sweep fail`, 12/12 joints
+complete, 12 failing pairs, all `c_floor ∩ c_{tibia,foot}_*`; after,
+`sweep pass: 12 joint(s) swept; 12 against world geometry (advisory)`,
+0 failing. Two regressions in `cli/tests/test_clearance.py` (the measured
+knee rows; and a printed, a purchased and an unmeasured pair beside the
+floor still failing) fail on the previous source and pass on this one.
+
+**Not decided here.** The static verdict still reads `fail` on the world
+geometry row itself, as it did; A5 already reads that row as advisory. P2's
+inclusion of `c_floor` in `printed_edges.measured` is a frozen-proxy change
+and needs its own recorded re-score.

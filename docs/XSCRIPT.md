@@ -1652,6 +1652,10 @@ component's name. Existing floor declarations continue to build.
 these facts. The summary counts each failing pair once, prioritising unknown,
 intersection, then intent; the row's `fit_failures` preserves all checks.
 World findings are counted separately. This is static fit, not swept motion.
+The swept block (`fit.sweep`) keeps the same separation (ADR-420): a pair
+against world geometry that overlaps or closes during a joint sweep is listed
+under `world_geometry` and does not fail the swept fit, because each joint is
+swept with the body held still and a standing leg meets its floor.
 
 **What the fixed joints hold** is measured beside these checks and is never one
 of them (ADR-370). Every pair joined by an unsuppressed `fixed` joint is

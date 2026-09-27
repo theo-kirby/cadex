@@ -1234,3 +1234,87 @@ def test_a_welded_pair_that_meets_its_declared_minimum_reaches_the_reply_clear(t
     assert 'clearance under weld' not in report
     assert 'declared minimum 0.5 mm, and welded by weld_standoff' in report
     assert '| clear |' in report and '| below clearance |' in report
+
+
+def _floor_sweep(extra_rows=()):
+    """A knee swept complete, shaped like ``ot10-hexapod-2``'s (ADR-420).
+
+    The knee drives its tibia and foot into ``c_floor`` -- the ground the
+    robot stands on, which the static block names world geometry -- and
+    moves every printed pair it carries clear of its neighbours. The two
+    floor rows are the measured ones: every hexapod knee at 15 degrees
+    published the same pair of overlaps, and nothing else failed.
+    """
+
+    rows = [
+        {'first': 'c_floor', 'second': 'c_tibia_fl', 'relative_motion': True,
+         'minimum_distance_mm': 0.0, 'maximum_common_volume_mm3': 65.309,
+         'first_contact_degrees': 25.0},
+        {'first': 'c_floor', 'second': 'c_foot_fl', 'relative_motion': True,
+         'minimum_distance_mm': 0.0, 'maximum_common_volume_mm3': 110.972,
+         'first_contact_degrees': 10.0},
+        {'first': 'c_tibia_fl', 'second': 'c_femur_fl', 'relative_motion': True,
+         'minimum_distance_mm': 1.5, 'maximum_common_volume_mm3': 0.0,
+         'first_contact_degrees': None},
+        *extra_rows,
+    ]
+    pairs = [{'first': r['first'], 'second': r['second'], 'distance_mm': 2.0,
+              'common_volume_mm3': 0.0, 'intent': {}} for r in rows]
+    return {
+        'available': True, 'pairs': pairs,
+        'world_geometry': [{'component': 'c_floor', 'status': 'world geometry',
+                            'reason': 'collision plane declared on design component'}],
+        'clearance_sweep': {'status': 'complete', 'step_degrees': 15, 'joints': [
+            {'joint': 'j_knee_fl', 'kind': 'revolute', 'unit': 'degrees',
+             'status': 'complete', 'step': 15, 'sample_count': 6,
+             'range_degrees': [-35, 35], 'initial_degrees': 0, 'pairs': rows}]},
+    }
+
+
+def test_a_leg_swept_into_the_floor_is_reported_not_failed():
+    """ADR-420: a swept finding against world geometry is advisory.
+
+    Before, the complete hexapod sweep read ``fail`` on its knee-against-floor
+    rows alone, so no standing legged design could pass. The floor rows are
+    still published, by name and with the engine's reason, and the verdict
+    and ``failing_count`` no longer count them.
+    """
+
+    block = fit_summary(_floor_sweep())['sweep']
+    assert block['verdict'] == 'pass', block['failing']
+    assert block['failing_count'] == 0 and block['failing'] == []
+    assert block['world_geometry_count'] == 2
+    assert [(f['first'], f['second'], f['status'], f['maximum_common_volume_mm3'])
+            for f in block['world_geometry']] == [
+        ('c_floor', 'c_tibia_fl', 'intersection', 65.309),
+        ('c_floor', 'c_foot_fl', 'intersection', 110.972)]
+    assert block['world_geometry'][0]['world_geometry'] == {
+        'component': 'c_floor',
+        'reason': 'collision plane declared on design component'}
+    assert block['world_geometry_note'].startswith('Reported, never')
+    assert 'note' not in block
+    # The joint's own facts still carry the floor: they are measurements.
+    assert block['joints'][0]['maximum_common_volume_mm3'] == 110.972
+    assert _sweep_line(block) == (
+        'sweep pass: 1 joint(s) swept; 2 against world geometry (advisory)')
+
+
+@pytest.mark.parametrize('row, status', [
+    # A printed pair the motion drives together still fails...
+    ({'first': 'c_tibia_fl', 'second': 'c_coxa_fl', 'relative_motion': True,
+      'minimum_distance_mm': 0.0, 'maximum_common_volume_mm3': 4.0,
+      'first_contact_degrees': -50.0}, 'intersection'),
+    # ...so does a purchased one, and a gap closed below the minimum...
+    ({'first': 'c_servo_knee_fl', 'second': 'c_tibia_fl', 'relative_motion': True,
+      'minimum_distance_mm': 0.02, 'maximum_common_volume_mm3': 0.0,
+      'first_contact_degrees': None}, 'below clearance'),
+    # ...and a pair the engine could not measure.
+    ({'first': 'c_battery', 'second': 'c_tibia_fl', 'relative_motion': True,
+      'minimum_distance_mm': None, 'maximum_common_volume_mm3': None}, 'unknown'),
+])
+def test_only_world_geometry_is_advisory_in_the_sweep(row, status):
+    block = fit_summary(_floor_sweep([row]))['sweep']
+    assert block['verdict'] == 'fail'
+    assert [(f['first'], f['second'], f['status']) for f in block['failing']] == [
+        (row['first'], row['second'], status)]
+    assert block['world_geometry_count'] == 2

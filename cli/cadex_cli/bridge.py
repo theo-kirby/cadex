@@ -697,7 +697,12 @@ def _sweep_line(sweep: dict[str, Any]) -> str:
     # Suppressed joints are rows this block does not judge (ADR-371), so they
     # are never counted as unswept coverage and never inflate a pass.
     skipped = int(sweep.get("joints_skipped") or 0)
-    suppressed = "; {:d} suppressed".format(skipped) if skipped else ""
+    suffix = "; {:d} suppressed".format(skipped) if skipped else ""
+    # Findings against world geometry never move the verdict (ADR-420), but
+    # a pass that hides them would read as a leg that never meets the floor.
+    world = int(sweep.get("world_geometry_count") or 0)
+    if world:
+        suffix += "; {:d} against world geometry (advisory)".format(world)
     if verdict == "unavailable":
         # Two different facts wear this verdict (ADR-368), and a bare
         # "unavailable" hides which: a revision accepted before ADR-367
@@ -716,13 +721,13 @@ def _sweep_line(sweep: dict[str, Any]) -> str:
         # "failing", not "overlapping": since ADR-378 a pair can fail this
         # block by closing below its minimum without ever interpenetrating.
         return "sweep fail: {:d} failing pair(s) over {:d} of {:d} joint(s) swept{:s}".format(
-            int(sweep.get("failing_count") or 0), complete, checked - skipped, suppressed
+            int(sweep.get("failing_count") or 0), complete, checked - skipped, suffix
         )
     if verdict == "incomplete":
         return "sweep incomplete: {:d} of {:d} joint(s) unswept{:s}".format(
-            checked - complete - skipped, checked - skipped, suppressed
+            checked - complete - skipped, checked - skipped, suffix
         )
-    return "sweep pass: {:d} joint(s) swept{:s}".format(complete, suppressed)
+    return "sweep pass: {:d} joint(s) swept{:s}".format(complete, suffix)
 
 
 def _inventory_line(inventory: dict[str, Any]) -> str:

@@ -2301,6 +2301,18 @@ moving, so an older receipt reads as it always did — including under
 ADR-378, whose three narrowing rules are what keep a flagless rigid row from
 failing: it repeats a solved-pose number the static block already judged.
 
+A swept finding against **world geometry** — a pair one side of which the
+static block names `world geometry`, such as a declared floor — is published
+in `world_geometry` (with `world_geometry_count` and a `world_geometry_note`)
+and never in `failing`, so it moves neither `failing_count` nor the verdict
+(ADR-420). Each joint is swept with the rest of the body held at the solved
+pose, so a standing leg's knee drives its foot into the floor by
+construction: that is the stance, not a fit between two parts. Each finding
+carries the engine's reason as `world_geometry: {component, reason}`; the
+joint row's own extrema still include it, and the progress line reads
+`sweep pass: 12 joint(s) swept; 12 against world geometry (advisory)`. A
+printed or purchased pair still fails as above.
+
 None of these is a pass: a joint that was not swept has been checked at one pose
 only. The block is advisory like the static one — a failing swept fit is
 reported, never refused — and the prose report prints it as a `sweep` line

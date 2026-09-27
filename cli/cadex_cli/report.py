@@ -270,6 +270,14 @@ def human_lines(report: RunReport) -> list[str]:
                         str(pair.get("joint") or ""), str(pair.get("status") or ""),
                         _measure(pair.get("minimum_distance_mm")),
                         _measure(pair.get("maximum_common_volume_mm3"))))
+            for pair in sweep.get("world_geometry") or []:
+                # Reported beside the failures, never among them (ADR-420).
+                lines.append(
+                    "  {:s} ∩ {:s} through {:s}: {:s} (world geometry, advisory)  min {:s} mm  max common {:s} mm³".format(
+                        str(pair.get("first") or ""), str(pair.get("second") or ""),
+                        str(pair.get("joint") or ""), str(pair.get("status") or ""),
+                        _measure(pair.get("minimum_distance_mm")),
+                        _measure(pair.get("maximum_common_volume_mm3"))))
     if report.inventory:
         if not report.inventory.get("available"):
             lines.append("inventory  unavailable: " + str(

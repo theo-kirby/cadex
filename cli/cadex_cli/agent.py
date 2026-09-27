@@ -268,7 +268,10 @@ clearance` -- its minimum through the range misses the minimum you declared \
 for it, or 0.1 mm if you declared none -- or on a measurement the engine \
 could not take. A pair you declared a contact, or welded with a fixed \
 joint, is not held to a gap here, and a pair the solved pose already fails \
-is named in the static list instead of twice. \
+is named in the static list instead of twice. A pair against world \
+geometry -- the floor you declared -- is listed in `fit.sweep.world_geometry` \
+and never fails: each joint is swept with the body held still, so a \
+standing leg meets the ground by construction. \
 `inspect scope=clearance path=/clearance_sweep` reads the whole published \
 report, including per-joint timings.
 - The engine validates the geometry itself and refuses what it cannot build, \
