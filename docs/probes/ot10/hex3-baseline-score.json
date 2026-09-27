@@ -1,0 +1,212 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "71a5d55c8f8d1d4c7e6435895581350d53a12052f08b616ffe76f8b128528822"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "5693fe7536fe552b2d6a776b3dc3003d4effb26c14dddfbed99f52c79d6ca0af"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "2a204bc55f20d6dc703f1fbabc4148d3214dc3adb8681a8b760d89797953bfca"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "d7424471ee836f899e2709a0e03677f18962ecbe46acda6060bc569d47628877"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "0f7953e82b7d7ae76d72b950152916def3041542c695b10fe74a115abfdfcd61"
+    }
+  ],
+  "medians": {
+    "T1": 0,
+    "T2": 1,
+    "T3": 0,
+    "T4": 0,
+    "T5": 0,
+    "T6": 0,
+    "T7": 1
+  },
+  "total": 2,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 0,
+          "reason": "There is no enclosure: the servos and all the dark control boards sit exposed on flat orange plates and L-brackets."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "Orange is used for every printed part and dark grey for every bought part, so the two colours follow their roles consistently, but there is no separate accent."
+        },
+        "T3": {
+          "score": 0,
+          "reason": "The rotation axes show only as bare horn discs with straight arms bolted onto exposed servo shafts, with no styled bosses or caps."
+        },
+        "T4": {
+          "score": 0,
+          "reason": "The robot is built from rectangular plates, box-shaped servos and constant-section bars with sharp edges; the only soft shapes are the round bar ends and ball feet."
+        },
+        "T5": {
+          "score": 0,
+          "reason": "The hexapod is symmetric and has no face, head or focal element, so it could be facing either way."
+        },
+        "T6": {
+          "score": 0,
+          "reason": "The layout is flat, wide and sprawling, and the legs are uniform bars ending in small ball tips rather than designed feet."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The render is shaded on a plain light background, but it has no contact shadow, the lighting is flat and the views are high isometric or straight orthographic."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 0, \"reason\": \"There is no enclosure: the servos and all the dark control boards sit exposed on flat orange plates and L-brackets.\"}, \"T2\": {\"score\": 2, \"reason\": \"Orange is used for every printed part and dark grey for every bought part, so the two colours follow their roles consistently, but there is no separate accent.\"}, \"T3\": {\"score\": 0, \"reason\": \"The rotation axes show only as bare horn discs with straight arms bolted onto exposed servo shafts, with no styled bosses or caps.\"}, \"T4\": {\"score\": 0, \"reason\": \"The robot is built from rectangular plates, box-shaped servos and constant-section bars with sharp edges; the only soft shapes are the round bar ends and ball feet.\"}, \"T5\": {\"score\": 0, \"reason\": \"The hexapod is symmetric and has no face, head or focal element, so it could be facing either way.\"}, \"T6\": {\"score\": 0, \"reason\": \"The layout is flat, wide and sprawling, and the legs are uniform bars ending in small ball tips rather than designed feet.\"}, \"T7\": {\"score\": 1, \"reason\": \"The render is shaded on a plain light background, but it has no contact shadow, the lighting is flat and the views are high isometric or straight orthographic.\"}}\n```",
+      "session_id": "2ab64b72-8fd5-409e-9495-376ef795d649",
+      "duration_ms": 21571,
+      "num_turns": 16,
+      "total_cost_usd": 0.121185,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2419,
+          "cacheReadInputTokens": 4305,
+          "cacheCreationInputTokens": 8991,
+          "webSearchRequests": 0,
+          "costUSD": 0.121185,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 770,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 0,
+          "reason": "There is no enclosure: the servos and several control boards sit exposed on a flat orange plate, and the orange hip brackets only partly cover the servos from above."
+        },
+        "T2": {
+          "score": 1,
+          "reason": "It uses two colours, orange for the printed parts and dark grey for the bought hardware, but that follows what each part is rather than a shell-versus-mechanism role, and there is no deliberate accent."
+        },
+        "T3": {
+          "score": 0,
+          "reason": "Every joint is a bare servo horn with a flat arm bolted onto it, with no styled boss, ring or cap on any axis."
+        },
+        "T4": {
+          "score": 0,
+          "reason": "The robot is built from rectangular plates, box servos and constant-section bars with essentially sharp edges."
+        },
+        "T5": {
+          "score": 0,
+          "reason": "The six-legged layout is symmetrical and has no face, so the robot could be facing any direction."
+        },
+        "T6": {
+          "score": 0,
+          "reason": "The layout is flat and sprawling, and the legs are uniform bars with only small ball tips instead of real feet."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The render is shaded, but it has a plain background, no contact shadow and a flat isometric or orthographic view that makes the forms hard to read."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 0, \"reason\": \"There is no enclosure: the servos and several control boards sit exposed on a flat orange plate, and the orange hip brackets only partly cover the servos from above.\"}, \"T2\": {\"score\": 1, \"reason\": \"It uses two colours, orange for the printed parts and dark grey for the bought hardware, but that follows what each part is rather than a shell-versus-mechanism role, and there is no deliberate accent.\"}, \"T3\": {\"score\": 0, \"reason\": \"Every joint is a bare servo horn with a flat arm bolted onto it, with no styled boss, ring or cap on any axis.\"}, \"T4\": {\"score\": 0, \"reason\": \"The robot is built from rectangular plates, box servos and constant-section bars with essentially sharp edges.\"}, \"T5\": {\"score\": 0, \"reason\": \"The six-legged layout is symmetrical and has no face, so the robot could be facing any direction.\"}, \"T6\": {\"score\": 0, \"reason\": \"The layout is flat and sprawling, and the legs are uniform bars with only small ball tips instead of real feet.\"}, \"T7\": {\"score\": 1, \"reason\": \"The render is shaded, but it has a plain background, no contact shadow and a flat isometric or orthographic view that makes the forms hard to read.\"}}",
+      "session_id": "ebe0ac5c-7a6a-43fe-a6c6-9b14e175bf76",
+      "duration_ms": 18734,
+      "num_turns": 16,
+      "total_cost_usd": 0.1064886,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2205,
+          "cacheReadInputTokens": 5623,
+          "cacheCreationInputTokens": 7656,
+          "webSearchRequests": 0,
+          "costUSD": 0.1064886,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 565,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 0,
+          "reason": "There is no enclosure: every servo and control board sits exposed on flat orange plates and brackets."
+        },
+        "T2": {
+          "score": 1,
+          "reason": "Orange printed parts and dark grey bought hardware separate by source, but there is no shell colour role and no deliberate accent, since the orange is used everywhere."
+        },
+        "T3": {
+          "score": 0,
+          "reason": "The rotation axes read as bare servo horns with flat arms bolted on, and none are styled as bosses or caps."
+        },
+        "T4": {
+          "score": 0,
+          "reason": "The robot is built from rectangular plates, L-brackets and constant-section bars with nearly sharp edges."
+        },
+        "T5": {
+          "score": 0,
+          "reason": "The layout is symmetric with no face or focal element, so it could be facing any direction."
+        },
+        "T6": {
+          "score": 0,
+          "reason": "The layout is flat and sprawling, and the legs are uniform bars ending in small ball tips rather than proper feet."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The render is antialiased and shaded on a clean background, but the lighting is flat, there is no contact shadow, and the views are plain isometric and orthographic."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 0, \"reason\": \"There is no enclosure: every servo and control board sits exposed on flat orange plates and brackets.\"}, \"T2\": {\"score\": 1, \"reason\": \"Orange printed parts and dark grey bought hardware separate by source, but there is no shell colour role and no deliberate accent, since the orange is used everywhere.\"}, \"T3\": {\"score\": 0, \"reason\": \"The rotation axes read as bare servo horns with flat arms bolted on, and none are styled as bosses or caps.\"}, \"T4\": {\"score\": 0, \"reason\": \"The robot is built from rectangular plates, L-brackets and constant-section bars with nearly sharp edges.\"}, \"T5\": {\"score\": 0, \"reason\": \"The layout is symmetric with no face or focal element, so it could be facing any direction.\"}, \"T6\": {\"score\": 0, \"reason\": \"The layout is flat and sprawling, and the legs are uniform bars ending in small ball tips rather than proper feet.\"}, \"T7\": {\"score\": 1, \"reason\": \"The render is antialiased and shaded on a clean background, but the lighting is flat, there is no contact shadow, and the views are plain isometric and orthographic.\"}}\n```",
+      "session_id": "db9cbee4-529d-4524-9378-09e39e0ac477",
+      "duration_ms": 19135,
+      "num_turns": 16,
+      "total_cost_usd": 0.1079594,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2283,
+          "cacheReadInputTokens": 5617,
+          "cacheCreationInputTokens": 7645,
+          "webSearchRequests": 0,
+          "costUSD": 0.1079594,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 674,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

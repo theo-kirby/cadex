@@ -27621,3 +27621,44 @@ Regressions:
 - `test_stop_on_collapse_reaches_the_trainer_by_its_real_name`;
 - the walk's train-leg argv assertion;
 - the extended walking-task prompt test.
+
+## ADR-411 — Cadex has a design language, and a frozen blind way to judge it (2026-09-27)
+
+**Context.** ot10's charter asks that a robot the product agent designs
+look like a designed product. hex3, the latest unassisted design, is a
+flat deck of plates with bare boards and square servo boxes. Nothing in
+the repo said what "designed" means beyond the six form rules of the
+ADR-406 overlay, and nothing measured it.
+
+**Decision.**
+- `docs/DESIGN-LANGUAGE.md` is Cadex's design language for small printed
+  servo robots: shell over skeleton, three appearance roles (`shell`,
+  `mechanism`, `accent`) with a default palette, joints as round
+  features with a proposed signature (the Cadex joint cap), a face,
+  proportion and taper, printability, presentation, and the order of
+  design (concept, skeleton, shell, refine with `look`). Each rule cites
+  the owner's core references by filename only. The references stay
+  gitignored and the product agent never sees them.
+- `docs/probes/ot10/README.md` freezes a seven-trait rubric (0–3 each,
+  with anchors), three proxies with thresholds
+  (`hardware_silhouette_share` ≤ 0.20, `sharp_outside_edge_share` ≤ 0.25,
+  `material_count` 2–3), the A5 bar (judged total ≥ 14 of 21, no trait
+  at 0, above hex3, the proxies, the fit gates) and the judging
+  procedure. `contract.json` is its machine-readable copy.
+  `docs/probes/ot10/runner/judge.py` is the procedure: three fresh
+  `claude-opus-5-5` calls with no fallback. Each runs in an empty
+  temporary directory with `Read` as its only tool, no MCP, no user
+  settings, and the rubric as its whole system prompt. It reads the ten
+  core references in place and the candidate's renders under neutral
+  names. Each trait scores the median of the three calls.
+- `cli/tests/test_ot10_contract.py` pins the rubric hash, the thresholds,
+  the procedure's argv and the baseline. Changing any of them is a new
+  decision that re-scores every earlier probe.
+- hex3's accepted design (revision `c1704bfcb631…`) is scored as the
+  baseline from its five `look` views, rendered from a copy outside the
+  read-only project.
+
+**Consequences.** Nothing in the product changed. The language is the
+target for A2 (renderer), A3 (roles and proxies) and A4 (overlay). The
+judge is a model and can drift. Three calls and a median bound its
+variance but do not remove it, and every raw reply is kept.
