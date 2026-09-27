@@ -149,6 +149,32 @@ Under the charter, the product agent never sees any reference, and the
 judge never sees the design language, the prompt, the transcript or the
 design's name.
 
+## A5: the cold prompts
+
+Frozen before the first A5 turn, and copied into `contract.json` as `a5`.
+Each body plan gets exactly one design-only product turn on a new
+`ot10-*` project, with no continuation, no coaching and nothing else in
+the prompt:
+
+    CADEX_EFFORT=medium ./cadex --project <new ot10-* project> \
+        --model claude-opus-5-5 -p "<prompt>" --json
+
+| body plan | prompt |
+|---|---|
+| hexapod | Design a hexapod walking robot using MG90S servos from the catalog (two per leg: hip yaw and knee), a printable body, and the hardware to assemble it. Then declare a training task that teaches it to walk forward on flat ground. |
+| quadruped | Design a quadruped walking robot using MG90S servos from the catalog (two per leg: hip pitch and knee), a printable body, and the hardware to assemble it. Then declare a training task that teaches it to walk forward on flat ground. |
+| biped | Design a biped walking robot using MG90S servos from the catalog (three per leg: hip pitch, knee and ankle), a printable body, and the hardware to assemble it. Then declare a training task that teaches it to walk forward on flat ground. |
+
+The hexapod prompt is hex1–hex3's, word for word, so the only difference
+from the baseline is the product. The other two change only the body plan
+and its joints. None of them says anything about looks: the language
+reaches the agent only through the overlay and the API reference. The
+biped is this run's own choice, because it is the plan furthest from the
+hexapod's flat deck and the one where a face and a silhouette decide the
+most. `medium` is hex2's and hex3's effort, after hex1 stalled at `high`.
+The training task is declared so that W2 can train an A5 design unchanged;
+A5 itself trains nothing.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest

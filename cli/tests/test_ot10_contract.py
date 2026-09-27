@@ -143,3 +143,23 @@ def test_the_proxies_measure_against_the_frozen_bars():
         p2["name"]: {"max": p2["max"]},
         p3["name"]: {"min": p3["min"], "max": p3["max"]},
     }
+
+
+def test_a5_cold_prompts_are_frozen_on_page_and_file():
+    a5 = CONTRACT["a5"]
+    assert (a5["model"], a5["effort"], a5["turns"]) == ("claude-opus-5-5", "medium", 1)
+    assert a5["env"] == {"CADEX_EFFORT": "medium"}
+    assert "--fallback-model" not in a5["argv"]
+    assert a5["argv"][a5["argv"].index("--model") + 1] == "claude-opus-5-5"
+    hex_prompt = ("Design a hexapod walking robot using MG90S servos from the catalog "
+                  "(two per leg: hip yaw and knee), a printable body, and the hardware "
+                  "to assemble it. Then declare a training task that teaches it to walk "
+                  "forward on flat ground.")
+    assert sorted(a5["prompts"]) == ["biped", "hexapod", "quadruped"]
+    # The hexapod prompt is hex1-hex3's, word for word.
+    assert a5["prompts"]["hexapod"] == hex_prompt
+    for plan, prompt in a5["prompts"].items():
+        assert f"| {plan} | {prompt} |" in README
+        # Cold: nothing about looks reaches the product agent from the prompt.
+        for word in ("shell", "face", "colour", "color", "palette", "look", "render"):
+            assert word not in prompt.lower(), (plan, word)

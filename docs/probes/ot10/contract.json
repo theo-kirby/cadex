@@ -90,5 +90,28 @@
         "sha256": "0f7953e82b7d7ae76d72b950152916def3041542c695b10fe74a115abfdfcd61"
       }
     ]
+  },
+  "a5": {
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "argv": [
+      "./cadex",
+      "--project",
+      "<new ot10-* project>",
+      "--model",
+      "claude-opus-5-5",
+      "-p",
+      "<prompt>",
+      "--json"
+    ],
+    "env": {
+      "CADEX_EFFORT": "medium"
+    },
+    "turns": 1,
+    "prompts": {
+      "hexapod": "Design a hexapod walking robot using MG90S servos from the catalog (two per leg: hip yaw and knee), a printable body, and the hardware to assemble it. Then declare a training task that teaches it to walk forward on flat ground.",
+      "quadruped": "Design a quadruped walking robot using MG90S servos from the catalog (two per leg: hip pitch and knee), a printable body, and the hardware to assemble it. Then declare a training task that teaches it to walk forward on flat ground.",
+      "biped": "Design a biped walking robot using MG90S servos from the catalog (three per leg: hip pitch, knee and ankle), a printable body, and the hardware to assemble it. Then declare a training task that teaches it to walk forward on flat ground."
+    }
   }
 }
