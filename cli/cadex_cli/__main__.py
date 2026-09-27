@@ -434,6 +434,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _remote_flags(train_parser)
     _grounding_flag(train_parser)
+    train_parser.add_argument(
+        "--stop-on-collapse", dest="stop_on_collapse", action="store_true",
+        default=False,
+        help="Stop training, with the reason, once the mean episode has "
+        "collapsed: the policy is ending its own episodes (ADR-410). "
+        "`cadex walk` always passes it.",
+    )
 
     smoke_parser = subparsers.add_parser(
         "smoke",
@@ -1501,6 +1508,7 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         init_from=args.init_from,
         init_from_parent_task=args.init_from_parent_task,
         init_from_task_change=args.init_from_task_change,
+        stop_on_collapse=args.stop_on_collapse,
     )
     if args.remote:
         # Blocking dispatch returns a policy; detached dispatch returns
@@ -1973,7 +1981,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             "--detach" if args.detach else "--put",
             "--iterations", str(int(args.iterations)), "--envs", str(int(args.envs)),
             "--seed", str(int(args.seed)), "--timeout", str(float(args.timeout)),
-            "--json",
+            # An unattended walk does not spend hours training a policy that
+            # has learned to end its own episodes (ADR-410).
+            "--stop-on-collapse", "--json",
         ]
         for flag, value in (
             ("--label", args.label), ("--name", args.policy_name),
@@ -2146,10 +2156,19 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         except RuntimeError as exc:
             known["param_specs"] = None
             known["specs_source"] = f"unavailable: {exc}"
-        render_path, rendering = write_render(
-            client, report.project_root, expected_revision=report.accepted_revision,
-            accepted_snapshot=accepted_snapshot,
-        )
+        # A picture the renderer cannot draw is a missing picture, not a
+        # failed walk: hex2 and hex3 both lost their whole review, gait
+        # verdict included, to a render refusal (ADR-410).
+        try:
+            render_path, rendering = write_render(
+                client, report.project_root, expected_revision=report.accepted_revision,
+                accepted_snapshot=accepted_snapshot,
+            )
+        except InventoryError as exc:
+            render_path = None
+            rendering = {"revision": accepted_snapshot[1]["revision"],
+                         "objects": accepted_snapshot[1]["objects"],
+                         "reason": str(exc)}
         # The offset is derived from the accepted bounds rather than fixed:
         # a constant misses whatever is not on it, and reports `ok` while
         # doing so (ADR-267). `cadex section` keeps the explicit surface.
@@ -2164,7 +2183,12 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     review["render"] = {
         "available": True, **rendering,
         "path": render_path.relative_to(Path(report.project_root)).as_posix(),
+    } if render_path is not None else {
+        "available": False, "revision": rendering["revision"], "reason": rendering["reason"],
     }
+    if render_path is None:
+        report.notes.append("render: unavailable ({:s}); the rest of the review stands.".format(
+            rendering["reason"]))
     review["section"] = {
         **section, "summary_path": section_path.relative_to(Path(report.project_root)).as_posix(),
     }

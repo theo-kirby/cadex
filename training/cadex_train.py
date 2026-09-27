@@ -782,6 +782,44 @@ def resolved_command_slew_deg(options) -> float:
     return value if value > 0.0 else 0.0
 
 
+#: When a run has learned to end its own episodes (ADR-410). hex3
+#: (2026-09-26) paid a net-negative reward for every step it survived, and
+#: its mean episode fell from 28 steps to 2 of a 200-step horizon by
+#: iteration ~80, then trained on for seven hours while reward/step "rose".
+#: Iteration 0 is not in the baseline: no episode has ended by then, and the
+#: trainer reports the whole unroll.
+COLLAPSE_BASELINE = (1, 11)
+COLLAPSE_WINDOW = 50
+COLLAPSE_FRACTION = 0.05
+
+
+def episode_collapse(curve: Sequence[dict[str, Any]], horizon: int) -> str:
+    """Why the run's episodes have collapsed, or ``""`` when they have not.
+
+    Collapsed means every one of the last :data:`COLLAPSE_WINDOW` iterations
+    averaged under both :data:`COLLAPSE_FRACTION` of the horizon and half of
+    the run's own early episode length: the policy is not failing to learn,
+    it is learning that ending the episode pays.
+    """
+
+    first, last = COLLAPSE_BASELINE
+    lengths = [min(float(entry["episode_steps"]), float(horizon)) for entry in curve]
+    if len(lengths) < last + COLLAPSE_WINDOW:
+        return ""
+    baseline = sum(lengths[first:last]) / (last - first)
+    window = lengths[-COLLAPSE_WINDOW:]
+    if max(window) >= min(COLLAPSE_FRACTION * horizon, 0.5 * baseline):
+        return ""
+    return (
+        f"episodes collapsed: the last {COLLAPSE_WINDOW} iterations averaged "
+        f"at most {max(window):.1f} of {horizon} steps, against {baseline:.1f} "
+        f"early in the run. The policy is ending its own episodes, which "
+        "means a surviving step is worth less than a termination: add a "
+        "positive per-step reward (an alive bonus) and size the costs so "
+        "standing still nets positive."
+    )
+
+
 def train(
     bundle: dict[str, Any],
     options: argparse.Namespace,
@@ -1779,6 +1817,7 @@ def train(
     # would have saved thirty of that run's seventy-six minutes.
     best = {"reward_per_step": -math.inf, "iteration": -1,
             "params": None, "mean": None, "variance": None, "written": -1}
+    collapsed = ""
     for iteration in range(total_iterations):
         (params, moment1, moment2, state, mean, variance, seen, key, step,
          average, last_loss, mean_steps) = iterate(
@@ -1800,6 +1839,16 @@ def train(
                  # than reading it off a finished checkpoint.
                  "action_std": float(jnp.mean(jnp.exp(params["log_std"])))}
         curve.append(entry)
+        if not collapsed:
+            collapsed = episode_collapse(curve, horizon)
+            if collapsed:
+                print(f"iteration {iteration}: {collapsed}", file=sys.stderr)
+                if getattr(options, "stop_on_collapse", False):
+                    progress(state="training", iteration=iteration,
+                             total=total_iterations, curve=curve, best=best,
+                             wall=time.perf_counter() - started,
+                             device=jax.default_backend(), warning=collapsed)
+                    raise SystemExit(f"Stopped at iteration {iteration}: {collapsed}")
         if not options.quiet:
             print(
                 f"iteration {iteration:4d}  reward/step {entry['reward_per_step']:+.6g}"
@@ -1865,6 +1914,7 @@ def train(
             best=best,
             wall=elapsed_wall,
             device=jax.default_backend(),
+            warning=collapsed,
         )
 
     wall = time.perf_counter() - started
@@ -2224,6 +2274,11 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
             "--init-from-task-change"
         ),
     )
+    parser.add_argument(
+        "--stop-on-collapse", action="store_true",
+        help="stop, with the reason, once the mean episode has collapsed "
+             "(episode_collapse). Without it the collapse is only reported, "
+             "on stderr and as progress.json's warning")
     parser.add_argument("--label", default="")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument(
@@ -2377,6 +2432,9 @@ def main(argv: Sequence[str]) -> int:
             "label": str(options.label or ""),
             "checkpoints": list(written),
             "error": str(fields.get("error", "")),
+            # Additive under the same schema (ADR-410): the collapse the run
+            # has detected, readable while it is still going.
+            "warning": str(fields.get("warning", "")),
         }
         write_atomically(
             progress_path,

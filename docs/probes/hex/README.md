@@ -1,6 +1,6 @@
 # hex — one unassisted hexapod, end to end (2026-09-25/26)
 
-Verified against source: 2026-09-26. Provenance: `[Cadex-new]`.
+Verified against source: 2026-09-27. Provenance: `[Cadex-new]`.
 
 The owner's question was whether the product, left alone, can take one
 prompt to a robot that walks: "design a hexapod walking robot using MG90S
@@ -15,6 +15,7 @@ watching; this page is the summary.
 |---|---|---|
 | hex1 | none (effort `high`) | **Failed in design.** Four consecutive 32k-token thinking passes, no tool call, then Claude Code gave up (33 min). Nothing designed. [`hex1-GAPS.md`](hex1-GAPS.md) |
 | hex2 | `CADEX_EFFORT=medium` | **Designed, trained, did not walk.** 1 h 16 min to an accepted 38-component design (12 × MG90S, sweep pass); 3.7 h training; the seed-0 rollout tumbles 5 m along +X with ±170° yaw swings. Review leg died on the renderer's triangle cap. [`hex2-GAPS.md`](hex2-GAPS.md) |
+| hex3 | ADR-406–409 on `main` @ `908af995` | **Designed in 41 min with electronics and grounded sensors, then learned to fall over.** The task paid a negative reward per surviving step, so the policy slumps and trips a termination at step 1; it trained 7.2 h at 2 steps per episode. `look` and the review were both refused by the render cap (589,268 triangles). [`hex3-GAPS.md`](hex3-GAPS.md) |
 
 ![hex2 as the dashboard showed it](shots/hex2-iso.png)
 
@@ -28,6 +29,7 @@ watching; this page is the summary.
 | Twelve servos and no controller, driver, IMU or power | ADR-407 catalog rows and overlay |
 | The policy read joint angles an MG90S cannot report and a CoM velocity nothing measures | ADR-408 sensors, roles, asymmetric actor-critic, refusal at training |
 | The task paid for tumbling; the walk called a 5 m tumble a verified run; servo speed was a hand-picked damping | ADR-409 `gait` review block, `servo.joint_dynamics`, walking-task overlay |
+| hex3: `look` and the review refused at 589k triangles; the task paid for ending episodes; training ran on for 7 h after collapsing | ADR-410 render decimation, review survives a render failure, alive-bonus rule, `--stop-on-collapse` |
 
 ## Still open (from the logs)
 

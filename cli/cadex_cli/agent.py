@@ -353,10 +353,18 @@ of the way to vertical: reward it, and add \
 body tilted past 45 degrees ends the episode.
 - Forward progress is bounded. Pick a target speed you can defend from \
 the stride and the servo's rated speed, state it in a `DECISION:` line, and \
-reward closeness to it (`-abs(comv_x / 60 - 1)` for 60 mm/s) or a \
-saturating term (`tanh(comv_x / 60)`), never raw speed. Keep every term of \
+charge the distance from it (`abs(comv_x / 60 - 1)` with a negative \
+weight, for 60 mm/s) or reward a saturating term (`tanh(comv_x / 60)`), \
+never raw speed. Keep every term of \
 order one.
 - Hold the heading: charge yaw rate (`abs(gyro_z)`) and sideways speed.
+- A step that survives must be worth more than ending the episode. With \
+any termination declared, a policy whose steps net negative learns to \
+trip the termination at once: hex3 slumped its body 20 mm in one step and \
+trained to two-step episodes for seven hours. Add a constant alive bonus \
+(`assembly.reward("1", weight=2.0, label="alive")`), write every cost as \
+a positive quantity with a negative weight, and size the weights so that \
+standing still nets a clearly positive reward per step.
 - The walk judges the rollout on the body's tilt and heading and on how \
 long training episodes lasted, never on total reward, and reports a robot \
 that tipped or spun as one that did not walk.

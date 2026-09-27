@@ -71,7 +71,7 @@ def test_refuses_bad_or_excessive_snapshot(tmp_path, monkeypatch, failure):
     elif failure == 'bytes':
         monkeypatch.setattr(render, 'MAX_BYTES', 10)
     elif failure == 'triangles':
-        monkeypatch.setattr(render, 'MAX_TRIANGLES', 0)
+        monkeypatch.setattr(render, 'MAX_INPUT_TRIANGLES', 0)
     with pytest.raises(InventoryError, match='render:'):
         render.snapshot(reply)
 
@@ -189,3 +189,57 @@ def test_real_part_only_and_empty_refusal(engine, tmp_path, capsys):
     assert main(['render', '--project', str(root), '--json']) == 0
     capsys.readouterr()
     assert (root / 'review/render/iso.svg').read_bytes() == first
+
+
+def grid_reply(tmp_path, n=40):
+    """A flat n x n grid of 2*n*n triangles, 10 mm square, as one source."""
+    vertices = [(10 * i / n, 10 * j / n, 0) for j in range(n + 1) for i in range(n + 1)]
+    tris = []
+    for j in range(n):
+        for i in range(n):
+            a = j * (n + 1) + i
+            tris += [(a, a + 1, a + n + 2), (a, a + n + 2, a + n + 1)]
+    data = b''.join(struct.pack('<3f', *v) for v in vertices)
+    data += b''.join(struct.pack('<3I', *t) for t in tris)
+    binary, side = tmp_path / 'grid.bin', tmp_path / 'grid.json'
+    binary.write_bytes(data)
+    side.write_text(json.dumps({'schema': 'cadex-tessellation-v1', 'byte_order': 'little',
+                               'layout': {'vertices': {'offset': 0, 'bytes': 12 * len(vertices), 'dtype': 'f32'},
+                                          'triangles': {'offset': 12 * len(vertices), 'bytes': 12 * len(tris), 'dtype': 'u32'}}}))
+    return {'ok': True, 'revision': 'a'*64, 'accepted_revision': 'a'*64,
+            'display': {'grid': {'tessellation': {'artifact_path': str(binary), 'sidecar_path': str(side)}}}}
+
+
+def test_over_budget_geometry_is_clustered_not_refused(tmp_path, monkeypatch):
+    """ADR-410: hex3's 589,268 triangles were refused; now they are drawn."""
+    reply = grid_reply(tmp_path)
+    full, summary = render.snapshot(reply)
+    assert len(full) == 3200 and summary['decimation'] is None
+    monkeypatch.setattr(render, 'MAX_TRIANGLES', 1000)
+    fewer, summary = render.snapshot(reply)
+    assert 0 < len(fewer) <= 1000
+    assert summary['decimation']['input_triangles'] == 3200
+    assert summary['objects']['grid']['triangles'] == len(fewer)
+    # The outline survives: the same square is covered, give or take a cell.
+    before = render.rasterize(full, render.BASES['top'])[1]['covered_pixels']
+    after = render.rasterize(fewer, render.BASES['top'])[1]['covered_pixels']
+    assert after == pytest.approx(before, rel=0.05)
+
+
+def test_clustering_that_cannot_reach_the_budget_still_refuses(tmp_path, monkeypatch):
+    monkeypatch.setattr(render, 'MAX_TRIANGLES', 0)
+    with pytest.raises(InventoryError, match='triangle budget exceeded'):
+        render.snapshot(grid_reply(tmp_path, n=4))
+
+
+def test_the_pixel_budget_scales_with_the_image_area(monkeypatch):
+    """hex3's 768 px `look` needed 20.27M visits against a 20M 512 px budget."""
+    tri = ((200, 10, 10), ((0, 0, 0), (10, 0, 0), (0, 10, 0)))
+    large = render.rasterize([tri], render.BASES['top'], size=2 * render.SIZE)[1]['pixel_visits']
+    # A budget the doubled image exceeds unscaled, and fits once scaled by 4.
+    monkeypatch.setattr(render, 'MAX_SAMPLES', large // 4 + 1)
+    assert large > render.MAX_SAMPLES
+    render.rasterize([tri], render.BASES['top'], size=2 * render.SIZE)
+    monkeypatch.setattr(render, 'MAX_SAMPLES', large // 4 - 1)
+    with pytest.raises(InventoryError, match='pixel work'):
+        render.rasterize([tri], render.BASES['top'], size=2 * render.SIZE)

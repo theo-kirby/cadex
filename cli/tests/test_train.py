@@ -1201,3 +1201,14 @@ def test_training_refuses_a_design_changed_after_review_retention(
     assert code == EXIT_REJECTED, envelope
     assert 'design changed after review inputs were retained' in envelope['error']
     assert not (run / 'train/job.cxpolicy').exists()
+
+
+def test_stop_on_collapse_reaches_the_trainer_by_its_real_name() -> None:
+    """ADR-410: the flag is passed only when asked for, so a plain
+    `cadex train` runs exactly the trainer command it always did."""
+
+    from cadex_cli.train import trainer_flags
+
+    plain = trainer_flags(iterations=2, envs=3)
+    assert "--stop-on-collapse" not in plain
+    assert trainer_flags(iterations=2, envs=3, stop_on_collapse=True)[-1] == "--stop-on-collapse"
