@@ -200,6 +200,42 @@ INVENTORY_SOURCE = (
 )
 
 
+def printed_edges(
+    components: Sequence[Mapping[str, Any]], uncatalogued: Sequence[str]
+) -> dict[str, Any]:
+    """P2's inputs summed over the printed components (ADR-415).
+
+    Every placed component whose output no ``lib.*`` generator built as-is
+    counts once per placement: two legs from one output are two printed
+    solids. The engine reports each output's solid edge length and the
+    sharp convex part of it (``sharp_edges``); a printed output without
+    that fact (a mesh, or a revision built before it existed) is named
+    under ``unmeasured`` rather than counted as smooth.
+    """
+
+    printed = set(uncatalogued)
+    total = sharp = 0.0
+    measured: list[str] = []
+    unmeasured: list[str] = []
+    for row in components:
+        if str(row.get("source_output") or "") not in printed:
+            continue
+        name = str(row.get("component") or "")
+        facts = (row.get("source_facts") or {}).get("sharp_edges")
+        if not isinstance(facts, Mapping):
+            unmeasured.append(name)
+            continue
+        total += float(facts.get("edge_length_mm") or 0.0)
+        sharp += float(facts.get("sharp_convex_length_mm") or 0.0)
+        measured.append(name)
+    return {
+        "edge_length_mm": round(total, 3),
+        "sharp_convex_length_mm": round(sharp, 3),
+        "measured": sorted(measured),
+        "unmeasured": sorted(unmeasured),
+    }
+
+
 def inventory_summary(value: Any) -> dict[str, Any]:
     """The catalog identity of a build as its reply carries it (ADR-362).
 
@@ -267,6 +303,7 @@ def inventory_summary(value: Any) -> dict[str, Any]:
             str(role): str(colour)
             for role, colour in dict(value.get("palette") or {}).items()
         },
+        "printed_edges": printed_edges(components, uncatalogued),
     }
     if not assembly:
         summary["note"] = (

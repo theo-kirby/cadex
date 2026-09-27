@@ -335,6 +335,7 @@ class Bridge:
                     triangles, summary, exclude=world, purchased=purchased,
                     appearance=appearance, palette=palette,
                 )
+                proxies["sharp_outside_edge_share"] = render.edge_proxy(inventory)
             except InventoryError as exc:
                 call = ToolCall("look", dict(arguments), False, str(exc))
                 self._record(call)
@@ -357,11 +358,13 @@ class Bridge:
                 ),
                 "components_drawn": len(summary["objects"]) - len(world & set(summary["objects"])),
                 # The design-language measures (docs/DESIGN-LANGUAGE.md):
-                # how much of the hero silhouette is bought hardware, and how
-                # many materials it shows, each against its bar.
+                # how much of the hero silhouette is bought hardware, how
+                # much printed outside edge is left sharp, and how many
+                # materials it shows, each against its bar.
                 "measures": {
                     key: {k: proxies[key][k] for k in ("value", "bar", "meets")}
-                    for key in ("hardware_silhouette_share", "material_count")
+                    for key in ("hardware_silhouette_share", "sharp_outside_edge_share",
+                                "material_count")
                 },
                 "triangles": summary["triangles"],
                 "approximation": "orthographic studio render of the tessellation at the solved "

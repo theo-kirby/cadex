@@ -1921,7 +1921,7 @@ four studio views and the 1024 px hero take 6.5 s together, the hero 2.2 s
 (ADR-412), after a 207 s rebuild to acquire the tessellation. A render that still fails in a walk's review is recorded as
 `render.available: false` with the reason, and the rest of the review stands.
 
-**The design-language proxies (ADR-414).** `summary.proxies` measures two of
+**The design-language proxies (ADR-414, ADR-415).** `summary.proxies` measures two of
 A1's frozen proxies (`docs/probes/ot10/README.md`) from the drawn design in
 the hero view: `hardware_silhouette_share` (P1), of the subsamples the design
 covers, the fraction whose front-most surface is a purchased component, and
@@ -1931,8 +1931,15 @@ hero is measured by a depth pass alone at 512 px and 2×2 subsamples
 (`render.PROXY_SIZE`), whatever size it is drawn at, so `render`, `look` and
 review agree. Environment geometry is left out as in the image. With no
 readable inventory nothing says what was purchased, and P1's `value` and
-`meets` are `null` with a `reason`. P2, the sharp printed outside edges, is
-a BREP measure and is not reported here yet.
+`meets` are `null` with a `reason`. The third, `sharp_outside_edge_share`
+(P2), is a BREP measure read from the inventory rather than the image: the
+engine reports each output's solid edge length and the sharp convex part of
+it (`source_facts.sharp_edges`), and the CLI sums both over the printed
+components, once per placement, and divides. A printed part with no such fact
+(a mesh, or a revision accepted before ADR-415) makes P2 `null` with a
+`reason` naming it rather than a false zero; with no printed edges it is 0.
+The agent's `look` reports all three under `measures`, and each report adds
+one `measures:` line.
 
 The CLI snapshots buffers while holding its project lock, before any further
 engine request can invalidate attempt paths. The shell does not share this

@@ -77,9 +77,11 @@ FINISH = {'shell': (0.16, 20.0), 'mechanism': (0.30, 16.0), 'accent': (0.22, 28.
 #: A tessellation corner keeps its face's normal when the smoothed normal
 #: turns further than this from it: fillets shade smooth, box edges stay crisp.
 CREASE_DEGREES = 40.0
-#: A1's frozen bars for the image proxies (docs/probes/ot10/contract.json;
-#: test_ot10_contract holds them equal). P2 is a BREP measure, not an image one.
-PROXY_BARS = {'hardware_silhouette_share': {'max': 0.2}, 'material_count': {'min': 2, 'max': 3}}
+#: A1's frozen bars for the proxies (docs/probes/ot10/contract.json;
+#: test_ot10_contract holds them equal). P2 is a BREP measure, read from the
+#: inventory rather than the image.
+PROXY_BARS = {'hardware_silhouette_share': {'max': 0.2}, 'sharp_outside_edge_share': {'max': 0.25},
+              'material_count': {'min': 2, 'max': 3}}
 #: The hero is measured at this size, whatever size it is drawn at.
 PROXY_SIZE = 512
 BACKDROP_TOP = (208, 211, 216)
@@ -574,6 +576,30 @@ def design_proxies(triangles, summary, *, exclude=(), purchased=None, appearance
     }
 
 
+def edge_proxy(inventory):
+    """A1's P2 ``sharp_outside_edge_share`` from the inventory block (ADR-415).
+
+    Sharp convex edge length over total solid edge length, summed over the
+    printed components as the engine measured them. ``None`` with a reason
+    when there is no inventory to say what was printed, or when a printed
+    part carries no edge measurement (zero would be a false pass). With no
+    printed edges at all the share is 0, as frozen.
+    """
+    bar = PROXY_BARS['sharp_outside_edge_share']
+    edges = (inventory or {}).get('printed_edges') if inventory and inventory.get('available', True) else None
+    if not isinstance(edges, dict):
+        return {'value': None, 'bar': dict(bar), 'meets': None,
+                'reason': 'no inventory to tell printed from purchased'}
+    result = {'bar': dict(bar), 'edge_length_mm': edges['edge_length_mm'],
+              'sharp_convex_length_mm': edges['sharp_convex_length_mm'],
+              'printed_components': len(edges['measured']) + len(edges['unmeasured'])}
+    if edges['unmeasured']:
+        return {**result, 'value': None, 'meets': None, 'unmeasured': list(edges['unmeasured']),
+                'reason': 'printed parts with no edge measurement: ' + ', '.join(edges['unmeasured'])}
+    share = edges['sharp_convex_length_mm'] / edges['edge_length_mm'] if edges['edge_length_mm'] else 0.0
+    return {**result, 'value': round(share, 4), 'meets': share <= bar['max']}
+
+
 def _unit(v):
     length = math.sqrt(sum(c*c for c in v))
     return tuple(c / length for c in v)
@@ -736,6 +762,7 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
     summary['render_seconds'] = time.perf_counter() - start
     summary['proxies'] = design_proxies(triangles, summary, exclude=environment, purchased=purchased,
                                         appearance=appearance, palette=palette)
+    summary['proxies']['sharp_outside_edge_share'] = edge_proxy(inventory)
     files['summary.json'] = json.dumps(summary, indent=2) + '\n'
     # Do not leave partial new views on geometry/render refusal.
     directory = Path(root) / relative_dir
@@ -752,10 +779,16 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
 
 
 def describe_proxies(proxies):
-    """One line for a report: each image proxy's value against its bar."""
+    """One line for a report: each proxy's value against its bar."""
     p1, p3 = proxies['hardware_silhouette_share'], proxies['material_count']
-    share = 'unmeasured (' + p1['reason'] + ')' if p1['value'] is None else (
-        '{:.1%} ({:s} {:.0%})'.format(p1['value'], 'meets' if p1['meets'] else 'over', p1['bar']['max']))
-    return 'hardware share of hero silhouette {:s}; {:d} material(s) {:s} ({:s} {:d}-{:d})'.format(
-        share, p3['value'], ', '.join(p3['materials']), 'meets' if p3['meets'] else 'outside',
+
+    def share(proxy):
+        return 'unmeasured (' + proxy['reason'] + ')' if proxy['value'] is None else (
+            '{:.1%} ({:s} {:.0%})'.format(proxy['value'], 'meets' if proxy['meets'] else 'over',
+                                          proxy['bar']['max']))
+    edges = ''
+    if 'sharp_outside_edge_share' in proxies:
+        edges = '; sharp printed outside edges ' + share(proxies['sharp_outside_edge_share'])
+    return 'hardware share of hero silhouette {:s}{:s}; {:d} material(s) {:s} ({:s} {:d}-{:d})'.format(
+        share(p1), edges, p3['value'], ', '.join(p3['materials']), 'meets' if p3['meets'] else 'outside',
         p3['bar']['min'], p3['bar']['max'])

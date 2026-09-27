@@ -567,7 +567,7 @@ def _load_assembly_hierarchy(root: Path, value: Any, *, context: str) -> dict[st
             # Counts only: this check reads seven count fields and never a
             # subelement detail, so computing 32 face + 32 edge details for
             # it was pure waste.
-            facts = part_shape_facts(shape, max_subelements=0)
+            facts = part_shape_facts(shape, max_subelements=0, edge_convexity=False)
             reported = shape_artifact.get("facts")
             if not isinstance(reported, dict):
                 raise ValueError(f"{node_context} BREP has no topology facts.")
@@ -789,7 +789,7 @@ def configure_assembly_references(
             {"document_uid": key[0], "object_name": key[1]}
         )
         # Counts only, as above.
-        facts = part_shape_facts(shape, max_subelements=0)
+        facts = part_shape_facts(shape, max_subelements=0, edge_convexity=False)
         if facts["null"] or not facts["valid"] or int(facts["solids"]) < 1:
             raise ValueError(
                 f"Assembly component reference {key[1]!r} must contain at least "

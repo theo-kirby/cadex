@@ -456,4 +456,54 @@ def test_render_and_bridge_look_report_the_proxies(tmp_path, monkeypatch):
         bridge.state.last_inventory = _declared_inventory()
         facts = json.loads(bridge.call('look', {'views': ['top']})['content'][0]['text'])
     assert facts['measures'] == {key: {k: proxies[key][k] for k in ('value', 'bar', 'meets')}
-                                 for key in ('hardware_silhouette_share', 'material_count')}
+                                 for key in ('hardware_silhouette_share', 'sharp_outside_edge_share',
+                                             'material_count')}
+    # This inventory carries no edge facts, so P2 says why rather than passing.
+    assert proxies['sharp_outside_edge_share']['value'] is None
+
+
+def _edge_inventory(printed):
+    """An inventory as the engine reads it: ``printed`` maps a component to
+    its output's (edge length, sharp convex length), or ``None`` for none
+    measured; a purchased servo's sharp edges are always there to ignore."""
+    from cadex_cli.inventory import inventory_summary
+    rows = [{'component': 'c_servo', 'source_output': 'servo',
+             'catalog': {'family': 'servos', 'part_number': 'MG90S'},
+             'source_facts': {'sharp_edges': {'edge_length_mm': 500.0, 'sharp_convex_length_mm': 500.0}}}]
+    for name, edges in printed.items():
+        facts = {} if edges is None else {
+            'sharp_edges': {'edge_length_mm': edges[0], 'sharp_convex_length_mm': edges[1]}}
+        rows.append({'component': name, 'source_output': 'o_' + name, 'source_facts': facts})
+    return inventory_summary({'revision': 'r' * 64, 'assembly': 'asm', 'components': rows,
+                              'catalog_counts': {'servos/MG90S': 1},
+                              'uncatalogued_sources': ['o_' + name for name in printed]})
+
+
+def test_sharp_outside_edge_share_fails_bare_boxes_and_passes_a_blended_shell():
+    """P2 (ADR-415): bare printed boxes are all sharp edge; the same parts
+    filleted are none of it. Purchased edges never count, and a printed
+    part placed twice counts twice."""
+    crude = render.edge_proxy(_edge_inventory({'deck': (280.0, 280.0), 'leg': (140.0, 140.0)}))
+    assert crude['value'] == 1.0 and crude['meets'] is False and crude['bar'] == {'max': 0.25}
+    designed = render.edge_proxy(_edge_inventory({'deck': (529.1, 0.0), 'leg': (300.0, 40.0)}))
+    assert designed['value'] == pytest.approx(40.0 / 829.1, abs=1e-4) and designed['meets'] is True
+    assert designed['printed_components'] == 2 and designed['edge_length_mm'] == 829.1
+    twice = _edge_inventory({'leg_a': (100.0, 50.0), 'leg_b': (100.0, 50.0), 'deck': (200.0, 0.0)})
+    assert render.edge_proxy(twice)['value'] == 0.25
+    # Nothing printed: zero, as frozen.
+    assert render.edge_proxy(_edge_inventory({}))['value'] == 0.0
+
+
+def test_sharp_outside_edge_share_is_unmeasured_rather_than_zero():
+    unmeasured = render.edge_proxy(_edge_inventory({'deck': (280.0, 0.0), 'skin': None}))
+    assert unmeasured['value'] is None and unmeasured['meets'] is None
+    assert unmeasured['unmeasured'] == ['skin'] and 'skin' in unmeasured['reason']
+    for missing in (None, {'available': False}):
+        none = render.edge_proxy(missing)
+        assert none['value'] is None and 'no inventory' in none['reason']
+    line = render.describe_proxies({
+        'hardware_silhouette_share': {'value': 0.1, 'meets': True, 'bar': {'max': 0.2}},
+        'sharp_outside_edge_share': render.edge_proxy(_edge_inventory({'deck': (100.0, 60.0)})),
+        'material_count': {'value': 2, 'materials': ['#000000', '#FFFFFF'], 'meets': True,
+                           'bar': {'min': 2, 'max': 3}}})
+    assert 'sharp printed outside edges 60.0% (over 25%)' in line

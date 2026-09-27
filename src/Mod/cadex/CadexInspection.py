@@ -1067,6 +1067,8 @@ _INVENTORY_FACT_KEYS = (
     "area_mm2",
     "bounds_mm",
     "center_of_mass_mm",
+    # P2's inputs (ADR-415): solid edge length, and how much of it is sharp.
+    "sharp_edges",
 )
 
 
