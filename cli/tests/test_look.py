@@ -175,7 +175,8 @@ def test_bridge_look_returns_images_from_the_accepted_build(tmp_path):
         facts = json.loads(text['text'])
         assert facts['left_out_as_environment'] == ['c_floor']
         assert facts['views'] == ['iso', 'top']
-        assert facts['colours'].startswith('bone = printed (shell)')
+        assert facts['colours'].startswith('by appearance role: shell #E9E6DF')
+        assert '0 component(s) declare a role' in facts['colours']
         assert [image['type'] for image in images] == ['image', 'image']
         assert base64.b64decode(images[0]['data'])[:4] == b'\x89PNG'
         assert bridge.state.calls[-1].op == 'look' and bridge.state.calls[-1].ok
@@ -307,3 +308,64 @@ def test_render_writes_a_1024_px_studio_hero(tmp_path):
     # No inventory: every object in its index colour, the floor still drawn.
     assert summary['environment'] == [] and set(summary['appearance']) == set(summary['objects'])
     assert json.loads((path.parent / 'summary.json').read_text())['hero']['size'] == 1024
+
+
+def _teal(pixel):
+    """A lit shade of the teal accent #179C98: green and blue well above red."""
+    return pixel[1] - pixel[0] > 50 and pixel[2] - pixel[0] > 50
+
+
+def _declared_inventory():
+    """An inventory block as the engine carries a script's declared look (ADR-413)."""
+    return {'available': True, 'uncatalogued_sources': ['floor', 'body'],
+            'appearance': {'c_pin': 'accent', 'c_body': 'shell'},
+            'palette': {'shell': '#C9AE86', 'accent': '#179C98'}}
+
+
+def test_declared_reads_roles_and_palette_from_the_inventory_block():
+    appearance, palette = render.declared(_declared_inventory())
+    assert appearance == {'c_pin': 'accent', 'c_body': 'shell'}
+    assert palette == {'shell': (201, 174, 134), 'accent': (23, 156, 152)}
+    # Nothing declared, or nothing readable: supplier decides, as before.
+    assert render.declared(None) == ({}, {})
+    assert render.declared({'available': False, 'appearance': {'c_pin': 'accent'}}) == ({}, {})
+    with pytest.raises(InventoryError, match='invalid palette colour'):
+        render.declared({'palette': {'shell': 'bone'}})
+
+
+def test_render_draws_the_declared_role_in_the_declared_palette(tmp_path, monkeypatch):
+    """The purchased pin is declared accent: it is drawn teal, not graphite,
+    and the summary says the role was declared rather than inferred."""
+    (tmp_path / 'mesh').mkdir()
+    reply = _reply(tmp_path / 'mesh')
+
+    class Client:
+        def request(self, op, args=None):
+            return reply
+
+    fit = {'failing': [{'first': 'c_floor', 'second': '', 'status': 'world geometry'}]}
+    monkeypatch.setattr(render, '_published_blocks', lambda client: [fit, _declared_inventory()])
+    path, summary = render.write_render(Client(), tmp_path / 'project')
+    assert summary['appearance'] == {
+        'c_body': {'role': 'shell', 'color': '#C9AE86', 'source': 'declared'},
+        'c_pin': {'role': 'accent', 'color': '#179C98', 'source': 'declared'},
+    }
+    assert summary['palette'] == {'shell': '#C9AE86', 'mechanism': '#2F3237', 'accent': '#179C98'}
+    _, rows = _pixels((path.parent / 'hero.png').read_bytes())
+    pixels = [tuple(row[i:i + 3]) for row in rows for i in range(0, len(row), 3)]
+    assert sum(_teal(p) for p in pixels) > 1000
+    assert sum(max(p) < 90 and max(p) - min(p) < 20 for p in pixels) < 50  # no graphite pin
+
+
+def test_bridge_look_draws_and_reports_the_declared_roles(tmp_path):
+    with Bridge(FakeCadexd()) as bridge:
+        bridge.state.last_accepted = _reply(tmp_path)
+        bridge.state.last_fit = {'failing': [{'first': 'c_floor', 'second': '', 'status': 'world geometry'}]}
+        bridge.state.last_inventory = _declared_inventory()
+        result = bridge.call('look', {'views': ['iso']})
+        text, image = result['content']
+        facts = json.loads(text['text'])
+        assert 'shell #C9AE86' in facts['colours'] and 'accent #179C98' in facts['colours']
+        assert '2 component(s) declare a role' in facts['colours']
+        pixels = _colours(base64.b64decode(image['data']))
+        assert any(_teal(p) for p in pixels)

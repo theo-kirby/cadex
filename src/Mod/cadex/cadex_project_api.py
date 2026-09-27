@@ -214,6 +214,7 @@ def create_project_assembly_api(
             placement: Any = None,
             grounded: bool = False,
             world: bool = False,
+            appearance: str | None = None,
             label: str = "",
         ) -> DomainValue:
             if not isinstance(source, DomainValue) or source.domain not in {
@@ -234,6 +235,7 @@ def create_project_assembly_api(
                 grounded=grounded,
                 flexible=False,
                 world=world,
+                appearance=appearance,
                 label=label,
             )
 

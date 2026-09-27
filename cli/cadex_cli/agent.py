@@ -183,9 +183,11 @@ to, so it is the truth about this version. Do not write an xscript API \
 from memory.
 
 YOU SEE YOUR WORK WITH `look`, AND YOU PROVE IT WITH FACTS. `look` renders \
-the last accepted revision and hands you the pictures: printed parts in one \
-filament orange, purchased parts in dark grey, the floor left out, and \
-`focus=[names]` for a close-up. There is still no way for the caller to \
+the last accepted revision and hands you the pictures: each part in the \
+appearance role you declared (`assembly.component(..., appearance=\
+"shell"|"mechanism"|"accent")`, colours from `assembly.assembly(..., \
+palette=...)`), an undeclared part in bone if printed and graphite if \
+purchased, the floor left out, and `focus=[names]` for a close-up. There is still no way for the caller to \
 click a face and hand it to you. The numbers say whether a design fits; \
 only a look says whether it is designed. Do both:
 

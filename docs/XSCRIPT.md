@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-26
+Verified against source: 2026-09-27
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -426,6 +426,46 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
 - Outputs are evaluated per domain in fixed order sketcher → part →
   partdesign → mesh → assembly, reusing the per-domain evaluators and
   serializers.
+
+### Appearance: role and palette `[ADR-413]`
+
+A script says how each part looks, in the terms of
+`docs/DESIGN-LANGUAGE.md` §2, and the CLI draws it that way:
+
+```python
+hood = assembly.component(hood_body, appearance="shell")
+knee = assembly.component(servo, appearance="mechanism")
+eye  = assembly.component(eye_body, appearance="accent")
+asm  = assembly.assembly([hood, knee, eye], joints,
+                         palette={"shell": "#C9AE86", "accent": "#F2B40A"})
+```
+
+- `appearance=` on `assembly.component` is one of `shell` (the printed
+  outer forms), `mechanism` (joints, links and purchased hardware that show)
+  or `accent` (one saturated colour on a few deliberate features). Case and
+  surrounding space are forgiven; any other word is refused naming the three.
+- `palette=` on `assembly.assembly` maps any of those roles to a `#RRGGBB`
+  colour, stored upper case in role order. An unnamed role keeps its default:
+  bone `#E9E6DF` shell, graphite `#2F3237` mechanism, signal orange
+  `#F26A1B` accent. An empty object, an unknown role or a colour in any
+  other form is refused.
+- **Undeclared is not a default.** Neither key enters the definition unless
+  the script sets it, so no existing script's digest moves. A component with
+  no role is drawn by supplier — `mechanism` when it places a catalog part,
+  `shell` when printed — and every consumer says which parts were declared
+  and which were inferred.
+- Carried by `inspect scope="inventory"`: each component row has
+  `appearance` when it declared one, and the value has `palette` (empty when
+  none was declared). The CLI's inventory block (on every build reply) adds
+  `appearance` (component → role, declared only) and `palette`;
+  `docs/inventory.md` gains an appearance column and a palette line;
+  `render` writes `appearance` (role, colour and `source`: `declared`,
+  `supplier` or `index`) and the effective `palette` into its
+  `summary.json`, which the review carries; `look` draws in the same
+  colours and names them in its reply.
+- Appearance is presentation only. It changes no geometry, no fit check and
+  no dynamics, and a colour change is still a definition change that the
+  project re-accepts.
 
 ### The parts library: `lib` `[ADR-181]`
 

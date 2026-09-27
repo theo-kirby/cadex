@@ -123,6 +123,7 @@ def test_a_component_with_no_catalog_row_still_gets_a_row() -> None:
                     "grounded": True,
                     "placement": {"position_mm": [0.0, 0.0, 0.0]},
                     "source_facts": {"volume_mm3": 3200.0},
+                    "appearance": "shell",
                 },
                 {
                     "component": "bolt",
@@ -132,16 +133,20 @@ def test_a_component_with_no_catalog_row_still_gets_a_row() -> None:
             ],
             "catalog_counts": {"bolt/m3x12-socket": 1},
             "uncatalogued_sources": ["plate"],
+            "palette": {"shell": "#C9AE86"},
         },
         name="rig",
     )
 
     assert "# Inventory — rig" in text
     assert "2 component(s)" in text
-    assert "| `base` | `plate` | — | 0.000, 0.000, 0.000 | 3200.000 |" in text
+    assert "| `base` | `plate` | — | shell | 0.000, 0.000, 0.000 | 3200.000 |" in text
     # An unsolved or artifact-less component reports em dashes rather than
     # inventing a pose or a volume.
-    assert "| `bolt` | `m3` | bolt `m3x12-socket` | — | — |" in text
+    assert "| `bolt` | `m3` | bolt `m3x12-socket` | — | — | — |" in text
+    # The declared role and palette are carried into the doc (ADR-413);
+    # an undeclared component reads as a dash, not a default.
+    assert "Palette: shell `#C9AE86`." in text
 
 
 @pytest.mark.parametrize("large_rows", [False, True])
@@ -194,7 +199,7 @@ def test_inventory_expands_real_inspection_previews(monkeypatch, tmp_path, large
     assert "60 component(s)" in text
     for row in rows:
         assert f'| `{row["component"]}` | `{row["source_output"]}` |' in text
-        assert f'bolt `{row["catalog"]["part_number"]}` | 1.000, 2.000, 3.000 | 10.000 |' in text
+        assert f'bolt `{row["catalog"]["part_number"]}` | — | 1.000, 2.000, 3.000 | 10.000 |' in text
     for key, count in raw["catalog_counts"].items():
         assert f"- `{key}` × {count}\n" in text
     for name in raw["uncatalogued_sources"]:
@@ -325,7 +330,28 @@ def test_the_doc_says_which_uncatalogued_output_was_a_purchase() -> None:
         name="arm",
     )
 
-    assert "| `servo` | `servo_cut` | cut from servo `MG90S` | — | — |" in text
-    assert "| `frame` | `bracket` | — | — | — |" in text
+    assert "| `servo` | `servo_cut` | cut from servo `MG90S` | — | — | — |" in text
+    assert "| `frame` | `bracket` | — | — | — | — |" in text
     assert "- `servo_cut` — cut from `servo/MG90S`, a purchased part" in text
     assert "- `bracket`\n" in text
+
+
+def test_the_summary_carries_declared_roles_and_the_palette() -> None:
+    """ADR-413: the block every build reply carries says how each part looks."""
+
+    from cadex_cli.inventory import inventory_summary
+
+    block = inventory_summary({
+        "revision": "f" * 64, "assembly": "asm",
+        "components": [
+            {"component": "hood", "source_output": "hood_body", "appearance": "shell"},
+            {"component": "eye", "source_output": "eye_body", "appearance": "accent"},
+            {"component": "bolt", "source_output": "m3"},
+        ],
+        "palette": {"accent": "#F2B40A"},
+    })
+    assert block["appearance"] == {"hood": "shell", "eye": "accent"}
+    assert block["palette"] == {"accent": "#F2B40A"}
+    # Nothing declared: both empty, never a default passed off as declared.
+    bare = inventory_summary({"assembly": "asm", "components": [{"component": "a"}]})
+    assert bare["appearance"] == {} and bare["palette"] == {}

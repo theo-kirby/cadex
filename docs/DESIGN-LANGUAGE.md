@@ -86,8 +86,10 @@ Three **appearance roles**, and every part has exactly one:
   third colour. (`43-yellow-sphere-quadruped-dark-legs.jpg`,
   `46-orange-spider-concept-sheet.jpg`)
 
-Built by ot10 A3: xscript declares role and palette per part, and
-inventory, `render`, `look` and review carry them.
+xscript declares the role per part and the palette per assembly
+(`assembly.component(..., appearance=)`, `assembly.assembly(..., palette=)`,
+`docs/XSCRIPT.md`, ADR-413), and inventory, `render`, `look` and review
+carry them. An undeclared part is drawn by supplier until it declares one.
 
 ## 3. Joints are features
 

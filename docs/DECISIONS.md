@@ -27719,3 +27719,42 @@ so, and it offers `hero`. The pixel budget is now counted in subsamples
 actually visited, and still scales with output area. The judge's
 candidate set leads with the hero from A5 on. hex3's baseline is not
 re-scored, because its frozen renders stand as they were judged.
+
+## ADR-413 — xscript declares each part's appearance role and the assembly's palette (2026-09-27)
+
+**Context.** ot10 A3 asks that a script say how each part looks, in the
+roles `docs/DESIGN-LANGUAGE.md` §2 defines (`shell`, `mechanism`,
+`accent`), and that inventory, `render`, `look` and review carry it.
+ADR-412 left the hook: `render.materials` takes an `appearance` and a
+`palette`, but nothing filled them, so every part was coloured by
+supplier (purchased graphite, printed bone). A servo that should read as
+an accent ring, or a printed foot that should read as mechanism, had no
+way to say so.
+
+**Decision.**
+- `assembly.component(..., appearance="shell"|"mechanism"|"accent")` and
+  `assembly.assembly(..., palette={role: "#RRGGBB"})`. Both are validated
+  at declaration (unknown role, malformed colour and empty palette are
+  refused, naming the fix); the palette is normalised to upper case in
+  role order. The project script's own `component` wrapper passes
+  `appearance` through; a real-kernel test caught that it did not.
+- **Undeclared stays out of the definition.** Each key is added only when
+  set, as `world=True` is, so no existing script's content digest moves.
+  A declared colour is a definition change like a label, and re-accepts.
+- `inspect scope="inventory"` rows carry `appearance` when declared, and
+  the value carries the assembly's `palette` (empty when none). The CLI's
+  inventory block adds `appearance` (declared components only) and
+  `palette`; `docs/inventory.md` gets an appearance column and a palette
+  line; `render.declared` turns the block into the renderer's inputs, used
+  by both `cadex render` and the bridge's `look`. `render`'s summary (and
+  so the review's `render` block) records each object's role, colour and
+  `source` — `declared`, `supplier` or `index` — and the palette in effect.
+- No protocol op changes: `inspect` already takes `{"scope": ...}`, and the
+  new fields are inside its value. No new dependency.
+
+**Consequences.** A design can now be drawn in the language before any
+proxy measures it; the three A3 proxies (hardware share of the hero
+silhouette, sharp printed outside edges, material count) are the next
+unit. The agent is told the keyword exists — in the `look` description
+and one sentence of the overlay that had gone stale under ADR-412 — but
+is not yet *taught* the language; that is A4.

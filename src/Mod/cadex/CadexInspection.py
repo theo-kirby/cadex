@@ -1149,6 +1149,10 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             "source_output": source_output,
             "grounded": bool(properties.get("grounded", False)),
         }
+        # The role the script declared (ADR-413); absent when it declared
+        # none, so a reader can tell undeclared from a default.
+        if properties.get("appearance"):
+            row["appearance"] = str(properties["appearance"])
         catalog = source.get("catalog")
         if isinstance(catalog, Mapping):
             row["catalog"] = {
@@ -1226,6 +1230,11 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
         "derived_catalog_sources": [
             {"source_output": name, **derived[name]} for name in sorted(derived)
         ],
+        # Role colours the assembly declared (ADR-413); empty keeps defaults.
+        "palette": dict(
+            ((by_name.get(assembly, {}).get("definition") or {}).get("properties") or {}).get("palette")
+            or {}
+        ),
         "note": (
             "One row per component of the accepted assembly. 'catalog' is "
             "present only where the placed output was built by a lib.* "
@@ -1238,7 +1247,10 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             "'placement' is the pose the "
             "assembly solver settled on, not the pose the script declared. "
             "For the full measurement of any one part, ask "
-            "inspect scope=\"output\" with that source_output as the target."
+            "inspect scope=\"output\" with that source_output as the target. "
+            "'appearance' is the role the script declared for a component "
+            "(shell, mechanism or accent) and is absent where it declared "
+            "none; 'palette' is the role colours the assembly declared."
         ),
     }
 

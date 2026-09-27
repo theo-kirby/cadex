@@ -580,6 +580,29 @@ def classify(summary, fit=None, inventory=None):
     return environment, purchased
 
 
+def declared(inventory):
+    """``(appearance, palette)`` the script declared, as the inventory block carries them.
+
+    ``appearance`` is component -> role for the components that declare
+    one; ``palette`` is role -> rgb for the roles the assembly recoloured
+    (ADR-413). Both are empty for a design that declares nothing, or when
+    there is no readable inventory, and :func:`materials` then falls back
+    on supplier.
+    """
+    if not inventory or not inventory.get('available', True):
+        return {}, {}
+    appearance = {str(k): str(v) for k, v in dict(inventory.get('appearance') or {}).items()}
+    palette = {}
+    for role, colour in dict(inventory.get('palette') or {}).items():
+        text = str(colour)
+        _require(len(text) == 7 and text[0] == '#', f'invalid palette colour {text!r} for {role}')
+        try:
+            palette[str(role)] = tuple(int(text[i:i + 2], 16) for i in (1, 3, 5))
+        except ValueError as exc:
+            raise InventoryError(f'render: invalid palette colour {text!r} for {role}') from exc
+    return appearance, palette
+
+
 def _published_blocks(client):
     """The fit and inventory blocks for the accepted revision; ``None`` for either unreadable."""
     from .clearance import read_fit
@@ -607,14 +630,20 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
     if expected_revision is not None:
         _require(summary['revision'] == expected_revision, 'accepted revision differs from rollout')
     relative_dir = 'review/render' + (f'/{expected_revision}' if expected_revision else '')
-    environment, purchased = classify(summary, *_published_blocks(client))
-    looks = materials(summary, purchased=purchased)
+    fit, inventory = _published_blocks(client)
+    environment, purchased = classify(summary, fit, inventory)
+    appearance, palette = declared(inventory)
+    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
     names = [name for name in summary['objects'] if name not in environment]
     _require(any(summary['objects'][n]['triangles'] for n in names),
              'nothing to draw once environment geometry is left out')
     summary['environment'] = sorted(environment)
-    summary['appearance'] = {name: {'role': looks[name][0], 'color': '#%02X%02X%02X' % looks[name][1]}
+    summary['appearance'] = {name: {'role': looks[name][0], 'color': '#%02X%02X%02X' % looks[name][1],
+                                    'source': ('declared' if name in appearance else
+                                               'supplier' if purchased is not None else 'index')}
                              for name in names}
+    summary['palette'] = {role: '#%02X%02X%02X' % tuple(rgb)
+                          for role, rgb in {**ROLE_COLORS, **palette}.items()}
     start = time.perf_counter()
     prepared = _prepare(_studio_parts(triangles, summary, names, looks))
     shadow = _contact_shadow(prepared)

@@ -289,8 +289,9 @@ class Bridge:
         bridge holds one -- the tessellation the build already published, so
         looking costs no rebuild -- and from a ``rebuild`` only when a turn
         opens on a revision this bridge has not built yet. World geometry the
-        fit block names is left out, and the inventory block decides which
-        parts are drawn as printed and which as purchased.
+        fit block names is left out. Each part is drawn in the appearance
+        role the script declared, in the assembly's palette (ADR-413); an
+        undeclared part is drawn by supplier, from the inventory block.
         """
 
         views = [str(v) for v in (arguments.get("views") or ["iso", "iso_back"])]
@@ -321,13 +322,14 @@ class Bridge:
             try:
                 triangles, summary = render.snapshot(reply)
                 world, purchased = render.classify(summary, fit, inventory)
+                appearance, palette = render.declared(inventory)
                 # Focus names may be outputs as well as the components that
                 # place them; accept either.
                 by_source = {item["source"]: name for name, item in summary["objects"].items()}
                 focus_objects = [by_source.get(name, name) for name in focus]
                 shots = render.look(
                     triangles, summary, views, focus=focus_objects,
-                    exclude=world, purchased=purchased,
+                    exclude=world, purchased=purchased, appearance=appearance, palette=palette,
                 )
             except InventoryError as exc:
                 call = ToolCall("look", dict(arguments), False, str(exc))
@@ -341,7 +343,11 @@ class Bridge:
                 "focus": focus,
                 "left_out_as_environment": sorted(world),
                 "colours": (
-                    "bone = printed (shell), graphite = purchased (mechanism)"
+                    "by appearance role: " + ", ".join(
+                        "{:s} #{:02X}{:02X}{:02X}".format(role, *rgb)
+                        for role, rgb in {**render.ROLE_COLORS, **palette}.items())
+                    + f"; {len(appearance)} component(s) declare a role, the rest are drawn "
+                      "shell if printed and mechanism if purchased"
                     if purchased is not None else
                     "index palette (no inventory to tell printed from purchased)"
                 ),

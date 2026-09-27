@@ -165,9 +165,11 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
     "look": {
         "description": (
             "SEE the accepted design: rendered images of the last accepted "
-            "revision, returned to you as pictures. Printed parts are drawn "
-            "in the bone shell colour and purchased parts in graphite, so the "
-            "design reads as the object it would be; environment geometry "
+            "revision, returned to you as pictures. Each part is drawn in the "
+            "appearance role you declared (`assembly.component(..., "
+            "appearance='shell'|'mechanism'|'accent')`) in the assembly's "
+            "`palette`; an undeclared part is bone shell if printed and "
+            "graphite mechanism if purchased. Environment geometry "
             "(a floor) is left out. Views: `hero` (the presented studio shot: "
             "low, front-right, three-quarter), `iso` (front-right, from above), "
             "`iso_back` (back-left, from above), `front`, `right`, `top`. "

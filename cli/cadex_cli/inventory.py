@@ -37,8 +37,8 @@ _HEADER = """# Inventory — {name}
 
 Accepted revision `{revision}`{assembly}. {count} component(s).
 
-| component | places | catalog | position (mm) | volume (mm³) |
-|---|---|---|---|---|
+| component | places | catalog | appearance | position (mm) | volume (mm³) |
+|---|---|---|---|---|---|
 """
 
 
@@ -99,13 +99,18 @@ def render_inventory(value: Mapping[str, Any], *, name: str) -> str:
     if not assembly:
         text += "\nInventory unavailable: no published assembly.\n"
     for row in components:
-        text += "| `{:s}` | `{:s}` | {:s} | {:s} | {:s} |\n".format(
+        text += "| `{:s}` | `{:s}` | {:s} | {:s} | {:s} | {:s} |\n".format(
             _cell(row.get("component")),
             _cell(row.get("source_output")),
             _catalog(row),
+            _cell(row.get("appearance")),
             _position(row),
             _volume(row),
         )
+    palette = dict(value.get("palette") or {})
+    if palette:
+        text += "\nPalette: " + ", ".join(
+            f"{role} `{palette[role]}`" for role in sorted(palette)) + ".\n"
     counts = dict(value.get("catalog_counts") or {})
     if counts:
         text += "\n## Catalog roll-up\n\n"
@@ -250,6 +255,18 @@ def inventory_summary(value: Any) -> dict[str, Any]:
         "catalog_counts": dict(sorted(counts.items())),
         "uncatalogued_sources": uncatalogued,
         "derived_catalog_sources": derived,
+        # What the script declared about how each part looks (ADR-413):
+        # component -> role for the components that declare one, and the
+        # role colours the assembly set. Undeclared parts are drawn by
+        # supplier (purchased mechanism, printed shell).
+        "appearance": {
+            str(row.get("component") or ""): str(row["appearance"])
+            for row in components if row.get("appearance")
+        },
+        "palette": {
+            str(role): str(colour)
+            for role, colour in dict(value.get("palette") or {}).items()
+        },
     }
     if not assembly:
         summary["note"] = (

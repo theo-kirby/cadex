@@ -85,6 +85,11 @@ _SUBELEMENT = re.compile(r"^(Face|Edge|Vertex)[1-9][0-9]*$")
 _INTERFACE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _MOTION_FUNCTIONS = frozenset({"abs", "asin", "arcsin", "arctan", "cos", "sin"})
 _MOTION_NAMES = frozenset({"time", "initialValue", "pi"})
+#: A part's appearance role (docs/DESIGN-LANGUAGE.md section 2, ADR-413):
+#: the printed outer forms, the joints and purchased hardware that show, and
+#: the one saturated colour on a few deliberate features.
+APPEARANCE_ROLES = ("shell", "mechanism", "accent")
+_HEX_COLOUR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _OCCURRENCE_PATH = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_]*(?:/[A-Za-z_][A-Za-z0-9_]*){0,15}$"
 )
@@ -120,6 +125,29 @@ def _number(
     if maximum is not None and result > maximum:
         raise _error(operation, parameter, f"must not exceed {maximum:g}", value)
     return result
+
+
+def _appearance(operation: str, value: Any) -> str:
+    role = str(value).strip().lower() if isinstance(value, str) else value
+    if role not in APPEARANCE_ROLES:
+        raise _error(operation, "appearance", f"must be one of {list(APPEARANCE_ROLES)}", value)
+    return role
+
+
+def _palette(operation: str, value: Any) -> dict[str, str]:
+    if not isinstance(value, Mapping) or not value:
+        raise _error(
+            operation, "palette",
+            "expected a non-empty object of role to '#RRGGBB', e.g. {'shell': '#E9E6DF'}", value,
+        )
+    result = {}
+    for role, colour in value.items():
+        if role not in APPEARANCE_ROLES:
+            raise _error(operation, "palette", f"keys must be among {list(APPEARANCE_ROLES)}", role)
+        if not isinstance(colour, str) or not _HEX_COLOUR.match(colour.strip()):
+            raise _error(operation, f"palette[{role!r}]", "expected a '#RRGGBB' colour", colour)
+        result[role] = colour.strip().upper()
+    return {role: result[role] for role in APPEARANCE_ROLES if role in result}
 
 
 def _label(operation: str, value: Any) -> str:
@@ -1072,6 +1100,7 @@ class AssemblyDomainAPI:
         grounded: bool = False,
         flexible: bool = False,
         world: bool = False,
+        appearance: str | None = None,
         label: str = "",
     ) -> DomainValue:
         """Create one linked occurrence from a stable input reference.
@@ -1083,6 +1112,11 @@ class AssemblyDomainAPI:
         its internal joints and stable occurrence paths then participate in the
         parent solve. A flexible occurrence cannot be grounded.
         ``world=True`` marks environment geometry for an advisory fit failure.
+        ``appearance`` is the part's role in the design language: ``"shell"``
+        (printed outer forms), ``"mechanism"`` (joints, links and purchased
+        hardware that show) or ``"accent"`` (one saturated colour on a few
+        features). Undeclared, a purchased part draws as mechanism and a
+        printed one as shell.
         Reuse the returned variable in connectors and return it exactly once as
         a ``component_link`` output.
         """
@@ -1109,6 +1143,7 @@ class AssemblyDomainAPI:
             grounded=grounded,
             flexible=flexible,
             **({"world": True} if world else {}),
+            **({"appearance": _appearance(operation, appearance)} if appearance is not None else {}),
             label=label,
         )
 
@@ -1312,6 +1347,7 @@ class AssemblyDomainAPI:
         sweep_step_mm: float | None = None,
         contacts: Sequence[Sequence[DomainValue]] = (),
         clearances: Sequence[Sequence[Any]] = (),
+        palette: Mapping[str, str] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Build one assembly graph from returned component and joint variables.
@@ -1329,6 +1365,9 @@ class AssemblyDomainAPI:
         ``sweep_step_degrees`` samples every limited hinge and ``sweep_step_mm``
         every limited slider through its range with exact solids after the
         build; a limited joint whose step is undeclared is reported unswept.
+        ``palette={"shell": "#E9E6DF", "accent": "#F26A1B"}`` sets the colour
+        of any appearance role; an unnamed role keeps its default (bone
+        shell, graphite mechanism, signal-orange accent).
         """
 
         operation = "assembly"
@@ -1385,6 +1424,7 @@ class AssemblyDomainAPI:
             **({"fit_intent": intent} if intent else {}),
             **({"sweep_step_degrees": sweep_step_degrees} if sweep_step_degrees is not None else {}),
             **({"sweep_step_mm": sweep_step_mm} if sweep_step_mm is not None else {}),
+            **({"palette": _palette(operation, palette)} if palette is not None else {}),
             label=label,
         )
 

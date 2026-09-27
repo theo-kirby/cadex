@@ -55,7 +55,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). **`--offset-mm` is optional**: omitted, the offset is derived from the accepted bounds the way the walk derives it — every candidate is cut and the one covering the most objects wins (ADR-273, ADR-275). The note reports the offset, whether it was `explicit` or `derived`, and how many of the model's objects the cut reached. | no |
 | `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews, a 1024 px studio `hero.png` (ADR-412) and `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
 | `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. The same rows reach the agent as `inspect scope=clearance` and, summarised, as the `fit` block on every build reply (ADR-346), whose `sweep` half carries the published joint sweeps (ADR-366). | no |
-| `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, and the pose the solver settled on. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
+| `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, the appearance role it declares (ADR-413), and the pose the solver settled on; a declared palette is listed under the table. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. With `--dry-run`, report the plan — the files the leg would touch and the steps it would take, in either mode — and train nothing. | no |
@@ -1866,7 +1866,9 @@ The JSON envelope and each SVG name the accepted revision; the summary also
 records digest, component/source names, colors, transformed bounds in mm,
 camera bases, projected bounds, coverage, limits and acquisition/render timing,
 plus `environment` (world geometry left out), `appearance` (each drawn
-object's role and colour) and `hero` (its path, size and seconds).
+object's role, colour and `source` — `declared` by the script, `supplier`
+from the inventory, or `index` with no inventory), `palette` (the colour in
+effect for each role) and `hero` (its path, size and seconds).
 A failed command must not be treated as a fresh report: old successful files
 can remain, and their revision identifies what they describe.
 
@@ -1893,7 +1895,8 @@ above the lowest point of the design, turned into a tight contact term and a
 wide soft term, each blurred, and applied to the floor wherever the camera is
 above it (not in `front` or `right`). **Materials come from roles**
 (`render.materials`): an object's declared appearance role (`shell`,
-`mechanism`, `accent`, the hook A3 fills from xscript) wins; an undeclared
+`mechanism`, `accent`; `assembly.component(..., appearance=)`, ADR-413) wins,
+in the assembly's declared `palette` where it recolours a role; an undeclared
 one is `mechanism` graphite `#2F3237` when purchased and `shell` bone
 `#E9E6DF` when printed, from the published inventory; with no readable
 inventory every object keeps its index colour. Standard tessellation
@@ -1961,7 +1964,8 @@ failing pair, each carrying its status. The same run adds `inventory`,
 the catalog-identity block that reply carried (ADR-362) — `component_count`,
 `catalogued_count`, `uncatalogued_count`, the `catalog_counts` roll-up and
 every `uncatalogued_sources` name, with `derived_catalog_sources` naming
-the ones cut from a catalog body (ADR-381) — printed as an `inventory` line
+the ones cut from a catalog body (ADR-381), plus `appearance` (component →
+declared role) and `palette` (ADR-413) — printed as an `inventory` line
 with one line per uncatalogued source. An `asset` run adds
 `assets`, the store's listing as `[{"name", "bytes", "sha256"}, …]`, sorted
 by name — the same rows `put_asset` and `inspect scope=assets` return. A
@@ -2129,9 +2133,12 @@ PNG per view, after one text block of facts. Views are `hero`, `iso`,
 most five);
 `focus` names components or outputs to frame a close-up on. Components the
 `fit` block reports as `world geometry` (a floor) are left out, and the
-`inventory` block colours parts: every output in `uncatalogued_sources` is
-drawn as printed, in the `shell` bone, and every other as purchased, in the
-`mechanism` graphite (ADR-412; before it, filament orange and dark grey). A turn that opens with `look` rebuilds once and reads the fit and
+`inventory` block colours parts: a component that declares an appearance
+role is drawn in that role, in the assembly's palette (ADR-413); an
+undeclared one is drawn as printed, in the `shell` bone, when its output is
+in `uncatalogued_sources`, and as purchased, in the `mechanism` graphite,
+otherwise (ADR-412; before it, filament orange and dark grey). The reply's
+`colours` fact names each role's colour and how many components declared one. A turn that opens with `look` rebuilds once and reads the fit and
 inventory a modelling reply would have carried, so the first look is drawn
 the same way. hex2's four views take about 7 s.
 
