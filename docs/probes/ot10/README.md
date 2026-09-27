@@ -247,24 +247,101 @@ guessed JSON pointer, one reset-variation refusal (fixed by the named
 lift), and one refusal to retire `joint_cap` while the script's own
 assembly links still referenced it.
 
-## A5 attempt 2: the hexapod (`ot10-hexapod-2`), launch receipt
+## A5 attempt 2: the hexapod (`ot10-hexapod-2`)
 
-**Launched; not yet scored.** This is the frozen hexapod prompt above, word
-for word, run once on the new project `ot10-hexapod-2` with no
-continuation:
+**Misses the bar on one count: the swept fit is incomplete.** The judged
+total is 14 of 21, which meets the frozen 14, and P1, P2 and P3 are all
+within their bars. This is the frozen hexapod prompt above, word for word,
+run once on the new project `ot10-hexapod-2` with no continuation:
 
     CADEX_EFFORT=medium ./cadex --project ~/cadex-projects/ot10-hexapod-2 \
         --model claude-opus-5-5 -p "<the frozen hexapod prompt>" --json
 
-- Started at 2026-09-27T21:01:51Z at revision `6dd4ce81`, which is after
-  ADR-418's four-CPU worker pin. That pin is the only product change
-  since attempt 1.
-- It runs detached from the loop, in its own session with parent PID 1.
-  Its stdout and stderr go to a notes directory beside the project,
-  never into git.
-- The later scoring follows attempt 1's steps: the `cadex render` hero,
-  the five `look` views, three blind judge calls, P1–P3, and the swept
-  fit.
+It started at 2026-09-27T21:01:51Z at revision `6dd4ce81`, which is after
+ADR-418's four-CPU worker pin, the only product change since attempt 1.
+It ran detached from the loop, and its stdout and stderr stayed outside
+git. The turn ended on its own after 39 min 14 s with exit 0, at accepted
+revision `996a0b7e7b90…` (digest `39be96a4b87a…`).
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| attempt 1, median | 2 | 3 | 1 | 1 | 2 | 2 | 2 | **13** |
+| attempt 2, call 1 | 2 | 3 | 2 | 2 | 2 | 2 | 2 | 15 |
+| attempt 2, call 2 | 2 | 3 | 1 | 2 | 2 | 2 | 2 | 14 |
+| attempt 2, call 3 | 2 | 3 | 1 | 2 | 2 | 2 | 2 | 14 |
+| attempt 2, median | 2 | 3 | 1 | 2 | 2 | 2 | 2 | **14** |
+
+The three calls disagree only on T3 (2, 1, 1). Every raw reply is kept in
+[`ot10-hexapod-2-score.json`](ot10-hexapod-2-score.json), under the same
+rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | 14 | yes |
+| no trait 0 | lowest is 1 (T3) | yes |
+| above hex3 (2) | 14 | yes |
+| P1 ≤ 0.20 | **0.022** (4,384 of 199,446 subsamples) | yes |
+| P2 ≤ 0.25 | **0.088** (3,293 of 37,368 mm, 34 printed components) | yes |
+| P3 2 or 3 | **3** (`#2A2C30`, `#ECE6DA`, `#FF6A1A`) | yes |
+| static fit | 1,953 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row | yes |
+| swept fit | **incomplete: 12 of 12 joints unswept** (`sweep_step_degrees` not declared) | **no** |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S with 12 horns | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-2-hero.png),
+[`iso`](ot10-hexapod-2-look_iso.png),
+[`iso_back`](ot10-hexapod-2-look_iso_back.png),
+[`front`](ot10-hexapod-2-look_front.png),
+[`right`](ot10-hexapod-2-look_right.png) and
+[`top`](ot10-hexapod-2-look_top.png).
+`cadex render` took 2 min 4 s for the whole command: 58.5 s acquiring the
+tessellation, 7.6 s drawing, and 2.3 s of that for the hero, at 134,850
+drawn triangles (from 667,700 input triangles).
+
+**Diagnosis.** Against attempt 1, T4 rose from 1 to 2 and the median
+total from 13 to 14. P2 fell from 0.655 to 0.088: the legs, feet and hip
+pods are now blended. CPU-limit refusals fell from 19 to 3, which is
+ADR-418's pin measured on a real turn. The one bar item missed is the
+same one as in attempt 1, for a different reason. The agent did try the
+sweep: it declared 15° steps, saw the engine's sweep budget run out on the
+first hip, and switched the sweep off (its `DECISIONS.md` ADR-005 and
+`docs/rejected.md`). That budget is
+`cadex_assembly_worker.py`'s `_SWEEP_TOTAL_SECONDS = 180`, with 90 s per
+joint. A 12-servo robot therefore has 15 s per joint on average to sweep
+1,953 pairs, and at 63 components it did not finish one. Each joint's
+bounded child is also sent every component's BREP again. No prompt can
+reach a complete sweep on a design this size inside that budget. So the
+next change is again to the cost of checking, not to the prompt: measure
+where one hip joint's sweep spends its time on this accepted revision (a
+read-only copy), and make a 12-joint sweep fit. The likely candidates are
+sweeping only pairs whose relative pose the joint changes, a
+bounding-box cull before `distToShape`, and serialising the BREPs once
+per sweep rather than once per joint. The weakest judged trait is T3:
+two of three calls saw orange caps only on the knee axes, with the hip
+yaw axes showing bare horns. Attempt 1's T3 was also 1.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 10 refused calls. The notes' `refusals.py` counted one as a
+horn style, but that was a false match on an output named `horn`: it was a
+`write_script` refusal to drop the accepted outputs `horn` and `servo`
+without `replace=true`, which is a different class. The other nine
+were three CPU-limit refusals; two sandbox refusals (`getattr`, an import);
+one `assembly.component` whose source was a name rather than a part
+value built in the script; two guessed JSON pointers (`/revision`, `/failing`);
+and one reset-variation refusal that named the lift, which the agent then
+applied.
+
+## A5 attempt: the quadruped (`ot10-quadruped-2`), launch receipt
+
+**Launched; not yet scored.** This is the frozen quadruped prompt above,
+word for word, run once on the new project `ot10-quadruped-2` with no
+continuation, the same argv and `CADEX_EFFORT=medium`. It started at
+2026-09-27T21:48:11Z at revision `b6c61073`, after hexapod attempt 2 was
+scored and with no product change since it. It runs detached from the
+loop, in its own session with parent PID 1, and its stdout and stderr go
+to a notes directory beside the project, never into git. Scoring will
+follow the hexapod's steps.
 
 **An earlier quadruped turn was aborted and is not an attempt.** The
 frozen quadruped prompt was started on `ot10-quadruped-1` at

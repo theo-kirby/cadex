@@ -180,3 +180,21 @@ def test_a5_hexapod_attempt_is_published_with_its_score():
     # A miss is published as a miss: 13 is under the frozen 14.
     assert score["total"] < CONTRACT["bar"]["total_min"]
     assert "| attempt 1, median | 2 | 3 | 1 | 1 | 2 | 2 | 2 | **13** |" in README
+
+
+def test_a5_hexapod_attempt_2_is_published_with_its_score():
+    score = json.loads((OT10 / "ot10-hexapod-2-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 14
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-hexapod-2-hero.png"] + [
+        f"ot10-hexapod-2-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    # The judged half meets the frozen bar; the attempt still misses A5 on the
+    # swept fit, and the README says so rather than rounding it to a pass.
+    assert score["total"] >= CONTRACT["bar"]["total_min"]
+    assert "| attempt 2, median | 2 | 3 | 1 | 2 | 2 | 2 | 2 | **14** |" in README
+    assert "**Misses the bar on one count: the swept fit is incomplete.**" in README
