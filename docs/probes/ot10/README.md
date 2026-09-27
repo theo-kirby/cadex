@@ -179,8 +179,8 @@ render (T7). The two colours follow printed versus purchased, which the
 judge read as partly by role (T2).
 
 hex3's proxies were not measured when it was scored, because A3 builds
-them. P1 and P3 now are (ADR-414; see *A3* below): P1 **0.373**, over the
-bar, and P3 **2**, within it. P2 is still to be measured.
+them. All three now are (ADR-414, ADR-415; see *A3* below): P1 **0.373**
+and P2 **0.332**, both over their bars, and P3 **2**, within it.
 
 | view | file | bytes |
 |---|---|---|
@@ -215,18 +215,20 @@ hex3 is not re-scored here. The rubric scores the design as shown, and
 only T7 (presentation) is about the render. The baseline stays as
 frozen. The first scored studio renders are A5's.
 
-## A3: the image proxies, measured on hex3
+## A3: the proxies, measured on hex3
 
 ADR-414 implements P1 and P3 as frozen above. `cadex render`'s summary,
 the review's `render` block and the agent's `look` all report them,
 measured on the hero at 512 px with 2×2 subsamples by a depth pass alone
 (`render.design_proxies`). The floor is left out, and the inventory decides
-printed and purchased. P2 is a BREP measure and comes in its own unit.
+printed and purchased. ADR-415 adds P2, a BREP measure: the part worker
+reports each output's solid edge length and its sharp convex part, and the
+CLI sums both over the printed placements.
 
 | proxy | hex3 before (A1) | hex3 after (ADR-414) | bar | meets |
 |---|---|---|---|---|
 | P1 `hardware_silhouette_share` | not measured | **0.373** (76,170 of 204,356 subsamples) | ≤ 0.20 | no |
-| P2 `sharp_outside_edge_share` | not measured | not measured yet | ≤ 0.25 | — |
+| P2 `sharp_outside_edge_share` | not measured | **0.332** (6,793 of 20,468 mm, 14 printed components; ADR-415) | ≤ 0.25 | no |
 | P3 `material_count` | 2 by construction | **2** (`#2F3237`, `#E9E6DF`) | 2 or 3 | yes |
 
 That is the same `/tmp` copy at revision `c1704bfcb631…`, from
@@ -237,3 +239,11 @@ so there is no new image for this unit. Over a third of what hex3 shows
 from the hero angle is bought servos and boards. That is T1's 0 in a
 number. Its two materials pass P3 while the judge gave T2 only a 1, which
 is the README's point that the proxies are necessary, not sufficient.
+
+P2 was measured by ADR-415 on a fresh copy of hex3 at the same revision
+`c1704bfcb631…`, with the engine rebuilt and staged and `./cadex render
+--project <copy> --engine <payload> --json` (7 min 1 s, most of it the
+rebuild, which is what gives the accepted parts their new edge fact). The
+hero it wrote is again byte for byte `hex3-studio_hero.png`. A third of
+hex3's printed edge length is a bare convex corner: plates and bars with
+no blend, T4's 0 in a number.

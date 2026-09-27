@@ -27791,3 +27791,47 @@ sharp, needs the BREP edges and their faces, which only the worker holds.
 The agent now sees, on every `look`, how much of its silhouette is bought
 hardware against the bar — a measure in the language's terms, not the
 judge's words.
+
+## ADR-415 — The worker measures sharp printed edges, and P2 is reported beside P1 and P3 (2026-09-27)
+
+**Context.** ADR-414 measured A1's two image proxies and split out P2, the
+share of printed outside edge length left sharp, because it needs each
+BREP edge and the two faces on either side of it — facts only the worker
+holds. The frozen definition (`docs/probes/ot10/README.md`) is: over every
+non-seam edge of every printed solid, sharp convex length ÷ total length,
+where an edge is sharp convex when its faces' outward normals turn outward
+by more than 60° at its midpoint; bar ≤ 0.25.
+
+**Decision.**
+- `cadex_part_worker.sharp_edge_facts(shape)` measures it per output, and
+  `part_shape_facts` carries it as `sharp_edges`:
+  `{threshold_deg, edge_length_mm, sharp_convex_length_mm, unresolved_edges}`.
+  Edges are grouped by `hashCode` and settled by `isSame`; an edge bounded
+  by the same face twice (a seam) or by other than two faces is left out.
+  Convexity is read from the edge's orientation in its first face —
+  `(n1 × n2) · t > 0` — so no solid classifier runs. An edge whose normals
+  cannot be evaluated counts toward the total and `unresolved_edges`, never
+  as sharp. The threshold is `SHARP_EDGE_DEGREES = 60.0`, held to the frozen
+  value by a test.
+- The assembly worker's two `part_shape_facts` calls, which read counts
+  only, pass `edge_convexity=False` and pay nothing for it.
+- `CadexInspection._INVENTORY_FACT_KEYS` gains `sharp_edges`, so the
+  inventory scope's `source_facts` carries it. It is absent on a revision
+  accepted before this ADR; nothing is back-filled.
+- The CLI sums both lengths over the printed components
+  (`inventory.printed_edges`), once per placement, and
+  `render.edge_proxy` divides. A printed component with no measurement (a
+  mesh, or an older revision) makes P2 `null` with a `reason` naming it,
+  never a false zero; with no printed edges it is 0, as frozen.
+  `render`'s summary, the review's `render` block and the agent's `look`
+  report it beside P1 and P3; `render.PROXY_BARS` gains its bar, still held
+  equal to `contract.json`.
+- No protocol op changes: the fact is inside `inspect`'s existing value,
+  and `docs/INTEGRATION.md`'s inventory cell says so. No new dependency.
+  The worker change is a payload change and was rebuilt, staged and run
+  through the packaged lifecycle gate.
+
+**Consequences.** All three A1 proxies are now reported by `render`,
+`look` and review, so A3's measurement half is complete. The measure costs
+one normal evaluation per edge on every part build; on a revision built
+before it, P2 says `unmeasured` until the design is rebuilt.
