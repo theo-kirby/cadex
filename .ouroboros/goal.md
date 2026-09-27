@@ -57,7 +57,10 @@ The human owns the checkboxes; roles report results and do not tick them.
     - a low three-quarter hero angle.
   - Material comes from the design, not a fixed two-colour split (see A3).
   - hex3's accepted design renders at 1024 px in under 60 s on this
-    machine, headless and on the CPU, with no display.
+    machine, headless and on the CPU, with no display. The 60 s bounds
+    drawing once the accepted revision's tessellation is acquired; the
+    engine rebuild that acquires it is reported separately and is not part
+    of this bar.
   - Tests pin the output shape, the limits and the refusal paths.
   - Before and after images of hex3 are committed at 300 KB or less each.
 - [ ] **A3. Appearance and design quality are declared and measured.**
