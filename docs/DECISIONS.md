@@ -27894,3 +27894,43 @@ transcripts are the test of whether these refusals stop recurring; that is
 A4's last clause and is not claimed here. The CLI overlay's design section
 still has a sentence cut off mid-rule ("PRINTABLE. … no unsupported") —
 noted for A4's overlay rewrite, not touched here.
+
+## ADR-417 — The overlay teaches design as concept, skeleton, shell, then `look` (2026-09-27)
+
+**Context.** ot10 A4 asks the CLI overlay to teach the design language
+(`docs/DESIGN-LANGUAGE.md`) as something to do first. ADR-406's section was
+six flat rules of form ahead of a look loop: it never asked for a concept,
+never said a shell is a separate part over the skeleton, and named neither
+joints, a face, taper, palette nor the `measures` `look` now reports
+(ADR-414, ADR-415). hex3 followed it and scored 2 of 21.
+
+**Decision.** `cli/cadex_cli/agent.py`'s `DESIGN IT` section is rewritten as
+four numbered steps in §8's order:
+1. **Concept first**: silhouette (one body primitive), character (the
+   face), palette (one shell colour, at most one accent) and proportion,
+   said before the first `write_script` and repeated as `DECISION:` lines.
+2. **Skeleton**: ADR-406's enclose, one-form, mirror, proportion and
+   printable rules, unchanged in substance.
+3. **Shell over skeleton**: separate printed parts with roles, ≥1 mm from
+   what they cover through every joint's range; radii of 10–20% of the
+   part's smallest size (it said 1–3 mm before, which §1 contradicts); one
+   joint cap per axis; a face on +X; limbs that taper to a distinct foot;
+   two materials and one accent, colour by role not supplier.
+4. **Refine with `look`**: `hero`, `iso`, `iso_back`, then `focus`; read
+   `measures` first, then the pictures; fix the worst thing; stop when
+   every measure meets its bar.
+
+The rubric was not read for wording; the text comes from the design
+language, which is what the charter allows the agent to be taught.
+
+**The cut-off sentence.** ADR-416 reported the PRINTABLE rule as cut off at
+"no unsupported". It was not: that line ends in a `\` continuation and the
+sentence finishes on the next ("overhang past 45 degrees, …"). A new test
+(`test_the_overlay_is_well_formed`) holds every paragraph and bullet of
+the overlay to ending as a sentence, with balanced backticks and brackets.
+It passes on the previous source as well, which is the measured answer to
+the report; the ordering test fails on the previous source.
+
+**Consequences.** No engine, protocol or payload change. `docs/CLI.md` and
+`docs/DESIGN-LANGUAGE.md` (its stale *exists today* paragraph) move with
+it. Whether the agent follows the order is A5's measurement.

@@ -276,35 +276,80 @@ so a result that says ok is a shape that exists — but it is not necessarily \
 the shape that was asked for. That part is yours.
 
 DESIGN IT; DO NOT ONLY MAKE IT FIT. Passing every fit check is the floor, \
-not the goal: a rectangle bolted to a rectangle passes too. The printed \
-parts are the design, and a person will judge the result by them. Hold \
-every printed part to one design language:
-- NO SHARP OUTSIDE CORNERS. Fillet or chamfer every outside edge of a \
-printed part (about 1 mm on small parts, 2-3 mm on a body), and fillet \
-inside corners where load turns a corner: they are stronger as well as \
-better looking. Use one set of radii across the whole design.
+not the goal: a rectangle bolted to a rectangle passes too. A person will \
+judge the result by how it looks, so design it in four steps, in this \
+order, and do not skip the first.
+
+1. CONCEPT FIRST, BEFORE ANY GEOMETRY. Decide what the machine is before \
+you write a script, say it in a few lines before your first write_script, \
+and repeat it as `DECISION:` lines when you finish: the silhouette (one \
+body primitive -- a hood, a pill, a sphere or a heavily rounded box, never \
+a deck of plates), the character (what its face is and which way it looks), \
+the palette (one shell colour and at most one accent) and the proportions \
+(a compact body, limbs that taper to distinct feet). Every later choice \
+serves that concept.
+
+2. SKELETON: THE MECHANISM FITS AND MOVES. Build the servos, horns, \
+brackets, links and electronics first, and make every fit check pass:
 - ENCLOSE, DO NOT BOLT ON. A servo, board or battery sits in a pocket, \
 cradle or bracket shaped around its case and fastened through its own \
 mounting tabs, not on a bare plate or under a flat bar. A link that carries \
 a motor is formed around that motor.
 - ONE CONTINUOUS FORM PER PART. A foot, boss, rib or tab is fused and \
 blended into the solid it belongs to, not a separate primitive stuck to its \
-face. Shape links as tapered, shelled or ribbed beams that follow the load \
-path, not constant rectangles.
+face.
 - MIRROR WHAT HAS SIDES. A mechanism with left and right sides mirrors \
 across its centre plane (`mirror`, not a copy rotated about the centre), so \
 handed parts come out handed.
-- PROPORTION AND CLEARANCE. Keep hardware inside the silhouette, mass \
-central and low, and a moving mechanism clear of the ground through its \
-whole motion.
+- PROPORTION AND CLEARANCE. Gather the mass into one compact body, the \
+battery low and central, and keep a moving mechanism clear of the ground \
+through its whole motion.
 - PRINTABLE. Each printed part has a flat face to print on, no unsupported \
 overhang past 45 degrees, walls of at least 1.6 mm and holes sized to their \
 fastener.
-After the first accepted build, `look` at `iso` and `iso_back`, then \
-`focus` on one repeated subassembly (a leg, a joint). Name in one line \
-each what reads as crude — a sharp edge, a floating bar, a primitive stuck \
-on — and fix it, then look again. Stop when it reads as a product someone \
-designed, not a fit check that passed.
+
+3. SHELL OVER SKELETON. Then give the machine its form with separate \
+printed parts laid over the skeleton, each placed as its own component with \
+an appearance role and fastened to the part that carries it:
+- SHELLS HIDE THE HARDWARE. The body primitive from step 1 is a shell, \
+1.6-2.4 mm thick, opening downwards so its rim is the print face, with at \
+least 1 mm of clearance from everything it covers, through every joint's \
+whole range. Servo cases, boards and the battery do not show; what shows of \
+the mechanism is deliberate. A seam where two shell pieces meet is the only \
+surface detail: no vents, greebles or stuck-on panels.
+- NO SHARP OUTSIDE CORNERS. Round every outside edge of a printed part with \
+a radius of about 10-20% of the part's smallest overall size -- 4-8 mm on a \
+40 mm body, 1-2 mm on a small cap -- and fillet inside corners where load \
+turns a corner. Use one set of radii across the whole design.
+- JOINTS ARE FEATURES. Every actuated axis carries the same round cap, \
+concentric with the axis and at least as wide as the horn it covers, so a \
+horn reads as a hub, never a bare arm. One cap design serves the whole \
+robot.
+- A FACE. One focal element on the forward face, on the same +X the IMU \
+points along: a visor slot, one or two round eyes, or a dark face panel, \
+recessed into or split from the shell and filling about a quarter to a half \
+of the front.
+- TAPER TO A FOOT. A limb is a tapered, shelled or ribbed beam that follows \
+the load path, about 60% of its hip section or less near the foot, and ends \
+in a distinct cap, pad or point -- never the cut end of a bar.
+- TWO MATERIALS AND ONE ACCENT. Colour follows role, not supplier: \
+`shell` for the outer forms, `mechanism` for joints, face, feet and any \
+hardware that shows, `accent` for a few deliberate features such as the \
+joint cap rims, the eye or the foot tips, well under a tenth of the surface. \
+Declare the role on every component and the palette on the assembly. A \
+colour change is a part boundary: each printed colour is its own part in \
+its own filament, never paint.
+
+4. REFINE WITH `look`. After the first accepted build, `look` at `hero`, \
+`iso` and `iso_back`, then `focus` on one repeated subassembly (a leg, a \
+joint). Read its `measures` first -- the share of the hero silhouette that \
+is purchased hardware, the share of printed outside edge left sharp, and \
+the number of materials, each against its bar -- and then the pictures. \
+Name in one line each what reads as crude -- a sharp edge, an exposed case, \
+a floating bar, a primitive stuck on, a missing face -- fix the worst one, \
+and look again. Stop when every measure meets its bar and it reads as the \
+concept you decided in step 1, a product someone designed rather than a fit \
+check that passed.
 
 A ROBOT IS A COMPLETE MACHINE. When a design moves itself -- it has \
 actuators and is meant to run untethered -- it carries what runs it, placed \

@@ -633,6 +633,55 @@ def test_the_prompt_holds_printed_parts_to_a_design_language() -> None:
     assert "BE DONE WHEN IT IS BUILT AND YOU HAVE LOOKED AT IT" in CLI_OVERLAY
 
 
+def _overlay_items(text: str) -> list[str]:
+    """Every paragraph of the overlay, with a bulleted list split into its items."""
+    import re
+
+    return [item.strip() for para in text.split("\n\n")
+            for item in re.split(r"\n(?=- )", para) if item.strip()]
+
+
+def test_the_overlay_is_well_formed() -> None:
+    """ADR-417: every paragraph and bullet the agent reads is a finished sentence.
+
+    A rule that ends mid-clause, or a quote or bracket left open, reads to
+    the model as a rule it cannot follow.
+    """
+
+    for item in _overlay_items(CLI_OVERLAY):
+        assert item.endswith((".", ":", ";")), item[-80:]
+        assert item.count("`") % 2 == 0, item[:80]
+        assert item.count("(") == item.count(")"), item[:80]
+        assert "  " not in item, item[:80]
+    printable = next(i for i in _overlay_items(CLI_OVERLAY) if i.startswith("- PRINTABLE."))
+    assert "no unsupported overhang past 45 degrees" in printable
+
+
+def test_the_design_section_runs_concept_skeleton_shell_then_look() -> None:
+    """ADR-417 (ot10 A4): concept before geometry, shell over skeleton, refine with `look`."""
+
+    design = CLI_OVERLAY[CLI_OVERLAY.index("DESIGN IT; DO NOT ONLY MAKE IT FIT"):
+                         CLI_OVERLAY.index("A ROBOT IS A COMPLETE MACHINE")]
+    steps = ["1. CONCEPT FIRST, BEFORE ANY GEOMETRY", "2. SKELETON", "3. SHELL OVER SKELETON",
+             "4. REFINE WITH `look`"]
+    at = [design.index(step) for step in steps]
+    assert at == sorted(at)
+    concept, skeleton, shell, refine = (design[a:b] for a, b in zip(at, at[1:] + [len(design)]))
+    for word in ("silhouette", "character", "face", "palette", "DECISION:"):
+        assert word in concept
+    for rule in ("ENCLOSE, DO NOT BOLT ON", "MIRROR WHAT HAS SIDES", "PRINTABLE"):
+        assert rule in skeleton
+    for rule in ("SHELLS HIDE THE HARDWARE", "NO SHARP OUTSIDE CORNERS", "JOINTS ARE FEATURES",
+                 "A FACE", "TAPER TO A FOOT", "TWO MATERIALS AND ONE ACCENT"):
+        assert rule in shell
+    for role in ("`shell`", "`mechanism`", "`accent`"):
+        assert role in shell
+    # `look` reports the three A1 proxies as `measures`; the agent is told to read them.
+    for word in ("`hero`", "`focus`", "`measures`", "purchased hardware", "left sharp",
+                 "number of materials"):
+        assert word in refine
+
+
 def test_the_prompt_says_a_robot_carries_its_brain_sensors_and_power() -> None:
     """ADR-407: hex2 had twelve servos and nothing to drive them."""
 

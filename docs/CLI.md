@@ -2420,11 +2420,19 @@ The overlay says things the engine does not:
   Until ADR-406 this said the agent could not see; it now renders the
   accepted design for itself, and `inspect scope=output` and the fit block
   remain the evidence for numbers.
-- **Design it; do not only make it fit** (ADR-406). A short design
-  language for printed parts — no sharp outside corners, enclose rather
-  than bolt on, one continuous form per part, mirror what has sides, keep
-  proportion and clearance, stay printable — and a look-critique-fix loop
-  before the agent may call a design done.
+- **Design it; do not only make it fit** (ADR-406, ADR-417). The
+  design language of `docs/DESIGN-LANGUAGE.md`, taught as four steps in
+  order: a **concept** before any geometry (silhouette, character, palette
+  and proportions, stated before the first `write_script` and landed as
+  `DECISION:` lines); the **skeleton** that fits and moves (enclose rather
+  than bolt on, one continuous form per part, mirror what has sides,
+  proportion and clearance, printable); the **shell over the skeleton**
+  (shells hide the hardware, large radii, one joint cap on every axis, a
+  face on +X, limbs that taper to a foot, two materials and one accent by
+  appearance role); and **refinement with `look`** — the `hero` view and
+  its `measures` first, then name the crudest thing, fix it and look
+  again. A test holds the order, and another that every paragraph and
+  bullet of the overlay is a finished sentence.
 - **Fit is measured, not printed** (ADR-346). The `fit` block on every
   build reply is the evidence that parts fit; the script's `stdout` is a
   claim the script makes about itself, and a `fit` naming a failing pair

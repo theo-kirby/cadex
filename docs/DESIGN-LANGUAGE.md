@@ -13,14 +13,13 @@ gitignored (`reference/`). Each rule names the references it comes from by
 filename only; no reference image is copied, described in a prompt, or
 shown to the product agent. The agent learns only what is written here.
 
-**Exists today versus target.** On 2026-09-27 none of this is
-product behaviour. The renderer draws flat orthographic tessellation in
-one printed colour and one purchased colour (ADR-406, ADR-410). xscript has
-no appearance roles, and the overlay teaches six rules of form (fillets,
-enclosure, continuous parts, mirroring, proportion, printability) but not
-palette, joints, face or presentation. The baseline is hex3, which scores
-2 of 21 on the rubric (`docs/probes/ot10/README.md`, *Baseline*). Each rule
-below says which ot10 criterion builds it.
+**Exists today versus target.** Since ADR-412 to ADR-415 the renderer
+draws a lit studio hero, xscript declares appearance roles and a palette,
+and `look` and review report the three proxies. Since ADR-417 the CLI
+overlay teaches §8's order — concept, skeleton, shell, refine with `look` —
+and the rules of §1–§6 in it. Whether an unassisted design follows them is
+A5's measurement, not a claim this doc makes. The baseline is hex3, which
+scores 2 of 21 on the rubric (`docs/probes/ot10/README.md`, *Baseline*).
 
 ## 0. The one-sentence version
 
