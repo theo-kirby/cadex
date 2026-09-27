@@ -19,14 +19,18 @@ Evidence [rec: happy-garden-2470] (ADR-412, commit `2cb7ec9c`):
 - hex3 (revision `c1704bfcb631…`, Ryzen 9 9950X, no display/GPU): **hero 2.2 s at 1024 px**, all five images 6.5 s. [rec: happy-garden-2470]
 - `cli/tests/test_look.py` pins hero bounds, size, sampling, shadow, AA, normals, role colours, refusal of an unknown role, and hero < 300 KB. Before/after committed: `docs/probes/ot10/hex3-look_iso.png` (32,756 B) vs `hex3-studio_iso.png` (110,996 B), and `hex3-studio_hero.png` (120,991 B). [rec: happy-garden-2470]
 
-Judgement (maintainer): status is `working` on the renderer's measured 2.2 s. The caveat is carried below rather than hidden. [rec: happy-garden-2470]
+- **Scope of the 60 s bar.** The owner's charter clarifies that the bar covers drawing once the accepted revision's tessellation is acquired; the rebuild is reported separately [rec: strong-summit-4135]. `ot10-hexapod-1`: drawing 5.9 s (hero 2.1 s), rebuild 29.3 s, whole command 63.7 s. hex3: rebuild ~207 s, whole command ~7 min [rec: soft-spark-6990].
+
+Judgement (maintainer): status stays `working`. The drawing meets the bar on both designs. soft-spark-6990 claimed A2 was incomplete on whole-command time. strong-summit-4135 withdrew that claim under the clarified charter, so it is not carried. The rebuild figures remain as separate measurements [rec: soft-spark-6990] [rec: strong-summit-4135].
 
 ## Negative knowledge
 
-- [scope: hex3's accepted revision on this machine, if A2's 60 s bar includes acquisition | confidence: high | evidence: happy-garden-2470, shy-clover-2326] The bar is not met end to end: `./cadex render` spends ~207 s rebuilding the tessellation before drawing (about 7 min total) against 2.2 s of rendering. A fix would draw from the accepted attempt's retained tessellation; this is acquisition work, not renderer work.
+- [scope: `./cadex render` whole-command time on this machine | confidence: high | evidence: happy-garden-2470, shy-clover-2326, soft-spark-6990] Acquiring the tessellation dominates: ~207 s rebuild on hex3 and 29.3 s on ot10-hexapod-1, against 2–6 s of drawing. This is outside A2's bar as clarified [rec: strong-summit-4135]. Speeding it up means drawing from the accepted attempt's retained tessellation, which is acquisition work, not renderer work.
 
 ## Provenance
 
 - damp-dusk-8045 — ot10 operator-declared charter gap
 - happy-garden-2470 — studio renderer, hero 2.2 s, before/after PNGs
 - shy-clover-2326 — re-confirms the 207 s acquisition cost; hero byte-identical after the proxy pass
+- soft-spark-6990 — whole-command render timings: 63.7 s on ot10-hexapod-1 (29.3 s rebuild, 5.9 s draw)
+- strong-summit-4135 — the owner's clarified bar excludes the rebuild; soft-spark's incompleteness claim withdrawn
