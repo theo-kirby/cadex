@@ -247,6 +247,34 @@ guessed JSON pointer, one reset-variation refusal (fixed by the named
 lift), and one refusal to retire `joint_cap` while the script's own
 assembly links still referenced it.
 
+## A5 attempt 2: the hexapod (`ot10-hexapod-2`), launch receipt
+
+**Launched; not yet scored.** This is the frozen hexapod prompt above, word
+for word, run once on the new project `ot10-hexapod-2` with no
+continuation:
+
+    CADEX_EFFORT=medium ./cadex --project ~/cadex-projects/ot10-hexapod-2 \
+        --model claude-opus-5-5 -p "<the frozen hexapod prompt>" --json
+
+- Started at 2026-09-27T21:01:51Z at revision `6dd4ce81`, which is after
+  ADR-418's four-CPU worker pin. That pin is the only product change
+  since attempt 1.
+- It runs detached from the loop, in its own session with parent PID 1.
+  Its stdout and stderr go to a notes directory beside the project,
+  never into git.
+- The later scoring follows attempt 1's steps: the `cadex render` hero,
+  the five `look` views, three blind judge calls, P1–P3, and the swept
+  fit.
+
+**An earlier quadruped turn was aborted and is not an attempt.** The
+frozen quadruped prompt was started on `ot10-quadruped-1` at
+2026-09-27T20:49:25Z by an iteration that did not detach it. It was
+killed with its session 8 minutes in. By then it had written three probe
+scripts and had not written a design. No turn ended, so no design
+reached a verdict. Under the question policy that is a harness stop, not
+an attempt. The project stays as it is, read-only, and the quadruped's
+A5 attempt will run on a new project.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest
