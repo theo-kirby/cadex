@@ -175,6 +175,78 @@ most. `medium` is hex2's and hex3's effort, after hex1 stalled at `high`.
 The training task is declared so that W2 can train an A5 design unchanged;
 A5 itself trains nothing.
 
+## A5 attempt 1: the hexapod (`ot10-hexapod-1`)
+
+**Misses the bar, on three counts: the judged total is 13 of 21, P2 is
+0.655, and the swept fit is incomplete.** It is the first A5 turn, the
+frozen hexapod prompt run once on a new project on 2026-09-27, with
+`CADEX_EFFORT=medium`, `--model claude-opus-5-5` and no continuation. The
+turn ended on its own after 55 min 44 s with exit 0, at accepted revision
+`7af6db090950…` (digest `ab571337a4d3…`).
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| attempt 1, median | 2 | 3 | 1 | 1 | 2 | 2 | 2 | **13** |
+
+The three judge calls gave identical scores on every trait. Every raw
+reply is kept in
+[`ot10-hexapod-1-score.json`](ot10-hexapod-1-score.json), and the same
+rule applies to it as to the baseline's: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | 13 | **no** |
+| no trait 0 | lowest is 1 (T3, T4) | yes |
+| above hex3 (2) | 13 | yes |
+| P1 ≤ 0.20 | **0.078** (15,101 of 193,831 subsamples) | yes |
+| P2 ≤ 0.25 | **0.655** (21,133 of 32,275 mm, 17 printed components) | **no** |
+| P3 2 or 3 | **3** (`#2A2C31`, `#E9E4D8`, `#F26A1B`) | yes |
+| static fit | 1,035 pairs clear, 0 intersections; 32 welded pairs touching. The one failing row is the floor's advisory world-geometry row | yes |
+| swept fit | **incomplete: 12 of 12 joints unswept** (`sweep_step_degrees` not declared) | **no** |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S | yes |
+
+The candidate set, in the order the judge saw it, is the 1024 px studio
+hero from `cadex render`, then the five `look` views at 768 px, drawn as
+the look tool draws them (appearance roles and palette from the
+inventory, floor left out):
+[`hero`](ot10-hexapod-1-hero.png),
+[`iso`](ot10-hexapod-1-look_iso.png),
+[`iso_back`](ot10-hexapod-1-look_iso_back.png),
+[`front`](ot10-hexapod-1-look_front.png),
+[`right`](ot10-hexapod-1-look_right.png) and
+[`top`](ot10-hexapod-1-look_top.png).
+`cadex render` took 63.7 s for the whole command: 29.3 s of rebuild,
+5.9 s drawing and 2.1 s for the hero, at 81,876 triangles.
+
+**Diagnosis.** The design language reached the design: a rounded shell
+over a dark belly tray, the hip servos hidden inside it, three materials
+by role, one orange visor slot as the face, and ball feet. That is T1 2,
+T2 3 and T5 2, against hex3's 0, 1 and 0. The two traits that stayed low,
+T3 joints and T4 form, are the details the agent built and then **took
+out to fit the engine's 300 CPU-second limit**. The limit refused 19 of
+the turn's 33 refused calls. The agent's own `DECISIONS.md` records what
+went: a spline-loft carapace, the joint caps, the leg fillets, the
+servo-shaped pockets, the 34 screws, and the motion sweep. It identifies
+total face count as the lever. P2's 0.655 is the unfilleted legs in a
+number, and the incomplete sweep is the same cut. So the binding
+constraint on this design was not what the agent knew. It was the cost
+of checking what it built. The next change is to that cost, not to the
+prompt: find out where a 46-component, 1,035-pair assembly spends 300
+CPU-seconds when hex3's filleted brackets did not.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+There was no wrong horn style, no `edit_script` before a script existed,
+no second assembly or diagnostics output, and no joint missing or
+listed twice. Besides the 19 CPU-limit refusals, the other 14 were: two
+from the sandbox (`import`, `dir`); a catalog body used as an
+`assembly.component` source; six from the kernel and the selectors (two
+post-boolean refines, a cut that produced 5 solids, an invalid bounding box,
+a fillet selector with an unknown key, and one with the wrong count); two `edit_script` replacements that did not match, one
+guessed JSON pointer, one reset-variation refusal (fixed by the named
+lift), and one refusal to retire `joint_cap` while the script's own
+assembly links still referenced it.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest

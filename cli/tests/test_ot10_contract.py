@@ -163,3 +163,20 @@ def test_a5_cold_prompts_are_frozen_on_page_and_file():
         # Cold: nothing about looks reaches the product agent from the prompt.
         for word in ("shell", "face", "colour", "color", "palette", "look", "render"):
             assert word not in prompt.lower(), (plan, word)
+
+
+def test_a5_hexapod_attempt_is_published_with_its_score():
+    score = json.loads((OT10 / "ot10-hexapod-1-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 13
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    # The frozen candidate order: the studio hero, then the five look views.
+    files = ["ot10-hexapod-1-hero.png"] + [
+        f"ot10-hexapod-1-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    # A miss is published as a miss: 13 is under the frozen 14.
+    assert score["total"] < CONTRACT["bar"]["total_min"]
+    assert "| attempt 1, median | 2 | 3 | 1 | 1 | 2 | 2 | 2 | **13** |" in README
