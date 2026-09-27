@@ -507,3 +507,27 @@ def test_sharp_outside_edge_share_is_unmeasured_rather_than_zero():
         'material_count': {'value': 2, 'materials': ['#000000', '#FFFFFF'], 'meets': True,
                            'bar': {'min': 2, 'max': 3}}})
     assert 'sharp printed outside edges 60.0% (over 25%)' in line
+    assert 'lower bound' not in line
+
+
+def test_sharp_outside_edge_share_says_when_it_is_a_lower_bound():
+    """An edge the engine could not evaluate is in the total and never
+    sharp, so P2 reports how many there were rather than a silent floor."""
+    inventory = _edge_inventory({'deck': (100.0, 20.0), 'leg': (100.0, 0.0)})
+    assert inventory['printed_edges']['unresolved_edges'] == 0
+    from cadex_cli.inventory import printed_edges
+    components = [
+        {'component': 'deck', 'source_output': 'o_deck', 'source_facts': {'sharp_edges': {
+            'edge_length_mm': 100.0, 'sharp_convex_length_mm': 20.0, 'unresolved_edges': 3}}},
+        {'component': 'leg', 'source_output': 'o_leg', 'source_facts': {'sharp_edges': {
+            'edge_length_mm': 100.0, 'sharp_convex_length_mm': 0.0, 'unresolved_edges': 1}}}]
+    edges = printed_edges(components, ['o_deck', 'o_leg'])
+    assert edges['unresolved_edges'] == 4
+    proxy = render.edge_proxy({'printed_edges': edges})
+    assert proxy['value'] == 0.1 and proxy['unresolved_edges'] == 4
+    line = render.describe_proxies({
+        'hardware_silhouette_share': {'value': 0.1, 'meets': True, 'bar': {'max': 0.2}},
+        'sharp_outside_edge_share': proxy,
+        'material_count': {'value': 2, 'materials': ['#000000', '#FFFFFF'], 'meets': True,
+                           'bar': {'min': 2, 'max': 3}}})
+    assert 'sharp printed outside edges 10.0% (meets 25%), a lower bound: 4 edge(s) unresolved' in line

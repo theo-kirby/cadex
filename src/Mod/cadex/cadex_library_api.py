@@ -32,6 +32,7 @@ the sandboxed worker and the stubbed test suite.
 
 from __future__ import annotations
 
+import difflib
 import json
 import math
 from types import MappingProxyType
@@ -1139,9 +1140,21 @@ class LibraryAPI:
             )
         horn_row = catalog.MICRO_HORNS.get(style)
         if horn_row is None:
+            # hex2 guessed "arm" and hex3 "single": name the style they meant,
+            # not only the list, so the retry is one edit rather than a guess.
+            styles = sorted(catalog.MICRO_HORNS)
+            guess = str(style).strip().lower()
+            meant = [name for name in styles if guess and guess in name] or (
+                difflib.get_close_matches(guess, styles, n=2, cutoff=0.5)
+            )
+            hint = (
+                " Did you mean " + " or ".join(repr(name) for name in meant) + "?"
+                if meant
+                else ""
+            )
             raise LibraryError(
-                f"lib.{operation}: style must be one of "
-                + ", ".join(sorted(catalog.MICRO_HORNS)) + "."
+                f"lib.{operation}: {style!r} is not a horn style; style must be "
+                "one of " + ", ".join(repr(name) for name in styles) + "." + hint
             )
         hub = catalog.MICRO_HORN_HUB
         hub_radius = hub["hub_dia_mm"] / 2.0

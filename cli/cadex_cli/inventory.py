@@ -210,11 +210,14 @@ def printed_edges(
     solids. The engine reports each output's solid edge length and the
     sharp convex part of it (``sharp_edges``); a printed output without
     that fact (a mesh, or a revision built before it existed) is named
-    under ``unmeasured`` rather than counted as smooth.
+    under ``unmeasured`` rather than counted as smooth. An edge the engine
+    could not evaluate counts towards the total and never as sharp, so
+    ``unresolved_edges`` says how far the share is a lower bound.
     """
 
     printed = set(uncatalogued)
     total = sharp = 0.0
+    unresolved = 0
     measured: list[str] = []
     unmeasured: list[str] = []
     for row in components:
@@ -227,10 +230,12 @@ def printed_edges(
             continue
         total += float(facts.get("edge_length_mm") or 0.0)
         sharp += float(facts.get("sharp_convex_length_mm") or 0.0)
+        unresolved += int(facts.get("unresolved_edges") or 0)
         measured.append(name)
     return {
         "edge_length_mm": round(total, 3),
         "sharp_convex_length_mm": round(sharp, 3),
+        "unresolved_edges": unresolved,
         "measured": sorted(measured),
         "unmeasured": sorted(unmeasured),
     }

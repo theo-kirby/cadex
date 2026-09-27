@@ -1593,11 +1593,25 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             )
     elif operation == "edit_script":
         if not current_source:
+            # hex3's first write_script was refused (a wrong horn style) and
+            # its next call edited the refused source. A refused candidate is
+            # rolled back (ADR-044), so say that, and say what to send.
+            latest = state.get("latest_candidate")
+            refused = isinstance(latest, Mapping) and latest.get("status") == "failed"
             _raise(
                 tool_name,
                 "NO_PROJECT_SCRIPT",
                 "precondition",
-                "There is no project script to edit yet; use write_script.",
+                (
+                    "There is no accepted project script to edit yet: the last "
+                    "write_script was refused and rolled back, and edit_script "
+                    "only edits an accepted source. "
+                    if refused
+                    else "There is no project script to edit yet. "
+                )
+                + "Resend the whole corrected source with write_script and "
+                "expected_revision=''.",
+                required_changes=[{"tool": "write_script", "expected_revision": ""}],
             )
         try:
             source = _apply_replacements(
@@ -2899,7 +2913,14 @@ def describe_project_api() -> dict[str, Any]:
             "Assign result to a dict. Every kept value must be a key: keys "
             "become the stable published output names, values must come from "
             "the sketcher/part/partdesign/mesh/assembly APIs (assembly.solve "
-            "diagnostics included). Outputs may mix domains."
+            "diagnostics included). Outputs may mix domains. A script with "
+            "an assembly returns exactly one assembly.assembly(...) value and "
+            "exactly one assembly.solve(<that assembly>) value, and every "
+            "component and joint that assembly lists, each under a key of its "
+            "own and once: a component or joint kept only in a Python list is "
+            "not returned. Assign each one where you create it "
+            "(`result['hip_' + tag] = j_hip`), or loop a list into result "
+            "(`for i, j in enumerate(joints): result['joint_' + str(i)] = j`)."
         ),
         "mutation_selection": {
             "write_script": "Replace the complete script source.",
@@ -2918,7 +2939,10 @@ def describe_project_api() -> dict[str, Any]:
             "Guard every mutation with expected_revision equal to the working "
             "revision from core.inspect scope='script' or the previous write "
             "result; use an empty string only when no script exists yet. A "
-            "failed candidate becomes the working revision while the previous "
-            "accepted revision stays live."
+            "refused candidate is rolled back: the previous accepted revision "
+            "stays live and stays the working revision, and edit_script edits "
+            "that accepted source, never the refused one. So until a "
+            "write_script is accepted there is nothing to edit -- resend the "
+            "whole corrected source with write_script."
         ),
     }

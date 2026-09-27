@@ -27835,3 +27835,62 @@ by more than 60° at its midpoint; bar ≤ 0.25.
 `look` and review, so A3's measurement half is complete. The measure costs
 one normal evaluation per edge on every part build; on a revision built
 before it, P2 says `unmeasured` until the design is rebuilt.
+
+## ADR-416 — The four hex refusal classes are prevented where the agent reads, and each refusal names its fix (2026-09-27)
+
+**Context.** hex2 and hex3 learned the same four API rules by failing, in
+the same order (`docs/probes/hex/hex2-GAPS.md`, `hex3-GAPS.md`), and A4
+asks for each to be prevented at the source. The session transcripts give
+the real inputs and texts:
+
+1. `s.horn("arm")` (hex2) and `s.horn("single")` (hex3) →
+   `lib.servo.horn: style must be one of cross, double_arm, single_arm.`
+   The library listing the agent reads said only `.horn(style)`.
+2. `edit_script` straight after a refused first `write_script` (hex3) →
+   `There is no project script to edit yet; use write_script.` The engine's
+   own `revision_rule` told the agent that "a failed candidate becomes the
+   working revision", which ADR-044's rollback made false long ago — so the
+   edit was the reasonable reading of a stale contract.
+3. A script that returned its assembly and never solved it (both runs) →
+   `An Assembly program must return exactly one assembly and one
+   solver_diagnostics output.`
+4. Joints kept only in a Python list (hex3; hex2 met the component twin) →
+   `Every joint listed in api.assembly must be returned exactly once, and no
+   unlisted joint output is allowed.` Classes 3 and 4 each cost a full
+   12–14 KB resend.
+
+**Decision.**
+- *Prevented in the reference.* The servos family note in the library
+  listing names every horn style (generated from `MICRO_HORNS`) and the
+  default. `revision_rule` now says a refused candidate is rolled back, that
+  `edit_script` edits the accepted source only, and that until a
+  `write_script` is accepted the fix is a whole resend. `result_contract`
+  states the assembly result shape: one `assembly.assembly(...)`, one
+  `assembly.solve(<that assembly>)`, every listed component and joint under
+  its own key once, with the two idioms that do it. These are prose inside
+  existing `describe_api` keys, which both the CLI's system prompt and the
+  shell's backend paste in; no key or shape changes.
+- *Named in the refusal.* The horn refusal names the style the guess meant
+  (substring first, then `difflib`, stdlib). `NO_PROJECT_SCRIPT` says the
+  last write was refused and rolled back when `latest_candidate` says so,
+  and carries `required_changes: [{"tool": "write_script",
+  "expected_revision": ""}]`. The assembly-count refusal says how many of
+  each it found, by output name, and the line to add
+  (`result['solve'] = assembly.solve(<name>)`), or that two assemblies must
+  become one. The component/joint refusal names every unreturned value by
+  its label (or its place in `api.assembly`) and every returned-but-unlisted
+  output, with the fix; `details` gains `unreturned_*` and `unlisted_*`
+  beside the existing keys. A value returned under two keys names both.
+- `cadex_tests/test_authoring_refusal_classes.py` pins each class with the
+  hex inputs: 12 of its 14 tests fail on the previous source, and the two
+  that pass either way are the controls (an empty project, a complete
+  result).
+- P2's `unresolved_edges` (ADR-415) is summed per printed placement and
+  reported by `render.edge_proxy`; the one-line summary calls the share a
+  lower bound when it is nonzero, so it is no longer silent.
+
+**Consequences.** No protocol op, output type or payload file changes. A5's
+transcripts are the test of whether these refusals stop recurring; that is
+A4's last clause and is not claimed here. The CLI overlay's design section
+still has a sentence cut off mid-rule ("PRINTABLE. … no unsupported") —
+noted for A4's overlay rewrite, not touched here.

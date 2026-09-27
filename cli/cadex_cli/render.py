@@ -583,7 +583,9 @@ def edge_proxy(inventory):
     printed components as the engine measured them. ``None`` with a reason
     when there is no inventory to say what was printed, or when a printed
     part carries no edge measurement (zero would be a false pass). With no
-    printed edges at all the share is 0, as frozen.
+    printed edges at all the share is 0, as frozen. ``unresolved_edges``
+    counts edges the engine could not evaluate: they are in the total and
+    never sharp, so a nonzero count makes the share a lower bound.
     """
     bar = PROXY_BARS['sharp_outside_edge_share']
     edges = (inventory or {}).get('printed_edges') if inventory and inventory.get('available', True) else None
@@ -592,6 +594,7 @@ def edge_proxy(inventory):
                 'reason': 'no inventory to tell printed from purchased'}
     result = {'bar': dict(bar), 'edge_length_mm': edges['edge_length_mm'],
               'sharp_convex_length_mm': edges['sharp_convex_length_mm'],
+              'unresolved_edges': int(edges.get('unresolved_edges') or 0),
               'printed_components': len(edges['measured']) + len(edges['unmeasured'])}
     if edges['unmeasured']:
         return {**result, 'value': None, 'meets': None, 'unmeasured': list(edges['unmeasured']),
@@ -783,9 +786,13 @@ def describe_proxies(proxies):
     p1, p3 = proxies['hardware_silhouette_share'], proxies['material_count']
 
     def share(proxy):
-        return 'unmeasured (' + proxy['reason'] + ')' if proxy['value'] is None else (
-            '{:.1%} ({:s} {:.0%})'.format(proxy['value'], 'meets' if proxy['meets'] else 'over',
-                                          proxy['bar']['max']))
+        if proxy['value'] is None:
+            return 'unmeasured (' + proxy['reason'] + ')'
+        text = '{:.1%} ({:s} {:.0%})'.format(proxy['value'], 'meets' if proxy['meets'] else 'over',
+                                             proxy['bar']['max'])
+        if proxy.get('unresolved_edges'):
+            text += ', a lower bound: {:d} edge(s) unresolved'.format(proxy['unresolved_edges'])
+        return text
     edges = ''
     if 'sharp_outside_edge_share' in proxies:
         edges = '; sharp printed outside edges ' + share(proxies['sharp_outside_edge_share'])

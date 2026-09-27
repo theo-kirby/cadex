@@ -1107,7 +1107,10 @@ def catalog_families() -> dict[str, Any]:
                 "envelope, and the manufacturer's stall torque already "
                 "converted for assembly.actuator. lib.servo(sku) returns the "
                 "part; .horn(style) the matching horn (micro family only so "
-                "far); .actuator(joint, control_deg=...) a position actuator "
+                "far), where style is exactly one of "
+                + ", ".join(repr(name) for name in sorted(MICRO_HORNS))
+                + " and defaults to 'single_arm'; .actuator(joint, "
+                "control_deg=...) a position actuator "
                 "bounded by the real stall torque; .spec the numbers, with "
                 "spec['approximate'] naming any field no datasheet "
                 "dimensions. Full dimension rows live in lib.servo(sku).spec "

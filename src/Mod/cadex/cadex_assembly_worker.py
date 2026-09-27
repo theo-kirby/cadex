@@ -1767,6 +1767,64 @@ def _native_connector_sides(
     return sides
 
 
+def _graph_value_name(value: DomainValue, index: int, kind: str) -> str:
+    """How a refusal names a graph value the script did not return.
+
+    An unreturned value has no output name, so it is named by the label the
+    script gave it, and failing that by its place in the api.assembly list.
+    """
+
+    label = str(dict(value.properties).get("label") or "")
+    return repr(label) if label else f"{kind} #{index} in api.assembly"
+
+
+def _unreturned_refusal(
+    kind: str,
+    listed: list[Any],
+    returned: dict[int, str],
+) -> AssemblyCandidateError:
+    """The refusal for listed-but-unreturned or returned-but-unlisted values.
+
+    hex2 and hex3 each met this as one sentence that named nothing, and fixed
+    it by resending the whole script. Name every value on each side, and the
+    line that fixes it.
+    """
+
+    listed_ids = {id(value) for value in listed}
+    missing = [
+        _graph_value_name(value, index, kind)
+        for index, value in enumerate(listed)
+        if id(value) not in returned
+    ]
+    unlisted = sorted(name for key, name in returned.items() if key not in listed_ids)
+    shown = 8
+    parts = []
+    if missing:
+        more = f" and {len(missing) - shown} more" if len(missing) > shown else ""
+        parts.append(
+            f"{len(missing)} {kind}(s) listed in api.assembly are not returned in "
+            f"result: {', '.join(missing[:shown])}{more}. Give each its own "
+            f"result key where you create it, or loop the list into result "
+            f"(`for i, v in enumerate({kind}s): result['{kind}_' + str(i)] = v`)."
+        )
+    if unlisted:
+        parts.append(
+            f"result returns {kind} output(s) the assembly does not list: "
+            f"{', '.join(repr(name) for name in unlisted)}. Add them to "
+            f"api.assembly or drop them from result."
+        )
+    return AssemblyCandidateError(
+        f"Every {kind} listed in api.assembly must be returned exactly once, "
+        f"and no unlisted {kind} output is allowed. " + " ".join(parts),
+        details={
+            f"returned_{kind}s": list(returned.values()),
+            f"assembly_{kind}_count": len(listed),
+            f"unreturned_{kind}s": missing,
+            f"unlisted_{kind}_outputs": unlisted,
+        },
+    )
+
+
 def _graph_contract(
     raw_result: Mapping[str, Any],
 ) -> tuple[
@@ -1777,9 +1835,17 @@ def _graph_contract(
     dict[int, str],
     dict[int, str],
 ]:
-    if len({id(value) for value in raw_result.values()}) != len(raw_result):
+    names_by_value: dict[int, list[str]] = {}
+    for name, value in raw_result.items():
+        names_by_value.setdefault(id(value), []).append(name)
+    repeated = [names for names in names_by_value.values() if len(names) > 1]
+    if repeated:
         raise AssemblyCandidateError(
-            "Each Assembly graph value must be returned exactly once under one output name."
+            "Each Assembly graph value must be returned exactly once under one "
+            "output name; these keys hold the same value: "
+            + "; ".join(" and ".join(repr(name) for name in names) for names in repeated)
+            + ". Keep one key for each.",
+            details={"repeated_outputs": repeated},
         )
     assemblies = [
         (name, value)
@@ -1792,12 +1858,35 @@ def _graph_contract(
         if isinstance(value, DomainValue) and value.output_type == "solver_diagnostics"
     ]
     if len(assemblies) != 1 or len(diagnostics) != 1:
+        assembly_names = [name for name, _value in assemblies]
+        diagnostic_names = [name for name, _value in diagnostics]
+        # hex2 and hex3 both returned the assembly and never solved it.
+        if not assemblies:
+            fix = (
+                "Return the api.assembly(...) value, e.g. `result['asm'] = asm`, "
+                "and its solve."
+            )
+        elif len(assemblies) > 1:
+            fix = (
+                "A project has one assembly: put every component and joint in a "
+                "single api.assembly(...) and return only that one."
+            )
+        elif not diagnostics:
+            fix = (
+                f"Add `result['solve'] = assembly.solve({assembly_names[0]})` -- "
+                f"the solve of the assembly returned as {assembly_names[0]!r}."
+            )
+        else:
+            fix = "Solve the one assembly once and return only that solve."
         raise AssemblyCandidateError(
             "An Assembly program must return exactly one assembly and one "
-            "solver_diagnostics output.",
+            "solver_diagnostics output; result returns "
+            f"{len(assemblies)} assembly ({', '.join(map(repr, assembly_names)) or 'none'}) "
+            f"and {len(diagnostics)} solver_diagnostics "
+            f"({', '.join(map(repr, diagnostic_names)) or 'none'}). {fix}",
             details={
-                "assembly_outputs": [name for name, _value in assemblies],
-                "diagnostic_outputs": [name for name, _value in diagnostics],
+                "assembly_outputs": assembly_names,
+                "diagnostic_outputs": diagnostic_names,
             },
         )
     assembly_name, assembly_value = assemblies[0]
@@ -1822,23 +1911,9 @@ def _graph_contract(
         if isinstance(value, DomainValue) and value.output_type == "joint"
     }
     if {id(value) for value in components} != set(component_outputs):
-        raise AssemblyCandidateError(
-            "Every component listed in api.assembly must be returned exactly once, "
-            "and no unlisted component_link output is allowed.",
-            details={
-                "returned_components": list(component_outputs.values()),
-                "assembly_component_count": len(components),
-            },
-        )
+        raise _unreturned_refusal("component", components, component_outputs)
     if {id(value) for value in joints} != set(joint_outputs):
-        raise AssemblyCandidateError(
-            "Every joint listed in api.assembly must be returned exactly once, "
-            "and no unlisted joint output is allowed.",
-            details={
-                "returned_joints": list(joint_outputs.values()),
-                "assembly_joint_count": len(joints),
-            },
-        )
+        raise _unreturned_refusal("joint", joints, joint_outputs)
     if not diagnostics_value.arguments or diagnostics_value.arguments[0] is not assembly_value:
         raise AssemblyCandidateError(
             "api.solve must receive the exact api.assembly variable returned in result."
