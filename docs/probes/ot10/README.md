@@ -332,16 +332,77 @@ value built in the script; two guessed JSON pointers (`/revision`, `/failing`);
 and one reset-variation refusal that named the lift, which the agent then
 applied.
 
-## A5 attempt: the quadruped (`ot10-quadruped-2`), launch receipt
+## A5 attempt: the quadruped (`ot10-quadruped-2`)
 
-**Launched; not yet scored.** This is the frozen quadruped prompt above,
-word for word, run once on the new project `ot10-quadruped-2` with no
-continuation, the same argv and `CADEX_EFFORT=medium`. It started at
-2026-09-27T21:48:11Z at revision `b6c61073`, after hexapod attempt 2 was
-scored and with no product change since it. It runs detached from the
-loop, in its own session with parent PID 1, and its stdout and stderr go
-to a notes directory beside the project, never into git. Scoring will
-follow the hexapod's steps.
+**Misses the bar on one count: the swept fit is incomplete.** The judged
+total is 16 of 21, which clears the frozen 14 and is the best in the run so
+far. P1, P2 and P3 are all within their bars. This is the frozen quadruped
+prompt above, word for word, run once on the new project
+`ot10-quadruped-2` with no continuation, the same argv and
+`CADEX_EFFORT=medium`. It started at 2026-09-27T21:48:11Z at revision
+`b6c61073`, with no product change since hexapod attempt 2. It ran
+detached from the loop, and its stdout and stderr stayed outside git. The
+turn ended on its own at 22:32:00Z (43 min 49 s) with exit 0, at accepted
+revision `27ba92c66728…` (digest `0b530c4bdbd0…`). It was scored on the
+unchanged engine, before ADR-419 landed.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| quadruped, call 1 | 2 | 3 | 2 | 1 | 2 | 3 | 2 | 15 |
+| quadruped, call 2 | 3 | 3 | 3 | 1 | 2 | 3 | 2 | 17 |
+| quadruped, call 3 | 2 | 3 | 3 | 1 | 2 | 3 | 2 | 16 |
+| quadruped, median | 2 | 3 | 3 | 1 | 2 | 3 | 2 | **16** |
+
+Every raw reply is kept in
+[`ot10-quadruped-2-score.json`](ot10-quadruped-2-score.json), under the
+same rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | 16 | yes |
+| no trait 0 | lowest is 1 (T4) | yes |
+| above hex3 (2) | 16 | yes |
+| P1 ≤ 0.20 | **0.004** (962 of 241,713 subsamples) | yes |
+| P2 ≤ 0.25 | **0.238** (8,346 of 35,110 mm, 24 printed components) | yes |
+| P3 2 or 3 | **3** (`#2A2D33`, `#ECE7DC`, `#F26A1B`) | yes |
+| static fit | 1,953 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row | yes |
+| swept fit | **incomplete: 8 of 8 joints unswept** (`sweep_step_degrees` not declared) | **no** |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 8 × MG90S with 8 horns | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-quadruped-2-hero.png),
+[`iso`](ot10-quadruped-2-look_iso.png),
+[`iso_back`](ot10-quadruped-2-look_iso_back.png),
+[`front`](ot10-quadruped-2-look_front.png),
+[`right`](ot10-quadruped-2-look_right.png) and
+[`top`](ot10-quadruped-2-look_top.png).
+`cadex render` took 4 min 55 s for the whole command: 135.0 s acquiring
+the tessellation, 9.4 s drawing, and 2.9 s of that for the hero, at
+145,880 drawn triangles.
+
+**Diagnosis.** The swept fit is the same miss as hexapod attempt 2, for the
+same cause. The agent declared 15° steps, then 45°. It hit the 2,000-pair
+limit on an earlier, larger revision, then the 90 s per-joint and 180 s
+total budgets, and it switched the sweep off (its `DECISIONS.md` ADR-009
+and `docs/rejected.md`). ADR-419, the next unit, is the tool change for
+exactly this. The weakest judged trait is T4 (1 in all three calls): the
+body is a soft rounded box, but the thigh links are sharp-edged
+rectangular blocks. P2 reads 0.238, close to its 0.25 bar, and its
+measured set includes `c_floor`, which is world geometry, not a printed
+part. That concern is open. Changing what P2 counts changes a frozen
+proxy, so it needs a recorded re-score decision, not a quiet fix.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 11 refused calls. The notes' `refusals.py` again counted one
+as a horn style, but it was the `write_script` guard against dropping the
+accepted outputs `horn` and `servo`, a different class. The other ten
+were:
+- three sandbox refusals (`type`, `hasattr`, an import);
+- one edit whose `old` text did not occur;
+- five kernel refusals: two `fuse` topology errors, one `fuse` refine,
+  and two fillets at too large a radius;
+- one domain worker that exited without a result.
 
 **An earlier quadruped turn was aborted and is not an attempt.** The
 frozen quadruped prompt was started on `ot10-quadruped-1` at
