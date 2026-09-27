@@ -172,7 +172,7 @@ A design is judged the way it is shown. (`07-white-hood-quadruped-yellow-studio.
   15–25° above the floor, 30–45° off the front, looking at the face.
 - **Studio light, so that curvature reads.** A key light, a soft fill and
   a rim light give smooth shading across large radii. Flat shading, which
-  is what `look` draws today, hides the only thing radii are for.
+  is what `look` drew before ADR-412, hides the only thing radii are for.
 - **A seamless backdrop**: light grey, or one saturated colour taken from
   the accent. There is no horizon line and no grid.
 - **A soft contact shadow** under the robot, so it stands on something.
@@ -181,7 +181,7 @@ A design is judged the way it is shown. (`07-white-hood-quadruped-yellow-studio.
   views, the palette swatches, the name and the key numbers (mass, servo
   count, size). (`46-orange-spider-concept-sheet.jpg`, `04-jerboa-poster-orange-accent.jpg`)
 
-Built by ot10 A2 (hero render) and A6 (concept sheet).
+Built by ot10 A2 (hero render: `render`'s `hero.png` and `look`'s `hero` view, ADR-412) and A6 (concept sheet).
 
 ## 8. The order of design
 

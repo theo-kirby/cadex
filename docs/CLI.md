@@ -53,7 +53,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). **`--offset-mm` is optional**: omitted, the offset is derived from the accepted bounds the way the walk derives it — every candidate is cut and the one covering the most objects wins (ADR-273, ADR-275). The note reports the offset, whether it was `explicit` or `derived`, and how many of the model's objects the cut reached. | no |
-| `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews plus `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
+| `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews, a 1024 px studio `hero.png` (ADR-412) and `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
 | `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. The same rows reach the agent as `inspect scope=clearance` and, summarised, as the `fit` block on every build reply (ADR-346), whose `sweep` half carries the published joint sweeps (ADR-366). | no |
 | `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, and the pose the solver settled on. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
@@ -374,7 +374,7 @@ of doing any of them:
 
    The same review session rebuilds standard display once and snapshots it
    before inspection requests. The `render` block carries availability,
-   accepted revision and digest, front/top/right/iso views, approximation and
+   accepted revision and digest, front/top/right/iso views and the hero, approximation and
    limits, acquisition/render seconds, and project-relative image/summary paths
    under `review/render/<accepted-revision>/`. These SVG previews (embedded lossless CPU images) stay local under the
    default ignore rules; the walk commits the review and project docs.
@@ -448,7 +448,7 @@ The scaffold's `## Training` section carries this same path convention.
 | MJCF / task / training | `runs/<name>/train/` (model, task bundle, returned policy) |
 | Store / declare | `assets/<name>.cxpolicy`, `runs/<name>/script.py` |
 | Verify / rollout | `runs/<name>/rollout/` (including the simulation trace) |
-| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory, clearance and motion summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg` and `summary.json`, `review/section/<accepted-revision>/XZ-<derived-offset>/{section.svg,summary.json}`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
+| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory, clearance and motion summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg`, `hero.png` and `summary.json`, `review/section/<accepted-revision>/XZ-<derived-offset>/{section.svg,summary.json}`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
 | Record | `runs/<name>/run.json` (the run record, below) and `runs/<name>/project-docs/` (the project documents as they stood when the run was recorded) |
 
 ### The run record (ADR-285)
@@ -1858,40 +1858,61 @@ and reports their statuses in every mode (ADR-240 follow-up, ADR-262).
 ### Named-angle review
 
 `./cadex render --project ./robot --json` writes `review/render/front.svg`,
-`top.svg`, `right.svg`, `iso.svg` and `summary.json`. These generated files
+`top.svg`, `right.svg`, `iso.svg`, the studio hero `hero.png` and
+`summary.json`. These generated files
 are overwritten on success and stay local under default ignore rules; the
 ordinary project commit records the PROGRESS row.
 The JSON envelope and each SVG name the accepted revision; the summary also
 records digest, component/source names, colors, transformed bounds in mm,
-camera bases, projected bounds, coverage, limits and acquisition/render timing.
+camera bases, projected bounds, coverage, limits and acquisition/render timing,
+plus `environment` (world geometry left out), `appearance` (each drawn
+object's role and colour) and `hero` (its path, size and seconds).
 A failed command must not be treated as a fresh report: old successful files
 can remain, and their revision identifies what they describe.
 
 Front looks along +Y with Z up; top along -Z with Y up; right along -X with
-Z up; iso views from (1,-1,1) with Z upright. Each orthographic view fits its
-own extent. Solved component matrices are applied once; unposed source
-outputs used by components are excluded. Other published triangle outputs
-are included. The protocol carries no shell-only visibility toggles, materials
-or transparency. These are initial-pose geometry previews, not the GUI scene.
+Z up; iso views from (1,-1,1) with Z upright; the hero is a low three-quarter
+view, 20° above the floor and 35° round from the front (-Y) towards +X
+(`docs/DESIGN-LANGUAGE.md` §7). Each orthographic view fits its own extent.
+Solved component matrices are applied once; unposed source outputs used by
+components are excluded, and so is world geometry the published fit names (a
+floor). Other published triangle outputs are included. The protocol carries
+no shell-only visibility toggles or transparency. These are initial-pose
+geometry previews, not the GUI scene.
 
-SVGs contain lossless 512×512 CPU images with pixel-center depth testing and
-flat directional lighting. Crossing triangles occlude per pixel; equal-depth
-ties follow sorted output/triangle order. Standard tessellation approximates
-curves. Thin/subpixel features can disappear; no dimensions, analytic edges,
-transparency, smooth shading or engineering-drawing accuracy is promised.
+**Every image is a studio render (ADR-412)**, pure Python on the CPU with no
+new dependency. A depth pass keeps the nearest triangle per subsample at
+2×2 subsamples per pixel; only visible subsamples are shaded, and the box
+filter down to the image size antialiases edges. Shading is a key, a fill
+and a rim light with a Blinn highlight per role finish, on normals smoothed
+across each object's shared vertices except over a 40° crease, so a fillet
+reads as a curve and a box keeps its edges. Behind the design is a seamless
+vertical gradient with no horizon. A **contact shadow** is measured from the
+geometry: a top-down map of how high the lowest surface over each cell sits
+above the lowest point of the design, turned into a tight contact term and a
+wide soft term, each blurred, and applied to the floor wherever the camera is
+above it (not in `front` or `right`). **Materials come from roles**
+(`render.materials`): an object's declared appearance role (`shell`,
+`mechanism`, `accent`, the hook A3 fills from xscript) wins; an undeclared
+one is `mechanism` graphite `#2F3237` when purchased and `shell` bone
+`#E9E6DF` when printed, from the published inventory; with no readable
+inventory every object keeps its index colour. Standard tessellation
+approximates curves. Thin/subpixel features can disappear; no dimensions,
+analytic edges, transparency or engineering-drawing accuracy is promised.
 Limits are 4,096 display entries, 32 MiB total binary/sidecar input, 4 MiB per
 sidecar, 300,000 vertices per source, 4,000,000 placed vertices, 2,000,000
 placed triangles read, 400,000 drawn, and 20 million bounding-box pixel visits
-**per 512 px view** (scaled by image area for `look`'s 768 px), including
-overdraw. Excessive, missing or malformed buffers, missing solved poses and
+**per 512 px view** (scaled by image area for `look`'s 768 px and the 1024 px
+hero), counted in subsamples actually visited, including overdraw. Excessive, missing or malformed buffers, missing solved poses and
 empty geometry fail explicitly. Above 400,000 triangles the snapshot clusters
 vertices on a grid, starting at a quarter pixel of the 512 px view over the
 model's largest extent and doubling until it fits; the summary's
 `decimation` names the input count and the cell (ADR-410). hex2 (110,688
 triangles) was refused at the old 100,000 cap, and hex3 (589,268, filleted
 brackets) at ADR-406's 400,000, which lost both the agent's `look` and the
-walk's review. hex3 now draws as 106,326 triangles at a 0.24 mm cell, four
-views in 3.6 s. A render that still fails in a walk's review is recorded as
+walk's review. hex3 now draws as 106,326 triangles at a 0.24 mm cell; its
+four studio views and the 1024 px hero take 6.5 s together, the hero 2.2 s
+(ADR-412), after a 207 s rebuild to acquire the tessellation. A render that still fails in a walk's review is recorded as
 `render.available: false` with the reason, and the rest of the review stands.
 
 The CLI snapshots buffers while holding its project lock, before any further
@@ -1988,7 +2009,7 @@ cli/cadex_cli/
   mcp.py               the MCP stdio server `claude` spawns
   agent.py             one `claude -p` turn; the system prompt
   export.py            STEP/STL/BREP out of the display block; the rest copied
-  render.py            accepted tessellation -> depth-tested named-angle SVG previews
+  render.py            accepted tessellation -> studio-lit named-angle SVG previews and hero PNG
   clearance.py         inspect scope=clearance -> docs/clearance.md; read-time thresholds;
                        and the `fit` block every build reply carries (ADR-346)
   inventory.py         inspect scope=inventory -> the project's docs/inventory.md
@@ -2101,15 +2122,16 @@ builds, and the policies trained on it still verify.
 `look` is listed after the op-named tools and is answered by the bridge
 itself (`BRIDGE_TOOLS` in `cadex_cli.tools`); no request reaches the engine
 for it unless the turn has not built yet. It renders the last accepted
-modelling reply's display block with the `cadex render` rasteriser — so it
-costs no rebuild — and returns MCP `image` content blocks, one 768×768 PNG
-per view, after one text block of facts. Views are `iso`, `iso_back`,
-`front`, `right` and `top` (default `iso` and `iso_back`, at most five);
+modelling reply's display block with the `cadex render` studio renderer —
+so it costs no rebuild — and returns MCP `image` content blocks, one 768×768
+PNG per view, after one text block of facts. Views are `hero`, `iso`,
+`iso_back`, `front`, `right` and `top` (default `iso` and `iso_back`, at
+most five);
 `focus` names components or outputs to frame a close-up on. Components the
 `fit` block reports as `world geometry` (a floor) are left out, and the
 `inventory` block colours parts: every output in `uncatalogued_sources` is
-drawn as printed, in one filament orange, and every other as purchased, in
-dark grey. A turn that opens with `look` rebuilds once and reads the fit and
+drawn as printed, in the `shell` bone, and every other as purchased, in the
+`mechanism` graphite (ADR-412; before it, filament orange and dark grey). A turn that opens with `look` rebuilds once and reads the fit and
 inventory a modelling reply would have carried, so the first look is drawn
 the same way. hex2's four views take about 7 s.
 

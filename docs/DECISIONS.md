@@ -27662,3 +27662,60 @@ ADR-406 overlay, and nothing measured it.
 target for A2 (renderer), A3 (roles and proxies) and A4 (overlay). The
 judge is a model and can drift. Three calls and a median bound its
 variance but do not remove it, and every raw reply is kept.
+
+## ADR-412 — `render` and `look` draw a studio render, with a hero view and material by role (2026-09-27)
+
+**Context.** ot10 A2 asks for a design shown as a product: materials per
+part, light that makes curvature read, a seamless backdrop, a soft contact
+shadow, antialiased edges and a low three-quarter hero view. It has to be
+headless, CPU only and dependency-light, and hex3 has to render at 1024 px
+in under 60 s. The ADR-406 renderer drew flat-shaded facets on a flat
+background, at one sample per pixel, in two fixed colours: printed orange
+and purchased grey. The baseline judge gave it T7 = 1.
+
+**Decision.**
+- `cli/cadex_cli/render.py` has one renderer, `studio`, in pure Python
+  with no new dependency. The CLI stays "plain Python with no compiled
+  dependency", which is why numpy was not used.
+  - A depth pass stores the nearest triangle per subsample, at 2×2
+    subsamples per pixel, by scanline spans. Only visible subsamples
+    are shaded, and a box filter down to the image size antialiases the
+    edges.
+  - Shading is a key, a fill and a rim light, a Blinn highlight per role
+    finish, and a small sky sheen, so graphite does not go black. It
+    uses normals interpolated across each triangle. Corner normals
+    average the faces sharing the vertex within 40° of the face's own
+    normal, so a fillet reads as a curve and a box keeps its edges.
+  - The backdrop is a seamless vertical gradient.
+  - The contact shadow is measured, not painted. A top-down map of the
+    lowest surface over each cell becomes a tight contact term and a
+    wide soft term, each blurred. It darkens the floor wherever the
+    camera is above it.
+- **The flat rasteriser is deleted**, not kept beside the new one. Its
+  tests now drive `studio`.
+- **`hero`** (`render.HERO`: 20° above the floor, 35° round from the front)
+  is a `look` view and `cadex render`'s new `hero.png` at 1024 px. The
+  summary records it, with `environment` and `appearance`.
+- **Material comes from a role, not from supply.** `render.materials`
+  resolves each object to (`shell` | `mechanism` | `accent`, colour).
+  A declared `appearance` role wins, and a `palette` recolours a role;
+  this is the hook A3 fills from xscript. An undeclared object falls back
+  on the inventory: purchased is `mechanism` graphite `#2F3237`, printed
+  is `shell` bone `#E9E6DF` (DESIGN-LANGUAGE.md §2). With no inventory,
+  the index colours stay. `render.classify` is now the single place that
+  derives the environment and purchased sets from the fit and inventory.
+  The bridge and `cadex render` both use it, so `render` also leaves
+  the floor out now.
+
+**Measured.** On hex3's accepted design, in a `/tmp` copy, with
+`cadex render`: the four views and the hero take 6.5 s, the 1024 px hero
+2.2 s. The 207 s engine rebuild that acquires the tessellation is not
+part of the renderer and did not change. Before and after images of the
+same view are in `docs/probes/ot10/`.
+
+**Consequences.** Every `look` image the agent sees is now a studio image.
+Printed parts turn from orange to bone. The `look` tool description says
+so, and it offers `hero`. The pixel budget is now counted in subsamples
+actually visited, and still scales with output area. The judge's
+candidate set leads with the hero from A5 on. hex3's baseline is not
+re-scored, because its frozen renders stand as they were judged.

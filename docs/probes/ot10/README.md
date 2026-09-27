@@ -189,3 +189,28 @@ three and adds the values to this section.
 | front | [`hex3-look_front.png`](hex3-look_front.png) | 14,578 |
 | right | [`hex3-look_right.png`](hex3-look_right.png) | 14,290 |
 | top | [`hex3-look_top.png`](hex3-look_top.png) | 22,425 |
+
+## A2: the studio renderer, before and after
+
+ADR-412 replaced the flat renderer with a studio one. The judge's candidate
+set for every design from here on leads with its 1024 px hero. These are
+hex3's accepted design (revision `c1704bfcb631…`) from the same `/tmp` copy
+and the same snapshot as the baseline, with the floor left out and the
+inventory deciding printed and purchased. The before image is the
+baseline's own `iso` view.
+
+| view | before (ADR-406, flat) | after (ADR-412, studio) |
+|---|---|---|
+| iso, 768 px | [`hex3-look_iso.png`](hex3-look_iso.png), 32,756 B | [`hex3-studio_iso.png`](hex3-studio_iso.png), 110,996 B |
+| hero, 1024 px | — (no hero view existed) | [`hex3-studio_hero.png`](hex3-studio_hero.png), 120,991 B |
+
+`cadex render` on the copy, on this machine (Ryzen 9 9950X, Python 3.11,
+one process, no display, no GPU): the four 512 px views and the 1024 px
+hero took **6.5 s** in all, the hero **2.2 s**, at 106,326 drawn
+triangles and 4.1 million subsample visits. Acquiring the tessellation
+took 207 s more. That is the engine's rebuild of the accepted design and
+is unchanged by the renderer. The whole command took 6 min 59 s.
+
+hex3 is not re-scored here. The rubric scores the design as shown, and
+only T7 (presentation) is about the render. The baseline stays as
+frozen. The first scored studio renders are A5's.

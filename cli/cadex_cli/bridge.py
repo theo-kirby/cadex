@@ -298,7 +298,7 @@ class Bridge:
         unknown = set(arguments) - {"views", "focus"}
         if unknown or not views or len(views) > 5:
             return _content(
-                "look takes `views` (1 to 5 of iso, iso_back, front, right, top) and "
+                "look takes `views` (1 to 5 of hero, iso, iso_back, front, right, top) and "
                 "`focus` (names), nothing else.", is_error=True,
             )
         with self._lock:
@@ -320,21 +320,7 @@ class Bridge:
             fit, inventory = self.state.last_fit, self.state.last_inventory
             try:
                 triangles, summary = render.snapshot(reply)
-                world = {
-                    str(row.get("first") or "")
-                    for row in (fit or {}).get("failing") or []
-                    if row.get("status") == "world geometry"
-                }
-                printed_sources = (
-                    set(inventory.get("uncatalogued_sources") or [])
-                    if inventory and inventory.get("available") else None
-                )
-                purchased = None
-                if printed_sources is not None:
-                    purchased = {
-                        name for name, item in summary["objects"].items()
-                        if item["source"] not in printed_sources
-                    }
+                world, purchased = render.classify(summary, fit, inventory)
                 # Focus names may be outputs as well as the components that
                 # place them; accept either.
                 by_source = {item["source"]: name for name, item in summary["objects"].items()}
@@ -355,14 +341,15 @@ class Bridge:
                 "focus": focus,
                 "left_out_as_environment": sorted(world),
                 "colours": (
-                    "orange = printed, dark grey = purchased"
+                    "bone = printed (shell), graphite = purchased (mechanism)"
                     if purchased is not None else
                     "index palette (no inventory to tell printed from purchased)"
                 ),
                 "components_drawn": len(summary["objects"]) - len(world & set(summary["objects"])),
                 "triangles": summary["triangles"],
-                "approximation": "orthographic, flat-shaded tessellation at the solved pose; "
-                                 "no edges, dimensions or transparency",
+                "approximation": "orthographic studio render of the tessellation at the solved "
+                                 "pose: lit, antialiased, contact shadow; no edges, dimensions "
+                                 "or transparency",
             },
             indent=2,
         )

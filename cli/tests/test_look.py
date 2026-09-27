@@ -17,6 +17,12 @@ from fake_cadexd import FakeCadexd
 IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 
 
+def draw(triangles, basis, *, bounds=None, size=render.SIZE):
+    """The studio renderer over bare ``(colour, points)`` triangles, framed on them."""
+    prepared = render._prepare([((colour, render.FINISH['shell']), [points]) for colour, points in triangles])
+    return render.studio(prepared, basis, bounds=bounds or render._frame(prepared, basis, 0.04), size=size)
+
+
 def _mesh(tmp_path, name, vertices, triangles):
     data = b''.join(struct.pack('<3f', *v) for v in vertices)
     data += b''.join(struct.pack('<3I', *t) for t in triangles)
@@ -95,12 +101,37 @@ def test_look_leaves_the_floor_out_and_frames_the_design(tmp_path):
     assert without[1][:8] == b'\x89PNG\r\n\x1a\n'
 
 
-def test_look_colours_printed_and_purchased_parts(tmp_path):
+def _kinds(data):
+    """How many pixels read as bone shell, graphite mechanism and orange accent."""
+    _, rows = _pixels(data)
+    pixels = [tuple(row[i:i + 3]) for row in rows for i in range(0, len(row), 3)]
+    return {
+        'shell': sum(min(p) > 150 and p[0] >= p[2] and p[0] - p[2] < 30 for p in pixels),
+        'mechanism': sum(max(p) < 90 and max(p) - min(p) < 20 for p in pixels),
+        'accent': sum(p[0] > 170 and p[1] < 150 and p[2] < 100 for p in pixels),
+    }
+
+
+def test_look_colours_parts_by_role_with_printed_and_purchased_defaults(tmp_path):
+    """Undeclared parts: printed is shell bone, purchased is graphite mechanism."""
     triangles, summary = render.snapshot(_reply(tmp_path))
-    (_, data, _), = render.look(triangles, summary, ['iso'], exclude={'c_floor'}, purchased={'c_pin'})
-    colours = _colours(data) - {bytes((246, 247, 250))}
-    assert any(_is_shade_of(c, render.PRINTED_COLOR) for c in colours)
-    assert any(_is_shade_of(c, render.PURCHASED_COLOR) for c in colours)
+    (_, data, details), = render.look(triangles, summary, ['iso'], exclude={'c_floor'}, purchased={'c_pin'})
+    kinds = _kinds(data)
+    assert kinds['shell'] > 500 and kinds['mechanism'] > 100 and kinds['accent'] == 0
+    assert details['materials'] == ['#2F3237', '#E9E6DF']
+
+
+def test_look_material_comes_from_the_declared_role_and_palette(tmp_path):
+    """A3's hook: a declared role wins over printed/purchased, and a palette recolours a role."""
+    triangles, summary = render.snapshot(_reply(tmp_path))
+    (_, data, details), = render.look(triangles, summary, ['iso'], exclude={'c_floor'},
+                                      purchased={'c_pin'}, appearance={'c_pin': 'accent'})
+    assert _kinds(data)['accent'] > 100 and _kinds(data)['mechanism'] < 20
+    assert details['materials'] == ['#E9E6DF', '#F26A1B']
+    looks = render.materials(summary, purchased={'c_pin'}, palette={'shell': (201, 174, 134)})
+    assert looks['c_body'] == ('shell', (201, 174, 134)) and looks['c_pin'][0] == 'mechanism'
+    with pytest.raises(InventoryError, match='unknown appearance role chrome'):
+        render.look(triangles, summary, ['iso'], appearance={'c_pin': 'chrome'})
 
 
 def test_look_focus_frames_a_close_up(tmp_path):
@@ -128,8 +159,8 @@ def test_offcanvas_triangles_cost_no_pixel_budget():
     # into a positive number and billed pixels that were never visited.
     far = ((1, 1, 1), ((-500, 500, 0), (-400, 500, 0), (-450, 600, 0)))
     near = ((1, 1, 1), ((0, 0, 0), (10, 0, 0), (0, 10, 0)))
-    _, alone = render.rasterize([near], render.BASES['top'], bounds=([0, 0], [10, 10]), size=64)
-    _, both = render.rasterize([near, far], render.BASES['top'], bounds=([0, 0], [10, 10]), size=64)
+    _, alone = draw([near], render.BASES['top'], bounds=([0, 0], [10, 10]), size=64)
+    _, both = draw([near, far], render.BASES['top'], bounds=([0, 0], [10, 10]), size=64)
     assert both['pixel_visits'] == alone['pixel_visits']
 
 
@@ -144,7 +175,7 @@ def test_bridge_look_returns_images_from_the_accepted_build(tmp_path):
         facts = json.loads(text['text'])
         assert facts['left_out_as_environment'] == ['c_floor']
         assert facts['views'] == ['iso', 'top']
-        assert facts['colours'].startswith('orange = printed')
+        assert facts['colours'].startswith('bone = printed (shell)')
         assert [image['type'] for image in images] == ['image', 'image']
         assert base64.b64decode(images[0]['data'])[:4] == b'\x89PNG'
         assert bridge.state.calls[-1].op == 'look' and bridge.state.calls[-1].ok
@@ -181,3 +212,98 @@ def test_bridge_look_first_in_a_turn_rebuilds_and_reads_fit_and_inventory(tmp_pa
         # ...and a second look draws from the held build, with no second rebuild.
         bridge.call('look', {'views': ['top']})
         assert [op for op, _ in client.calls].count('rebuild') == 1
+
+
+def test_hero_is_a_low_three_quarter_studio_shot(tmp_path):
+    """DESIGN-LANGUAGE.md section 7: 15-25 degrees above the floor, 30-45 off the front."""
+    import math
+    right, up, toward = render.HERO
+    assert 15 <= math.degrees(math.asin(toward[2])) <= 25
+    assert 30 <= math.degrees(math.atan2(toward[0], -toward[1])) <= 45
+    assert abs(sum(a * b for a, b in zip(right, up))) < 1e-12 and up[2] > 0
+    triangles, summary = render.snapshot(_reply(tmp_path))
+    (view, data, details), = render.look(triangles, summary, ['hero'], exclude={'c_floor'}, purchased={'c_pin'})
+    size, rows = _pixels(data)
+    assert view == 'hero' and size == render.LOOK_SIZE
+    assert details['samples_per_pixel'] == render.SUPERSAMPLE ** 2 == 4
+    assert details['contact_shadow'] is True
+    # A seamless backdrop: down the left edge, darker at the top, lighter at
+    # the bottom, and no step between neighbouring rows (no horizon line).
+    edge = [row[0] for row in rows]
+    assert edge[0] < edge[-1]
+    assert max(abs(a - b) for a, b in zip(edge, edge[1:])) <= 2
+
+
+def test_contact_shadow_darkens_the_floor_under_the_design_only(tmp_path):
+    triangles, summary = render.snapshot(_reply(tmp_path))
+    looks = render.materials(summary, purchased={'c_pin'})
+    names = ['c_body', 'c_pin']
+    prepared = render._prepare(render._studio_parts(triangles, summary, names, looks))
+    bounds = render._frame(prepared, render.HERO, 0.10)
+    lit, details = render.studio(prepared, render.HERO, bounds=bounds, size=96, shadow=render._contact_shadow(prepared))
+    bare, _ = render.studio(prepared, render.HERO, bounds=bounds, size=96)
+    darker = [a - b for a, b in zip(bare, lit)]
+    assert details['contact_shadow'] and max(darker) > 30 and min(darker) >= 0
+    assert lit[:3 * 96] == bare[:3 * 96]  # the top row, far from the floor, is untouched
+    # ...and a camera level with the floor cannot see a shadow on it.
+    front = render.studio(prepared, render.BASES['front'], bounds=render._frame(prepared, render.BASES['front'], .1),
+                          size=32, shadow=render._contact_shadow(prepared))[1]
+    assert front['contact_shadow'] is False
+
+
+def test_supersampling_antialiases_edges():
+    """One subsample per pixel gives each row two colours; four give the edge its blend."""
+    tri = render._prepare([(((233, 230, 223), render.FINISH['shell']), [((0, 0, 0), (10, 3, 0), (4, 10, 0))])])
+    bounds = ([-1, -1], [11, 11])
+    def most_colours_in_a_row(samples):
+        pixels, _ = render.studio(tri, render.BASES['top'], bounds=bounds, size=48, samples=samples)
+        return max(len({bytes(pixels[3 * (48 * y + x):3 * (48 * y + x) + 3]) for x in range(48)})
+                   for y in range(48))
+    assert most_colours_in_a_row(1) == 2
+    assert most_colours_in_a_row(2) > 2
+
+
+def test_normals_are_smoothed_over_curves_and_kept_across_creases():
+    import math
+    # A cube whose corners are shared unevenly between faces: every corner
+    # keeps its own face's normal.
+    vertices, faces = _box((10, 10, 10))
+    cube = render._prepare([((None, None), [tuple(vertices[i] for i in f) for f in faces])])
+    for _, points, normals in cube:
+        (ax, ay, az), (bx, by, bz), (cx, cy, cz) = points
+        face = ((by-ay)*(cz-az) - (bz-az)*(cy-ay), (bz-az)*(cx-ax) - (bx-ax)*(cz-az),
+                (bx-ax)*(cy-ay) - (by-ay)*(cx-ax))
+        length = math.sqrt(sum(c * c for c in face))
+        assert all(n == pytest.approx(tuple(c / length for c in face)) for n in normals)
+    # A 24-sided cylinder wall: each corner normal lies nearer the radius
+    # through it than the facet's own normal does (7.5 degrees off it).
+    ring = [(math.cos(2 * math.pi * k / 24), math.sin(2 * math.pi * k / 24)) for k in range(24)]
+    wall = []
+    for k in range(24):
+        (x0, y0), (x1, y1) = ring[k], ring[(k + 1) % 24]
+        wall += [((x0, y0, 0), (x1, y1, 0), (x1, y1, 1)), ((x0, y0, 0), (x1, y1, 1), (x0, y0, 1))]
+    for _, points, normals in render._prepare([((None, None), wall)]):
+        for (x, y, _), n in zip(points, normals):
+            assert n[2] == pytest.approx(0) and x * n[0] + y * n[1] > math.cos(math.radians(4))
+
+
+def test_render_writes_a_1024_px_studio_hero(tmp_path):
+    (tmp_path / 'mesh').mkdir()
+    reply = _reply(tmp_path / 'mesh')
+
+    class Client:
+        def request(self, op, args=None):
+            if op == 'rebuild':
+                return reply
+            raise RuntimeError('no published blocks here')  # fit/inventory unreadable
+
+    path, summary = render.write_render(Client(), tmp_path / 'project')
+    hero = (path.parent / 'hero.png').read_bytes()
+    size, _ = _pixels(hero)
+    assert size == render.HERO_SIZE == 1024 and len(hero) < 300 * 1024
+    assert summary['hero']['path'] == 'review/render/hero.png'
+    assert summary['hero']['size'] == 1024 and summary['hero']['samples_per_pixel'] == 4
+    assert set(summary['views']) == {'front', 'top', 'right', 'iso'}
+    # No inventory: every object in its index colour, the floor still drawn.
+    assert summary['environment'] == [] and set(summary['appearance']) == set(summary['objects'])
+    assert json.loads((path.parent / 'summary.json').read_text())['hero']['size'] == 1024
