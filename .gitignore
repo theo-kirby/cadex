@@ -1,3 +1,4 @@
+reference/
 # file types to ignore
 .*
 !*.gitattributes
