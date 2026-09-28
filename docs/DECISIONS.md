@@ -28289,3 +28289,39 @@ concurrently, because that would spend CPUs the worker is pinned away from.
 One stub regression test fails on the previous source, and a real-kernel test
 pins a cavity pair (shells, 4.0 mm) and a buried pair (solids, 0.0 mm and the
 bead's whole volume).
+
+## ADR-426 — The swept fit's pair budget counts the pairs a joint moves (2026-09-28)
+
+**Context.** `ot10-hexapod-6` was accepted with its swept fit incomplete,
+0 of 12 joints, every one `pair budget exceeded`. The agent had added 24
+servo-tab screws, taking the design from 63 to 87 components and from 1,953
+to 3,741 pairs. `_sweep_joint` compared the length of the whole solved-pose
+baseline with `_SWEEP_MAX_PAIRS` (2,000). But only the pairs with exactly one
+side in the swept subtree are measured; a rigid pair's row is copied from the
+solved pose (ADR-374, ADR-419). Measured read-only on a `/tmp` copy of the
+accepted request, with `extract_tree` on its own components and joints: each
+hip moves 10 of 87 components, **770 moving pairs**, and each knee moves 4,
+**332**. No joint came within a factor of 2.5 of the budget it was refused
+by.
+
+**Decision.** The budget counts the baseline rows with exactly one side in
+the moving subtree, and is checked after that subtree is known. The limit
+stays 2,000. The reason now names the count: `pair budget exceeded: N moving
+pairs, more than 2000`. The rows, their order and every other limit are
+unchanged.
+
+**Measured.** The same accepted revision (`3cb2b1d0`, `fasteners=1`),
+rebuilt on a second `/tmp` copy with this source: the sweep went from
+**0/12 (pair budget exceeded)** to **12/12 complete at 5° in 97.9 s**, inside
+the unchanged 180 s. Hips took 6.1–7.5 s and knees 9.0–10.0 s, with 22–31
+exact moving rows per joint. The CLI's `sweep_summary` reads it as `pass`:
+0 failing pairs, and 12 world-geometry rows (feet and shins through
+`c_floor`), advisory under ADR-420. The accepted project is unchanged; this
+does not make attempt 6 pass A5, and its static pass still reports six feet
+`below clearance` on `c_floor`.
+
+**Not taken.** The 2,000 limit, the cull margin and the runtime budgets are
+unchanged. A real-kernel regression adds 64 far grounded blocks to the hinge
+fixture: 2,145 pairs, 65 of them moving. It is `incomplete` on the previous
+source and `complete` on this one, with the hinge's own row identical to the
+two-component run.

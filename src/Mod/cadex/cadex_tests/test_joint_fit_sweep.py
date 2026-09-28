@@ -72,11 +72,22 @@ frozen = {'hinge': dict(joints['hinge'], suppressed=True)}
 suppressed = _measure_joint_sweeps(components,data,frozen,baseline,DEG,True)
 mixed = _measure_joint_sweeps(components,data,
     dict(joints, frozen=dict(joints['hinge'], suppressed=True)),baseline,DEG,True)
+# 64 grounded blocks far from the hinge (ADR-426): 2,080 rigid pairs and
+# 65 moving ones, so the assembly is over the pair budget and the joint is not.
+crowd, crowd_data = dict(components), dict(data)
+for i in range(64):
+    block = D.addObject('Part::Feature', 'block%d' % i)
+    block.Shape = Part.makeBox(2, 2, 2, App.Vector(40 * (i % 8), -200 - 40 * (i // 8), 0))
+    crowd['block%d' % i], crowd_data['block%d' % i] = block, {'grounded': True}
+D.recompute()
+crowd_baseline = _measure_clearance(crowd)
+crowded = _measure_joint_sweeps(crowd,crowd_data,joints,crowd_baseline,DEG,True)
+crowded['baseline_pairs'] = len(crowd_baseline)
 joints['hinge']['kind'] = 'cylindrical'
 unsupported = _measure_joint_sweeps(components,data,joints,baseline,{'sweep_step_degrees': 1, 'sweep_step_mm': 1},True)
 print('CLEARANCE-FRAME ' + json.dumps(dict(report=report, disagreement=disagreement,
     capped=capped, unsupported=unsupported, timeout=timeout, exhausted=exhausted, pair_cap=pair_cap,
-    closed=closed_report, open_ended=open_report, undeclared=undeclared,
+    crowded=crowded, closed=closed_report, open_ended=open_report, undeclared=undeclared,
     suppressed=suppressed, mixed=mixed)))
 '''
 
@@ -105,6 +116,18 @@ def test_known_angle_solved_agreement_and_incomplete_coverage(tmp_path, monkeypa
         assert result[name]['status'] == 'incomplete', result[name]
         assert reason in result[name]['joints'][0]['reason']
     assert result['undeclared']['step_mm'] == 1 and result['undeclared']['step_degrees'] is None
+    # The pair budget counts the pairs the joint moves, not every pair in the
+    # assembly (ADR-426). Before this, 64 far grounded blocks put this hinge
+    # over the budget with 65 pairs to measure, as 87 components put every
+    # joint of ot10-hexapod-6 over it with at most 770.
+    crowded = result['crowded']
+    assert crowded['baseline_pairs'] == 2145 > crowded['max_pairs'] == 2000
+    assert crowded['status'] == 'complete', crowded
+    hinge = crowded['joints'][0]
+    assert sum(p['relative_motion'] for p in hinge['pairs']) == 65
+    assert len(hinge['pairs']) == 2145
+    assert hinge['pairs'][0] == joint['pairs'][0]
+    assert '2001 moving pairs' in result['pair_cap']['joints'][0]['reason']
     assert result['unsupported']['joints'][0]['unit'] is None
     # A suppressed joint is not a coverage hole (ADR-371): the solver ignores
     # it, so it has no range to sweep, its row is `skipped` rather than

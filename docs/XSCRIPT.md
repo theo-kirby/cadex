@@ -1773,8 +1773,9 @@ at the solved pose.
 
 Each joint's native queries run in a fresh FreeCAD subprocess with a 90-second
 timeout; the assembly shares 180 seconds of sweep budget. Preparation and
-process cleanup add overhead. At most 73 poses and 2,000 pairs are allowed per
-joint. Reports carry the limits and measured elapsed seconds. Timeout, malformed
+process cleanup add overhead. At most 73 poses and 2,000 moving pairs are
+allowed per joint; rigid pairs are copied, not measured, and do not count
+(ADR-426). Reports carry the limits and measured elapsed seconds. Timeout, malformed
 or unsupported geometry, limited joints of any other kind (cylindrical included),
 flexible components, closed/coupled/static-joint graphs, and unsolved
 assemblies produce explicit `incomplete` coverage and a reason. No samples means no claim about fit. Joints

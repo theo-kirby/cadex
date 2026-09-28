@@ -5800,6 +5800,7 @@ def _declared_floors(properties, component_outputs):
 _SWEEP_JOINT_SECONDS = 90.0
 _SWEEP_TOTAL_SECONDS = 180.0
 _SWEEP_MAX_POSES = 73
+#: Pairs one joint moves, which are the pairs its sweep measures (ADR-426).
 _SWEEP_MAX_PAIRS = 2000
 #: A moving pair whose exact-geometry boxes stay this far apart at every
 #: sample is bounded, not measured (ADR-419): no fit floor reaches it.
@@ -5943,13 +5944,17 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     if count < 0 or count + 1 > _SWEEP_MAX_POSES:
         raise ValueError("pose budget exceeded")
     values = [min(low + i * step, high) for i in range(count + 1)]
-    if len(baseline) > _SWEEP_MAX_PAIRS:
-        raise ValueError("pair budget exceeded")
     body = next(b for b in tree["bodies"] if b["joint"] == name)
     moving = {body["name"]}
     for b in tree["bodies"]:
         if b["parent"] in moving:
             moving.add(b["name"])
+    # The budget counts the pairs this joint moves, the only ones measured
+    # (ADR-426); a rigid row is a copy of its solved-pose value.
+    moving_pairs = sum((row["first"] in moving) != (row["second"] in moving) for row in baseline)
+    if moving_pairs > _SWEEP_MAX_PAIRS:
+        raise ValueError(f"pair budget exceeded: {moving_pairs} moving pairs, "
+                         f"more than {_SWEEP_MAX_PAIRS}")
     poses = {n: obj.Placement for n, obj in components.items()}
     shapes = {n: _component_world_shape(obj).copy() for n, obj in components.items()}
     solved_shapes = {n: shape.Placement for n, shape in shapes.items()}
