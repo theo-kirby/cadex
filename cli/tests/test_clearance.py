@@ -1318,3 +1318,17 @@ def test_only_world_geometry_is_advisory_in_the_sweep(row, status):
     assert [(f['first'], f['second'], f['status']) for f in block['failing']] == [
         (row['first'], row['second'], status)]
     assert block['world_geometry_count'] == 2
+
+
+def test_a_bounded_pair_decides_only_the_floors_its_bound_clears():
+    """ADR-423: a culled row's distance is a box-gap lower bound, not a measurement.
+
+    Under the default floor it is clear; under a floor above the bound it
+    decides nothing, so it reads unknown rather than a false breach.
+    """
+
+    row = {'first': 'a', 'second': 'b', 'distance_mm': 12.0,
+           'common_volume_mm3': 0.0, 'culled': True}
+    assert pair_status(row, 0.1, 1e-6) == 'clear'
+    assert pair_status(row, 20.0, 1e-6) == 'unknown'
+    assert pair_status({k: v for k, v in row.items() if k != 'culled'}, 20.0, 1e-6) == 'below clearance'

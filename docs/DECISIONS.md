@@ -28162,3 +28162,47 @@ prompt and flags.
 +X) looks mostly at the −Y side, so a face at +X is near edge-on in the
 hero. Moving the hero is a renderer change with its own before/after, not
 part of this entry.
+
+## ADR-423 — The solved-pose clearance bounds far pairs instead of measuring them (2026-09-28)
+
+**Context.** Four `ot10` hexapod attempts spent the 300 CPU-second worker
+limit on a different trait each; `ot10-hexapod-4` hit it eight times and
+merged its accent feet into the links to fit, dropping T2 from 3 to 2.
+Replaying the accepted revision's own worker request with the limit lifted
+(read-only on the project) located the cost: the worker spent 83 CPU-s, 21
+of its 25 s of `_measure_clearance` in `distToShape` over 1,035 pairs
+(46 components), against about 2.4 s of geometry. The joint sweeps run in
+child processes with limits of their own. The candidate the agent gave up —
+separate accent feet, filleted links and feet, 51 components — replayed at
+**416.6 CPU-s**, reproducing the refusal. ADR-419 had already bounded the
+far pairs of a sweep; the static check still measured every pair exactly.
+
+**Decision.** `_measure_clearance` measures only near pairs. A pair whose
+exact-geometry boxes (`optimalBoundingBox`, as ADR-419) are more than
+`_CLEARANCE_CULL_MM` (10 mm) apart, or more than the pair's declared
+`clearances=` minimum when larger, carries `culled: true`, its box gap as a
+lower-bound `distance_mm`, and `common_volume_mm3` 0.0. No engine verdict
+can change: every floor a culled pair is held to is below its bound, a
+declared contact is missed either way, and a weld reads `not touching`
+either way. The sweep carries a static bound onto a rigid row with
+`culled: true`, and checks a bounded moving pair it measures exactly against
+the bound rather than for equality. Its `common` call is now gated by the
+exact-geometry boxes it already carries rather than `BoundBox`: the old
+parent's `common` calls on loosely-boxed far pairs had stored pcurves on
+the shapes it serialised, which the children inherited, and without that
+side effect the sweeps cost 25% more until the gate was tightened.
+`smoke_geometry.py` accepts a bounded static row when the exact first-frame
+distance reaches the bound, and `cadex clearance` reads a bounded row
+under a floor above its bound as `unknown`, not a breach.
+
+**Measured.** Replayed on this machine, same requests, before → after:
+accepted `ot10-hexapod-4` worker CPU 83.3 → 28.2 s, wall 71 → 56 s, sweep
+children 104 → 105 CPU-s; 857 of 1,035 static pairs bounded, 0 changed fit
+verdicts, 0 changed exact rows, attachments and world geometry identical,
+every sweep row identical or a valid bound, sweep complete. The refused
+51-component candidate: 416.6 → **114.5 CPU-s**, now inside the limit,
+1,099 of 1,275 pairs bounded, 0 changed verdicts. Two kernel regressions and
+one CLI test fail on the previous source.
+
+**Not taken.** No limit was raised and no prompt or language changed. The
+static near-pair `common` gate still uses `BoundBox`.

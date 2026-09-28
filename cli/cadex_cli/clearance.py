@@ -40,7 +40,9 @@ def pair_status(row: dict[str, Any], minimum: float, maximum_volume: float) -> s
         # reader that predates this reaches the same verdict.
         return "clear"
     if intent.get("minimum_mm", minimum) - distance > MINIMUM_COMPARISON_SLACK_MM:
-        return "below clearance"
+        # A culled row's distance is a lower bound (ADR-423): under a floor
+        # the engine never saw, it decides nothing either way.
+        return "unknown" if row.get("culled") else "below clearance"
     return "clear"
 
 

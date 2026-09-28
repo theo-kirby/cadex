@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-27
+Verified against source: 2026-09-28
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -1596,6 +1596,15 @@ At the initial solved pose, the published `clearance` rows carry `intent` and
 pair, including intended contacts; contact distance above 0.001 mm; declared
 clearance below its minimum in mm; and undeclared distance below 0.1 mm.
 
+Only the near pairs are measured exactly (ADR-423). A pair whose
+exact-geometry bounding boxes are more than 10 mm apart, or more than the
+pair's declared `clearances=` minimum when that is larger, carries
+`culled: true`: its `distance_mm` is that box gap, a lower bound on the true
+distance, and its `common_volume_mm3` is 0.0, proved by the boxes. No
+verdict above can change, because every floor a culled pair is held to is
+below its bound. A reader applying its own larger floor reads such a row as
+undecided (`cadex clearance` says `unknown`), never as a breach.
+
 A pair joined by an **unsuppressed `fixed` joint is not an undeclared pair**
 (ADR-372) and is exempt from that 0.1 mm: welding two components is the design
 declaring them one rigid body, so meeting face to face is what the declaration
@@ -1706,7 +1715,9 @@ exactly must first agree at the solved pose with static clearance within
 
 Only the pairs a joint moves are measured, and only the near ones exactly
 (ADR-419). A pair rigid for this sweep carries its static solved-pose
-measurement unchanged. A moving pair whose exact-geometry bounding boxes
+measurement unchanged — and its `culled: true` with it, when that static
+value is a bound (ADR-423). A statically bounded pair the joint moves near
+is measured exactly, and must be no closer at the solved pose than its bound. A moving pair whose exact-geometry bounding boxes
 stay more than 10 mm apart at every sample carries `culled: true`: its
 minimum distance is that smallest box gap, a lower bound on the true
 minimum; its maximum common volume is 0.0 and it has no first contact, both

@@ -46,9 +46,13 @@ def measure(plan):
                 pair = (first, second)
                 if index == 0:
                     static = expected.get(pair)
+                    # A culled static row's distance is a box-gap lower bound
+                    # (ADR-423): the exact distance must reach it, not equal it.
                     if (static is None or static.get("error") or
                             not math.isclose(volume, static["common_volume_mm3"], abs_tol=1e-5, rel_tol=1e-6) or
-                            not math.isclose(float(left.distToShape(right)[0]), static["distance_mm"], abs_tol=1e-5, rel_tol=1e-6)):
+                            (float(left.distToShape(right)[0]) < static["distance_mm"] - 1e-5
+                             if static.get("culled") else
+                             not math.isclose(float(left.distToShape(right)[0]), static["distance_mm"], abs_tol=1e-5, rel_tol=1e-6))):
                         raise ValueError("initial pose disagrees with published clearance: " + str(pair))
                 if pair not in worst or volume > worst[pair]["common_volume_mm3"]:
                     worst[pair] = {"first": first, "second": second,

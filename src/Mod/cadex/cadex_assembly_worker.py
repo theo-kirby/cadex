@@ -5702,14 +5702,37 @@ def _linked_source_shape(component: Any) -> Any | None:
 
 
 def _measure_clearance(
-    components: Mapping[str, Any], *, solved: bool = True
+    components: Mapping[str, Any], *, solved: bool = True,
+    floors: Mapping[frozenset, float] | None = None,
 ) -> list[dict[str, Any]]:
     """All pairs at the initial solved pose; failures remain unmeasured.
 
-    Distance includes disjoint boxes. Only common-volume work is pruned by
-    box separation. These derived facts live beside the hashed definition.
+    **Only the near pairs are measured exactly** (ADR-423). A pair whose
+    exact-geometry boxes are more than :data:`_CLEARANCE_CULL_MM` apart --
+    or more than its declared floor in ``floors``, when that is larger --
+    carries ``culled: true``: its distance is that box gap, a lower bound
+    on the true distance, and its common volume is 0.0, proved by the boxes.
+    No fit verdict changes, because the floor a pair is held to is below the
+    bound that culled it. ``ot10-hexapod-4`` spent 21 of its 25 s here in
+    ``distToShape`` over 1,275 pairs, nearly all of them far apart.
     """
     names = list(components)
+    floors = floors or {}
+    shapes: dict[str, Any] = {}
+    boxes: dict[str, Any] = {}
+
+    def world(name):
+        if name not in shapes:
+            shapes[name] = _component_world_shape(components[name])
+        return shapes[name]
+
+    def box(name):
+        # Exact geometry, not triangulation, so the gap bounds the distance
+        # from below (the same box ADR-419's sweep culls with).
+        if name not in boxes:
+            boxes[name] = world(name).optimalBoundingBox(False, True)
+        return boxes[name]
+
     rows = []
     for index, first in enumerate(names):
         for second in names[index + 1:]:
@@ -5718,10 +5741,20 @@ def _measure_clearance(
             try:
                 if not solved:
                     raise ValueError("Assembly solver did not produce a solved pose")
-                a = _component_world_shape(components[first])
-                b = _component_world_shape(components[second])
+                a = world(first)
+                b = world(second)
                 if a.isNull() or b.isNull():
                     raise ValueError("Component has no measurable shape")
+                if a.Solids and b.Solids:
+                    p, q = box(first), box(second)
+                    gap = math.sqrt(sum(max(0.0, lo_a - hi_b, lo_b - hi_a) ** 2 for lo_a, hi_a, lo_b, hi_b in (
+                        (p.XMin, p.XMax, q.XMin, q.XMax), (p.YMin, p.YMax, q.YMin, q.YMax),
+                        (p.ZMin, p.ZMax, q.ZMin, q.ZMax))))
+                    margin = max(_CLEARANCE_CULL_MM, float(floors.get(frozenset((first, second)), 0.0)))
+                    if math.isfinite(gap) and gap > margin:
+                        row.update(distance_mm=gap, common_volume_mm3=0.0, culled=True)
+                        rows.append(row)
+                        continue
                 distance = float(a.distToShape(b)[0])
                 if not math.isfinite(distance) or distance < 0:
                     raise ValueError("Invalid minimum distance")
@@ -5737,6 +5770,30 @@ def _measure_clearance(
                 row["error"] = str(exc)
             rows.append(row)
     return rows
+
+
+#: A static pair whose exact-geometry boxes are further apart than this is
+#: bounded, not measured (ADR-423) -- the sweep's margin (ADR-419).
+_CLEARANCE_CULL_MM = 10.0
+
+
+def _declared_floors(properties, component_outputs):
+    """Each declared ``clearances=`` pair's minimum, keyed by its two names.
+
+    What :func:`_measure_clearance` must measure exactly rather than bound:
+    a pair held to a floor above the cull margin is culled only past it.
+    """
+
+    floors = {}
+    for intent in properties.get("fit_intent", ()):
+        try:
+            key = frozenset(component_outputs[id(intent[side])] for side in ("first", "second"))
+            minimum = float(intent.get("minimum_mm") or 0.0)
+        except Exception:
+            continue
+        if math.isfinite(minimum):
+            floors[key] = max(minimum, floors.get(key, 0.0))
+    return floors
 
 
 # A child owns native queries so a stuck OCCT operation cannot exceed the budget.
@@ -5882,22 +5939,33 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
                         for y in (box.YMin, box.YMax) for z in (box.ZMin, box.ZMax)]
         return boxes[n]
 
-    def measure(a, b):
+    def box_at(n, boxes_at):
+        return (boxes_at or {}).get(n) or [f(c[i] for c in corners(n)) for f in (min, max) for i in range(3)]
+
+    def measure(a, b, boxes_at=None):
+        # Disjoint exact-geometry boxes prove zero common volume (ADR-423);
+        # ``BoundBox`` is looser and sent far pairs into ``common``.
+        first, second = box_at(a, boxes_at), box_at(b, boxes_at)
+        overlap = all(first[i] <= second[i + 3] and second[i] <= first[i + 3] for i in range(3))
         a, b = shapes[a], shapes[b]
         if a.isNull() or b.isNull() or not a.Solids or not b.Solids:
             raise ValueError("sweep requires solid components")
         d = float(a.distToShape(b)[0])
-        v = float(a.common(b).Volume) if a.BoundBox.intersect(b.BoundBox) else 0.0
+        v = float(a.common(b).Volume) if overlap else 0.0
         if not math.isfinite(d) or not math.isfinite(v) or min(d, v) < 0:
             raise ValueError("invalid native measurement")
         return d, v
 
     cached = {}
+    bounded = set()
     for row in baseline:
         key = row["first"], row["second"]
         if row.get("error") or row["distance_mm"] is None or row["common_volume_mm3"] is None:
             raise ValueError("solved-pose clearance disagreement")
         cached[key] = row["distance_mm"], row["common_volume_mm3"]
+        if row.get("culled"):
+            # A static bound (ADR-423): no measurement to agree with.
+            bounded.add(key)
     connectors = joint["connectors"]
     a, b = [c["component"] for c in connectors]
     coords = joint_coordinates(joint["kind"], joint_transform(
@@ -5919,7 +5987,10 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     # number the motion produced from one it merely repeated.
     rows = [{"first": a, "second": b, "relative_motion": (a in moving) != (b in moving),
              "minimum_distance_mm": None,
-             "maximum_common_volume_mm3": None, contact_key: None}
+             "maximum_common_volume_mm3": None, contact_key: None,
+             **({"culled": True, "minimum_distance_mm": cached[a, b][0],
+                 "maximum_common_volume_mm3": cached[a, b][1]}
+                if (a, b) in bounded and (a in moving) == (b in moving) else {})}
             for a, b in cached]
     deltas = []
     for value in values:
@@ -5937,8 +6008,7 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
             continue
         gaps = []
         for boxes_at in sample_boxes:
-            first = boxes_at.get(a) or [f(c[i] for c in corners(a)) for f in (min, max) for i in range(3)]
-            second = boxes_at.get(b) or [f(c[i] for c in corners(b)) for f in (min, max) for i in range(3)]
+            first, second = box_at(a, boxes_at), box_at(b, boxes_at)
             gaps.append(math.sqrt(sum(max(0.0, first[i] - second[i + 3], second[i] - first[i + 3]) ** 2
                                       for i in range(3))))
         if min(gaps) > _SWEEP_CULL_MM:
@@ -5946,16 +6016,20 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
             continue
         d, v = measure(a, b)
         distance, volume = cached[a, b]
-        if abs(d - distance) > 1e-4 or abs(v - volume) > 1e-3:
+        if (a, b) in bounded:
+            if d < distance - 1e-4 or v > 1e-3:
+                raise ValueError("solved-pose clearance disagreement")
+            cached[a, b] = d, v
+        elif abs(d - distance) > 1e-4 or abs(v - volume) > 1e-3:
             raise ValueError("solved-pose clearance disagreement")
-    for value, delta in zip(values, deltas):
+    for value, delta, boxes_at in zip(values, deltas, sample_boxes):
         for n in moving:
             shapes[n].Placement = delta.multiply(solved_shapes[n])
         for row in rows:
             a, b = row["first"], row["second"]
             if row.get("culled"):
                 continue
-            d, v = (measure(a, b) if row["relative_motion"] else cached[a, b])
+            d, v = (measure(a, b, boxes_at) if row["relative_motion"] else cached[a, b])
             if row["minimum_distance_mm"] is None or d < row["minimum_distance_mm"]:
                 row["minimum_distance_mm"] = d
             if row["maximum_common_volume_mm3"] is None or v > row["maximum_common_volume_mm3"]:
@@ -6713,7 +6787,8 @@ def validate_and_solve_assembly(
                      **diagnostics},
         )
 
-    clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
+    clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved",
+                                   floors=_declared_floors(assembly_properties, component_outputs))
     world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result,
                                 joint_data, assembly_output)
     attachments = _check_attachments(clearance, joint_data, assembly_output)
