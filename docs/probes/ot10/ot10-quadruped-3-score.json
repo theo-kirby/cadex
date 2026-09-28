@@ -1,0 +1,216 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "e6428ab357752015973725470ed502584bbe28e78cfe3e8544bc85a93946eabc"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "7b67be415b5f03be3a8ac500da35e4cea4f703a7221ab215419683c2d3c8d1fc"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "08e32343879574db174fc18ec3902897de414dc536a6a26b79090ddf9c39fd8a"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "d9c5c2aa7aa9573577e0e01010beb20a326bb4c35b34b01eecdd42985ec05cf5"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "d4b72dab632da1f9ed5e0889fa0fab7d6cdba40d9da8042afa8206009ffbf4d6"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "b1e5e7896f08a015f227329e5ec6a967ef7b82e98661046fda23abcd5c72d1a8"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 2,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 15,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded body shell and leg pods hide the servos, but small dark horns and screw hubs show in the gaps between the body and the pods, and at the inner knees."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The shell is off-white, the dark material is kept to the ball feet and face, and one saturated orange accent sits on the joint caps."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The outer hip and knee axes have matching orange round caps, but the inner hip and knee axes still show as bare dark horn hardware."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one generously filleted rounded box, but the leg pods are separate boxes and the lower legs are flat tapered bars that don't blend into them."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A single dark oval on the front end works as a face and sets the front, but it is generic and the long box silhouette has little character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The lower legs taper to distinct ball feet, but the body is long and the boxy pods sticking out sideways make the stance look arbitrary, and inconsistent in one view."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The images are antialiased and softly lit on a clean gradient backdrop, with a decent three-quarter hero view and some ground shadow, but they read as CAD-viewer output rather than a polished studio render."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded body shell and leg pods hide the servos, but small dark horns and screw hubs show in the gaps between the body and the pods, and at the inner knees.\"}, \"T2\": {\"score\": 3, \"reason\": \"The shell is off-white, the dark material is kept to the ball feet and face, and one saturated orange accent sits on the joint caps.\"}, \"T3\": {\"score\": 2, \"reason\": \"The outer hip and knee axes have matching orange round caps, but the inner hip and knee axes still show as bare dark horn hardware.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one generously filleted rounded box, but the leg pods are separate boxes and the lower legs are flat tapered bars that don't blend into them.\"}, \"T5\": {\"score\": 2, \"reason\": \"A single dark oval on the front end works as a face and sets the front, but it is generic and the long box silhouette has little character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The lower legs taper to distinct ball feet, but the body is long and the boxy pods sticking out sideways make the stance look arbitrary, and inconsistent in one view.\"}, \"T7\": {\"score\": 2, \"reason\": \"The images are antialiased and softly lit on a clean gradient backdrop, with a decent three-quarter hero view and some ground shadow, but they read as CAD-viewer output rather than a polished studio render.\"}}\n```",
+      "session_id": "9d308582-e98d-431a-8799-d12300d1ff13",
+      "duration_ms": 26380,
+      "num_turns": 17,
+      "total_cost_usd": 0.14908500000000002,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2846,
+          "cacheReadInputTokens": 3385,
+          "cacheCreationInputTokens": 11434,
+          "webSearchRequests": 0,
+          "costUSD": 0.14908500000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1076,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A rounded shell covers the body and each upper-leg pod, so no servo cases or boards show, but the lower legs hang off small bare dark pivot stubs and gaps below the pods rather than deliberate joint bands."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell, dark mechanism colour on the face and ball feet, and one saturated orange accent kept to the joint caps and links, all applied consistently by role."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The knee and pod axes are round orange caps concentric with their pivots, but the hip attachments to the body are small unstyled dark stubs, so not every axis matches."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one rounded box with generous fillets and the lower legs are tapered, but the leg pods are separate filleted boxes and nothing merges into anything else."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark oval face panel gives the robot a front, but it is small and generic and adds little character to the table-like silhouette."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The lower legs taper to distinct ball feet, but the long flat body and oversized pods jutting out to the sides make the stance look odd rather than balanced and intentional."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Clean gradient backdrop with soft shadows and antialiased edges, but the camera sits high and the materials look like plain CAD shading rather than a studio hero shot."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A rounded shell covers the body and each upper-leg pod, so no servo cases or boards show, but the lower legs hang off small bare dark pivot stubs and gaps below the pods rather than deliberate joint bands.\"},\n \"T2\": {\"score\": 3, \"reason\": \"Off-white shell, dark mechanism colour on the face and ball feet, and one saturated orange accent kept to the joint caps and links, all applied consistently by role.\"},\n \"T3\": {\"score\": 2, \"reason\": \"The knee and pod axes are round orange caps concentric with their pivots, but the hip attachments to the body are small unstyled dark stubs, so not every axis matches.\"},\n \"T4\": {\"score\": 2, \"reason\": \"The body reads as one rounded box with generous fillets and the lower legs are tapered, but the leg pods are separate filleted boxes and nothing merges into anything else.\"},\n \"T5\": {\"score\": 2, \"reason\": \"A dark oval face panel gives the robot a front, but it is small and generic and adds little character to the table-like silhouette.\"},\n \"T6\": {\"score\": 2, \"reason\": \"The lower legs taper to distinct ball feet, but the long flat body and oversized pods jutting out to the sides make the stance look odd rather than balanced and intentional.\"},\n \"T7\": {\"score\": 2, \"reason\": \"Clean gradient backdrop with soft shadows and antialiased edges, but the camera sits high and the materials look like plain CAD shading rather than a studio hero shot.\"}}\n```",
+      "session_id": "226022f7-5674-4b0d-b8e5-246daa6f340a",
+      "duration_ms": 22590,
+      "num_turns": 17,
+      "total_cost_usd": 0.12596580000000002,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2581,
+          "cacheReadInputTokens": 5649,
+          "cacheCreationInputTokens": 9150,
+          "webSearchRequests": 0,
+          "costUSD": 0.12596580000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 783,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The rounded body shell and the leg pods cover most of the hardware, but small dark servo shafts and hubs still show in the gaps between the pods and the body."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The palette is white for the shell and dark for the mechanism, feet and face, with a single saturated orange accent placed only on the joint caps and their linking bars."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The pod joints are clear orange round caps on their axes, but the hip and lower knee axes are small dark hubs or white discs, so the joints are not styled the same way."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one rounded box with fairly generous radii and the shins are shaped, but the leg pods are boxes with small fillets and the parts do not merge together."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark oval face panel on one end gives the robot a front, but it is generic and easy to miss from most angles."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact and the shins taper to distinct dark ball feet, giving a balanced four-legged stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Clean, antialiased shading on a gradient backdrop with a soft shadow, but the high, CAD-style viewing angle and plain materials fall short of a studio hero shot."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"The rounded body shell and the leg pods cover most of the hardware, but small dark servo shafts and hubs still show in the gaps between the pods and the body.\"}, \"T2\": {\"score\": 3, \"reason\": \"The palette is white for the shell and dark for the mechanism, feet and face, with a single saturated orange accent placed only on the joint caps and their linking bars.\"}, \"T3\": {\"score\": 2, \"reason\": \"The pod joints are clear orange round caps on their axes, but the hip and lower knee axes are small dark hubs or white discs, so the joints are not styled the same way.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one rounded box with fairly generous radii and the shins are shaped, but the leg pods are boxes with small fillets and the parts do not merge together.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark oval face panel on one end gives the robot a front, but it is generic and easy to miss from most angles.\"}, \"T6\": {\"score\": 3, \"reason\": \"The body is compact and the shins taper to distinct dark ball feet, giving a balanced four-legged stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"Clean, antialiased shading on a gradient backdrop with a soft shadow, but the high, CAD-style viewing angle and plain materials fall short of a studio hero shot.\"}}",
+      "session_id": "53fa6364-c85d-4b27-a142-333d90c23314",
+      "duration_ms": 23150,
+      "num_turns": 17,
+      "total_cost_usd": 0.1266312,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2609,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.1266312,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 860,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

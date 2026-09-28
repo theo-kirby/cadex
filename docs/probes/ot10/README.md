@@ -739,6 +739,119 @@ The turn had 14 refused calls:
 - 1 edit whose `old` text did not occur;
 - 1 guessed JSON pointer (`/facts`).
 
+## A5 attempt 3: the quadruped (`ot10-quadruped-3`)
+
+**Meets the bar on every item, the second A5 design in the run to do
+so and the first quadruped.** The judged total is 15 of 21, P1, P2 and P3
+are within their bars, and the swept fit is complete and passing on all
+8 joints. This is the frozen quadruped prompt above, word for word, run
+once on the new project `ot10-quadruped-3` with no continuation:
+
+    CADEX_EFFORT=medium ./cadex --project ~/cadex-projects/ot10-quadruped-3 \
+        --model claude-opus-5-5 -p "<the frozen quadruped prompt>" --json
+
+The prompt was read from `contract.json` at launch, and the process
+list at launch shows that argv, `--model claude-opus-5-5` and
+`CADEX_EFFORT=medium`, so the attempt conforms. It started at
+2026-09-28T02:52:54Z at revision `b20bb7a0`, which is after ADR-419,
+ADR-420 and ADR-421 and **before** ADR-422's face rules, so the overlay
+it read did not have them. It ran detached from the loop, and its stdout
+and stderr stayed outside git. The turn ended on its own at 03:41:39Z
+(48 min 45 s) with `ok: true`, at accepted revision `7de6eea6212e…`
+(digest `d929e47d0f60…`). The iteration that launched it left no record,
+so it was published two iterations late, after ADR-422, ADR-423 and
+ADR-424. It was rendered and judged from a `/tmp` copy of the project,
+at the accepted revision; the project itself is unchanged.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| quadruped, median (`ot10-quadruped-2`) | 2 | 3 | 3 | 1 | 2 | 3 | 2 | **16** |
+| quadruped 3, call 1 | 2 | 3 | 2 | 2 | 2 | 2 | 2 | 15 |
+| quadruped 3, call 2 | 2 | 3 | 2 | 2 | 2 | 2 | 2 | 15 |
+| quadruped 3, call 3 | 2 | 3 | 2 | 2 | 2 | 3 | 2 | 16 |
+| quadruped 3, median | 2 | 3 | 2 | 2 | 2 | 2 | 2 | **15** |
+
+Every raw reply is kept in
+[`ot10-quadruped-3-score.json`](ot10-quadruped-3-score.json), under the
+same rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | 15 | yes |
+| no trait 0 | lowest is 2 (every trait but T2) | yes |
+| above hex3 (2) | 15 | yes |
+| P1 ≤ 0.20 | **0.0001** (36 of 264,671 subsamples) | yes |
+| P2 ≤ 0.25 | **0.116** (3,108 of 26,853 mm, 24 printed components; `c_floor` left out under ADR-424) | yes |
+| P3 2 or 3 | **3** (`#2A2C31`, `#ECE8DF`, `#FF6A1A`) | yes |
+| static fit | 1,891 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row. 52 fixed-joint pairs touching | yes |
+| swept fit | **complete and passing: 8 of 8 joints** at 10° steps, 0 failing pairs. The 4 floor contacts are advisory world geometry (ADR-420) | yes |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 8 × MG90S with 8 horns, 16 × M2×8 | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-quadruped-3-hero.png),
+[`iso`](ot10-quadruped-3-look_iso.png),
+[`iso_back`](ot10-quadruped-3-look_iso_back.png),
+[`front`](ot10-quadruped-3-look_front.png),
+[`right`](ot10-quadruped-3-look_right.png) and
+[`top`](ot10-quadruped-3-look_top.png).
+`cadex render` took 2 min 47 s for the whole command: 75.4 s acquiring
+the tessellation, 6.9 s drawing, and 2.6 s of that for the hero, at
+78,419 drawn triangles (from 650,316 input triangles).
+
+**Against `ot10-quadruped-2`.** The total fell by one, 16 to 15, and the
+design now clears every other bar item where quadruped 2 missed the
+swept fit. T4 rose from 1 to 2: the hood is one large-radius shell over
+the tray and the shins taper from 22 mm to 10 mm into ball feet. T3 fell
+from 3 to 2: every outer hip and knee axis carries an orange cap (one
+print per leg, the two caps joined by a spine), but all three calls
+name bare horns on the inner axes. T6 fell from 3 to 2 in two of three
+calls: the body reads long and the thigh pods stand out sideways. T5 is
+2, as before: one dark oval visor at +X, with no ADR-422 guidance
+behind it, since the turn predates it.
+
+**What the agent spent its budget on.** It hit no CPU limit at all,
+where every hexapod since attempt 2 hit it between 3 and 8 times. It
+hit the sweep's 2,000-pair limit instead: screw-and-nut mounting gave 82
+components and 3,321 pairs. It dropped the nuts for thread-forming
+screws and merged each leg's two caps into one part, reaching 62
+components and 1,891 pairs, and then the sweep completed at 10°. It also
+removed blanket fillets from the thigh pockets and deck peg roots,
+where they caused intersections (its `docs/rejected.md`).
+
+**P2 and the floor.** Before ADR-424, the agent read P2 at 31% and
+found that "the 1.2 m floor slab's own edges were being counted as
+printed". It rounded the floor, and its own reading fell to 6.8%. That
+is the dilution ADR-424 describes, reached from inside a turn. Under
+ADR-424 the floor's 19,207 mm of rounded edge is left out, and the
+printed parts alone read 0.116, still well inside the bar. The agent's
+rounded floor changes no verdict here.
+
+**It ran at the same time as hexapod attempt 4.** The two turns
+overlapped from 03:07:21Z to 03:41:39Z. Seven of hexapod 4's eight
+CPU-limit refusals (03:22Z to 03:39Z) fall inside that window; the
+eighth, at 03:43:05Z, came after this turn had ended. The limit is
+`RLIMIT_CPU`, which charges CPU time rather than wall time, and
+ADR-423 located hexapod 4's cost in its own static clearance pass
+(83 s of worker CPU to 28 s on a read-only copy). So the overlap is
+recorded, but it is not the cause of hexapod 4's refusals.
+
+**One product gap the agent named itself.** Its summary says "the
+build replies were too large for me to read, so I never saw their fit
+summaries". It checked fit by reading `inspect scope=clearance` pages
+instead, which found and fixed a 2.3 mm³ battery-to-tray overlap. That
+is a cost in turns, not a refusal, and is left for a later unit.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 10 refused calls:
+- 2 sandbox refusals (`getattr`, an import);
+- 2 guessed JSON pointers (both `/facts/bounding_box`);
+- 3 kernel refusals: one `fuse` that produced 2 solids, and two fillets
+  where 4 of 12 and 3 of 18 edges refused the radius;
+- 1 reset-variation refusal that named the lift, which the agent then
+  applied;
+- 2 refusals to retire an output that a component still linked.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest
