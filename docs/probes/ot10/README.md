@@ -1376,6 +1376,32 @@ The turn had 15 refused calls, out of 12 `write_script`, 13
 - 1 `api.cut` refusal (refining the result produced an invalid shape);
 - 1 `edit_script` replacement whose text occurred 0 times.
 
+## A5 confirmation round, pre-registered
+
+Registered on 2026-09-28 before any of its turns started, at revision
+`96ed90d0`. It is the next step after `REPORT.md` found A5 not met by its
+letter.
+
+- **One turn per body plan.** Each runs once, on the frozen prompt from
+  `contract.json` `a5.prompts`, with the frozen argv above:
+  `claude-opus-5-5`, `CADEX_EFFORT=medium` and no continuation. Each runs
+  on a new project: `ot10-hexapod-11`, then `ot10-quadruped-4`, then
+  `ot10-biped-2`.
+- **The hexapod goes first**, because it is the weakest plan. It passed
+  only on its ninth counted turn.
+- **Every earlier turn still counts.** The twelve counted turns and their
+  verdicts above stay published and unchanged. This round adds to them. It
+  does not replace them, and it does not redefine A5.
+- **Scoring is unchanged.** Each design is scored blind with
+  `runner/judge.py` under the frozen rubric, proxies and bar. It is
+  rendered and judged from a `/tmp` copy of the project, as attempt 10 was.
+- **A miss is diagnosed before anything changes.** No prompt, overlay or
+  tool change happens between turns until that miss is diagnosed and
+  recorded.
+- **A harness kill is not an attempt.** A turn killed before it has an exit
+  status is kept read-only as the receipt, as attempt 9 was, and the plan
+  gets a new project.
+
 ## A4: the refusal census, every ot10 transcript
 
 **None of A4's four refusal classes recurred in any ot10 product-agent
