@@ -319,3 +319,23 @@ def test_a5_hexapod_attempt_6_is_published_with_its_score():
     section = README.partition("## A5 attempt 6: the hexapod (`ot10-hexapod-6`)")[2]
     assert section.startswith(
         "\n\n**Misses the bar: the accepted revision's swept fit is incomplete, 0 of\n12 joints,")
+
+
+def test_a5_hexapod_attempt_7_is_published_with_its_score():
+    score = json.loads((OT10 / "ot10-hexapod-7-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 13
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-hexapod-7-hero.png"] + [
+        f"ot10-hexapod-7-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    # Static fit and sweep both pass, but the judged total is under the
+    # frozen bar, so the README publishes the design as a miss.
+    assert score["total"] < CONTRACT["bar"]["total_min"]
+    assert "| attempt 7, median | 2 | 3 | 1 | 1 | 2 | 2 | 2 | **13** |" in README
+    section = README.partition("## A5 attempt 7: the hexapod (`ot10-hexapod-7`)")[2]
+    assert section.startswith(
+        "\n\n**Misses the bar on one count: the judged total is 13 of 21, under the\nfrozen 14.**")

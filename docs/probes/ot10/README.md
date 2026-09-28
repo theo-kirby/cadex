@@ -1081,6 +1081,111 @@ The turn had 8 refused calls, none of them a CPU-limit refusal:
 The agent again said the build reply was too large to read, the third
 time in the run, and read the fit report pair by pair.
 
+## A5 attempt 7: the hexapod (`ot10-hexapod-7`)
+
+**Misses the bar on one count: the judged total is 13 of 21, under the
+frozen 14.** Every measured item passes. Under ADR-426 and ADR-427 this is
+the first hexapod whose accepted revision has both a clean static fit and a
+complete, passing sweep. This is the frozen hexapod prompt, word for word,
+read from `contract.json` `a5.prompts.hexapod`. It ran once on the new
+project `ot10-hexapod-7`, with no continuation, the same argv,
+`claude-opus-5-5` and `CADEX_EFFORT=medium`. It started at
+2026-09-28T09:36:19Z at revision `cafd3960`, which is after ADR-426 and
+ADR-427, on the dev-tree engine. The turn ended on its own at 10:06:56Z
+(31 min) with `ok: true`, at accepted revision `f0a77bfb1936…` (digest
+`839d779f4627…`). It was rendered and judged from a `/tmp` copy of the
+project; the project itself is unchanged.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| attempt 6, median | 2 | 3 | 2 | 2 | 2 | 2 | 2 | **15** |
+| attempt 7, call 1 | 1 | 3 | 1 | 1 | 2 | 2 | 2 | 12 |
+| attempt 7, call 2 | 2 | 3 | 1 | 1 | 2 | 2 | 2 | 13 |
+| attempt 7, call 3 | 2 | 3 | 2 | 1 | 2 | 3 | 2 | 15 |
+| attempt 7, median | 2 | 3 | 1 | 1 | 2 | 2 | 2 | **13** |
+
+Every raw reply is kept in
+[`ot10-hexapod-7-score.json`](ot10-hexapod-7-score.json), under the same
+rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | **13** | **no** |
+| no trait 0 | lowest is 1 | yes |
+| above hex3 (2) | 13 | yes |
+| P1 ≤ 0.20 | **0.033** (5,125 of 157,257 subsamples) | yes |
+| P2 ≤ 0.25 | **0.247** (5,654 of 22,870 mm, 28 printed components; `c_ground` left out under ADR-424) | yes |
+| P3 2 or 3 | **3** (`#2E3136`, `#ECE7DC`, `#FF7A1A`) | yes |
+| static fit | 1,653 pairs: 1,647 clear, 0 intersections, 0 below clearance. One failing row, the floor's own advisory world-geometry row. Six ball feet rest on `c_ground` at 0.0 mm with 0.0 mm³, reported as world-geometry contacts (ADR-427) | yes |
+| swept fit | **complete and passing, 12 of 12 joints** at 17.5° steps. The busiest hip moves 357 of 1,653 pairs (ADR-426). Six knee-into-ground rows are advisory (ADR-420) | yes |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S with cross horns | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-7-hero.png),
+[`iso`](ot10-hexapod-7-look_iso.png),
+[`iso_back`](ot10-hexapod-7-look_iso_back.png),
+[`front`](ot10-hexapod-7-look_front.png),
+[`right`](ot10-hexapod-7-look_right.png) and
+[`top`](ot10-hexapod-7-look_top.png).
+`cadex render` took 6 min 55 s for the whole command: 202.7 s acquiring
+the tessellation (a full engine rebuild, reported separately under A2) and
+8.2 s drawing, at 152,601 drawn triangles. This machine was also running
+both test suites for part of that time.
+
+**Diagnosis: T3 and T4 fell to 1, and the turn spent its budget before it
+refined.** All three calls named the same two things:
+- **T4, form.** The legs are "flat, bent, constant-section bars", and the
+  graphite boxes at each leg read as "sharp-edged servo boxes". The
+  agent's `leg_thick` is one 4.0 mm parameter from hip to foot, so the
+  legs taper only in plan. The overlay's TAPER TO A FOOT asks for about
+  60% of the hip section near the foot.
+- **T3, joints.** The orange knee discs "read as plain servo horns", and
+  the hip yaw axes are "bare dark shafts under the body". One cap design
+  does not serve every axis.
+
+**What the judges read as servo cases is mostly printed cradle.** P1
+counts only 3.3% of the hero silhouette as purchased hardware. The dark
+boxes cover much more than that in the hero. The agent's DECISION line
+puts each knee servo "in a cradle on the coxa", and the cradle (`c_cx_*`)
+is a `mechanism`-role box that follows the servo's case and has
+`fillet_r` = 1.5 mm. So a printed box the colour of the servo, shaped
+like the servo, reads as an exposed servo. P1 cannot see this; T1 and T4
+can.
+
+**The build budget crowded out refinement.** The turn had one CPU-limit
+refusal: its first full build ran past 300 CPU-seconds. Its own notes
+say:
+- "Filleting the lofted floor and deck edges was dropped when the first
+  full build ran out of CPU time";
+- "the full build at a 10° step ran past the 300 CPU-second limit", so
+  the sweep step is 17.5°.
+
+It then called `look` twice (hero, iso and right, then one leg in
+focus). It accepted after 8 `write_script`, 6 `edit_script` and 52
+`inspect` calls. Attempt 5 reached 16 in 85 minutes; this turn ended in
+31. **The sweep's share of the accepted build's CPU is inferred from the
+agent's words, not measured.** The next unit measures it on a `/tmp`
+copy of `f0a77bfb` before any overlay or budget change.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 9 refused calls:
+- 1 CPU-limit refusal (above);
+- 3 guessed JSON pointers (`/facts/bounding_box` twice, `/facts`);
+- 1 sandbox refusal (`dir` is not defined) and 1 source-policy refusal
+  (an import);
+- 1 `loft_cage` call given the whole cage spec rather than one named
+  cage;
+- 1 task refusal: a 3° reset tilt drove the wide stance 7.17 mm into the
+  floor, so the agent narrowed it to 0–2°;
+- 1 `edit_script` replacement whose text did not occur.
+
+**Against the quadruped.** `ot10-quadruped-3` met the bar before ADR-426
+and ADR-427. Both decisions only turn refusals and failures into
+measurements or advisories, and that design's sweep was already complete
+and its static fit already clean. So its verdict stands and it is not
+rerun.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest
