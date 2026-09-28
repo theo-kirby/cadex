@@ -15,7 +15,7 @@ Open charter criterion for run ot10: **A5. Unassisted designs meet the bar on mo
 
 Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the criterion as a gap; it becomes working only with causally parented, measured evidence that the criterion is met. The human owns the charter checkbox; roles report results and do not tick it. The directive's impact line is truncated; its wording is resolved from the full charter carried verbatim in the same record [rec: damp-dusk-8045].
 
-**Where it stands:** the biped and the quadruped each have a design meeting every bar item; the hexapod has none after five attempts, and attempt 5 misses on the swept fit only [rec: humble-lily-1303] [rec: patient-banner-4052].
+**Where it stands:** the biped and the quadruped each have a design meeting every bar item; the hexapod has none after six attempts. Both sweep misses (attempts 5 and 6) are now fixed at the source and replay complete and passing; attempt 6's remaining miss is six feet reading below clearance on `c_floor` in the static pass [rec: humble-lily-1303] [rec: true-rose-1584] [rec: smooth-sky-9692].
 
 - **Prompts frozen** (commit `13246076`): the hexapod prompt verbatim from hex1–hex3, a quadruped, and a biped; `claude-opus-5-5`, `CADEX_EFFORT=medium`, one turn each [rec: soft-spark-6990].
 - **P2 figures below are post-ADR-424** (world geometry — the floor — left out; see `warm-basin-7003`). Re-scoring changed no A5 verdict; the judge never sees P2 [rec: amber-flame-4976].
@@ -31,16 +31,19 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - `ot10-hexapod-3` (`39dc8d60`): first complete hexapod sweep (12/12 at 20°), 13/21 — face too small and graphite-on-graphite (T5 1), flat star plate (T4 1) [rec: tiny-dusk-3648].
 - `ot10-hexapod-4` (`f0b98de4`): all fit gates pass (sweep 12/12 at 15°), P2 0.220, 12/21 — T5 rose 1→2 after ADR-422, but accent feet and hip caps were dropped for the CPU cap (8 refusals) [rec: rustic-ivy-4753].
 - `ot10-hexapod-5` (`d2198144`, frozen prompt/argv/model/effort, started `3008e1f7`; launched by an errored iteration, completed on its own and published as conforming): judged **16/21** (all calls 16; no trait 0; the highest hexapod total), P1 0.013, P2 0.168, P3 3, static fit clean (1,653 pairs), electronics carried, 12 accent joint caps back — but **swept fit incomplete, 10/12 joints** (`hip_rr` over budget, `knee_rr` not reached) under the 180 s `_SWEEP_TOTAL_SECONDS` even at 80° steps [rec: patient-banner-4052].
-- Hexapod judged totals so far: 13, 14, 13, 12, 16 [rec: patient-banner-4052].
+- `ot10-hexapod-6` (`3cb2b1d0`, frozen prompt/argv/model/effort, started `feb2190b`): judged **15/21** (no trait 0), P1 0.009, P2 0.198, P3 3, electronics carried — but the accepted `fasteners=1` revision's **swept fit was incomplete, 0/12** (pair budget exceeded: 87 components, 3,741 pairs > `_SWEEP_MAX_PAIRS` 2,000, a count that included rigid pairs the sweep never moves), and **six feet resting on `c_floor` read below clearance in the static pass**. With 63 components the sweep had passed 12/12 at 5°, confirming ADR-425 on a fresh turn [rec: true-rose-1584].
+- Hexapod judged totals so far: 13, 14, 13, 12, 16, 15 [rec: patient-banner-4052] [rec: true-rose-1584].
 
 ### Fixes made along the way
 - ADR-418: workers pinned to 4 CPUs; 15 of attempt 1's 19 CPU refusals accept under the unchanged 300 CPU-s cap [rec: strong-summit-4135].
 - ADR-419: the sweep measures near moving pairs exactly and bounds far ones; hexapod-2 replay 0/12 → 12/12 joints in 112 s [rec: western-comet-0121].
 - ADR-420: swept findings against world geometry are advisory under `fit.sweep.world_geometry` [rec: fresh-timber-5181].
 - ADR-423: static clearance bounds far pairs; the refused accent-feet candidate 416.6 → 114.5 CPU-s [rec: lucid-glacier-4889]. **Confirmed on a fresh turn:** hexapod-5 had 0 CPU-limit refusals (hexapod-4 had 8) and kept its accents [rec: patient-banner-4052].
+- ADR-425: the sweep measures exact distances on boundary shells when no solid can nest; the accepted hexapod-5 request replays **12/12 in 125.1 s** (was 9/12 at 180 s), all 14,877 shared rows identical; budget, prompt and language unchanged [rec: swift-trail-3183].
+- ADR-426 (`c8e02559`): the 2,000-pair sweep budget counts only the pairs a joint moves (the only ones measured). On hexapod-6 hips move 770 pairs and knees 332; a `/tmp` replay of `3cb2b1d0` went **0/12 → 12/12 complete, pass, in 97.9 s** (12 advisory `c_floor` rows). Attempt 6's accepted project and verdict are unchanged [rec: smooth-sky-9692].
 
 ### Still open
-- A passing hexapod. The binding limit has moved to the swept fit's wall-time budget (one `FreeCADCmd` child per joint, in series; `_SWEEP_JOINT_SECONDS = 90`). Coarsening to 80° still left 10/12, which suggests a fixed per-joint cost (deserialising 58 BREPs, preparing moving pairs) — an inference from step changes, not a profile. The recorded next unit is to profile the sweep's wall time on a `/tmp` copy of `ot10-hexapod-5` and fix it with a regression test, before any new hexapod attempt and without changing a prompt or the language [rec: patient-banner-4052].
+- A passing hexapod. The swept-fit wall-time and pair-budget limits are both fixed (ADR-425, ADR-426). What attempt 6 still fails is the **static pass: six feet resting on `c_floor` read below clearance** — the recorded next unit [rec: true-rose-1584] [rec: smooth-sky-9692].
 - Product gap seen twice (quadruped-3, hexapod-5): the build reply is too large for the agent to read (59.8 KB on hexapod-5), so it pages `inspect scope=clearance` by hand — 250 of 1,653 static pairs checked on hexapod-5 [rec: humble-lily-1303] [rec: patient-banner-4052].
 - T4 (form) is the recurring weak trait; it reached 2 on quadruped-3 and hexapod-5. The hero camera (`render.HERO`, 35° from −Y) sees a +X face nearly edge-on; ADR-422 records it as *Not taken*, and it is a renderer unit, not the cause of a miss [rec: rustic-ivy-4753] [rec: patient-banner-4052].
 - Measurement hygiene: re-measure and score only on `/tmp` copies — restore opens are not read-only (they bump `script.json`); hex1–hex3 are read-only. `cadex render` re-accepts through `rebuild`, so scoring moves `accepted_digest` with the revision unchanged [rec: amber-flame-4976] [rec: humble-lily-1303] [rec: pale-ledge-0992].
@@ -50,7 +53,7 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - [scope: ot10-hexapod-1, one design-only turn, before ADR-418 | confidence: high | evidence: soft-spark-6990, strong-summit-4135] Under a host-dependent CPU cap, the agent meets the budget by deleting the design language's refinements (caps, fillets) and skipping the swept fit. The score then drops on exactly the traits A5 is judged on. A refusal about budget costs quality, not just time.
 - [scope: ot10-hexapod-2 and ot10-quadruped-2, before ADR-419 | confidence: high | evidence: quiet-basin-1176, western-comet-0121] When the swept fit's 180 s budget cannot cover a 12-joint robot, the agent turns the sweep off to get accepted — so judged quality can meet the bar while the fit criterion still fails.
 - [scope: ot10-hexapod-3 and ot10-hexapod-4, 300 CPU-s cap before ADR-423 | confidence: medium | evidence: tiny-dusk-3648, rustic-ivy-4753, lucid-glacier-4889] Teaching one more rule moves the trait it targets but not the total: with the cap still binding, the agent pays for the new rule by dropping another refinement (hexapod-4: face up, accent and caps gone). The cap was the binding limit, not an untaught rule.
-- [scope: ot10-hexapod-5, after ADR-419/ADR-423, 58 components | confidence: medium | evidence: patient-banner-4052] Coarsening `sweep_step_degrees` (10 → 80) does not bring a 12-joint, 58-component hexapod inside the 180 s sweep budget; the step size is not the lever.
+- [scope: ot10-hexapod-5, after ADR-419/ADR-423, 58 components | confidence: medium | evidence: patient-banner-4052] Coarsening `sweep_step_degrees` (10 → 80) does not bring a 12-joint, 58-component hexapod inside the 180 s sweep budget; the step size is not the lever. ADR-425 brought it inside (12/12 in 125.1 s) by changing how the exact distance is measured, not the step [rec: swift-trail-3183].
 
 ## Provenance
 
@@ -69,3 +72,6 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - amber-flame-4976 — ADR-424: P2 leaves out the floor, all probes re-scored, no A5 verdict changed; unrecorded ot10-quadruped-3 found
 - humble-lily-1303 — ot10-quadruped-3 conforms and meets every A5 bar item (15/21, swept 8/8); second passing body plan
 - patient-banner-4052 — ot10-hexapod-5 judged 16/21 but swept fit 10/12 under the sweep budget; 0 CPU refusals confirm ADR-423
+- swift-trail-3183 — ADR-425: swept fit on boundary shells; hexapod-5's accepted request replays 12/12 in 125.1 s, rows identical
+- true-rose-1584 — hexapod attempt 6 judged 15/21, misses A5: sweep 0/12 on the pair budget, six feet below clearance on c_floor
+- smooth-sky-9692 — ADR-426: sweep pair budget counts moving pairs; hexapod-6 replay 0/12 → 12/12 in 97.9 s
