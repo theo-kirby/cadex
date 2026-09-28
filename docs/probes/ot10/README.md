@@ -1285,6 +1285,94 @@ The turn had 20 refused calls, out of 19 `write_script`, 3
 - 1 guessed JSON pointer (`/revision`);
 - 1 `inspect` refusal (`attach=true` outside image scope).
 
+## A5 attempt 10: the hexapod (`ot10-hexapod-10`)
+
+**Meets the bar on every item, the first hexapod in the run to do so.**
+The judged total is 14 of 21, which meets the frozen 14, and no trait
+scores 0. P1, P2 and P3 are within their bars. The static fit is clean,
+the swept fit is complete and passing on all 12 joints, and the design
+carries its electronics. This is the frozen hexapod prompt, word for
+word, read from `contract.json` `a5.prompts.hexapod`. It ran once on the
+new project `ot10-hexapod-10`, with no continuation, the same argv,
+`claude-opus-5-5` and `CADEX_EFFORT=medium`. It started at
+2026-09-28T12:25:51Z at revision `9f13d33d`, which is after ADR-429, on
+the dev-tree engine. The turn ended on its own at 13:09:33Z (44 min), exit
+0 with `ok: true`, at accepted revision `e8a82deb1a06…` (digest
+`1e0f233588da…`). It was rendered and judged from a `/tmp` copy of the
+project; the project itself is unchanged.
+
+**Attempt 9 is not counted.** The same prompt started on `ot10-hexapod-9`
+at 12:13:49Z. Its process was killed at about 12:17Z, four minutes in, when
+the loop session that launched it ended. It had no exit status and never
+wrote an accepted revision. That is a harness interruption, not a design
+attempt. The project is kept read-only as the receipt, and it is neither
+scored nor reused.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| attempt 8, median | 1 | 1 | 2 | 1 | 0 | 1 | 2 | **8** |
+| attempt 10, call 1 | 2 | 2 | 1 | 2 | 2 | 3 | 2 | 14 |
+| attempt 10, call 2 | 2 | 2 | 1 | 2 | 2 | 3 | 2 | 14 |
+| attempt 10, call 3 | 2 | 2 | 1 | 2 | 2 | 3 | 2 | 14 |
+| attempt 10, median | 2 | 2 | 1 | 2 | 2 | 3 | 2 | **14** |
+
+Every raw reply is kept in
+[`ot10-hexapod-10-score.json`](ot10-hexapod-10-score.json), under the
+same rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | **14** | yes |
+| no trait 0 | lowest is 1 (T3) | yes |
+| above hex3 (2) | 14 | yes |
+| P1 ≤ 0.20 | **0.0026** (602 of 229,169 subsamples) | yes |
+| P2 ≤ 0.25 | **0.1415** (4,842 of 34,217 mm, 22 printed components; `c_floor` left out under ADR-424) | yes |
+| P3 2 or 3 | **3** (`#2A2C30`, `#E9E4D8`, `#F26B1D`), every component's role declared | yes |
+| static fit | 1,326 pairs: 1,320 clear, 0 intersections, 0 below clearance. One failing row, the floor's advisory world-geometry row. Six ball feet rest on `c_floor` as world-geometry contacts (ADR-427). 38 fixed-joint pairs checked, none reported | yes |
+| swept fit | **complete and passing, 12 of 12 joints** at 10° steps, 0 failing pairs. Twelve leg-into-floor rows are advisory (ADR-420) | yes |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S with cross horns. MJCF and a walking task were accepted in the same turn | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-10-hero.png),
+[`iso`](ot10-hexapod-10-look_iso.png),
+[`iso_back`](ot10-hexapod-10-look_iso_back.png),
+[`front`](ot10-hexapod-10-look_front.png),
+[`right`](ot10-hexapod-10-look_right.png) and
+[`top`](ot10-hexapod-10-look_top.png).
+`cadex render` took 3 min 47 s for the whole command. Acquiring the
+tessellation took 108.7 s, and drawing took 9.0 s (2.7 s for the 1024 px
+hero), at 162,427 drawn triangles.
+
+**What the renders show.** A pillow-topped tub with a dark visor across
+its front stands on six curved legs that taper to orange ball feet. The
+judge's weakest trait is T3, at 1 in all three calls: the knees have
+round caps, but the hip axes show as bare dark pins, and the hip servo
+covers are shell-coloured boxes that hang under the body (T1 and T4 name
+them too). T5 is 2, because the visor gives the robot a front but is a
+generic slot. That is where the next hexapod gains would come from.
+
+**How the turn got there.** The agent's own notes name the change that
+made it fit the CPU budget. A superellipse `loft_cage` body with a
+`part.offset` inner wall ran past the 300 CPU-second limit at the fit
+stage. So did an inner loft once the electronics were added. It replaced
+both with filleted-box primitives, which is the ADR-428 advice. ADR-429's
+fix was not visibly exercised: no `PUBLICATION_UNTAGGED_OBJECT` refusal
+appears.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 15 refused calls, out of 12 `write_script`, 13
+`edit_script`, 1 `rebuild`, 51 `inspect`, 4 `describe_api` and 3 `look`:
+- 6 CPU-limit refusals;
+- 3 sandbox or source-policy refusals (`dir` and `hasattr` are not
+  defined; an import);
+- 3 guessed JSON pointers (`/facts/bounding_box`, `/clearance/failing`,
+  `/facts`);
+- 1 `api.fuse` refusal (a solid declared where OpenCascade made a
+  6-solid compound);
+- 1 `api.cut` refusal (refining the result produced an invalid shape);
+- 1 `edit_script` replacement whose text occurred 0 times.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest

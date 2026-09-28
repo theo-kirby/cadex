@@ -1,0 +1,216 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "148a7768772732cbc33f0479f7af6be80fa8dc061faa15d8a6079cb7e59c4b36"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "b1d181325b49d6f0dd2d006d09f99973e4cddf7097150d72317fa016061664a6"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "f247e3ab0316dd6f205afc0a64ad2a8cbae4ebc5ea34ebae5ad0125780d1defb"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "68eb29f1b1079de940d0990cd239c79338cfb3c5e9fc1831309379a593c9e60d"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "96a36bd2c698b2e8395a682686fae1560de79a20287ebbc35c1e97d67584d2c0"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "eddd021514a0915683307a9143dc5c4df1256f544ce5f3a620bf5a45c7bc501d"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 2,
+    "T3": 1,
+    "T4": 2,
+    "T5": 2,
+    "T6": 3,
+    "T7": 2
+  },
+  "total": 14,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell encloses the body, but the hip servo boxes hang exposed beneath it on every leg."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The cream shell, dark visor and shafts, and orange ball feet are well chosen, but the servo boxes are shell-coloured rather than dark, so the colours only partly follow roles."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "The knee joints have round caps with a centre hole, but the hip axes show only as bare dark pins between the body and the brackets, so the joints read mostly as hardware."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body is a generously rounded box and the legs are soft, curved tapers, but the servo brackets are blocky boxes that do not merge into the body."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark rectangular visor gives the robot a front, but it is a generic slot, and the box-on-legs silhouette has little character."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact and the legs taper clearly to distinct orange ball feet, giving a balanced, deliberate hexapod stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Soft lighting on a seamless gradient backdrop lets the curvature read, but the contact shadows are faint, dithered spots and the view is a high three-quarter rather than a low hero angle."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell encloses the body, but the hip servo boxes hang exposed beneath it on every leg.\"},\n\"T2\": {\"score\": 2, \"reason\": \"The cream shell, dark visor and shafts, and orange ball feet are well chosen, but the servo boxes are shell-coloured rather than dark, so the colours only partly follow roles.\"},\n\"T3\": {\"score\": 1, \"reason\": \"The knee joints have round caps with a centre hole, but the hip axes show only as bare dark pins between the body and the brackets, so the joints read mostly as hardware.\"},\n\"T4\": {\"score\": 2, \"reason\": \"The body is a generously rounded box and the legs are soft, curved tapers, but the servo brackets are blocky boxes that do not merge into the body.\"},\n\"T5\": {\"score\": 2, \"reason\": \"A dark rectangular visor gives the robot a front, but it is a generic slot, and the box-on-legs silhouette has little character.\"},\n\"T6\": {\"score\": 3, \"reason\": \"The body is compact and the legs taper clearly to distinct orange ball feet, giving a balanced, deliberate hexapod stance.\"},\n\"T7\": {\"score\": 2, \"reason\": \"Soft lighting on a seamless gradient backdrop lets the curvature read, but the contact shadows are faint, dithered spots and the view is a high three-quarter rather than a low hero angle.\"}}\n```",
+      "session_id": "385dd736-ce49-4f87-93b0-ba0ef6b4ece2",
+      "duration_ms": 21485,
+      "num_turns": 17,
+      "total_cost_usd": 0.1417342,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2489,
+          "cacheReadInputTokens": 3371,
+          "cacheCreationInputTokens": 11408,
+          "webSearchRequests": 0,
+          "costUSD": 0.1417342,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 734,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell encloses the body, but boxy servo pods hang exposed beneath it, and bare dark shafts and servo edges show through the gaps at the hips."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The robot uses a cream shell and a dark colour (visor, split line and shafts) plus a deliberate orange accent on the feet, but the servo pods and joint discs are shell-coloured, so the dark colour is not used consistently for the mechanism."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "Only the upper leg joints have round disc caps, while the hip yaw axes show as bare dark pins between boxy pods, so the joints are not consistently styled."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft rounded box with generous radii and the legs are shaped curves, but the servo pods are boxes with only small fillets and nothing merges together."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor slot gives the robot a front, but it is a generic rectangle, and the box-on-legs silhouette has little character."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact and the curved legs taper to distinct orange ball feet in a balanced six-legged stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is lit so the curves read, with a clean gradient backdrop and faint shadows under the feet, but the view angle is high, the materials look plain and it lacks studio polish."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell encloses the body, but boxy servo pods hang exposed beneath it, and bare dark shafts and servo edges show through the gaps at the hips.\"}, \"T2\": {\"score\": 2, \"reason\": \"The robot uses a cream shell and a dark colour (visor, split line and shafts) plus a deliberate orange accent on the feet, but the servo pods and joint discs are shell-coloured, so the dark colour is not used consistently for the mechanism.\"}, \"T3\": {\"score\": 1, \"reason\": \"Only the upper leg joints have round disc caps, while the hip yaw axes show as bare dark pins between boxy pods, so the joints are not consistently styled.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft rounded box with generous radii and the legs are shaped curves, but the servo pods are boxes with only small fillets and nothing merges together.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor slot gives the robot a front, but it is a generic rectangle, and the box-on-legs silhouette has little character.\"}, \"T6\": {\"score\": 3, \"reason\": \"The body is compact and the curved legs taper to distinct orange ball feet in a balanced six-legged stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render is lit so the curves read, with a clean gradient backdrop and faint shadows under the feet, but the view angle is high, the materials look plain and it lacks studio polish.\"}}",
+      "session_id": "836bb72a-048d-48ad-b336-512effee1f39",
+      "duration_ms": 24215,
+      "num_turns": 17,
+      "total_cost_usd": 0.1280858,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2687,
+          "cacheReadInputTokens": 5649,
+          "cacheCreationInputTokens": 9150,
+          "webSearchRequests": 0,
+          "costUSD": 0.1280858,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 901,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell covers the body, but the six servo pods hang outside it as separate boxes, and the dark standoffs and shafts show through the gaps."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "Cream shell, dark visor and split line, and orange ball feet work well, but the servo pods are shell-coloured rather than dark, so the colour roles are only partly consistent."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "Some leg joints end in round discs with a centre hole, but others show bare shafts or dark standoffs, so the joints read as mixed, unstyled hardware rather than one consistent round feature."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body is a soft rounded box with generous radii and the legs are shaped, tapered curves, but the servo pods are boxes with only small fillets and stay visually separate."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark rounded visor panel gives the robot a front, but it is a generic slot with no further character, and from most angles the body reads as a plain lunchbox."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact, and the curved legs taper to distinct orange ball feet in a spread, balanced stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Curvature reads well against a clean gradient backdrop with faint shadows at the feet, but the views are high CAD angles rather than a low three-quarter hero, and the top view shows some rough edges."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell covers the body, but the six servo pods hang outside it as separate boxes, and the dark standoffs and shafts show through the gaps.\"}, \"T2\": {\"score\": 2, \"reason\": \"Cream shell, dark visor and split line, and orange ball feet work well, but the servo pods are shell-coloured rather than dark, so the colour roles are only partly consistent.\"}, \"T3\": {\"score\": 1, \"reason\": \"Some leg joints end in round discs with a centre hole, but others show bare shafts or dark standoffs, so the joints read as mixed, unstyled hardware rather than one consistent round feature.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body is a soft rounded box with generous radii and the legs are shaped, tapered curves, but the servo pods are boxes with only small fillets and stay visually separate.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark rounded visor panel gives the robot a front, but it is a generic slot with no further character, and from most angles the body reads as a plain lunchbox.\"}, \"T6\": {\"score\": 3, \"reason\": \"The body is compact, and the curved legs taper to distinct orange ball feet in a spread, balanced stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"Curvature reads well against a clean gradient backdrop with faint shadows at the feet, but the views are high CAD angles rather than a low three-quarter hero, and the top view shows some rough edges.\"}}",
+      "session_id": "7b371eca-ebb5-4b98-af82-263a1a7189bf",
+      "duration_ms": 21494,
+      "num_turns": 17,
+      "total_cost_usd": 0.1232858,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2447,
+          "cacheReadInputTokens": 5649,
+          "cacheCreationInputTokens": 9150,
+          "webSearchRequests": 0,
+          "costUSD": 0.1232858,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 663,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

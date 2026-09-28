@@ -359,3 +359,25 @@ def test_a5_hexapod_attempt_8_is_published_with_its_score():
     section = README.partition("## A5 attempt 8: the hexapod (`ot10-hexapod-8`)")[2]
     assert section.startswith(
         "\n\n**Misses the bar on four counts: the judged total is 8 of 21, T5 is 0,")
+
+
+def test_a5_hexapod_attempt_10_is_published_with_its_score():
+    score = json.loads((OT10 / "ot10-hexapod-10-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 14
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-hexapod-10-hero.png"] + [
+        f"ot10-hexapod-10-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    # The first hexapod to meet every bar item: the judged half clears the
+    # frozen total with no zero trait, and the README records the fit gates.
+    assert score["total"] >= CONTRACT["bar"]["total_min"]
+    assert min(score["medians"].values()) >= 1
+    assert "| attempt 10, median | 2 | 2 | 1 | 2 | 2 | 3 | 2 | **14** |" in README
+    section = README.partition("## A5 attempt 10: the hexapod (`ot10-hexapod-10`)")[2]
+    assert section.startswith(
+        "\n\n**Meets the bar on every item, the first hexapod in the run to do so.**")
+    assert "**Attempt 9 is not counted.**" in section
