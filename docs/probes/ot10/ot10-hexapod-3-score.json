@@ -1,0 +1,216 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "cd82c090459125814e734a24f097082ef7d4f595932751223bf3b95e79aa8637"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "650bcdebb70da6de1b500cfe20fad7fc8ce559a93f94cdf7f39a162a8ab1db34"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "cfe6a02011c43efbe367d827b887e16fd86f4261a96963dbad9c841fb4c7616e"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "fe15602aa10a9881d5bbed4aec34659fa061c6b271c336163b40faca819835b7"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "9eda05308f0b9c1aef67cc091d4196527279864bbb9fd0402bddb6da32518e52"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "043c0884b8d903d2252df817bdce904ecf34772fcf880ff951aaee7f76ae730d"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 3,
+    "T3": 2,
+    "T4": 1,
+    "T5": 1,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 13,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The white top shell and dark lower tub enclose the body hardware, but small dark servo-horn and screw hardware still shows at every femur joint and through gaps along the limbs."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell and dark charcoal are used by role on the lower tub and joint hardware, with one saturated orange accent placed only on the feet."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The coxa joints are round bosses on the body and most femur joints have round disc caps, but some axes still show bare dark hardware and the caps are not uniform."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a filleted flat star plate with a shallow dish, the coxa covers are rectangular boxes with small fillets, and the legs are bent bars, so it still reads as plates and bars."
+        },
+        "T5": {
+          "score": 1,
+          "reason": "The layout is nearly radially symmetric with no face, and only a small side slot hints at a front."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs taper slightly to distinct orange ball feet, but the body is a flat, wide, sprawling star rather than a compact mass."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Cleanly lit and antialiased on a gradient backdrop with faint shadows under the feet, but the three-quarter view is fairly high, the shading looks CAD-like, and it lacks studio polish."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"The white top shell and dark lower tub enclose the body hardware, but small dark servo-horn and screw hardware still shows at every femur joint and through gaps along the limbs.\"}, \"T2\": {\"score\": 3, \"reason\": \"Off-white shell and dark charcoal are used by role on the lower tub and joint hardware, with one saturated orange accent placed only on the feet.\"}, \"T3\": {\"score\": 2, \"reason\": \"The coxa joints are round bosses on the body and most femur joints have round disc caps, but some axes still show bare dark hardware and the caps are not uniform.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a filleted flat star plate with a shallow dish, the coxa covers are rectangular boxes with small fillets, and the legs are bent bars, so it still reads as plates and bars.\"}, \"T5\": {\"score\": 1, \"reason\": \"The layout is nearly radially symmetric with no face, and only a small side slot hints at a front.\"}, \"T6\": {\"score\": 2, \"reason\": \"The legs taper slightly to distinct orange ball feet, but the body is a flat, wide, sprawling star rather than a compact mass.\"}, \"T7\": {\"score\": 2, \"reason\": \"Cleanly lit and antialiased on a gradient backdrop with faint shadows under the feet, but the three-quarter view is fairly high, the shading looks CAD-like, and it lacks studio polish.\"}}",
+      "session_id": "0d5bebe6-d3ca-438f-be4a-fcfa459e84f4",
+      "duration_ms": 23261,
+      "num_turns": 17,
+      "total_cost_usd": 0.1448196,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2638,
+          "cacheReadInputTokens": 3378,
+          "cacheCreationInputTokens": 11421,
+          "webSearchRequests": 0,
+          "costUSD": 0.1448196,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 872,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The white star-shaped top and dark lower tub make a continuous body enclosure, but small dark servo horns and screw hardware still show through gaps at every hip and knee."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The colours follow clear roles: an off-white shell, a dark charcoal lower housing, and one saturated orange accent used only on the ball feet."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most rotation axes are round bosses or caps, like the lobes at the hips and the discs at the knees, but the two joint types don't match and bare horn hardware is still visible."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "Everything has fillets, but the body reads as a flat star-shaped plate and the hip housings as rectangular boxes, so it still looks like plates and bars rather than one soft form."
+        },
+        "T5": {
+          "score": 1,
+          "reason": "The six legs are arranged radially with no focal face, and the only possible face element is a small dark slot on one side, so the robot has almost no clear front."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The orange ball caps are distinct feet, but the legs are nearly uniform bent bars without a clear taper, and the stance is wide and spider-flat."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "It is lit so the curvature reads, on a clean gradient backdrop with faint shadows under the feet and a reasonable three-quarter view, but it is a plain CAD render without studio materials or polish."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"The white star-shaped top and dark lower tub make a continuous body enclosure, but small dark servo horns and screw hardware still show through gaps at every hip and knee.\"},\n\"T2\": {\"score\": 3, \"reason\": \"The colours follow clear roles: an off-white shell, a dark charcoal lower housing, and one saturated orange accent used only on the ball feet.\"},\n\"T3\": {\"score\": 2, \"reason\": \"Most rotation axes are round bosses or caps, like the lobes at the hips and the discs at the knees, but the two joint types don't match and bare horn hardware is still visible.\"},\n\"T4\": {\"score\": 1, \"reason\": \"Everything has fillets, but the body reads as a flat star-shaped plate and the hip housings as rectangular boxes, so it still looks like plates and bars rather than one soft form.\"},\n\"T5\": {\"score\": 1, \"reason\": \"The six legs are arranged radially with no focal face, and the only possible face element is a small dark slot on one side, so the robot has almost no clear front.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The orange ball caps are distinct feet, but the legs are nearly uniform bent bars without a clear taper, and the stance is wide and spider-flat.\"},\n\"T7\": {\"score\": 2, \"reason\": \"It is lit so the curvature reads, on a clean gradient backdrop with faint shadows under the feet and a reasonable three-quarter view, but it is a plain CAD render without studio materials or polish.\"}}\n```",
+      "session_id": "a41f7170-6030-45ea-9911-c830a0ee2e4d",
+      "duration_ms": 24508,
+      "num_turns": 17,
+      "total_cost_usd": 0.12931120000000002,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2743,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.12931120000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 946,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous white shell and dark lower tray enclose the body hardware, but small dark servo and screw parts still show at the leg joints and through gaps between the coxa covers."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The white shell and dark charcoal are clean and the orange accent is placed deliberately on the feet, but the dark is used for the belly tray, not consistently for the mechanism and joints."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The hip joints read as round bosses concentric with their axes, and some knees have round caps, but other knees show bare dark hardware and the joint treatment varies."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a flat star-shaped plate with filleted edges, the coxa covers are rounded boxes and the legs are bent bars, so it still reads as plates and bars."
+        },
+        "T5": {
+          "score": 1,
+          "reason": "The design is radially symmetric with a central dome and no clear face; only a small slot in one side view hints at a front."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The orange ball feet are distinct, but the legs are close to a uniform section and the flat six-arm layout sprawls rather than reading as a compact body."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "It has a clean gradient backdrop, soft lighting and faint contact shadows under the feet, but the high CAD-viewer angle, plain materials and slightly jagged edges fall short of a studio hero."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A continuous white shell and dark lower tray enclose the body hardware, but small dark servo and screw parts still show at the leg joints and through gaps between the coxa covers.\"}, \"T2\": {\"score\": 2, \"reason\": \"The white shell and dark charcoal are clean and the orange accent is placed deliberately on the feet, but the dark is used for the belly tray, not consistently for the mechanism and joints.\"}, \"T3\": {\"score\": 2, \"reason\": \"The hip joints read as round bosses concentric with their axes, and some knees have round caps, but other knees show bare dark hardware and the joint treatment varies.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a flat star-shaped plate with filleted edges, the coxa covers are rounded boxes and the legs are bent bars, so it still reads as plates and bars.\"}, \"T5\": {\"score\": 1, \"reason\": \"The design is radially symmetric with a central dome and no clear face; only a small slot in one side view hints at a front.\"}, \"T6\": {\"score\": 2, \"reason\": \"The orange ball feet are distinct, but the legs are close to a uniform section and the flat six-arm layout sprawls rather than reading as a compact body.\"}, \"T7\": {\"score\": 2, \"reason\": \"It has a clean gradient backdrop, soft lighting and faint contact shadows under the feet, but the high CAD-viewer angle, plain materials and slightly jagged edges fall short of a studio hero.\"}}\n```",
+      "session_id": "fb32b3bb-ae40-46c1-a13e-75ca841a9fed",
+      "duration_ms": 25219,
+      "num_turns": 17,
+      "total_cost_usd": 0.1311712,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2836,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.1311712,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1045,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

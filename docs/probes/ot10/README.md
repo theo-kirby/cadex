@@ -509,6 +509,108 @@ outputs. The other six were:
   applied;
 - two refusals to retire an output that a component still linked.
 
+## A5 attempt 3: the hexapod (`ot10-hexapod-3`)
+
+**Misses the bar on one count: the judged total is 13 of 21, under the
+frozen 14.** Every other item passes. That includes the first complete,
+passing swept fit on a hexapod in the run: 12 of 12 joints. This is the
+frozen hexapod prompt above, word for word, run once on the new project
+`ot10-hexapod-3` with no continuation, the same argv and
+`CADEX_EFFORT=medium`. It started at 2026-09-28T00:34:31Z at revision
+`3a2d2aee`, which is after ADR-419, ADR-420 and ADR-421. It ran detached
+from the loop, and its stdout and stderr stayed outside git. The turn
+ended on its own at 02:09:48Z (1 h 35 min) with exit 0 and `ok: true`,
+at accepted revision `39dc8d60a26a…` (digest `d7bf27d9ded3…`).
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| attempt 2, median | 2 | 3 | 1 | 2 | 2 | 2 | 2 | **14** |
+| attempt 3, call 1 | 2 | 3 | 2 | 1 | 1 | 2 | 2 | 13 |
+| attempt 3, call 2 | 2 | 3 | 2 | 1 | 1 | 2 | 2 | 13 |
+| attempt 3, call 3 | 2 | 2 | 2 | 1 | 1 | 2 | 2 | 12 |
+| attempt 3, median | 2 | 3 | 2 | 1 | 1 | 2 | 2 | **13** |
+
+Every raw reply is kept in
+[`ot10-hexapod-3-score.json`](ot10-hexapod-3-score.json), under the same
+rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | 13 | **no** |
+| no trait 0 | lowest is 1 (T4, T5) | yes |
+| above hex3 (2) | 13 | yes |
+| P1 ≤ 0.20 | **0.007** (1,037 of 156,494 subsamples) | yes |
+| P2 ≤ 0.25 | **0.240** (11,418 of 47,561 mm, 23 printed components, `floor` among them) | yes |
+| P3 2 or 3 | **3** (`#2E3136`, `#ECE8DF`, `#F26B1D`) | yes |
+| static fit | 1,326 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row. 38 fixed-joint pairs touching | yes |
+| swept fit | **complete and passing: 12 of 12 joints** at 20° steps, 0 failing pairs. The 12 floor contacts are advisory world geometry (ADR-420) | yes |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S with 12 horns | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-3-hero.png),
+[`iso`](ot10-hexapod-3-look_iso.png),
+[`iso_back`](ot10-hexapod-3-look_iso_back.png),
+[`front`](ot10-hexapod-3-look_front.png),
+[`right`](ot10-hexapod-3-look_right.png) and
+[`top`](ot10-hexapod-3-look_top.png).
+`cadex render` took 9 min 15 s for the whole command: 286.8 s acquiring
+the tessellation, 10.2 s drawing, and 2.7 s of that for the hero, at
+207,828 drawn triangles (from 1,509,140 input triangles).
+
+**Diagnosis.** The tool changes did their job. The sweep that attempt 2
+switched off now completes. The agent tried 10°, 15° and 20° steps. It hit the time budget at 8 of 12 joints and again at 10 of 12, and
+then accepted at 20°.
+CPU-limit refusals were 4, against attempt 2's 3. What moved was the
+design, on two traits:
+
+- **T5 fell from 2 to 1 in all three calls. The face is too small to
+  find.** The agent did declare a face: its `DECISIONS.md` ADR-004 puts a
+  visor in a front notch at +X, on the IMU's axis, as §4 of the language
+  asks. The visor has the `mechanism` role and colour, though. It is a
+  slot about 60 × 8 px in a 768 px `right` view, over a graphite tub about
+  350 px wide. That is far under §4's "about 25–50% of the body's front
+  face". §4 also says the face "sits in `mechanism` graphite and may
+  carry the accent". On this body the graphite surface around the notch
+  is the same colour, and the accent went to the feet. So the gap is §4's
+  proportion rule, which the agent did not meet. It sits beside a colour
+  rule that only works on a shell-coloured surround, and the language does
+  not say that. The quadruped and the biped, with faces on white shells,
+  both scored T5 2.
+- **T4 stayed at 1, as in attempt 1 and the biped.** All three calls
+  read the body as a flat star plate with box-shaped coxa covers. The
+  agent's first body was a scaled-ellipsoid dome (a B-spline surface). It
+  pushed the fit check past the 300 CPU-second limit, a 3D offset of it
+  failed, and it was replaced by a clipped sphere (`docs/rejected.md`).
+  The dome is 10 mm high over a 240 mm star, so it reads as a shallow
+  dish. The coxae, by contrast, got post-cut edge breaks for P2 and still
+  kept their box sections. P2's 0.240 is again close to its bar.
+
+The next change answers the measured gap in the language's own terms.
+§4 must make the face findable on any body: a proportion the agent can
+check, and a contrast rule (graphite on shell, or the accent when the
+face sits on graphite). The overlay must teach checking it with `look`
+from the face's own side before accepting. That is a documentation and
+overlay change, with no judge wording in it. T4 on the hexapod stays open
+until a body can be a soft primitive inside the CPU budget.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 20 refused calls:
+- 4 CPU-limit refusals;
+- 1 call to a tool name that does not exist (`inspect` without its
+  prefix);
+- 2 sandbox refusals (`dir`, an import);
+- 7 kernel refusals:
+  - three booleans that produced several solids;
+  - one failed 3D offset;
+  - one invalid bounding box;
+  - two fillets that refused their radius;
+- 1 edit whose `old` text did not occur;
+- 2 guessed JSON pointers (`/summary`, `/printed_edges`);
+- 1 reset-variation refusal that named the lift, which the agent then
+  applied;
+- 2 refusals to retire an output that a component still linked.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest
