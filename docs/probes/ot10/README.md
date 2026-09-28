@@ -15,6 +15,9 @@ The language being judged is [`docs/DESIGN-LANGUAGE.md`](../../DESIGN-LANGUAGE.m
 The judge never sees it. It sees the rubric below, the ten core reference
 images and the candidate's renders, and nothing else.
 
+The run's closing summary, with every attempt and score in one table, is
+[`REPORT.md`](REPORT.md).
+
 ## The rubric
 
 The text between the markers is passed to the judge byte for byte.
