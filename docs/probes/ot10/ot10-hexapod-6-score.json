@@ -1,0 +1,216 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "46e8093e9ee258129fd2bce153d4588b34f85e0ab38c73ea597c40595a91c54a"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "6173fd3a3a13d6e95f93b227d8ac7bd876d859b49b11846742bbf138ff2c415f"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "2fb62f210c5facc316d24509593355973a48358b88208978ed080571f642c430"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "8c42aa9663238a246f39a4cd9d78691280500548f4d5009abcb8c21197c47a5f"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "4952117533217eafb85c99c4c7add580720b44d30c796cdd8107e67384766a4b"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "a95b0c95c95708a25b658230117026001411cf0c1acca6fa26f7ceeea483ce38"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 2,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 15,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell covers the body and the leg servos sit in shell-coloured housings, but dark mounting brackets and shaft stubs still show in the gaps under the body and at the knees."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "A cream shell and a black mechanism colour (belt band, ball feet) are applied by role, with one saturated orange accent used only on the joints."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Every joint gets a round orange feature on its axis, but the hip rings and the knee disc caps are two different treatments, and bare dark shaft stubs show beside the knee caps."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a generously rounded box, but the legs are bent bars of constant section and the hip blocks are boxes with small fillets, so the limbs read as plates and bars that do not merge with the body."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor band wrapping one end suggests a front, but it is a generic stripe rather than a clear face with character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The black ball feet are distinct, but the legs are uniform bars with no taper, and the long flat body with widely splayed legs looks somewhat sprawling."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "It is cleanly lit on a gradient backdrop from a three-quarter angle and the curvature reads, but the view is high rather than low and the contact shadows are faint and grainy, without studio polish."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell covers the body and the leg servos sit in shell-coloured housings, but dark mounting brackets and shaft stubs still show in the gaps under the body and at the knees.\"}, \"T2\": {\"score\": 3, \"reason\": \"A cream shell and a black mechanism colour (belt band, ball feet) are applied by role, with one saturated orange accent used only on the joints.\"}, \"T3\": {\"score\": 2, \"reason\": \"Every joint gets a round orange feature on its axis, but the hip rings and the knee disc caps are two different treatments, and bare dark shaft stubs show beside the knee caps.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a generously rounded box, but the legs are bent bars of constant section and the hip blocks are boxes with small fillets, so the limbs read as plates and bars that do not merge with the body.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor band wrapping one end suggests a front, but it is a generic stripe rather than a clear face with character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The black ball feet are distinct, but the legs are uniform bars with no taper, and the long flat body with widely splayed legs looks somewhat sprawling.\"}, \"T7\": {\"score\": 2, \"reason\": \"It is cleanly lit on a gradient backdrop from a three-quarter angle and the curvature reads, but the view is high rather than low and the contact shadows are faint and grainy, without studio polish.\"}}",
+      "session_id": "f34497ca-2d2e-4888-aea9-d8943aa325fd",
+      "duration_ms": 26870,
+      "num_turns": 17,
+      "total_cost_usd": 0.1502068,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 2828,
+          "cacheReadInputTokens": 8914,
+          "cacheCreationInputTokens": 11480,
+          "webSearchRequests": 0,
+          "costUSD": 0.1502068,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1022,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The rounded body shell and the cream leg pods cover the servos, but dark mounting plates, brackets and axle hardware still show in the gaps under the body and at the knees."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "A cream shell and a dark mechanism colour are used by role, and the one saturated orange accent is kept to the joint caps and hip rings."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Every joint is marked by a round orange feature on its axis, but the knees have flat disc caps and the hips have stacked washer-like rings, so they don't match."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one generous rounded box, but the servo pods are lightly filleted boxes and the legs are bent bars that don't merge into the body."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor band on one end gives the robot a front, but it is a generic slot rather than a focal face with character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs end in distinct black ball feet and taper only slightly, and the long flat slab body with pods sticking out sprawls more than it reads as compact."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is cleanly lit and antialiased on a gradient backdrop from a three-quarter angle, but the contact shadows are faint, the view is fairly high and the materials look like flat CAD shading."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"The rounded body shell and the cream leg pods cover the servos, but dark mounting plates, brackets and axle hardware still show in the gaps under the body and at the knees.\"},\n\"T2\": {\"score\": 3, \"reason\": \"A cream shell and a dark mechanism colour are used by role, and the one saturated orange accent is kept to the joint caps and hip rings.\"},\n\"T3\": {\"score\": 2, \"reason\": \"Every joint is marked by a round orange feature on its axis, but the knees have flat disc caps and the hips have stacked washer-like rings, so they don't match.\"},\n\"T4\": {\"score\": 2, \"reason\": \"The body reads as one generous rounded box, but the servo pods are lightly filleted boxes and the legs are bent bars that don't merge into the body.\"},\n\"T5\": {\"score\": 2, \"reason\": \"A dark visor band on one end gives the robot a front, but it is a generic slot rather than a focal face with character.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The legs end in distinct black ball feet and taper only slightly, and the long flat slab body with pods sticking out sprawls more than it reads as compact.\"},\n\"T7\": {\"score\": 2, \"reason\": \"The render is cleanly lit and antialiased on a gradient backdrop from a three-quarter angle, but the contact shadows are faint, the view is fairly high and the materials look like flat CAD shading.\"}}\n```",
+      "session_id": "4ef26225-a75e-4de6-a2a5-664816bd97dc",
+      "duration_ms": 23214,
+      "num_turns": 17,
+      "total_cost_usd": 0.12737120000000002,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2646,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.12737120000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 878,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell encloses the body and the leg servos sit in cream pods, but dark brackets, shafts and plates still show through the gaps under the body and at the hips."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The cream shell and dark mechanism (band, brackets, ball feet) are applied by role, and a single saturated orange accent is placed only on the joints."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Knee axes carry clean orange round caps, but the hip yaw joints are stacked rings over bare dark brackets that look more like hardware, so the joints are not styled the same way."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one generously filleted rounded box, but the servo pods are small-radius boxes and the legs are near-constant-section bent bars that do not merge into the body."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor band wraps one end and suggests a front, but it is a generic stripe rather than a clear focal face with character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs end in distinct black ball feet but keep a mostly uniform section, and the long flat slab body with thin splayed legs reads as somewhat sprawling."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is cleanly lit on a gradient backdrop with antialiased edges and faint shadows, but the view is a fairly high isometric angle without strong studio contact shadow or material richness."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell encloses the body and the leg servos sit in cream pods, but dark brackets, shafts and plates still show through the gaps under the body and at the hips.\"}, \"T2\": {\"score\": 3, \"reason\": \"The cream shell and dark mechanism (band, brackets, ball feet) are applied by role, and a single saturated orange accent is placed only on the joints.\"}, \"T3\": {\"score\": 2, \"reason\": \"Knee axes carry clean orange round caps, but the hip yaw joints are stacked rings over bare dark brackets that look more like hardware, so the joints are not styled the same way.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one generously filleted rounded box, but the servo pods are small-radius boxes and the legs are near-constant-section bent bars that do not merge into the body.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor band wraps one end and suggests a front, but it is a generic stripe rather than a clear focal face with character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The legs end in distinct black ball feet but keep a mostly uniform section, and the long flat slab body with thin splayed legs reads as somewhat sprawling.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render is cleanly lit on a gradient backdrop with antialiased edges and faint shadows, but the view is a fairly high isometric angle without strong studio contact shadow or material richness.\"}}",
+      "session_id": "abcf9465-7d90-48e7-a464-05420781825c",
+      "duration_ms": 24539,
+      "num_turns": 17,
+      "total_cost_usd": 0.1282712,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2691,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.1282712,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 904,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

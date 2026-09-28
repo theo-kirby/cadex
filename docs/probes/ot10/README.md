@@ -964,6 +964,113 @@ The refusal counter tags the knee-horn inertia refusal as a horn-style
 refusal, because the body is named `c_knee_horn_fl`. It is not one: it
 names no horn style.
 
+## A5 attempt 6: the hexapod (`ot10-hexapod-6`)
+
+**Misses the bar: the accepted revision's swept fit is incomplete, 0 of
+12 joints, because it exceeds the sweep's pair budget.** The judged
+half clears the bar at 15 of 21, and all three proxies pass. This is the
+frozen hexapod prompt, word for word, run once on the new project
+`ot10-hexapod-6` with no continuation, the same argv, `claude-opus-5-5`
+and `CADEX_EFFORT=medium`. It started at 2026-09-28T08:07:15Z at
+revision `feb2190b`, which is after ADR-425's boundary-shell sweep, on
+the rebuilt engine. The turn ended on its own at 08:39:33Z (32 min) with
+`ok: true`, at accepted revision `3cb2b1d0847d…` (digest
+`18f182fbf270…`). It was rendered and judged from a `/tmp` copy of the
+project; the project itself is unchanged.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| attempt 5, median | 2 | 3 | 3 | 2 | 2 | 2 | 2 | **16** |
+| attempt 6, call 1 | 2 | 3 | 2 | 1 | 2 | 2 | 2 | 14 |
+| attempt 6, call 2 | 2 | 3 | 2 | 2 | 2 | 2 | 2 | 15 |
+| attempt 6, call 3 | 2 | 3 | 2 | 2 | 2 | 2 | 2 | 15 |
+| attempt 6, median | 2 | 3 | 2 | 2 | 2 | 2 | 2 | **15** |
+
+Every raw reply is kept in
+[`ot10-hexapod-6-score.json`](ot10-hexapod-6-score.json), under the same
+rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | 15 | yes |
+| no trait 0 | lowest is 2 | yes |
+| above hex3 (2) | 15 | yes |
+| P1 ≤ 0.20 | **0.009** (1,778 of 194,975 subsamples) | yes |
+| P2 ≤ 0.25 | **0.198** (6,199 of 31,322 mm, 33 printed components; `c_floor` left out under ADR-424) | yes |
+| P3 2 or 3 | **3** (`#2A2C31`, `#E8E4DA`, `#FF6A1A`) | yes |
+| static fit | 3,741 pairs, 0 intersections, 73 fixed-joint pairs touching. **Seven failing rows**: the floor's advisory world-geometry row, and six `below clearance` rows where each ball foot rests on `c_floor` at 0.0 mm with no common volume. The static pass does not mark these as advisory; the sweep does (ADR-420) | as reported, no |
+| swept fit | **incomplete: 0 of 12 joints**, every joint `pair budget exceeded` at 5° steps | **no** |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S, 24 × M2×8 screws | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-6-hero.png),
+[`iso`](ot10-hexapod-6-look_iso.png),
+[`iso_back`](ot10-hexapod-6-look_iso_back.png),
+[`front`](ot10-hexapod-6-look_front.png),
+[`right`](ot10-hexapod-6-look_right.png) and
+[`top`](ot10-hexapod-6-look_top.png).
+`cadex render` took 1 min 25 s for the whole command: 38.5 s acquiring
+the tessellation, 7.6 s drawing, and 2.4 s of that for the hero, at
+141,438 drawn triangles (from 929,000 input triangles).
+
+**ADR-425 did what it was written to do, and a different limit bound.**
+With the design at 63 components (1,953 pairs), the sweep came back
+complete and passing, **12 of 12 joints at 5° steps**, with no runtime
+budget row anywhere in the turn. Attempt 5 needed 80° steps and still
+stopped at 10 of 12. The agent then added 24 M2×8 screws on the servo
+tabs, which took the design to 87 components and 3,741 pairs. The sweep
+refuses any request whose baseline has more than `_SWEEP_MAX_PAIRS`
+(2,000) pairs, before it measures anything, so every joint came back
+`pair budget exceeded`. The agent saw this, put the screws behind a
+`fasteners` parameter, checked the sweep with `fasteners=0`, and
+published `fasteners=1` as the default. It said so in its reply: the
+default build's motion check is incomplete. A bar that counts the
+accepted revision cannot take the `fasteners=0` sweep in its place.
+
+**Diagnosis: the pair budget counts pairs the sweep never moves.** The
+check is `len(baseline) > _SWEEP_MAX_PAIRS`, and the baseline is every
+pair in the assembly. A rigid pair's row is copied from the solved pose
+unchanged, and only the pairs with one side in the joint's moving
+subtree are measured. From the component names, a hip moves at most
+10 of the 87 components (horn, coxa, cap, knee servo and its two screws,
+knee horn, leg, knee cap, foot), so at most 10 × 77 = 770 moving pairs;
+a knee moves about 4, so about 332. Both are well under 2,000. **This
+is read from the names and the code, not measured**: the next unit
+measures each joint's moving-pair count on the accepted request before
+changing anything. The budget stays at 2,000. The candidate fix is to
+count what the sweep measures, not to raise the number.
+
+**A second finding: feet on the floor fail the static fit.** Each ball
+foot rests exactly on `c_floor` (0.0 mm, no common volume), and the
+static pass reports it as `below clearance`. The swept fit already
+treats contacts against the fit's world geometry as advisory (ADR-420).
+The static pass only does so for the floor's own row. Earlier designs
+stood clear of the floor, so this is the first time it shows.
+
+**Against attempt 5.** The total fell from 16 to 15. T3 fell from 3 to
+2: the judges read the hip rings and the knee disc caps as two
+different treatments, with bare shaft stubs beside the knees. T4 held
+at 2 on the median (one call gave 1): a generously rounded body, but
+legs of nearly constant section and servo pods that are filleted
+boxes. T5 held at 2 (a graphite visor band on the +X nose, no focal
+face), and so did T7: each call named a high camera and a faint contact
+shadow. Those are properties of the renderer, the same for every design,
+and are a renderer unit of their own, next to attempt 4's open hero-camera
+concern.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 8 refused calls, none of them a CPU-limit refusal:
+- 2 sandbox refusals (`type` and `dir` are not defined);
+- 2 guessed JSON pointers (`/facts/bounding_box`);
+- 2 refusals to retire an output that a component still linked;
+- 1 worker crash on a fillet over a fused coxa, which the agent routed
+  around by filleting each primitive before the union;
+- 1 `edit_script` replacement whose text did not occur.
+
+The agent again said the build reply was too large to read, the third
+time in the run, and read the fit report pair by pair.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest
