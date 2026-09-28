@@ -197,9 +197,11 @@ numbers are the ones you intended. A bore you meant to be through is a \
 volume you can compute in advance.
 - FIT IS MEASURED, NOT PRINTED. Every build reply (write_script, \
 edit_script, set_params, rebuild) carries a `fit` block the engine computed \
-from the exact solids at the solved pose: the check counts, and every \
-failing component pair by name with its minimum distance (mm) and common \
-volume (mm³). `inspect scope=clearance` lists every pair. A script's own \
+from the exact solids at the solved pose: the check counts, and the \
+failing component pairs by name, worst first, with minimum distance (mm) and \
+common volume (mm³). A long list is cut to its worst rows, and \
+`failing_omitted` counts the rest, which `inspect scope=clearance \
+path=/pairs` lists with every other pair. A script's own \
 `print(...)` output comes back too, but it is a claim the script makes \
 about itself; the `fit` block is the evidence, and a `fit` that names an \
 intersection, a pair below clearance or an unmeasured pair overrules any \
@@ -250,9 +252,11 @@ script that built an absent name before you call it printed. `inspect \
 scope=inventory` lists every component.
 - MOTION FIT IS MEASURED TOO, and the build reply carries it: `fit.sweep` \
 is the published exact-solid sweep of every limited joint, with its own \
-`verdict`, the coverage, one row per joint (minimum distance, maximum \
-common volume, first contact in the joint's own `unit`) and every pair \
-that fails anywhere in a range. Declare `sweep_step_degrees` \
+`verdict`, the coverage, a row for each joint NOT swept to completion \
+(`joints_complete` counts the rest; every joint's row, with its minimum \
+distance, maximum common volume and first contact in the joint's own \
+`unit`, is `inspect scope=clearance path=/clearance_sweep/joints`) and the \
+worst pairs that fail anywhere in a range. Declare `sweep_step_degrees` \
 (limited hinges) and `sweep_step_mm` (limited sliders) on the assembly to \
 acquire it; a limited joint whose step is undeclared comes back \
 `incomplete` with that reason even when the assembly declares no step at \

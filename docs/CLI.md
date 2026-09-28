@@ -2236,12 +2236,16 @@ block to the reply the model sees, beside the script's `stdout`:
 ```
 
 `verdict` is `pass` only when every pair was measured and every pair is
-clear at the `cadex clearance` defaults; `fail` names **every** pair that
-is not — an intersection, a distance below the minimum, or a pair the
-engine could not measure, with its reason — however many there are. The
-list is never cut short: sixty failing pairs are sixty entries, each with
-its own distance and volume, and nothing in the block points elsewhere
-for the rest. `unavailable` means the revision places no assembly
+clear at the `cadex clearance` defaults; `fail` names the pairs that are
+not — an intersection, a distance below the minimum, or a pair the engine
+could not measure, with its reason — **worst first**: unmeasured and
+world-geometry rows, then the largest common volume, then the smallest
+distance. `failing_count` and `counts` are always the whole block. The
+model's view carries at most `BUILD_VIEW_LIST_LIMIT` (12) rows; past that it
+adds `failing_omitted` (how many were cut) and `failing_rest` (the `inspect
+scope=clearance` path that lists them). The turn report and the envelope's
+`fit` keep every row. See "A build reply fits one tool result" below for
+why (ADR-435, amending ADR-346's never-cut-short rule). `unavailable` means the revision places no assembly
 components, so nothing was checked; it never means pass. A measurement the
 bridge cannot read is also `unavailable`, with the error, and the build is
 still accepted: **a failing fit is reported, never refused.** The block is
@@ -2258,6 +2262,39 @@ If any later page cannot be read, the whole fit block is `unavailable` with
 the read error, rather than a verdict on the readable prefix. The successful
 build and its accepted revision still reach the agent. The paged build-reply
 fixture in `cli/tests/test_clearance.py` pins both outcomes.
+
+### A build reply fits one tool result (ADR-435)
+
+The agent harness refuses an MCP result past its own cap (measured near
+21,700 characters, ADR-359) and writes it to a file the product agent
+cannot read. On `ot10-biped-3` (2026-09-28, 215 outputs) a `rebuild` reply
+came to 85,954 characters. Of those, 60,669 were `outputs` and
+`live_outputs`, two echoes of every declared name. The agent then read its
+fit by paging `inspect scope=clearance`. The engine reply is unchanged;
+the **model's view** of a successful `write_script`, `edit_script`,
+`set_params` or `rebuild` is bounded:
+
+- `outputs` becomes `{count, by_kind, names?, not_live, detail, note}`.
+  `by_kind` counts outputs by `domain type`. `names` is listed only for 40
+  outputs or fewer. `not_live` names any declared output with no live
+  object. `detail` keeps any output row carrying facts or diagnostics.
+  `live_outputs` is dropped; one output's full row is `inspect
+  scope=output target=<name>`.
+- `fit.failing`, `fit.world_geometry_contacts`, `fit.sweep.failing`,
+  `fit.sweep.world_geometry` and `fit.attachments.reported` are worst
+  first, at most 12 rows, with `<list>_omitted` and `<list>_rest` when cut.
+  `fit.sweep.joints` lists only joints not swept to completion.
+- `inventory.appearance` becomes a count per role.
+  `inventory.printed_edges` keeps its totals and `measured_count`, plus
+  `sharpest`: the printed parts with the most sharp convex edge.
+  `uncatalogued_sources` and `derived_catalog_sources` are cut the same
+  way. Every row is `inspect scope=inventory path=/components`.
+
+Every verdict, count and threshold is the whole block's. Nothing is
+re-judged. The same two revisions measured: `ot10-biped-3` falls from
+85,954 to 12,163 characters and `ot10-hexapod-11` from 82,981 to 13,758.
+`cli/tests/test_build_view.py` holds a 215-output reply under
+`API_VIEW_CHAR_BUDGET` and fails on the old view.
 
 ### The same reply carries the swept fit (ADR-366)
 
@@ -2295,10 +2332,12 @@ The `fit` block's `verdict` is the solved pose and stays that. Inside it,
 
 `verdict` is `pass` only when every limited joint was swept to completion,
 no pair interpenetrates anywhere in its range **and no pair closes below its
-minimum there** (ADR-378). `fail` names **every** failing pair, with the
-joint it is through and the joint value it first touched at, on the same
-never-cut-short terms as the static list — and it does not hide missing
-coverage, which stays in the joint rows beside it.
+minimum there** (ADR-378). `fail` names the failing pairs, with the joint
+each is through and the joint value it first touched at, worst first and
+cut on the same terms as the static list (ADR-435). It does not hide
+missing coverage: in the model's view `joints` lists every joint **not**
+swept to completion, with its reason, and `joints_complete` counts the
+rest, whose rows are `inspect scope=clearance path=/clearance_sweep/joints`.
 
 A `below clearance` row is a gap the motion closed: the pair's own minimum —
 its declared `clearances=` value, or `minimum_clearance_mm` for a pair with

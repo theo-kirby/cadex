@@ -28777,3 +28777,53 @@ runs the real kernel:
 
 A kernel-free unit test pins the validation refusal as well. On the
 previous source, all four kernel tests fail.
+
+## ADR-435 — A build reply the model sees is bounded: outputs summarised, fit lists worst first (2026-09-28; amends ADR-346)
+
+**Context.** `ot10-biped-3`'s agent noted that its build replies overflowed
+the tool limit at about 200 outputs, so it read its fit by paging `inspect
+scope=clearance` (record `tidy-banner-2442`). Measured by replaying a
+`rebuild` of each accepted revision through the bridge:
+- `ot10-biped-3` (215 outputs): 85,954 characters.
+- `ot10-hexapod-11` (186 outputs): 82,981 characters.
+
+The harness was measured to refuse 82,523 and accept up to 21,742
+(ADR-359, `API_VIEW_CHAR_BUDGET` = 21,500). On the biped, 60,669 characters
+were `outputs` and `live_outputs`: every declared name, twice, with
+FreeCAD's object name and type id. The fit block was 9,578 characters, of
+which 6,694 were the swept joint rows. The inventory was 8,611.
+ADR-346's rule that the reply names every failing pair was therefore
+delivering none of them at robot scale.
+
+**Decision.** The engine reply is unchanged. The bridge's model view of a
+successful modelling op is bounded (`cli/cadex_cli/bridge.py`):
+- `outputs` becomes `outputs_view`: count, counts by `domain type`, names
+  when 40 or fewer, `not_live`, and the rows that carry facts or
+  diagnostics. `live_outputs` is dropped. The pointer is `inspect
+  scope=output target=<name>`.
+- `fit_view` keeps every verdict, count and threshold. Each pair list
+  (`failing`, `world_geometry_contacts`, `sweep.failing`,
+  `sweep.world_geometry`, `attachments.reported`) is worst first and cut
+  at `BUILD_VIEW_LIST_LIMIT` = 12, with `<list>_omitted` and a
+  `<list>_rest` scope path. `sweep.joints` lists only joints not swept to
+  completion; `joints_complete` counts the rest.
+- `inventory_view` turns `appearance` into a count per role, and
+  `printed_edges.by_component` into its 12 sharpest parts plus
+  `measured_count`. `uncatalogued_sources` and `derived_catalog_sources`
+  are cut the same way.
+- The turn report, `state.last_fit`, `state.last_inventory` and `look`
+  still read the whole blocks.
+
+Measured after: biped 12,163 characters, hexapod 13,758.
+
+**Amends ADR-346.** Its "never cut short" rule becomes "counted whole,
+listed worst first". At sixty failing pairs the model sees the twelve
+worst, `failing_count: 60`, and where the other 48 are read.
+`test_sixty_failing_pairs_reach_the_model_worst_first_and_counted`
+replaces the test that pinned the old rule.
+
+**Not changed.** No protocol op, `OP_ARG_SPECS` entry, engine result shape
+or shell client moves, so `docs/INTEGRATION.md` and the packaged gate are
+unaffected. The overlay's two sentences that promised every pair and one
+row per joint now describe the view. The rubric, bar, judge and A5 prompts
+are untouched, and no A5 probe is re-scored.

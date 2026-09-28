@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 
 from cadex_cli import mcp
-from cadex_cli.bridge import Bridge
+from cadex_cli.bridge import BUILD_VIEW_LIST_LIMIT, Bridge
 from cadex_cli.tools import BRIDGE_TOOLS, CLI_TOOL_OPS, tool_definitions
 
 from fake_cadexd import (
@@ -208,8 +208,10 @@ def test_a_build_reply_carries_the_measured_fit_beside_the_stdout() -> None:
     # It was read from the store the build published to, after the build.
     assert [op for op, _ in client.calls] == ["write_script", "inspect", "inspect"]
     assert [a["scope"] for a in client.args_for("inspect")] == ["clearance", "inventory"]
-    # ...and the parent saw the same thing the model did.
-    assert call.fit == fit and last_fit == fit
+    # ...and the parent saw the same thing the model did: one failing pair
+    # is under the view's limit, so the bounded view is the whole block.
+    assert call.fit == last_fit
+    assert last_fit["failing"] == fit["failing"] and last_fit["counts"] == fit["counts"]
     assert ("fit fail: 1 failing of 2 pair(s)  sweep unavailable: no published sweep  "
             "inventory unavailable") in call.summary
 
@@ -284,13 +286,14 @@ def test_the_progress_line_carries_the_swept_half(sweep, phrase) -> None:
     assert payload["fit"]["sweep"]["verdict"] == phrase.split()[1].rstrip(":")
 
 
-def test_a_build_reply_names_every_failing_pair_past_forty() -> None:
-    """Sixty failing pairs of sixty-three reach the model whole (ADR-346).
+def test_sixty_failing_pairs_reach_the_model_worst_first_and_counted() -> None:
+    """Sixty failing pairs of sixty-three: counted whole, listed worst first.
 
-    An earlier cut of the block stopped at forty and pointed at the scope
-    for the rest. The charter asks for every failing pair in the reply
-    itself, so this pins the count, every name, every distance and every
-    volume on the text the model actually receives.
+    ADR-346 put every failing pair in the reply. At robot scale that reply
+    passed the harness's result cap, and the agent got none of them
+    (ADR-435). The model's view now carries the full counts, the worst
+    ``BUILD_VIEW_LIST_LIMIT`` rows with their distance and volume, and
+    the number cut and where they are read. The parent keeps all sixty.
     """
 
     pairs = []
@@ -302,11 +305,12 @@ def test_a_build_reply_names_every_failing_pair_past_forty() -> None:
             "distance_mm": 12.0 + i if not failing else (0.0 if i % 2 else 0.001 * (i + 1)),
             "common_volume_mm3": (0.25 + i) if (failing and i % 2) else 0.0,
         })
-    expected = [
+    rows = [
         (r["first"], r["second"], r["distance_mm"], r["common_volume_mm3"])
         for i, r in enumerate(pairs) if i % 21 != 20
     ]
-    assert len(expected) == 60
+    assert len(rows) == 60
+    worst = sorted(rows, key=lambda row: (-row[3], row[2]))[:BUILD_VIEW_LIST_LIMIT]
     client = _fit_client(pairs)
     with Bridge(client, initial_revision="rev-1") as bridge:
         payload = json.loads(
@@ -322,9 +326,13 @@ def test_a_build_reply_names_every_failing_pair_past_forty() -> None:
     assert [
         (f["first"], f["second"], f["distance_mm"], f["common_volume_mm3"])
         for f in fit["failing"]
-    ] == expected
-    assert "failing_truncated" not in fit and "note" not in fit
-    assert call.fit == fit
+    ] == worst
+    assert fit["failing_omitted"] == 60 - BUILD_VIEW_LIST_LIMIT
+    assert fit["failing_rest"].startswith("inspect scope=clearance path=/pairs")
+    assert [
+        (f["first"], f["second"], f["distance_mm"], f["common_volume_mm3"])
+        for f in call.fit["failing"]
+    ] == rows
     assert ("fit fail: 60 failing of 63 pair(s)  sweep unavailable: no published sweep  "
             "inventory unavailable") in call.summary
 
@@ -441,8 +449,9 @@ def test_a_build_reply_carries_catalog_identity_beside_the_fit() -> None:
     assert "inspect scope=inventory" in inventory["source"]
     assert "stdout" in inventory["source"] and "Advisory" in inventory["source"]
     assert "lost its catalog identity" in inventory["note"]
-    # The parent saw what the model saw, and the progress line says it.
-    assert call.inventory == inventory and last == inventory
+    # The parent kept the whole block, and the progress line says it.
+    assert call.inventory == last and last["appearance"] == {}
+    assert inventory["appearance"] == {}
     assert call.summary.endswith(
         "fit pass: 0 failing of 1 pair(s)  sweep unavailable: no published sweep  "
         "inventory: 6 component(s), 3 catalogued, 3 uncatalogued"
@@ -604,7 +613,7 @@ def test_the_display_block_is_kept_from_the_model_and_kept_for_the_parent() -> N
 
     payload = json.loads(reply["result"]["content"][0]["text"])
     assert "display" not in payload
-    assert payload["live_outputs"]["widget"]["facts"]["volume"] == 1000.0
+    assert payload["outputs"]["detail"] == [{"name": "widget", "facts": {"volume": 1000.0}}]
     assert accepted is not None
     assert accepted["display"]["widget"]["artifact_path"] == "/staging/widget.brep"
 

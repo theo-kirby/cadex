@@ -4,7 +4,7 @@ import json
 import pytest
 from cadex_cli.__main__ import main
 from cadex_cli.client import CadexdClient, open_project
-from cadex_cli.bridge import Bridge, _sweep_line
+from cadex_cli.bridge import Bridge, _sweep_line, fit_view
 from cadex_cli.clearance import (
     bounds_agreement, fit_summary, pair_status, write_clearance,
 )
@@ -78,7 +78,7 @@ def test_a_script_that_prints_no_overlap_gets_the_overlap_in_its_reply(engine, t
         assert failing['distance_mm'] == pytest.approx(0)
         assert fit['revision'] == payload['accepted_revision']
         assert fit['assembly'] == 'asm'
-        assert call.fit == fit
+        assert fit_view(call.fit) == fit
         # The same numbers `cadex clearance` writes, because they are the
         # same published rows.
         _, value = write_clearance(client, root)
@@ -184,7 +184,8 @@ def test_build_reply_resolves_late_fit_pages_or_reports_unavailable(
                for op, args in requests if op == 'inspect')
     assert [op for op, _ in requests].count('write_script') == 1
     fit = payload['fit']
-    assert bridge.state.last_fit == bridge.state.calls[0].fit == fit
+    assert bridge.state.last_fit == bridge.state.calls[0].fit
+    assert fit_view(bridge.state.last_fit) == fit
     if late_read_failure:
         assert fit['verdict'] == 'unavailable'
         assert 'late measurement page unreadable' in fit['error']
@@ -194,13 +195,15 @@ def test_build_reply_resolves_late_fit_pages_or_reports_unavailable(
         assert fit['counts'] == {'clear': 57, 'intersection': 1, 'below clearance': 0,
                                  'unknown': 1, 'missed contact': 1, 'world geometry': 1}
         assert fit['failing_count'] == 4
+        # Worst first in the model's view (ADR-435): the rows with no
+        # numbers, then the overlap, then the gap.
         assert [(f['first'], f['second'], f['status']) for f in fit['failing']] == [
-            ('base', 'link57', 'unknown'), ('base', 'link58', 'intersection'),
-            ('base', 'link59', 'missed contact'), ('environment', '', 'world geometry')]
+            ('base', 'link57', 'unknown'), ('environment', '', 'world geometry'),
+            ('base', 'link58', 'intersection'), ('base', 'link59', 'missed contact')]
         assert fit['failing'][0]['error'] == pairs[57]['error']
-        assert fit['failing'][1]['common_volume_mm3'] == 248.2
-        assert fit['failing'][2]['distance_mm'] == 0.2
-        assert fit['failing'][2]['intent'] == {'kind': 'contact'}
+        assert fit['failing'][2]['common_volume_mm3'] == 248.2
+        assert fit['failing'][3]['distance_mm'] == 0.2
+        assert fit['failing'][3]['intent'] == {'kind': 'contact'}
 
 
 def test_the_prose_report_prints_the_fit_and_each_failing_pair():
@@ -379,7 +382,7 @@ def test_fit_intent_survives_acceptance_and_reopen(engine, tmp_path):
         path, value = write_clearance(client, root)
         assert 'contact within 0.001 mm' in path.read_text()
         assert 'declared minimum 0.5 mm' in path.read_text()
-        assert fit_summary(value) == fit
+        assert fit_view(fit_summary(value)) == fit
     after = json.loads((root / 'script.json').read_text())
     for key in ('accepted_revision', 'accepted_digest', 'accepted_attempt'):
         assert after[key] == before[key]
@@ -560,7 +563,11 @@ def test_build_reply_carries_the_published_joint_sweep(
         if step:
             assert sweep['coverage'] == 'complete' and sweep['step_degrees'] == 5
             assert (sweep['joints_checked'], sweep['joints_complete']) == (1, 1)
-            (joint,) = sweep['joints']
+            # A complete joint's row is the parent's; the model's view lists
+            # only unswept joints and says where the rest are (ADR-435).
+            assert sweep['joints'] == []
+            assert 'path=/clearance_sweep/joints' in sweep['joints_note']
+            (joint,) = call.fit['sweep']['joints']
             assert (joint['joint'], joint['kind'], joint['unit']) == (
                 'j', 'revolute', 'degrees')
             assert joint['range_degrees'] == [0, 10] and joint['sample_count'] == 3
@@ -583,9 +590,9 @@ def test_build_reply_carries_the_published_joint_sweep(
             assert sweep['note'].startswith('Coverage means measurements exist')
             assert _sweep_line(sweep) == 'sweep incomplete: 1 of 1 joint(s) unswept'
         # The same block the progress line and the turn report read.
-        assert call.fit == fit
+        assert fit_view(call.fit) == fit
         _, value = write_clearance(client, root, sweep=True)
-        assert fit_summary(value)['sweep'] == sweep
+        assert fit_view(fit_summary(value))['sweep'] == sweep
 
 
 def test_sweep_summary_names_every_pair_that_overlaps_through_the_motion():
@@ -816,7 +823,7 @@ def test_a_weld_holding_nothing_is_reported_while_every_fit_check_passes(engine,
         assert pair['intent'] == {'kind': 'clearance', 'minimum_mm': 0.5,
                                   'joints': ['weld_gap']}
         assert pair['fit_failures'] == []
-        assert fit_summary(value)['attachments'] == attachments
+        assert fit_view(fit_summary(value))['attachments'] == attachments
         assert fit_summary(value)['failing'] == fit['failing']
 
 
@@ -902,7 +909,7 @@ def test_a_welded_pair_mounted_flush_is_not_a_failing_fit_check(engine, tmp_path
     assert fit['counts'] == {'clear': 1, 'intersection': 0, 'below clearance': 0, 'unknown': 0}
     assert fit['attachments']['verdict'] == 'touching'
     assert 'welded by fix_ab' in report
-    assert reread == fit
+    assert fit_view(reread) == fit
     fit, report, _ = reports[False]
     assert fit['verdict'] == 'fail'
     failure, = fit['failing']
