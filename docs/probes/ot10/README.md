@@ -1681,3 +1681,40 @@ section before it starts. It would warm-start from `w2-1`'s policy on the
 unchanged task digest (`--init-from`), with a stated iteration budget and
 cap, and the same thresholds. The reward and the design stay the agent's.
 A reward change would mean a new design turn, not an edit by the actor.
+
+### W2 run 2 (`w2-2`): pre-registered
+
+Written and committed **before** the run starts, on the diagnosis of
+`w2-1` above. Nothing in this section changes once it has started.
+
+**Why a second run.** `w2-1`'s reward per step was still rising at its
+last iteration (2.620 over iterations 900–999, best 2.654 at the last),
+so its budget, not its task, is the first thing to extend. The task, the
+reward and the design stay the agent's: a reward change would be a new
+design turn, not an actor edit. So this run warm-starts the actor from
+`w2-1`'s policy on the **unchanged** task, and changes nothing else.
+
+| setting | value |
+|---|---|
+| command | `./cadex walk --project ~/cadex-projects/ot10-quadruped-3-w2 --out ~/cadex-projects/ot10-quadruped-3-w2/runs/w2-2 --iterations 1000 --envs 2048 --seed 0 --init-from ~/cadex-projects/ot10-quadruped-3-w2/runs/w2-1/train/walk_task.cxpolicy --timeout 10800 --json` |
+| project | the same copy, `ot10-quadruped-3-w2`, at `w2-1`'s declared revision. The original `ot10-quadruped-3` stays read-only |
+| warm start | `--init-from` `w2-1`'s `walk_task.cxpolicy`, sha256 `d8b87d2e1215…`, trained on task bundle sha256 `b0913fa0fb93…`. The trainer refuses a warm start across a changed task digest unless `--init-from-task-change` is given; it is not given, so a changed digest ends the run as a refusal rather than a silent task change |
+| design turns | none (`--prompt` and `--set` not given: no tokens, no geometry change) |
+| trainer | local, on this machine's RTX 5090, `~/cadex-train-venv` |
+| training seed | 0 |
+| rollout seed | `null` in the script. `assembly.rollout(pol)` passes no seed, so the verified roll-out uses the script's (the engine default), not training's seed 0. The review's `comparison.rollout_seed` reads `null`, as it did for `w2-1` |
+| budget | 1,000 further PPO iterations × 2,048 environments |
+| wall-clock cap | trainer `--timeout 10800` (3 h); the other legs keep the default `--leg-timeout` of 3,600 s |
+| collapse stop | `--stop-on-collapse`, which `cadex walk` always passes to the trainer (ADR-410) |
+| grounding | enforced; `--allow-ungrounded` is not given |
+| gait thresholds | unchanged. The bar is the walk review's `walked = true` |
+| process | launched with `setsid nohup`, so it outlives the loop session that starts it |
+
+**Stop rule.** The run ends at whichever comes first: 1,000 iterations, the
+3 h trainer cap, or a detected collapse. Whatever policy it saved then goes
+through the walk's own store, declare, verify, roll-out and review legs,
+and W1's video is rendered from it with `python -m cadex_cli.video`.
+A policy that does not walk is reported as an incomplete result, with a
+diagnosis and a next step. The thresholds do not move, `w2-1`'s survival
+defect (finding 3) is not fixed inside this run, and no third run starts
+until this one is diagnosed.
