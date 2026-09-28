@@ -1,6 +1,6 @@
 # The Cadex design language — small printed servo robots
 
-Verified against source: 2026-09-27. Provenance: `[Cadex-new]`.
+Verified against source: 2026-09-28. Provenance: `[Cadex-new]`.
 
 This is how a robot that Cadex designs should look: a small legged or
 wheeled machine, 3D-printed around hobby servos (MG90S class), carrying its
@@ -39,7 +39,11 @@ whole language in one image. The others each show one part of it.
 - **Shells hide the purchased hardware.** Servo cases, boards and the
   battery sit inside printed shells shaped around them. What shows of the
   mechanism is deliberate: a dark band, a ring, a joint. It is never an
-  exposed case or a bare board. (`07-white-hood-quadruped-yellow-studio.jpg`,
+  exposed case or a bare board. A printed cradle that follows a servo case
+  face for face is an exposed case by another name, whatever colour it is
+  printed in: where it would show, a `shell` cover goes over it, or its
+  outside is rounded into the limb and the joint cap. (ADR-428)
+  (`07-white-hood-quadruped-yellow-studio.jpg`,
   `14-ibots-crab-white-shell-dark-visor.jpg`, `26-white-frog-shell-dark-joints.jpg`,
   `01-desktop-arm-product-finish.jpg`)
 - **Skeleton first, shell second.** The mechanism (servos, horns,
@@ -155,7 +159,10 @@ carry them. An undeclared part is drawn by supplier until it declares one.
   `07-white-hood-quadruped-yellow-studio.jpg`)
 - **Limbs taper towards the foot.** Near the foot, a limb's section is
   clearly smaller than at the hip: about 60% or less. It is not a
-  constant bar. (`07-white-hood-quadruped-yellow-studio.jpg`,
+  constant bar. The section tapers in depth as well as width, so the limb
+  narrows in the side view as well as the plan: a plate of one thickness
+  cut to a tapering outline is still a bar edge-on. (ADR-428)
+  (`07-white-hood-quadruped-yellow-studio.jpg`,
   `14-ibots-crab-white-shell-dark-visor.jpg`, `46-orange-spider-concept-sheet.jpg`)
 - **Feet are distinct.** Each foot is a cap, pad, point or wheel, in
   `mechanism` or `accent`. It is not the end of a bar. (`07-white-hood-quadruped-yellow-studio.jpg`,

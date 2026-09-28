@@ -319,7 +319,11 @@ an appearance role and fastened to the part that carries it:
 least 1 mm of clearance from everything it covers, through every joint's \
 whole range. Servo cases, boards and the battery do not show; what shows of \
 the mechanism is deliberate. A seam where two shell pieces meet is the only \
-surface detail: no vents, greebles or stuck-on panels.
+surface detail: no vents, greebles or stuck-on panels. A printed cradle or \
+bracket that follows a servo case face for face still reads as that case, \
+whatever its colour or fillet: where one would show, cover it with the \
+limb's `shell` part, or round its outside into the limb and the joint cap \
+so that no box of the servo's outline is left to see.
 - NO SHARP OUTSIDE CORNERS. Round every outside edge of a printed part with \
 a radius of about 10-20% of the part's smallest overall size -- 4-8 mm on a \
 40 mm body, 1-2 mm on a small cap -- and fillet inside corners where load \
@@ -338,7 +342,10 @@ set in a `shell`-coloured front, or, when the front around it is graphite \
 too, an `accent` face or accent eyes, since graphite on graphite disappears.
 - TAPER TO A FOOT. A limb is a tapered, shelled or ribbed beam that follows \
 the load path, about 60% of its hip section or less near the foot, and ends \
-in a distinct cap, pad or point -- never the cut end of a bar.
+in a distinct cap, pad or point -- never the cut end of a bar. Taper the \
+section in both directions, its depth as well as its width, so the limb \
+narrows seen from the side as well as from above: a plate of one thickness \
+cut to a tapering outline is still a flat bar edge-on.
 - TWO MATERIALS AND ONE ACCENT. Colour follows role, not supplier: \
 `shell` for the outer forms, `mechanism` for joints, face, feet and any \
 hardware that shows, `accent` for a few deliberate features such as the \

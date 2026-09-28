@@ -28363,3 +28363,38 @@ pass (ADR-426). Two regressions in `cli/tests/test_clearance.py`: the foot
 on the floor fails on the previous source; a sunk foot, an unmeasured floor
 pair and a printed pair below its gap beside the floor still fail. The
 accepted `ot10-hexapod-6` project and its published verdict are unchanged.
+
+## ADR-428 — The sweep is not what spends the build's CPU; limbs taper in depth and cradles do not show as servos (2026-09-28)
+
+**Context.** `ot10-hexapod-7` (accepted `f0a77bfb`) was judged 13/21, a
+miss on T3 and T4, and its agent wrote that it coarsened its sweep to 17.5°
+because a 10° build "ran past the 300 CPU-second limit". Before changing
+the overlay, the budget or the sweep, that claim was measured on three
+`/tmp` copies of the accepted revision, rebuilt with `cadex script --set`
+while `/proc` was polled for every worker's CPU.
+
+**Measured.** The sandboxed domain worker that builds the geometry spent
+**209.9 CPU-s at a 10° step and 212.0 CPU-s with the sweep off**: the sweep
+charges it nothing, because the sweep runs one child process per joint and
+each child carries its own limit. At 10° the twelve children spent 12.7 to
+55.6 CPU-s each (456 in all) and the sweep stopped **incomplete** on its
+180 s *wall* budget at `hip_rr`, with 10 of 12 joints complete; at 17.5° it
+completed 12/12 in 129.2 s. So a 10° sweep on this design is refused by the
+wall budget, as an incomplete sweep, never by the CPU limit, and the one
+CPU-limit refusal in the turn came from geometry: the accepted geometry
+alone costs 70% of the worker's 300 CPU-s, and the loft-edge fillets the
+agent then dropped are what pushed it over. No budget or sweep change
+follows from this.
+
+**Decision.** The judges' T3/T4 reasons become language, not tooling. The
+overlay's `TAPER TO A FOOT` now says the section tapers in depth as well as
+width, so a limb narrows in the side view too (attempt 7's legs kept one
+4.0 mm thickness from hip to foot). `SHELLS HIDE THE HARDWARE` now says a
+printed cradle that follows a servo case face for face still reads as the
+case, whatever its colour, and is covered by the limb's `shell` part or
+rounded into the limb and joint cap (attempt 7's graphite knee cradles,
+which P1 cannot see because they are printed). `docs/DESIGN-LANGUAGE.md` §1
+and §5 carry the same two rules. The rubric, proxies, bar and judging
+procedure are unchanged, and the new sentences use none of the rubric's
+anchor wording. Regression: `test_limbs_taper_in_depth_and_cradles_do_not_show_as_servos`
+in `cli/tests/test_turn_loop.py` fails on the previous overlay.

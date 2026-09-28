@@ -742,3 +742,24 @@ def test_the_prompt_says_a_walking_task_pays_for_walking() -> None:
                    "below=0.7", "tanh(comv_x / 60)", "abs(gyro_z)", "DECISION:",
                    'label="alive"', "standing still nets a clearly positive"):
         assert phrase in CLI_OVERLAY
+
+
+def test_limbs_taper_in_depth_and_cradles_do_not_show_as_servos() -> None:
+    """ADR-428 (ot10 A5): hexapod attempt 7 tapered its legs in plan only.
+
+    Its legs kept one 4.0 mm thickness from hip to foot, and its graphite
+    knee cradles followed the servo case face for face. The overlay names
+    both: taper the depth as well as the width, and cover or round a cradle
+    that would show.
+    """
+
+    design = CLI_OVERLAY[CLI_OVERLAY.index("DESIGN IT; DO NOT ONLY MAKE IT FIT"):
+                         CLI_OVERLAY.index("A ROBOT IS A COMPLETE MACHINE")]
+    taper = next(i for i in _overlay_items(design) if i.startswith("- TAPER TO A FOOT."))
+    for phrase in ("its depth as well as its width", "seen from the side",
+                   "a plate of one thickness"):
+        assert phrase in taper
+    shells = next(i for i in _overlay_items(design) if i.startswith("- SHELLS HIDE THE HARDWARE."))
+    for phrase in ("follows a servo case face for face", "whatever its colour",
+                   "cover it with the limb's `shell` part", "round its outside"):
+        assert phrase in shells
