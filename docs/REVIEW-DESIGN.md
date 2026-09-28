@@ -601,6 +601,13 @@ the two apart. The dark viewport and its capture (§10) are unchanged, and
 the dark chrome, like the concept sheet (§14), because it is the design
 presented rather than the workbench.
 
+A studio clip stands on the design's floor (ADR-432). When the render
+summary names an environment, that environment is not drawn, and the shadow
+falls on its top face. So a robot whose solids sink through the floor
+(the rollout collides on proxies) is drawn sinking, rather than floating
+above a shadow at the lowest reach. The clip draws the rollout's own solids
+within a triangle budget, and says how many it read and drew.
+
 **Held by** `test_dashboard_serves_the_studio_video_it_lists` (listed with
 its style, served byte for byte as `video/webm`) and the studio tests
 beside it in `cli/tests/test_video.py`.

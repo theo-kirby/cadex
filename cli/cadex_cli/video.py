@@ -15,6 +15,7 @@ Chromium (ADR-332).
 from __future__ import annotations
 
 import argparse
+from array import array
 import base64
 import bisect
 import fcntl
@@ -54,6 +55,17 @@ STUDIO = {'size': 512, 'pad': 0.12, 'smooth_frames': 4}
 #: studio style is pure-Python CPU work proportional to triangles x frames:
 #: ot6 Finch (95,212 triangles, 81 frames) is the measured case.
 RENDER_SECONDS = 300
+#: What the studio style reads and draws (ADR-432). A rollout leg writes each
+#: solid at its own tessellation, far finer than a render's: ot10-quadruped-3's
+#: w2-1 rollout is 2,528,456 triangles in 611 MB of ASCII STL, deck.stl alone
+#: 172 MB, where its render drew 78,419. So the studio style reads each solid as
+#: a stream, bounded at the INPUT caps, and clusters its vertices into a grid
+#: cell a quarter of a pixel wide, doubled until the drawn total fits, as
+#: render's snapshot does. The scene style keeps MAX_BYTES and MAX_TRIANGLES:
+#: its page loads every retained solid whole.
+STUDIO_SOURCE_BYTES = 256 * 1024 * 1024
+STUDIO_INPUT_TRIANGLES = 4_000_000
+STUDIO_TRIANGLES = 120_000
 
 
 def require(condition, message):
@@ -61,11 +73,11 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def retained(base, relative):
+def retained(base, relative, limit=None):
     item = resolve_reference(base, relative)
     require(item['exists'] and not item['error'], 'missing or refused retained artifact')
     path = base / relative
-    require(path.is_file() and path.stat().st_size <= MAX_BYTES, 'artifact size/type refused')
+    require(path.is_file() and path.stat().st_size <= (limit or MAX_BYTES), 'artifact size/type refused')
     return path
 
 
@@ -86,6 +98,81 @@ def stl(path):
     require(all(len(p) == 3 and all(math.isfinite(x) and abs(x) < 1e7 for x in p)
                 for p in points), 'invalid STL coordinates')
     return [points[i:i+3] for i in range(0, len(points), 3)]
+
+
+def stl_stream(path, budget):
+    """A flat ``array('d')`` of corner coordinates, nine per triangle, read as a stream.
+
+    The same two encodings as :func:`stl`, without holding the text or a tuple
+    per corner: ot10-quadruped-3's 172 MB deck.stl becomes 49 MB of doubles.
+    Refuses more than ``budget`` triangles as soon as it has read them.
+    """
+    flat = array('d')
+    with open(path, 'rb') as handle:
+        head = handle.read(84)
+        size = path.stat().st_size
+        if len(head) == 84 and size == 84 + 50 * struct.unpack_from('<I', head, 80)[0]:
+            require((size - 84) // 50 <= budget, 'excessive input geometry')
+            for record in struct.iter_unpack('<12fH', handle.read()):
+                flat.extend(record[3:12])
+        else:
+            handle.seek(0)
+            for line in handle:
+                line = line.lstrip()
+                if line.startswith(b'vertex'):
+                    fields = line.split()
+                    require(len(fields) == 4, 'invalid STL coordinates')
+                    flat.extend((float(fields[1]), float(fields[2]), float(fields[3])))
+                    require(len(flat) <= budget * 9, 'excessive input geometry')
+    require(flat and len(flat) % 9 == 0, 'empty or excessive STL')
+    require(all(math.isfinite(x) and abs(x) < 1e7 for x in flat), 'invalid STL coordinates')
+    return flat
+
+
+def _clustered(flat, cell):
+    """Triangles of ``flat`` with each corner moved to the first corner seen in
+    its grid cell; collapsed triangles dropped and duplicates kept once, as
+    ``render._cluster`` does. Every drawn corner is a corner of the source."""
+    floor, first, kept, seen = math.floor, {}, [], set()
+    for t in range(0, len(flat), 9):
+        corners = []
+        for o in (t, t+3, t+6):
+            x, y, z = flat[o], flat[o+1], flat[o+2]
+            corners.append(first.setdefault((floor(x/cell), floor(y/cell), floor(z/cell)), (x, y, z)))
+        a, b, c = corners
+        if a == b or b == c or a == c:
+            continue
+        key = tuple(sorted(corners))
+        if key not in seen:
+            seen.add(key)
+            kept.append((a, b, c))
+    return kept
+
+
+def studio_meshes(sources):
+    """``(meshes, geometry)``: every named solid read in full, then drawn within STUDIO_TRIANGLES."""
+    flats, total = {}, 0
+    for name, path in sources.items():
+        flats[name] = stl_stream(path, STUDIO_INPUT_TRIANGLES - total)
+        total += len(flats[name]) // 9
+    geometry = {'input_triangles': total, 'drawn_triangles': total, 'cell_mm': None,
+                'budget_triangles': STUDIO_TRIANGLES, 'input_bound_triangles': STUDIO_INPUT_TRIANGLES}
+    if total <= STUDIO_TRIANGLES:
+        return ({name: [((f[i], f[i+1], f[i+2]), (f[i+3], f[i+4], f[i+5]), (f[i+6], f[i+7], f[i+8]))
+                        for i in range(0, len(f), 9)] for name, f in flats.items()}, geometry)
+    extent = max(max(f[j::3]) - min(f[j::3]) for f in flats.values() for j in range(3))
+    require(extent > 0, 'zero model extent')
+    cell = extent / (4 * STUDIO['size'])
+    while True:
+        meshes = {name: _clustered(f, cell) for name, f in flats.items()}
+        drawn = sum(map(len, meshes.values()))
+        if drawn <= STUDIO_TRIANGLES:
+            break
+        require(cell < extent, 'excessive input geometry')
+        cell *= 2.0
+    require(all(meshes.values()), 'a solid vanished at the drawn resolution')
+    geometry.update(drawn_triangles=drawn, cell_mm=cell, cell_fraction_of_extent=cell/extent)
+    return meshes, geometry
 
 
 def placed(triangles, pose):
@@ -164,15 +251,22 @@ def _render(root, directory, style='scene'):
         require(names and len(names) == len(set(names)), 'invalid component list')
         # Every solid is read and validated here, once, and its triangle count is what the
         # page must report back after fetching the same retained file over the local server.
-        meshes, entries = {}, []
+        meshes, sources, entries = {}, {}, []
         for entry in manifest['components']:
             if entry['name'] in names:
                 require(entry['mesh_status'] == 'retained' and entry.get('mesh'), 'missing component mesh')
-                meshes[entry['name']] = stl(retained(directory, str(trace_path.parent.relative_to(directory) /
-                                                                    (entry['output'] + '.stl'))))
+                relative = str(trace_path.parent.relative_to(directory) / (entry['output'] + '.stl'))
+                if style == 'studio':
+                    sources[entry['name']] = retained(directory, relative, STUDIO_SOURCE_BYTES)
+                else:
+                    meshes[entry['name']] = stl(retained(directory, relative))
                 # Manifest order is the component colour identity in both clients.
                 entries.append({'name': entry['name'], 'mesh': entry['mesh'],
                                 'placement': frames[0]['component_placements'][entry['name']]})
+        geometry = None
+        if style == 'studio':
+            require(set(sources) == set(names), 'incomplete or excessive component geometry')
+            meshes, geometry = studio_meshes(sources)
         require(set(meshes) == set(names) and sum(map(len, meshes.values())) <= MAX_TRIANGLES,
                 'incomplete or excessive component geometry')
         for frame in frames:
@@ -187,6 +281,7 @@ def _render(root, directory, style='scene'):
             work = Path(temporary)
             if style == 'studio':
                 drawn = _studio_frames(root, record, names, meshes, frames, times, count, sample, work, started)
+                drawn['geometry'] = geometry
             else:
                 drawn = _scene_frames(root, entries, meshes, frames, count, sample, times, work, started)
             result = subprocess.run(['ffmpeg', '-v', 'error', '-nostdin', '-threads', '1',
@@ -297,7 +392,8 @@ def studio_materials(root, record, names):
     ``review/render/``), which carries what xscript declared and what the
     inventory said was purchased (docs/XSCRIPT.md, ot10 A3). A design with
     no such summary is drawn all in the shell material, and the video says
-    so rather than guessing which parts were bought.
+    so rather than guessing which parts were bought. Components the summary
+    names as environment get no look and are not drawn (ADR-432).
     """
     revision = record['model']['accepted_revision']
     candidates = [(record.get('project_artifacts') or {}).get('render'),
@@ -315,18 +411,23 @@ def studio_materials(root, record, names):
         appearance = summary.get('appearance')
         if summary.get('revision') != revision or not isinstance(appearance, dict):
             continue
+        # World geometry the render left out (a floor) is left out here too:
+        # the studio floor is the backdrop, and the shadow lands where the feet are.
+        environment = sorted(set(summary.get('environment') or ()) & set(names))
         looks = {}
         for name in names:
+            if name in environment:
+                continue
             entry = appearance.get(name) or {}
             role, colour = entry.get('role'), str(entry.get('color', ''))
             require(role in studio_render.FINISH and re.fullmatch('#[0-9A-Fa-f]{6}', colour),
                     f'render summary gives {name} no valid appearance')
             looks[name] = (role, tuple(int(colour[k:k+2], 16) for k in (1, 3, 5)))
-        return looks, {'source': item['path'], 'declared': True}
+        return looks, {'source': item['path'], 'declared': True, 'environment_omitted': environment}
     shell = studio_render.ROLE_COLORS['shell']
     return ({name: ('shell', shell) for name in names},
             {'source': 'no render summary with appearance at this revision: every part drawn as shell',
-             'declared': False})
+             'declared': False, 'environment_omitted': []})
 
 
 def _rows(pose):
@@ -365,11 +466,15 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
 
     The hero view, followed: each component is prepared once in its own frame
     (normals smoothed below the crease angle) and moved rigidly per pose. The
-    floor is the lowest point the robot reaches over the whole rollout, so a
-    foot that lifts leaves its shadow behind; the window is fixed in size and
+    floor is the top of the design's environment geometry (a floor the render
+    summary names), or without one the lowest point the robot reaches over the
+    whole rollout, so a foot that lifts leaves its shadow behind; the window is fixed in size and
     its centre is a Hann-smoothed track of the robot's projected centre.
     """
     looks, materials = studio_materials(root, record, names)
+    environment = [name for name in names if name not in looks]
+    names = [name for name in names if name in looks]
+    require(bool(names), 'nothing to draw once environment geometry is left out')
     size, pad, half = STUDIO['size'], STUDIO['pad'], STUDIO['smooth_frames']
     right, up, _ = studio_render.HERO
     local = {name: studio_render._prepare(
@@ -390,7 +495,17 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
                 sy = w[0]*up[0] + w[1]*up[1] + w[2]*up[2]
                 box = [min(box[0], sx), min(box[1], sy), max(box[2], sx), max(box[3], sy)]
         boxes[index] = box
-    floor = lo3[2]
+    # The floor is the environment's top face where the design declares one: the
+    # rollout collides on proxies (ADR-281), so a tipping solid can pass below it,
+    # and a floor at the lowest reach would lift the whole walk off its shadow.
+    reach_z = lo3[2]
+    if environment:
+        floor = -math.inf
+        for name in environment:
+            ((a, b, c), (d, e, f), (g, h, i)), (px, py, pz) = _rows(frames[0]['component_placements'][name])
+            floor = max(floor, max(g*x+h*y+i*z+pz for tri in meshes[name] for x, y, z in tri))
+    else:
+        floor = reach_z
     track = _hann([((boxes[k][0]+boxes[k][2])/2, (boxes[k][1]+boxes[k][3])/2) for k in used], half)
     reach = max(max(b[2]-b[0], b[3]-b[1]) for b in boxes.values()) / 2 * (1 + 2*pad)
     # Widen until every pose is inside its own window: the rig never loses the robot.
@@ -419,7 +534,9 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
             'camera': {'basis': [list(v) for v in studio_render.HERO]},
             'bounds': {'min': lo3, 'max': hi3, 'center': [(a+b)/2 for a, b in zip(lo3, hi3)],
                        'radius': math.dist(lo3, hi3)/2 or 1},
-            'floor_z_mm': floor,
+            'floor_z_mm': floor, 'lowest_reach_z_mm': reach_z,
+            'floor_source': ('top of the environment geometry: ' + ', '.join(environment)
+                             if environment else 'lowest point the drawn solids reach'),
             'framing': {'kind': 'follow', 'half_extent_mm': reach, **STUDIO},
             'sampling': '10 fps, latest solved pose plus final pose, follow window at the declared framing; tessellation preview'}
 

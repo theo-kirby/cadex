@@ -28597,3 +28597,71 @@ in the decoded frame, and an undeclared one shows none) and says where they
 came from. It refuses an unknown style and an invalid declared role,
 leaving no webm. The dashboard lists it and serves its exact bytes as
 `video/webm`. The five-fault refusal test runs under both styles.
+
+## ADR-432 — A studio video reads the rollout's full tessellation, draws it within a budget, and stands on the declared floor (2026-09-28)
+
+**Context.** W1's remaining half was a video of an A5 design's own policy.
+W2's run `w2-1` on a copy of `ot10-quadruped-3` produced one. On that run,
+`python -m cadex_cli.video` refused before drawing a frame with
+`artifact size/type refused`. The rollout leg writes each solid at its own
+tessellation, far finer than `render`'s snapshot: 2,528,456 triangles in
+611 MB of ASCII STL, with `deck.stl` alone 172 MB and 680,616 triangles.
+The render of the same revision draws 78,419. The video's caps (32 MB a
+file, 500k triangles in total) exist for the `scene` style, whose page
+loads every retained solid whole. The earlier estimate in the ot10 W2
+notes, that the video would draw the render's 78,419 triangles "with no
+extra decimation", was wrong: the video reads the rollout's files, not the
+render's snapshot. Past the caps, a second defect showed. The studio floor
+sat at the lowest point the solids ever reach, which was −18.5 mm, because
+the rollout collides on box and capsule proxies (ADR-281) and the tipping
+solids pass through the floor. So the whole walk floated about 18 mm above
+its shadow. And the render summary names `c_floor` as environment, and it
+had no appearance, so the studio style would have refused it anyway.
+
+**Decision.**
+- The studio style reads each solid as a stream into flat doubles
+  (`stl_stream`), under its own input caps: `STUDIO_SOURCE_BYTES` = 256 MB
+  a file and `STUDIO_INPUT_TRIANGLES` = 4,000,000 in total. Past the caps it
+  refuses as `excessive input geometry` before drawing. It then clusters
+  vertices, as `render`'s snapshot does, into a grid cell a quarter of a
+  512 px pixel of the largest extent, doubled until the drawn total is at
+  most `STUDIO_TRIANGLES` = 120,000. Every drawn corner is a corner of the
+  source. The video records `geometry` (input and drawn triangles, the
+  cell, the budget). The `scene` style keeps its caps unchanged.
+- The components the render summary names as `environment` get no
+  material and are not drawn, as in `render` and `look`. The video records
+  them as `materials.environment_omitted`. The studio floor is the top face
+  of that environment at the first solved pose. Without an environment it
+  is the lowest reach, as before. The video records `floor_z_mm`,
+  `lowest_reach_z_mm` and `floor_source`, so a solid below the floor is a
+  number rather than a hidden fact.
+- `retained(base, relative, limit)` reads its default cap at call time.
+
+**Not taken.**
+- Reading the render's snapshot instead of the rollout's files. That
+  would have posed geometry from a different source than the trace's own
+  component frames, which is the composition defect class of ADR-241 and
+  ADR-242.
+- Changing the engine's rollout tessellation. That is engine and payload
+  work, behind the packaged gate, and the reader is where the cost falls.
+- Clamping solids to the floor. The video draws what the trace says.
+
+**Measured** on `~/cadex-projects/ot10-quadruped-3-w2`, run `w2-1`
+(revision `f6d32a586ecc…`, policy `d8b87d2e1215…`, 4.38 s, 45 frames). The
+render took **72.8 s** against the 300 s bound, and the process ran 72.9 s
+with 357 MB peak RSS. It drew 86,200 of 2,528,456 triangles at a 0.586 mm
+cell, the render's own cell. The floor is at 0.0 mm from `c_floor`, and the
+lowest reach is −18.5 mm. The video is
+`rollout-bdd0da27ec4e….webm` (153,574 bytes), in the project and not in
+git. Before and after strips (frames 0, 22 and 44 of each decoded webm) are
+committed as `docs/probes/ot10/w1-quadruped-rollout-reach-floor.png` and
+`…-studio.png`.
+
+**Tests.** In `cli/tests/test_video.py`, two tests. The first: a studio
+video reads a solid past the scene caps, clusters it within the budget,
+reports it, keeps the bounds within one cell of the exact ones, and
+refuses past the input cap, while the scene style still refuses. The
+second: the environment gets no material, the floor is its top face, and
+the lowest reach is recorded. Both fail on the ADR-431 source, with
+`artifact size/type refused` and `render summary gives shin no valid
+appearance`.

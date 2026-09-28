@@ -1530,6 +1530,41 @@ pitch gives the scene's pose. The video itself stays in the copy's
 `runs/finch1-final/`, never in git. W1's remaining half is a video of an
 A5 design's own policy, which W2's training run will produce.
 
+### W1 on an A5 design: `ot10-quadruped-3`, run `w2-1`
+
+The video of W2 run 1's installed policy on its own model was rendered
+with `python -m cadex_cli.video --project <copy> --run w2-1` on the W2
+copy. It is stored in the copy's `runs/w2-1/` and not in git.
+
+| Run | Revision | Policy | Sim s | Frames | Triangles read → drawn | Bound s | Render s | Materials |
+|---|---|---|---|---|---|---|---|---|
+| `w2-1` | `f6d32a586ecc6d38` | `d8b87d2e1215ed7b` | 4.38 | 45 at 10 fps, 512 px | 2,528,456 → 86,200 (0.586 mm cell) | 300 | 72.8 | declared, from `review/render/<revision>/summary.json`; `c_floor` omitted as environment |
+
+The webm is `rollout-bdd0da27ec4e….webm`, 153,574 bytes. The rollout
+seed field is empty in both the run record and the trace, and the video
+records it as it found it.
+
+The first attempt refused. The W2 notes predicted "no further decimation",
+and that was wrong: the rollout's solids are 611 MB of ASCII STL, not the
+render's 78,419 triangles. ADR-432 reads them under their own caps and
+clusters them to a drawn budget. Its first render (72.8 s) then floated the
+robot above its shadow. The floor sat at the solids' lowest reach,
+−18.5 mm, because the tipping solids pass through the floor, and the
+rollout collides on proxies. The floor is now `c_floor`'s top face at
+0.0 mm.
+
+| Floor | Strip (frames 0, 22 and 44, decoded from each webm) |
+|---|---|
+| lowest reach, −18.5 mm (before) | [`w1-quadruped-rollout-reach-floor.png`](w1-quadruped-rollout-reach-floor.png) (284 KB) |
+| declared floor, 0.0 mm (after) | [`w1-quadruped-rollout-studio.png`](w1-quadruped-rollout-studio.png) (289 KB) |
+
+The strip shows what W2's verdict says. At 2.2 s the robot stands with its
+body yawed. At 4.4 s the body is tilted about 47°, past the 45° at which
+the `tipped` termination fires. The dashboard's Videos tab lists
+this video first. It serves the exact bytes as `video/webm`, and headless
+Chromium plays it: `currentTime` passes 1.0 s of a 4.5 s, 512×512 clip,
+with the revision and policy prefixes in the identity strip.
+
 ## W2: the walk, pre-registered
 
 Written and committed **before** the run starts. Nothing below changes

@@ -16,6 +16,7 @@ import time
 import pytest
 
 from cadex_cli.video import render, placed, stl, RENDER_SECONDS, STUDIO
+import cadex_cli.video as video_module
 from cadex_cli.browser import find_browser
 from cadex_cli.review_record import read_run_record
 from cadex_cli.review_server import serve, run_model
@@ -686,7 +687,8 @@ def test_studio_video_draws_the_declared_materials_and_says_where_they_came_from
                           'shin': {'role': 'mechanism', 'color': '#2F3237'}}
     summary.write_text(json.dumps(data))
     declared = render(root, 'sample', 'studio')
-    assert declared['materials'] == {'declared': True, 'source': f'review/render/{REVISION_A}/summary.json'}
+    assert declared['materials'] == {'declared': True, 'environment_omitted': [],
+                                     'source': f'review/render/{REVISION_A}/summary.json'}
     assert declared['appearance']['body'] == {'role': 'accent', 'color': '#F26A1B'}
 
     def orange(frame):
@@ -728,3 +730,69 @@ def test_dashboard_serves_the_studio_video_it_lists(video_project):
     finally:
         server.shutdown()
         server.server_close()
+
+
+@needs_ffmpeg
+def test_studio_video_reads_a_rollout_tessellation_past_the_scene_bounds_and_draws_it_within_budget(
+        video_project, monkeypatch):
+    """ot10-quadruped-3's w2-1 rollout (ADR-432) retains 2,528,456 triangles in
+    611 MB of ASCII STL, deck.stl alone 172 MB: the scene style's 32 MB and
+    500k caps refused it before a frame was drawn. Scaled down here: the
+    studio style reads a solid past the scene caps in full, clusters it to its
+    drawn budget, says so, and every drawn corner is a corner of the source,
+    so the bounds move by less than one cell. The scene style still refuses."""
+    root, run = video_project, video_project / 'runs/sample'
+    (run / 'rollout/torso.stl').write_text(_fine_stl(20.0, 48))   # 27 648 facets, 5.4 MB
+    meshes = {'body': stl(run / 'rollout/torso.stl'), 'shin': stl(run / 'rollout/leg.stl')}
+    monkeypatch.setattr(video_module, 'MAX_BYTES', 1024 * 1024)
+    monkeypatch.setattr(video_module, 'MAX_TRIANGLES', 20_000)
+    monkeypatch.setattr(video_module, 'STUDIO_TRIANGLES', 3_000, raising=False)
+    with pytest.raises(ValueError, match='artifact size/type refused'):
+        render(root, 'sample', 'scene')
+    video = render(root, 'sample', 'studio')
+    geometry = video['geometry']
+    assert geometry['input_triangles'] == sum(map(len, meshes.values())) == 27_648 + len(meshes['shin'])
+    assert 0 < geometry['drawn_triangles'] <= geometry['budget_triangles'] == 3_000
+    assert geometry['cell_mm'] > 0 and geometry['input_bound_triangles'] == video_module.STUDIO_INPUT_TRIANGLES
+    trace = json.loads((run / 'rollout/assembly-simulation-trace.json').read_text())
+    frames = [f for f in trace['frames'] if f.get('frame_kind') == 'solver_output']
+    points = [p for f in frames for name in meshes for tri in placed(meshes[name], f['component_placements'][name])
+              for p in tri]
+    exact = [min(p[j] for p in points) for j in range(3)] + [max(p[j] for p in points) for j in range(3)]
+    assert all(abs(a - b) < geometry['cell_mm'] for a, b in zip(video['bounds']['min'] + video['bounds']['max'], exact))
+    assert video['frames'] == 6 and len(_decoded(run / video['path'])) == 6
+    # Refused at the input cap, before anything is drawn.
+    monkeypatch.setattr(video_module, 'STUDIO_INPUT_TRIANGLES', 20_000)
+    with pytest.raises(ValueError, match='excessive input geometry'):
+        render(root, 'sample', 'studio')
+
+
+@needs_ffmpeg
+def test_studio_video_leaves_the_environment_out_and_puts_the_floor_on_top_of_it(video_project):
+    """The render summary's environment (a floor) is not a part: it gets no
+    material and is not drawn, and the studio floor is its top face rather
+    than the lowest point the solids reach, which a tipping robot drives
+    below the floor because the rollout collides on proxies (ADR-281,
+    ADR-432): the quadruped's reached -18.5 mm and floated off its shadow."""
+    root, run = video_project, video_project / 'runs/sample'
+    summary = root / 'review/render' / REVISION_A / 'summary.json'
+    data = json.loads(summary.read_text())
+    data['appearance'] = {'body': {'role': 'shell', 'color': '#ECE8DF'}}
+    data['environment'] = ['shin']
+    summary.write_text(json.dumps(data))
+    video = render(root, 'sample', 'studio')
+    assert video['materials']['environment_omitted'] == ['shin'] and list(video['appearance']) == ['body']
+    trace = json.loads((run / 'rollout/assembly-simulation-trace.json').read_text())
+    frames = [f for f in trace['frames'] if f.get('frame_kind') == 'solver_output']
+    shin = placed(stl(run / 'rollout/leg.stl'), frames[0]['component_placements']['shin'])
+    body = [p for f in frames for tri in placed(stl(run / 'rollout/torso.stl'), f['component_placements']['body'])
+            for p in tri]
+    assert abs(video['floor_z_mm'] - max(p[2] for tri in shin for p in tri)) < 1e-6
+    assert abs(video['lowest_reach_z_mm'] - min(p[2] for p in body)) < 1e-6
+    assert video['floor_source'] == 'top of the environment geometry: shin'
+    # Without an environment the floor is the lowest reach, as before.
+    data['appearance']['shin'] = {'role': 'mechanism', 'color': '#2F3237'}
+    data['environment'] = []
+    summary.write_text(json.dumps(data))
+    plain = render(root, 'sample', 'studio')
+    assert plain['floor_z_mm'] == plain['lowest_reach_z_mm'] and plain['materials']['environment_omitted'] == []
