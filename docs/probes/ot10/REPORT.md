@@ -2,12 +2,14 @@
 
 Verified against source: 2026-09-28. [Cadex-new]
 
-**Result.** Three unassisted designs, one per body plan, meet the frozen
-bar: `ot10-biped-1` scores 15 of 21, `ot10-quadruped-3` 15, and
-`ot10-hexapod-10` 14. hex3's baseline scores 2. Each passes every proxy
-and every fit gate and carries its electronics. Nine hexapod and
-quadruped attempts before them missed the bar, and all nine are published
-below with their scores. One W2 run, `w2-2` on `ot10-quadruped-3`, has
+**Result.** A5 is **not met** by its letter. The charter gives each body
+plan one design-only turn and says one failing design fails the
+criterion. Twelve turns were counted and nine missed the bar, so A5
+fails. The highest bar reached is one design per body plan that meets
+it: `ot10-biped-1` scores 15 of 21, `ot10-quadruped-3` 15, and
+`ot10-hexapod-10` 14. hex3's baseline scores 2. Each of those three
+passes every proxy and every fit gate and carries its electronics. All
+nine misses are published below with their scores. One W2 run, `w2-2` on `ot10-quadruped-3`, has
 `walked = true` under the unchanged thresholds. It went 1.44 m forward in
 10 s, upright the whole time. The run before it, `w2-1`, did not walk.
 
@@ -105,13 +107,13 @@ receipt, and neither is scored.
   agent's leg probe, with no electronics. ADR-429 fixed the wedge with a
   regression test before the next attempt.
 
-This is the charter's A5 in fact. Twelve counted turns on the frozen
-prompts, and nine of them failed. The three designs that meet the bar
-are, per body plan, the biped's first attempt, the quadruped's second
-counted attempt and the hexapod's ninth. The charter says "one failing
-design fails this criterion". Whether the attempts before a passing one
-count against A5 is the owner's reading to make. This report publishes
-them all and does not decide it.
+**A5 is not met.** The charter allows one turn per body plan, and "one
+failing design fails this criterion". Twelve counted turns ran on the
+frozen prompts and nine failed, so the criterion fails by its letter.
+Only the biped met the bar on its first and only turn. The quadruped met
+it on its second counted turn and the hexapod on its ninth. Those three,
+`ot10-biped-1`, `ot10-quadruped-3` and `ot10-hexapod-10`, are the highest
+bar this run reached. They are not a redefinition of success.
 
 ## The renders, sheets and videos
 
@@ -210,6 +212,13 @@ and none of them is a failure hidden as a skip:
 | engine | 5 | `test_blender_recipe.py` needs `CADEX_BLENDER_EXECUTABLE` to run the real OS-sandboxed recipe worker (ADR-185). No Blender runtime is set on this headless run. |
 | engine | 1 | `test_licensing_compliance.py` has one packaged-gate test that needs `CADEX_ENGINE_ROOT`. It is covered by the packaged gate row above. |
 | CLI | 1 | `test_review_server.py` has one test that needs `CADEX_REVIEW_HOST` set to a private-network address. It is skipped so that no hostname is committed. |
+
+The final re-run was at `18eb0a70`, the head before this page's A5
+verdict. The edit changed only prose in this report: engine 2,242 passed
+and 53 skipped (397 s), CLI 1,061 passed and 1 skipped (785 s), with the
+same skip reasons as above. `test_ot10_report.py` and
+`test_ot10_contract.py` pass on the edited page (41 of 41). No engine or
+payload file changed, so the packaged gate was not re-run.
 
 `hypergraph check` must be given the project config:
 `hypergraph check --record .hypergraph/cache/record.json --state
