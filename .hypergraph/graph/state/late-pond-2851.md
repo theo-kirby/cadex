@@ -47,6 +47,8 @@ What works, and is not in doubt:
 
 **A third fresh mechanism trained end to end at the default rate (2026-09-14).** Heron, a grounded two-DoF MG90S arm designed by the product agent under the ot6 charter, trained once in a bounded `heron1` run (240 PPO updates on 1024 environments, seed 0, learning rate 3e-4, 619.6 s, no divergence) and its final policy met the fixed-target reach task on every one of seeds 0–9, while checkpoint 20 met it on none; the lifecycle evidence lives on `civic-creek-8215` [rec: mild-hill-0753].
 
+**A fourth fresh mechanism trained at gait scale under the ADR-410 walking task (2026-09-28).** ot10's W2 run `w2-1` trained a copy of `ot10-quadruped-3` for 1000 iterations × 2048 envs on a local RTX 5090 without collapse. The policy stood and did not walk; the verdict and diagnosis live on `golden-garden-8501` [rec: bold-reef-1724]. **Recorded defect, not fixed:** the gait check's `training_survival` reads only the last iteration's episode length, 213.3 against a last-50 median of 487.6, so it read 0.43. The trainer's episode figure also exceeds the 500-step horizon (1,647 mean in bucket 0), so it is not a clean fraction either [rec: bold-reef-1724].
+
 ## Negative knowledge
 
 - [scope: reading a trainer reward curve | confidence: high | evidence: humble-path-4466] Trainer reward is not survival, and selecting a checkpoint by reward has lost to selecting by measured behaviour three separate times. Select by stepping-and-surviving.
@@ -61,6 +63,8 @@ What works, and is not in doubt:
 - [scope: spin-out termination on overpowered tiny mechanisms | confidence: high | evidence: staid-valley-0501] The guard must comfortably exceed σ·torque_limit/I·Δt or exploration dies in a handful of steps and the guard becomes the curriculum — measured as mean episode length 3.7 of 100 and a reward plateau, fixed by raising the guard and letting the spin cost do the shaping.
 
 - [scope: reading the trainer's `episode_steps` on a task whose only endings are the synchronized time limit | confidence: high | evidence: mild-hill-0753] The metric is unroll × envs over endings in the unroll, so it alternates 20,480 / 20.0 and says nothing about episode length. Report it as such; do not read it as survival.
+
+- [scope: the gait check's `training_survival` figure | confidence: high | evidence: bold-reef-1724] It is one iteration's episode length over the horizon, not a survival rate. On w2-1 the last iteration read 213.3 while the last-50 median was 487.6, and the trainer's per-bucket episode figure can exceed the horizon. Read the curve, not this one number, until it is fixed.
 
 ## Provenance
 
@@ -83,3 +87,4 @@ What works, and is not in doubt:
 - mild-hill-0753 — ADR-340: Heron, a third fresh mechanism, trained end to end at the default rate with the reach met on every seed; the trainer's episode_steps metric is uninformative on time-limit-only tasks
 - polished-path-3774 — hex2's tumbling walk_forward policy: reward rose, survival stayed flat
 - nimble-meadow-6874 — ADR-408: asymmetric actor-critic and the training-time grounding refusal
+- bold-reef-1724 — ot10 W2 run w2-1 trained at gait scale; the `training_survival` defect recorded
