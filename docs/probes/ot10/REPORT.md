@@ -21,7 +21,9 @@ a counted miss. The round ends 2 of 3, adds turns, and does not undo the
 nine misses, so A5 stays not met by its letter, now with ten misses. A
 further biped turn was pre-registered after the defect's fix (ADR-434)
 and ran on a new project: `ot10-biped-3` meets the bar at 14. It adds a
-counted design and re-scores nothing, so the ten misses stand. One W2 run, `w2-2` on `ot10-quadruped-3`, has
+counted design and re-scores nothing, so the ten misses stand. The last
+change of the run, ADR-435, bounds the build reply the model sees and
+has no A5 turn behind it. One W2 run, `w2-2` on `ot10-quadruped-3`, has
 `walked = true` under the unchanged thresholds. It went 1.44 m forward in
 10 s, upright the whole time. The run before it, `w2-1`, did not walk.
 
@@ -130,23 +132,34 @@ receipt, and neither is scored.
   that as a known gap. It is the next unit, with a regression test,
   before any prompt or tool change.
 
-**A5 is not met.** The charter allows one turn per body plan, and "one
-failing design fails this criterion". Twelve counted turns ran on the
-frozen prompts and nine failed, so the criterion fails by its letter.
-Only the biped met the bar on its first and only turn. The quadruped met
-it on its second counted turn and the hexapod on its ninth. Those three,
-`ot10-biped-1`, `ot10-quadruped-3` and `ot10-hexapod-10`, are the highest
-bar this run reached. They are not a redefinition of success. The
-pre-registered confirmation round has since added three more turns. Two
-meet the bar: `ot10-hexapod-11` at 14 and `ot10-quadruped-4` at 16. The
-third, `ot10-biped-2`, misses at 2 on the publication defect above. They
-add to this record. They do not undo the nine misses, and the round's own
-miss makes ten. **A5 is not met.** The highest bar reached is still one
-design per body plan that meets it, now with a second quadruped and a
-second hexapod. After ADR-434 fixed the defect that ended `ot10-biped-2`,
-one more biped turn was pre-registered and run on a new project.
-`ot10-biped-3` meets the bar at 14, with T5 at 3. It is a second biped
-that meets the bar. It re-scores nothing, and the ten misses stand.
+**A5 is not met, and what the clause means.** The charter gives each
+body plan one design-only turn and says "one failing design fails this
+criterion". Read plainly, the clause is about every counted attempt, not
+the best one per body plan. Sixteen turns were counted on the frozen
+prompts, and ten of them missed the bar: hexapods 1 to 8, quadruped 2 and
+biped 2. Any one of those ten fails A5 on its own, and a later turn that
+meets the bar does not reverse it. Nothing in this report re-scores a
+miss, retires one, or counts only the latest turn per body plan.
+
+What the run did reach, stated as the highest bar and not as success:
+
+- **Every body plan has at least one design that meets the bar.** Six
+  do: `ot10-biped-1` (15), `ot10-quadruped-3` (15), `ot10-hexapod-10`
+  (14), `ot10-hexapod-11` (14), `ot10-quadruped-4` (16) and
+  `ot10-biped-3` (14). Each scores above hex3's 2, passes every proxy and
+  both fit gates, and carries its electronics.
+- **The pre-registered confirmation round was 2 of 3.** Its turns were
+  `ot10-hexapod-11` (meets), `ot10-quadruped-4` (meets) and
+  `ot10-biped-2` (misses at 2 on the publication defect). `ot10-biped-3`
+  is not part of that round. It was pre-registered separately after
+  ADR-434 fixed the defect, and ran on the fixed engine. So the latest
+  turn on each body plan meets the bar, but the round as registered did
+  not.
+- **Two tool changes came after the last counted turn.** ADR-434 (a
+  refused publish rolls back) landed before `ot10-biped-3`. ADR-435 (a
+  build reply the model sees is bounded) landed after it and has no
+  counted turn behind it. No A5 turn has run on the ADR-435 CLI, so this
+  report makes no claim about its effect on a design.
 
 ## The renders, sheets and videos
 
@@ -237,6 +250,15 @@ Each of these is measured, and none is fixed in this run.
    project publish now rolls back, and an argument value in `result` is
    refused at validation with the fix named. `ot10-biped-2`'s score stands,
    because it was taken on the source it ran against.
+10. **A build reply could overflow the model's tool limit.** On
+    `ot10-biped-3` (215 outputs) a `rebuild` reply measured 85,954
+    characters, over the 21,500 budget of ADR-359, so its agent read the
+    fit by paging `inspect scope=clearance`. *Fixed after the last counted
+    turn, by ADR-435:* the reply the model sees summarises outputs and
+    lists fit results worst first, 12,163 characters on the same
+    revision. It amends ADR-346: failing pairs are counted whole and
+    listed worst first, twelve at a time. The engine reply is unchanged.
+    No counted turn ran on it.
 
 ## Regressions (C1)
 
@@ -268,6 +290,21 @@ and 53 skipped (397 s), CLI 1,061 passed and 1 skipped (785 s), with the
 same skip reasons as above. `test_ot10_report.py` and
 `test_ot10_contract.py` pass on the edited page (41 of 41). No engine or
 payload file changed, so the packaged gate was not re-run.
+
+**Final run, at `c758db3a` with this page's closing edit on top**
+(2026-09-28). This comes after ADR-434, an engine change, and ADR-435, a
+CLI-only change:
+
+| suite | result |
+|---|---|
+| `pixi run test-engine` | 2,247 passed, **53 skipped**, 0 failed (395 s) |
+| `pixi run python -m pytest cli/tests` | 1,068 passed, **1 skipped**, 0 failed (782 s) |
+| packaged lifecycle gate, `CADEX_ENGINE_ROOT=<staged payload>` | 23 passed, 0 skipped |
+
+The skips have the same four causes as the table above. No engine or
+package file changed after ADR-434's commit, whose own record carries a
+packaged gate run on a restaged payload. The gate was run again here all
+the same.
 
 `hypergraph check` must be given the project config:
 `hypergraph check --record .hypergraph/cache/record.json --state
