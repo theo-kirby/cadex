@@ -613,3 +613,115 @@ def test_static_clearance_bounds_far_pairs_and_the_sweep_still_measures_them(tmp
     assert 'culled' not in pair and pair['relative_motion'] is True
     assert pair['minimum_distance_mm'] == pytest.approx(2.5, abs=1e-9)
     assert pair['maximum_common_volume_mm3'] == 0.0
+
+
+def test_a_sweep_measures_boundaries_unless_a_solid_may_sit_inside_the_other(monkeypatch):
+    """ADR-425: a sweep's exact distance is taken on shells when that is exact.
+
+    ``ot10-hexapod-5``'s swept fit reached 10 of 12 joints in its 180 s,
+    with ``distToShape`` on solids 25 of a hip child's 28 s. Two solids
+    are measured on their shells unless one may lie wholly inside the other
+    (a vertex of it on or inside the other shape) or the boundaries come
+    within the contact recheck, where the solids answer as before.
+    """
+
+    import sys
+    import types
+    import cadex_assembly_worker as worker
+
+    calls = []
+
+    class Measured:
+        def __init__(self, kind, value):
+            self.kind, self.value = kind, value
+
+        def distToShape(self, other):
+            calls.append(self.kind)
+            return (self.value[self.kind], None, None)
+
+    class Solid:
+        def __init__(self, point):
+            self.Vertexes = [types.SimpleNamespace(Point=point)] if point else []
+
+    class Shape(Measured):
+        def __init__(self, points, inside, value):
+            super().__init__('solid', value)
+            self.Solids, self.Shells, self.inside = [Solid(p) for p in points], ['shell'], inside
+
+        def isInside(self, point, tolerance, on_face):
+            assert tolerance > 0 and on_face is True
+            return point in self.inside
+
+    part = types.ModuleType('Part')
+    part.Compound = lambda shells: Measured('shell', value)
+    monkeypatch.setitem(sys.modules, 'Part', part)
+
+    value = {'solid': 5.0, 'shell': 5.0}
+    apart = Shape(['a'], set(), value), Shape(['b'], set(), value)
+    assert worker._boundary_distance(*apart) == 5.0 and calls == ['shell']
+    # A vertex inside (or on) the other shape: the solids decide, shells never run.
+    for points, inside in ((['a'], {'a'}), ([None], set()), (['a', 'c'], {'c'})):
+        calls.clear()
+        value.update(solid=0.0)
+        first = Shape(points, set(), value)
+        second = Shape(['b'], inside, value)
+        assert worker._boundary_distance(first, second) == 0.0 and calls == ['solid']
+        calls.clear()
+        assert worker._boundary_distance(second, first) == 0.0 and calls == ['solid']
+    # Touching boundaries are re-measured on the solids.
+    calls.clear()
+    value.update(solid=0.0, shell=2e-14)
+    assert worker._boundary_distance(*apart) == 0.0 and calls == ['shell', 'solid']
+
+
+_SHELL_DRIVER = r'''
+import json, sys
+import FreeCAD as App
+import Part
+sys.path.insert(0, sys.argv[-1])
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps
+D = App.newDocument('Shells')
+hollow = D.addObject('Part::Feature','hollow')
+hollow.Shape = Part.makeSphere(20).cut(Part.makeSphere(15))
+ring = D.addObject('Part::Feature','ring')
+ring.Shape = Part.makeTorus(100, 5)
+moving = D.addObject('Part::Feature','moving')
+moving.Shape = Part.makeCompound([Part.makeSphere(1, App.Vector(10, 0, 0)),
+                                  Part.makeSphere(1, App.Vector(100, 0, 0))])
+moving.Placement = App.Placement(App.Vector(), App.Rotation(App.Vector(0,0,1), 20))
+D.recompute()
+components = {'hollow': hollow, 'ring': ring, 'moving': moving}
+data = {'hollow': {'grounded': True}, 'ring': {'grounded': True}, 'moving': {'grounded': False}}
+joints = {'hinge': {'kind':'revolute','suppressed':False,'parameters':{},
+  'angle_limits_degrees':[20,90],'length_limits_mm':None,
+  'connectors':[{'component_output':'hollow','local_frame':{'matrix':list(App.Matrix().A)}},
+                {'component_output':'moving','local_frame':{'matrix':list(App.Matrix().A)}}]}}
+baseline = _measure_clearance(components)
+report = _measure_joint_sweeps(components, data, joints, baseline,
+                               {'sweep_step_degrees': 35}, True)
+print('CLEARANCE-FRAME ' + json.dumps(dict(baseline=baseline, report=report)))
+'''
+
+
+@pytest.mark.skipif(kernel.FREECADCMD is None, reason='Needs real OCCT')
+def test_a_swept_bead_in_a_cavity_and_one_buried_in_a_solid_read_true(tmp_path, monkeypatch):
+    """ADR-425 on real OCCT: shells where exact, solids where one is buried.
+
+    One moving compound carries a bead through a hollow sphere's cavity,
+    4 mm from the inner wall, and a bead buried inside a torus. The cavity
+    pair is measured on shells (its bead is outside the hollow's material);
+    the buried pair must still read zero with the bead's whole volume.
+    """
+
+    monkeypatch.setattr(kernel, '_FRAME_DRIVER', _SHELL_DRIVER)
+    result = kernel._drive_frame(tmp_path)
+    (joint,) = result['report']['joints']
+    assert joint['status'] == 'complete' and joint['solved_pose_agreement'], joint
+    rows = {frozenset((r['first'], r['second'])): r for r in joint['pairs']}
+    cavity, buried = rows[frozenset(('hollow', 'moving'))], rows[frozenset(('moving', 'ring'))]
+    assert 'culled' not in cavity and 'culled' not in buried
+    assert cavity['minimum_distance_mm'] == pytest.approx(4.0, abs=1e-6)
+    assert cavity['maximum_common_volume_mm3'] == 0.0 and cavity['first_contact_degrees'] is None
+    assert buried['minimum_distance_mm'] == 0.0
+    assert buried['maximum_common_volume_mm3'] == pytest.approx(4 * math.pi / 3, rel=1e-3)
+    assert buried['first_contact_degrees'] == 20

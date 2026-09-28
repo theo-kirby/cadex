@@ -5868,6 +5868,33 @@ _SWEEP_KINDS = {
 }
 
 
+#: At or below this, a shell distance is re-measured on the solids, so a
+#: touching or first-contact reading is the one the solids give (ADR-425).
+_SHELL_DISTANCE_RECHECK_MM = 1e-3
+
+
+def _boundary_distance(first, second):
+    """The minimum distance between two solid shapes, on their shells when that is exact.
+
+    ``distToShape`` was 25 of a hip child's 28 s on ``ot10-hexapod-5``
+    (ADR-425). The two shells measure the same number, 10 to 70 times
+    faster on most of its pairs and about 1.3 times on its BSpline dome. A solid distance also answers
+    zero for a solid lying inside the other, and only then differs from the
+    distance between the two boundaries. So each solid of each side must
+    show one vertex strictly outside the other shape; otherwise, or when
+    the boundaries come within :data:`_SHELL_DISTANCE_RECHECK_MM`, the solids
+    are measured as before.
+    """
+
+    import Part
+    for inner, outer in ((first, second), (second, first)):
+        for solid in inner.Solids:
+            if not solid.Vertexes or outer.isInside(solid.Vertexes[0].Point, 1e-7, True):
+                return float(first.distToShape(second)[0])
+    distance = float(Part.Compound(first.Shells).distToShape(Part.Compound(second.Shells))[0])
+    return distance if distance > _SHELL_DISTANCE_RECHECK_MM else float(first.distToShape(second)[0])
+
+
 def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     """Sample one limited hinge or slider of a rigid tree with exact solids.
 
@@ -5950,7 +5977,7 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
         a, b = shapes[a], shapes[b]
         if a.isNull() or b.isNull() or not a.Solids or not b.Solids:
             raise ValueError("sweep requires solid components")
-        d = float(a.distToShape(b)[0])
+        d = _boundary_distance(a, b)
         v = float(a.common(b).Volume) if overlap else 0.0
         if not math.isfinite(d) or not math.isfinite(v) or min(d, v) < 0:
             raise ValueError("invalid native measurement")

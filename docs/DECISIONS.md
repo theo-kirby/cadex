@@ -28241,3 +28241,51 @@ A CLI regression fails on the previous source.
 **Not taken.** The inventory rows do not carry the script's `world=True`
 flag, so the fit's world-geometry rows decide, as they do for P1. No new
 "printed" classification was invented.
+
+## ADR-425 — The swept fit measures boundary shells when no solid can sit inside the other (2026-09-28)
+
+**Context.** `ot10-hexapod-5` (58 components, 12 limited joints) was accepted
+with its swept fit incomplete: 10 of 12 joints, then 9 of 12 on replay, inside
+the unchanged 180 s total budget, even after the agent coarsened its step to
+80° (two samples per joint). ADR-423 had moved the binding limit from the
+static check to here. Profiled read-only on a `/tmp` copy by replaying the
+accepted revision's own worker request with each joint child's input
+captured: hip children took 18–31 s and knee children 10–17 s. The candidates
+named for the cost were the per-joint `FreeCADCmd` spawn (0.06 s), BREP
+deserialisation (0.03 s for all 58), pair preparation (`optimalBoundingBox`,
+1.1 s) and exact measurement. Exact measurement dominated: on `hip_fr`,
+`distToShape` took 25.5 s of 28.5 s wall time over 93 calls (31 solved-pose
+agreement checks and 62 samples), pinned to the worker's four CPUs as the
+worker runs (ADR-418). No single pair dominated: the largest was 1.8 s, the
+BSpline dome against the femur. Measuring the two parts' shells instead of
+their solids gave the same distance to 1e-6 mm, 10 to 70 times faster on most
+pairs (chassis against coxa 0.876 → 0.083 s) and about 1.3 times on the dome.
+
+**Decision.** `_sweep_joint`'s exact distance goes through
+`_boundary_distance`. It measures `Part.Compound(Shells)` against
+`Part.Compound(Shells)` when each solid of each side has a vertex strictly
+outside the other shape (`isInside` with faces counted as inside). A solid
+distance differs from the boundary distance only when one solid lies inside
+the other, so that refutes the one case where the two disagree. It falls back
+to the solids when a solid has no vertex, when a vertex is on or inside the
+other shape, or when the shells come within 0.001 mm (the contact threshold).
+The last rule makes a touching pair read the solids' exact 0.0 rather than
+2.9e-14. The solved-pose agreement check is unchanged and still compares
+every exact row to the static measurement taken on the solids.
+
+**Measured.** Same accepted request, replayed on this machine, before →
+after: the sweep went from **9/12 joints at 180.0 s (incomplete)** to
+**12/12 joints in 125.1 s (complete)**. The nine joints both runs reached
+went from 176 to 112 s, and `hip_fr` from 31.1 to 18.6 s. Worker CPU went
+from 826 to 574 s. All 14,877 rows of the nine joints both runs reached are
+identical, including the 233 exactly measured moving rows. The remaining cost
+is mostly the dome's BSpline faces.
+
+**Not taken.** No budget constant, prompt, language or cull margin changed.
+The solved-pose agreement measurement is still repeated in every joint child
+(a third of the exact calls at two samples). The static `_measure_clearance`
+still measures solids; it is not binding since ADR-423. Joints are not run
+concurrently, because that would spend CPUs the worker is pinned away from.
+One stub regression test fails on the previous source, and a real-kernel test
+pins a cavity pair (shells, 4.0 mm) and a buried pair (solids, 0.0 mm and the
+bead's whole volume).

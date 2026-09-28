@@ -1723,6 +1723,11 @@ minimum distance is that smallest box gap, a lower bound on the true
 minimum; its maximum common volume is 0.0 and it has no first contact, both
 proved by the boxes. A lower bound can only make a fit verdict stricter.
 Each component's BREP is serialised once per assembly, not once per joint.
+An exact swept distance is measured between the two parts' boundary shells
+when no solid of either can lie inside the other, which is the same number
+at a fraction of the cost (ADR-425). The solids are measured instead when a
+vertex of one lies on or inside the other, or the shells come within
+0.001 mm.
 
 A limited joint whose kind's step is undeclared (a slider under
 `sweep_step_degrees` alone, or a hinge under `sweep_step_mm` alone) is
