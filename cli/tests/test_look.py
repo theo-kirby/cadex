@@ -494,6 +494,22 @@ def test_sharp_outside_edge_share_fails_bare_boxes_and_passes_a_blended_shell():
     assert render.edge_proxy(_edge_inventory({}))['value'] == 0.0
 
 
+def test_sharp_outside_edge_share_leaves_out_the_floor():
+    """ADR-424: world geometry the fit names is uncatalogued but not
+    printed. A bare 500 x 400 x 3 mm floor box is 3,612 mm of sharp edge,
+    enough to drag a filleted design over the bar; P2 leaves it out as P1
+    and ``look`` do, and says so. An unmeasured floor is no reason to call
+    the share unmeasured either."""
+    inventory = _edge_inventory({'deck': (1000.0, 100.0), 'c_floor': (3612.0, 3612.0)})
+    assert render.edge_proxy(inventory)['meets'] is False
+    proxy = render.edge_proxy(inventory, {'c_floor'})
+    assert proxy['value'] == 0.1 and proxy['meets'] is True
+    assert proxy['printed_components'] == 1 and proxy['edge_length_mm'] == 1000.0
+    assert proxy['left_out_as_environment'] == ['c_floor']
+    unmeasured_floor = render.edge_proxy(_edge_inventory({'deck': (1000.0, 100.0), 'c_floor': None}), {'c_floor'})
+    assert unmeasured_floor['value'] == 0.1 and 'unmeasured' not in unmeasured_floor
+
+
 def test_sharp_outside_edge_share_is_unmeasured_rather_than_zero():
     unmeasured = render.edge_proxy(_edge_inventory({'deck': (280.0, 0.0), 'skin': None}))
     assert unmeasured['value'] is None and unmeasured['meets'] is None

@@ -576,30 +576,39 @@ def design_proxies(triangles, summary, *, exclude=(), purchased=None, appearance
     }
 
 
-def edge_proxy(inventory):
+def edge_proxy(inventory, environment=()):
     """A1's P2 ``sharp_outside_edge_share`` from the inventory block (ADR-415).
 
     Sharp convex edge length over total solid edge length, summed over the
-    printed components as the engine measured them. ``None`` with a reason
-    when there is no inventory to say what was printed, or when a printed
-    part carries no edge measurement (zero would be a false pass). With no
-    printed edges at all the share is 0, as frozen. ``unresolved_edges``
-    counts edges the engine could not evaluate: they are in the total and
-    never sharp, so a nonzero count makes the share a lower bound.
+    printed components as the engine measured them. ``environment`` names
+    the world geometry the fit reports (a floor): it is uncatalogued but
+    not printed, so it is left out here as P1 and ``look`` leave it out of
+    the picture (ADR-424). ``None`` with a reason when there is no
+    inventory to say what was printed, or when a printed part carries no
+    edge measurement (zero would be a false pass). With no printed edges
+    at all the share is 0, as frozen. ``unresolved_edges`` counts edges the
+    engine could not evaluate: they are in the total and never sharp, so a
+    nonzero count makes the share a lower bound.
     """
     bar = PROXY_BARS['sharp_outside_edge_share']
     edges = (inventory or {}).get('printed_edges') if inventory and inventory.get('available', True) else None
     if not isinstance(edges, dict):
         return {'value': None, 'bar': dict(bar), 'meets': None,
                 'reason': 'no inventory to tell printed from purchased'}
-    result = {'bar': dict(bar), 'edge_length_mm': edges['edge_length_mm'],
-              'sharp_convex_length_mm': edges['sharp_convex_length_mm'],
-              'unresolved_edges': int(edges.get('unresolved_edges') or 0),
-              'printed_components': len(edges['measured']) + len(edges['unmeasured'])}
-    if edges['unmeasured']:
-        return {**result, 'value': None, 'meets': None, 'unmeasured': list(edges['unmeasured']),
-                'reason': 'printed parts with no edge measurement: ' + ', '.join(edges['unmeasured'])}
-    share = edges['sharp_convex_length_mm'] / edges['edge_length_mm'] if edges['edge_length_mm'] else 0.0
+    left_out = set(environment)
+    counted = {name: own for name, own in edges['by_component'].items() if name not in left_out}
+    unmeasured = [name for name in edges['unmeasured'] if name not in left_out]
+    total = sum(own['edge_length_mm'] for own in counted.values())
+    sharp = sum(own['sharp_convex_length_mm'] for own in counted.values())
+    result = {'bar': dict(bar), 'edge_length_mm': round(total, 3),
+              'sharp_convex_length_mm': round(sharp, 3),
+              'unresolved_edges': sum(own['unresolved_edges'] for own in counted.values()),
+              'printed_components': len(counted) + len(unmeasured),
+              'left_out_as_environment': sorted(left_out & (set(edges['by_component']) | set(edges['unmeasured'])))}
+    if unmeasured:
+        return {**result, 'value': None, 'meets': None, 'unmeasured': unmeasured,
+                'reason': 'printed parts with no edge measurement: ' + ', '.join(unmeasured)}
+    share = sharp / total if total else 0.0
     return {**result, 'value': round(share, 4), 'meets': share <= bar['max']}
 
 
@@ -765,7 +774,7 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
     summary['render_seconds'] = time.perf_counter() - start
     summary['proxies'] = design_proxies(triangles, summary, exclude=environment, purchased=purchased,
                                         appearance=appearance, palette=palette)
-    summary['proxies']['sharp_outside_edge_share'] = edge_proxy(inventory)
+    summary['proxies']['sharp_outside_edge_share'] = edge_proxy(inventory, environment)
     files['summary.json'] = json.dumps(summary, indent=2) + '\n'
     # Do not leave partial new views on geometry/render refusal.
     directory = Path(root) / relative_dir

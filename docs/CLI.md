@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-27. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-28. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -1935,7 +1935,9 @@ readable inventory nothing says what was purchased, and P1's `value` and
 (P2), is a BREP measure read from the inventory rather than the image: the
 engine reports each output's solid edge length and the sharp convex part of
 it (`source_facts.sharp_edges`), and the CLI sums both over the printed
-components, once per placement, and divides. A printed part with no such fact
+components, once per placement, and divides. The fit's world geometry (a
+floor) is uncatalogued but not printed, so it is left out here too and
+named under `left_out_as_environment` (ADR-424). A printed part with no such fact
 (a mesh, or a revision accepted before ADR-415) makes P2 `null` with a
 `reason` naming it rather than a false zero; with no printed edges it is 0.
 The agent's `look` reports all three under `measures`, and each report adds

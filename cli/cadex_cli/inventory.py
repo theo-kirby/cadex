@@ -213,6 +213,8 @@ def printed_edges(
     under ``unmeasured`` rather than counted as smooth. An edge the engine
     could not evaluate counts towards the total and never as sharp, so
     ``unresolved_edges`` says how far the share is a lower bound.
+    ``by_component`` keeps each measured placement's own figures, so the
+    proxy can leave out the world geometry the fit names (ADR-424).
     """
 
     printed = set(uncatalogued)
@@ -220,6 +222,7 @@ def printed_edges(
     unresolved = 0
     measured: list[str] = []
     unmeasured: list[str] = []
+    by_component: dict[str, dict[str, Any]] = {}
     for row in components:
         if str(row.get("source_output") or "") not in printed:
             continue
@@ -228,16 +231,23 @@ def printed_edges(
         if not isinstance(facts, Mapping):
             unmeasured.append(name)
             continue
-        total += float(facts.get("edge_length_mm") or 0.0)
-        sharp += float(facts.get("sharp_convex_length_mm") or 0.0)
-        unresolved += int(facts.get("unresolved_edges") or 0)
+        own = {
+            "edge_length_mm": float(facts.get("edge_length_mm") or 0.0),
+            "sharp_convex_length_mm": float(facts.get("sharp_convex_length_mm") or 0.0),
+            "unresolved_edges": int(facts.get("unresolved_edges") or 0),
+        }
+        total += own["edge_length_mm"]
+        sharp += own["sharp_convex_length_mm"]
+        unresolved += own["unresolved_edges"]
         measured.append(name)
+        by_component[name] = own
     return {
         "edge_length_mm": round(total, 3),
         "sharp_convex_length_mm": round(sharp, 3),
         "unresolved_edges": unresolved,
         "measured": sorted(measured),
         "unmeasured": sorted(unmeasured),
+        "by_component": dict(sorted(by_component.items())),
     }
 
 

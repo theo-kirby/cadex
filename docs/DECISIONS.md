@@ -28206,3 +28206,38 @@ one CLI test fail on the previous source.
 
 **Not taken.** No limit was raised and no prompt or language changed. The
 static near-pair `common` gate still uses `BoundBox`.
+
+## ADR-424 — P2 leaves out world geometry, and every earlier probe is re-scored (2026-09-28)
+
+**Context.** A1 froze P2 `sharp_outside_edge_share` over "every printed
+(uncatalogued) solid". A floor is uncatalogued, so every ot10 P2 so far
+counted the ground. P1 and `look` already left the fit's world geometry out;
+P2 did not, and the floor moved it in both directions. A bare floor box is
+all sharp edge: `ot10-quadruped-2` read 0.238 against the 0.25 bar, 7,220 mm
+of it the floor. A filleted floor is none: `ot10-hexapod-4`'s 24,019 mm of
+smooth floor edge was nearly half its total and read the design's 0.220 as
+0.114. The critic named it an unrecorded change waiting to happen to a frozen
+proxy.
+
+**Decision.** P2 counts printed parts only. `inventory.printed_edges` keeps
+each measured placement's own figures under `by_component`, and
+`render.edge_proxy(inventory, environment)` leaves out the components the fit
+reports as world geometry, the same set P1 leaves out, and names them under
+`left_out_as_environment`. An unmeasured floor no longer makes the share
+unmeasured. `render` and `look` pass the set. The definition in
+`docs/probes/ot10/README.md` changes to say so. The threshold, the rubric,
+the bar and the judging procedure do not change, and `contract.json` is
+unchanged.
+
+**Re-score.** This is a change to a frozen proxy, so every earlier probe was
+re-measured at its accepted revision from the engine's per-component facts,
+before → after: hex3 0.332 → **0.189**, hexapod-1 0.655 → 0.508, hexapod-2
+0.088 → 0.134, quadruped-2 0.238 → 0.040, biped-1 0.068 → 0.103, hexapod-3
+0.240 → 0.048, hexapod-4 0.114 → 0.220. One verdict changes: hex3's P2 now
+passes. hex3 is the baseline and still misses P1 and the judged bar. No A5
+verdict changes, and no judged score can, because the judge never sees P2.
+A CLI regression fails on the previous source.
+
+**Not taken.** The inventory rows do not carry the script's `world=True`
+flag, so the fit's world-geometry rows decide, as they do for P1. No new
+"printed" classification was invented.

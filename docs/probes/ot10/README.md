@@ -1,6 +1,6 @@
 # ot10 — the design-quality contract
 
-Verified against source: 2026-09-27. [Cadex-new]
+Verified against source: 2026-09-28. [Cadex-new]
 
 **This is A1's frozen instrument.** Every ot10 design, including hex3's
 baseline, is measured with it: the rubric, the measurable proxies, the A5
@@ -80,7 +80,7 @@ and does not redefine them.
 | id | proxy | definition | designed if |
 |---|---|---|---|
 | P1 | `hardware_silhouette_share` | In the hero view, of the pixels covered by the design (environment geometry left out), the fraction whose front-most surface belongs to a purchased (catalogued) component. | ≤ 0.20 |
-| P2 | `sharp_outside_edge_share` | Over every non-seam BREP edge of every printed (uncatalogued) solid at the accepted revision: length of the **sharp convex** edges ÷ total edge length. An edge is sharp convex when the outward normals of its two faces, sampled at its midpoint, turn outward by more than 60°. A 90° corner is sharp; a 45° chamfer or a tangent fillet is not. A seam edge has the same face on both sides. With no printed edges the share is 0. | ≤ 0.25 |
+| P2 | `sharp_outside_edge_share` | Over every non-seam BREP edge of every printed (uncatalogued) solid at the accepted revision, leaving out the world geometry the fit names (a floor), as P1 does (ADR-424): length of the **sharp convex** edges ÷ total edge length. An edge is sharp convex when the outward normals of its two faces, sampled at its midpoint, turn outward by more than 60°. A 90° corner is sharp; a 45° chamfer or a tangent fillet is not. A seam edge has the same face on both sides. With no printed edges the share is 0. | ≤ 0.25 |
 | P3 | `material_count` | The number of distinct appearance materials drawn in the hero view. A part with a declared role and palette counts as its colour; a part with no declared role counts as the renderer's default for printed or purchased. | 2 or 3 |
 
 Each proxy has a test that fails on a crude fixture (bare boxes, one
@@ -88,6 +88,42 @@ colour or rainbow, exposed hardware) and passes on a designed one. The
 proxies are necessary, not sufficient. hex3 scores 2 on P3 with its
 printed/purchased split, and it is still not a designed product. That is
 why the bar also needs the judged score.
+
+### Decision: P2 leaves out world geometry (ADR-424, 2026-09-28)
+
+P2 as first frozen counted every uncatalogued solid, and a floor is
+uncatalogued. It is world geometry, not a printed part: the fit reports
+it as such, and P1 and `look` already leave it out. Counted, it pulled
+the share either way by what the agent happened to do to the ground. A
+bare floor box is all sharp edge and pushed P2 up (hex3's 3,612 mm,
+quadruped-2's 7,220 mm). A filleted one had none and diluted it
+(hexapod-4's floor is 24,019 mm of smooth edge, nearly half its total).
+So P2 now counts only printed parts. The definition above says so, and
+`render.edge_proxy` takes the fit's world geometry and reports what it
+left out under `left_out_as_environment`. No threshold, trait, bar or
+judging step changed.
+
+Every earlier P2 was re-measured at its accepted revision from the
+engine's own per-component edge facts
+(`cadex_cli.inventory.printed_edges`, now keeping `by_component`). The
+judged scores cannot move, because the judge never sees P2. One verdict
+changed: hex3's P2 now passes. hex3 is the baseline, not a candidate,
+and it still misses P1 (0.373) and the judged bar (2 of 21).
+
+| probe | world geometry | P2 with it | P2 without it (ADR-424) | verdict |
+|---|---|---|---|---|
+| hex3 (baseline) | `c_floor`, 3,612 mm, all sharp | 0.332 | **0.189** (3,181 of 16,856 mm, 13 printed) | **no → yes** |
+| hexapod 1 | `c_floor`, 9,608 mm, all sharp | 0.655 | **0.508** (11,525 of 22,667 mm, 16 printed) | no, unchanged |
+| hexapod 2 | `c_floor`, 12,807 mm, none sharp | 0.088 | **0.134** (3,293 of 24,561 mm, 33 printed) | yes, unchanged |
+| quadruped 2 | `c_floor`, 7,220 mm, all sharp | 0.238 | **0.040** (1,126 of 27,890 mm, 23 printed) | yes, unchanged |
+| biped 1 | `floor`, 12,810 mm, none sharp | 0.068 | **0.103** (2,611 of 25,323 mm, 21 printed) | yes, unchanged |
+| hexapod 3 | `floor`, 9,608 mm, all sharp | 0.240 | **0.048** (1,810 of 37,953 mm, 22 printed) | yes, unchanged |
+| hexapod 4 | `c_floor`, 24,019 mm, none sharp | 0.114 | **0.220** (5,706 of 25,947 mm, 16 printed) | yes, unchanged |
+
+No A5 verdict changes. hexapod 4 moves closest to the bar: its links
+kept their edge breaks, and its filleted floor had hidden that. Figures
+elsewhere on this page are shown as re-measured, with the earlier
+floor-inclusive value in brackets where the text discusses it.
 
 ## The A5 bar
 
@@ -200,7 +236,7 @@ rule applies to it as to the baseline's: no product prompt may quote it.
 | no trait 0 | lowest is 1 (T3, T4) | yes |
 | above hex3 (2) | 13 | yes |
 | P1 ≤ 0.20 | **0.078** (15,101 of 193,831 subsamples) | yes |
-| P2 ≤ 0.25 | **0.655** (21,133 of 32,275 mm, 17 printed components) | **no** |
+| P2 ≤ 0.25 | **0.508** (11,525 of 22,667 mm, 16 printed components; 0.655 with the floor, before ADR-424) | **no** |
 | P3 2 or 3 | **3** (`#2A2C31`, `#E9E4D8`, `#F26A1B`) | yes |
 | static fit | 1,035 pairs clear, 0 intersections; 32 welded pairs touching. The one failing row is the floor's advisory world-geometry row | yes |
 | swept fit | **incomplete: 12 of 12 joints unswept** (`sweep_step_degrees` not declared) | **no** |
@@ -228,7 +264,7 @@ out to fit the engine's 300 CPU-second limit**. The limit refused 19 of
 the turn's 33 refused calls. The agent's own `DECISIONS.md` records what
 went: a spline-loft carapace, the joint caps, the leg fillets, the
 servo-shaped pockets, the 34 screws, and the motion sweep. It identifies
-total face count as the lever. P2's 0.655 is the unfilleted legs in a
+total face count as the lever. P2's 0.508 (0.655 before ADR-424) is the unfilleted legs in a
 number, and the incomplete sweep is the same cut. So the binding
 constraint on this design was not what the agent knew. It was the cost
 of checking what it built. The next change is to that cost, not to the
@@ -282,7 +318,7 @@ rule as before: no product prompt may quote it.
 | no trait 0 | lowest is 1 (T3) | yes |
 | above hex3 (2) | 14 | yes |
 | P1 ≤ 0.20 | **0.022** (4,384 of 199,446 subsamples) | yes |
-| P2 ≤ 0.25 | **0.088** (3,293 of 37,368 mm, 34 printed components) | yes |
+| P2 ≤ 0.25 | **0.134** (3,293 of 24,561 mm, 33 printed components; 0.088 with the floor, before ADR-424) | yes |
 | P3 2 or 3 | **3** (`#2A2C30`, `#ECE6DA`, `#FF6A1A`) | yes |
 | static fit | 1,953 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row | yes |
 | swept fit | **incomplete: 12 of 12 joints unswept** (`sweep_step_degrees` not declared) | **no** |
@@ -300,7 +336,7 @@ tessellation, 7.6 s drawing, and 2.3 s of that for the hero, at 134,850
 drawn triangles (from 667,700 input triangles).
 
 **Diagnosis.** Against attempt 1, T4 rose from 1 to 2 and the median
-total from 13 to 14. P2 fell from 0.655 to 0.088: the legs, feet and hip
+total from 13 to 14. P2 fell from 0.508 to 0.134 (0.655 to 0.088 before ADR-424): the legs, feet and hip
 pods are now blended. CPU-limit refusals fell from 19 to 3, which is
 ADR-418's pin measured on a real turn. The one bar item missed is the
 same one as in attempt 1, for a different reason. The agent did try the
@@ -364,7 +400,7 @@ same rule as before: no product prompt may quote it.
 | no trait 0 | lowest is 1 (T4) | yes |
 | above hex3 (2) | 16 | yes |
 | P1 ≤ 0.20 | **0.004** (962 of 241,713 subsamples) | yes |
-| P2 ≤ 0.25 | **0.238** (8,346 of 35,110 mm, 24 printed components) | yes |
+| P2 ≤ 0.25 | **0.040** (1,126 of 27,890 mm, 23 printed components; 0.238 with the floor, before ADR-424) | yes |
 | P3 2 or 3 | **3** (`#2A2D33`, `#ECE7DC`, `#F26A1B`) | yes |
 | static fit | 1,953 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row | yes |
 | swept fit | **incomplete: 8 of 8 joints unswept** (`sweep_step_degrees` not declared) | **no** |
@@ -388,10 +424,10 @@ total budgets, and it switched the sweep off (its `DECISIONS.md` ADR-009
 and `docs/rejected.md`). ADR-419, the next unit, is the tool change for
 exactly this. The weakest judged trait is T4 (1 in all three calls): the
 body is a soft rounded box, but the thigh links are sharp-edged
-rectangular blocks. P2 reads 0.238, close to its 0.25 bar, and its
-measured set includes `c_floor`, which is world geometry, not a printed
-part. That concern is open. Changing what P2 counts changes a frozen
-proxy, so it needs a recorded re-score decision, not a quiet fix.
+rectangular blocks. P2 first read 0.238, close to its 0.25 bar, with
+`c_floor` (world geometry, not a printed part) in its measured set. That
+concern was settled by a recorded re-score decision, ADR-424 (see *The
+proxies*): without the floor, P2 is 0.040.
 
 **A4's refusal classes in this transcript: none of the four recurred.**
 The turn had 11 refused calls. The notes' `refusals.py` again counted one
@@ -450,7 +486,7 @@ rule as before: no product prompt may quote it.
 | no trait 0 | lowest is 1 (T4) | yes |
 | above hex3 (2) | 15 | yes |
 | P1 ≤ 0.20 | **0.002** (493 of 230,650 subsamples) | yes |
-| P2 ≤ 0.25 | **0.068** (2,611 of 38,133 mm, 22 printed components, `floor` among them) | yes |
+| P2 ≤ 0.25 | **0.103** (2,611 of 25,323 mm, 21 printed components; 0.068 with `floor`, before ADR-424) | yes |
 | P3 2 or 3 | **3** (`#2B2F36`, `#E9E4D8`, `#F26A1B`) | yes |
 | static fit | 1,275 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row. 43 fixed-joint pairs touching | yes |
 | swept fit | **complete and passing: 6 of 6 joints** at 15° steps, 0 failing pairs. The 6 floor contacts are advisory world geometry (ADR-420) | yes |
@@ -541,7 +577,7 @@ rule as before: no product prompt may quote it.
 | no trait 0 | lowest is 1 (T4, T5) | yes |
 | above hex3 (2) | 13 | yes |
 | P1 ≤ 0.20 | **0.007** (1,037 of 156,494 subsamples) | yes |
-| P2 ≤ 0.25 | **0.240** (11,418 of 47,561 mm, 23 printed components, `floor` among them) | yes |
+| P2 ≤ 0.25 | **0.048** (1,810 of 37,953 mm, 22 printed components; 0.240 with `floor`, before ADR-424) | yes |
 | P3 2 or 3 | **3** (`#2E3136`, `#ECE8DF`, `#F26B1D`) | yes |
 | static fit | 1,326 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row. 38 fixed-joint pairs touching | yes |
 | swept fit | **complete and passing: 12 of 12 joints** at 20° steps, 0 failing pairs. The 12 floor contacts are advisory world geometry (ADR-420) | yes |
@@ -584,7 +620,7 @@ design, on two traits:
   failed, and it was replaced by a clipped sphere (`docs/rejected.md`).
   The dome is 10 mm high over a 240 mm star, so it reads as a shallow
   dish. The coxae, by contrast, got post-cut edge breaks for P2 and still
-  kept their box sections. P2's 0.240 is again close to its bar.
+  kept their box sections. P2 read 0.240 with the floor, close to its bar; without it (ADR-424) it is 0.048.
 
 The next change answers the measured gap in the language's own terms.
 §4 must make the face findable on any body: a proportion the agent can
@@ -644,7 +680,7 @@ rule as before: no product prompt may quote it.
 | no trait 0 | lowest is 1 (T3, T4) | yes |
 | above hex3 (2) | 12 | yes |
 | P1 ≤ 0.20 | **0.013** | yes |
-| P2 ≤ 0.25 | **0.114** | yes |
+| P2 ≤ 0.25 | **0.220** (5,706 of 25,947 mm, 16 printed components; 0.114 with the floor, before ADR-424) | yes |
 | P3 2 or 3 | **2** (`#2A2C31`, `#E9E4D8`) | yes |
 | static fit | 1,035 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row. 32 fixed-joint pairs touching | yes |
 | swept fit | **complete and passing: 12 of 12 joints** at 15° steps, 0 failing pairs. The floor contacts are advisory world geometry (ADR-420) | yes |
@@ -733,8 +769,9 @@ render (T7). The two colours follow printed versus purchased, which the
 judge read as partly by role (T2).
 
 hex3's proxies were not measured when it was scored, because A3 builds
-them. All three now are (ADR-414, ADR-415; see *A3* below): P1 **0.373**
-and P2 **0.332**, both over their bars, and P3 **2**, within it.
+them. All three now are (ADR-414, ADR-415, ADR-424; see *A3* below): P1
+**0.373**, over its bar, P2 **0.189** (0.332 with its floor, before
+ADR-424) and P3 **2**, both within theirs.
 
 | view | file | bytes |
 |---|---|---|
@@ -782,7 +819,7 @@ CLI sums both over the printed placements.
 | proxy | hex3 before (A1) | hex3 after (ADR-414) | bar | meets |
 |---|---|---|---|---|
 | P1 `hardware_silhouette_share` | not measured | **0.373** (76,170 of 204,356 subsamples) | ≤ 0.20 | no |
-| P2 `sharp_outside_edge_share` | not measured | **0.332** (6,793 of 20,468 mm, 14 printed components; ADR-415) | ≤ 0.25 | no |
+| P2 `sharp_outside_edge_share` | not measured | **0.189** (3,181 of 16,856 mm, 13 printed components; ADR-424. ADR-415 measured 0.332 with the floor) | ≤ 0.25 | yes |
 | P3 `material_count` | 2 by construction | **2** (`#2F3237`, `#E9E6DF`) | 2 or 3 | yes |
 
 That is the same `/tmp` copy at revision `c1704bfcb631…`, from
@@ -798,6 +835,10 @@ P2 was measured by ADR-415 on a fresh copy of hex3 at the same revision
 `c1704bfcb631…`, with the engine rebuilt and staged and `./cadex render
 --project <copy> --engine <payload> --json` (7 min 1 s, most of it the
 rebuild, which is what gives the accepted parts their new edge fact). The
-hero it wrote is again byte for byte `hex3-studio_hero.png`. A third of
-hex3's printed edge length is a bare convex corner: plates and bars with
-no blend, T4's 0 in a number.
+hero it wrote is again byte for byte `hex3-studio_hero.png`. It read
+0.332, a third of the edge length as a bare convex corner, but 3,612 mm
+of that was the floor box. ADR-424 leaves the floor out, and hex3's
+printed parts alone read **0.189**, within the bar. hex3's plates are
+thin, so their long faces dominate the edge length and their sharp rims
+are under a fifth of it. P2 does not see T4's 0 on this design. P1 and
+the judge do, which is the necessary-not-sufficient point again.

@@ -335,7 +335,7 @@ class Bridge:
                     triangles, summary, exclude=world, purchased=purchased,
                     appearance=appearance, palette=palette,
                 )
-                proxies["sharp_outside_edge_share"] = render.edge_proxy(inventory)
+                proxies["sharp_outside_edge_share"] = render.edge_proxy(inventory, world)
             except InventoryError as exc:
                 call = ToolCall("look", dict(arguments), False, str(exc))
                 self._record(call)
