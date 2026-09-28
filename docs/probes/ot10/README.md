@@ -611,6 +611,98 @@ The turn had 20 refused calls:
   applied;
 - 2 refusals to retire an output that a component still linked.
 
+## A5 attempt 4: the hexapod (`ot10-hexapod-4`)
+
+**Misses the bar on one count: the judged total is 12 of 21, under the
+frozen 14.** Every other item passes. The face rule it was run to measure
+held (T5 rose from 1 to 2 in all three calls), but T2 and T3 fell. This is
+the frozen hexapod prompt above, word for word, run once on the new project
+`ot10-hexapod-4` with no continuation, the same argv and
+`CADEX_EFFORT=medium`. It started at 2026-09-28T03:07:21Z at revision
+`c3abb3ab`, which is ADR-422 (§4's face size and contrast rules, and the
+overlay's `look` at `right` before accepting). It ran detached from the
+loop, and its stdout and stderr stayed outside git. The turn ended on its
+own at 03:48Z (41 min) with `ok: true`, at accepted revision
+`f0b98de47b17…` (digest `1af54879ada4…`).
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| attempt 3, median | 2 | 3 | 2 | 1 | 1 | 2 | 2 | **13** |
+| attempt 4, call 1 | 2 | 2 | 1 | 1 | 2 | 2 | 2 | 12 |
+| attempt 4, call 2 | 2 | 2 | 1 | 1 | 2 | 2 | 2 | 12 |
+| attempt 4, call 3 | 2 | 1 | 1 | 1 | 2 | 1 | 2 | 10 |
+| attempt 4, median | 2 | 2 | 1 | 1 | 2 | 2 | 2 | **12** |
+
+Every raw reply is kept in
+[`ot10-hexapod-4-score.json`](ot10-hexapod-4-score.json), under the same
+rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | 12 | **no** |
+| no trait 0 | lowest is 1 (T3, T4) | yes |
+| above hex3 (2) | 12 | yes |
+| P1 ≤ 0.20 | **0.013** | yes |
+| P2 ≤ 0.25 | **0.114** | yes |
+| P3 2 or 3 | **2** (`#2A2C31`, `#E9E4D8`) | yes |
+| static fit | 1,035 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row. 32 fixed-joint pairs touching | yes |
+| swept fit | **complete and passing: 12 of 12 joints** at 15° steps, 0 failing pairs. The floor contacts are advisory world geometry (ADR-420) | yes |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S with 12 horns | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-4-hero.png),
+[`iso`](ot10-hexapod-4-look_iso.png),
+[`iso_back`](ot10-hexapod-4-look_iso_back.png),
+[`front`](ot10-hexapod-4-look_front.png),
+[`right`](ot10-hexapod-4-look_right.png) and
+[`top`](ot10-hexapod-4-look_top.png).
+`cadex render` took 3 min 23 s for the whole command, 102.1 s of it
+acquiring the tessellation, at 73,695 drawn triangles (from 486,396 input
+triangles).
+
+**Diagnosis.** ADR-422 did what it was written to do, and the design lost
+elsewhere.
+
+- **The face now meets §4, and T5 rose from 1 to 2.** The agent's
+  `DECISIONS.md` puts a graphite visor band split out of the bone front
+  wall, 76 mm wide and about 13 mm tall, facing +X. In the `right` view it
+  spans about 55% of the body's width and about 36% of its height, and it
+  is graphite on bone. The agent looked at `right` twice, both times on
+  earlier revisions; its looks on the accepted revision were `hero`, `iso`
+  and a focused `iso` of one leg. It still reads as a generic slot rather than a character:
+  one dark rectangle, with no eye, lens or accent in it.
+- **T2 fell from 3 to 2, and T3 from 2 to 1. Both follow from the CPU
+  budget.** The agent's summary says so itself. Its orange accent feet
+  were separate components; it merged them into the leg links to fit the
+  300 CPU-second limit, which left two materials and no accent. The hip
+  joints got no caps: the judge saw bare horn discs and shaft stubs. The
+  turn hit the CPU limit 8 times (attempt 3: 4). The agent's own
+  experiment found that the geometry built fine without the leg
+  components and that the assembly measurement was the cost. It dropped
+  a B-spline body, a B-spline leg outline, per-edge fillets, the separate
+  feet and the 24 tab screws, each one for CPU.
+- **T4 stayed at 1.** The body is a rounded rectangular slab with box
+  pods on top and constant-section bent legs.
+
+Four hexapod attempts have now scored 13, 14, 13 and 12. What limits the
+hexapod is no longer a rule the agent has not been taught. It is what the
+agent can afford to build under the 300 CPU-second limit with about 46
+components. Each attempt spends that budget on a different trait, and
+this one spent it on the face. The next unit measures where a
+46-component hexapod's accepted build spends its CPU seconds, on this
+project read-only, before any further prompt or language change. A second
+open concern: the hero camera looks from 35° round from −Y, so a face at
++X is seen nearly edge-on in the hero (ADR-422, *Not taken*).
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 14 refused calls:
+- 8 CPU-limit refusals;
+- 3 sandbox refusals (`hasattr`, `dir`, an import);
+- 1 boolean that produced 10 solids;
+- 1 edit whose `old` text did not occur;
+- 1 guessed JSON pointer (`/facts`).
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest

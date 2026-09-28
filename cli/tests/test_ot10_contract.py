@@ -237,3 +237,23 @@ def test_a5_hexapod_attempt_3_is_published_with_its_score():
     section = README.partition("## A5 attempt 3: the hexapod (`ot10-hexapod-3`)")[2]
     assert section.startswith(
         "\n\n**Misses the bar on one count: the judged total is 13 of 21, under the\nfrozen 14.**")
+
+
+def test_a5_hexapod_attempt_4_is_published_with_its_score():
+    score = json.loads((OT10 / "ot10-hexapod-4-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 12
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-hexapod-4-hero.png"] + [
+        f"ot10-hexapod-4-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    # ADR-422's face rule moved T5 from 1 to 2; the total still misses.
+    assert score["medians"]["T5"] == 2
+    assert score["total"] < CONTRACT["bar"]["total_min"]
+    assert "| attempt 4, median | 2 | 2 | 1 | 1 | 2 | 2 | 2 | **12** |" in README
+    section = README.partition("## A5 attempt 4: the hexapod (`ot10-hexapod-4`)")[2]
+    assert section.startswith(
+        "\n\n**Misses the bar on one count: the judged total is 12 of 21, under the\nfrozen 14.**")
