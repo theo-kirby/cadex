@@ -28398,3 +28398,67 @@ and §5 carry the same two rules. The rubric, proxies, bar and judging
 procedure are unchanged, and the new sentences use none of the rubric's
 anchor wording. Regression: `test_limbs_taper_in_depth_and_cradles_do_not_show_as_servos`
 in `cli/tests/test_turn_loop.py` fails on the previous overlay.
+
+## ADR-429 — Renaming a project's assembly output re-keys the live assembly instead of wedging the document (2026-09-28)
+
+**Context.** Hexapod attempt 8 (`ot10-hexapod-8`) accepted a probe whose
+assembly output was `probe`, then renamed it in its next full design. From
+that write on, every publish, including a one-box script, was refused with
+`PUBLICATION_UNTAGGED_OBJECT: ['Joints']`, then `['Joints', 'Joints001']`.
+The agent had no way to recover and stopped on the probe. The three CPU-limit
+kills before the wedge were a coincidence. They happen in the sandboxed
+worker, before publication, and leave the document as accepted.
+
+**Measured** under FreeCADCmd, on a two-component assembly with one revolute
+joint and one grounded component. Renaming the assembly output published as
+retire-plus-create:
+- `_create_object` gave the new assembly a fresh `Joints001`.
+- `_remove_owned_objects` removed the old assembly alone.
+- The old assembly's untagged `Assembly::JointGroup "Joints"` was left
+  behind. The joints updated in place were still inside it, and the
+  component links were in the retired assembly's `Group`.
+- The ownership lint refused the publish.
+- The live document runs with `UndoMode 0`, so `abortTransaction` restored
+  nothing. The half-built `robot` assembly and `Joints001` stayed, and every
+  later publish found both groups.
+
+**Decision.** A program publishes at most one assembly. When exactly one live
+assembly leaves the contract and exactly one new assembly output enters it,
+they are the same assembly. `_rekey_renamed_assembly` in
+`CadexScriptedDomainPublication.py` re-keys the live object's
+`CadexXScriptOutputName`, and its dependency anchor's, to the new name before
+the publish computes what exists and what retires. The groups, joints,
+grounding joints and component links under it survive, and so do external
+references to it, because the object is unchanged. The live object keeps its
+original internal name (`VibeAssembly_project_probe`). Nothing derives an
+output name from an internal name. No protocol op, result shape or payload
+file changes.
+
+**Not taken.**
+- Tagging the `JointGroup`, or reclaiming parentless groups on the next
+  publish, would have silenced the lint over a broken document: joints
+  outside any assembly, and components in a retired one.
+- Turning on the document's undo, so that a refused publish really rolls
+  back, is a wider change. It would touch every domain's publish and its
+  memory cost. It is recorded here as a known gap, because
+  `accepted_live_state_preserved: true` in a refusal is not guaranteed while
+  `UndoMode` is 0.
+
+**Found, not fixed here.** A script that drops the assembly and also drops a
+part that one of its components links is refused with `Cannot retire XScript
+output 'arm'; … foreign document objects still reference it`. The part pass
+runs before the assembly pass and before the project's orphan GC. That is
+the second refusal the hexapod-8 agent met when it fell back to a placeholder
+script.
+
+**Regression.** `cadex_tests/test_publication_assembly_rename_live.py` runs
+the real kernel:
+- A pass killed at the CPU limit (`DOMAIN_CPU_LIMIT_EXCEEDED`, one-second
+  budget) leaves the document as accepted.
+- Renaming `probe` to `robot` publishes with one `Joints` group under the
+  renamed assembly, still holding both joints.
+- A rename refused by an unrelated untagged object publishes on retry, and
+  so does the edit after it.
+
+On the previous source, the second and third tests fail with the two
+hexapod-8 errors verbatim.

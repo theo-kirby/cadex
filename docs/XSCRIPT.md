@@ -99,6 +99,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   declared output, so publication can bind each live component to a
   published stable object. Cross-document component references are retired;
   v0.0.1 assemblies are rigid, same-script solids (ADR-011).
+- A project publishes at most one assembly, so renaming its output key
+  (`result["probe"]` to `result["robot"]`) re-keys the live assembly in
+  place. Its joint group, joints and component links carry over, rather than
+  being retired and recreated (ADR-429).
 - `mesh.from_shape()` tessellates a same-script part value (`Mod/MeshPart`);
   `mesh.import_file()` reads one flat asset file; `mesh.transform()` places
   one (same kwargs and same order of operations as `part.transform`, composed

@@ -701,6 +701,64 @@ def _objects_by_output(doc: Any, prepared: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _rekey_renamed_assembly(
+    doc: Any,
+    prepared: Mapping[str, Any],
+    validated: Mapping[str, Any],
+) -> str | None:
+    """Carry the one live assembly across a rename of its output (ADR-429).
+
+    An assembly output renamed from ``probe`` to ``robot`` used to publish as
+    retire-plus-create: the new assembly got a fresh ``Joints001`` while the
+    old one was removed alone, leaving its untagged ``Joints`` group behind —
+    still holding the joints and grounding joints that had been updated in
+    place — so the ownership lint refused that publish and every later one.
+    A program publishes at most one assembly, so when exactly one live
+    assembly leaves the contract and exactly one new assembly output enters
+    it, they are the same assembly: re-key the live object and its
+    dependency anchor to the new name, and everything under it survives.
+    """
+
+    if prepared["pack"].domain != "assembly":
+        return None
+    wanted = [
+        str(item["name"])
+        for item in list(validated.get("outputs") or [])
+        if str(item.get("type") or "") == "assembly"
+    ]
+    if len(wanted) != 1:
+        return None
+    program_id = str(prepared["program_id"])
+    owned = _program_objects(doc, program_id, "assembly")
+    live = [
+        obj
+        for obj in owned
+        if str(getattr(obj, "TypeId", "")) == "Assembly::AssemblyObject"
+        and "." not in str(getattr(obj, contracts.PROP_PROGRAM_OUTPUT, "") or "")
+    ]
+    if len(live) != 1:
+        return None
+    old_name = str(getattr(live[0], contracts.PROP_PROGRAM_OUTPUT, "") or "")
+    new_name = wanted[0]
+    desired = {str(item["name"]) for item in list(validated.get("outputs") or [])}
+    if not old_name or old_name == new_name or old_name in desired:
+        return None
+    if any(
+        str(getattr(obj, contracts.PROP_PROGRAM_OUTPUT, "") or "") == new_name
+        for obj in owned
+    ):
+        return None
+    anchor = _find_assembly_dependency_anchor(doc, program_id, old_name)
+    setattr(live[0], contracts.PROP_PROGRAM_OUTPUT, new_name)
+    if anchor is not None:
+        setattr(
+            anchor,
+            contracts.PROP_PROGRAM_OUTPUT,
+            _assembly_dependency_output_name(new_name),
+        )
+    return old_name
+
+
 def _retired_program_objects(
     doc: Any,
     prepared: Mapping[str, Any],
@@ -3360,6 +3418,7 @@ def publish_candidate(
             doc,
             manage_transaction=manage_transaction,
         )
+    _rekey_renamed_assembly(doc, prepared, validated)
     existing = _objects_by_output(doc, prepared)
     desired_output_names = {str(item["name"]) for item in validated["outputs"]}
     retired = _retired_program_objects(doc, prepared, desired_output_names)
