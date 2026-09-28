@@ -852,6 +852,118 @@ The turn had 10 refused calls:
   applied;
 - 2 refusals to retire an output that a component still linked.
 
+## A5 attempt 5: the hexapod (`ot10-hexapod-5`)
+
+**Misses the bar on one count: the swept fit is incomplete, 10 of 12
+joints.** Every other item passes, and the judged total is 16 of 21, the
+highest of any hexapod in the run and above the frozen 14. This is the
+frozen hexapod prompt above, word for word, read from `contract.json`
+`a5.prompts.hexapod` and run once on the new project `ot10-hexapod-5`
+with no continuation, the same argv and `CADEX_EFFORT=medium`. It started
+at 2026-09-28T05:27:20Z at revision `3008e1f7`, which is after ADR-422's
+face rules, ADR-423's bounded static clearance and ADR-424's P2. The
+iteration that launched it ended in a harness error before the turn
+finished, so the turn is published here, one iteration later; it
+conforms, and no other hexapod turn was started. The turn ended on its
+own at 06:52:46Z (85 min) with `ok: true`, at accepted revision
+`d2198144a58a…` (digest `dbab6d5c9585…`). It was rendered and judged from
+a `/tmp` copy of the project at the accepted revision; the project itself
+is unchanged.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| attempt 4, median | 2 | 2 | 1 | 1 | 2 | 2 | 2 | **12** |
+| attempt 5, call 1 | 2 | 3 | 3 | 2 | 2 | 2 | 2 | 16 |
+| attempt 5, call 2 | 2 | 3 | 3 | 2 | 2 | 2 | 2 | 16 |
+| attempt 5, call 3 | 2 | 3 | 3 | 2 | 2 | 2 | 2 | 16 |
+| attempt 5, median | 2 | 3 | 3 | 2 | 2 | 2 | 2 | **16** |
+
+Every raw reply is kept in
+[`ot10-hexapod-5-score.json`](ot10-hexapod-5-score.json), under the same
+rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | 16 | yes |
+| no trait 0 | lowest is 2 (every trait but T2 and T3) | yes |
+| above hex3 (2) | 16 | yes |
+| P1 ≤ 0.20 | **0.013** (2,232 of 166,930 subsamples) | yes |
+| P2 ≤ 0.25 | **0.168** (4,394 of 26,115 mm, 28 printed components; `c_floor` left out under ADR-424) | yes |
+| P3 2 or 3 | **3** (`#2A2C31`, `#E8E3D6`, `#F2692A`) | yes |
+| static fit | 1,653 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row. 44 fixed-joint pairs touching | yes |
+| swept fit | **incomplete: 10 of 12 joints** at 80° steps (two samples, the range ends), 0 failing pairs. `hip_rr` exceeded the runtime budget and `knee_rr` was never reached. The 5 floor contacts are advisory world geometry (ADR-420) | **no** |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S with 6 cross and 6 single-arm horns | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-5-hero.png),
+[`iso`](ot10-hexapod-5-look_iso.png),
+[`iso_back`](ot10-hexapod-5-look_iso_back.png),
+[`front`](ot10-hexapod-5-look_front.png),
+[`right`](ot10-hexapod-5-look_right.png) and
+[`top`](ot10-hexapod-5-look_top.png).
+`cadex render` took 9 min 5 s for the whole command: 269.4 s acquiring
+the tessellation, 9.2 s drawing, and 2.6 s of that for the hero, at
+183,671 drawn triangles (from 894,400 input triangles).
+
+**Against attempt 4.** The total rose from 12 to 16, and all three calls
+agree on every trait. T2 rose from 2 to 3 and T3 from 1 to 3: every hip
+and knee axis carries an orange cap concentric with it (12 accent
+components), and the orange is used nowhere else. T4 rose from 1 to 2:
+the body is a dome over a rounded base, and the legs are curved rods,
+though the servo pods are still boxes. T5 stays at 2: a graphite visor
+across the front of the dome marks a front, with no eye or focal detail.
+T6 stays at 2: ball feet, but legs of nearly constant section and a wide
+stance. The design has 58 components, against attempt 4's 46.
+
+**ADR-423 did what it was written to do.** Attempt 4 lost its accent
+feet and its joint caps to the 300 CPU-second limit, eight times. This
+turn hit the CPU limit **zero** times and kept both accents and caps.
+That is the diagnosis of attempt 4, confirmed on the next attempt.
+ADR-424 changes no verdict here: the judge never sees P2, and the P2
+above is already measured without the floor.
+
+**Diagnosis: the binding limit moved to the swept fit's runtime
+budget.** ADR-423's own record named this as the next wall ("a much
+larger robot may meet the sweep wall budget next"). The sweep runs one
+`FreeCADCmd` child per joint, in series, under a 180 s total
+(`_SWEEP_TOTAL_SECONDS`) and 90 s per joint. With 58 components and
+1,653 pairs, the budget ran out on the eleventh joint. The agent
+coarsened the step from 10° to 20°, 30° and then 80°, rebuilding each
+time; the transcript has 34 `runtime budget exceeded` rows, and at 80°,
+two samples per joint, the sweep still stopped at 10 of 12. The
+remaining cost therefore does not scale with the number of poses. It is
+fixed per joint: each child deserialises every component's BREP and
+prepares every moving pair before it measures anything. This is an
+inference from the step changes, not yet a profile. The next unit
+measures where the sweep's wall seconds go on this project, read-only,
+as ADR-423 did for the static pass, before any prompt or language
+change.
+
+**A second product gap, named for the second time.** As in quadruped 3,
+the agent said the build reply was too large for it to read (59.8 KB
+once), and it paged `inspect scope=clearance` and checked 250 of 1,653
+static pairs by hand instead. That cost it turns, not a verdict.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 20 refused calls, none of them a CPU-limit refusal:
+- 4 sandbox or argument refusals (`getattr`, an import, one `fillet`
+  without `expected_count`, one `edit_script` given an unknown
+  `replace` argument);
+- 3 guessed JSON pointers (two `/facts/bounding_box`, one `/summary`);
+- 5 kernel refusals: a `fuse` whose refine was invalid, a `fuse` that
+  produced 2 solids, a fillet that refused its radius, and two `cut`s
+  that returned a null shape;
+- 4 MJCF export refusals: one re-diagonalised knee-horn inertia and
+  three body-position drifts, all resolved by the agent;
+- 1 reset-variation refusal that named the lift, which the agent then
+  applied;
+- 3 refusals to retire an output that a component still linked.
+
+The refusal counter tags the knee-horn inertia refusal as a horn-style
+refusal, because the body is named `c_knee_horn_fl`. It is not one: it
+names no horn style.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest

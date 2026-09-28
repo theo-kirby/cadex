@@ -277,3 +277,24 @@ def test_a5_quadruped_attempt_3_is_published_with_its_score():
     assert "| quadruped 3, median | 2 | 3 | 2 | 2 | 2 | 2 | 2 | **15** |" in README
     section = README.partition("## A5 attempt 3: the quadruped (`ot10-quadruped-3`)")[2]
     assert section.startswith("\n\n**Meets the bar on every item, the second A5 design in the run to do\nso")
+
+
+def test_a5_hexapod_attempt_5_is_published_with_its_score():
+    score = json.loads((OT10 / "ot10-hexapod-5-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 16
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-hexapod-5-hero.png"] + [
+        f"ot10-hexapod-5-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    # The judged half clears the frozen bar, but the swept fit stopped at
+    # 10 of 12 joints, so the README publishes the design as a miss.
+    assert score["total"] >= CONTRACT["bar"]["total_min"]
+    assert min(score["medians"].values()) >= 1
+    assert "| attempt 5, median | 2 | 3 | 3 | 2 | 2 | 2 | 2 | **16** |" in README
+    section = README.partition("## A5 attempt 5: the hexapod (`ot10-hexapod-5`)")[2]
+    assert section.startswith(
+        "\n\n**Misses the bar on one count: the swept fit is incomplete, 10 of 12\njoints.**")
