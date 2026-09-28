@@ -28526,3 +28526,74 @@ coplanar split), the face, the `presentation` block and its routes (anything
 but the two offered images is a 404).
 `test_the_page_leads_with_the_concept_sheet_when_the_project_has_one` renders
 the page at both charter sizes.
+
+## ADR-431 — A policy video is drawn in the studio look, on the CPU, by default (2026-09-28)
+
+**Context.** ot10's W1 asks for a rollout video of the accepted policy on
+the accepted model, rendered headless on this machine within a stated bound,
+in A2's studio style, stored in the project and never in git, and played by
+the dashboard. `python -m cadex_cli.video` already made a verified,
+identity-stamped webm that the Videos tab plays (ADR-321, ADR-332). It drew
+that webm in the review viewport's dark Three.js scene in headless Chromium,
+with the index colours, not in the design's own materials.
+
+**Decision.**
+- `cadex_cli.video.render(project, run, style)` gains a `studio` style, and
+  the command defaults to it (`--style studio|scene`). Both styles share
+  everything but the drawing: the identity checks (accepted revision, model
+  digest, policy, task, seed, trace), the 10 fps sampling, the FFmpeg VP9
+  encoding and the decode-every-frame check before publishing,
+  `runs/<run>/video.json` and the `rollout-<sha256>.webm` name. So the
+  dashboard plays a studio video with no change to the page.
+- A studio frame is `render.studio` in the hero view: each component
+  prepared once in its own frame and moved rigidly per pose, lit and
+  antialiased as the hero is, on the seamless backdrop. It has a contact
+  shadow on a floor fixed at the lowest point the rollout reaches, and a
+  timer stamped in the concept sheet's bitmap face. The window follows the
+  robot. It is fixed in size (the largest pose plus a 12% pad) and widened
+  until no pose leaves it. Its centre is a Hann-smoothed track (4 frames a
+  side).
+- **Materials come from the design.** They are read from the render
+  summary at the run's own revision: the run's recorded render, then
+  `review/render/<revision>/`, then `review/render/`. That summary carries
+  the declared and supplier-derived roles (A3). A run with no such summary
+  is drawn all in the shell material, and the video records
+  `materials.declared = false` rather than guessing what was bought.
+  An invalid declared role refuses.
+- The whole render has a declared bound, `RENDER_SECONDS = 300`, which the
+  video records as `render_bound_seconds`. The `scene` style keeps the same
+  bound.
+- `render._contact_shadow` takes an optional floor. With none, the floor
+  is the design's lowest point as before, so `render` and `look` are
+  unchanged.
+
+**Not taken.**
+- An animated PNG. The page's `<video>` element, its seeking and its
+  download already serve webm, and an APNG would need a second player.
+- Removing the `scene` style. The ot5 probes and their evidence scripts
+  were made with it, and `docs/HEADLESS-BIPED-REVIEW.md` now names it.
+- A perspective follow camera. The studio renderer is orthographic, as
+  the hero is.
+- Any new dependency. FFmpeg was already the encoder.
+
+**Measured** on a `/tmp` copy of ot6 Finch's `finch1-final` walk (accepted
+revision `b6862234…`, policy `0f0997e1…`, seed 0, 8.0 s, 95,212
+triangles). `./cadex render` on the copy rebuilt that same revision and
+digest, and wrote the supplier-derived materials it reads (2 materials).
+The studio video's 81 frames took **117.5 s**, inside the 300 s bound; the
+process wall time was 117.7 s with 385 MB peak RSS. The before/after strip
+(frames at 0, 4 and 8 s, the same decoded frames of the same trace) is
+committed as `docs/probes/ot10/w1-finch-rollout-scene.png` and
+`…-studio.png`. The two views face the robot from sides about 100°
+apart: the scene camera looks from +X+Y and the hero from the front
+right. Re-drawing the 8 s pose from the scene's yaw and pitch gives the
+scene's pose, so the difference is the view, not the geometry.
+
+**Tests.** In `cli/tests/test_video.py`: the studio video pins its
+identity (revision, model digest, policy, task, seed, trace and file
+digests, the name from its digest) and its bound, and never looks for a
+browser. It draws declared materials (an accent body shows orange pixels
+in the decoded frame, and an undeclared one shows none) and says where they
+came from. It refuses an unknown style and an invalid declared role,
+leaving no webm. The dashboard lists it and serves its exact bytes as
+`video/webm`. The five-fault refusal test runs under both styles.

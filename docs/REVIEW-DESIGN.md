@@ -587,6 +587,24 @@ overflow; the image is the served sheet at its natural 1536 px; the caption
 reads the numbers), and by `cli/tests/test_sheet.py` for the sheet's shape,
 identity, numbers and routes.
 
+## 15. Policy videos are drawn in the studio look (ADR-431)
+
+Under ot10's W1, a run's video is drawn by default in the design's studio
+look (`python -m cadex_cli.video --project P --run R`, `--style studio`).
+It uses the hero view and the design's own materials, on the light seamless
+backdrop with a contact shadow, and has a timer at the bottom left. It is
+drawn on the CPU with no browser. The Videos tab (region 5) plays it
+exactly as it plays a scene-style clip. The identity strip names the style
+(`studio`, or the scene's `cadex-prototype-dark-v1`), so a reader can tell
+the two apart. The dark viewport and its capture (§10) are unchanged, and
+`--style scene` still records in them. A studio clip is a light image inside
+the dark chrome, like the concept sheet (§14), because it is the design
+presented rather than the workbench.
+
+**Held by** `test_dashboard_serves_the_studio_video_it_lists` (listed with
+its style, served byte for byte as `video/webm`) and the studio tests
+beside it in `cli/tests/test_video.py`.
+
 ## Operator run status (ADR-387)
 
 The operator deployment adds a compact bottom-right status strip with run name,

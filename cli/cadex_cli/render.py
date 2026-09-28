@@ -344,13 +344,15 @@ def _blur(grid, width, height, radius):
     return grid
 
 
-def _contact_shadow(prepared):
+def _contact_shadow(prepared, floor=None):
     """A soft shadow on the floor under the design, as a function of (x, y).
 
     Measured, not painted: a top-down map of how high the lowest surface
     over each cell sits above the floor, turned into a tight dark contact
     term (what touches the floor) and a wide soft term (what hovers over
-    it), each blurred. Returns ``(floor_z, lookup)``.
+    it), each blurred. The floor is the design's lowest point unless
+    ``floor`` names one (a rollout's, fixed across its frames). Returns
+    ``(floor_z, lookup)``.
     """
     points = [p for _, tri, _ in prepared for p in tri]
     lo = [min(p[j] for p in points) for j in range(3)]
@@ -385,7 +387,8 @@ def _contact_shadow(prepared):
                 z = az + w1*(bz-az) + w2*(cz-az)
                 if z < lowest[j*width + i]:
                     lowest[j*width + i] = z
-    floor, tall = lo[2], max(hi[2] - lo[2], 1e-9)
+    floor = lo[2] if floor is None else min(floor, lo[2])
+    tall = max(hi[2] - floor, 1e-9)
     near = [math.exp(-(z - floor) / (0.05 * tall)) if z < math.inf else 0.0 for z in lowest]
     wide = [math.exp(-(z - floor) / tall) if z < math.inf else 0.0 for z in lowest]
     near = _blur(near, width, height, max(1, round(0.012 * extent / cell)))

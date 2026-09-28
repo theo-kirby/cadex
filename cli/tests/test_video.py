@@ -15,7 +15,7 @@ import time
 
 import pytest
 
-from cadex_cli.video import render, placed, stl
+from cadex_cli.video import render, placed, stl, RENDER_SECONDS, STUDIO
 from cadex_cli.browser import find_browser
 from cadex_cli.review_record import read_run_record
 from cadex_cli.review_server import serve, run_model
@@ -87,8 +87,9 @@ def test_render_decodes_moving_frames_at_simulation_speed_and_retains_identity(r
     assert read_run_record(copy / 'runs/sample', copy)['resolved']['videos'][0]['exists']
 
 
+@pytest.mark.parametrize('style', ['scene', 'studio'])
 @pytest.mark.parametrize('fault', ['policy', 'time', 'pose', 'escape', 'encoder'])
-def test_render_refuses_invalid_inputs_without_touching_training(video_project, monkeypatch, fault):
+def test_render_refuses_invalid_inputs_without_touching_training(video_project, monkeypatch, fault, style):
     root = video_project
     run = root / 'runs/sample'
     path = run / 'rollout/assembly-simulation-trace.json'
@@ -112,7 +113,7 @@ def test_render_refuses_invalid_inputs_without_touching_training(video_project, 
         'for i in range(1000):\n p.write_text(str(i)); time.sleep(.02)', str(heartbeat)])
     try:
         with pytest.raises((ValueError, FileNotFoundError)):
-            render(root, 'sample')
+            render(root, 'sample', style)
         before = heartbeat.read_text() if heartbeat.exists() else ''
         deadline = time.monotonic()+2
         while time.monotonic() < deadline:
@@ -633,3 +634,97 @@ def test_render_takes_a_real_tessellation_and_bounds_it_exactly(video_project):
     decoded = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(run / video['path']), '-f', 'rawvideo',
                               '-pix_fmt', 'rgb24', '-'], capture_output=True, check=True).stdout
     assert len(decoded) == 6 * 512 * 512 * 3
+
+
+# ---- the studio style (ot10 W1, ADR-431): the design look on the CPU ----
+
+needs_ffmpeg = pytest.mark.skipif(not shutil.which('ffmpeg'), reason='FFmpeg required')
+
+
+def _decoded(path, size=STUDIO['size']):
+    raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
+                         capture_output=True, check=True).stdout
+    frame = size*size*3
+    return [raw[i:i+frame] for i in range(0, len(raw), frame)]
+
+
+@needs_ffmpeg
+def test_studio_video_pins_its_identity_and_bound_with_no_browser(video_project, monkeypatch):
+    # No browser may be found: the studio style never looks for one.
+    monkeypatch.setenv('CADEX_BROWSER', '/nonexistent')
+    monkeypatch.setattr('cadex_cli.video.find_browser', lambda: pytest.fail('studio looked for a browser'))
+    root, run = video_project, video_project / 'runs/sample'
+    video = render(root, 'sample', 'studio')
+    record = json.loads((run / 'run.json').read_text())
+    trace = json.loads((run / record['artifacts']['trace']).read_text())
+    assert video['style'] == 'studio' and video['width'] == video['height'] == STUDIO['size']
+    assert video['accepted_revision'] == REVISION_A == record['model']['accepted_revision']
+    assert video['model_digest'] == record['model']['digest']
+    assert video['policy_sha256'] == record['policy']['sha256'] == trace['policy']['policy_sha256']
+    assert video['task_sha256'] == record['task']['sha256'] and video['seed'] == 7
+    assert video['trace_sha256'] == hashlib.sha256((run / record['artifacts']['trace']).read_bytes()).hexdigest()
+    assert video['sha256'] == hashlib.sha256((run / video['path']).read_bytes()).hexdigest()
+    assert video['path'] == 'rollout-' + video['sha256'] + '.webm'
+    assert video['render_bound_seconds'] == RENDER_SECONDS and 0 < video['render_seconds'] < RENDER_SECONDS
+    assert video['frames'] == 6 and video['fps'] == 10 and len(video['style_sha256']) == 64
+    frames = _decoded(run / video['path'])
+    assert len(frames) == 6 and frames[0] != frames[-1], 'the robot must move'
+    assert read_run_record(run, root)['videos'] == [video]
+    # Written into the project, and nowhere else.
+    assert not list(run.glob('.video-*')) and not list(Path.cwd().glob('rollout-*.webm'))
+
+
+@needs_ffmpeg
+def test_studio_video_draws_the_declared_materials_and_says_where_they_came_from(video_project):
+    root, run = video_project, video_project / 'runs/sample'
+    undeclared = render(root, 'sample', 'studio')
+    assert undeclared['materials']['declared'] is False
+    assert {v['role'] for v in undeclared['appearance'].values()} == {'shell'}
+    summary = root / 'review/render' / REVISION_A / 'summary.json'
+    data = json.loads(summary.read_text())
+    data['appearance'] = {'body': {'role': 'accent', 'color': '#F26A1B'},
+                          'shin': {'role': 'mechanism', 'color': '#2F3237'}}
+    summary.write_text(json.dumps(data))
+    declared = render(root, 'sample', 'studio')
+    assert declared['materials'] == {'declared': True, 'source': f'review/render/{REVISION_A}/summary.json'}
+    assert declared['appearance']['body'] == {'role': 'accent', 'color': '#F26A1B'}
+
+    def orange(frame):
+        return sum(1 for i in range(0, len(frame), 3)
+                   if frame[i] > 150 and frame[i] - frame[i+2] > 90 and frame[i+1] < frame[i] - 40)
+    assert orange(_decoded(run / declared['path'])[0]) > 500
+    assert orange(_decoded(run / undeclared['path'])[0]) == 0
+    # Both recordings are kept, newest first.
+    assert [v['sha256'] for v in read_run_record(run, root)['videos']] == [declared['sha256'], undeclared['sha256']]
+
+
+def test_studio_video_refuses_a_bad_style_and_a_bad_declared_appearance(video_project):
+    root, run = video_project, video_project / 'runs/sample'
+    with pytest.raises(ValueError, match='unknown style'):
+        render(root, 'sample', 'blender')
+    summary = root / 'review/render' / REVISION_A / 'summary.json'
+    data = json.loads(summary.read_text())
+    data['appearance'] = {'body': {'role': 'chrome', 'color': '#FFFFFF'}}
+    summary.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='body no valid appearance'):
+        render(root, 'sample', 'studio')
+    status = read_run_record(run, root)
+    assert status['video_render']['state'] == 'failed' and status['videos'] == []
+    assert not list(run.glob('*.webm'))
+
+
+@needs_ffmpeg
+def test_dashboard_serves_the_studio_video_it_lists(video_project):
+    root = video_project
+    video = render(root, 'sample', 'studio')
+    server, _ = serve(root, '127.0.0.1', 0)
+    try:
+        listed = json.loads(_get(server.url + 'api/run/sample')[2])
+        assert listed['videos'][0]['sha256'] == video['sha256'] and listed['videos'][0]['style'] == 'studio'
+        assert listed['resolved']['videos'][0]['exists'] and not listed['resolved']['videos'][0]['error']
+        status, headers, body = _get(server.url + 'video/run/sample/0')
+        assert status == 200 and headers['content-type'] == 'video/webm'
+        assert hashlib.sha256(body).hexdigest() == video['sha256']
+    finally:
+        server.shutdown()
+        server.server_close()

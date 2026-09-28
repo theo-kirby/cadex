@@ -1501,3 +1501,31 @@ work shared the CPU. The sheets'
 line views use the product's own axis names. The biped faces +X, so its
 visor shows in `right`, not `front`: that is how the design is oriented,
 not a fault in the sheet.
+
+## W1: the rollout video, in the studio look
+
+ADR-431 makes the studio look the default for `python -m cadex_cli.video`.
+None of the ot10 projects has a trained policy yet, so W1 is measured on a
+`/tmp` copy (`cp -a`) of ot6 Finch. Its walk `finch1-final` has an accepted
+policy with a verified rollout. `./cadex render --project <copy>` rebuilt
+the run's own revision and digest, which gave the render summary its
+materials. Nothing under `~/cadex-projects/ot6-finch` was touched.
+
+| Run | Revision | Policy | Seed | Sim s | Frames | Triangles | Bound s | Render s | Materials |
+|---|---|---|---|---|---|---|---|---|---|
+| `finch1-final` | `b6862234556355f7` | `0f0997e148c0b675` | 0 | 8.0 | 81 at 10 fps, 512 px | 95,212 | 300 | 117.5 | 2, from `review/render/summary.json` |
+
+Before and after, as frames 0, 40 and 80 of each video, decoded from the
+webm the dashboard plays:
+
+| Style | Strip |
+|---|---|
+| scene (ADR-332, before) | [`w1-finch-rollout-scene.png`](w1-finch-rollout-scene.png) (259 KB) |
+| studio (ADR-431, after) | [`w1-finch-rollout-studio.png`](w1-finch-rollout-studio.png) (219 KB) |
+
+The two cameras face the robot from sides about 100° apart. By 8 s the
+pelvis has yawed about 100° and tilted about 25°, which is why the poses
+look different. Re-drawing the 8 s pose from the scene camera's yaw and
+pitch gives the scene's pose. The video itself stays in the copy's
+`runs/finch1-final/`, never in git. W1's remaining half is a video of an
+A5 design's own policy, which W2's training run will produce.
