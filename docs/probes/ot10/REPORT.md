@@ -303,7 +303,7 @@ CLI-only change:
 
 The skips have the same four causes as the table above. No engine or
 package file changed after ADR-434's commit, whose own record carries a
-packaged gate run on a restaged payload. The gate was run again here all
+packaged gate run (23 passed). The gate was run again here all
 the same.
 
 `hypergraph check` must be given the project config:
