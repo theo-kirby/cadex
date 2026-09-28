@@ -1568,3 +1568,81 @@ through the walk's own store, declare, verify, roll-out and review legs.
 A policy that does not walk is reported as an incomplete result, with a
 diagnosis and a next step. The thresholds do not move, and no second run
 starts until this one is diagnosed.
+
+### W2 run 1 (`w2-1`): trained to the stop rule, and did not walk
+
+**`walked = false`.** This is an honest incomplete result under the rule
+above. Nothing was re-run, and no threshold moved.
+
+The walk started at 14:23:23Z on `d94c845f`, detached. The engine/source
+comparison was `match` (57 files). It exited 0 after 2,241.7 s. All legs
+passed: train 1,944.8 s, declare 59.5 s, roll-out 130.9 s, then review.
+The trainer ran all 1,000 iterations on the GPU in 1,611 s, and the
+collapse detector never fired. The policy `walk_task.cxpolicy`
+(`d8b87d2e1215…`) was stored with `--put`, and its witness agrees to
+1.2e-7. It was declared by the walk's own script rewrite (policy switch on),
+verified and rolled out at revision `f6d32a586ecc…`, digest
+`7d7f0c2eca9e…`. The run's files, video inputs included, stay in the
+copy's `runs/w2-1/` and its project git, never in this repository.
+
+**Training curve.** Each value is the mean of the published curve's
+samples in that bucket (about 51 per bucket; the curve keeps 512 of 1,000
+iterations):
+
+| iterations | reward/step | mean episode steps |
+|---|---|---|
+| 0–99 | 1.161 | 1,647.2 |
+| 100–199 | 1.601 | 499.6 |
+| 200–299 | 2.097 | 523.9 |
+| 300–399 | 2.287 | 541.7 |
+| 400–499 | 2.398 | 528.2 |
+| 500–599 | 2.457 | 527.1 |
+| 600–699 | 2.496 | 513.9 |
+| 700–799 | 2.551 | 522.9 |
+| 800–899 | 2.585 | 522.3 |
+| 900–999 | 2.620 | 523.8 |
+
+Reward per step was still rising at the stop. The best iteration was the
+last, at 2.654.
+
+**The gait verdict.** Rollout seed from the script, 220 frames:
+
+| finding | measured |
+|---|---|
+| tipped | the body passed 45° at 4.36 s and reached 46.8°. It was upright (tilt ≤ 30°) for 96.4% of frames |
+| terminated | `tipped` at step 218 of 500 |
+| training survival | 213 of 500 steps at the last iteration, which is 0.43 against the 0.90 bar |
+| travel | 97.7 mm planar in 4.38 s (22 mm/s): +19.0 mm in X (forward), −95.9 mm in Y. Heading drifted to −51.9° |
+| reward totals | alive 438.0, upright 207.1, speed error −202.8, sideways −45.0, yaw rate −39.0; total 358.2 |
+
+**Diagnosis.**
+1. **The policy learned to stand, not to walk.** Over 219 roll-out steps the
+   speed error averages 0.93 per step. Under `abs(comv_x / 80 − 1)`, that
+   means forward speed was about 7% of the 80 mm/s target, and 19 mm
+   forward in 4.4 s agrees. Its travel is a sideways drift and a yaw, not a
+   gait. The ADR-410 weights make standing net about +2 per step: alive 2.0
+   plus upright 1.0, minus a speed error of 1.0 when still. Walking at the
+   target adds at most +1. So survival pays twice what progress does.
+   Surviving is what 1,000 iterations found first, and the curve was still
+   climbing when the budget ran out.
+2. **It tips late.** The tip at 4.36 s falls inside the task's own
+   disturbance window, a 0.3–1.5 N horizontal push at 2–8 s. The trace
+   does not say whether a push caused it; the review does not record push
+   times.
+3. **The survival finding reads one noisy sample.** `training_survival`
+   reads only the last iteration's mean episode length, 213.3. The last
+   fifty sampled iterations have a median of 487.6. The same curve reports
+   means above the 500-step horizon (1,647 in the first bucket), so the
+   trainer's episode-length figure is not a clean survival fraction.
+   Findings 1 and 2 stand without it: the roll-out tipped and did not go
+   forward. So this does not change the verdict. It is a separate defect
+   in the gait check, recorded here and not fixed in this run.
+
+**Next step.** First, render W1's video of this policy on this model. It
+draws 78,419 triangles, decimated at a 0.59 mm cell from 650,316, below
+Finch's 95,212. So the 512 px, 300 s bound stated for W1 applies with no
+further decimation. Then pre-register a second bounded run in its own
+section before it starts. It would warm-start from `w2-1`'s policy on the
+unchanged task digest (`--init-from`), with a stated iteration budget and
+cap, and the same thresholds. The reward and the design stay the agent's.
+A reward change would mean a new design turn, not an edit by the actor.
