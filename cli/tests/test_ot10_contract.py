@@ -460,6 +460,36 @@ def test_a5_biped_attempt_2_the_confirmation_round_misses_and_is_diagnosed():
     assert "**The confirmation round is complete: 2 of its 3 turns meet the bar.**" in section
 
 
+def test_a5_biped_attempt_3_is_pre_registered_and_meets_the_bar():
+    # Registered after ADR-434 fixed the leak that ended biped attempt 2,
+    # before the turn ran; it adds a counted design and re-scores nothing.
+    prereg = README.partition("## A5 biped turn 3, pre-registered")[2].partition("\n## ")[0]
+    assert "at revision `d1ce5b1f`" in prereg and "`ot10-biped-3`" in prereg
+    assert "**Nothing is re-scored.**" in prereg and "ADR-434" in prereg
+    score = json.loads((OT10 / "ot10-biped-3-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 14
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-biped-3-hero.png"] + [
+        f"ot10-biped-3-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    assert (OT10 / "ot10-biped-3-sheet.png").stat().st_size <= 300 * 1024
+    # At the bar, no trait 0, and above hex3.
+    assert score["total"] >= CONTRACT["bar"]["total_min"]
+    assert min(score["medians"].values()) >= CONTRACT["bar"]["trait_min"]
+    assert score["total"] > CONTRACT["baseline"]["total"]
+    assert "| biped attempt 3, median | 2 | 2 | 2 | 1 | 3 | 2 | 2 | **14** |" in README
+    heading = "## A5 attempt 3: the biped (`ot10-biped-3`)"
+    assert README.index("## A5 biped turn 3, pre-registered") < README.index(heading)
+    section = README.partition(heading)[2].partition("\n## ")[0]
+    assert section.startswith("\n\n**Meets the bar on every item.**")
+    assert "at revision\n`e24ff330`" in section
+    assert "The confirmation round\nstays closed at 2 of 3" in section
+
+
 # -- A4: the refusal census --------------------------------------------------
 
 _rspec = importlib.util.spec_from_file_location("ot10_refusals", OT10 / "runner/refusals.py")
@@ -474,6 +504,7 @@ REFUSED = {
     "ot10-hexapod-11": ("counted", 12, 0),
     "ot10-quadruped-3": ("counted", 10, 0),
     "ot10-quadruped-4": ("counted", 6, 0),
+    "ot10-biped-3": ("counted", 5, 0),
     "ot10-hexapod-1": ("failed_attempt", 33, 19),
     "ot10-hexapod-2": ("failed_attempt", 10, 3),
     "ot10-hexapod-3": ("failed_attempt", 20, 4),
@@ -537,14 +568,14 @@ def test_the_refusal_census_is_pinned_and_rederives_from_its_file():
         assert len(row["transcript_sha256"]) == 64
     # The three designs the A5 criterion counts are all in the census.
     counted = sorted(n for n, p in projects.items() if p["status"] == "counted")
-    assert counted == ["ot10-biped-1", "ot10-hexapod-10", "ot10-hexapod-11", "ot10-quadruped-3",
-                       "ot10-quadruped-4"]
+    assert counted == ["ot10-biped-1", "ot10-biped-3", "ot10-hexapod-10", "ot10-hexapod-11",
+                       "ot10-quadruped-3", "ot10-quadruped-4"]
     assert "/home/" not in (OT10 / "refusals.json").read_text(encoding="utf-8")
 
 
 def test_the_census_table_is_published_equal_to_its_file():
     assert refusals.table(CENSUS) in README
-    assert ("| **all** | 17 transcripts | **0** | **0** | **0** | **0** | 208 |"
+    assert ("| **all** | 18 transcripts | **0** | **0** | **0** | **0** | 213 |"
             in README)
 
 

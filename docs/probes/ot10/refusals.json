@@ -382,6 +382,53 @@
         }
       ]
     },
+    "ot10-biped-3": {
+      "status": "counted",
+      "transcript_sha256": "740c6af0099285a460fa2b429a4eac9e13c38d3937512d640c47e9d892e1c41d",
+      "refused": 5,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 2,
+        "kernel": 1,
+        "json_pointer": 1,
+        "edit_replacement": 0,
+        "outputs_dropped": 0,
+        "retire_linked_output": 0,
+        "reset_variation": 1,
+        "other": 0
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'task' could not be built: The reset variation in task output 'task' drives the mechanism 1.18 mm further into the floor than its reset pose already sits, at an azimuth of 45 degrees."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/summary'."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'export_physics' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: declared solid but OpenCascade produced Compound containing 2 solids"
+        }
+      ]
+    },
     "ot10-hexapod-1": {
       "status": "failed_attempt",
       "transcript_sha256": "7d2dce34be7cf29fa8eb7409f322dd085c87d9a066f58c27f18f5499d884fdb7",
