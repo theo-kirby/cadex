@@ -15,18 +15,22 @@ Open charter criterion for run ot10: **A5. Unassisted designs meet the bar on mo
 
 Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the criterion as a gap; it becomes working only with causally parented, measured evidence that the criterion is met. The human owns the charter checkbox; roles report results and do not tick it. The directive's impact line is truncated; its wording is resolved from the full charter carried verbatim in the same record [rec: damp-dusk-8045].
 
-**Where it stands:** every body plan now has a design meeting every bar item — biped-1 (15/21), quadruped-3 (15/21) and **hexapod-10 (14/21)**; every failed attempt is published. Whether the "one failing design fails this criterion" clause counts those published misses is the owner's call; roles report and do not tick. The hexapod took ten launches: fit misses were fixed at the source (ADR-425/426/427), the form miss taught (ADR-428), and a document wedge fixed (ADR-429) [rec: fierce-vale-7652] [rec: brisk-lodge-6248].
+**Where it stands:** A5 is **not met by its letter** for the first round: 12 counted turns with 9 misses, where the charter allows one turn per body plan. The highest bar reached is one passing design per plan — biped-1 (15/21), quadruped-3 (15/21) and hexapod-10 (14/21) — every failed attempt published, no success redefined [rec: soft-cliff-8778]. A **confirmation round** is pre-registered at `96ed90d0`: one frozen turn per plan (`ot10-hexapod-11`, `ot10-quadruped-4`, `ot10-biped-2`), scored unchanged, all twelve earlier turns still counted, A5 not redefined [rec: honest-dawn-9522]. The hexapod took ten launches in the first round: fit misses were fixed at the source (ADR-425/426/427), the form miss taught (ADR-428), and a document wedge fixed (ADR-429) [rec: fierce-vale-7652] [rec: brisk-lodge-6248].
 
 - **Prompts frozen** (commit `13246076`): the hexapod prompt verbatim from hex1–hex3, a quadruped, and a biped; `claude-opus-5-5`, `CADEX_EFFORT=medium`, one turn each [rec: soft-spark-6990].
 - **P2 figures below are post-ADR-424** (world geometry — the floor — left out; see `warm-basin-7003`). Re-scoring changed no A5 verdict; the judge never sees P2 [rec: amber-flame-4976].
 
-### Passing designs
+### Passing designs (first round)
 - **Biped** — `ot10-biped-1`, revision `44b8497b`: static fit clean, swept fit complete and passing (6/6, the run's first), judged blind **15/21** (calls 15, 15, 16), P1 0.002, P2 0.103, P3 3, electronics carried. Scoring needed ADR-421's restore fix [rec: wise-walrus-6002] [rec: pale-ledge-0992] [rec: amber-flame-4976].
 - **Quadruped** — `ot10-quadruped-3`, revision `7de6eea6` (frozen prompt/argv/model/effort, started `b20bb7a0`; launched by an iteration that left no record, found by amber-flame and published as conforming): judged **15/21** (calls 15, 15, 16; no trait 0), P1 0.0001, P2 0.116, P3 3, static fit clean (1,891 pairs), **swept fit 8/8 at 10°**, electronics carried. 0 CPU refusals; its binding limit was the 2,000-pair sweep budget (82 → 62 components). It overlapped hexapod-4 in time; recorded, not causal, since `RLIMIT_CPU` charges CPU time [rec: amber-flame-4976] [rec: humble-lily-1303].
 
 - **Hexapod** — `ot10-hexapod-10`, revision `e8a82deb` (frozen prompt/argv/model/effort, launched at `9f13d33d` after ADR-429): judged **14/21** (all three calls T1 2, T2 2, T3 1, T4 2, T5 2, T6 3, T7 2; no trait 0), P1 0.0026, P2 0.1415, P3 3, every component declares a role, static fit clean (1,326 pairs, 0 intersections, only the floor's advisory row), **swept fit 12/12 at 10°**, electronics carried (ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S), MJCF and a walking task accepted. 6 CPU-limit refusals, escaped by swapping lofts for filleted boxes (ADR-428's advice). Weakest traits: T3 (bare hip pins, shell-coloured servo boxes under the body), then T5 (generic slot visor) [rec: fierce-vale-7652].
 
-### Failing attempts (every one published)
+### Confirmation round (pre-registered at `96ed90d0`)
+- **Turn 1 — `ot10-hexapod-11`** (frozen hexapod prompt, launched at `4288ef42`; commit `b2b40bff`): **meets the bar on every item** — judged **14/21** (T1–T7 2,3,1,2,2,2,2; three identical calls), P1 0.0186, P2 0.2285, P3 3, static fit clean, **swept fit complete and passing 12/12**, electronics carried [rec: wise-sea-0110].
+- `ot10-quadruped-4` and `ot10-biped-2` still to run [rec: wise-sea-0110].
+
+### Failing attempts (first round, every one published)
 - `ot10-hexapod-1` (`7af6db09`): 13/21 vs bar 14, P2 0.508 fail, swept fit incomplete; the agent stripped caps, fillets and the sweep for the 300 CPU-s limit [rec: soft-spark-6990] [rec: amber-flame-4976].
 - `ot10-hexapod-2` (`996a0b7e`): 14/21, P2 0.134, sweep turned off on the 180 s budget [rec: quiet-basin-1176]. `ot10-quadruped-1` was a harness stop, not an attempt [rec: late-glacier-7593].
 - `ot10-quadruped-2` (`27ba92c6`): 16/21, P2 0.040, sweep off (budget) [rec: western-comet-0121].
@@ -51,7 +55,7 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - ADR-429: renaming the assembly output re-keys the live assembly instead of wedging the document (details in `forest-wind-0342`) [rec: brisk-lodge-6248].
 
 ### Still open
-- No body plan lacks a passing design. `docs/probes/ot10/REPORT.md` (commit `26bc9ef0`) lists all 12 counted A5 turns: biped-1 15, quadruped-3 15 and hexapod-10 14 meet the bar, and all 9 failed attempts are published. The report leaves the owner to decide whether earlier failures count against the one-failing-design clause; the node stays `open` until then [rec: fierce-vale-7652] [rec: lawful-tooth-6508].
+- First round: `docs/probes/ot10/REPORT.md` lists all 12 counted A5 turns (3 meet the bar, 9 published misses) and states the verdict — not met by its letter [rec: lawful-tooth-6508] [rec: soft-cliff-8778]. Confirmation round: 1 of 3 turns run, and it passes; the node stays `open` [rec: wise-sea-0110].
 - CPU-limit refusals remain the largest refusal class (hexapod-8: 3 of 20; hexapod-10: 6 of 15) [rec: shady-ember-3607] [rec: fierce-vale-7652].
 - Product gap seen twice (quadruped-3, hexapod-5): the build reply is too large for the agent to read (59.8 KB on hexapod-5), so it pages `inspect scope=clearance` by hand — 250 of 1,653 static pairs checked on hexapod-5 [rec: humble-lily-1303] [rec: patient-banner-4052].
 - T4 (form) is the recurring weak trait; it reached 2 on quadruped-3 and hexapod-5. The hero camera (`render.HERO`, 35° from −Y) sees a +X face nearly edge-on; ADR-422 records it as *Not taken*, and it is a renderer unit, not the cause of a miss [rec: rustic-ivy-4753] [rec: patient-banner-4052].
@@ -93,3 +97,6 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - brisk-lodge-6248 — ADR-429 fixes the hexapod-8 wedge; hexapod attempt 9 named the next probe
 - fierce-vale-7652 — hexapod attempt 10 meets every A5 bar item at 14/21; attempt 9 a harness kill
 - lawful-tooth-6508 — REPORT.md tables all 12 counted A5 turns; the failing-design clause is left to the owner
+- soft-cliff-8778 — C1 re-claim: A5 not met by its letter (12 turns, 9 misses); highest bar is one passing design per plan
+- honest-dawn-9522 — confirmation round pre-registered at 96ed90d0: one frozen turn per plan, scored unchanged, earlier turns still counted
+- wise-sea-0110 — confirmation turn 1: ot10-hexapod-11 meets every bar item at 14/21, swept 12/12
