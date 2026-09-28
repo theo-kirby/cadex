@@ -339,3 +339,23 @@ def test_a5_hexapod_attempt_7_is_published_with_its_score():
     section = README.partition("## A5 attempt 7: the hexapod (`ot10-hexapod-7`)")[2]
     assert section.startswith(
         "\n\n**Misses the bar on one count: the judged total is 13 of 21, under the\nfrozen 14.**")
+
+
+def test_a5_hexapod_attempt_8_is_published_with_its_score():
+    score = json.loads((OT10 / "ot10-hexapod-8-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 8
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-hexapod-8-hero.png"] + [
+        f"ot10-hexapod-8-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    # The turn wedged its live document and accepted a leg probe, so the
+    # README publishes it as a miss rather than leaving it out.
+    assert score["total"] < CONTRACT["bar"]["total_min"] and score["medians"]["T5"] == 0
+    assert "| attempt 8, median | 1 | 1 | 2 | 1 | 0 | 1 | 2 | **8** |" in README
+    section = README.partition("## A5 attempt 8: the hexapod (`ot10-hexapod-8`)")[2]
+    assert section.startswith(
+        "\n\n**Misses the bar on four counts: the judged total is 8 of 21, T5 is 0,")

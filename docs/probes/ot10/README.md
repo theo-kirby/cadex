@@ -1186,6 +1186,105 @@ measurements or advisories, and that design's sweep was already complete
 and its static fit already clean. So its verdict stands and it is not
 rerun.
 
+## A5 attempt 8: the hexapod (`ot10-hexapod-8`)
+
+**Misses the bar on four counts: the judged total is 8 of 21, T5 is 0,
+the swept fit is incomplete, and the design carries no electronics.** The
+turn did not finish a design. Its accepted revision is a leg probe, and
+the agent says so itself. This is the frozen hexapod prompt, word for
+word, from `contract.json` `a5.prompts.hexapod`. It ran once on the new
+project `ot10-hexapod-8`, with no continuation, the same argv,
+`claude-opus-5-5` and `CADEX_EFFORT=medium`. It started at
+2026-09-28T11:02:54Z at revision `070a8c23`, which is after ADR-428, on
+the dev-tree engine. So it measures ADR-428's overlay change alone. The
+turn ended on its own at 11:36:59Z (34 min), exit 0 with `ok: true`, at
+accepted revision `b69465f94e40…` (digest `3e3927796084…`). It was
+rendered and judged from a `/tmp` copy of the project; the project itself
+is unchanged.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| attempt 7, median | 2 | 3 | 1 | 1 | 2 | 2 | 2 | **13** |
+| attempt 8, call 1 | 1 | 1 | 2 | 1 | 0 | 1 | 2 | 8 |
+| attempt 8, call 2 | 1 | 1 | 2 | 1 | 0 | 1 | 2 | 8 |
+| attempt 8, call 3 | 1 | 1 | 2 | 1 | 0 | 2 | 2 | 9 |
+| attempt 8, median | 1 | 1 | 2 | 1 | 0 | 1 | 2 | **8** |
+
+Every raw reply is kept in
+[`ot10-hexapod-8-score.json`](ot10-hexapod-8-score.json), under the same
+rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | **8** | **no** |
+| no trait 0 | **T5 is 0** | **no** |
+| above hex3 (2) | 8 | yes |
+| P1 ≤ 0.20 | 0.020 | yes |
+| P2 ≤ 0.25 | 0.097 | yes |
+| P3 2 or 3 | 2 (`#2F3237`, `#E9E6DF`); only `c_tub` declares a role, and everything else is drawn by supplier | yes |
+| static fit | 946 pairs: 940 clear, 0 intersections, 0 below clearance. One failing row, the floor's advisory world-geometry row; six world-geometry contacts. 30 welded pairs touching | yes |
+| swept fit | **incomplete: 12 of 12 joints unswept** (`sweep_step_degrees` not declared) | **no** |
+| electronics | **none**: 12 × MG90S with single-arm horns, a plain box for a body, no board, IMU, regulator or battery. No MJCF and no training task | **no** |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-8-hero.png),
+[`iso`](ot10-hexapod-8-look_iso.png),
+[`iso_back`](ot10-hexapod-8-look_iso_back.png),
+[`front`](ot10-hexapod-8-look_front.png),
+[`right`](ot10-hexapod-8-look_right.png) and
+[`top`](ot10-hexapod-8-look_top.png).
+`cadex render` took 1 min 13 s for the whole command: 38.2 s acquiring
+the tessellation and 8.5 s drawing, at 172,659 drawn triangles.
+
+**Diagnosis: the design did not fail on looks. The live document wedged,
+and no later write could publish.** In order, from the transcript:
+1. The first two full builds (a superellipse B-spline hood and pan,
+   about 76 components) each ran past the 300 CPU-second limit.
+2. The agent bisected the cost with smaller probes. A two-leg probe and
+   then a six-leg probe (940 pairs clear) both passed, with a box for a
+   body, and the six-leg probe was accepted under the assembly output
+   name `probe`.
+3. The third full build also ran past the CPU limit. After that, every
+   write was refused with `PUBLICATION_UNTAGGED_OBJECT: ['Joints']`, then
+   `['Joints', 'Joints001']`, even a one-box script. Two attempts to
+   retire outputs (`tray`, `tub`) were refused because "foreign document
+   objects still reference" them.
+4. With no tool to reset the live document, the agent stopped and
+   reported what went wrong.
+
+The agent says that renaming or retiring an assembly output orphans its
+`Joints` group. That is its claim, not yet a measurement. What the source
+does show is this: publication creates an `Assembly::JointGroup` named
+`Joints` under each assembly (`CadexScriptedDomainPublication.py`), and
+the ownership check refuses any untagged object left in the document. **So
+a document state that no script can publish past is a product defect. The
+next unit reproduces it with a regression test before any overlay or
+prompt change.** It is not a design verdict, and the looks were never
+reached.
+
+**What the renders show of ADR-428.** The legs are curved and
+round-sectioned and narrow towards a ball foot in the side view, which is
+what the TAPER TO A FOOT change asked for. The judge still scores T4 1,
+for a flat plate body and boxy covers. That is the probe's box body, not
+a finished shell. T5 is 0 because the probe has no face. None of this
+measures ADR-428 fairly, because the design the agent intended (a pillow
+hood, a visor face, orange foot tips) was never published.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 20 refused calls, out of 19 `write_script`, 3
+`edit_script`, 2 `rebuild`, 37 `inspect`, 4 `describe_api` and 1 `look`:
+- 3 CPU-limit refusals;
+- 7 refusals after the wedge: 4 `PUBLICATION_UNTAGGED_OBJECT` and 3
+  retirement refusals;
+- 4 sandbox or source-policy refusals (`dir` and `hasattr` are not
+  defined; an import; a private attribute);
+- 2 `api.fuse` refusals (a missing `output_type`; a solid declared where
+  OpenCascade made a 3-solid compound);
+- 2 `edit_script` replacements whose text occurred 0 and 102 times;
+- 1 guessed JSON pointer (`/revision`);
+- 1 `inspect` refusal (`attach=true` outside image scope).
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest
