@@ -28325,3 +28325,41 @@ unchanged. A real-kernel regression adds 64 far grounded blocks to the hinge
 fixture: 2,145 pairs, 65 of them moving. It is `incomplete` on the previous
 source and `complete` on this one, with the hinge's own row identical to the
 two-component run.
+
+## ADR-427 — A part resting on world geometry at the solved pose is reported, never failed (2026-09-28)
+
+**Context.** `ot10-hexapod-6` is the first ot10 design that stands on its
+floor at the solved pose. Each of its six ball feet rests on `c_floor` at
+0.0 mm with 0.0 mm³ common volume, and the static fit block failed each as
+`below clearance` against the default 0.1 mm gap. ADR-420 had already made a
+*swept* finding against world geometry advisory, and ADR-424 had taken world
+geometry out of P2; the static pair rows were the one place the floor was
+still held to a gap between two parts. Read on a `/tmp` copy of the accepted
+revision `3cb2b1d0`: the feet do not interpenetrate the floor.
+
+**Decision.** In the CLI's `fit_summary` (`cli/cadex_cli/clearance.py`), a
+solved-pose pair one side of which the static block names world geometry,
+and whose status is `below clearance`, is published under
+`world_geometry_contacts` with the engine's reason, counted in
+`world_geometry_contact_count` and `counts["world geometry contact"]`, and
+never in `failing`. The progress line appends `; N resting on world
+geometry (advisory)` and the prose report prints each one marked advisory.
+
+It is narrower than ADR-420 on purpose. An **intersection** with world
+geometry still fails at the solved pose: the sweep holds the body still, so
+a leg driven into the floor is an artefact of the method, but the solved
+pose is the design's own rest pose and the pose a simulation starts from,
+and a foot sunk into the ground there is a defect. An **unmeasured** pair
+still fails. The world geometry's own row stays in `failing`, as A5 already
+reads it. The engine, the protocol, the published measurements, the 0.1 mm
+default and the overlay are unchanged.
+
+**Measured.** The accepted revision rebuilt on a fresh `/tmp` copy
+(`cadex params --set fasteners=1`, 3 min 58 s, the same revision
+`3cb2b1d0`): before, 7 failing rows (the floor's row and six `c_floor ∩
+c_foot_*` at 0.0 mm, 0.0 mm³); after, 1 failing row (the floor's own), 6
+world-geometry contacts, 3,735 clear, 0 intersections; the sweep 12/12
+pass (ADR-426). Two regressions in `cli/tests/test_clearance.py`: the foot
+on the floor fails on the previous source; a sunk foot, an unmeasured floor
+pair and a printed pair below its gap beside the floor still fail. The
+accepted `ot10-hexapod-6` project and its published verdict are unchanged.

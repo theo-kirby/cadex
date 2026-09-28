@@ -1665,6 +1665,11 @@ The swept block (`fit.sweep`) keeps the same separation (ADR-420): a pair
 against world geometry that overlaps or closes during a joint sweep is listed
 under `world_geometry` and does not fail the swept fit, because each joint is
 swept with the body held still and a standing leg meets its floor.
+At the solved pose (ADR-427), a pair against world geometry that is only
+`below clearance` -- a foot standing on the floor with no common volume -- is
+listed under `fit.world_geometry_contacts` and does not fail the static fit.
+Interpenetrating world geometry at the solved pose, or an unmeasured pair
+against it, still fails.
 
 **What the fixed joints hold** is measured beside these checks and is never one
 of them (ADR-370). Every pair joined by an unsuppressed `fixed` joint is

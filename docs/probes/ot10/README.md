@@ -1048,6 +1048,16 @@ treats contacts against the fit's world geometry as advisory (ADR-420).
 The static pass only does so for the floor's own row. Earlier designs
 stood clear of the floor, so this is the first time it shows.
 
+**Decided afterwards (ADR-427), with the accepted project unchanged.** The
+feet rest on the floor and do not sink into it: 0.0 mm³ common volume on
+all six. The static block now reports a `below clearance` row against world
+geometry as `world_geometry_contacts`, never as failing; an intersection
+with world geometry still fails. A fresh `/tmp` rebuild of revision
+`3cb2b1d0` on the ADR-426 and ADR-427 source reads 1 failing static row
+(the floor's own advisory row), 6 world-geometry contacts and a complete,
+passing sweep of 12 joints. Attempt 6's published verdict stays a miss:
+the bar counts the turn as it ran.
+
 **Against attempt 5.** The total fell from 16 to 15. T3 fell from 3 to
 2: the judges read the hip rings and the knee disc caps as two
 different treatments, with bare shaft stubs beside the knees. T4 held

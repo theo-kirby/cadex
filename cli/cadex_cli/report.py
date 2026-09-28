@@ -243,6 +243,12 @@ def human_lines(report: RunReport) -> list[str]:
                     str(pair.get("first") or ""), str(pair.get("second") or ""),
                     str(pair.get("status") or ""), _measure(pair.get("distance_mm")),
                     _measure(pair.get("common_volume_mm3"))))
+            for pair in report.fit.get("world_geometry_contacts") or []:
+                # Reported beside the failures, never among them (ADR-427).
+                lines.append("  {:s} ∩ {:s}: resting on world geometry (advisory)  distance {:s} mm  common {:s} mm³".format(
+                    str(pair.get("first") or ""), str(pair.get("second") or ""),
+                    _measure(pair.get("distance_mm")),
+                    _measure(pair.get("common_volume_mm3"))))
     sweep = report.fit.get("sweep") if report.fit else None
     if isinstance(sweep, dict):
         verdict = str(sweep.get("verdict") or "")

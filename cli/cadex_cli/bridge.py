@@ -674,6 +674,11 @@ def _fit_line(fit: dict[str, Any]) -> str:
             verdict, int(fit.get("failing_count") or 0),
             int(fit.get("pairs_checked") or 0),
         )
+        # Never in the count (ADR-427), but a pass that hid them would read
+        # as a robot that never touches its floor.
+        resting = int(fit.get("world_geometry_contact_count") or 0)
+        if resting:
+            line += "; {:d} resting on world geometry (advisory)".format(resting)
     sweep = fit.get("sweep")
     line += ("  " + _sweep_line(sweep)) if isinstance(sweep, dict) else ""
     attachments = fit.get("attachments")

@@ -2315,6 +2315,18 @@ joint row's own extrema still include it, and the progress line reads
 `sweep pass: 12 joint(s) swept; 12 against world geometry (advisory)`. A
 printed or purchased pair still fails as above.
 
+The static block applies the narrower half of the same rule (ADR-427). A
+solved-pose pair against world geometry whose only finding is `below
+clearance` -- a foot standing on the floor at 0.0 mm with no common volume --
+is published in `world_geometry_contacts` (with
+`world_geometry_contact_count`, a `world_geometry_note`, and
+`counts["world geometry contact"]`), carries `world_geometry: {component,
+reason}`, and is never in `failing`. An intersection with world geometry at
+the solved pose is the pose the simulation starts from, so it still fails,
+and so does an unmeasured pair. The progress line appends `; 6 resting on
+world geometry (advisory)`. The world geometry's own row stays in `failing`
+as it was.
+
 None of these is a pass: a joint that was not swept has been checked at one pose
 only. The block is advisory like the static one — a failing swept fit is
 reported, never refused — and the prose report prints it as a `sweep` line

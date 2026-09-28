@@ -1332,3 +1332,64 @@ def test_a_bounded_pair_decides_only_the_floors_its_bound_clears():
     assert pair_status(row, 0.1, 1e-6) == 'clear'
     assert pair_status(row, 20.0, 1e-6) == 'unknown'
     assert pair_status({k: v for k, v in row.items() if k != 'culled'}, 20.0, 1e-6) == 'below clearance'
+
+
+def _floor_stance(foot_row):
+    """A hexapod-6-shaped solved pose: a ball foot on ``c_floor`` (ADR-427)."""
+
+    return {
+        'available': True,
+        'pairs': [
+            foot_row,
+            {'first': 'c_leg_fl', 'second': 'c_coxa_fl', 'distance_mm': 1.2,
+             'common_volume_mm3': 0.0, 'intent': {}},
+        ],
+        'world_geometry': [{'component': 'c_floor', 'status': 'world geometry',
+                            'reason': 'collision plane declared on design component'}],
+        'clearance_sweep': {'status': 'complete', 'joints': []},
+    }
+
+
+def test_a_foot_resting_on_the_floor_is_reported_not_failed():
+    """ADR-427: at the solved pose, standing on world geometry is not a closed gap.
+
+    ``ot10-hexapod-6``'s six ball feet rest on ``c_floor`` at 0.0 mm with no
+    common volume, and each read ``below clearance``. They are published
+    under ``world_geometry_contacts``; only the floor's own row still fails.
+    """
+
+    from cadex_cli.bridge import _fit_line
+    foot = {'first': 'c_floor', 'second': 'c_foot_fl', 'distance_mm': 0.0,
+            'common_volume_mm3': 0.0, 'intent': {}}
+    fit = fit_summary(_floor_stance(foot))
+    assert [f['status'] for f in fit['failing']] == ['world geometry']
+    assert fit['counts']['below clearance'] == 0
+    assert fit['counts']['world geometry contact'] == 1
+    assert fit['world_geometry_contact_count'] == 1
+    assert fit['world_geometry_contacts'] == [{
+        'first': 'c_floor', 'second': 'c_foot_fl', 'status': 'below clearance',
+        'distance_mm': 0.0, 'common_volume_mm3': 0.0,
+        'world_geometry': {'component': 'c_floor',
+                           'reason': 'collision plane declared on design component'}}]
+    assert fit['world_geometry_note'].startswith('Reported, never')
+    assert _fit_line(fit).startswith(
+        'fit fail: 1 failing of 2 pair(s); 1 resting on world geometry (advisory)')
+
+
+@pytest.mark.parametrize('foot, status', [
+    # A foot sunk into the floor at the pose the simulation starts from...
+    ({'first': 'c_floor', 'second': 'c_foot_fl', 'distance_mm': 0.0,
+      'common_volume_mm3': 12.5, 'intent': {}}, 'intersection'),
+    # ...and a floor pair the engine could not measure both still fail...
+    ({'first': 'c_floor', 'second': 'c_foot_fl', 'distance_mm': None,
+      'common_volume_mm3': None, 'intent': {}, 'error': 'no measurement'}, 'unknown'),
+    # ...as does a printed pair below its gap beside the floor.
+    ({'first': 'c_foot_fl', 'second': 'c_leg_fr', 'distance_mm': 0.0,
+      'common_volume_mm3': 0.0, 'intent': {}}, 'below clearance'),
+])
+def test_only_resting_on_world_geometry_is_advisory_at_the_solved_pose(foot, status):
+    fit = fit_summary(_floor_stance(foot))
+    assert [(f['first'], f['second'], f['status']) for f in fit['failing']] == [
+        (foot['first'], foot['second'], status), ('c_floor', '', 'world geometry')]
+    assert fit['world_geometry_contact_count'] == 0
+    assert 'world_geometry_note' not in fit

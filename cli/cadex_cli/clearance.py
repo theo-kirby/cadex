@@ -82,6 +82,14 @@ SWEEP_WORLD_NOTE = (
     "joint's range; the printed and purchased pairs are judged in failing."
 )
 
+#: Said whenever a part rests on world geometry at the solved pose (ADR-427).
+FIT_WORLD_NOTE = (
+    "Reported, never a static fit failure: these parts stand on world "
+    "geometry (a declared floor or plane) closer than the minimum gap, with "
+    "no common volume, which is what standing on it means. A part that "
+    "interpenetrates world geometry at the solved pose still fails."
+)
+
 #: What a sweep block says when the accepted revision published no sweep at
 #: all. Since ADR-367 the engine publishes coverage on every assembly, so
 #: this is a revision accepted by an older engine and nothing else -- the
@@ -537,8 +545,30 @@ def fit_summary(
     pairs = [row for row in (value.get("pairs") or []) if isinstance(row, dict)]
     counts = {"clear": 0, "intersection": 0, "below clearance": 0, "unknown": 0}
     failing: list[dict[str, Any]] = []
+    # A part resting on world geometry is standing, not a closed gap
+    # (ADR-427): a foot on the floor at 0.0 mm with no common volume is the
+    # stance, as a leg swept into the floor is (ADR-420). Only the minimum
+    # gap is waived. An interpenetration at the solved pose is the pose the
+    # simulation starts from and still fails, and so does an unmeasured pair.
+    world = {str(row["component"]): str(row.get("reason") or "")
+             for row in value.get("world_geometry") or []
+             if isinstance(row, dict) and row.get("component")}
+    resting: list[dict[str, Any]] = []
     for row in pairs:
         status = pair_status(row, minimum, maximum_volume)
+        against = [side for side in (str(row.get("first") or ""),
+                                     str(row.get("second") or "")) if side in world]
+        if status == "below clearance" and against:
+            counts["world geometry contact"] = counts.get("world geometry contact", 0) + 1
+            resting.append({
+                "first": str(row.get("first") or ""),
+                "second": str(row.get("second") or ""),
+                "status": status,
+                "distance_mm": row.get("distance_mm"),
+                "common_volume_mm3": row.get("common_volume_mm3"),
+                "world_geometry": {"component": against[0], "reason": world[against[0]]},
+            })
+            continue
         counts[status] = counts.get(status, 0) + 1
         if status == "clear":
             continue
@@ -582,6 +612,9 @@ def fit_summary(
         "counts": counts,
         "failing_count": len(failing),
         "failing": failing,
+        # Parts standing on world geometry (ADR-427): named, never failing.
+        "world_geometry_contact_count": len(resting),
+        "world_geometry_contacts": resting,
         # The swept half, from the same published value (ADR-366). It keeps
         # its own verdict: `verdict` above is the solved pose and stays that,
         # so a number read from either block means one thing only.
@@ -592,6 +625,8 @@ def fit_summary(
         # the design, not one of the four checks `verdict` above counts.
         "attachments": attachment_summary(value),
     }
+    if resting:
+        summary["world_geometry_note"] = FIT_WORLD_NOTE
     if verdict == "unavailable":
         summary["note"] = (
             "No published assembly with pair measurements: fit is measured "
