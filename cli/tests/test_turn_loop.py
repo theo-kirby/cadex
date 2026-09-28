@@ -682,6 +682,25 @@ def test_the_design_section_runs_concept_skeleton_shell_then_look() -> None:
         assert word in refine
 
 
+def test_the_face_is_sized_contrasted_and_checked_from_its_own_side() -> None:
+    """ADR-422 (ot10 A4): hexapod attempt 3's face was a graphite slot on graphite.
+
+    The overlay gives the face a size the agent can check, a colour rule for
+    either surround, and a `look` from +X before accepting.
+    """
+
+    design = CLI_OVERLAY[CLI_OVERLAY.index("DESIGN IT; DO NOT ONLY MAKE IT FIT"):
+                         CLI_OVERLAY.index("A ROBOT IS A COMPLETE MACHINE")]
+    face = next(i for i in _overlay_items(design) if i.startswith("- A FACE."))
+    for phrase in ("at least half the body's width", "at least a quarter of its height",
+                   "`shell`-coloured front", "an `accent` face"):
+        assert phrase in face
+    refine = design[design.index("4. REFINE WITH `look`"):]
+    assert "`right`, which looks from +X" in refine
+    assert refine.index("`right`") < refine.index("before you accept")
+    assert "A FACE" in refine
+
+
 def test_the_prompt_says_a_robot_carries_its_brain_sensors_and_power() -> None:
     """ADR-407: hex2 had twelve servos and nothing to drive them."""
 

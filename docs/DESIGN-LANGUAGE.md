@@ -125,6 +125,27 @@ carry them. An undeclared part is drawn by supplier until it declares one.
   of the body's front face and is recessed into the shell or split from
   it. It is not a thin plate on the surface. (`07-white-hood-quadruped-yellow-studio.jpg`,
   `14-ibots-crab-white-shell-dark-visor.jpg`)
+- **Its size is checked, not guessed.** Measured on the view from +X
+  (`look`'s `right`), the face spans at least half of the body's width
+  there and at least a quarter of its height. A wide, short visor meets
+  it (`14-ibots-crab-white-shell-dark-visor.jpg`), and so does a squarer
+  panel (`07-white-hood-quadruped-yellow-studio.jpg`,
+  `43-yellow-sphere-quadruped-dark-legs.jpg`). A slot a tenth of the body
+  wide does not, however carefully it is placed. (ADR-422)
+- **It contrasts with what surrounds it.** On a `shell`-coloured surround
+  the face is `mechanism` graphite: a dark face in a light or saturated
+  shell (`07-white-hood-quadruped-yellow-studio.jpg`,
+  `14-ibots-crab-white-shell-dark-visor.jpg`,
+  `43-yellow-sphere-quadruped-dark-legs.jpg`). When the face sits on a
+  graphite surface — a body with no shell over the front, say — a
+  graphite face vanishes into it, so the face, or the eyes within it,
+  takes the `accent` (`07-white-hood-quadruped-yellow-studio.jpg` puts its
+  accent lights inside the dark panel). The accent budget of §2 still
+  holds. (ADR-422)
+- **It is checked from its own side.** Before a design is accepted, the
+  face is looked at from +X, the side it faces, and both rules above are
+  checked there. A face that is only ever seen edge-on, from the hero's
+  three-quarter view, is not checked. (ADR-422)
 
 ## 5. Proportion and taper
 

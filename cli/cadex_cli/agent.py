@@ -331,7 +331,11 @@ robot.
 - A FACE. One focal element on the forward face, on the same +X the IMU \
 points along: a visor slot, one or two round eyes, or a dark face panel, \
 recessed into or split from the shell and filling about a quarter to a half \
-of the front.
+of the front. Size it by numbers: seen from +X it spans at least half the \
+body's width there and at least a quarter of its height, so a thin slot is \
+not a face. Make it stand out from what surrounds it: a `mechanism` face \
+set in a `shell`-coloured front, or, when the front around it is graphite \
+too, an `accent` face or accent eyes, since graphite on graphite disappears.
 - TAPER TO A FOOT. A limb is a tapered, shelled or ribbed beam that follows \
 the load path, about 60% of its hip section or less near the foot, and ends \
 in a distinct cap, pad or point -- never the cut end of a bar.
@@ -344,8 +348,11 @@ colour change is a part boundary: each printed colour is its own part in \
 its own filament, never paint.
 
 4. REFINE WITH `look`. After the first accepted build, `look` at `hero`, \
-`iso` and `iso_back`, then `focus` on one repeated subassembly (a leg, a \
-joint). Read its `measures` first -- the share of the hero silhouette that \
+`iso` and `iso_back`, then `right`, which looks from +X straight at the \
+face, then `focus` on one repeated subassembly (a leg, a joint). In \
+`right`, check the face against the size and contrast of A FACE before you \
+accept; if it is too small to find or the same colour as its surround, it \
+is the worst thing to fix. Read its `measures` first -- the share of the hero silhouette that \
 is purchased hardware, the share of printed outside edge left sharp, and \
 the number of materials, each against its bar -- and then the pictures. \
 Name in one line each what reads as crude -- a sharp edge, an exposed case, \

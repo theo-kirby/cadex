@@ -28129,3 +28129,36 @@ both dropped, all 127 outputs fingerprint alike, `cadex render` opens it
 through the geometry path and draws it, and the refused open in between left
 `latest_candidate` as it was. Engine suite 2,236 passed, 53 skipped; packaged
 lifecycle gate 23 passed.
+
+## ADR-422 — A face has a checkable size, a contrast rule for either surround, and is looked at from +X (2026-09-27)
+
+**Context.** `ot10-hexapod-3` passed every fit gate and missed the A5 bar
+by one point (13 of the frozen 14). T5 fell to 1 in all three judge calls.
+The agent had declared a face where §4 asks for one — a visor in a front
+notch on the IMU's +X axis — but gave it the `mechanism` role on a graphite
+tub, about 60 × 8 px across a body about 350 px wide in the `right` view.
+§4 stated the proportion only as a share of an area the agent never
+measured, and its colour rule ("sits in `mechanism` graphite") only works
+when the surround is shell-coloured; it did not say so. The overlay's
+refine step told the agent to look at `hero`, `iso` and `iso_back`, none of
+which looks at +X.
+
+**Decision.** `docs/DESIGN-LANGUAGE.md` §4 gains three rules, each citing
+core references by filename: the face, seen from +X, spans at least half
+the body's width and a quarter of its height there; it contrasts with its
+surround — graphite in a shell-coloured front, the accent when the front
+around it is graphite; and it is checked from its own side before
+acceptance. The CLI overlay's A FACE bullet carries the size and contrast
+rules, and step 4 adds `look` at `right` (the view from +X) with an
+explicit check of the face before accepting. No rubric, proxy, bar or
+judging text changed, and no judge wording was used.
+
+**Measured.** `test_the_face_is_sized_contrasted_and_checked_from_its_own_side`
+fails on the previous overlay and passes on this one. Whether it moves T5 is
+hexapod attempt 4's measurement, on a new `ot10-*` project with the frozen
+prompt and flags.
+
+**Not taken.** The hero camera (`render.HERO`, 35° round from −Y towards
++X) looks mostly at the −Y side, so a face at +X is near edge-on in the
+hero. Moving the hero is a renderer change with its own before/after, not
+part of this entry.
