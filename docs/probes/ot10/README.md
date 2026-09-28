@@ -1702,6 +1702,31 @@ The turn had 7 refused calls, out of 7 `write_script`, 1 `rebuild`, 24
 `ot10-hexapod-11` scored 14 and `ot10-quadruped-4` 16. `ot10-biped-2`
 misses, on a publication defect.
 
+## A5 biped turn 3, pre-registered
+
+Registered on 2026-09-28 before the turn started, at revision `d1ce5b1f`.
+It follows the fix for the defect that ended `ot10-biped-2` (ADR-434: a
+refused project publish rolls back, and an argument value such as an
+actuator in `result` is refused at validation with the fix named).
+
+- **One turn, once.** It runs on the new project `ot10-biped-3`, on the
+  frozen prompt from `contract.json` `a5.prompts.biped`, with the frozen
+  argv above: `claude-opus-5-5`, `CADEX_EFFORT=medium` and no
+  continuation. It runs on the ADR-434 engine; the installed
+  `build/release/Mod/cadex` was compared file by file with
+  `src/Mod/cadex` before launch and is identical.
+- **Nothing is re-scored.** The confirmation round's result stands at 2 of
+  3, and the ten failed attempts stand as published misses. This turn adds
+  a counted attempt. It does not replace `ot10-biped-2`, and it does not
+  redefine A5.
+- **Scoring is unchanged.** The design is rendered and scored blind with
+  `runner/judge.py` from a `/tmp` copy of the project, under the frozen
+  rubric, proxies, bar and judging procedure.
+- **A miss is diagnosed before anything changes.** No prompt, overlay or
+  tool change follows a miss until it is diagnosed and recorded.
+- **A harness kill is not an attempt.** A turn killed before it has an exit
+  status is kept read-only as the receipt, and the plan gets a new project.
+
 ## A4: the refusal census, every ot10 transcript
 
 **None of A4's four refusal classes recurred in any ot10 product-agent
