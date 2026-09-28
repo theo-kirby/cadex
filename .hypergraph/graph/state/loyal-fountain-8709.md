@@ -51,7 +51,7 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - ADR-429: renaming the assembly output re-keys the live assembly instead of wedging the document (details in `forest-wind-0342`) [rec: brisk-lodge-6248].
 
 ### Still open
-- No body plan lacks a passing design. The owner decides whether the published misses fail the criterion [rec: fierce-vale-7652].
+- No body plan lacks a passing design. `docs/probes/ot10/REPORT.md` (commit `26bc9ef0`) lists all 12 counted A5 turns: biped-1 15, quadruped-3 15 and hexapod-10 14 meet the bar, and all 9 failed attempts are published. The report leaves the owner to decide whether earlier failures count against the one-failing-design clause; the node stays `open` until then [rec: fierce-vale-7652] [rec: lawful-tooth-6508].
 - CPU-limit refusals remain the largest refusal class (hexapod-8: 3 of 20; hexapod-10: 6 of 15) [rec: shady-ember-3607] [rec: fierce-vale-7652].
 - Product gap seen twice (quadruped-3, hexapod-5): the build reply is too large for the agent to read (59.8 KB on hexapod-5), so it pages `inspect scope=clearance` by hand — 250 of 1,653 static pairs checked on hexapod-5 [rec: humble-lily-1303] [rec: patient-banner-4052].
 - T4 (form) is the recurring weak trait; it reached 2 on quadruped-3 and hexapod-5. The hero camera (`render.HERO`, 35° from −Y) sees a +X face nearly edge-on; ADR-422 records it as *Not taken*, and it is a renderer unit, not the cause of a miss [rec: rustic-ivy-4753] [rec: patient-banner-4052].
@@ -92,3 +92,4 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - shady-ember-3607 — hexapod attempt 8 judged 8/21; live document wedged on orphaned Joints groups, not a looks verdict
 - brisk-lodge-6248 — ADR-429 fixes the hexapod-8 wedge; hexapod attempt 9 named the next probe
 - fierce-vale-7652 — hexapod attempt 10 meets every A5 bar item at 14/21; attempt 9 a harness kill
+- lawful-tooth-6508 — REPORT.md tables all 12 counted A5 turns; the failing-design clause is left to the owner
