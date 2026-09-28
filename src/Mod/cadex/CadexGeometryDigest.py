@@ -10,10 +10,9 @@ ever disagree about *one* thing — how a BREP output is identified.
 That is the accepted-state guard and it does not change here: every stored
 ``accepted_digest`` keeps its meaning, and nothing re-accepts changed geometry.
 
-``cadex-project-geometry-digest-v1`` identifies the same output by what the
-kernel measures on the shape instead — counts, the exact vertex set, the exact
-edge-length and face-area multisets, the bounding box, the total area — plus
-its canonical definition, the recipe that asked for it. It drops one more
+``cadex-project-geometry-digest-v2`` identifies the same output by what the
+kernel measures on the shape instead — counts, the exact vertex set and the
+bounding box — plus its canonical definition, the recipe that asked for it. It drops one more
 thing the byte digest keeps: a **derived** output's artifact bytes, which are
 a function of the model *and the engine that exported it* (ADR-396).
 
@@ -31,6 +30,20 @@ volume is not (it moves in the last two digits). So volume is excluded by
 name, and nothing here is rounded — the mesh fingerprint's rule (ADR-016),
 for the mesh fingerprint's reason: a rounded quantity has boundaries to flip
 across, and an exact one does not.
+
+v2 drops the edge lengths, the face areas and the total area, for the reason
+v1 dropped volume (ADR-421). All are integrals, and an integral is only as
+exact as the integrator. On one solid of ``ot10-biped-1`` (``part.fillet ∘
+part.cut(refine=True) ∘ part.fillet``), across three processes, a planar face
+measured 114.68601535158916 mm² and then 114.68601535158984, and two 0.4π mm
+fillet arcs measured 1.256637061435912 and then 1.2566370614359201 — with the
+vertex set, the counts and the bounds bit-identical. That one solid shut an
+accepted design against every reopen. What v2 keeps is what the BREP stores
+rather than what the kernel integrates: the vertices, how many of each
+topological entity there are, and the box they sit in — and the recipe,
+which a script edit moves before any of those is consulted. A digest learned
+under v1 is ignored rather than compared (``cadexd._remembered_geometry``), so
+a project that stored one re-measures instead of refusing.
 """
 
 from __future__ import annotations
@@ -42,7 +55,7 @@ import struct
 from typing import Any, Callable
 
 DIGEST_SCHEMA = "cadex-project-digest-v1"
-GEOMETRY_DIGEST_SCHEMA = "cadex-project-geometry-digest-v1"
+GEOMETRY_DIGEST_SCHEMA = "cadex-project-geometry-digest-v2"
 _PLACEMENT_DECIMALS = 9
 
 
@@ -81,8 +94,9 @@ def shape_geometry_fingerprint(shape: Any) -> str:
 
     Order-insensitive by construction: every multiset is sorted, so the only
     way two shapes fingerprint alike is that the kernel measures them alike.
-    Volume is absent on purpose -- it is the one quantity measured to drift
-    between processes for an identical solid.
+    Volume, face areas, the total area and edge lengths are absent on
+    purpose -- each is an integral, and each has been measured to drift in its
+    last bits between processes for an identical solid (ADR-389, ADR-421).
     """
 
     digest = hashlib.sha256()
@@ -101,21 +115,16 @@ def shape_geometry_fingerprint(shape: Any) -> str:
         (float(v.X), float(v.Y), float(v.Z)) for v in shape.Vertexes
     ):
         digest.update(struct.pack("<3d", *point))
-    for length in sorted(float(edge.Length) for edge in shape.Edges):
-        digest.update(struct.pack("<d", length))
-    for area in sorted(float(face.Area) for face in shape.Faces):
-        digest.update(struct.pack("<d", area))
     box = shape.BoundBox
     digest.update(
         struct.pack(
-            "<7d",
+            "<6d",
             float(box.XMin),
             float(box.YMin),
             float(box.ZMin),
             float(box.XMax),
             float(box.YMax),
             float(box.ZMax),
-            float(shape.Area),
         )
     )
     return digest.hexdigest()

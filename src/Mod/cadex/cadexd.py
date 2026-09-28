@@ -69,12 +69,22 @@ def _remembered_geometry(state: Mapping[str, Any], accepted_digest: str) -> str:
     `write_script` both re-accept: a measurement kept past the model it
     describes would refuse the model that replaced it, which is the failure
     this whole path exists to prevent (ADR-389).
+
+    Keyed on the geometry-digest schema as well, for the same reason: a
+    digest measured under a fingerprint that has since changed describes the
+    right model in the wrong words, and comparing it would refuse the model
+    it describes. It is ignored, so the accepted attempt is re-measured
+    (ADR-421). An entry written before the schema was stored carries none.
     """
+
+    from CadexGeometryDigest import GEOMETRY_DIGEST_SCHEMA
 
     remembered = state.get("accepted_geometry")
     if not isinstance(remembered, Mapping):
         return ""
     if str(remembered.get("accepted_digest") or "") != accepted_digest:
+        return ""
+    if str(remembered.get("schema") or "") != GEOMETRY_DIGEST_SCHEMA:
         return ""
     return str(remembered.get("geometry_digest") or "")
 
@@ -571,6 +581,8 @@ class CadexdServer:
                 # (ADR-389). Measure both retained attempts instead, before
                 # restoring the accepted state: same recipe, same kernel
                 # measurements, same project.
+                from CadexGeometryDigest import GEOMETRY_DIGEST_SCHEMA
+
                 candidate_attempt = store.read_state().get("accepted_attempt")
                 remembered = _remembered_geometry(state, accepted_digest)
                 agreed, observed, learned = _geometry_agrees(
@@ -592,12 +604,19 @@ class CadexdServer:
                         "accepted_attempt": state.get("accepted_attempt"),
                         "accepted_geometry": (
                             {
+                                "schema": GEOMETRY_DIGEST_SCHEMA,
                                 "accepted_digest": accepted_digest,
                                 "geometry_digest": learned,
                             }
                             if learned
                             else state.get("accepted_geometry")
                         ),
+                        # The restore run was accepted by `write_script` on
+                        # its way through, so its candidate says `accepted`.
+                        # Put back the one the project had: a refused restore
+                        # must not leave script.json naming a revision that
+                        # was never accepted (ADR-421).
+                        "latest_candidate": state.get("latest_candidate"),
                     }
                 )
                 if not agreed:

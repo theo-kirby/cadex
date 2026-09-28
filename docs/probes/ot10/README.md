@@ -415,11 +415,11 @@ A5 attempt will run on a new project.
 
 ## A5 attempt: the biped (`ot10-biped-1`)
 
-**Not yet scored. The product cannot reopen its own accepted design, so
-it cannot render it.** Every fit gate passes, including the first
-complete, passing swept fit in the run. This is the frozen biped prompt
-above, word for word, run once on the new project `ot10-biped-1` with
-no continuation:
+**Meets the bar on every item, the first A5 design in the run to do so.**
+The judged total is 15 of 21, P1, P2 and P3 are within their bars, and
+every fit gate passes, including the first complete, passing swept fit in
+the run. This is the frozen biped prompt above, word for word, run once on
+the new project `ot10-biped-1` with no continuation:
 
     CADEX_EFFORT=medium ./cadex --project ~/cadex-projects/ot10-biped-1 \
         --model claude-opus-5-5 -p "<the frozen biped prompt>" --json
@@ -428,42 +428,75 @@ It started at 2026-09-27T23:25:23Z at revision `2bdafcee` (after ADR-419
 and ADR-420). It ran detached from the loop, and its stdout and stderr
 stayed outside git. The turn ended on its own at 23:59:53Z (34 min 30 s)
 with exit 0, at accepted revision `44b8497b5c54…` (digest
-`10e2fd59cfd7…`).
+`10e2fd59cfd7…`). It was first unscored because the product could not
+reopen it (below). It was scored after ADR-421, which changed the
+engine's restore comparison and nothing about the design.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| biped, call 1 | 2 | 3 | 3 | 1 | 2 | 2 | 2 | 15 |
+| biped, call 2 | 2 | 3 | 3 | 1 | 2 | 2 | 2 | 15 |
+| biped, call 3 | 2 | 3 | 3 | 1 | 3 | 2 | 2 | 16 |
+| biped, median | 2 | 3 | 3 | 1 | 2 | 2 | 2 | **15** |
+
+Every raw reply is kept in
+[`ot10-biped-1-score.json`](ot10-biped-1-score.json), under the same
+rule as before: no product prompt may quote it.
 
 | bar item | measured | meets |
 |---|---|---|
-| judged total ≥ 14 | not judged | — |
-| no trait 0 | not judged | — |
-| above hex3 (2) | not judged | — |
-| P1 ≤ 0.20 | not measured by `render`. The agent's own `look` read 0.2 % | — |
+| judged total ≥ 14 | 15 | yes |
+| no trait 0 | lowest is 1 (T4) | yes |
+| above hex3 (2) | 15 | yes |
+| P1 ≤ 0.20 | **0.002** (493 of 230,650 subsamples) | yes |
 | P2 ≤ 0.25 | **0.068** (2,611 of 38,133 mm, 22 printed components, `floor` among them) | yes |
 | P3 2 or 3 | **3** (`#2B2F36`, `#E9E4D8`, `#F26A1B`) | yes |
 | static fit | 1,275 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row. 43 fixed-joint pairs touching | yes |
 | swept fit | **complete and passing: 6 of 6 joints** at 15° steps, 0 failing pairs. The 6 floor contacts are advisory world geometry (ADR-420) | yes |
 | electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 6 × MG90S with 6 horns, 12 × M2×6 | yes |
 
-**Why it has no score.** `cadex render --project ~/cadex-projects/ot10-biped-1`
-exited 1 after 1 min 45 s, with `The restore pass digest does not match
-the accepted digest`. A second open, on a copy, refused the same way,
-with `geometry_comparison: the rebuilt model is not the accepted one`.
-All three attempts of the one revision (the accepted build, the render's
-restore and the copy's restore) produce 127 outputs. Their recipes are
-identical, and exactly one output differs: `src_hood`. That output is
-`part.fillet(part.cut(part.fillet(part.box), …, refine=true))`, with no
-`part.offset` in it. Between processes, its vertex set, edge-length
-multiset, counts and bounding box are bit-identical. The face order
-differs, and one face's area differs by 6.8 × 10⁻¹³ mm² (114.68601535158916
-against …984). That face is a 16-edge plane, the kind that `refine` makes
-by merging coplanar faces. ADR-389's geometry fingerprint hashes exact face
-areas and the total area, so a last-bit drift in one area reads as a
-different model. It is ADR-389's volume finding again, one measurement
-over. Until this is fixed, a design that refines a cut can pass every
-gate in its own turn and then never reopen.
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-biped-1-hero.png),
+[`iso`](ot10-biped-1-look_iso.png),
+[`iso_back`](ot10-biped-1-look_iso_back.png),
+[`front`](ot10-biped-1-look_front.png),
+[`right`](ot10-biped-1-look_right.png) and
+[`top`](ot10-biped-1-look_top.png).
+`cadex render` took 3 min 31 s for the whole command: 101.2 s acquiring
+the tessellation, 7.2 s drawing, and 2.4 s of that for the hero, at
+91,619 drawn triangles. Its `rebuild` re-accepted the same revision under
+a new byte digest (`e3b08e38a04a…`), because this design's bytes are not
+reproducible; the revision and the design are unchanged.
+
+**Where it is weakest.** T4 is 1 in all three calls: the body is a soft
+rounded box, but the limbs are flat constant-thickness link plates with
+box-shaped servo covers, and nothing merges. That is the same weakest
+trait as the quadruped. T7 is 2: call 1 names no contact shadow, a high
+camera and jagged edges in the top view. The top view is a `look` view,
+not the hero, so that remark is about the A2 tooling as much as the design.
+
+**Why it could not be scored at first.** `cadex render` exited 1 after
+1 min 45 s, with `The restore pass digest does not match the accepted
+digest`. All three retained attempts of the one revision produce 127
+outputs with identical recipes. Exactly one output differs: `src_hood`,
+which is `part.fillet(part.cut(part.fillet(part.box), …, refine=true))`,
+with no `part.offset` in it. Its vertex set, counts and bounding box are
+bit-identical across processes. Two things are not. One face's area
+differs by 6.8 × 10⁻¹³ mm² (114.68601535158916 against …984), on a
+16-edge plane of the kind `refine` makes. Two 0.4π mm fillet arcs differ
+in length by 8.2 × 10⁻¹⁵ mm (1.256637061435912 against …9201). The arcs
+were found only after the fix for areas alone still refused. ADR-389's
+fingerprint hashed both exactly. ADR-421 drops every integrated measure
+from it, keeping the vertex set, the counts, the bounds and the recipe.
+After that the render opened the project through the geometry path and
+went on to draw it.
 
 The failed restore also rewrote the project's `script.json`
 `latest_candidate` to name the restore attempt with status `accepted`.
-That was a side effect of scoring, not of the design, so it was reverted
-to the project's own commit (`48c994f`).
+That was reverted by hand to the project's own commit (`48c994f`).
+ADR-421 fixes the cause: the second refused open, before the fix for
+arcs, left `latest_candidate` untouched.
 
 **A4's refusal classes in this transcript: none of the four recurred.**
 The turn had 7 refused calls. `refusals.py` counted one as a horn style,

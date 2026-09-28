@@ -25,6 +25,7 @@ import types
 import pytest
 
 from CadexGeometryDigest import (
+    GEOMETRY_DIGEST_SCHEMA,
     project_digest,
     project_geometry_digest,
     shape_geometry_fingerprint,
@@ -128,8 +129,8 @@ def test_the_fingerprint_does_not_care_what_order_the_kernel_lists_things_in():
             {"vertices": [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 2.5, 0.0)]},
             id="a vertex moved",
         ),
-        pytest.param({"lengths": [1.0, 2.0, 2.6]}, id="an edge grew"),
-        pytest.param({"areas": [3.0, 4.5]}, id="a face grew"),
+        pytest.param({"lengths": [1.0, 2.0, 2.5, 3.0]}, id="an edge was added"),
+        pytest.param({"areas": [3.0, 4.0, 5.0]}, id="a face was added"),
         pytest.param({"box": (0.0, 0.0, 0.0, 1.0, 1.0, 9.0)}, id="the bounds moved"),
     ],
 )
@@ -141,6 +142,27 @@ def test_the_fingerprint_moves_when_the_measurements_do(changed):
     }
     reference = shape_geometry_fingerprint(_shape(**base))
     assert shape_geometry_fingerprint(_shape(**{**base, **changed})) != reference
+
+
+def test_the_fingerprint_forgives_integrated_measures_drifting_in_their_last_bits():
+    # ot10-biped-1 (ADR-421), one solid across three processes: a planar face
+    # out of `part.cut(refine=True)` measured 114.68601535158916 mm² and then
+    # 114.68601535158984, and two 0.4π mm fillet arcs 1.256637061435912 and
+    # then 1.2566370614359201 -- vertices, counts and bounds bit-identical.
+    # Under v1 that one solid refused every reopen of an accepted design.
+    vertices = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 2.0, 0.0)]
+    first = _shape(
+        vertices,
+        [1.256637061435912, 1.256637061435912, 2.0],
+        [3.0, 114.68601535158916],
+    )
+    second = _shape(
+        vertices,
+        [2.0, 1.2566370614359201, 1.2566370614359201],
+        [114.68601535158984, 3.0],
+    )
+    assert first.Area != second.Area
+    assert shape_geometry_fingerprint(first) == shape_geometry_fingerprint(second)
 
 
 def test_the_byte_digest_is_exactly_what_it_was_before_the_material_moved(tmp_path):
@@ -327,6 +349,7 @@ def test_a_remembered_measurement_belongs_to_one_accepted_digest():
 
     state = {
         "accepted_geometry": {
+            "schema": GEOMETRY_DIGEST_SCHEMA,
             "accepted_digest": "accepted-one",
             "geometry_digest": "same-model",
         }
@@ -337,6 +360,28 @@ def test_a_remembered_measurement_belongs_to_one_accepted_digest():
     assert cadexd._remembered_geometry(state, "accepted-two") == ""
     assert cadexd._remembered_geometry({"accepted_geometry": None}, "x") == ""
     assert cadexd._remembered_geometry({}, "x") == ""
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        pytest.param(None, id="learned before the schema was stored"),
+        pytest.param("cadex-project-geometry-digest-v1", id="learned under v1"),
+    ],
+)
+def test_a_measurement_learned_under_another_fingerprint_is_re_measured(schema):
+    # A v1 digest hashes face areas; v2 does not, so the two can never agree
+    # about the same model. Comparing them would refuse every project that
+    # learned one -- so it is ignored, and the accepted attempt re-measured.
+    import cadexd
+
+    remembered = {"accepted_digest": "accepted-one", "geometry_digest": "v1-words"}
+    if schema is not None:
+        remembered["schema"] = schema
+    assert GEOMETRY_DIGEST_SCHEMA != "cadex-project-geometry-digest-v1"
+    assert cadexd._remembered_geometry(
+        {"accepted_geometry": remembered}, "accepted-one"
+    ) == ""
 
 
 def test_the_store_drops_a_measurement_once_its_accepted_digest_moves_on(tmp_path):

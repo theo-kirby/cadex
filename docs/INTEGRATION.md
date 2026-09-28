@@ -199,11 +199,14 @@ serialized twice*: `part.offset` is OCCT's `BRepOffset_MakeOffset` and writes
 a different geometry table every process for an identical solid, so before
 ADR-389 a design that used it could never be reopened. On a digest mismatch
 the pass now re-measures both retained attempts —
-`cadex-project-geometry-digest-v1`, the same entries with each BREP output
+`cadex-project-geometry-digest-v2`, the same entries with each BREP output
 identified by its canonical definition plus what the kernel measures on it
-(counts, the exact vertex set, edge-length and face-area multisets, bounds,
-area; never volume, which drifts) — and opens when those agree, adding
-`matched_by: "geometry"` and `geometry_digest` to `restore`. A byte-for-byte
+(counts, the exact vertex set, bounds; never volume, area or edge length,
+which are integrals and drift in their last bits, ADR-421) —
+and opens when those agree, adding `matched_by: "geometry"` and
+`geometry_digest` to `restore`. A geometry digest the project learned under
+an earlier schema is ignored and re-measured, never compared; a refused
+restore leaves `latest_candidate` as it found it. A byte-for-byte
 match reports neither and is unchanged. The accepted digest is untouched,
 nothing re-accepts changed geometry, and a hand-edited script fails on the
 definition before the measurements are consulted.

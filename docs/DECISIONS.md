@@ -28084,3 +28084,48 @@ floor still failing) fail on the previous source and pass on this one.
 geometry row itself, as it did; A5 already reads that row as advisory. P2's
 inclusion of `c_floor` in `printed_edges.measured` is a frozen-proxy change
 and needs its own recorded re-score.
+
+## ADR-421 — The geometry fingerprint drops areas, and a refused restore leaves the store as it found it (2026-09-27)
+
+**Context.** `ot10-biped-1` passed every fit gate in its turn and then
+refused every reopen, `render`, `look` and review with
+`CADEXD_RESTORE_FAILED`. Of 127 outputs exactly one, `src_hood`
+(`part.fillet ∘ part.cut(refine=True) ∘ part.fillet(part.box)`), differed
+across its three retained attempts, and only in integrated measures: one
+planar face's area (114.68601535158916 mm² against 114.68601535158984), so
+the total area, and — found only after areas were dropped and the reopen
+still refused — two 0.4π mm fillet arcs' lengths (1.256637061435912 against
+1.2566370614359201). Its vertex set, counts and bounds were bit-identical.
+ADR-389's fingerprint hashed all of them exactly. Separately, the refused
+restore left `script.json` `latest_candidate` naming the restore run's
+attempt with `status: accepted`, a revision the project never accepted.
+
+**Decision.** `shape_geometry_fingerprint` drops edge lengths, per-face areas
+and the total area, as ADR-389 dropped volume: all are integrals, and all are
+measured to drift. It keeps what the BREP stores or counts — the counts, the
+exact vertex set, the bounding box — and, at the digest level, the canonical
+definition. `GEOMETRY_DIGEST_SCHEMA` moves to
+`cadex-project-geometry-digest-v2`; a learned `accepted_geometry` now stores
+the schema it was measured under, and `_remembered_geometry` ignores one
+stored under any other schema (or none), so a project that learned a v1
+digest re-measures its accepted attempt rather than refusing. The restore
+path's rollback write also puts back the project's own `latest_candidate`.
+
+**What this gives up.** A shape edit that changes a curve or a surface while
+leaving every vertex, every count and the box unchanged (a spline face
+bulged inside a boundary that does not move, say) would no longer move the
+geometry digest. That digest is consulted only after the byte digest
+has disagreed, and a script edit moves the definition hash first, so the
+guard against a changed model is the recipe, as it was.
+
+**Measured.** Unit regressions in `test_geometry_digest.py` (the measured
+area and arc-length pairs; a v1 and a schema-less remembered digest) and an assertion on
+`latest_candidate` in `test_a_changed_script_is_still_refused_at_the_restore_pass`
+fail on the previous source and pass on this one. The byte digest and its
+frozen fixture are unchanged.
+Replayed on `ot10-biped-1` (design untouched): with areas alone dropped, the
+reopen still refused, and diffing the three attempts found the arcs; with
+both dropped, all 127 outputs fingerprint alike, `cadex render` opens it
+through the geometry path and draws it, and the refused open in between left
+`latest_candidate` as it was. Engine suite 2,236 passed, 53 skipped; packaged
+lifecycle gate 23 passed.
