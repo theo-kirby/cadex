@@ -19,7 +19,9 @@ Open charter criterion for run ot10: **A4. The product agent is taught the langu
 - **First behavioural evidence** (the `ot10-hexapod-1` transcript): **0 of the 4** hex refusal classes recur. There were 33 other refusals. 19 were the 300 CPU-s limit, since addressed by ADR-418 on the engine node. Sandbox import/directory refusals and guessed pointers still recur [rec: soft-spark-6990].
 - **Hexapod attempt 2 transcript** (`ot10-hexapod-2`): **0 of the 4** classes recur; 10 refusals in all, CPU-limit refusals 3 (down from 19). One refusal tagged horn style by `refusals.py` was a false match on an output named `horn` — really the write_script drop-outputs guard [rec: quiet-basin-1176].
 - **Quadruped transcript** (`ot10-quadruped-2`): **0 of the 4** classes recur; 11 refusals [rec: western-comet-0121].
-- **Still open:** three transcripts clean so far (hexapod 1 and 2, quadruped); no biped A5 transcript is recorded yet. The node stays `open` until A5's transcripts are complete, and the human owns the checkbox [rec: damp-dusk-8045] [rec: western-comet-0121].
+- **Face rules made checkable** (ADR-422, `c3abb3ab`): `docs/DESIGN-LANGUAGE.md` §4 now says the face, seen from +X, spans at least half the body's width and a quarter of its height; contrasts with its surround (graphite on a shell-coloured front, the accent on a graphite one); and is checked from its own side before accepting. The overlay's A FACE bullet carries the size and contrast rules, and step 4 adds `look` at `right` before accepting. `test_the_face_is_sized_contrasted_and_checked_from_its_own_side` fails on the old overlay. No judge wording was copied; rubric, proxies, bar and judge unchanged [rec: rustic-ivy-4753].
+- **Hexapod attempts 3 and 4 transcripts:** **0 of the 4** classes recur in either. Attempt 3 had 20 refusals (4 CPU-limit, 7 kernel, 2 sandbox, 2 guessed pointers, others single) [rec: tiny-dusk-3648]; attempt 4 had 14 (8 CPU-limit, 3 sandbox, 1 guessed pointer, others single). In attempt 4 the agent looked at `right` twice, but on earlier revisions, not on the accepted one [rec: rustic-ivy-4753].
+- **Still open:** five A5 transcripts clean so far (hexapods 1–4, quadruped); no biped A5 transcript count is recorded. Guessed JSON pointers and sandbox refusals keep recurring outside the four classes. The node stays `open` until A5's transcripts are complete, and the human owns the checkbox [rec: damp-dusk-8045] [rec: western-comet-0121] [rec: rustic-ivy-4753].
 
 ## Negative knowledge
 
@@ -33,3 +35,5 @@ None yet.
 - soft-spark-6990 — first A5 transcript: 0 of 4 refusal classes recur; 33 other refusals, 19 of them the CPU cap
 - quiet-basin-1176 — hexapod attempt 2 transcript: 0 of 4 classes recur, 10 refusals, CPU 3
 - western-comet-0121 — quadruped transcript: 0 of 4 classes recur, 11 refusals
+- tiny-dusk-3648 — hexapod attempt 3 transcript: 0 of 4 classes recur, 20 refusals (folded as derivable; its impact line targeted A5 only)
+- rustic-ivy-4753 — ADR-422: face size, contrast and look-from-+X rules in §4 and the overlay, regression test; attempt 4 transcript 0 of 4, 14 refusals
