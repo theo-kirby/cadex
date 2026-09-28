@@ -176,6 +176,88 @@
         }
       ]
     },
+    "ot10-hexapod-11": {
+      "status": "counted",
+      "transcript_sha256": "b7c52b022adf0641bea5b312edf78354756e30edef38a69fca14fb2d3c4183c5",
+      "refused": 12,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 2,
+        "kernel": 2,
+        "json_pointer": 2,
+        "edit_replacement": 0,
+        "outputs_dropped": 0,
+        "retire_linked_output": 0,
+        "reset_variation": 1,
+        "other": 5
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'hasattr' is not defined"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 3: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.loft: invalid sections[0]: expected topology type ['wire']. Received 'edge'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "assembly.component source must be a part or partdesign value created in this script (cross-document references are not supported in project scripts)."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: 4 of 21 edge(s) refused the requested radius."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: the boolean succeeded and refining its result produced an invalid shape"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'walk_task' could not be built: The reset variation in task output 'walk_task' drives the mechanism 3.08 mm further into the floor than its reset pose already sits, at an azimuth of 292 de"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_WORKER_NO_RESULT",
+          "error": "The isolated domain worker exited without a result."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_WORKER_NO_RESULT",
+          "error": "The isolated domain worker exited without a result."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_WORKER_NO_RESULT",
+          "error": "The isolated domain worker exited without a result."
+        }
+      ]
+    },
     "ot10-quadruped-3": {
       "status": "counted",
       "transcript_sha256": "16f1ffa85b32793b7f58b60f288915f96dbfa20ec257753618b2dcb21a522ebf",

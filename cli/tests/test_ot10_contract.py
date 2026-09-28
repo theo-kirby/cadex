@@ -383,6 +383,31 @@ def test_a5_hexapod_attempt_10_is_published_with_its_score():
     assert "**Attempt 9 is not counted.**" in section
 
 
+def test_a5_hexapod_attempt_11_the_confirmation_round_is_published_with_its_score():
+    score = json.loads((OT10 / "ot10-hexapod-11-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 14
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-hexapod-11-hero.png"] + [
+        f"ot10-hexapod-11-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    assert (OT10 / "ot10-hexapod-11-sheet.png").stat().st_size <= 300 * 1024
+    assert score["total"] >= CONTRACT["bar"]["total_min"]
+    assert min(score["medians"].values()) >= 1
+    assert "| attempt 11, median | 2 | 3 | 1 | 2 | 2 | 2 | 2 | **14** |" in README
+    # It follows the pre-registration, and the round's next turn is named.
+    assert README.index("## A5 confirmation round, pre-registered") < README.index(
+        "## A5 attempt 11: the hexapod (`ot10-hexapod-11`), confirmation round")
+    section = README.partition(
+        "## A5 attempt 11: the hexapod (`ot10-hexapod-11`), confirmation round")[2]
+    assert section.startswith("\n\n**Meets the bar on every item. This is the confirmation round's")
+    assert "at revision `4288ef42`" in section
+    assert "`ot10-quadruped-4`, on the frozen quadruped" in section
+
+
 # -- A4: the refusal census --------------------------------------------------
 
 _rspec = importlib.util.spec_from_file_location("ot10_refusals", OT10 / "runner/refusals.py")
@@ -394,6 +419,7 @@ CENSUS = json.loads((OT10 / "refusals.json").read_text(encoding="utf-8"))
 REFUSED = {
     "ot10-biped-1": ("counted", 7, 0),
     "ot10-hexapod-10": ("counted", 15, 6),
+    "ot10-hexapod-11": ("counted", 12, 0),
     "ot10-quadruped-3": ("counted", 10, 0),
     "ot10-hexapod-1": ("failed_attempt", 33, 19),
     "ot10-hexapod-2": ("failed_attempt", 10, 3),
@@ -457,13 +483,13 @@ def test_the_refusal_census_is_pinned_and_rederives_from_its_file():
         assert len(row["transcript_sha256"]) == 64
     # The three designs the A5 criterion counts are all in the census.
     counted = sorted(n for n, p in projects.items() if p["status"] == "counted")
-    assert counted == ["ot10-biped-1", "ot10-hexapod-10", "ot10-quadruped-3"]
+    assert counted == ["ot10-biped-1", "ot10-hexapod-10", "ot10-hexapod-11", "ot10-quadruped-3"]
     assert "/home/" not in (OT10 / "refusals.json").read_text(encoding="utf-8")
 
 
 def test_the_census_table_is_published_equal_to_its_file():
     assert refusals.table(CENSUS) in README
-    assert ("| **all** | 14 transcripts | **0** | **0** | **0** | **0** | 183 |"
+    assert ("| **all** | 15 transcripts | **0** | **0** | **0** | **0** | 195 |"
             in README)
 
 

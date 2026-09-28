@@ -1402,11 +1402,106 @@ letter.
   status is kept read-only as the receipt, as attempt 9 was, and the plan
   gets a new project.
 
+## A5 attempt 11: the hexapod (`ot10-hexapod-11`), confirmation round
+
+**Meets the bar on every item. This is the confirmation round's first turn,
+and the second hexapod in a row to meet the bar.** The judged total is 14 of
+21, which meets the frozen 14, and no trait scores 0. P1, P2 and P3 are
+within their bars. The static fit is clean, and the swept fit is complete
+and passing on all 12 joints. The design carries its electronics. It ran
+exactly as pre-registered above. The frozen hexapod prompt was read from
+`contract.json` `a5.prompts.hexapod`. It ran once on the new project
+`ot10-hexapod-11`, with no continuation, `claude-opus-5-5` and
+`CADEX_EFFORT=medium`. It was launched detached (`setsid`) at
+2026-09-28T18:20:23Z at revision `4288ef42`, on the dev-tree engine. No
+product code changed between `96ed90d0` and that revision. The turn ended
+on its own at 19:01:35Z (41 min), exit 0 with `ok: true`, at accepted
+revision `42cbfa0dc717…` (digest `cc0e06aa9e55…`). It was rendered and
+judged from a `/tmp` copy of the project, so the project itself is
+unchanged.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| attempt 10, median | 2 | 2 | 1 | 2 | 2 | 3 | 2 | **14** |
+| attempt 11, call 1 | 2 | 3 | 1 | 2 | 2 | 2 | 2 | 14 |
+| attempt 11, call 2 | 2 | 3 | 1 | 2 | 2 | 2 | 2 | 14 |
+| attempt 11, call 3 | 2 | 3 | 1 | 2 | 2 | 2 | 2 | 14 |
+| attempt 11, median | 2 | 3 | 1 | 2 | 2 | 2 | 2 | **14** |
+
+Every raw reply is kept in
+[`ot10-hexapod-11-score.json`](ot10-hexapod-11-score.json), under the
+same rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | **14** | yes |
+| no trait 0 | lowest is 1 (T3) | yes |
+| above hex3 (2) | 14 | yes |
+| P1 ≤ 0.20 | **0.0186** (3,685 of 197,646 subsamples) | yes |
+| P2 ≤ 0.25 | **0.2285** (4,621 of 20,221 mm, 22 printed components; `c_floor` left out under ADR-424) | yes |
+| P3 2 or 3 | **3** (`#2B2D31`, `#E9E6DF`, `#F26A1B`), every component's role declared | yes |
+| static fit | 2,850 pairs: 2,850 clear, 0 intersections, 0 below clearance. One failing row, the floor's advisory world-geometry row. The agent declared the six foot–floor pairs as contacts. 62 fixed-joint pairs checked, all touching | yes |
+| swept fit | **complete and passing, 12 of 12 joints** at 7° steps, 0 failing pairs. Twelve leg-into-floor rows are advisory (ADR-420) | yes |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S with single-arm horns, 24 M2 screws. MJCF and a walking task were accepted in the same turn | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-11-hero.png),
+[`iso`](ot10-hexapod-11-look_iso.png),
+[`iso_back`](ot10-hexapod-11-look_iso_back.png),
+[`front`](ot10-hexapod-11-look_front.png),
+[`right`](ot10-hexapod-11-look_right.png) and
+[`top`](ot10-hexapod-11-look_top.png). The same `cadex render` wrote its
+concept sheet, [`ot10-hexapod-11-sheet.png`](ot10-hexapod-11-sheet.png)
+(215 KB): 0.618 kg, 12 servos, 227 × 231 × 116 mm. The whole command took
+9 min 11 s of wall time. Acquiring the tessellation took 252.3 s, and
+drawing took 11.1 s (2.9 s for the 1024 px hero), at 231,185 drawn
+triangles.
+
+**What the renders show.** A low, bone-coloured pillow dome sits on a
+dark base ring, with a dark visor band wrapping its +X corner. Six curved
+tubular legs hang from knee pods under the rim and end in orange ball
+feet. It is the same family as attempt 10, and it scores the same total by
+a different route. T2 rises to 3, because the orange is only on the feet.
+T6 falls to 2, because the legs are uniform tubes splayed from a wide, flat
+body. T3 is again the weakest trait, at 1 in all three calls. The
+single-arm horns, screw stubs and brackets show dark at the hips, and only
+some axes are capped. So the two hexapods that met the bar both sit
+exactly on it. Both are held back by the same joint treatment.
+
+**How the turn got there.** The agent's notes name its concept first: a
+turtle dome over a graphite tray, a visor as the face and orange feet. It
+chose a dome over a flat plate so that the shell hides all 12 servos and
+the electronics. No write ran past the CPU limit, where attempt 10 met it
+six times. Three `edit_script` calls failed with `DOMAIN_WORKER_NO_RESULT`.
+The agent attributed them to OCCT's fillet kernel crashing on 0.7–0.8 mm
+fillets over every edge after the boolean cuts. It records the stack as
+`ChFi3d PerformThreeCorner`. The crash is recorded here as a defect: the
+worker died, and the refusal did not name the operation. The agent reached
+an accepted revision by filleting before the cuts. Its own report says it
+read 1,000 of the 2,850 static pairs, not all of them. The published fit
+above is the engine's measurement of all 2,850, not the agent's reading.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 12 refused calls, out of 11 `write_script`, 5
+`edit_script`, 70 `inspect`, 4 `describe_api` and 2 `look`:
+- 3 worker crashes (`DOMAIN_WORKER_NO_RESULT`, above);
+- 2 sandbox or source-policy refusals (`hasattr`; an import);
+- 2 guessed JSON pointers (`/facts/bounding_box`, twice);
+- 2 kernel refusals (a fillet radius refused on 4 of 21 edges; a refined
+  fuse produced an invalid shape);
+- 1 `api.loft` refusal (sections given as edges, not wires);
+- 1 `assembly.component` source given as a reference, not a value;
+- 1 reset-variation refusal that named the 3.08 mm lift.
+
+**Next, as pre-registered:** `ot10-quadruped-4`, on the frozen quadruped
+prompt, with nothing changed.
+
 ## A4: the refusal census, every ot10 transcript
 
 **None of A4's four refusal classes recurred in any ot10 product-agent
-transcript: 0 of 183 refused calls across 14 transcripts.** That covers the
-three counted A5 designs, the nine failed attempts, and the two aborted
+transcript: 0 of 195 refused calls across 15 transcripts.** That covers the
+four counted A5 designs, the nine failed attempts, and the two aborted
 turns that were not attempts. The count is mechanical.
 [`runner/refusals.py`](runner/refusals.py) reads each session transcript
 (local to this machine, never committed), takes every tool result marked
@@ -1427,6 +1522,7 @@ emits today, for all four classes.
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `ot10-biped-1` | counted | 0 | 0 | 0 | 0 | 7 | 0 | 1 | 1 | 0 | 5 |
 | `ot10-hexapod-10` | counted | 0 | 0 | 0 | 0 | 15 | 6 | 3 | 2 | 3 | 1 |
+| `ot10-hexapod-11` | counted | 0 | 0 | 0 | 0 | 12 | 0 | 2 | 2 | 2 | 6 |
 | `ot10-quadruped-3` | counted | 0 | 0 | 0 | 0 | 10 | 0 | 2 | 3 | 2 | 3 |
 | `ot10-hexapod-1` | failed attempt | 0 | 0 | 0 | 0 | 33 | 19 | 2 | 5 | 1 | 6 |
 | `ot10-hexapod-2` | failed attempt | 0 | 0 | 0 | 0 | 10 | 3 | 2 | 0 | 2 | 3 |
@@ -1439,16 +1535,17 @@ emits today, for all four classes.
 | `ot10-quadruped-2` | failed attempt | 0 | 0 | 0 | 0 | 11 | 0 | 3 | 4 | 0 | 4 |
 | `ot10-hexapod-9` | not an attempt | 0 | 0 | 0 | 0 | 4 | 0 | 2 | 0 | 2 | 0 |
 | `ot10-quadruped-1` | not an attempt | 0 | 0 | 0 | 0 | 2 | 0 | 2 | 0 | 0 | 0 |
-| **all** | 14 transcripts | **0** | **0** | **0** | **0** | 183 | 44 | 32 | 29 | 22 | 56 |
+| **all** | 15 transcripts | **0** | **0** | **0** | **0** | 195 | 44 | 34 | 31 | 24 | 62 |
 
-"Rest" is the 56 refusals outside those eight columns. They are: 15
+"Rest" is the 62 refusals outside those eight columns. They are: 15
 `Cannot retire` refusals of an output that a component still linked, 10
-`edit_script` replacements that did not match, 7 reset-variation refusals
-that named the lift, 3 `PROJECT_OUTPUTS_DROPPED` guards, and 21 others. The
-21 are single-cause API, MJCF, publication and worker refusals, plus one
-call to a tool name that does not exist. After the CPU limit (44), the
-recurring costs are sandbox refusals (32: `dir`, `getattr`, `hasattr`,
-imports, private attributes) and guessed JSON pointers (22). Each one costs
+`edit_script` replacements that did not match, 8 reset-variation refusals
+that named the lift, 3 `PROJECT_OUTPUTS_DROPPED` guards, and 26 others. The
+26 are single-cause API, MJCF, publication and worker refusals, plus one
+call to a tool name that does not exist. Three of them are worker crashes
+in `ot10-hexapod-11`. After the CPU limit (44), the
+recurring costs are sandbox refusals (34: `dir`, `getattr`, `hasattr`,
+imports, private attributes) and guessed JSON pointers (24). Each one costs
 turns. None is one of the four classes A4 closed.
 
 ## Baseline
