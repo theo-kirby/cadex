@@ -1529,3 +1529,42 @@ look different. Re-drawing the 8 s pose from the scene camera's yaw and
 pitch gives the scene's pose. The video itself stays in the copy's
 `runs/finch1-final/`, never in git. W1's remaining half is a video of an
 A5 design's own policy, which W2's training run will produce.
+
+## W2: the walk, pre-registered
+
+Written and committed **before** the run starts. Nothing below changes
+once it has started; a second run is a new section with its own settings.
+
+**The design is `ot10-quadruped-3`** (accepted revision `7de6eea6212e…`).
+The biped and the quadruped tie as the best-scoring A5 designs at 15 of 21,
+and the hexapod scores 14. The tie goes to the quadruped because W2's bar is
+`walked = true`: four feet stand without balancing, and six MG90S joints on
+two legs have to balance first. The task is the agent's own, declared in the
+same design turn under the ADR-410 overlay, and it is trained unchanged:
+alive bonus 2.0, upright 1.0, speed error −1.0 at 80 mm/s, sideways −0.5,
+yaw rate −0.3, with the `tipped` and `collapsed` terminations, 10 s
+episodes at 50 Hz.
+
+**The project stays read-only.** `cadex walk` rewrites the script to
+declare the policy, so it runs on a copy, `cp -a ot10-quadruped-3
+ot10-quadruped-3-w2`, which starts at the same accepted revision.
+
+| setting | value |
+|---|---|
+| command | `./cadex walk --project ~/cadex-projects/ot10-quadruped-3-w2 --out ~/cadex-projects/ot10-quadruped-3-w2/runs/w2-1 --iterations 1000 --envs 2048 --seed 0 --timeout 10800 --json` |
+| design turns | none (`--prompt` not given: no tokens, no geometry change) |
+| trainer | local, on this machine's RTX 5090, `~/cadex-train-venv` |
+| seed | 0 |
+| budget | 1,000 PPO iterations × 2,048 environments |
+| wall-clock cap | trainer `--timeout 10800` (3 h); the other legs keep the default `--leg-timeout` of 3,600 s |
+| collapse stop | `--stop-on-collapse`, which `cadex walk` always passes to the trainer (ADR-410) |
+| grounding | enforced; `--allow-ungrounded` is not given |
+| gait thresholds | unchanged. The bar is the walk review's `walked = true` |
+| process | launched with `setsid nohup`, so it outlives the loop session that starts it; attempt 9 was lost that way |
+
+**Stop rule.** The run ends at whichever comes first: 1,000 iterations, the
+3 h trainer cap, or a detected collapse. Whatever policy it saved then goes
+through the walk's own store, declare, verify, roll-out and review legs.
+A policy that does not walk is reported as an incomplete result, with a
+diagnosis and a next step. The thresholds do not move, and no second run
+starts until this one is diagnosed.
