@@ -381,3 +381,131 @@ def test_a5_hexapod_attempt_10_is_published_with_its_score():
     assert section.startswith(
         "\n\n**Meets the bar on every item, the first hexapod in the run to do so.**")
     assert "**Attempt 9 is not counted.**" in section
+
+
+# -- A4: the refusal census --------------------------------------------------
+
+_rspec = importlib.util.spec_from_file_location("ot10_refusals", OT10 / "runner/refusals.py")
+refusals = importlib.util.module_from_spec(_rspec)
+_rspec.loader.exec_module(refusals)
+CENSUS = json.loads((OT10 / "refusals.json").read_text(encoding="utf-8"))
+
+# Every ot10 product-agent transcript: refused calls, and the CPU-limit share.
+REFUSED = {
+    "ot10-biped-1": ("counted", 7, 0),
+    "ot10-hexapod-10": ("counted", 15, 6),
+    "ot10-quadruped-3": ("counted", 10, 0),
+    "ot10-hexapod-1": ("failed_attempt", 33, 19),
+    "ot10-hexapod-2": ("failed_attempt", 10, 3),
+    "ot10-hexapod-3": ("failed_attempt", 20, 4),
+    "ot10-hexapod-4": ("failed_attempt", 14, 8),
+    "ot10-hexapod-5": ("failed_attempt", 20, 0),
+    "ot10-hexapod-6": ("failed_attempt", 8, 0),
+    "ot10-hexapod-7": ("failed_attempt", 9, 1),
+    "ot10-hexapod-8": ("failed_attempt", 20, 3),
+    "ot10-quadruped-2": ("failed_attempt", 11, 0),
+    "ot10-hexapod-9": ("not_an_attempt", 4, 0),
+    "ot10-quadruped-1": ("not_an_attempt", 2, 0),
+}
+
+# The refusal each class was named for, as hex2/hex3 met it and as the
+# engine words it since ADR-416 -- and two texts that only look like one.
+CLASS_TEXTS = [
+    ("", "lib.servo.horn: style must be one of cross, double_arm, single_arm.", "horn_style"),
+    ("", "lib.servo.horn: 'single' is not a horn style; style must be one of 'cross', "
+         "'double_arm', 'single_arm'. Did you mean 'single_arm'?", "horn_style"),
+    ("", "There is no project script to edit yet; use write_script.", "edit_before_script"),
+    ("NO_PROJECT_SCRIPT", "There is no accepted project script to edit yet: the last "
+     "write_script was refused and rolled back, and edit_script only edits an accepted "
+     "source. Resend the whole corrected source with write_script and "
+     "expected_revision=''.", "edit_before_script"),
+    ("", "An Assembly program must return exactly one assembly and one solver_diagnostics "
+         "output.", "assembly_output_count"),
+    ("DOMAIN_CANDIDATE_FAILED", "An Assembly program must return exactly one assembly and "
+     "one solver_diagnostics output; result returns 1 assembly ('hexapod') and 0 "
+     "solver_diagnostics (none). Add `result['solve'] = assembly.solve(hexapod)`",
+     "assembly_output_count"),
+    ("", "Every joint listed in api.assembly must be returned exactly once, and no unlisted "
+         "joint output is allowed.", "joint_listing"),
+    ("", "Every component listed in api.assembly must be returned exactly once, and no "
+         "unlisted component output is allowed. 2 component(s) listed in api.assembly are "
+         "not returned in result", "joint_listing"),
+    ("PROJECT_OUTPUTS_DROPPED", "This script drops outputs that the accepted revision "
+     "declares: horn, servo. write_script replaces THE whole project script",
+     "outputs_dropped"),
+    ("DOMAIN_PUBLICATION_FAILED", "PUBLICATION_UNTAGGED_OBJECT: the document contains "
+     "objects the project script does not own: ['Joints', 'Joints001'].", "other"),
+]
+
+
+@pytest.mark.parametrize("code, error, expected", CLASS_TEXTS)
+def test_the_census_classifies_each_a4_refusal_by_its_engine_text(code, error, expected):
+    assert refusals.classify(code, error) == expected
+
+
+def test_the_refusal_census_is_pinned_and_rederives_from_its_file():
+    assert CENSUS["schema"] == "ot10-refusals-v1"
+    assert CENSUS["a4_classes"] == list(refusals.A4_CLASSES)
+    assert CENSUS["classes"] == list(refusals.CLASSES)
+    projects = CENSUS["projects"]
+    assert {n: (p["status"], p["refused"], p["counts"]["cpu_limit"])
+            for n, p in projects.items()} == REFUSED
+    for name, row in projects.items():
+        assert len(row["calls"]) == row["refused"] == sum(row["counts"].values())
+        assert refusals.counts(row["calls"]) == row["counts"], name
+        assert all(row["counts"][c] == 0 for c in refusals.A4_CLASSES), name
+        assert len(row["transcript_sha256"]) == 64
+    # The three designs the A5 criterion counts are all in the census.
+    counted = sorted(n for n, p in projects.items() if p["status"] == "counted")
+    assert counted == ["ot10-biped-1", "ot10-hexapod-10", "ot10-quadruped-3"]
+    assert "/home/" not in (OT10 / "refusals.json").read_text(encoding="utf-8")
+
+
+def test_the_census_table_is_published_equal_to_its_file():
+    assert refusals.table(CENSUS) in README
+    assert ("| **all** | 14 transcripts | **0** | **0** | **0** | **0** | 183 |"
+            in README)
+
+
+def test_refused_calls_reads_a_truncated_refusal_body(tmp_path):
+    # A long refusal reaches the transcript with its middle cut by the agent
+    # CLI; the class must still come from the engine's own fields.
+    cut = ('{\n  "allowed_values": [],\n  "error": "There is no project script to edit '
+           'yet; use write_script.",\n  "failure_code": "NO_PROJECT_SCRIPT",\n  "src": "a\tb'
+           '\n\n... [9960 characters truncated] ...\n\n"\n}')
+    lines = [
+        {"message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "mcp__cadex__edit_script"},
+            {"type": "tool_use", "id": "t2", "name": "mcp__cadex__inspect"}]}},
+        {"message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t1", "is_error": True, "content": cut},
+            {"type": "tool_result", "tool_use_id": "t2", "is_error": False, "content": "{}"},
+            {"type": "tool_result", "tool_use_id": "t3", "is_error": True,
+             "content": [{"type": "text", "text": json.dumps(
+                 {"error": "JSON Pointer path does not exist: '/facts'.",
+                  "failure_code": "INSPECTION_FAILED"})}]}]}},
+    ]
+    transcript = tmp_path / "s.jsonl"
+    transcript.write_text("\n".join(json.dumps(l) for l in lines), encoding="utf-8")
+    calls = refusals.refused_calls(transcript)
+    assert [(c["tool"], c["failure_code"]) for c in calls] == [
+        ("edit_script", "NO_PROJECT_SCRIPT"), ("?", "INSPECTION_FAILED")]
+    assert refusals.counts(calls)["edit_before_script"] == 1
+    assert refusals.counts(calls)["json_pointer"] == 1
+
+
+def test_the_census_matches_the_local_transcripts_when_present():
+    # Transcripts are never committed; on the machine that ran ot10 the
+    # committed census must be what the counter derives from them today.
+    root = Path.home() / ".claude/projects"
+    checked = 0
+    for name, row in CENSUS["projects"].items():
+        found = [p for d in root.glob(f"*-{name}") for p in d.glob("*.jsonl")]
+        match = [p for p in found
+                 if hashlib.sha256(p.read_bytes()).hexdigest() == row["transcript_sha256"]]
+        if not match:
+            continue
+        assert refusals.census(match[0], row["status"]) == row, name
+        checked += 1
+    if not checked:
+        pytest.skip("no ot10 transcript on this machine")

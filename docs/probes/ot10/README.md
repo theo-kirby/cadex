@@ -1373,6 +1373,55 @@ The turn had 15 refused calls, out of 12 `write_script`, 13
 - 1 `api.cut` refusal (refining the result produced an invalid shape);
 - 1 `edit_script` replacement whose text occurred 0 times.
 
+## A4: the refusal census, every ot10 transcript
+
+**None of A4's four refusal classes recurred in any ot10 product-agent
+transcript: 0 of 183 refused calls across 14 transcripts.** That covers the
+three counted A5 designs, the nine failed attempts, and the two aborted
+turns that were not attempts. The count is mechanical.
+[`runner/refusals.py`](runner/refusals.py) reads each session transcript
+(local to this machine, never committed), takes every tool result marked
+`is_error`, and gives it one class. The class comes from the engine's own
+refusal sentence or `failure_code`, in the hex2/hex3 wording and the
+ADR-416 wording alike. It is not a keyword guess. The notes-directory
+counter this replaces matched `horn|style`. That counted an output named
+`horn` as a horn-style refusal on hexapod attempt 2, and this classifier
+does not.
+[`refusals.json`](refusals.json) keeps each transcript's sha256, its counts
+and every refusal's tool, `failure_code` and first 200 characters of error.
+`cli/tests/test_ot10_contract.py` pins the counts below, re-derives them
+from that file, and holds this table equal to it. It also feeds the
+classifier the real hex2/hex3 refusal texts, and the texts the engine
+emits today, for all four classes.
+
+| project | status | horn style | edit before script | output count | joint listing | refused | CPU limit | sandbox | kernel | JSON pointer | rest |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `ot10-biped-1` | counted | 0 | 0 | 0 | 0 | 7 | 0 | 1 | 1 | 0 | 5 |
+| `ot10-hexapod-10` | counted | 0 | 0 | 0 | 0 | 15 | 6 | 3 | 2 | 3 | 1 |
+| `ot10-quadruped-3` | counted | 0 | 0 | 0 | 0 | 10 | 0 | 2 | 3 | 2 | 3 |
+| `ot10-hexapod-1` | failed attempt | 0 | 0 | 0 | 0 | 33 | 19 | 2 | 5 | 1 | 6 |
+| `ot10-hexapod-2` | failed attempt | 0 | 0 | 0 | 0 | 10 | 3 | 2 | 0 | 2 | 3 |
+| `ot10-hexapod-3` | failed attempt | 0 | 0 | 0 | 0 | 20 | 4 | 2 | 7 | 2 | 5 |
+| `ot10-hexapod-4` | failed attempt | 0 | 0 | 0 | 0 | 14 | 8 | 3 | 1 | 1 | 1 |
+| `ot10-hexapod-5` | failed attempt | 0 | 0 | 0 | 0 | 20 | 0 | 2 | 5 | 3 | 10 |
+| `ot10-hexapod-6` | failed attempt | 0 | 0 | 0 | 0 | 8 | 0 | 2 | 0 | 2 | 4 |
+| `ot10-hexapod-7` | failed attempt | 0 | 0 | 0 | 0 | 9 | 1 | 2 | 0 | 3 | 3 |
+| `ot10-hexapod-8` | failed attempt | 0 | 0 | 0 | 0 | 20 | 3 | 4 | 1 | 1 | 11 |
+| `ot10-quadruped-2` | failed attempt | 0 | 0 | 0 | 0 | 11 | 0 | 3 | 4 | 0 | 4 |
+| `ot10-hexapod-9` | not an attempt | 0 | 0 | 0 | 0 | 4 | 0 | 2 | 0 | 2 | 0 |
+| `ot10-quadruped-1` | not an attempt | 0 | 0 | 0 | 0 | 2 | 0 | 2 | 0 | 0 | 0 |
+| **all** | 14 transcripts | **0** | **0** | **0** | **0** | 183 | 44 | 32 | 29 | 22 | 56 |
+
+"Rest" is the 56 refusals outside those eight columns. They are: 15
+`Cannot retire` refusals of an output that a component still linked, 10
+`edit_script` replacements that did not match, 7 reset-variation refusals
+that named the lift, 3 `PROJECT_OUTPUTS_DROPPED` guards, and 21 others. The
+21 are single-cause API, MJCF, publication and worker refusals, plus one
+call to a tool name that does not exist. After the CPU limit (44), the
+recurring costs are sandbox refusals (32: `dir`, `getattr`, `hasattr`,
+imports, private attributes) and guessed JSON pointers (22). Each one costs
+turns. None is one of the four classes A4 closed.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest

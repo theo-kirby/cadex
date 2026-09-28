@@ -1,0 +1,1249 @@
+{
+  "schema": "ot10-refusals-v1",
+  "classes": [
+    "horn_style",
+    "edit_before_script",
+    "assembly_output_count",
+    "joint_listing",
+    "cpu_limit",
+    "sandbox",
+    "kernel",
+    "json_pointer",
+    "edit_replacement",
+    "outputs_dropped",
+    "retire_linked_output",
+    "reset_variation",
+    "other"
+  ],
+  "a4_classes": [
+    "horn_style",
+    "edit_before_script",
+    "assembly_output_count",
+    "joint_listing"
+  ],
+  "projects": {
+    "ot10-biped-1": {
+      "status": "counted",
+      "transcript_sha256": "6d8260742afe168d125e034342d69eaa2c5aabdd6e1aa974294ed975ec506d6e",
+      "refused": 7,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 1,
+        "kernel": 1,
+        "json_pointer": 0,
+        "edit_replacement": 0,
+        "outputs_dropped": 1,
+        "retire_linked_output": 2,
+        "reset_variation": 1,
+        "other": 1
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "PROJECT_OUTPUTS_DROPPED",
+          "error": "This script drops outputs that the accepted revision declares: horn, probe. write_script replaces THE whole project script -- to add a part, edit the script you have. Pass replace=true if removing the"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: invalid edges: must declare expected_count \u2014 the cardinality is what makes a wrong selector fail instead of silently doing less work. Received {'direction': [0, 0, 1]}."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'walk_task' could not be built: The reset variation in task output 'walk_task' drives the mechanism 0.527 mm further into the floor than its reset pose already sits, at an azimuth of 45 de"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'src_bolt_00'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_bolt_00\", \"owner_type\": \"App::Link\", \"property\": \"Linked"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'src_servo_ankle_r'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_servo_ankle_r\", \"owner_type\": \"App::Link\", \"proper"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: 4 of 12 edge(s) refused the requested radius."
+        }
+      ]
+    },
+    "ot10-hexapod-10": {
+      "status": "counted",
+      "transcript_sha256": "996b109aff37fb2c20400f76ad38cb9063d23dfcf00488c95435d6f47be43449",
+      "refused": 15,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 6,
+        "sandbox": 3,
+        "kernel": 2,
+        "json_pointer": 3,
+        "edit_replacement": 1,
+        "outputs_dropped": 0,
+        "retire_linked_output": 0,
+        "reset_variation": 0,
+        "other": 0
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 5: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'hasattr' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: declared solid but OpenCascade produced Compound containing 6 solids"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.cut: the boolean succeeded and refining its result produced an invalid shape"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/clearance/failing'."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts'."
+        }
+      ]
+    },
+    "ot10-quadruped-3": {
+      "status": "counted",
+      "transcript_sha256": "16f1ffa85b32793b7f58b60f288915f96dbfa20ec257753618b2dcb21a522ebf",
+      "refused": 10,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 2,
+        "kernel": 3,
+        "json_pointer": 2,
+        "edit_replacement": 0,
+        "outputs_dropped": 0,
+        "retire_linked_output": 2,
+        "reset_variation": 1,
+        "other": 0
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'getattr' is not defined"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: 4 of 12 edge(s) refused the requested radius."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'walk_task' could not be built: The reset variation in task output 'walk_task' drives the mechanism 3.53 mm further into the floor than its reset pose already sits, at an azimuth of 68 deg"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: declared solid but OpenCascade produced Compound containing 2 solids"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: 3 of 18 edge(s) refused the requested radius."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'hip_nut_fl_0'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_hip_nut_fl_0\", \"owner_type\": \"App::Link\", \"property\":"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'hip_nut_fl_0'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_hip_nut_fl_0\", \"owner_type\": \"App::Link\", \"property\":"
+        }
+      ]
+    },
+    "ot10-hexapod-1": {
+      "status": "failed_attempt",
+      "transcript_sha256": "7d2dce34be7cf29fa8eb7409f322dd085c87d9a066f58c27f18f5499d884fdb7",
+      "refused": 33,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 19,
+        "sandbox": 2,
+        "kernel": 5,
+        "json_pointer": 1,
+        "edit_replacement": 2,
+        "outputs_dropped": 0,
+        "retire_linked_output": 1,
+        "reset_variation": 1,
+        "other": 2
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "assembly.component source must be a part or partdesign value created in this script (cross-document references are not supported in project scripts)."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.cut: declared solid but OpenCascade produced Compound containing 5 solids"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: invalid edges: has unrecognised selector keys ['max_z']; allowed: ['direction', 'direction_tolerance_degrees', 'expected_count', 'geometry_type', 'max_area', 'max_distance', 'max_length', "
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: edges: A geometric selection did not match its declared cardinality."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Cannot determine diagonal length of invalid bounding box"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/accepted/revision'."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: the boolean succeeded and refining its result produced an invalid shape"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.cut: the boolean succeeded and refining its result produced an invalid shape"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'joint_cap'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_hip_cap_fl\", \"owner_type\": \"App::Link\", \"property\": \"Lin"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[3].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'walk_task' could not be built: The reset variation in task output 'walk_task' drives the mechanism 1.55 mm further into the floor than its reset pose already sits, at an azimuth of 45 deg"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        }
+      ]
+    },
+    "ot10-hexapod-2": {
+      "status": "failed_attempt",
+      "transcript_sha256": "db37a461e5cd90eaeac14b8930b9177026d20fef958705c1d4c779e27e6696b9",
+      "refused": 10,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 3,
+        "sandbox": 2,
+        "kernel": 0,
+        "json_pointer": 2,
+        "edit_replacement": 0,
+        "outputs_dropped": 1,
+        "retire_linked_output": 0,
+        "reset_variation": 1,
+        "other": 1
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'getattr' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "PROJECT_OUTPUTS_DROPPED",
+          "error": "This script drops outputs that the accepted revision declares: horn, servo. write_script replaces THE whole project script -- to add a part, edit the script you have. Pass replace=true if removing the"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "assembly.component source must be a part or partdesign value created in this script (cross-document references are not supported in project scripts)."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/revision'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/failing'."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'walk_task' could not be built: The reset variation in task output 'walk_task' drives the mechanism 3.44 mm further into the floor than its reset pose already sits, at an azimuth of 247 de"
+        }
+      ]
+    },
+    "ot10-hexapod-3": {
+      "status": "failed_attempt",
+      "transcript_sha256": "e43707d9620268cb98d18207406d7b5f67af63c7ef97f0ca13406be26c44a8e9",
+      "refused": 20,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 4,
+        "sandbox": 2,
+        "kernel": 7,
+        "json_pointer": 2,
+        "edit_replacement": 1,
+        "outputs_dropped": 0,
+        "retire_linked_output": 2,
+        "reset_variation": 1,
+        "other": 1
+      },
+      "calls": [
+        {
+          "tool": "inspect",
+          "failure_code": "",
+          "error": "<tool_use_error>Error: No such tool available: inspect</tool_use_error>"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: declared solid but OpenCascade produced Compound containing 6 solids"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.common: declared solid but OpenCascade produced Compound containing 2 solids"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.offset: OpenCascade rejected the requested operation: CADKernelError: BRepOffsetAPI_MakeOffsetShape not done"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.cut: declared solid but OpenCascade produced Compound containing 2 solids"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Cannot determine diagonal length of invalid bounding box"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: 4 of 24 edge(s) refused the requested radius."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/summary'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'walk_task' could not be built: The reset variation in task output 'walk_task' drives the mechanism 6.48 mm further into the floor than its reset pose already sits, at an azimuth of 247 de"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'coxa_l1_src'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_coxa_l1\", \"owner_type\": \"App::Link\", \"property\": \"Linked"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'tub_src'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_tub\", \"owner_type\": \"App::Link\", \"property\": \"LinkedObject\","
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/printed_edges'."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: no edge in the selection could be blended at that radius."
+        },
+        {
+          "tool": "rebuild",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        }
+      ]
+    },
+    "ot10-hexapod-4": {
+      "status": "failed_attempt",
+      "transcript_sha256": "92da96262559d5163fc47f6bf81e1e055cf874320cee157c819eada712885359",
+      "refused": 14,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 8,
+        "sandbox": 3,
+        "kernel": 1,
+        "json_pointer": 1,
+        "edit_replacement": 1,
+        "outputs_dropped": 0,
+        "retire_linked_output": 0,
+        "reset_variation": 0,
+        "other": 0
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'hasattr' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: declared solid but OpenCascade produced Compound containing 10 solids"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts'."
+        }
+      ]
+    },
+    "ot10-hexapod-5": {
+      "status": "failed_attempt",
+      "transcript_sha256": "8682df6e8b51848b057a8b96f1085f1b6853b0ec0e5e114f8eb5584e4f3de828",
+      "refused": 20,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 2,
+        "kernel": 5,
+        "json_pointer": 3,
+        "edit_replacement": 0,
+        "outputs_dropped": 0,
+        "retire_linked_output": 3,
+        "reset_variation": 1,
+        "other": 6
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'getattr' is not defined"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: invalid edges: must declare expected_count \u2014 the cardinality is what makes a wrong selector fail instead of silently doing less work. Received {'geometry_type': 'Circle'}."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: the boolean succeeded and refining its result produced an invalid shape"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: no edge in the selection could be blended at that radius."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.cut: OpenCascade rejected the requested operation: ValueError: Null shape"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.cut: OpenCascade rejected the requested operation: ValueError: Null shape"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "MJCF output 'model' could not be built: MuJoCo's compiler rewrote body 'c_knee_horn_fl''s inertia: asked for [4.020451585731616e-10, 4.3830569097599034e-09, 4.694832892992332e-09], compiled [4.0204515"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "MJCF output 'model' could not be built: The MJCF exported for assembly output 'hexapod' changed body_pos by 1 relative; the accepted maximum is 1e-05."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "MJCF output 'model' could not be built: The MJCF exported for assembly output 'hexapod' changed body_pos by 1 relative; the accepted maximum is 1e-05."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "MJCF output 'model' could not be built: The MJCF exported for assembly output 'hexapod' changed body_pos by 1 relative; the accepted maximum is 1e-05."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'belly'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_belly\", \"owner_type\": \"App::Link\", \"property\": \"LinkedObject"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'walk_task' could not be built: The reset variation in task output 'walk_task' drives the mechanism 5.32 mm further into the floor than its reset pose already sits, at an azimuth of 292 de"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/summary'."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: declared solid but OpenCascade produced Compound containing 2 solids"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'foot_fl'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_foot_fl\", \"owner_type\": \"App::Link\", \"property\": \"LinkedOb"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "CADEXD_PROTOCOL_ERROR",
+          "error": "edit_script does not accept args: ['replace']."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'hip_servo_rl'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_hip_servo_rl\", \"owner_type\": \"App::Link\", \"property\":"
+        }
+      ]
+    },
+    "ot10-hexapod-6": {
+      "status": "failed_attempt",
+      "transcript_sha256": "e1635fbe2676527991c4f27e823ae5d6979538e8097e5d691eeb6c514d81d2fa",
+      "refused": 8,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 2,
+        "kernel": 0,
+        "json_pointer": 2,
+        "edit_replacement": 1,
+        "outputs_dropped": 0,
+        "retire_linked_output": 2,
+        "reset_variation": 0,
+        "other": 1
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'type' is not defined"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'floor'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_floor\", \"owner_type\": \"App::Link\", \"property\": \"LinkedObject"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'battery'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_battery\", \"owner_type\": \"App::Link\", \"property\": \"LinkedOb"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_WORKER_NO_RESULT",
+          "error": "The isolated domain worker exited without a result."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        }
+      ]
+    },
+    "ot10-hexapod-7": {
+      "status": "failed_attempt",
+      "transcript_sha256": "2c7b2cf976ef6d9ac52a3ef787316f4c121f445a00e8953cb5922f561e34b797",
+      "refused": 9,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 1,
+        "sandbox": 2,
+        "kernel": 0,
+        "json_pointer": 3,
+        "edit_replacement": 1,
+        "outputs_dropped": 0,
+        "retire_linked_output": 0,
+        "reset_variation": 1,
+        "other": 1
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.loft_cage: invalid cage: expected one cage from cage(...), subscripted by name, e.g. c['torso']. Received {'kind': 'cadex-project-cage-spec', 'axis': [0.0, 0.0, 1.0], 'origin': [0.0, 0.0, 0.0], 'u"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'walk_task' could not be built: The reset variation in task output 'walk_task' drives the mechanism 7.17 mm further into the floor than its reset pose already sits, at an azimuth of 247 de"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts'."
+        }
+      ]
+    },
+    "ot10-hexapod-8": {
+      "status": "failed_attempt",
+      "transcript_sha256": "e5fd6c596a8f6ce96c59f63b383895eae19c64335eb8237044eaac43eaea780b",
+      "refused": 20,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 3,
+        "sandbox": 4,
+        "kernel": 1,
+        "json_pointer": 1,
+        "edit_replacement": 2,
+        "outputs_dropped": 0,
+        "retire_linked_output": 3,
+        "reset_variation": 0,
+        "other": 6
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'hasattr' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: invalid output_type: is required when input topology types differ or are non-publishable edges."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: declared solid but OpenCascade produced Compound containing 3 solids"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 102."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/revision'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 227: private attributes are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CPU_LIMIT_EXCEEDED",
+          "error": "XScript domain execution exceeded its CPU limit of 300 CPU-seconds. That limit is charged across every thread the worker runs, so a parallel pass can reach it well inside the 300 second wall-clock tim"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "PUBLICATION_UNTAGGED_OBJECT: the document contains objects the project script does not own: ['Joints']. Delete them or model them in the project script, then publish again."
+        },
+        {
+          "tool": "rebuild",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'tray'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_tray\", \"owner_type\": \"App::Link\", \"property\": \"LinkedObject\","
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'tub'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_tub\", \"owner_type\": \"App::Link\", \"property\": \"LinkedObject\", \""
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "PUBLICATION_UNTAGGED_OBJECT: the document contains objects the project script does not own: ['Joints', 'Joints001']. Delete them or model them in the project script, then publish again."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "CADEXD_PROTOCOL_ERROR",
+          "error": "inspect capture failed: attach=true is valid only for image scope."
+        },
+        {
+          "tool": "rebuild",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'tray'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_tray\", \"owner_type\": \"App::Link\", \"property\": \"LinkedObject\","
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "PUBLICATION_UNTAGGED_OBJECT: the document contains objects the project script does not own: ['Joints', 'Joints001']. Delete them or model them in the project script, then publish again."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "PUBLICATION_UNTAGGED_OBJECT: the document contains objects the project script does not own: ['Joints', 'Joints001']. Delete them or model them in the project script, then publish again."
+        }
+      ]
+    },
+    "ot10-quadruped-2": {
+      "status": "failed_attempt",
+      "transcript_sha256": "c6d603d09ef5a57bd91faf9e4899e4eff1f4e05300c9314c33477e43357b9a04",
+      "refused": 11,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 3,
+        "kernel": 4,
+        "json_pointer": 0,
+        "edit_replacement": 1,
+        "outputs_dropped": 1,
+        "retire_linked_output": 0,
+        "reset_variation": 0,
+        "other": 2
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'type' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "PROJECT_OUTPUTS_DROPPED",
+          "error": "This script drops outputs that the accepted revision declares: horn, servo. write_script replaces THE whole project script -- to add a part, edit the script you have. Pass replace=true if removing the"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'hasattr' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: declared solid but OpenCascade produced Compound containing 3 solids"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: invalid output_type: is required when input topology types differ or are non-publishable edges."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: 6 of 30 edge(s) refused the requested radius."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: the boolean succeeded and refining its result produced an invalid shape"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_WORKER_NO_RESULT",
+          "error": "The isolated domain worker exited without a result."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: no edge in the selection could be blended at that radius."
+        }
+      ]
+    },
+    "ot10-hexapod-9": {
+      "status": "not_an_attempt",
+      "transcript_sha256": "49c2b34addcf094793c97430df8932c6a142e9a5195ee6a9516048ea1b6dc388",
+      "refused": 4,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 2,
+        "kernel": 0,
+        "json_pointer": 2,
+        "edit_replacement": 0,
+        "outputs_dropped": 0,
+        "retire_linked_output": 0,
+        "reset_variation": 0,
+        "other": 0
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'hasattr' is not defined"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 3: private attributes are not allowed; line 4: private attributes are not allowed; line 5: private attributes are not allowed"
+        }
+      ]
+    },
+    "ot10-quadruped-1": {
+      "status": "not_an_attempt",
+      "transcript_sha256": "ff2592de16cde2334a118507f4946b6eef803da8402de2e51c01213def216d51",
+      "refused": 2,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 2,
+        "kernel": 0,
+        "json_pointer": 0,
+        "edit_replacement": 0,
+        "outputs_dropped": 0,
+        "retire_linked_output": 0,
+        "reset_variation": 0,
+        "other": 0
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'hasattr' is not defined"
+        }
+      ]
+    }
+  }
+}
