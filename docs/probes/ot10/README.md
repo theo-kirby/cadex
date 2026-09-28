@@ -1497,11 +1497,100 @@ The turn had 12 refused calls, out of 11 `write_script`, 5
 **Next, as pre-registered:** `ot10-quadruped-4`, on the frozen quadruped
 prompt, with nothing changed.
 
+## A5 attempt 4: the quadruped (`ot10-quadruped-4`), confirmation round
+
+**Meets the bar on every item. This is the confirmation round's second
+turn.** The judged total is 16 of 21, the highest of any counted design,
+and no trait scores 0. P1, P2 and P3 are within their bars. The static fit
+is clean, and the swept fit is complete and passing on all 8 joints. The
+design carries its electronics. It ran exactly as pre-registered. The
+frozen quadruped prompt was read from `contract.json` `a5.prompts.quadruped`.
+It ran once on the new project `ot10-quadruped-4`, with no continuation,
+`claude-opus-5-5` and `CADEX_EFFORT=medium`. It was launched detached
+(`setsid`) at 2026-09-28T19:25:47Z at revision `c2ee7399`, on the dev-tree
+engine. No product code changed between `4288ef42` and that revision. The
+turn ended on its own at 19:46:22Z (21 min), exit 0 with `ok: true`, at
+accepted revision `0a49c1fdb3fa…` (digest `4357bdf75659…`). It was rendered
+and judged from a `/tmp` copy of the project, so the project itself is
+unchanged. The loop session that launched it ended before the turn did.
+The turn was not killed: it kept running, and the next session found it
+live and waited for its exit status.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| quadruped attempt 3, median | 2 | 3 | 2 | 2 | 2 | 2 | 2 | **15** |
+| quadruped attempt 4, call 1 | 2 | 3 | 3 | 1 | 2 | 3 | 2 | 16 |
+| quadruped attempt 4, call 2 | 2 | 3 | 3 | 1 | 2 | 3 | 2 | 16 |
+| quadruped attempt 4, call 3 | 2 | 3 | 3 | 1 | 2 | 2 | 2 | 15 |
+| quadruped attempt 4, median | 2 | 3 | 3 | 1 | 2 | 3 | 2 | **16** |
+
+Every raw reply is kept in
+[`ot10-quadruped-4-score.json`](ot10-quadruped-4-score.json), under the
+same rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | **16** | yes |
+| no trait 0 | lowest is 1 (T4) | yes |
+| above hex3 (2) | 16 | yes |
+| P1 ≤ 0.20 | **0.0022** (591 of 263,991 subsamples) | yes |
+| P2 ≤ 0.25 | **0.1624** (3,057 of 18,824 mm, 23 printed components; `c_floor` left out under ADR-424) | yes |
+| P3 2 or 3 | **3** (`#2F3237`, `#E9E6DF`, `#F26A1B`), every component's role declared | yes |
+| static fit | 990 pairs: 986 clear, 0 intersections, 0 below clearance, 4 declared foot–floor contacts. One failing row, the floor's advisory world-geometry row. 35 fixed-joint pairs checked, all touching | yes |
+| swept fit | **complete and passing, 8 of 8 joints** at 10° steps, 0 failing pairs. Eight leg-into-floor rows are advisory (ADR-420) | yes |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 8 × MG90S with single-arm horns. MJCF and a walking task were accepted in the same turn | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-quadruped-4-hero.png),
+[`iso`](ot10-quadruped-4-look_iso.png),
+[`iso_back`](ot10-quadruped-4-look_iso_back.png),
+[`front`](ot10-quadruped-4-look_front.png),
+[`right`](ot10-quadruped-4-look_right.png) and
+[`top`](ot10-quadruped-4-look_top.png). The same `cadex render` wrote its
+concept sheet, [`ot10-quadruped-4-sheet.png`](ot10-quadruped-4-sheet.png)
+(192 KB): 0.37 kg, 8 servos, 197 × 106 × 116 mm. The whole command took
+1 min 10 s of wall time. Acquiring the tessellation took 30.3 s, and
+drawing took 7.4 s (2.5 s for the 1024 px hero), at 106,937 drawn
+triangles.
+
+**What the renders show.** An off-white rounded-box body stands on four
+flat leg plates that taper to dark ball feet. A dark rectangular visor is
+on its front end, and the same orange cap sits on every hip and knee axis,
+each in a rounded lobe of its plate. T3 is 3 in all three calls. That is
+the first 3 on joints of any counted design, and it is the trait both
+counted hexapods scored 1 on. T4 is the weakest, at 1 in all three calls.
+The body is a filleted box, the legs are constant-thickness plates, and
+the front hip blocks sit as separate boxes. T5 stays at 2, because the
+visor gives a front but little character.
+
+**How the turn got there.** The agent's notes name its concept first: a
+compact robot dog with a visor face, orange joint caps and dark feet. It
+took a `look` before auditing the pairs. It found the feet 2 mm into the
+floor, because its height formula left out the foot offset, and fixed
+that. It declared the servo–horn spline seats as contacts and raised the
+reset lift to pay for the tilt. It records one rejected option: open
+knee-servo pockets were closed with a 1.8 mm wall because the servo case
+showed from below. So the housing needs a split for assembly. No write ran
+past the CPU limit, and no worker crashed.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 6 refused calls, out of 6 `write_script`, 7 `edit_script`,
+45 `inspect`, 4 `describe_api`, 1 `rebuild` and 2 `look`:
+- 1 sandbox refusal (`type` is not defined);
+- 2 guessed JSON pointers (`/facts/bounding_box`, twice);
+- 1 kernel refusal (a fillet radius refused on 4 of 12 edges);
+- 1 `edit_script` replacement whose text occurred 0 times;
+- 1 reset-variation refusal that named the 2.63 mm lift.
+
+**Next, as pre-registered:** `ot10-biped-2`, on the frozen biped prompt,
+with nothing changed.
+
 ## A4: the refusal census, every ot10 transcript
 
 **None of A4's four refusal classes recurred in any ot10 product-agent
-transcript: 0 of 195 refused calls across 15 transcripts.** That covers the
-four counted A5 designs, the nine failed attempts, and the two aborted
+transcript: 0 of 201 refused calls across 16 transcripts.** That covers the
+five counted A5 designs, the nine failed attempts, and the two aborted
 turns that were not attempts. The count is mechanical.
 [`runner/refusals.py`](runner/refusals.py) reads each session transcript
 (local to this machine, never committed), takes every tool result marked
@@ -1524,6 +1613,7 @@ emits today, for all four classes.
 | `ot10-hexapod-10` | counted | 0 | 0 | 0 | 0 | 15 | 6 | 3 | 2 | 3 | 1 |
 | `ot10-hexapod-11` | counted | 0 | 0 | 0 | 0 | 12 | 0 | 2 | 2 | 2 | 6 |
 | `ot10-quadruped-3` | counted | 0 | 0 | 0 | 0 | 10 | 0 | 2 | 3 | 2 | 3 |
+| `ot10-quadruped-4` | counted | 0 | 0 | 0 | 0 | 6 | 0 | 1 | 1 | 2 | 2 |
 | `ot10-hexapod-1` | failed attempt | 0 | 0 | 0 | 0 | 33 | 19 | 2 | 5 | 1 | 6 |
 | `ot10-hexapod-2` | failed attempt | 0 | 0 | 0 | 0 | 10 | 3 | 2 | 0 | 2 | 3 |
 | `ot10-hexapod-3` | failed attempt | 0 | 0 | 0 | 0 | 20 | 4 | 2 | 7 | 2 | 5 |
@@ -1535,17 +1625,17 @@ emits today, for all four classes.
 | `ot10-quadruped-2` | failed attempt | 0 | 0 | 0 | 0 | 11 | 0 | 3 | 4 | 0 | 4 |
 | `ot10-hexapod-9` | not an attempt | 0 | 0 | 0 | 0 | 4 | 0 | 2 | 0 | 2 | 0 |
 | `ot10-quadruped-1` | not an attempt | 0 | 0 | 0 | 0 | 2 | 0 | 2 | 0 | 0 | 0 |
-| **all** | 15 transcripts | **0** | **0** | **0** | **0** | 195 | 44 | 34 | 31 | 24 | 62 |
+| **all** | 16 transcripts | **0** | **0** | **0** | **0** | 201 | 44 | 35 | 32 | 26 | 64 |
 
-"Rest" is the 62 refusals outside those eight columns. They are: 15
-`Cannot retire` refusals of an output that a component still linked, 10
-`edit_script` replacements that did not match, 8 reset-variation refusals
+"Rest" is the 64 refusals outside those eight columns. They are: 15
+`Cannot retire` refusals of an output that a component still linked, 11
+`edit_script` replacements that did not match, 9 reset-variation refusals
 that named the lift, 3 `PROJECT_OUTPUTS_DROPPED` guards, and 26 others. The
 26 are single-cause API, MJCF, publication and worker refusals, plus one
 call to a tool name that does not exist. Three of them are worker crashes
 in `ot10-hexapod-11`. After the CPU limit (44), the
-recurring costs are sandbox refusals (34: `dir`, `getattr`, `hasattr`,
-imports, private attributes) and guessed JSON pointers (24). Each one costs
+recurring costs are sandbox refusals (35: `dir`, `getattr`, `hasattr`,
+`type`, imports, private attributes) and guessed JSON pointers (26). Each one costs
 turns. None is one of the four classes A4 closed.
 
 ## Baseline

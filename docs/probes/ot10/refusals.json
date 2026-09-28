@@ -330,6 +330,58 @@
         }
       ]
     },
+    "ot10-quadruped-4": {
+      "status": "counted",
+      "transcript_sha256": "ce712fc213c4ef902530b47fb254749653dffb933f471a019715c37fcbbac885",
+      "refused": 6,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 1,
+        "kernel": 1,
+        "json_pointer": 2,
+        "edit_replacement": 1,
+        "outputs_dropped": 0,
+        "retire_linked_output": 0,
+        "reset_variation": 1,
+        "other": 0
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'type' is not defined"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts/bounding_box'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fillet: 4 of 12 edge(s) refused the requested radius."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'task' could not be built: The reset variation in task output 'task' drives the mechanism 2.63 mm further into the floor than its reset pose already sits, at an azimuth of 45 degrees."
+        }
+      ]
+    },
     "ot10-hexapod-1": {
       "status": "failed_attempt",
       "transcript_sha256": "7d2dce34be7cf29fa8eb7409f322dd085c87d9a066f58c27f18f5499d884fdb7",

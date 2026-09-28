@@ -12,7 +12,8 @@ passes every proxy and every fit gate and carries its electronics. All
 nine misses are published below with their scores. A pre-registered
 confirmation round then started, one more turn per body plan (see
 [`README.md`](README.md)). Its first turn, `ot10-hexapod-11`, meets the
-bar at 14. `ot10-quadruped-4` and `ot10-biped-2` have not run yet. The
+bar at 14. Its second, `ot10-quadruped-4`, meets it at 16, the highest
+total of any counted design. `ot10-biped-2` has not run yet. The
 round adds turns and does not undo the nine misses. One W2 run, `w2-2` on `ot10-quadruped-3`, has
 `walked = true` under the unchanged thresholds. It went 1.44 m forward in
 10 s, upright the whole time. The run before it, `w2-1`, did not walk.
@@ -44,12 +45,12 @@ rubric, the bar and the procedure never changed.
 
 | | hex3 (baseline) | best after |
 |---|---|---|
-| judged total | **2** of 21 | **16** (`ot10-quadruped-2`, `ot10-hexapod-5`); **15** and **14** for the four that meet the bar |
+| judged total | **2** of 21 | **16** (`ot10-quadruped-2`, `ot10-hexapod-5`, and `ot10-quadruped-4`, which meets the bar); **16**, **15** and **14** for the five that meet the bar |
 | T1 shell | 0 | 2 on every design except hexapod 8 |
 | T5 face | 0 | 2 on every counted design |
-| P1 hardware silhouette | 0.373, over its bar | 0.0001 to 0.078 over all thirteen attempts |
+| P1 hardware silhouette | 0.373, over its bar | 0.0001 to 0.078 over all fourteen attempts |
 | P2 sharp printed edges | 0.189 | 0.040 to 0.508 (hexapod 1 is the only one over the bar) |
-| P3 materials | 2 | 3 on eleven attempts, 2 on two |
+| P3 materials | 2 | 3 on twelve attempts, 2 on two |
 | render | flat, orthographic | studio hero, 1024 px |
 
 | view | before | after |
@@ -84,6 +85,7 @@ fit was complete and passing.
 | `ot10-hexapod-8` | failed | 1 | 1 | 2 | 1 | 0 | 1 | 2 | 8 | 0.020 | 0.097 | 2 | yes | no | no | misses: total, T5, swept, electronics |
 | `ot10-hexapod-10` | counted | 2 | 2 | 1 | 2 | 2 | 3 | 2 | 14 | 0.0026 | 0.1415 | 3 | yes | yes | yes | **meets the bar** |
 | `ot10-hexapod-11` | counted | 2 | 3 | 1 | 2 | 2 | 2 | 2 | 14 | 0.0186 | 0.2285 | 3 | yes | yes | yes | **meets the bar** |
+| `ot10-quadruped-4` | counted | 2 | 3 | 3 | 1 | 2 | 3 | 2 | 16 | 0.0022 | 0.1624 | 3 | yes | yes | yes | **meets the bar** |
 <!-- attempts:end -->
 
 Two turns started and are not attempts: `ot10-quadruped-1` and
@@ -118,7 +120,10 @@ frozen prompts and nine failed, so the criterion fails by its letter.
 Only the biped met the bar on its first and only turn. The quadruped met
 it on its second counted turn and the hexapod on its ninth. Those three,
 `ot10-biped-1`, `ot10-quadruped-3` and `ot10-hexapod-10`, are the highest
-bar this run reached. They are not a redefinition of success.
+bar this run reached. They are not a redefinition of success. The
+pre-registered confirmation round has since added two more turns, and both
+meet the bar: `ot10-hexapod-11` at 14 and `ot10-quadruped-4` at 16. They
+add to this record. They do not undo the nine misses.
 
 ## The renders, sheets and videos
 
@@ -126,7 +131,7 @@ bar this run reached. They are not a redefinition of success.
 |---|---|---|
 | hero and five `look` views for each attempt | A2, A5 | `ot10-<project>-hero.png`, `ot10-<project>-look_<view>.png`, one set per row above |
 | hex3 in the studio renderer | A2 | [`hex3-studio_hero.png`](hex3-studio_hero.png), [`hex3-studio_iso.png`](hex3-studio_iso.png) |
-| concept sheets of the four designs that meet the bar | A6 | [`ot10-biped-1-sheet.png`](ot10-biped-1-sheet.png), [`ot10-quadruped-3-sheet.png`](ot10-quadruped-3-sheet.png), [`ot10-hexapod-10-sheet.png`](ot10-hexapod-10-sheet.png), [`ot10-hexapod-11-sheet.png`](ot10-hexapod-11-sheet.png) |
+| concept sheets of the five designs that meet the bar | A6 | [`ot10-biped-1-sheet.png`](ot10-biped-1-sheet.png), [`ot10-quadruped-3-sheet.png`](ot10-quadruped-3-sheet.png), [`ot10-hexapod-10-sheet.png`](ot10-hexapod-10-sheet.png), [`ot10-hexapod-11-sheet.png`](ot10-hexapod-11-sheet.png), [`ot10-quadruped-4-sheet.png`](ot10-quadruped-4-sheet.png) |
 | Finch rollout, before and after the studio look | W1 | [`w1-finch-rollout-scene.png`](w1-finch-rollout-scene.png), [`w1-finch-rollout-studio.png`](w1-finch-rollout-studio.png) |
 | `w2-1` rollout, floor fixed | W1 | [`w1-quadruped-rollout-reach-floor.png`](w1-quadruped-rollout-reach-floor.png), [`w1-quadruped-rollout-studio.png`](w1-quadruped-rollout-studio.png) |
 | `w2-2` rollout | W1, W2 | [`w2-2-quadruped-rollout-studio.png`](w2-2-quadruped-rollout-studio.png) |
@@ -165,8 +170,8 @@ under *W2*.
 
 ## A4: refusals
 
-None of the four hex refusal classes recurred: 0 of 195 refused calls,
-across all 15 ot10 transcripts. The count is mechanical, and
+None of the four hex refusal classes recurred: 0 of 201 refused calls,
+across all 16 ot10 transcripts. The count is mechanical, and
 [`refusals.json`](refusals.json) pins it.
 
 ## Remaining defects
@@ -174,12 +179,12 @@ across all 15 ot10 transcripts. The count is mechanical, and
 Each of these is measured, and none is fixed in this run.
 
 1. **The worker's CPU limit is the largest cost left.** It accounts for
-   44 of the 195 refusals, with 6 of them in `ot10-hexapod-10`. ADR-428
+   44 of the 201 refusals, with 6 of them in `ot10-hexapod-10`. ADR-428
    showed that the sweep is not what spends the CPU.
-2. **Sandbox refusals**: 34. The agent reaches for `dir`, `getattr`,
-   `hasattr`, imports and private attributes, and each refusal costs a
+2. **Sandbox refusals**: 35. The agent reaches for `dir`, `getattr`,
+   `hasattr`, `type`, imports and private attributes, and each refusal costs a
    turn.
-3. **Guessed JSON pointers**: 24 refusals where the agent guessed a
+3. **Guessed JSON pointers**: 26 refusals where the agent guessed a
    pointer into a result.
 4. **`w2-1` did not walk.** It stood, drifted sideways and tipped at
    4.36 s. Its task pays about twice as much for surviving as for
@@ -188,7 +193,9 @@ Each of these is measured, and none is fixed in this run.
 5. **The rollout seed is `null`** in the script and the trace, for both
    runs. The review records it as it found it.
 6. **The weakest traits are joints and form** (T3, T4). Both counted
-   hexapods score 1 on T3, and the biped scores 1 on T4. No design scores
+   hexapods score 1 on T3. The biped and `ot10-quadruped-4` score 1 on T4:
+   the quadruped's legs are constant-thickness plates on a filleted box, even
+   though it is the first counted design to score 3 on T3. No design scores
    3 on T1, so every design still shows some hardware.
 7. **The long-term ladder is not started.** That covers a Cadex signature
    that holds across body plans, `hip_pitch` ranges, stalls, and
