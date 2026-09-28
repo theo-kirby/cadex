@@ -5701,6 +5701,14 @@ def _linked_source_shape(component: Any) -> Any | None:
     return local
 
 
+def _cpu_stage(stage: str) -> None:
+    """Mark an assembly stage in the worker's CPU ledger (ADR-436)."""
+
+    from cadex_domain_worker import cpu_stage
+
+    cpu_stage(stage)
+
+
 def _measure_clearance(
     components: Mapping[str, Any], *, solved: bool = True,
     floors: Mapping[frozenset, float] | None = None,
@@ -5755,14 +5763,19 @@ def _measure_clearance(
                         row.update(distance_mm=gap, common_volume_mm3=0.0, culled=True)
                         rows.append(row)
                         continue
-                distance = float(a.distToShape(b)[0])
+                # Each exactly measured pair is its own ledger stage, so a CPU
+                # refusal names the pairs that spent it (ADR-436).
+                _cpu_stage(f"static fit {first} / {second}")
+                # The shells measure the solids' distance, faster (ADR-425).
+                distance = (float(_boundary_distance(a, b)) if a.Solids and b.Solids
+                            else float(a.distToShape(b)[0]))
                 if not math.isfinite(distance) or distance < 0:
                     raise ValueError("Invalid minimum distance")
                 row["distance_mm"] = distance
                 # Surface-only geometry does not establish solid intersection.
                 if not a.Solids or not b.Solids:
                     raise ValueError("Common volume requires solid components")
-                volume = float(a.common(b).Volume) if a.BoundBox.intersect(b.BoundBox) else 0.0
+                volume = _common_volume(a, b, distance) if a.BoundBox.intersect(b.BoundBox) else 0.0
                 if not math.isfinite(volume) or volume < 0:
                     raise ValueError("Invalid common volume")
                 row["common_volume_mm3"] = volume
@@ -5770,6 +5783,27 @@ def _measure_clearance(
                 row["error"] = str(exc)
             rows.append(row)
     return rows
+
+
+#: A pair measured further apart than this is disjoint, and shares no volume.
+_DISJOINT_DISTANCE_MM = 1e-3
+
+
+def _common_volume(first, second, distance):
+    """The two solids' common volume, proved zero when their distance is positive (ADR-436).
+
+    Two solids a measured distance apart cannot share volume, so the boolean
+    ``common`` is only run on a pair that touches or overlaps. On
+    ``ot10-hexapod-10`` the tub and the dome sit 2.4 mm apart across the
+    deck, their boxes overlap, and ``common`` on the two lofted shells ran
+    past 137 CPU-seconds without answering: the worker's whole 300 CPU-second
+    budget went on a volume the distance had already proved to be 0.0. At or
+    below :data:`_DISJOINT_DISTANCE_MM` the boolean still decides.
+    """
+
+    if distance > _DISJOINT_DISTANCE_MM:
+        return 0.0
+    return float(first.common(second).Volume)
 
 
 #: A static pair whose exact-geometry boxes are further apart than this is
@@ -5983,7 +6017,7 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
         if a.isNull() or b.isNull() or not a.Solids or not b.Solids:
             raise ValueError("sweep requires solid components")
         d = _boundary_distance(a, b)
-        v = float(a.common(b).Volume) if overlap else 0.0
+        v = _common_volume(a, b, d) if overlap else 0.0
         if not math.isfinite(d) or not math.isfinite(v) or min(d, v) < 0:
             raise ValueError("invalid native measurement")
         return d, v
@@ -6428,6 +6462,7 @@ def validate_and_solve_assembly(
     assembly.Label = str(assembly_properties.get("label") or assembly_output)
     joint_group = assembly.newObject("Assembly::JointGroup", "Joints")
 
+    _cpu_stage("assembly components")
     source_objects: dict[tuple[str, str], Any] = {}
     source_reconstructions: dict[tuple[str, str], dict[str, Any]] = {}
     components: dict[str, Any] = {}
@@ -6758,6 +6793,7 @@ def validate_and_solve_assembly(
             },
         )
 
+    _cpu_stage("assembly solve")
     document.recompute()
     solver_code = int(assembly.solve(False))
     document.recompute()
@@ -6819,6 +6855,7 @@ def validate_and_solve_assembly(
                      **diagnostics},
         )
 
+    _cpu_stage("assembly static fit")
     clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved",
                                    floors=_declared_floors(assembly_properties, component_outputs))
     world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result,
@@ -6833,9 +6870,11 @@ def validate_and_solve_assembly(
     # with no step to sweep at, every joint short-circuits before any
     # geometry call, and an assembly with no limited joint reports complete
     # coverage of an empty set.
+    _cpu_stage("assembly swept fit")
     clearance_sweep = _measure_joint_sweeps(
         components, component_data, joint_data, clearance,
         sweep_steps, diagnostics["status"] == "solved")
+    _cpu_stage("assembly derived outputs")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
     if simulation_contract is not None:

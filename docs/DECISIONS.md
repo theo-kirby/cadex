@@ -28827,3 +28827,91 @@ or shell client moves, so `docs/INTEGRATION.md` and the packaged gate are
 unaffected. The overlay's two sentences that promised every pair and one
 row per joint now describe the view. The rubric, bar, judge and A5 prompts
 are untouched, and no A5 probe is re-scored.
+
+## ADR-436 — A CPU refusal names the stage that spent the budget, and fit stops intersecting pairs measured apart (2026-09-28)
+
+**Context.** `DOMAIN_CPU_LIMIT_EXCEEDED` was the largest refusal class still
+measured in ot10: 44 of 213 refusals, 6 of them in `ot10-hexapod-10`
+(`docs/probes/ot10/refusals.json`). `RLIMIT_CPU` ends the worker with
+SIGXCPU and no `result.json`. The refusal named the cap and nothing else,
+so the agent could only guess what to cut. All six hexapod-10 receipts
+died 90–101 s in, with the native solver's `MbD` lines already in stdout.
+Across the seven ot10 transcripts with CPU refusals, 27 of 45 matching
+results died after the solve and 18 before it.
+
+The first refused script (the agent's 12:40 `write_script`) was re-run on a
+`/tmp` copy of the project with a stage ledger and a per-pair timer:
+- One worker spent 299 CPU-s in 98 s.
+- Geometry took 119 CPU-s: `output tub` 75.7, `output dome` 20.7,
+  `output visor` 13.4.
+- The rest went to the **static fit**. `c_tub`/`c_deck` took 24 CPU-s, 16 of
+  them in `common`, and measured 0.0 mm³.
+- `c_tub`/`c_dome` measured 2.4 mm apart in 20 CPU-s, then spent over
+  137 CPU-s in `common` without answering. The two are lofted shells either
+  side of the deck, and their bounding boxes overlap.
+
+ADR-428's finding stands: the sweep's children carry their own limits, and
+the sweep did not spend this worker's CPU.
+
+**Decision.**
+1. **A pair measured apart is not intersected.** `_common_volume`
+   (`cadex_assembly_worker.py`) runs the boolean only when the pair's
+   distance is 0.001 mm or less. Otherwise it returns 0.0, which the
+   distance proves. The static fit and the sweep both use it.
+2. **The static fit measures distance the way the sweep does**, between the
+   boundary shells when that is exact (`_boundary_distance`, ADR-425).
+3. **The worker keeps a CPU ledger.** `cpu_stage` in
+   `cadex_domain_worker.py` rewrites `progress.json` in the staging
+   directory at every stage boundary, with the running stage and the five
+   costliest finished stages in `process_time`. The stages are:
+   - `script`;
+   - `output NAME`;
+   - `assembly components` and `assembly solve`;
+   - `assembly static fit`, then one `static fit A / B` per exactly
+     measured pair;
+   - `assembly swept fit` and `assembly derived outputs`;
+   - `partdesign bodies` and `display tessellation`.
+
+   The file is written between stages, never inside one, so it survives the
+   kill. `CADEX_XSCRIPT_DOMAIN_PROGRESS` names it in `worker_environment`.
+4. **The refusal names the cheaper path.** On SIGXCPU,
+   `_resource_signal_failure` reads the ledger. The message then says:
+   - which stage was running, and when it started;
+   - the finished stages that cost at least 1 CPU-s;
+   - that an `output NAME` stage is that shape's own construction, and a
+     `static fit A / B` stage is the exact check between two components
+     whose boxes come within 10 mm.
+
+   `observed.cpu_ledger` carries the ledger. With no ledger, the refusal is
+   unchanged.
+
+**Measured after.** The same script is still refused, and its build is now
+honestly over budget. Geometry takes about 115 CPU-s. The static fit
+measures the tub exactly against every part it houses, because the tub's
+box encloses them all. The refusal now reads:
+"It was in 'static fit c_tub / c_hip_servo_lr', which started 298.47
+CPU-seconds in. Costliest finished stages, in CPU-seconds: 'output tub'
+75.01, 'static fit c_tub / c_visor' 52.85, 'static fit c_tub / c_deck'
+24.27, 'static fit c_tub / c_pca9685' 23.68, 'output dome' 20.57."
+The agent found the tub by trial. It replaced `part.offset` with a lofted
+inner cage, and that build passed. Its next two builds, which added the
+boards inside the tub's box, were refused again. The ledger names that part
+in one refusal.
+
+The accepted `ot10-hexapod-10` script was rebuilt on a `/tmp` copy in 83 s.
+Its 1,326 static clearance rows are identical to those the old engine
+published, verdicts included.
+
+**Not changed.** The 300 CPU-s limit, the 10 mm cull, the fit thresholds
+and verdicts, and the sweep's budgets are unchanged. No protocol op or
+`OP_ARG_SPECS` entry moves: the ledger rides in `observed`, which the
+response spec already admits. The rubric, bar, judge and A5 prompts are
+untouched, and no probe is re-scored. The 18 refusals that died before the
+solve were not re-run, so their stages are unmeasured; the ledger will name
+them next time.
+
+**Regression.** `cadex_tests/test_cpu_ledger.py`. A pair 2.4 mm apart whose
+`common` would answer 5.0 must read 0.0 with no `common` call. That test,
+and the per-pair ledger stage, fail on the previous assembly worker. A real
+SIGXCPU kill of a process that marked `static fit c_tub / c_dome` must be
+refused with that stage named.

@@ -1388,6 +1388,16 @@ Source is validated before any worker runs (AST policy in
   child), so `RLIMIT_CPU` does not depend on the core count either: OCCT
   sizes its pools from the CPUs it can see, and on 32 of them the same
   pairwise fit cost three times the CPU-seconds (ADR-418).
+  **A CPU refusal names where the budget went** (ADR-436). The worker
+  rewrites `progress.json` in its staging directory at every stage boundary:
+  the script, each output's construction (`output NAME`), the assembly's
+  components, solve, each exactly measured static pair
+  (`static fit A / B`), the sweep and the derived outputs. It records the
+  running stage and the five costliest finished ones in `process_time`
+  (every thread's CPU, the unit the limit is charged in). On SIGXCPU the
+  refusal's message names the running stage and the costly stages, and
+  `observed.cpu_ledger` carries the ledger. A worker that wrote none is
+  refused with the message as it was before.
 - The worker executes the script ONCE, evaluates outputs per domain, and
   produces **detached** results (BREP and mesh artifacts, records, collected
   `param_specs`, per-output validations, the content digest) on the
@@ -1616,6 +1626,15 @@ distance, and its `common_volume_mm3` is 0.0, proved by the boxes. No
 verdict above can change, because every floor a culled pair is held to is
 below its bound. A reader applying its own larger floor reads such a row as
 undecided (`cadex clearance` says `unknown`), never as a breach.
+
+A near pair is measured the way the sweep measures one (ADR-436): its distance
+between the boundary shells, when that is exact (ADR-425), and its common
+volume by the boolean `common` **only when that distance is 0.001 mm or
+less**. Two solids a measured distance apart share no volume, so a pair apart
+reads 0.0 without the boolean. On `ot10-hexapod-10` the tub and the dome sat
+2.4 mm apart, and `common` on the two lofted shells ran past 137 CPU-seconds
+without answering. Rebuilt with this rule, the accepted `ot10-hexapod-10`
+reproduces all 1,326 of its static rows exactly.
 
 A pair joined by an **unsuppressed `fixed` joint is not an undeclared pair**
 (ADR-372) and is exempt from that 0.1 mm: welding two components is the design

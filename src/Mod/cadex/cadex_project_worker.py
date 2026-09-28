@@ -46,6 +46,7 @@ from cadex_domain_worker import (
     _serialize_output,
     _write_json,
     _resource_limits,
+    cpu_stage,
 )
 from cadex_project_api import (
     EVALUATION_ORDER,
@@ -694,6 +695,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         "XScriptProjectCandidate", "XScript Project Candidate", True, True
     )
     try:
+        cpu_stage("script")
         result, stdout, budget = _execute_project_source(
             source=source,
             document_name=str(request.get("document_name") or "XScriptDocument"),
@@ -724,6 +726,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
 
         def serialize(name: str, value: Any, domain: str) -> dict[str, Any]:
             nonlocal output_index
+            cpu_stage(f"output {name}")
             payload = _payload(value)
             item = _serialize_output(
                 root,
@@ -768,6 +771,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             expected = [
                 {"name": name, "type": "solid"} for name in grouped["partdesign"]
             ]
+            cpu_stage("partdesign bodies")
             built, partdesign_validation = validate_and_build_partdesign(
                 document,
                 dict(grouped["partdesign"]),
@@ -785,6 +789,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         for name, value in grouped["mesh"].items():
             from cadex_mesh_worker import serialize_mesh_output
 
+            cpu_stage(f"output {name}")
             payload = _payload(value)
             item = serialize_mesh_output(
                 root,
@@ -832,6 +837,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         _attach_routes(outputs)
         display_request = validate_display_request(request.get("display"))
         if display_request is not None:
+            cpu_stage("display tessellation")
             generate_display_artifacts(root, outputs, display_request)
         return {
             "ok": True,

@@ -985,6 +985,7 @@ def worker_environment(staging: str | Path) -> dict[str, str]:
             "TMPDIR": staging,
             "CADEX_XSCRIPT_DOMAIN_REQUEST": str(Path(staging) / "request.json"),
             "CADEX_XSCRIPT_DOMAIN_RESULT": str(Path(staging) / "result.json"),
+            "CADEX_XSCRIPT_DOMAIN_PROGRESS": str(Path(staging) / "progress.json"),
         }
     )
     if sys.platform == "win32":
@@ -1032,12 +1033,63 @@ def _resource_signal_failure(
     if known is None:
         return None
     code, template = known
+    message = template.format(seconds=float(prepared["timeout_seconds"]))
+    observed = dict(process)
+    if code == "DOMAIN_CPU_LIMIT_EXCEEDED":
+        ledger = _cpu_ledger(Path(str(prepared.get("staging") or "")))
+        if ledger is not None:
+            message = f"{message} {_cpu_ledger_sentence(ledger)}"
+            observed["cpu_ledger"] = ledger
     return _failure(
         str(prepared["tool_name"]),
         code,
         "external_process",
-        template.format(seconds=float(prepared["timeout_seconds"])),
-        observed=process,
+        message,
+        observed=observed,
+    )
+
+
+def _cpu_ledger(staging: Path) -> dict[str, Any] | None:
+    """The worker's last CPU ledger, or None when it never wrote one (ADR-436)."""
+
+    if not str(staging):
+        return None
+    try:
+        ledger = json.loads((staging / "progress.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    current = ledger.get("current") if isinstance(ledger, Mapping) else None
+    if not isinstance(current, Mapping) or not str(current.get("stage") or ""):
+        return None
+    finished = [
+        {"stage": str(item.get("stage")), "cpu_seconds": float(item.get("cpu_seconds") or 0.0)}
+        for item in list(ledger.get("finished") or [])
+        if isinstance(item, Mapping) and item.get("stage")
+    ]
+    return {
+        "current": {
+            "stage": str(current["stage"]),
+            "started_cpu_seconds": float(current.get("started_cpu_seconds") or 0.0),
+        },
+        "finished": finished,
+    }
+
+
+def _cpu_ledger_sentence(ledger: Mapping[str, Any]) -> str:
+    current = ledger["current"]
+    sentence = (
+        f"It was in {current['stage']!r}, which started {current['started_cpu_seconds']:g} "
+        "CPU-seconds in."
+    )
+    costly = [item for item in ledger["finished"] if item["cpu_seconds"] >= 1.0]
+    if costly:
+        spent = ", ".join(f"{item['stage']!r} {item['cpu_seconds']:g}" for item in costly)
+        sentence += f" Costliest finished stages, in CPU-seconds: {spent}."
+    return sentence + (
+        " Make the named stages cheaper rather than retrying: an 'output NAME' "
+        "stage is that shape's own construction, and a 'static fit A / B' stage "
+        "is the exact fit check between those two components, run because their "
+        "boxes come within 10 mm."
     )
 
 
