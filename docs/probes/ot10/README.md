@@ -1718,3 +1718,114 @@ A policy that does not walk is reported as an incomplete result, with a
 diagnosis and a next step. The thresholds do not move, `w2-1`'s survival
 defect (finding 3) is not fixed inside this run, and no third run starts
 until this one is diagnosed.
+
+### W2 run 2 (`w2-2`): walked 1.44 m upright, and the verdict is still `walked = false`
+
+**`walked = false`.** This is an honest incomplete result under the
+pre-registered rule. Nothing was re-run, and no threshold moved. The only
+finding against the gait is `training_survival`, and the diagnosis below
+shows that it reads a measurement artifact, not the policy.
+
+The walk started at 15:49:25Z on `1c4600e1`, detached. The engine/source
+comparison was `match` (57 files). The exported task bundle was
+byte-identical to `w2-1`'s (sha256 `b0913fa0fb93…`), so the warm start ran
+on the unchanged task and no `--init-from-task-change` was needed. The walk
+exited 0 after 2,157.5 s. All legs passed: train 1,866.3 s, declare
+59.7 s, roll-out 126.7 s, then review. The trainer ran all 1,000
+iterations on the GPU, and the collapse detector never fired. The policy
+(`7a4e8c233214…`, witness agreement 1.3e-7) was stored, declared by the
+walk's own script rewrite, verified and rolled out at revision
+`84ff4c98adab…`, digest `d67ac96c2fe0…`. The review's
+`comparison.rollout_seed` is `null` and `training_seed` is 0, as
+pre-registered. The run's files stay in the copy's `runs/w2-2/` and its
+project git, never in this repository.
+
+**Training curve.** Each value is the mean of the published curve's
+samples in that bucket (about 51 per bucket; the curve keeps 512 of 1,000
+iterations). The reward starts at 1.61 rather than `w2-1`'s final 2.62
+because the warm start carries the actor only; the critic starts fresh.
+
+| iterations | reward/step | mean episode steps (trainer's figure) |
+|---|---|---|
+| 0–99 | 2.283 | 4,609.8 |
+| 100–199 | 2.482 | 2,385.6 |
+| 200–299 | 2.532 | 1,855.6 |
+| 300–399 | 2.555 | 1,952.2 |
+| 400–499 | 2.595 | 1,721.9 |
+| 500–599 | 2.615 | 1,691.3 |
+| 600–699 | 2.634 | 1,452.9 |
+| 700–799 | 2.647 | 1,504.5 |
+| 800–899 | 2.650 | 1,633.6 |
+| 900–999 | 2.662 | 1,450.9 |
+
+The best iteration was 998, at 2.697.
+
+**The gait verdict.** Rollout seed from the script, 501 frames, the full
+10 s episode:
+
+| finding | measured | threshold |
+|---|---|---|
+| tipped | never; maximum tilt 15.9°, final 4.1° | 45° |
+| upright | 100% of frames | tilt ≤ 30° |
+| terminated | no; the episode ran to its 500-step horizon | — |
+| travel | 1,474.0 mm planar in 10 s (147 mm/s): +1,443.8 mm in X (forward), +297.0 mm in Y | — |
+| heading | between −19.5° and +30.5°, final +16.3° | turned < 90° |
+| training survival | **32 of 500 steps at the last iteration, 0.06: fails** | 0.90 |
+| reward totals | alive 1,000.0, upright 496.1, speed error −651.3, sideways −151.1, yaw rate −79.3; total 614.4 (`w2-1`: 358.2) | — |
+
+The feet step rather than slide. Each foot's height was read from the
+trace (the foot solid's centre, carried by its placement). Relative to its
+own 5th-percentile height, the front feet rise up to 46 and 54 mm and
+cross a 3 mm lift line 48 and 52 times. The rear feet rise up to 26 and
+19 mm and cross it 100 and 124 times. It overshoots the 80 mm/s target at
+about 147 mm/s, which is where most of the speed-error total comes from.
+
+W1's video of this policy on this model was rendered with
+`python -m cadex_cli.video --project <copy> --run w2-2`:
+
+| Run | Revision | Policy | Sim s | Frames | Triangles read → drawn | Bound s | Render s | Materials |
+|---|---|---|---|---|---|---|---|---|
+| `w2-2` | `84ff4c98adabb6e5` | `7a4e8c233214341e` | 10.0 | 101 at 10 fps, 512 px | 2,528,456 → 86,200 (0.586 mm cell) | 300 | 153.9 | declared, from `review/render/<revision>/summary.json`; `c_floor` omitted as environment |
+
+The webm is `rollout-e64ac61844fc….webm`, 322,440 bytes, in the copy's
+`runs/w2-2/`. Its strip, frames 0, 50 and 100 decoded from the webm, is
+[`w2-2-quadruped-rollout-studio.png`](w2-2-quadruped-rollout-studio.png)
+(245 KB). It shows the body level at 0, 5 and 10 s with the legs at
+different points in the stride. The dashboard playback check was not
+repeated for this video; W1's Chromium check covered `w2-1`'s.
+
+**Diagnosis.**
+1. **The one failing finding measures the time limit, not survival.**
+   The trainer's `episode_steps` is `unroll × envs / endings`, where
+   `endings` counts every `done` in the batch (`done = terminated or timeout`), **including time-limit
+   truncations** (`training/cadex_train.py`, the mean-episode-length
+   block). With the default unroll of 20 and a 500-step horizon, every
+   25th iteration's batch ends exactly on a horizon boundary. Envs that
+   have not fallen since they last reset together truncate together there.
+   Iteration 999 is always such an iteration when the budget is 1,000.
+   The published curve shows it for both runs. For every sampled
+   iteration where `(i + 1) % 25 == 0`, `w2-2` reads 30.7–31.9 and
+   `w2-1` 204.8–213.3. Every other sampled iteration reads at least
+   787.7 in `w2-2` (median 1,517) and at least 350.1 in `w2-1` (median
+   525). A reading of 31.9 means about 1,285 of 2,048 environments ended
+   in that batch. Here that is mostly envs reaching the horizon together,
+   the opposite of "ended early". `training_survival` reads only the
+   last entry, so it reads this artifact every time. This is `w2-1`'s
+   finding 3, now with its mechanism named.
+2. **The roll-out alone meets every other gait threshold.** It did not tip
+   or terminate, stayed upright for all 501 frames, turned less than 90°,
+   and went 1.44 m forward in the full 10 s episode.
+3. **Warm-starting fixed what `w2-1` lacked.** `w2-1` stood, drifted
+   sideways and tipped at 4.36 s. Another 1,000 iterations on the
+   unchanged task produced forward travel 76 times greater (1,443.8 mm
+   against 19.0 mm). The survival-over-progress weighting from `w2-1`'s
+   diagnosis delayed the gait but did not prevent it.
+
+**Next step.** Fix the survival measurement, not the threshold. In its own
+unit, with a regression test that fails on the current source, make
+`training_survival` count only true terminations (the trainer already
+separates `terminals` from `dones`). Alternatively, read survival over a
+trailing window that no horizon boundary can dominate. Keep the 0.90 bar.
+Then re-review `w2-1` and `w2-2` from their stored artifacts under the
+fixed check. That needs no retraining, and it re-scores both runs. Until
+that lands, W2's recorded verdict is `walked = false`.
