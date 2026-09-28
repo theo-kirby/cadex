@@ -1305,6 +1305,63 @@
         }
       ]
     },
+    "ot10-biped-2": {
+      "status": "failed_attempt",
+      "transcript_sha256": "22a0bf495029b7479d8fc5621d34fc977d4d38b35075fcd23631e34e8c6b219d",
+      "refused": 7,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 0,
+        "kernel": 0,
+        "json_pointer": 1,
+        "edit_replacement": 0,
+        "outputs_dropped": 0,
+        "retire_linked_output": 1,
+        "reset_variation": 1,
+        "other": 4
+      },
+      "calls": [
+        {
+          "tool": "inspect",
+          "failure_code": "",
+          "error": "<tool_use_error>Error: No such tool available: inspect</tool_use_error>"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "Task output 'task' could not be built: The reset variation in task output 'task' drives the mechanism 4.6 mm further into the floor than its reset pose already sits, at an azimuth of 45 degrees."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/revision'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "No native publisher exists for output type 'actuator'."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "PUBLICATION_UNTAGGED_OBJECT: the document contains objects the project script does not own: ['Joints', 'Origin', 'Origin001', 'VibeAssembly_project_assembly', 'VibeAssembly_project_assembly_Dependenci"
+        },
+        {
+          "tool": "rebuild",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "Cannot retire XScript output 'floor'; human-created or foreign document objects still reference it: [{\"owner_name\": \"VibeAssembly_project_c_floor001\", \"owner_type\": \"App::Link\", \"property\": \"LinkedObj"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_PUBLICATION_FAILED",
+          "error": "PUBLICATION_UNTAGGED_OBJECT: the document contains objects the project script does not own: ['Joints', 'Origin', 'Origin001', 'VibeAssembly_project_assembly', 'VibeAssembly_project_assembly_Dependenci"
+        }
+      ]
+    },
     "ot10-hexapod-9": {
       "status": "not_an_attempt",
       "transcript_sha256": "49c2b34addcf094793c97430df8932c6a142e9a5195ee6a9516048ea1b6dc388",

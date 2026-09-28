@@ -1,0 +1,216 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "ddcb961f65ba033dbc8d4f52b62b40f6013b81705bec2276e48668f786c25ebc"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "f77d914685432fbdaa775776fd18032ba9c03b7cdc3bb638a973722911b1c748"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "89347cabb0eb1c035fab5e3e8ac2d8f950e2869436174e4a60151f602324794d"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "14419205cdee4518f3cd1b310fe4a93023ff3a754d3d0998cec03e1c06d368bf"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "32cf1aa20b8acfeb54525d4d83189c1979b07e04d4690e04f636cd5836b8c1b6"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "7b21921059c4797ba8fcec10dbbe301a8337a59e26ae32ae80999f41de14dc3e"
+    }
+  ],
+  "medians": {
+    "T1": 0,
+    "T2": 1,
+    "T3": 0,
+    "T4": 0,
+    "T5": 0,
+    "T6": 0,
+    "T7": 1
+  },
+  "total": 2,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 0,
+          "reason": "Nothing is enclosed: the robot is four bare servo-sized blocks with mounting tabs and screw holes in plain view, and there is no shell at all."
+        },
+        "T2": {
+          "score": 1,
+          "reason": "It uses four flat colours (orange, blue, green and purple), one per part, so they do not follow any shell, mechanism or accent roles."
+        },
+        "T3": {
+          "score": 0,
+          "reason": "There are no visible joints; rotation axes are suggested only by plain holes in rectangular tabs, with no bosses, rings or caps."
+        },
+        "T4": {
+          "score": 0,
+          "reason": "Every part is a sharp-edged rectangular box or flat tab with no fillets or soft forms."
+        },
+        "T5": {
+          "score": 0,
+          "reason": "The robot has no face and no readable front, so the block stack could be facing any direction."
+        },
+        "T6": {
+          "score": 0,
+          "reason": "It is a flat, arbitrary stack of blocks with no legs, no taper and no feet."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The isometric views are shaded on a gradient backdrop with a soft shadow, but half the views are flat unlit orthographic shots and there are z-fighting artefacts on the front face."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 0, \"reason\": \"Nothing is enclosed: the robot is four bare servo-sized blocks with mounting tabs and screw holes in plain view, and there is no shell at all.\"}, \"T2\": {\"score\": 1, \"reason\": \"It uses four flat colours (orange, blue, green and purple), one per part, so they do not follow any shell, mechanism or accent roles.\"}, \"T3\": {\"score\": 0, \"reason\": \"There are no visible joints; rotation axes are suggested only by plain holes in rectangular tabs, with no bosses, rings or caps.\"}, \"T4\": {\"score\": 0, \"reason\": \"Every part is a sharp-edged rectangular box or flat tab with no fillets or soft forms.\"}, \"T5\": {\"score\": 0, \"reason\": \"The robot has no face and no readable front, so the block stack could be facing any direction.\"}, \"T6\": {\"score\": 0, \"reason\": \"It is a flat, arbitrary stack of blocks with no legs, no taper and no feet.\"}, \"T7\": {\"score\": 1, \"reason\": \"The isometric views are shaded on a gradient backdrop with a soft shadow, but half the views are flat unlit orthographic shots and there are z-fighting artefacts on the front face.\"}}",
+      "session_id": "f325e38d-7c3e-4f94-a2da-414e9eff4da9",
+      "duration_ms": 17411,
+      "num_turns": 17,
+      "total_cost_usd": 0.11705120000000001,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2130,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.11705120000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 429,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 0,
+          "reason": "There is no enclosure at all; the robot is a bare stack of servo-sized rectangular blocks with mounting tabs in full view."
+        },
+        "T2": {
+          "score": 1,
+          "reason": "It uses four colours (orange, blue, purple, green), apparently one per part rather than by shell, mechanism or accent role."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "The only readable rotation axes are plain holes in flat servo-style mounting tabs, which is unstyled bracket hardware rather than round bosses or caps."
+        },
+        "T4": {
+          "score": 0,
+          "reason": "Every part is a sharp-edged rectangular box or flat tab with no fillets or soft primitives."
+        },
+        "T5": {
+          "score": 0,
+          "reason": "There is no face, and the symmetrical block cluster gives no way to tell which way is the front."
+        },
+        "T6": {
+          "score": 0,
+          "reason": "The layout is an arbitrary cluster of blocks with no legs, no taper and no feet."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The hero views have a gradient backdrop and a soft shadow, but the shadow floats below the part rather than touching it, the angle is a high isometric view, and three of the six images are flat, unlit orthographic views."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 0, \"reason\": \"There is no enclosure at all; the robot is a bare stack of servo-sized rectangular blocks with mounting tabs in full view.\"}, \"T2\": {\"score\": 1, \"reason\": \"It uses four colours (orange, blue, purple, green), apparently one per part rather than by shell, mechanism or accent role.\"}, \"T3\": {\"score\": 1, \"reason\": \"The only readable rotation axes are plain holes in flat servo-style mounting tabs, which is unstyled bracket hardware rather than round bosses or caps.\"}, \"T4\": {\"score\": 0, \"reason\": \"Every part is a sharp-edged rectangular box or flat tab with no fillets or soft primitives.\"}, \"T5\": {\"score\": 0, \"reason\": \"There is no face, and the symmetrical block cluster gives no way to tell which way is the front.\"}, \"T6\": {\"score\": 0, \"reason\": \"The layout is an arbitrary cluster of blocks with no legs, no taper and no feet.\"}, \"T7\": {\"score\": 1, \"reason\": \"The hero views have a gradient backdrop and a soft shadow, but the shadow floats below the part rather than touching it, the angle is a high isometric view, and three of the six images are flat, unlit orthographic views.\"}}",
+      "session_id": "20fe04f3-d822-4bec-ac24-7d6ef5b9fe15",
+      "duration_ms": 19013,
+      "num_turns": 17,
+      "total_cost_usd": 0.1193112,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2243,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.1193112,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 533,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 0,
+          "reason": "There is no enclosure: the robot is just servo-like rectangular blocks with mounting tabs and screw holes, all exposed and bolted together."
+        },
+        "T2": {
+          "score": 0,
+          "reason": "Four saturated colours (blue, orange, purple, green) are assigned one per part with no shell, mechanism or accent roles."
+        },
+        "T3": {
+          "score": 0,
+          "reason": "No rotation axis shows as a feature; the only hint of a joint is flat mounting tabs with bare holes, and there are no bosses, rings or caps."
+        },
+        "T4": {
+          "score": 0,
+          "reason": "Every part is a sharp-edged rectangular box or flat tab with no fillets or soft primitives."
+        },
+        "T5": {
+          "score": 0,
+          "reason": "There is no face, focal feature or front; the block stack reads the same from any direction."
+        },
+        "T6": {
+          "score": 0,
+          "reason": "It is an arbitrary cluster of blocks with no limbs, taper or feet, so there is no stance."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The hero views have a gradient backdrop and a soft shadow, but half the images are flat unlit orthographic views and visible z-fighting stripes spoil the shaded renders."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 0, \"reason\": \"There is no enclosure: the robot is just servo-like rectangular blocks with mounting tabs and screw holes, all exposed and bolted together.\"}, \"T2\": {\"score\": 0, \"reason\": \"Four saturated colours (blue, orange, purple, green) are assigned one per part with no shell, mechanism or accent roles.\"}, \"T3\": {\"score\": 0, \"reason\": \"No rotation axis shows as a feature; the only hint of a joint is flat mounting tabs with bare holes, and there are no bosses, rings or caps.\"}, \"T4\": {\"score\": 0, \"reason\": \"Every part is a sharp-edged rectangular box or flat tab with no fillets or soft primitives.\"}, \"T5\": {\"score\": 0, \"reason\": \"There is no face, focal feature or front; the block stack reads the same from any direction.\"}, \"T6\": {\"score\": 0, \"reason\": \"It is an arbitrary cluster of blocks with no limbs, taper or feet, so there is no stance.\"}, \"T7\": {\"score\": 1, \"reason\": \"The hero views have a gradient backdrop and a soft shadow, but half the images are flat unlit orthographic views and visible z-fighting stripes spoil the shaded renders.\"}}",
+      "session_id": "875b537d-9877-4904-861b-686f27a7d76f",
+      "duration_ms": 18849,
+      "num_turns": 17,
+      "total_cost_usd": 0.1199404,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2285,
+          "cacheReadInputTokens": 5642,
+          "cacheCreationInputTokens": 9137,
+          "webSearchRequests": 0,
+          "costUSD": 0.1199404,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 594,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

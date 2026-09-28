@@ -433,6 +433,33 @@ def test_a5_quadruped_attempt_4_the_confirmation_round_is_published_with_its_sco
     assert "`ot10-biped-2`, on the frozen biped prompt" in section
 
 
+def test_a5_biped_attempt_2_the_confirmation_round_misses_and_is_diagnosed():
+    score = json.loads((OT10 / "ot10-biped-2-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 2
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-biped-2-hero.png"] + [
+        f"ot10-biped-2-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    assert (OT10 / "ot10-biped-2-sheet.png").stat().st_size <= 300 * 1024
+    # A miss: under the bar, and no better than hex3.
+    assert score["total"] < CONTRACT["bar"]["total_min"]
+    assert score["total"] <= CONTRACT["baseline"]["total"]
+    assert "| biped attempt 2, median | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |" in README
+    heading = "## A5 attempt 2: the biped (`ot10-biped-2`), confirmation round"
+    assert README.index(
+        "## A5 attempt 4: the quadruped (`ot10-quadruped-4`), confirmation round") < README.index(heading)
+    section = README.partition(heading)[2].partition("\n## ")[0]
+    assert section.startswith("\n\n**Misses the bar on every item it could be measured on.")
+    assert "at revision `15f2bf9e`" in section
+    # The miss is diagnosed before anything changes, and the round is closed.
+    assert "runs with `UndoMode\n0`" in section and "ADR-429" in section
+    assert "**The confirmation round is complete: 2 of its 3 turns meet the bar.**" in section
+
+
 # -- A4: the refusal census --------------------------------------------------
 
 _rspec = importlib.util.spec_from_file_location("ot10_refusals", OT10 / "runner/refusals.py")
@@ -456,6 +483,7 @@ REFUSED = {
     "ot10-hexapod-7": ("failed_attempt", 9, 1),
     "ot10-hexapod-8": ("failed_attempt", 20, 3),
     "ot10-quadruped-2": ("failed_attempt", 11, 0),
+    "ot10-biped-2": ("failed_attempt", 7, 0),
     "ot10-hexapod-9": ("not_an_attempt", 4, 0),
     "ot10-quadruped-1": ("not_an_attempt", 2, 0),
 }
@@ -516,7 +544,7 @@ def test_the_refusal_census_is_pinned_and_rederives_from_its_file():
 
 def test_the_census_table_is_published_equal_to_its_file():
     assert refusals.table(CENSUS) in README
-    assert ("| **all** | 16 transcripts | **0** | **0** | **0** | **0** | 201 |"
+    assert ("| **all** | 17 transcripts | **0** | **0** | **0** | **0** | 208 |"
             in README)
 
 

@@ -54,17 +54,25 @@ def _section(project):
 
 
 def _gate(section, label):
-    """The first number, and the yes/no verdict cell, of a row in a section's gate table."""
+    """The first number, and the yes/no verdict cell, of a row in a section's gate table.
+
+    A proxy the render could not measure is written ``**unmeasured**``, and a
+    fit gate that was never measured has no number at all.
+    """
     [line] = [l for l in section.splitlines() if l.startswith(f"| {label} ")]
     cells = [c.strip() for c in line.strip("|").split("|")]
-    number = re.search(r"\d+(?:\.\d+)?", cells[1].replace(",", "")).group()
+    if cells[1].startswith("**unmeasured**"):
+        number = "unmeasured"
+    else:
+        found = re.search(r"\d+(?:\.\d+)?", cells[1].replace(",", ""))
+        number = found.group() if found else None
     return number, cells[-1].replace("*", "").split(",")[-1].strip()
 
 
 def test_every_scored_design_has_one_row_and_nothing_else_does():
     scored = {p.name.removesuffix("-score.json") for p in OT10.glob("ot10-*-score.json")}
     assert set(ROWS) == scored | {"hex3"}
-    assert len(scored) == 14
+    assert len(scored) == 15
 
 
 def test_each_rows_scores_equal_its_score_file():
@@ -83,7 +91,10 @@ def test_each_rows_proxies_and_gates_equal_the_probe_log():
         section = _section(project)
         for label, proxy in (("P1 ≤ 0.20", "P1"), ("P2 ≤ 0.25", "P2"), ("P3 2 or 3", "P3")):
             number, _ = _gate(section, label)
-            assert float(number) == float(row[proxy]), (project, proxy)
+            if number == "unmeasured" or row[proxy] == "unmeasured":
+                assert number == row[proxy], (project, proxy)
+            else:
+                assert float(number) == float(row[proxy]), (project, proxy)
         for label, gate in (("static fit", "static"), ("swept fit", "swept"),
                             ("electronics", "electronics")):
             assert _gate(section, label)[1] == row[gate], (project, gate)
@@ -103,10 +114,10 @@ def test_each_verdict_follows_from_the_frozen_bar():
         if int(row["total"]) < bar["total_min"] or int(row["total"]) <= baseline:
             misses.append("total")
         misses += [t for t in TRAITS if int(row[t]) < bar["trait_min"]]
-        if float(row["P1"]) > proxies["P1"]["max"]:
-            misses.append("P1")
-        if float(row["P2"]) > proxies["P2"]["max"]:
-            misses.append("P2")
+        # An unmeasured proxy cannot meet its bar.
+        for proxy in ("P1", "P2"):
+            if row[proxy] == "unmeasured" or float(row[proxy]) > proxies[proxy]["max"]:
+                misses.append(proxy)
         if not proxies["P3"]["min"] <= int(row["P3"]) <= proxies["P3"]["max"]:
             misses.append("P3")
         misses += [gate for gate in ("static", "swept", "electronics") if row[gate] != "yes"]
@@ -123,9 +134,9 @@ def test_each_verdict_follows_from_the_frozen_bar():
 
 def test_the_report_names_the_census_and_the_walk_verdicts():
     census = json.loads((OT10 / "refusals.json").read_text(encoding="utf-8"))
-    assert "0 of 201 refused calls" in REPORT and "all 16 ot10 transcripts" in REPORT
-    assert len(census["projects"]) == 16
-    assert sum(p["refused"] for p in census["projects"].values()) == 201
+    assert "0 of 208 refused calls" in REPORT and "all 17 ot10 transcripts" in REPORT
+    assert len(census["projects"]) == 17
+    assert sum(p["refused"] for p in census["projects"].values()) == 208
     assert "| `w2-1` | cold |" in REPORT and "`walked = false` |" in REPORT
     assert "**`walked = true`** |" in REPORT
     assert "`w2-2` | `84ff4c98adabb6e5` | `7a4e8c233214341e`" in README

@@ -1586,11 +1586,127 @@ The turn had 6 refused calls, out of 6 `write_script`, 7 `edit_script`,
 **Next, as pre-registered:** `ot10-biped-2`, on the frozen biped prompt,
 with nothing changed.
 
+## A5 attempt 2: the biped (`ot10-biped-2`), confirmation round
+
+**Misses the bar on every item it could be measured on. This is the
+confirmation round's third and last turn.** The turn did not publish a
+design. Its accepted revision is the agent's servo-orientation probe:
+four MG90S servos in four orientations, overlapping about one shaft, and
+one horn, with no assembly. The agent says so
+itself. It ran exactly as pre-registered. The frozen biped prompt was read
+from `contract.json` `a5.prompts.biped`. It ran once on the new project
+`ot10-biped-2`, with no continuation, `claude-opus-5-5` and
+`CADEX_EFFORT=medium`. It was launched detached (`setsid`) at
+2026-09-28T20:13:42Z at revision `15f2bf9e`, on the dev-tree engine. No
+product code changed between `c2ee7399` and that revision, only probe docs
+and tests. The turn ended
+on its own at 20:32:22Z (19 min), exit 0 with `ok: true`, at accepted
+revision `6447da4ae63e…` (digest `2a6fb6856355…`). It was rendered and
+judged from a `/tmp` copy of the project, so the project itself is
+unchanged.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| biped attempt 1, median | 2 | 3 | 3 | 1 | 2 | 2 | 2 | **15** |
+| biped attempt 2, call 1 | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 2 |
+| biped attempt 2, call 2 | 0 | 1 | 1 | 0 | 0 | 0 | 1 | 3 |
+| biped attempt 2, call 3 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1 |
+| biped attempt 2, median | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+
+Every raw reply is kept in
+[`ot10-biped-2-score.json`](ot10-biped-2-score.json), under the same rule
+as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | **2** | **no** |
+| no trait 0 | **T1, T3, T4, T5 and T6 are 0** | **no** |
+| above hex3 (2) | **2, equal to hex3** | **no** |
+| P1 ≤ 0.20 | **unmeasured**: the probe publishes no inventory, so purchased and printed cannot be told apart | **no** |
+| P2 ≤ 0.25 | **unmeasured**, for the same reason | **no** |
+| P3 2 or 3 | **4** (`#5B9DCD`, `#73B687`, `#B486C8`, `#E6974C`): no role is declared, so each object takes an index colour | **no** |
+| static fit | **unavailable**: the probe places no assembly component, so no pair was measured | **no** |
+| swept fit | **unavailable**: no published sweep | **no** |
+| electronics | **none published**: the accepted revision is four servos and a horn. No MJCF and no training task | **no** |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-biped-2-hero.png),
+[`iso`](ot10-biped-2-look_iso.png),
+[`iso_back`](ot10-biped-2-look_iso_back.png),
+[`front`](ot10-biped-2-look_front.png),
+[`right`](ot10-biped-2-look_right.png) and
+[`top`](ot10-biped-2-look_top.png). The same `cadex render` wrote its
+concept sheet, [`ot10-biped-2-sheet.png`](ot10-biped-2-sheet.png) (81 KB),
+which leaves mass and servo count blank because the revision has no
+dynamics model and no inventory. The whole command took 6 s of wall time,
+at 13,390 drawn triangles.
+
+**Diagnosis: the design did not fail on looks. A refused publish left its
+half-built assembly in the live document, and no later write could
+publish.** In order, from the transcript:
+1. The agent read the catalog specs and accepted a probe of four servos to
+   learn the placement convention. It named its concept before building:
+   a rounded torso split at a hood seam, a dark flush visor on the front,
+   bone shell over graphite mechanism, legs in printed cradles with shell
+   covers.
+2. Its first full build was refused at the task stage: the reset
+   variation drove the feet 4.6 mm into the floor. That refusal comes
+   from the worker and left the document as accepted.
+3. The corrected build passed geometry, assembly, MJCF export and the
+   task's reset check. It then stored each servo's actuator as a result
+   output (`result["act_…"] = sv.actuator(...)`). The assembly pass had
+   already created its components, links and `Joints` group when
+   `_native_type` raised `No native publisher exists for output type
+   'actuator'`. The refusal said `accepted_live_state_preserved: true`.
+4. That was false. Every later write, including an unchanged rebuild of
+   the accepted probe, was refused with `PUBLICATION_UNTAGGED_OBJECT`
+   naming 43 leftover objects (`VibeAssembly_project_c_*`, `j_*`,
+   `Joints`, `Origin001`, …), or with `Cannot retire XScript output
+   'floor'` because a leftover link still pointed at it. With no tool to
+   reset the live document, the agent stopped and reported the cause.
+
+**Measured, not inferred.** The document the daemon publishes into
+(`cadexd.py`, `App.newDocument("CadexdEphemeral")`) runs with `UndoMode
+0`. Under `FreeCADCmd`, a document opened that way, given
+`openTransaction`, `addObject` and `abortTransaction`, still holds the
+added object afterwards. So every `abortTransaction` in
+`CadexScriptedDomainPublication.py` restores nothing, and any publish that
+raises after it has created an object leaks that object. ADR-429 recorded
+this as a known gap ("`accepted_live_state_preserved: true` in a refusal
+is not guaranteed while `UndoMode` is 0"), and recorded the retire-linked
+refusal as "found, not fixed". `ot10-hexapod-8` wedged through the rename
+path, which ADR-429 closed; this turn wedged through the general path it
+left open. A second, smaller cause sits upstream: validation accepted an
+output of a type that no publisher can write, so the refusal came only
+after the assembly pass had started.
+
+**So the miss is a product defect, not a design verdict.** It is still a
+counted miss: the turn has an exit status and the pre-registration counts
+every turn. The next unit reproduces the leak with a regression test
+before any overlay or prompt change, as the round requires.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 7 refused calls, out of 7 `write_script`, 1 `rebuild`, 24
+`inspect`, 4 `describe_api` and no `look`:
+- 3 refusals from the leak: 2 `PUBLICATION_UNTAGGED_OBJECT` and 1
+  retirement refusal;
+- 1 publication refusal (`No native publisher exists for output type
+  'actuator'`), the one that caused the leak;
+- 1 reset-variation refusal that named the 4.6 mm lift;
+- 1 guessed JSON pointer (`/revision`);
+- 1 call to a tool name that does not exist (`inspect`, without its MCP
+  prefix).
+
+**The confirmation round is complete: 2 of its 3 turns meet the bar.**
+`ot10-hexapod-11` scored 14 and `ot10-quadruped-4` 16. `ot10-biped-2`
+misses, on a publication defect.
+
 ## A4: the refusal census, every ot10 transcript
 
 **None of A4's four refusal classes recurred in any ot10 product-agent
-transcript: 0 of 201 refused calls across 16 transcripts.** That covers the
-five counted A5 designs, the nine failed attempts, and the two aborted
+transcript: 0 of 208 refused calls across 17 transcripts.** That covers the
+five counted A5 designs, the ten failed attempts, and the two aborted
 turns that were not attempts. The count is mechanical.
 [`runner/refusals.py`](runner/refusals.py) reads each session transcript
 (local to this machine, never committed), takes every tool result marked
@@ -1623,19 +1739,21 @@ emits today, for all four classes.
 | `ot10-hexapod-7` | failed attempt | 0 | 0 | 0 | 0 | 9 | 1 | 2 | 0 | 3 | 3 |
 | `ot10-hexapod-8` | failed attempt | 0 | 0 | 0 | 0 | 20 | 3 | 4 | 1 | 1 | 11 |
 | `ot10-quadruped-2` | failed attempt | 0 | 0 | 0 | 0 | 11 | 0 | 3 | 4 | 0 | 4 |
+| `ot10-biped-2` | failed attempt | 0 | 0 | 0 | 0 | 7 | 0 | 0 | 0 | 1 | 6 |
 | `ot10-hexapod-9` | not an attempt | 0 | 0 | 0 | 0 | 4 | 0 | 2 | 0 | 2 | 0 |
 | `ot10-quadruped-1` | not an attempt | 0 | 0 | 0 | 0 | 2 | 0 | 2 | 0 | 0 | 0 |
-| **all** | 16 transcripts | **0** | **0** | **0** | **0** | 201 | 44 | 35 | 32 | 26 | 64 |
+| **all** | 17 transcripts | **0** | **0** | **0** | **0** | 208 | 44 | 35 | 32 | 27 | 70 |
 
-"Rest" is the 64 refusals outside those eight columns. They are: 15
+"Rest" is the 70 refusals outside those eight columns. They are: 16
 `Cannot retire` refusals of an output that a component still linked, 11
-`edit_script` replacements that did not match, 9 reset-variation refusals
-that named the lift, 3 `PROJECT_OUTPUTS_DROPPED` guards, and 26 others. The
-26 are single-cause API, MJCF, publication and worker refusals, plus one
-call to a tool name that does not exist. Three of them are worker crashes
-in `ot10-hexapod-11`. After the CPU limit (44), the
+`edit_script` replacements that did not match, 10 reset-variation refusals
+that named the lift, 3 `PROJECT_OUTPUTS_DROPPED` guards, and 30 others. The
+30 are single-cause API, MJCF, publication and worker refusals, plus two
+calls to a tool name that does not exist. Three of them are worker crashes
+in `ot10-hexapod-11`, and three are the publication refusals that ended
+`ot10-biped-2`. After the CPU limit (44), the
 recurring costs are sandbox refusals (35: `dir`, `getattr`, `hasattr`,
-`type`, imports, private attributes) and guessed JSON pointers (26). Each one costs
+`type`, imports, private attributes) and guessed JSON pointers (27). Each one costs
 turns. None is one of the four classes A4 closed.
 
 ## Baseline

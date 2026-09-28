@@ -13,8 +13,12 @@ nine misses are published below with their scores. A pre-registered
 confirmation round then started, one more turn per body plan (see
 [`README.md`](README.md)). Its first turn, `ot10-hexapod-11`, meets the
 bar at 14. Its second, `ot10-quadruped-4`, meets it at 16, the highest
-total of any counted design. `ot10-biped-2` has not run yet. The
-round adds turns and does not undo the nine misses. One W2 run, `w2-2` on `ot10-quadruped-3`, has
+total of any counted design. Its third, `ot10-biped-2`, misses at 2: a
+refused publish left its half-built assembly in the live document, no
+later write could publish, and the accepted revision is a servo probe.
+That is a measured product defect, not a design verdict, and it is still
+a counted miss. The round ends 2 of 3, adds turns, and does not undo the
+nine misses, so A5 stays not met by its letter, now with ten misses. One W2 run, `w2-2` on `ot10-quadruped-3`, has
 `walked = true` under the unchanged thresholds. It went 1.44 m forward in
 10 s, upright the whole time. The run before it, `w2-1`, did not walk.
 
@@ -48,9 +52,9 @@ rubric, the bar and the procedure never changed.
 | judged total | **2** of 21 | **16** (`ot10-quadruped-2`, `ot10-hexapod-5`, and `ot10-quadruped-4`, which meets the bar); **16**, **15** and **14** for the five that meet the bar |
 | T1 shell | 0 | 2 on every design except hexapod 8 |
 | T5 face | 0 | 2 on every counted design |
-| P1 hardware silhouette | 0.373, over its bar | 0.0001 to 0.078 over all fourteen attempts |
-| P2 sharp printed edges | 0.189 | 0.040 to 0.508 (hexapod 1 is the only one over the bar) |
-| P3 materials | 2 | 3 on twelve attempts, 2 on two |
+| P1 hardware silhouette | 0.373, over its bar | 0.0001 to 0.078 over the fourteen attempts it was measured on (biped 2 published no inventory) |
+| P2 sharp printed edges | 0.189 | 0.040 to 0.508 (hexapod 1 is the only one over the bar; biped 2 unmeasured) |
+| P3 materials | 2 | 3 on twelve attempts, 2 on two, 4 on biped 2 (no roles declared) |
 | render | flat, orthographic | studio hero, 1024 px |
 
 | view | before | after |
@@ -86,6 +90,7 @@ fit was complete and passing.
 | `ot10-hexapod-10` | counted | 2 | 2 | 1 | 2 | 2 | 3 | 2 | 14 | 0.0026 | 0.1415 | 3 | yes | yes | yes | **meets the bar** |
 | `ot10-hexapod-11` | counted | 2 | 3 | 1 | 2 | 2 | 2 | 2 | 14 | 0.0186 | 0.2285 | 3 | yes | yes | yes | **meets the bar** |
 | `ot10-quadruped-4` | counted | 2 | 3 | 3 | 1 | 2 | 3 | 2 | 16 | 0.0022 | 0.1624 | 3 | yes | yes | yes | **meets the bar** |
+| `ot10-biped-2` | failed | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 2 | unmeasured | unmeasured | 4 | no | no | no | misses: total, T1, T3, T4, T5, T6, P1, P2, P3, static, swept, electronics |
 <!-- attempts:end -->
 
 Two turns started and are not attempts: `ot10-quadruped-1` and
@@ -113,6 +118,13 @@ receipt, and neither is scored.
   wedged, and no later write could publish. The accepted revision is the
   agent's leg probe, with no electronics. ADR-429 fixed the wedge with a
   regression test before the next attempt.
+- **A second wedge, on the general path**: biped 2. A publish refused
+  after the assembly pass had started (`No native publisher exists for
+  output type 'actuator'`) left 43 objects in the live document, and
+  every later write was refused. The daemon's document runs with
+  `UndoMode 0`, so `abortTransaction` restores nothing. ADR-429 recorded
+  that as a known gap. It is the next unit, with a regression test,
+  before any prompt or tool change.
 
 **A5 is not met.** The charter allows one turn per body plan, and "one
 failing design fails this criterion". Twelve counted turns ran on the
@@ -121,9 +133,13 @@ Only the biped met the bar on its first and only turn. The quadruped met
 it on its second counted turn and the hexapod on its ninth. Those three,
 `ot10-biped-1`, `ot10-quadruped-3` and `ot10-hexapod-10`, are the highest
 bar this run reached. They are not a redefinition of success. The
-pre-registered confirmation round has since added two more turns, and both
-meet the bar: `ot10-hexapod-11` at 14 and `ot10-quadruped-4` at 16. They
-add to this record. They do not undo the nine misses.
+pre-registered confirmation round has since added three more turns. Two
+meet the bar: `ot10-hexapod-11` at 14 and `ot10-quadruped-4` at 16. The
+third, `ot10-biped-2`, misses at 2 on the publication defect above. They
+add to this record. They do not undo the nine misses, and the round's own
+miss makes ten. **A5 is not met.** The highest bar reached is still one
+design per body plan that meets it, now with a second quadruped and a
+second hexapod.
 
 ## The renders, sheets and videos
 
@@ -170,8 +186,8 @@ under *W2*.
 
 ## A4: refusals
 
-None of the four hex refusal classes recurred: 0 of 201 refused calls,
-across all 16 ot10 transcripts. The count is mechanical, and
+None of the four hex refusal classes recurred: 0 of 208 refused calls,
+across all 17 ot10 transcripts. The count is mechanical, and
 [`refusals.json`](refusals.json) pins it.
 
 ## Remaining defects
@@ -179,12 +195,12 @@ across all 16 ot10 transcripts. The count is mechanical, and
 Each of these is measured, and none is fixed in this run.
 
 1. **The worker's CPU limit is the largest cost left.** It accounts for
-   44 of the 201 refusals, with 6 of them in `ot10-hexapod-10`. ADR-428
+   44 of the 208 refusals, with 6 of them in `ot10-hexapod-10`. ADR-428
    showed that the sweep is not what spends the CPU.
 2. **Sandbox refusals**: 35. The agent reaches for `dir`, `getattr`,
    `hasattr`, `type`, imports and private attributes, and each refusal costs a
    turn.
-3. **Guessed JSON pointers**: 26 refusals where the agent guessed a
+3. **Guessed JSON pointers**: 27 refusals where the agent guessed a
    pointer into a result.
 4. **`w2-1` did not walk.** It stood, drifted sideways and tipped at
    4.36 s. Its task pays about twice as much for surviving as for
@@ -205,6 +221,12 @@ Each of these is measured, and none is fixed in this run.
    `DOMAIN_WORKER_NO_RESULT`. The agent traced them to OCCT's fillet kernel
    on small fillets over every edge after the boolean cuts, and got past
    them by filleting first. The refusal said only that the worker exited.
+9. **A refused publish can leak into the live document.** The daemon's
+   document runs with `UndoMode 0`, so a publish that raises after it has
+   created objects leaves them behind while the refusal reports
+   `accepted_live_state_preserved: true`. It ended `ot10-biped-2`. The
+   validator also accepts an output type no publisher can write, which is
+   what raised mid-publish there.
 
 ## Regressions (C1)
 
