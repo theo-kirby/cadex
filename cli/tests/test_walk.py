@@ -260,6 +260,50 @@ def test_a_level_straight_walk_that_survived_training_walked(tmp_path) -> None:
     assert gait["planar_speed_m_per_s"] == pytest.approx(0.05)
 
 
+def _w2_2_curve(steady: float, boundary: float) -> list[list[float]]:
+    """The shape of w2-2's stored curve (ADR-433): 1,000 iterations kept at
+    every other one plus the last, an unroll of 20 on a 500-step horizon, so
+    every 25th batch closes on a horizon boundary and reads low."""
+
+    kept = sorted(set(range(0, 1000, 2)) | {974, 999})
+    return [[i, 40960.0 if i == 0 else boundary if (i + 1) % 25 == 0 else steady]
+            for i in kept]
+
+
+def test_survival_is_not_read_off_a_horizon_boundary(tmp_path) -> None:
+    """w2-2 walked 1.44 m upright and failed on 31.9 of 500 at iteration 999,
+    the batch in which every surviving env reached the time limit at once."""
+
+    gait = walk_module.gait_from_trace(
+        _rolling_trace(101, roll_per_frame=0.1, metres_per_frame=0.001),
+        bases=["c_body"], task={"episode": {"max_steps": 500}},
+        progress={"episode_steps_curve": _w2_2_curve(1107.0, 31.9)},
+    )
+    survival = gait["training_survival"]
+    assert survival["final_episode_steps"] == pytest.approx(31.9)
+    assert survival["median_episode_steps"] == 500
+    assert survival["window_iterations"] == [950, 999]
+    assert survival["window_samples"] == 26
+    assert survival["survives"] and gait["walked"] and gait["findings"] == []
+    assert gait["thresholds"]["survival_fraction"] == 0.9
+
+
+def test_a_run_whose_episodes_really_end_early_still_fails_survival() -> None:
+    """The same curve shape from a policy that falls: the bar has not moved."""
+
+    for steady in (30.0, 440.0):
+        gait = walk_module.gait_from_trace(
+            _rolling_trace(101, roll_per_frame=0.1, metres_per_frame=0.001),
+            bases=["c_body"], task={"episode": {"max_steps": 500}},
+            progress={"episode_steps_curve": _w2_2_curve(steady, 31.9)},
+        )
+        assert not gait["walked"]
+        assert gait["training_survival"]["median_episode_steps"] == steady
+        assert gait["findings"] == [
+            f"training episodes ended early: a median of {steady:.0f} of 500 "
+            "steps over the last 50 iterations"]
+
+
 def test_a_termination_in_the_rollout_is_a_finding() -> None:
     gait = walk_module.gait_from_trace(_rolling_trace(10, terminated=9), bases=["c_body"])
     assert gait["findings"] == ["terminated: tipped at step 9"]

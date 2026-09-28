@@ -822,6 +822,16 @@ TURNED_DEG = 90.0
 #: the training is said to survive: below it, most episodes end in a
 #: termination however the reward curve looks.
 SURVIVAL_FRACTION = 0.9
+#: How many trailing iterations the survival check reads (ADR-433). The
+#: trainer's episode length is ``unroll x envs / endings`` and a time-limit
+#: truncation is an ending, so the iteration whose batch closes on a horizon
+#: boundary reads the envs that survived to the limit as episodes that ended:
+#: w2-2 (2026-09-28) read 31.9 of 500 there, and over 787 everywhere else.
+#: With an unroll of 20 and a 500-step horizon that is every 25th iteration,
+#: and the last iteration of a 1,000-iteration run is always one. The median
+#: of the window cannot be carried by those iterations while they are fewer
+#: than half of it, which holds whenever the horizon exceeds two unrolls.
+SURVIVAL_WINDOW = 50
 
 
 def floating_bases(model_xml: Path | str | None) -> list[str]:
@@ -867,13 +877,22 @@ def _training_survival(progress: dict[str, Any], horizon: int | None) -> dict[st
                 if not curve else "the task bundle states no horizon"}
     # The trainer divides the steps it ran by the episodes that ended, so an
     # iteration in which none ended reports the whole unroll: capped here.
-    final = min(curve[-1][1], float(horizon))
+    last = curve[-1][0]
+    window = sorted(min(steps, float(horizon)) for iteration, steps in curve
+                    if iteration > last - SURVIVAL_WINDOW)
+    middle = len(window) // 2
+    median = (window[middle] if len(window) % 2
+              else (window[middle - 1] + window[middle]) / 2.0)
     return {
         "available": True,
         "horizon_steps": int(horizon),
-        "final_episode_steps": final,
-        "final_fraction": final / horizon,
-        "survives": final >= SURVIVAL_FRACTION * horizon,
+        "window_iterations": [max(curve[0][0], last - SURVIVAL_WINDOW + 1), last],
+        "window_samples": len(window),
+        "median_episode_steps": median,
+        "median_fraction": median / horizon,
+        # Reported, never judged: it may be a horizon-boundary reading.
+        "final_episode_steps": min(curve[-1][1], float(horizon)),
+        "survives": median >= SURVIVAL_FRACTION * horizon,
     }
 
 
@@ -969,9 +988,10 @@ def gait_from_trace(
     survival = _training_survival(progress or {}, horizon)
     if survival.get("available") and not survival["survives"]:
         findings.append(
-            "training episodes ended early: {:.0f} of {:d} steps on average at the "
-            "last iteration".format(survival["final_episode_steps"],
-                                    survival["horizon_steps"]))
+            "training episodes ended early: a median of {:.0f} of {:d} steps over "
+            "the last {:d} iterations".format(survival["median_episode_steps"],
+                                              survival["horizon_steps"],
+                                              SURVIVAL_WINDOW))
     return {
         "available": True,
         "base": base,
@@ -988,7 +1008,8 @@ def gait_from_trace(
         "heading_extent_deg": [min(headings), max(headings)],
         "training_survival": survival,
         "thresholds": {"tipped_deg": TIPPED_DEG, "upright_deg": UPRIGHT_DEG,
-                       "turned_deg": TURNED_DEG, "survival_fraction": SURVIVAL_FRACTION},
+                       "turned_deg": TURNED_DEG, "survival_fraction": SURVIVAL_FRACTION,
+                       "survival_window": SURVIVAL_WINDOW},
         "findings": findings,
         "walked": not findings,
     }

@@ -28665,3 +28665,62 @@ second: the environment gets no material, the floor is its top face, and
 the lowest reach is recorded. Both fail on the ADR-431 source, with
 `artifact size/type refused` and `render summary gives shin no valid
 appearance`.
+
+## ADR-433 — The gait check reads training survival over a trailing window, not off the last iteration (2026-09-28)
+
+**This is a measurement correction. The 0.90 bar (`SURVIVAL_FRACTION`) is
+unchanged, and so are the tipped, upright and turned thresholds.**
+
+**Context.** ADR-409's gait check fails a run whose training episodes ended
+early, and it read that from the *last* entry of the trainer's
+`episode_steps_curve`. The trainer's figure is `unroll × envs / endings`
+(`training/cadex_train.py`, the mean-episode-length block), and `endings`
+counts every `done`, time-limit truncations included. With the default
+unroll of 20 on a 500-step horizon, every 25th batch closes on a horizon
+boundary, where every env that has not fallen since its last reset
+truncates at once, and the figure drops to near `unroll × envs / envs`.
+Iteration 999 of a 1,000-iteration run is always such a batch. ot10's W2
+run `w2-2` walked 1.44 m in 10 s at 100% upright with no termination, and
+failed only on `32 of 500 steps at the last iteration`; its other sampled
+iterations over the last 50 read 787.7 to 1,575. `w2-1` read 213.3 there
+and 455–594 elsewhere. The stored curves carry no `terminals` field and no
+unroll, so a terminations-only count could not re-score the runs already
+made.
+
+**Decision.** `_training_survival` (`cli/cadex_cli/walk.py`) reads the
+**median** of the stored samples from the last `SURVIVAL_WINDOW` = 50
+iterations, each capped at the horizon as before, and passes when it is at
+least 0.90 of the horizon. Boundary batches are at most one in
+`horizon / unroll` of the window, so they cannot carry the median while the
+horizon exceeds two unrolls. The block now reports `window_iterations`,
+`window_samples`, `median_episode_steps` and `median_fraction`, and keeps
+`final_episode_steps` as a reported, unjudged number. The finding reads
+`training episodes ended early: a median of N of H steps over the last 50
+iterations`, and `thresholds` gains `survival_window`.
+
+**Not taken.** Counting true terminations in the trainer: right for future
+runs, but it re-scores nothing already stored, and it is a trainer change
+in its own unit. A harmonic mean of the window (total steps over total
+endings): exact on a full curve, but the stored curve keeps 512 of 1,000
+iterations, so whether a boundary was kept moves it — `w2-2`'s last 50
+read 315 that way and its last 100 read 506. Lowering the bar.
+
+**Measured**, re-reading each run's stored `review.json` inputs (trace,
+model, task bundle, `train/progress.json`) on
+`~/cadex-projects/ot10-quadruped-3-w2`. Every other gait field agrees
+exactly with the stored review.
+
+| run | old survival | new median (26 samples, 950–999) | verdict |
+|---|---|---|---|
+| `w2-1` | 213.3 of 500: fails | 487.6 (0.975): passes | `walked = false` — still tipped at 4.36 s and terminated at step 218 |
+| `w2-2` | 31.9 of 500: fails | 500 (1.00): passes | **`walked = true`** |
+
+Cross-check with the unroll the policy header records (20) and 2,048 envs:
+total steps over total endings across the two full horizon periods in
+950–999 give a mean episode of 485.5 steps for `w2-1` and 489.5 for `w2-2`,
+both above 450, so the median's verdict is not an artefact of the cap.
+
+**Tests.** In `cli/tests/test_walk.py`, on a curve with `w2-2`'s shape (kept
+every other iteration plus 974 and 999, a boundary dip every 25th): a
+steady 1,107 with 31.9 at the boundaries survives and walks; a steady 30 or
+440 still fails with the new finding. Both fail on the ADR-409 source.

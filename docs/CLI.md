@@ -273,8 +273,10 @@ of doing any of them:
    The `gait` block (ADR-409) judges a model with a free-floating body on
    what total reward cannot show: the body's tilt from its starting
    attitude (tipped at 45°), its unwrapped heading (turned at 90°), a
-   termination in the rollout, and the trainer's last mean episode length
-   against the horizon (under 90% is "ended early"). Any finding makes
+   termination in the rollout, and the median of the trainer's mean
+   episode length over the last 50 iterations against the horizon (under
+   90% is "ended early"; ADR-433 — the last iteration alone can close on a
+   horizon boundary and count every time-limit truncation). Any finding makes
    `walked` false; the walk still succeeds, and its last note and the
    dashboard's `rollout gait` row say the robot did not walk. Planar travel
    and speed are reported, never judged. A model with no free body, or

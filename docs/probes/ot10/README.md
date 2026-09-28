@@ -1829,3 +1829,33 @@ trailing window that no horizon boundary can dominate. Keep the 0.90 bar.
 Then re-review `w2-1` and `w2-2` from their stored artifacts under the
 fixed check. That needs no retraining, and it re-scores both runs. Until
 that lands, W2's recorded verdict is `walked = false`.
+
+### W2 re-review under ADR-433: `w2-2` walked
+
+ADR-433 corrects how the gait check reads training survival: the median of
+the trainer's episode length over the last 50 iterations, each sample capped
+at the horizon, instead of the last iteration alone, which closes on a
+horizon boundary and counts every time-limit truncation as an ending. **The
+0.90 bar did not move**, and neither did any other gait threshold. Both
+runs were re-reviewed from the inputs their stored `review.json` was built
+from, with no retraining and no new rollout. Every other gait field agrees
+exactly with the stored review. The results are written beside each review
+as `runs/<run>/gait-adr433.json` in the project copy, never in this
+repository.
+
+| run | survival, before | survival, ADR-433 | other findings | verdict |
+|---|---|---|---|---|
+| `w2-1` | 213.3 of 500 (last iteration): fails | median 487.6 (0.975) over 950–999: passes | tipped at 4.36 s; terminated at step 218 | `walked = false` |
+| `w2-2` | 31.9 of 500 (last iteration): fails | median 500 (1.00) over 950–999: passes | none | **`walked = true`** |
+
+As a cross-check that does not rest on the cap, the unroll the policy
+header records (20) and the 2,048 envs give total steps over total endings
+across the two full horizon periods in 950–999: 485.5 steps for `w2-1` and
+489.5 for `w2-2`.
+
+W2's bar is `walked = true` on one A5 design through `cadex walk` with the
+unchanged ADR-410 overlay and `--stop-on-collapse`. `w2-2` on
+`ot10-quadruped-3` meets it: its settings and stop rule were recorded
+before it started, its policy was installed through the supported path, and
+its W1 video and training curve are above. `w2-2` was a warm start from
+`w2-1` on a byte-identical task bundle, which the pre-registration stated.
