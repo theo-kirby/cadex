@@ -603,11 +603,45 @@
     });
   }
 
+  // The concept sheet (REVIEW-DESIGN.md §14, ADR-430): the project's studio
+  // hero and sheet as the last `cadex render` drew them, named by the
+  // revision they were drawn from and its relation to the accepted one now.
+  // The stage leads with it once, on the first poll that finds one.
+  var conceptKey = null, conceptLed = false;
+  function renderPresentation() {
+    var shown = state.review.presentation || { available: false, reason: 'no presentation block' };
+    var key = JSON.stringify([shown.available, shown.revision, shown.relation, shown.files]);
+    if (key === conceptKey) return;
+    conceptKey = key;
+    var status = $('concept-status'), figure = $('concept-figure');
+    status.dataset.state = shown.available ? shown.relation : 'empty';
+    if (!shown.available) {
+      status.textContent = shown.reason || 'no concept sheet';
+      figure.hidden = true;
+      $('concept-sheet').removeAttribute('src');
+      return;
+    }
+    var numbers = shown.numbers || {}, stamp = '?r=' + encodeURIComponent(shown.revision) + '-' + shown.files.sheet.bytes;
+    status.textContent = shown.relation === 'current'
+      ? 'the accepted design, drawn from revision ' + short(shown.revision)
+      : shown.relation + ': drawn from revision ' + short(shown.revision) + ', not the accepted one';
+    $('concept-sheet').src = '/presentation/sheet.png' + stamp;
+    $('concept-open').href = '/presentation/sheet.png' + stamp;
+    $('concept-hero').hidden = !shown.files.hero;
+    text('concept-caption', [numbers.name,
+      numbers.mass_kg == null ? 'mass —' : numbers.mass_kg.toFixed(2) + ' kg',
+      numbers.servo_count == null ? 'servos —' : numbers.servo_count + ' servos',
+      (numbers.size_mm || []).map(function (v) { return Math.round(v); }).join(' × ') + ' mm'].join(' · '));
+    figure.hidden = false;
+    if (!conceptLed && window.cadexFrame) { conceptLed = true; window.cadexFrame.show('concept'); }
+  }
+
   function render() {
     renderFreshness();
     if (!state.review) return;
     if (state.selected !== 'accepted' && !selectedRun()) state.selected = 'accepted';
     renderHeader(); renderSidebar(); renderIdentity(); renderPolicyOrigin(); renderParams(); renderTraining(); renderArtifacts(); renderDocs();
+    renderPresentation();
   }
 
   function loadDetail() {
@@ -698,6 +732,7 @@
                detail: state.detail ? state.detail.run : null,
                disk: state.detail && state.detail.disk ? { state: state.detail.disk.state, bytes: state.detail.disk.bytes, files: state.detail.disk.files, shared_bytes: state.detail.disk.shared_bytes } : null,
                revision: run ? (run.model || {}).accepted_revision : (state.review && state.review.accepted.revision),
+               concept: state.review && state.review.presentation ? { available: state.review.presentation.available, revision: state.review.presentation.revision, relation: state.review.presentation.relation } : null,
                relation: run ? run.relation : 'accepted', model: state.model && { available: state.model.available, reason: state.model.reason, revision: state.model.revision },
                runs: state.review ? state.review.runs.map(function (r) { return r.run; }) : [] };
     }

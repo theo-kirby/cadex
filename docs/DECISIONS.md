@@ -28462,3 +28462,67 @@ the real kernel:
 
 On the previous source, the second and third tests fail with the two
 hexapod-8 errors verbatim.
+
+## ADR-430 — `cadex render` draws a concept sheet, and `cadex review` leads with it (2026-09-28)
+
+**Context.** ot10's A6 asks that a design be presented, not screenshotted:
+the review leads each project with its studio hero and a concept sheet (the
+hero, orthographic line views, the palette, the name and the key numbers),
+the sheet is one PNG in the project's review directory, and
+`docs/REVIEW-DESIGN.md` changes with the page. Before this the page opened
+on the orbitable model, and `cadex render` wrote the hero but nothing that
+named the design or said what it weighed.
+
+**Decision.**
+- `cadex render` writes `review/render/sheet.png` beside `hero.png`: one
+  1536×1024 PNG with the 1024 px hero, pixel for pixel, on the left, and on
+  the right the project's name, the revision, mass, servo count and size, a
+  swatch per appearance role the design uses, `front`/`right`/`top` as line
+  drawings, and A1's three proxies. `summary.sheet` records its identity
+  (revision, digest), its numbers and their sources, and its seconds.
+- The line views reuse the renderer's depth pass, keyed by object and flat
+  face normal: ink where the nearest surface changes object, meets the
+  backdrop, or turns by more than 35°. The lettering is a 5×7 bitmap face in
+  `cli/cadex_cli/sheet.py`. No new dependency, no font file, no image
+  library, CPU only.
+- **Mass** is the sum of the accepted MJCF output's per-component inertials
+  with the environment left out, read from the pinned accepted attempt's
+  `result.json`, and only when that attempt is the revision drawn and
+  carries the accepted digest. **Servo count** is the inventory's
+  `catalog_counts` in family `servo` (horns are their own family).
+  **Size** is the drawn solids' extent. A number that cannot be read is
+  `null` with a reason and prints `N/A`; it is never estimated.
+- `/api/project` carries a read-only `presentation` block (revision, digest,
+  relation to the accepted revision, offered files, numbers). The page's
+  stage gains a first tab, **Concept**, and opens on it once when a sheet
+  exists; the phone column reads it before the model.
+  `/presentation/{sheet,hero}.png` serve only what the block offers.
+
+**Not taken.**
+- A separate `cadex sheet` command. The sheet needs the snapshot the render
+  already holds; a second command would pay a second rebuild for it.
+- Composing the sheet in the review server. `cadex review` writes nothing
+  (ADR-286), and the sheet must be a file in the project.
+- Hidden-line removal and dimensions. The line views are an image-space
+  drawing of the tessellation, like every other view; `docs/CLI.md` says so.
+- Reading mass from the inventory. It carries volumes but no densities; the
+  MJCF inertials are the numbers the engine already verified against MuJoCo.
+
+**Measured** on fresh `/tmp` copies of the three A5 designs that met the
+bar, with `./cadex render --project <copy>`. The ot10 projects were not
+touched. Composing the sheet took 1.2 s for `ot10-biped-1` (0.389 kg, 6
+servos), 1.1 s for `ot10-quadruped-3` (0.479 kg, 8) and 1.9 s for
+`ot10-hexapod-10` (0.654 kg, 12). Those times come on top of 7–9 s for the
+views and hero and 58–98 s of rebuild. The sheets are 138, 210 and 212 KB,
+committed as `docs/probes/ot10/ot10-*-sheet.png`, with the table in that
+directory's README.
+
+**Tests.** `cli/tests/test_sheet.py` pins the shape (1536×1024, ≤300 KB),
+the identity (revision, digest, the hero's own pixels), the numbers
+(environment excluded from mass and size, horns not counted as servos), the
+refusals (no model, no inventory, an attempt that is not the one drawn, a
+wrong digest), the line view (silhouette and creases, no line across a
+coplanar split), the face, the `presentation` block and its routes (anything
+but the two offered images is a 404).
+`test_the_page_leads_with_the_concept_sheet_when_the_project_has_one` renders
+the page at both charter sizes.

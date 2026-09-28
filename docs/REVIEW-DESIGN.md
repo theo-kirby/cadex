@@ -1,6 +1,6 @@
 # REVIEW-DESIGN.md — The review dashboard as one designed page
 
-Verified against source: 2026-09-19. [Cadex-new]
+Verified against source: 2026-09-28. [Cadex-new]
 
 This is the design specification for the page `cadex review` serves
 (`cli/cadex_cli/review_static/`, ADR-286) and for the operator dashboard that
@@ -58,6 +58,7 @@ where (§12) — and the element ids do not change with the width.
 | 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. | top bar |
 | 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). | left sidebar |
 | 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. | right sidebar |
+| 2a | **Concept** | `#concept`, `#concept-status[data-state]`, `#concept-figure`, `#concept-sheet`, `#concept-caption`, `#concept-hero` | The design as presented: the concept sheet the last render drew (§14) — studio hero, name, key numbers, palette and line views — with the revision it was drawn from and its relation to the accepted one. Leads the page when there is one. | stage, *Concept* tab, first; the stage opens on it |
 | 3 | **Model** | `#model`, `#model-status[data-showing]`, `#viewer`, `#model-fit`, `#show-collision`, `#collision-note`, `#model-components` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and the labelled **show collision geometry** toggle, off by default (§11). The status line ends with what is showing. | stage, *Model* tab; toggle and component list in the right sidebar's *Model settings* (`#model-settings`) |
 | 4 | **Curves** | `#curves`, `#telemetry`, `[data-metric]`, `[data-history]`, `#checkpoint-source`, `#checkpoints` | Training telemetry: the five metrics as a stat row, the three histories (reward per step, loss, episode length) as curves side by side on desk and stacked on phone, then checkpoint provenance. | stage, *Curves* tab |
 | 5 | **Videos** | `#videos-region`, `#videos`, `#videos li[data-video][data-showing]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed, and what it shows — recordings made before that was recorded say so). | stage, *Videos* tab |
@@ -498,9 +499,9 @@ edge 16 px (64 with Shift). Widths animate over 180 ms except while dragging.
 The canvas redraws when its box changes, so the model is never stretched
 during a drag.
 
-**The stage** always holds one panel, the **Model** by default: the canvas
+**The stage** always holds one panel: the **Concept** sheet when the project has one (§14), otherwise the **Model**. In the Model panel the canvas
 fills it, the model status floats top-left and the orbit hint and *Fit*
-bottom-right, both as translucent `--bg` pills. Its tabs are **Model**,
+bottom-right, both as translucent `--bg` pills. Its tabs are **Concept**, **Model**,
 **Curves** (a dot in the telemetry state's colour), **Videos** (the count of
 playable clips) and, while one is open, **Document** — a document opened
 from the left sidebar comes onto the stage and leaves it when the view
@@ -552,6 +553,39 @@ and no page scroll with both drawers closed and off screen. It then taps
 drawers open and verifies that the model's width is unchanged, that only one
 drawer is open at a time, that a tap on the model closes a drawer, and that
 one finger still orbits without moving the page.
+
+## 14. The concept sheet leads the page (ADR-430)
+
+Under the ot10 charter (A6) a project is presented before it is inspected.
+`cadex render` draws a **concept sheet** beside the studio hero
+(`docs/CLI.md`, *The concept sheet*): one 1536×1024 PNG with the hero on
+the left and, on the right, the project's name, its revision, three key
+numbers (mass, servo count, size), a swatch per appearance role, the
+`front`, `right` and `top` views as line drawings, and A1's proxies. It is
+a light sheet — paper `#F6F5F1`, ink `#2B2F36` — because it is a printed
+artefact, the thing a person sends, not part of the dark chrome.
+
+**Where it sits.** The stage's first tab is **Concept**. When
+`/api/project` carries `presentation.available`, the stage opens on it once,
+on the first poll that finds one; after that the reader's choice of tab
+stands, and polls never pull the stage back. The panel shows the sheet
+scaled to the stage (never above its own size), a status line naming the
+revision it was drawn from — *the accepted design* when `relation` is
+`current`, otherwise the relation in words, so an earlier design never
+reads as this one — and a caption with the name and the three numbers, a
+link to the hero at full size, and a download. Clicking the sheet opens it
+at full size. Without a sheet the tab stays, and says what makes one;
+the stage opens on the model as before.
+
+**On a phone** the Concept card comes before the Model card in the column
+(same `order`, earlier in the source), the sheet at the column's width.
+
+**Held by** `test_the_page_leads_with_the_concept_sheet_when_the_project_has_one`
+at both charter sizes (the stage opens on *Concept* at desk with no page
+scroll; the card precedes the model on the phone with no horizontal
+overflow; the image is the served sheet at its natural 1536 px; the caption
+reads the numbers), and by `cli/tests/test_sheet.py` for the sheet's shape,
+identity, numbers and routes.
 
 ## Operator run status (ADR-387)
 

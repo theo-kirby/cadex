@@ -53,7 +53,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). **`--offset-mm` is optional**: omitted, the offset is derived from the accepted bounds the way the walk derives it — every candidate is cut and the one covering the most objects wins (ADR-273, ADR-275). The note reports the offset, whether it was `explicit` or `derived`, and how many of the model's objects the cut reached. | no |
-| `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews, a 1024 px studio `hero.png` (ADR-412) and `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
+| `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews, a 1024 px studio `hero.png` (ADR-412), the concept sheet `sheet.png` (ADR-430) and `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
 | `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. The same rows reach the agent as `inspect scope=clearance` and, summarised, as the `fit` block on every build reply (ADR-346), whose `sweep` half carries the published joint sweeps (ADR-366). | no |
 | `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, the appearance role it declares (ADR-413), and the pose the solver settled on; a declared palette is listed under the table. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
@@ -1508,6 +1508,20 @@ they form one column with a closed run disclosure. Neither overflows
 horizontally. `cli/tests/test_review_design.py` reads the spec back
 from the rendered page at 1400×900 and 400×850.
 
+**The page leads with the design (ADR-430).** When the project has a
+concept sheet, the desk stage opens on its **Concept** tab and the phone
+column reads it before the model. `GET /api/project` carries a
+`presentation` block, read from the render's `summary.json`: `available`,
+the `revision` and `digest` it was drawn from, its `relation` to the
+accepted revision now (`current`, `historical`, `unknown`), the `source`
+directory, the `files` offered (`hero`, `sheet`) and the sheet's `numbers`
+and `palette`. It prefers the accepted revision's walk render
+(`review/render/<revision>/`) when that one drew a sheet, else the last
+`cadex render` (`review/render/`). A project with no render, or a render
+from before the sheet, says so and names `cadex render` as the fix.
+`GET /presentation/sheet.png` and `/presentation/hero.png` serve only what
+that block offers; every other name under `/presentation/` is a 404.
+
 One project per server, inspection only. The page is for a person, on
 another device, with no display session on the machine that serves it:
 `--host` defaults to `127.0.0.1` (this machine only); give it the
@@ -1858,8 +1872,8 @@ and reports their statuses in every mode (ADR-240 follow-up, ADR-262).
 ### Named-angle review
 
 `./cadex render --project ./robot --json` writes `review/render/front.svg`,
-`top.svg`, `right.svg`, `iso.svg`, the studio hero `hero.png` and
-`summary.json`. These generated files
+`top.svg`, `right.svg`, `iso.svg`, the studio hero `hero.png`, the concept
+sheet `sheet.png` and `summary.json`. These generated files
 are overwritten on success and stay local under default ignore rules; the
 ordinary project commit records the PROGRESS row.
 The JSON envelope and each SVG name the accepted revision; the summary also
@@ -1942,6 +1956,27 @@ named under `left_out_as_environment` (ADR-424). A printed part with no such fac
 `reason` naming it rather than a false zero; with no printed edges it is 0.
 The agent's `look` reports all three under `measures`, and each report adds
 one `measures:` line.
+
+**The concept sheet (ADR-430).** `sheet.png` is one 1536×1024 PNG
+(`cadex_cli/sheet.py`): the 1024 px hero, pixel for pixel, on the left; on
+the right the project's name, the revision, the key numbers, a swatch per
+appearance role the design uses in the colour in effect, the `front`,
+`right` and `top` views as **line drawings**, and A1's three proxies. A line
+view is the renderer's own depth pass at 204 px and 2×2 subsamples, keyed by
+object and flat face normal: a subsample is ink where the nearest surface
+changes object, meets the backdrop (drawn on both sides, so the silhouette
+reads heavier), or turns by more than 35° within one object, and the box
+filter turns coverage to grey. Lettering is a 5×7 bitmap face in the same
+module; no font or image library. `summary.sheet` records its path, size,
+revision, digest, views, seconds and `numbers`: `name` (the project
+directory), `mass_kg` (the sum of the accepted MJCF output's per-component
+inertials, the environment left out, read from the pinned accepted
+attempt's `result.json` only when it is the revision drawn and carries the
+accepted digest), `servo_count` (the inventory's `catalog_counts` in family
+`servo`, horns not counted) and `size_mm` (X, Y, Z extent of the drawn
+solids), each with its source. A number that cannot be read is `null` with
+`mass_reason` or `servo_reason`, and the sheet prints `N/A`; it is never
+estimated. The sheet adds about 1 s to a render (1.2 s on `ot10-biped-1`).
 
 The CLI snapshots buffers while holding its project lock, before any further
 engine request can invalidate attempt paths. The shell does not share this

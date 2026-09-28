@@ -16,6 +16,7 @@ import struct
 import time
 import zlib
 
+from . import sheet
 from .inventory import InventoryError
 
 SIZE = 512
@@ -244,11 +245,14 @@ def _cluster(points, indices, cell):
     return kept
 
 
-def png(pixels, size=SIZE):
+def png(pixels, size=SIZE, height=None):
+    """8-bit RGB PNG bytes, ``size`` wide and ``height`` (default ``size``) tall."""
+    height = size if height is None else height
+
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind+data))
-    rows = b''.join(b'\0' + pixels[y*size*3:(y+1)*size*3] for y in range(size))
-    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>2I5B', size, size, 8, 2, 0, 0, 0)) +
+    rows = b''.join(b'\0' + pixels[y*size*3:(y+1)*size*3] for y in range(height))
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>2I5B', size, height, 8, 2, 0, 0, 0)) +
             chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
 
 
@@ -775,6 +779,18 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
     summary['proxies'] = design_proxies(triangles, summary, exclude=environment, purchased=purchased,
                                         appearance=appearance, palette=palette)
     summary['proxies']['sharp_outside_edge_share'] = edge_proxy(inventory, environment)
+    # The concept sheet (ot10 A6, ADR-430): the hero just drawn, the key
+    # numbers, the palette and three line views, as one PNG.
+    sheet_start = time.perf_counter()
+    lines = {view: sheet.line_view(triangles, summary, names, BASES[view])[0] for view in sheet.LINE_VIEWS}
+    numbers = sheet.key_numbers(root, summary, names, inventory, environment)
+    roles = {entry['role'] for entry in summary['appearance'].values()}
+    files['sheet.png'] = sheet.compose(pixels, HERO_SIZE, lines, numbers, summary['palette'], roles,
+                                       summary['proxies'], summary['revision'])
+    summary['sheet'] = {'path': f'{relative_dir}/sheet.png', 'size': [sheet.WIDTH, sheet.HEIGHT],
+                        'revision': summary['revision'], 'digest': summary.get('digest'),
+                        'line_views': list(sheet.LINE_VIEWS), 'numbers': numbers,
+                        'seconds': time.perf_counter() - sheet_start}
     files['summary.json'] = json.dumps(summary, indent=2) + '\n'
     # Do not leave partial new views on geometry/render refusal.
     directory = Path(root) / relative_dir

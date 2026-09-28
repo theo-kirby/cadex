@@ -1476,3 +1476,28 @@ printed parts alone read **0.189**, within the bar. hex3's plates are
 thin, so their long faces dominate the edge length and their sharp rims
 are under a fifth of it. P2 does not see T4's 0 on this design. P1 and
 the judge do, which is the necessary-not-sufficient point again.
+
+## A6: the concept sheets
+
+ADR-430 has `cadex render` write a concept sheet beside the hero, and
+`cadex review` opens on it. Each A5 design that met the bar has a committed sheet.
+Each was drawn on a fresh `/tmp` copy of the project (`cp -a`) with
+`./cadex render --project <copy>`, so the ot10 projects are unchanged. The
+hero in each sheet is that render's own `hero.png`, pixel for pixel.
+
+| Design | Revision | Mass | Servos | Size X × Y × Z (mm) | Sheet | Sheet s | Render s | Rebuild s | Command s |
+|---|---|---|---|---|---|---|---|---|---|
+| biped | `44b8497b5c54` | 0.389 kg | 6 | 92 × 108 × 221 | [`ot10-biped-1-sheet.png`](ot10-biped-1-sheet.png) (138 KB) | 1.2 | 7.1 | 57.8 | 128 |
+| quadruped | `7de6eea6212e` | 0.479 kg | 8 | 178 × 151 × 123 | [`ot10-quadruped-3-sheet.png`](ot10-quadruped-3-sheet.png) (210 KB) | 1.1 | 7.0 | 61.8 | 141 |
+| hexapod | `e8a82deb1a06` | 0.654 kg | 12 | 212 × 231 × 136 | [`ot10-hexapod-10-sheet.png`](ot10-hexapod-10-sheet.png) (212 KB) | 1.9 | 9.3 | 98.2 | 213 |
+
+*Mass* is the sum of each accepted MJCF model's inertials, without the
+floor. *Servos* counts the placed components in catalog family `servo`.
+*Sheet s* is the time to compose the sheet. *Render s* covers the four views
+and the hero, not the sheet. *Rebuild s* is the time to acquire the
+tessellation. *Command s* is the wall time of the whole `cadex render`
+command, including engine start-up and project commit, and it ran while other
+work shared the CPU. The sheets'
+line views use the product's own axis names. The biped faces +X, so its
+visor shows in `right`, not `front`: that is how the design is oriented,
+not a fault in the sheet.
