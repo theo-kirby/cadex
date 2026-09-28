@@ -198,7 +198,31 @@ These were run at `31de992c`, the head before this report, on
 | `pixi run python -m pytest cli/tests` | 1,055 passed, **1 skipped**, 0 failed (788 s) |
 | packaged lifecycle gate, `CADEX_ENGINE_ROOT=<staged payload>` | 23 passed, 0 skipped |
 
-The skips are skips, not passes. The staged payload matched the engine
+The skips are skips, not passes. Both suites were re-run with `-rs` at
+`3879f1e2`, the head after this report: engine 2,242 passed and 53
+skipped (301 s), CLI 1,061 passed and 1 skipped (737 s; the six extra
+passes are this report's own test). Every skip has one of four causes,
+and none of them is a failure hidden as a skip:
+
+| suite | skips | reason |
+|---|---|---|
+| engine | 47 | JAX and MJX are absent from the engine environment by design (ADR-084). They are the offboard trainer's dependencies, so these run from a venv built from `training/requirements.txt`. The files are `test_dynamics_action_filter.py`, `test_dynamics_command_slew.py`, `test_dynamics_mjx_agreement.py`, `test_dynamics_mjx_geom_pairs.py`, `test_dynamics_policy_live.py`, `test_dynamics_policy_measured.py` and `test_dynamics_policy_trainer.py`. |
+| engine | 5 | `test_blender_recipe.py` needs `CADEX_BLENDER_EXECUTABLE` to run the real OS-sandboxed recipe worker (ADR-185). No Blender runtime is set on this headless run. |
+| engine | 1 | `test_licensing_compliance.py` has one packaged-gate test that needs `CADEX_ENGINE_ROOT`. It is covered by the packaged gate row above. |
+| CLI | 1 | `test_review_server.py` has one test that needs `CADEX_REVIEW_HOST` set to a private-network address. It is skipped so that no hostname is committed. |
+
+`hypergraph check` must be given the project config:
+`hypergraph check --record .hypergraph/cache/record.json --state
+.hypergraph/cache/state.json --config .hypergraph/config.yml`. That run
+reports 0 violations. Without `--config`, the checker does not know about
+the `plan` view (`.hypergraph/config.yml`, `views.plan`), so it reports
+270 I2 violations. Those are the plan-view impacts in the record graph
+since the view was added. That count is an artifact of how the checker
+was invoked, not a defect in the graph. The checker's hint to run
+`hypergraph views add plan` would be wrong here, because the view
+already exists.
+
+The staged payload matched the engine
 source file for file on all 57 files, so it was not rebuilt. This report's
 own test, `cli/tests/test_ot10_report.py`, was added after those runs. It
 passes (6 of 6), and so does `test_ot10_contract.py` beside it (35 of
