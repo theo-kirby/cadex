@@ -1880,6 +1880,7 @@ def validate_project_result(
     """Check the worker report, record the contract, persist working state."""
 
     from CadexScriptStore import CadexProjectScriptStore
+    from CadexScriptedDomainPublication import publishable_output_type
 
     tool_name = str(prepared["tool_name"])
     if execution.get("schema") != PROJECT_WORKER_SCHEMA:
@@ -1934,6 +1935,26 @@ def validate_project_result(
                 observed={"name": name, "domain": domain, "type": output_type},
             )
         seen.add(name)
+        if not publishable_output_type(output_type):
+            # Refused here, before the document is touched: an argument
+            # value in `result` used to raise half-way through the assembly
+            # pass (ADR-434).
+            _raise(
+                tool_name,
+                "PROJECT_OUTPUT_UNPUBLISHABLE",
+                "postcondition",
+                f"Project output {name!r} is a `{domain}.{output_type}` value, "
+                "which is an argument to another call and cannot be published "
+                f"on its own. Remove {name!r} from `result` and pass it to the "
+                "call that uses it"
+                + (
+                    " (assembly.mjcf(..., actuators=[...]) and "
+                    "assembly.task(..., actions=[...]))."
+                    if output_type == "actuator"
+                    else "."
+                ),
+                observed={"name": name, "domain": domain, "type": output_type},
+            )
         if str(item.get("artifact_kind") or "") == "brep":
             path = _staged_artifact_path(
                 prepared,

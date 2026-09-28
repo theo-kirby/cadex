@@ -885,6 +885,21 @@ def _internal_name(prepared: Mapping[str, Any], output_name: str) -> str:
     return f"Vibe{domain}_{str(prepared['program_id'])[:8]}_{output}"[:120]
 
 
+def publishable_output_type(output_type: str) -> bool:
+    """Whether a result value of this type has a native publisher.
+
+    Validation asks this before anything reaches the document, so a value
+    that only ever feeds another call (an actuator, a body, an observation)
+    is refused with the fix instead of raising half-way through a publish.
+    """
+
+    return (
+        output_type in _BREP_OUTPUT_TYPES
+        or output_type == "mesh"
+        or output_type in _NATIVE_TYPE_BY_OUTPUT
+    )
+
+
 def _native_type(output_type: str) -> str:
     if output_type in _BREP_OUTPUT_TYPES:
         return "Part::Feature"
@@ -3812,6 +3827,15 @@ def publish_project_candidate(
     created: list[str] = []
     removed: list[str] = []
     transaction_open = False
+    # The live document is created with UndoMode 0, and in that mode
+    # abortTransaction restores nothing: a pass that raised after creating
+    # objects left them behind, and every later publish was refused over
+    # them (ADR-434). Undo is on for exactly this transaction and its
+    # history is dropped again, so a refusal really leaves the document as
+    # accepted and nothing is retained after a commit.
+    undo_mode = getattr(doc, "UndoMode", None)
+    if undo_mode is not None:
+        doc.UndoMode = 1
     try:
         if hasattr(doc, "openTransaction"):
             doc.openTransaction("Publish Cadex project script")
@@ -3916,6 +3940,11 @@ def publish_project_candidate(
             except Exception:
                 pass
         raise
+    finally:
+        if undo_mode is not None:
+            if hasattr(doc, "clearUndos"):
+                doc.clearUndos()
+            doc.UndoMode = undo_mode
     return {
         "ok": True,
         "outputs": outputs_map,

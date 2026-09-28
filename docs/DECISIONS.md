@@ -28442,7 +28442,8 @@ file changes.
   back, is a wider change. It would touch every domain's publish and its
   memory cost. It is recorded here as a known gap, because
   `accepted_live_state_preserved: true` in a refusal is not guaranteed while
-  `UndoMode` is 0.
+  `UndoMode` is 0. *Taken in ADR-434, for the project publish's own
+  transaction, after `ot10-biped-2` wedged on it.*
 
 **Found, not fixed here.** A script that drops the assembly and also drops a
 part that one of its components links is refused with `Cannot retire XScript
@@ -28724,3 +28725,55 @@ both above 450, so the median's verdict is not an artefact of the cap.
 every other iteration plus 974 and 999, a boundary dip every 25th): a
 steady 1,107 with 31.9 at the boundaries survives and walks; a steady 30 or
 440 still fails with the new finding. Both fail on the ADR-409 source.
+
+## ADR-434 — A refused project publish rolls back, and an argument value in `result` is refused at validation (2026-09-28; amends ADR-429)
+
+**Context.** The ot10 biped (`ot10-biped-2`) returned its servo actuators
+in `result`. Validation accepted them. The assembly pass created the
+assembly, its components and its joints, then raised `No native publisher
+exists for output type 'actuator'`. ADR-429 had recorded the gap this fell
+into: the live document runs with `UndoMode 0`, so `abortTransaction`
+restored nothing. The objects stayed, the refusal said
+`accepted_live_state_preserved: true`, and every later write was refused
+with `PUBLICATION_UNTAGGED_OBJECT`. The turn ended on a probe and scored 2
+of 21.
+
+**Measured** under FreeCADCmd, from a parts-only accepted revision:
+- The refused assembly publish left 16 objects behind, and the next,
+  valid publish was refused over 15 of them.
+- With `UndoMode 1` set on the same document, the same refusal left the
+  one accepted object, and the next publish succeeded.
+
+**Decision.**
+- `publish_project_candidate` turns undo on for its own transaction. After
+  the commit or the abort it calls `clearUndos()` and restores the
+  document's mode. The rollback covers objects created, objects retired
+  and properties edited in place. Nothing is kept once the publish returns,
+  so the memory cost ADR-429 worried about lasts only as long as one
+  publish. This is the "turn on the document's undo" option ADR-429 did not
+  take. It was chosen over tracking and deleting created objects, because
+  that would not restore an edited shape or a retired object.
+- `validate_project_result` refuses any output whose type has no publisher
+  (`publishable_output_type`) with `PROJECT_OUTPUT_UNPUBLISHABLE`. The
+  message names the fix: remove the name from `result` and pass it to the
+  call that uses it. For an actuator it also names `assembly.mjcf(...,
+  actuators=[...])` and `assembly.task(..., actions=[...])`. The refusal
+  happens before the document is touched. No protocol op or result shape
+  changes.
+
+**Not changed.** The cadexd document itself still starts at `UndoMode 0`.
+The per-domain `publish_candidate` with `manage_transaction=True` is not
+the path cadexd uses for a project and is left as it was. ADR-429's "found,
+not fixed" retire-linked refusal is a separate defect and is still open.
+
+**Regression.** `cadex_tests/test_publication_refused_rollback_live.py`
+runs the real kernel:
+- A publish that raises after the assembly pass has created objects leaves
+  the document exactly as accepted, and the next publish succeeds.
+- A refused in-place edit restores the edited shape's volume.
+- Undo mode and undo count are back to 0 afterwards.
+- An actuator in `result` is refused at validation with the fix, and the
+  document is unchanged.
+
+A kernel-free unit test pins the validation refusal as well. On the
+previous source, all four kernel tests fail.

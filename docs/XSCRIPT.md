@@ -1401,7 +1401,10 @@ document** (and the headless rebuild driver); the shell receives the
 accepted artifacts as a `display` block and draws them however it likes
 (the Blender shell hydrates tessellation + ID maps into its scene).
 `publish_project_candidate` (`CadexScriptedDomainPublication.py`) applies
-one validated candidate under **ONE** document transaction — one undo step:
+one validated candidate under **ONE** document transaction. Undo is on for
+that transaction only and its history is cleared after it (ADR-434), so a
+refusal at any point — the lint, a pass that raised half-way — rolls the
+document back to the accepted revision, and a commit keeps no undo history:
 
 - Per-domain sub-publishes run through the existing domain publishers with
   `manage_transaction=False` (the project publisher owns the transaction
@@ -1418,6 +1421,11 @@ one validated candidate under **ONE** document transaction — one undo step:
   deleted in the same transaction and recorded in the result.
 - Output identity is durable: an output keeps its object across edits when
   unchanged; removed outputs' identities are never recycled.
+- Only values with a publisher are outputs. A value that only feeds another
+  call — an actuator, a body, an observation — returned in `result` is
+  refused at validation with `PROJECT_OUTPUT_UNPUBLISHABLE`, naming the fix
+  (remove it from `result`, pass it to the call that uses it), before the
+  document is touched (ADR-434).
 
 ### Digest and headless rebuild
 

@@ -226,7 +226,10 @@ Each of these is measured, and none is fixed in this run.
    created objects leaves them behind while the refusal reports
    `accepted_live_state_preserved: true`. It ended `ot10-biped-2`. The
    validator also accepts an output type no publisher can write, which is
-   what raised mid-publish there.
+   what raised mid-publish there. *Fixed after the round, by ADR-434:* the
+   project publish now rolls back, and an argument value in `result` is
+   refused at validation with the fix named. `ot10-biped-2`'s score stands,
+   because it was taken on the source it ran against.
 
 ## Regressions (C1)
 

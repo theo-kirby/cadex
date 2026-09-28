@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-09-27
+Verified against source: 2026-09-28
 
 **Native Blender geometry (ADR-185).** The mesh domain now includes
 `mesh.blender`: an xscript-owned recipe with named mesh inputs and JSON
@@ -161,7 +161,9 @@ NDJSON client with no cadex imports.
   `manage_transaction=False`), rewrites same-script assembly component
   tokens to live names, garbage-collects owned objects whose outputs left
   the contract, and aborts on any untagged document object
-  (`PUBLICATION_UNTAGGED_OBJECT`). Failed candidates stay inspectable
+  (`PUBLICATION_UNTAGGED_OBJECT`). Undo is on for that one transaction
+  and cleared after it, so any refusal rolls the document back to the
+  accepted revision (ADR-434). Failed candidates stay inspectable
   without replacing the accepted revision. Since Phase 5 publication runs
   **only inside cadexd's ephemeral document** (and `cadex_rebuild`) — the
   split is process-level, so the pipeline modules stay in-tree, but shell
