@@ -413,6 +413,69 @@ reached a verdict. Under the question policy that is a harness stop, not
 an attempt. The project stays as it is, read-only, and the quadruped's
 A5 attempt will run on a new project.
 
+## A5 attempt: the biped (`ot10-biped-1`)
+
+**Not yet scored. The product cannot reopen its own accepted design, so
+it cannot render it.** Every fit gate passes, including the first
+complete, passing swept fit in the run. This is the frozen biped prompt
+above, word for word, run once on the new project `ot10-biped-1` with
+no continuation:
+
+    CADEX_EFFORT=medium ./cadex --project ~/cadex-projects/ot10-biped-1 \
+        --model claude-opus-5-5 -p "<the frozen biped prompt>" --json
+
+It started at 2026-09-27T23:25:23Z at revision `2bdafcee` (after ADR-419
+and ADR-420). It ran detached from the loop, and its stdout and stderr
+stayed outside git. The turn ended on its own at 23:59:53Z (34 min 30 s)
+with exit 0, at accepted revision `44b8497b5c54…` (digest
+`10e2fd59cfd7…`).
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | not judged | — |
+| no trait 0 | not judged | — |
+| above hex3 (2) | not judged | — |
+| P1 ≤ 0.20 | not measured by `render`. The agent's own `look` read 0.2 % | — |
+| P2 ≤ 0.25 | **0.068** (2,611 of 38,133 mm, 22 printed components, `floor` among them) | yes |
+| P3 2 or 3 | **3** (`#2B2F36`, `#E9E4D8`, `#F26A1B`) | yes |
+| static fit | 1,275 pairs clear, 0 intersections. The one failing row is the floor's advisory world-geometry row. 43 fixed-joint pairs touching | yes |
+| swept fit | **complete and passing: 6 of 6 joints** at 15° steps, 0 failing pairs. The 6 floor contacts are advisory world geometry (ADR-420) | yes |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 6 × MG90S with 6 horns, 12 × M2×6 | yes |
+
+**Why it has no score.** `cadex render --project ~/cadex-projects/ot10-biped-1`
+exited 1 after 1 min 45 s, with `The restore pass digest does not match
+the accepted digest`. A second open, on a copy, refused the same way,
+with `geometry_comparison: the rebuilt model is not the accepted one`.
+All three attempts of the one revision (the accepted build, the render's
+restore and the copy's restore) produce 127 outputs. Their recipes are
+identical, and exactly one output differs: `src_hood`. That output is
+`part.fillet(part.cut(part.fillet(part.box), …, refine=true))`, with no
+`part.offset` in it. Between processes, its vertex set, edge-length
+multiset, counts and bounding box are bit-identical. The face order
+differs, and one face's area differs by 6.8 × 10⁻¹³ mm² (114.68601535158916
+against …984). That face is a 16-edge plane, the kind that `refine` makes
+by merging coplanar faces. ADR-389's geometry fingerprint hashes exact face
+areas and the total area, so a last-bit drift in one area reads as a
+different model. It is ADR-389's volume finding again, one measurement
+over. Until this is fixed, a design that refines a cut can pass every
+gate in its own turn and then never reopen.
+
+The failed restore also rewrote the project's `script.json`
+`latest_candidate` to name the restore attempt with status `accepted`.
+That was a side effect of scoring, not of the design, so it was reverted
+to the project's own commit (`48c994f`).
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 7 refused calls. `refusals.py` counted one as a horn style,
+but it was again the `write_script` guard against dropping accepted
+outputs. The other six were:
+- one sandbox refusal (`dir`);
+- one fillet selector without `expected_count`;
+- one fillet where 4 of 12 edges refused the radius;
+- one reset-variation refusal that named the lift, which the agent then
+  applied;
+- two refusals to retire an output that a component still linked.
+
 ## Baseline
 
 hex3's accepted design is the baseline: revision `c1704bfcb631…`, digest
