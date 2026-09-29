@@ -279,9 +279,16 @@ the report was written, and none is closed.
 7. **The long-term ladder has started.** The `hip_pitch` gap is closed
    (ADR-441). hex2's refusal at 48 mm, inside the parameter's own range,
    was the MJCF export check reading 7.1e-18 m of round-off, which the
-   writer zeroes, as a drift of 1.0. Still open: a Cadex signature that
-   holds across body plans, stalls, and electronics bays shaped around
-   their parts.
+   writer zeroes, as a drift of 1.0. Electronics bays now have a product
+   surface (ADR-442): `lib.battery(...)` and `lib.board(...)` carry
+   `.bay()`, the part's extents plus clearance and lead room, and the
+   overlay says to cut it. Measured read-only on `ot10-quadruped-4`, all
+   five housed parts pass the fit checks, and every one of their bays is
+   intruded: the battery pocket leaves 0.4 mm where the bay asks 1 mm
+   (2,884 mm³ of chassis inside the bay without lead room), and the four
+   boards sit straight on the deck with no room under them for their solder
+   joints (2,044–5,059 mm³ each). No A5 turn has used `.bay()` yet. Still
+   open: a Cadex signature that holds across body plans, and stalls.
 8. **The floor set the robot's render resolution (fixed, ADR-439).**
    `cadex render` sized its vertex-clustering grid from the extent of
    every loaded part, the world floor included, and dropped the floor from

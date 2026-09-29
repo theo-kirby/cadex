@@ -29201,3 +29201,51 @@ fail on the previous source. On a copy of hex2, `cadex params --set
 hip_pitch=48 --set policy_on=0` and `hip_pitch=52` are now accepted. With
 `policy_on=1`, the next refusal is the stored policy's task digest, which
 is correct for a changed design.
+
+## ADR-442 — A housed part carries its own bay (2026-09-29)
+
+**Context.** The overlay has told the product agent since ADR-406 to
+enclose a board or battery in a printed bay "with room for their leads and
+connectors", and ADR-407's `lib.battery` docstring told it to "leave
+margin". Neither gave it a number or a shape, so every bay was hand-cut
+from a guess. Measured read-only on an export of `ot10-quadruped-4`, the
+highest-scoring counted A5 design: all five housed parts clear every
+printed part (0 mm³ of body interference, so the fit checks pass), but the
+battery pocket leaves 0.4 mm on its sides and top, with no lead room at
+either end, and the IMU, ESP32, PCA9685 and regulator sit flat on the
+chassis deck with nothing under them for solder joints or the regulator's
+1.8 mm of bottom-side parts. Cut with the defaults below, the bays those
+parts would need overlap the chassis by 4,001 mm³ (battery) and
+2,044–5,059 mm³ (each board), and the shell above the boards by
+1,362–3,569 mm³.
+
+**Decision.** `lib.battery(...)` returns a `BatteryPart` and `lib.board(...)`
+a `BoardPart`, both carrying `.bay(...)`: a keep-out box in the part's own
+frame, placed with the part's own frame. The battery's bay is its envelope
+plus `clearance` (default 1 mm) on the four sides and the top, and
+`lead_room` (default 15 mm) beyond the +X end. Nothing is added below the
+base face, which is the seat. The board's bay is the PCB and
+component-marker footprint (the ESP32 module overhangs its PCB by 6 mm)
+plus `clearance`, from `underside + clearance` below the PCB (default 2 mm,
+covering the D36V50F6's stated 1.8 mm) to `lead_room + clearance` above the
+tallest component (default 8 mm). A bay is a cutting tool. It is never
+registered as catalogued hardware, so it never counts as purchased in
+`look`'s measures. Allowances must be finite, zero or more, and not bool.
+Anything else is refused by name. The overlay's ENCLOSE rule and the
+complete-machine paragraph name `.bay()` and tell the agent not to cut to
+`.body`. `docs/XSCRIPT.md` gains the battery section it never had. The
+lead end is a convention (+X), not a datasheet fact: the Gens Ace listing
+does not dimension where its leads leave.
+
+**Not done.** No A5 turn has been run against the new overlay. The
+measurement above is of what the surface would have changed, not of a
+design that used it. Fitted connectors (USB, HDMI, pin headers) are still
+not modelled. `underside` is the knob for headers, and the docstring says so.
+
+**Tests.** `cadex_tests/test_library.py`:
+`test_battery_bay_houses_the_pack_with_room_for_its_leads`,
+`test_board_bay_contains_the_board_and_its_overhang` (all five boards),
+`test_esp32_bay_covers_the_module_overhanging_its_pcb` and
+`test_bay_allowances_refuse_by_name`. All eleven cases fail on the previous
+source. `cli/tests/test_turn_loop.py`:
+`test_the_overlay_cuts_electronics_bays_with_bay`.

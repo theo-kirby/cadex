@@ -633,6 +633,17 @@ def test_the_prompt_holds_printed_parts_to_a_design_language() -> None:
     assert "BE DONE WHEN IT IS BUILT AND YOU HAVE LOOKED AT IT" in CLI_OVERLAY
 
 
+def test_the_overlay_cuts_electronics_bays_with_bay() -> None:
+    """ADR-442: a bay is the part's `.bay()`, not a pocket cut to its `.body`."""
+
+    enclose = next(i for i in _overlay_items(CLI_OVERLAY)
+                   if i.startswith("- ENCLOSE, DO NOT BOLT ON."))
+    assert "`part.cut(body, pack.bay())`" in enclose
+    assert "never cut to the part's `.body`" in enclose
+    complete = CLI_OVERLAY[CLI_OVERLAY.index("A ROBOT IS A COMPLETE MACHINE"):]
+    assert "cut with their `.bay()`" in complete[:400]
+
+
 def _overlay_items(text: str) -> list[str]:
     """Every paragraph of the overlay, with a bulleted list split into its items."""
     import re

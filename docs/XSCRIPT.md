@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-28
+Verified against source: 2026-09-29
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -575,6 +575,34 @@ result = {"controller": controller.body, "driver": driver.body}
 Use ordinary `part.cable` on the declared wire to publish its geometry, as
 in the wiring examples below. These rows declare geometry and pin labels;
 they do not simulate electrical behavior or validate voltage compatibility.
+
+#### Battery, and bays for what is housed `[ADR-407, ADR-442]`
+
+`lib.battery("gensace-gea2s100045d", origin=..., direction=..., roll_degrees=...)`
+is the pack's stated rectangular envelope: datum at the centre of the base
+face, length along local X, width along Y, height along +direction. Leads
+are not modelled; `spec["density_kg_m3"]` is the stated mass over the
+envelope, for `assembly.body`.
+
+A battery or board is housed, not bolted on, so both carry `.bay(...)`: a
+**keep-out solid** placed exactly where the part is, which the part that
+carries it cuts. It is a cutting tool and never a component, and it is not
+catalogued hardware, so it never counts as purchased in `look`'s measures.
+
+| call | extents, in the part's own frame |
+|---|---|
+| `pack.bay(clearance=1.0, lead_room=15.0)` | the envelope plus `clearance` on the four sides and the top, plus `lead_room` beyond the **+X** end face, where the leads are taken to leave (roll the pack 180° to lead out of −X). Nothing below the base face: that is the seat. |
+| `board.bay(clearance=1.0, underside=2.0, lead_room=8.0)` | the PCB and component-marker footprint (the ESP32 module overhangs its PCB) plus `clearance`; from `underside + clearance` below the PCB to `lead_room + clearance` above its tallest component. Raise `underside` to the pin length when headers are fitted; fitted connectors (USB, HDMI) are not modelled. |
+
+Every allowance is a finite number of millimetres, zero or more; anything
+else refuses naming the call and the argument (`board.bay: underside must
+be ...`).
+
+```python
+pack = lib.battery("gensace-gea2s100045d", origin=(0, 0, 4))
+esp = lib.board("esp32-devkitc-v4", origin=(-14, -24, 20))
+body = part.cut(hull, [pack.bay(), esp.bay()])
+```
 
 #### N20 gearmotor `[ADR-205]`
 

@@ -301,7 +301,10 @@ brackets, links and electronics first, and make every fit check pass:
 - ENCLOSE, DO NOT BOLT ON. A servo, board or battery sits in a pocket, \
 cradle or bracket shaped around its case and fastened through its own \
 mounting tabs, not on a bare plate or under a flat bar. A link that carries \
-a motor is formed around that motor.
+a motor is formed around that motor. Cut a board's or battery's bay with \
+its own `.bay()` -- `part.cut(body, pack.bay())` -- which is the part's \
+extents plus clearance and room for its leads, placed where the part is; \
+never cut to the part's `.body`, which leaves no room for either.
 - ONE CONTINUOUS FORM PER PART. A foot, boss, rib or tab is fused and \
 blended into the solid it belongs to, not a separate primitive stuck to its \
 face.
@@ -383,7 +386,7 @@ check that passed.
 A ROBOT IS A COMPLETE MACHINE. When a design moves itself -- it has \
 actuators and is meant to run untethered -- it carries what runs it, placed \
 as purchased catalog components like any other and enclosed in printed \
-bays with room for their leads and connectors:
+bays cut with their `.bay()`, which leaves room for their leads:
 - a controller: `lib.board("esp32-devkitc-v4")` by default, or \
 `lib.board("pi-zero-2-w")` when the task needs Linux;
 - a servo driver when there are more servos than the controller drives \
