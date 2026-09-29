@@ -49,7 +49,7 @@ _ENGINE_TOOLS = {"get_script", "write_script", "set_params",
                  "edit_script", "restore_version", "inspect_model",
                  "describe_cad_api", "scene_summary", "rebuild_model",
                  "import_geometry", "link_part", "make_blueprint",
-                 "save_blueprint"}
+                 "save_blueprint", "look"}
 
 TOOL_DEFS = [
     {
@@ -211,15 +211,19 @@ TOOL_DEFS = [
             "(omit the target to list them, give one to read that version's "
             "source), 'blueprint' for the stored drawing sheets (omit the "
             "target to list their names, versions and recipes; give a name "
-            "or ordinal for one entry). This is engine truth, unlike the "
-            "tessellated copies in the Blender scene."
+            "or ordinal for one entry), 'clearance' for every measured pair, "
+            "the joint sweeps (/clearance_sweep) and what the fixed joints "
+            "hold (/attachments), 'inventory' for every placed component "
+            "with its catalog identity and appearance role. This is engine "
+            "truth, unlike the tessellated copies in the Blender scene."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "scope": {"type": "string",
                           "description": "script | document | object | output "
-                                         "| assets | history | blueprint"},
+                                         "| assets | history | blueprint "
+                                         "| clearance | inventory"},
                 "target": {"type": "string",
                            "description": "Object name for scope=object; "
                                           "output name for scope=output; "
@@ -304,6 +308,36 @@ TOOL_DEFS = [
                 "max_size": {
                     "type": "integer",
                     "description": "Longest edge of the returned image in pixels (default 768).",
+                },
+            },
+        },
+    },
+    {
+        "name": "look",
+        "description": (
+            "See the last ACCEPTED design the way it will be judged: the "
+            "engine's studio render of the accepted solids, each part in its "
+            "declared appearance role (shell, mechanism, accent) and the "
+            "assembly's palette, on the dark prototype floor, with any floor "
+            "or world geometry left out. Returns one image per view plus the "
+            "design-language measures -- how much of the hero silhouette is "
+            "purchased hardware, how much printed outside edge is sharp, how "
+            "many materials show -- each against its bar. This is the same "
+            "render the headless CLI's agent sees. Views: hero, iso, "
+            "iso_back, front, right (looks from +X at the face), top. "
+            "`focus` frames the view on the named components or outputs."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "views": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": ("1 to 5 of hero, iso, iso_back, front, "
+                                    "right, top (default iso and iso_back)."),
+                },
+                "focus": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Component or output names to frame on.",
                 },
             },
         },
@@ -1010,19 +1044,146 @@ def _tool_get_script(tool_input):
     return _text(_truncate(report, _SCRIPT_CHARS)), not ok
 
 
-def _deferred(started, render):
+def _measured(started, render):
     """Wrap a cadex_backend Lifecycle (or an immediate outcome) for the agent.
 
-    ``render(ok, report)`` turns the engine's verdict into MCP content.
+    ``render(ok, report)`` turns the engine's verdict into MCP content, and an
+    accepted build also gets the engine's fit and inventory blocks.
+
+    Every accepted build reply carries the measured fit and the catalog
+    identity, as the headless CLI's does (cadex ADR-346, ADR-362, ADR-448):
+    the engine's measurements of the accepted solids are the evidence, and
+    the script's printout is only a claim. They are read and built on a
+    worker thread once the build has been adopted, so Blender's main thread
+    never waits for them; a refused build carries none.
     """
+    import threading
+
+    import bpy
     from . import cadex_backend
 
     if not isinstance(started, cadex_backend.Lifecycle):
         return render(*started)
+    scene = bpy.context.scene
+    box = {"outcome": None, "thread": None, "result": None}
+
+    def measure():
+        try:
+            root, client, module_dir = cadex_backend.measurement_context(scene)
+            revision = str(cadex_backend.last_accepted(root).get("revision") or "")
+        except Exception as exc:
+            box["result"] = {"ok": False, "error": str(exc)}
+            return
+
+        def worker():
+            box["result"] = cadex_backend.measure_blocks(
+                root, client, module_dir, revision)
+
+        box["thread"] = threading.Thread(target=worker, name="cadex-measure",
+                                         daemon=True)
+        box["thread"].start()
 
     def poll():
-        outcome = started.poll()
-        return None if outcome is None else render(*outcome)
+        if box["outcome"] is None:
+            outcome = started.poll()
+            if outcome is None:
+                return None
+            box["outcome"] = outcome
+            if not outcome[0]:
+                return render(*outcome)
+            measure()
+        thread = box["thread"]
+        if thread is not None and thread.is_alive():
+            return None
+        content, is_error = render(*box["outcome"])
+        return content + _text(_blocks_text(box["result"] or {})), is_error
+
+    return Pending(poll)
+
+
+def _blocks_text(result):
+    """The measured blocks as the model reads them after a build."""
+    if result.get("ok") is not True:
+        return ("MEASURED FIT: unavailable -- the engine's measurements could "
+                "not be read, so nothing about fit has been checked: "
+                + str(result.get("error") or "no result"))
+    return "MEASURED FIT AND INVENTORY (engine, accepted revision):\n" + json.dumps(
+        {"fit": result.get("fit_view"), "inventory": result.get("inventory_view")},
+        indent=1, sort_keys=True, default=str)
+
+
+def _tool_look(tool_input):
+    """The studio render of the accepted design, as images plus measures.
+
+    Drawn by the engine's studio process from the tessellation the last
+    accepted build already published (cadex ADR-445, ADR-448), so looking
+    costs no rebuild; the fit and inventory values it needs are the ones
+    the build reply was measured from. Read-only: in neither
+    ``MUTATING_TOOLS`` nor the undo stack.
+    """
+    import base64
+    import shutil
+    import tempfile
+    import threading
+
+    import bpy
+    from . import cadex_backend, cadex_studio
+
+    tool_input = tool_input or {}
+    views = tool_input.get("views") or ["iso", "iso_back"]
+    focus = tool_input.get("focus") or []
+    if isinstance(views, str):
+        views = [views]
+    if isinstance(focus, str):
+        focus = [focus]
+    if not isinstance(views, list) or not 1 <= len(views) <= 5:
+        return _text("look takes `views`: 1 to 5 of hero, iso, iso_back, "
+                     "front, right, top."), True
+    scene = bpy.context.scene
+    root, client, module_dir = cadex_backend.measurement_context(scene)
+    accepted = cadex_backend.last_accepted(root)
+    revision = str(accepted.get("revision") or "")
+    if not revision or not accepted.get("display"):
+        return _text("Nothing accepted to look at yet: build the model first "
+                     "(write_script or rebuild_model)."), True
+    reply = {"ok": True, "revision": revision, "accepted_revision": revision,
+             "display": accepted["display"]}
+    box = {}
+
+    def worker():
+        out_dir = tempfile.mkdtemp(prefix="cadex-look-")
+        try:
+            clearance, inventory = cadex_backend.measured_values(root, client, revision)
+            result = cadex_studio.run(
+                {"kind": "look", "reply": reply, "clearance": clearance,
+                 "inventory_value": inventory, "views": [str(v) for v in views],
+                 "focus": [str(f) for f in focus], "out_dir": out_dir},
+                module_dir=module_dir)
+            if result.get("ok") is True:
+                result["images"] = []
+                for path in result.get("files") or []:
+                    with open(path, "rb") as stream:
+                        result["images"].append(base64.b64encode(stream.read()).decode("ascii"))
+            box["result"] = result
+        except Exception as exc:
+            box["result"] = {"ok": False, "error": str(exc)}
+        finally:
+            shutil.rmtree(out_dir, ignore_errors=True)
+
+    thread = threading.Thread(target=worker, name="cadex-look", daemon=True)
+    thread.start()
+
+    def poll():
+        if thread.is_alive():
+            return None
+        result = box.get("result") or {}
+        if result.get("ok") is not True:
+            return _text("look could not draw the design: "
+                         + str(result.get("error") or "no result")), True
+        content = _text(json.dumps(result.get("facts"), indent=1, default=str))
+        content += [{"type": "image", "data": data, "mimeType": "image/png"}
+                    for data in result["images"]]
+        return content, False
 
     return Pending(poll)
 
@@ -1067,7 +1228,7 @@ def _tool_write_script(tool_input, agent=None):
         # Keep the attempted source visible when the engine never ran -- and
         # marked as not in the model, because it is not.
         cadex_backend.mirror_script_text(source, accepted=False)
-    return _deferred(started, _render_write_script)
+    return _measured(started, _render_write_script)
 
 
 def _render_set_params(ok, report):
@@ -1084,7 +1245,7 @@ def _tool_set_params(tool_input, agent=None):
     updates = tool_input.get("params") or {}
     if not isinstance(updates, dict) or not updates:
         return _text("set_params needs a non-empty `params` object."), True
-    return _deferred(
+    return _measured(
         cadex_backend.begin_set_params(
             bpy.context.scene, updates,
             cancelled=_cancellation_check(agent)),
@@ -1104,7 +1265,7 @@ def _tool_rebuild_model(_tool_input, agent=None):
     import bpy
     from . import cadex_backend
 
-    return _deferred(
+    return _measured(
         cadex_backend.begin_rebuild_model(
             bpy.context.scene, cancelled=_cancellation_check(agent)),
         _render_rebuild_model)
@@ -1114,7 +1275,7 @@ def _tool_edit_script(tool_input, agent=None):
     import bpy
     from . import cadex_backend
 
-    return _deferred(
+    return _measured(
         cadex_backend.begin_edit_script(
             bpy.context.scene, tool_input.get("replacements"),
             cancelled=_cancellation_check(agent)),
@@ -1125,11 +1286,18 @@ def _tool_restore_version(tool_input, agent=None):
     import bpy
     from . import cadex_backend
 
-    return _deferred(
+    return _measured(
         cadex_backend.begin_restore_version(
             bpy.context.scene, tool_input.get("version", ""),
             cancelled=_cancellation_check(agent)),
         _render_write_script)
+
+
+#: What inspect_model may ask the engine about. ``clearance`` and
+#: ``inventory`` are what the fit and inventory blocks point at for the rows
+#: they leave out (cadex ADR-448).
+_INSPECT_SCOPES = {"script", "document", "object", "output", "assets",
+                   "history", "blueprint", "clearance", "inventory"}
 
 
 def _tool_inspect_model(tool_input):
@@ -1137,10 +1305,10 @@ def _tool_inspect_model(tool_input):
     from . import cadex_backend
 
     scope = str(tool_input.get("scope") or "").strip()
-    if scope not in {"script", "document", "object", "output", "assets",
-                     "history", "blueprint"}:
+    if scope not in _INSPECT_SCOPES:
         return _text("inspect_model scope must be script, document, object, "
-                     "output, assets, history or blueprint."), True
+                     "output, assets, history, blueprint, clearance or "
+                     "inventory."), True
     args = {"scope": scope}
     for key in ("target", "path"):
         value = str(tool_input.get(key) or "").strip()
@@ -1774,6 +1942,7 @@ _HANDLERS = {
     "get_attached_image": _tool_get_attached_image,
     "scene_summary": _tool_scene_summary,
     "viewport_screenshot": _tool_viewport_screenshot,
+    "look": _tool_look,
     "render_views": _tool_render_views,
     "export_stl": _tool_export_stl,
     "import_geometry": _tool_import_geometry,

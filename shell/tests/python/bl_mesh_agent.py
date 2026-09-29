@@ -883,7 +883,24 @@ def test_prompt_carries_no_api_names():
 
     pattern = re.compile(
         r"\b(?:part|mesh|assembly|partdesign|sketcher)\.[A-Za-z_]+")
-    texts = {"the system prompt": modes.system_prompt()}
+    # The engine's agent guidance (cadex ADR-446, ADR-448) is exempt: it
+    # names the calls a design is proved with, and it is not a copy this
+    # add-on keeps -- it ships in the same payload as the API it names, so
+    # it cannot drift from it. What this guardrail holds is everything the
+    # add-on writes itself: the prompt without that section, and every tool.
+    from mesh_agent import agent as agent_module
+    from mesh_agent import cadex_studio
+    written = agent_module.SYSTEM_PROMPT + "\n\n" + modes.CADEX_OVERLAY + "\n"
+    prompt = modes.system_prompt()
+    check(prompt.startswith(written),
+          "the prompt is the add-on's own text, then the engine's guidance")
+    try:
+        engine_text = cadex_studio.guidance()
+    except ValueError:
+        engine_text = None
+    check(engine_text is None or prompt == written + engine_text,
+          "and the rest of it is the engine's guidance, verbatim")
+    texts = {"the system prompt": written}
     for tool in tools.TOOL_DEFS:
         texts["{:s}'s description".format(tool["name"])] = tool["description"]
 
@@ -2089,6 +2106,54 @@ def test_render_views_cameras_frame_the_model():
           "looking at the model does not enter the undo stack")
     check("render_views" not in tools._ENGINE_TOOLS,
           "and it never reaches the engine")
+
+
+def test_the_engine_studio_is_run_and_read_never_imported():
+    """`look`, the measured blocks and the guidance cross a process boundary (ADR-448).
+
+    The engine's studio is a program this add-on runs and its guidance a
+    file it reads; this suite has no engine, so it pins the refusals: a
+    payload without the studio, a guidance file with no marker, and one
+    that names a tool this add-on does not fill.
+    """
+    from mesh_agent import cadex_studio, tools
+
+    print("test_the_engine_studio_is_run_and_read_never_imported")
+    names = [entry["name"] for entry in tools.TOOL_DEFS]
+    check("look" in names, "look is a tool")
+    check("look" not in tools.MUTATING_TOOLS, "looking does not enter the undo stack")
+    check("look" in tools._ENGINE_TOOLS, "and it is preflighted: it needs the engine")
+    check({"clearance", "inventory"} <= tools._INSPECT_SCOPES,
+          "inspect_model reads what the fit and inventory blocks point at")
+    check(set(cadex_studio.SHELL_TOOL_NAMES.values()) <= set(names),
+          "every tool the guidance names is one this add-on has")
+
+    empty = tempfile.mkdtemp(prefix="mesh-studio-")
+    result = cadex_studio.run({"kind": "blocks"}, module_dir=empty)
+    check(result.get("ok") is False and "CadexStudio.py" in str(result.get("error")),
+          "a payload without the studio is a refusal, not a traceback")
+    guidance = os.path.join(empty, cadex_studio.GUIDANCE_FILE)
+    with open(guidance, "w", encoding="utf-8") as stream:
+        stream.write("no marker\n")
+    try:
+        cadex_studio.guidance(empty)
+        refused = False
+    except ValueError:
+        refused = True
+    check(refused, "guidance with no marker is refused")
+    with open(guidance, "w", encoding="utf-8") as stream:
+        stream.write("<!-- x -->\n" + cadex_studio.GUIDANCE_MARKER
+                     + "Use {{look}} then {{teleport}}.\n")
+    try:
+        cadex_studio.guidance(empty)
+        refused = ""
+    except ValueError as exc:
+        refused = str(exc)
+    check("teleport" in refused, "and so is a placeholder this add-on does not fill")
+    with open(guidance, "w", encoding="utf-8") as stream:
+        stream.write(cadex_studio.GUIDANCE_MARKER + "Use {{look}} and {{inspect}}.\n")
+    check(cadex_studio.guidance(empty) == "Use look and inspect_model.\n",
+          "filled placeholders become this add-on's tool names")
 
 
 def test_exploded_poses_interpolate_in_staged_windows():
@@ -3756,6 +3821,7 @@ def main():
         test_playback_skips_the_input_frame()
         test_the_simulation_panel_polls_on_content_not_geometry()
         test_render_views_cameras_frame_the_model()
+        test_the_engine_studio_is_run_and_read_never_imported()
         test_exploded_poses_interpolate_in_staged_windows()
         test_blueprint_styles_the_viewport_from_one_table()
         test_blueprint_sheets_compose_from_pure_arithmetic()

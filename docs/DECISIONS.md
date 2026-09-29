@@ -29463,3 +29463,38 @@ CLI's in-process ones and refuses a malformed value as a result, not a
 traceback (`cadex_tests/test_studio_process.py`). Tests of the summaries
 stay in `cli/tests/test_clearance.py` and `test_inventory.py`, and now
 exercise the engine's functions through the CLI's names.
+
+## ADR-448 — The app's agent sees and measures its design as the CLI's does (2026-09-29)
+
+**Decision.** The shell's agent gets what ADR-406, ADR-346/362 and
+ADR-417 gave the CLI's, from the engine pieces slices 1–3a put in the
+payload: a `look` tool (the studio render of the accepted revision, images
+plus the design-language measures); the `fit` and `inventory` blocks,
+bounded as the CLI bounds them, on every accepted build reply; `inspect_model`
+scopes `clearance` and `inventory`, which those blocks point at; and the
+engine's agent guidance in the system prompt with the shell's tool names.
+The new `mesh_agent/cadex_studio.py` runs `CadexStudio.py` with the
+payload's own `bin/python` and reads `CadexAgentGuidance.md` as text. The
+agent's build tools go through `_measured`, which replaces `_deferred`. The
+overlay's `render_views` bullet now points at `look` for judging a design
+and shrank (3,678 to 3,543 characters).
+
+**Reason.** GUI-parity slice 3b (the owner's direction, ADR-445). The app's
+agent was designing blind to the design language and to measured fit, the
+two things the ot5–ot10 runs found an unassisted design needs.
+
+**Consequences.** The shell imports no engine code: it runs one program and
+reads one file, both in the payload it already ships. The measurement is a
+read of two published values plus one child process, on a worker thread
+after the build is adopted, so the main thread never waits: the gate
+measures a build with its blocks at 0.65 s and a two-view look at 4.1 s,
+and slider latency is unmoved (median 0.548 s against 0.542 s before, bar
+0.65 s). Slider drags do not measure; only the agent's tools do. One
+guardrail changes on purpose: `test_prompt_carries_no_api_names` (ADR-123)
+now holds the add-on's own text and exempts the engine's guidance, and it
+checks that the rest of the prompt is that guidance verbatim. ADR-123
+forbids a hand-written API copy that can drift; the guidance names calls
+but ships in the same payload as the API it names. The shell diff is
+entirely under `mesh_agent/` and `shell/tests/python/`; `BLENDER-TREE.md`
+§2 is unchanged. The eight gate failures on clean `main` (the restore
+lockout scenario) are unchanged by this and still open.

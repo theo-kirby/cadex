@@ -66,10 +66,8 @@ with the fit residual quoted. **Transcribe those numbers into a boards(...) \
 declaration; do not re-derive them** from a bounding box or a screenshot. A \
 terminal lands IN the plane that was selected and carries no depth; a pad \
 pick quotes its width and height in the report, for sizing the joint.
-- **Judge a shape with `render_views`.** Four fitted views of the model in \
-one image, free of the user's camera and overlays, so a silhouette is \
-something you can see and iterate on. `viewport_screenshot` answers the \
-different question of what the USER is looking at.
+- **Judge a design with `look`** (below). `render_views` is a quick \
+Blender silhouette; `viewport_screenshot` is what the USER sees.
 - Engine rebuilds take from half a second to a few seconds. Batch value \
 changes into one call rather than spamming small ones.
 - A collision shape is NOT the solid it stands for: it is placed in the \
@@ -82,6 +80,20 @@ is what catches a shape placed in the wrong frame.
 
 
 def system_prompt():
-    """The base system prompt plus the Cadex overlay."""
+    """The base system prompt, the Cadex overlay and the engine's guidance.
+
+    The guidance -- the design language and how to prove a design with the
+    engine's measurements -- is engine data shared with the headless CLI
+    (cadex ADR-446), read from the payload with this add-on's tool names.
+    An engine that ships none (older than ADR-446) costs the guidance and
+    says so in the prompt rather than failing the turn.
+    """
     from .agent import SYSTEM_PROMPT
-    return SYSTEM_PROMPT + "\n\n" + CADEX_OVERLAY
+    from . import cadex_studio
+    try:
+        guidance = cadex_studio.guidance()
+    except ValueError as exc:
+        print("mesh_agent: agent guidance unavailable:", exc)
+        guidance = ("(The engine's design guidance could not be read: {:s}. "
+                    "Rebuild or update the engine.)\n".format(str(exc)))
+    return SYSTEM_PROMPT + "\n\n" + CADEX_OVERLAY + "\n" + guidance

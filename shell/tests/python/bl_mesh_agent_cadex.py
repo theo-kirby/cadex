@@ -3662,6 +3662,93 @@ def test_render_views_frames_the_engines_geometry(root):
     }
 
 
+#: A jointed pair that declares how it looks (cadex ADR-413): what the
+#: agent's `look` and the measured build reply are checked against.
+LOOK_SCRIPT = """
+plate = part.box(40, 20, 4)
+arm = part.box(30, 6, 6)
+base = assembly.component(plate, grounded=True, appearance="shell")
+swing = assembly.component(arm, placement=[0, 0, 40], appearance="accent")
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin", offset=[12, 0, 4]),
+                   assembly.connector(swing, "origin"))
+asm = assembly.assembly([base, swing], [j], palette={"accent": "#FF0000"})
+diag = assembly.solve(asm)
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag}
+"""
+
+
+def test_the_agent_sees_and_measures_its_design(root):
+    """The app's agent gets what the CLI's gets (cadex ADR-448).
+
+    A build reply carries the engine's fit and inventory blocks, `look`
+    returns the engine's studio render with the design-language measures,
+    and the system prompt carries the engine's guidance with this add-on's
+    tool names. All three come from the engine payload; none is imported.
+    """
+
+    print("test_the_agent_sees_and_measures_its_design")
+    from mesh_agent import modes
+
+    reset_scene(root)
+    started = time.perf_counter()
+    ok, report = run_tool("write_script", {"content": LOOK_SCRIPT})
+    build_seconds = time.perf_counter() - started
+    check(ok, "the declared assembly is accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+    header = "MEASURED FIT AND INVENTORY (engine, accepted revision):\n"
+    check(header in report, "the build reply carries the measured blocks")
+    blocks = {}
+    if header in report:
+        try:
+            blocks = json.loads(report.split(header, 1)[1])
+        except ValueError:
+            pass
+    fit, inventory = blocks.get("fit") or {}, blocks.get("inventory") or {}
+    check(fit.get("verdict") in {"pass", "fail"} and fit.get("pairs_checked", 0) >= 1,
+          "the fit block judged the measured pairs ({!r})".format(fit.get("verdict")))
+    check(inventory.get("appearance") == {"accent": 1, "shell": 1},
+          "the inventory block counts the declared roles ({!r})".format(
+              inventory.get("appearance")))
+
+    started = time.perf_counter()
+    content, is_error = tools.execute_blocking("look", {"views": ["hero", "iso"]})
+    look_seconds = time.perf_counter() - started
+    images = [block for block in content if block.get("type") == "image"]
+    texts = [block.get("text", "") for block in content if block.get("type") == "text"]
+    facts = {}
+    try:
+        facts = json.loads(texts[0]) if texts else {}
+    except ValueError:
+        pass
+    check(not is_error and len(images) == 2, "look returns one image per view")
+    check(all(block.get("mimeType") == "image/png" and len(block.get("data", "")) > 1000
+              for block in images), "and each is a PNG")
+    check(facts.get("views") == ["hero", "iso"] and facts.get("components_drawn") == 2,
+          "the facts name the views and the parts drawn")
+    check("accent #FF0000" in str(facts.get("colours")),
+          "the parts are drawn in the declared palette")
+    check(set(facts.get("measures") or {}) == {
+        "hardware_silhouette_share", "sharp_outside_edge_share", "material_count"},
+          "the design-language measures come with the pictures")
+    content, is_error = tools.execute_blocking("look", {"views": ["sideways"]})
+    check(is_error, "an unknown view is refused, not drawn")
+
+    ok, text = run_tool("inspect_model", {"scope": "clearance", "path": "/pairs"})
+    check(ok and "base" in text and "swing" in text,
+          "inspect_model reads the rows the fit block points at")
+
+    prompt = modes.system_prompt()
+    check("REFINE WITH `look`" in prompt and "`inspect_model scope=output`" in prompt,
+          "the prompt carries the engine's guidance in this add-on's tool names")
+    check("{{" not in prompt, "with every placeholder filled")
+
+    GATE["look"] = {"build_with_blocks_seconds": round(build_seconds, 3),
+                    "look_seconds": round(look_seconds, 3), "views": 2,
+                    "fit_verdict": fit.get("verdict")}
+
+
 def test_the_collision_overlay_measures_every_primitive(root):
     """Extents per type, against the record's own independently-computed size.
 
@@ -5816,6 +5903,7 @@ def main():
     fallback_root = tempfile.mkdtemp(prefix="mesh-cadex-fallback-")
     supersede_root = tempfile.mkdtemp(prefix="mesh-cadex-supersede-")
     views_root = tempfile.mkdtemp(prefix="mesh-cadex-views-")
+    look_root = tempfile.mkdtemp(prefix="mesh-cadex-look-")
     collision_root = tempfile.mkdtemp(prefix="mesh-cadex-collision-")
     shapes_root = tempfile.mkdtemp(prefix="mesh-cadex-shapes-")
     isolate_root = tempfile.mkdtemp(prefix="mesh-cadex-isolate-")
@@ -5885,6 +5973,7 @@ def main():
         test_a_pose_only_slider_previews_at_interactive_rate(preview_root)
         test_a_shape_slider_falls_back_to_set_params(fallback_root)
         test_render_views_frames_the_engines_geometry(views_root)
+        test_the_agent_sees_and_measures_its_design(look_root)
         test_the_collision_overlay_draws_adr074(collision_root)
         test_the_collision_overlay_measures_every_primitive(shapes_root)
         test_the_collision_overlay_is_isolated(isolate_root)
@@ -5923,7 +6012,7 @@ def main():
                      long_root, guard_root, history_root, prune_root,
                      assembly_root, shared_root, sim_root, live_root,
                      drag_root, supersede_root, skip_root,
-                     preview_root, fallback_root, views_root, collision_root,
+                     preview_root, fallback_root, views_root, look_root, collision_root,
                      shapes_root, isolate_root, readers_root, wiring_root,
                      cage_root, print_root, section_root,
                      explode_root, blueprint_root,

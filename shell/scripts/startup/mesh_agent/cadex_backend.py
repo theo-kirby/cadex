@@ -171,6 +171,54 @@ def hydrate(payload, animate=True):
     return hydration
 
 
+def measurement_context(scene):
+    """Main thread: ``(root, client, module_dir)`` for work done off it.
+
+    Resolving the engine reads preferences and ``bpy.app``, so it happens
+    here; :func:`measure_blocks` and a look then run on a worker thread with
+    what this returns.
+    """
+    from . import cadex_studio
+    root = project_root(scene)
+    return root, _client(root), cadex_studio.engine_module_dir()
+
+
+def measured_values(root, client, revision):
+    """Worker thread: the raw clearance and inventory values for ``revision``.
+
+    Read once per accepted revision through :func:`_inspect_full` -- the
+    same paged reader the parameter specs use -- and cached on the project
+    state. Either value is ``None`` when the engine could not serve it.
+    """
+    state = _state_for(root)
+    cached = state.measured
+    if revision and cached.get("revision") == revision:
+        return cached.get("clearance"), cached.get("inventory_value")
+    clearance = _inspect_full(client, "clearance", "")
+    inventory = _inspect_full(client, "inventory", "")
+    state.measured = {"revision": revision, "clearance": clearance,
+                      "inventory_value": inventory}
+    return clearance, inventory
+
+
+def measure_blocks(root, client, module_dir, revision):
+    """Worker thread: the fit and inventory blocks a build reply carries.
+
+    The blocks are the engine's own (``CadexFitReport``, cadex ADR-447),
+    built by the payload's studio process from the published values -- the
+    same blocks, bounded the same way, the headless CLI's agent reads.
+    Returns the studio's result: ``fit_view`` and ``inventory_view`` on
+    success, ``error`` otherwise.
+    """
+    from . import cadex_studio
+    try:
+        clearance, inventory = measured_values(root, client, revision)
+    except Exception:
+        return {"ok": False, "error": traceback.format_exc(limit=2)}
+    return cadex_studio.run({"kind": "blocks", "clearance": clearance,
+                             "inventory_value": inventory}, module_dir=module_dir)
+
+
 def last_accepted(root=None):
     """The last accepted response's ``{display, revision}`` for this project.
 
@@ -292,6 +340,12 @@ class _State:
         #: take one. Keyed by revision, so an accepted rebuild invalidates it
         #: by construction rather than by anyone remembering to.
         self.collision_evidence = ("", None)
+        #: The raw ``inspect scope=clearance`` and ``scope=inventory`` values
+        #: for one accepted revision, ``{revision, clearance,
+        #: inventory_value}``: what a build reply's fit and inventory blocks
+        #: and a ``look`` are made from (cadex ADR-448). Written by a worker
+        #: thread as one assignment; keyed by revision, like the evidence.
+        self.measured = {}
 
 
 def _preferences():

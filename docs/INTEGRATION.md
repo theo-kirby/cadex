@@ -503,7 +503,8 @@ allow:
 
 - the CLI (LGPL) loads it by path from the engine it resolved, exactly as it
   loads `CadexdProtocol`;
-- the shell (GPL, which imports no cadex code) runs it as a **child process**:
+- the shell (GPL, which imports no cadex code) runs it as a **child process**
+  (`mesh_agent/cadex_studio.py`, ADR-448):
   `python Mod/cadex/CadexStudio.py REQUEST.json`, and reads one JSON line
   from stdout.
 
