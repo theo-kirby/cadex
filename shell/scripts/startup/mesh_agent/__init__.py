@@ -46,6 +46,7 @@ from . import cadex_wire_path as cadex_wire_path_module
 from . import cadex_training as cadex_training_module
 from . import cadex_training_plot as cadex_training_plot_module
 from . import cadex_runs as cadex_runs_module
+from . import cadex_presentation as cadex_presentation_module
 from . import model as model_module
 from . import prefs as prefs_module
 from . import spaces
@@ -199,6 +200,7 @@ def register():
     cadex_training_module.register()
     cadex_training_plot_module.register()
     cadex_runs_module.register()
+    cadex_presentation_module.register()
     wiring_module.register()
     ui.register()
     spaces.register()
@@ -261,6 +263,7 @@ def unregister():
     spaces.unregister()
     ui.unregister()
     wiring_module.unregister()
+    cadex_presentation_module.unregister()
     cadex_runs_module.unregister()
     cadex_training_plot_module.unregister()
     cadex_training_module.unregister()

@@ -29586,3 +29586,33 @@ import closure stays `{json, os, bpy}`. A selection that is not one path
 component is ignored. A run with no report leaves the live mirror in
 place, so a run that trains now is never hidden by an old one without a
 curve.
+
+## ADR-452 — The app shows and makes the studio renders, and plays run videos (2026-09-29)
+
+**Decision.** The Training editor has a `Renders` panel
+(`mesh_agent/cadex_presentation.py`). It shows the design's studio hero as
+a thumbnail, says whether it is of this design or an older one, shows the
+sheet's key numbers, and opens the hero or the sheet in the system's
+viewer. It picks the render by the review dashboard's rule: the accepted
+revision's own `review/render/<revision>/` when it drew a sheet, else the
+project's last `review/render/`. **Render Now** runs the engine studio
+(`kind: "render"`, ADR-445) on the accepted revision in the viewport, with
+the measured fit and inventory, into `review/render/`. These are the files
+`cadex render` writes, drawn by the same code. A run in the Runs panel
+whose `video.json` names a video on disk gets **Play Video**, which gives
+the newest video to the system's player. The accepted record in
+`cadex_backend` now also keeps the reply's `digest`, which the sheet
+prints.
+
+**Reason.** GUI-parity slice 7 (ADR-445): view renders and videos in the
+app, as in the dashboard, and make the renders without the CLI.
+
+**Consequences.** A render is seconds of work, so it runs on a worker
+thread, and the panel says "Rendering..." until it ends. One render runs at
+a time. The images and videos open in the system's viewer and player, not
+in a Blender editor: that needs no new editor, and `BLENDER-TREE.md` §2 is
+unchanged. A video path that leaves its run directory is never offered.
+The render-selection rule is now written twice, in `review_server.py` and
+in `cadex_presentation.py`, against the `summary.json` contract (ADR-430).
+Both are short, and the no-engine suite holds the app's copy to the
+dashboard's three cases.

@@ -145,8 +145,9 @@ def read_run(root, name):
         run["progress"] = progress
     video = _read_json(os.path.join(directory, VIDEO_NAME))
     if video is not None and video.get("schema") == VIDEO_SCHEMA:
-        run["video"] = {"state": str(video.get("state") or ""),
-                        "count": len(video.get("videos") or [])}
+        videos = [v for v in video.get("videos") or [] if isinstance(v, dict)]
+        run["video"] = {"state": str(video.get("state") or ""), "count": len(videos),
+                        "path": str(videos[0].get("path") or "") if videos else ""}
     run["outcome"] = OUTCOMES.get(run["status"], "unknown status {!r}".format(run["status"]))
     return run
 
@@ -170,6 +171,20 @@ def read_runs(root):
                            "current" if run["revision"] == accepted else "historical")
     runs.sort(key=lambda run: (run["recorded_at"], run["run"]), reverse=True)
     return {"accepted": accepted, "runs": runs}
+
+
+def video_file(root, run):
+    """The newest recorded video of ``run`` as an absolute path, or ``""``.
+
+    ``video.json`` lists the newest first (``cadex video``). The path is
+    run-relative; one that leaves the run directory is never offered.
+    """
+    relative = ((run or {}).get("video") or {}).get("path") or ""
+    if not relative or os.path.isabs(relative) or ".." in relative.split("/"):
+        return ""
+    directory = os.path.join(root, RUNS_DIRNAME, run["run"])
+    path = os.path.join(directory, relative)
+    return path if _inside(directory, path) and os.path.isfile(path) else ""
 
 
 def is_live(run):
@@ -224,6 +239,27 @@ class CADEX_TRAINING_OT_select_run(Operator):
         current = getattr(context.window_manager, SELECTED_PROP, "")
         setattr(context.window_manager, SELECTED_PROP, "" if current == self.run else self.run)
         _redraw()
+        return {'FINISHED'}
+
+
+class CADEX_TRAINING_OT_play_run_video(Operator):
+    """Open this run's newest policy video in the system's player"""
+
+    bl_idname = "mesh_agent.play_run_video"
+    bl_label = "Play Video"
+    bl_options = {'INTERNAL'}
+
+    run: bpy.props.StringProperty()
+
+    def execute(self, context):
+        root = _root(context.scene)
+        path = ""
+        if os.path.basename(self.run) == self.run:
+            path = video_file(root, read_run(root, self.run))
+        if not path:
+            self.report({'WARNING'}, "This run has no video on disk.")
+            return {'CANCELLED'}
+        bpy.ops.wm.path_open(filepath=path)
         return {'FINISHED'}
 
 
@@ -292,6 +328,9 @@ def _draw_run(box, run):
     if run["video"]:
         column.label(text="video        {:s}, {:d} file(s)".format(
             run["video"]["state"] or "?", run["video"]["count"]))
+        if run["video"].get("path"):
+            op = box.operator(CADEX_TRAINING_OT_play_run_video.bl_idname, icon='PLAY')
+            op.run = run["run"]
     if run["params"]:
         params = box.column(align=True)
         params.enabled = False
@@ -326,7 +365,8 @@ def poll():
     return POLL_SECONDS
 
 
-classes = (CADEX_TRAINING_OT_select_run, CADEX_TRAINING_PT_runs)
+classes = (CADEX_TRAINING_OT_select_run, CADEX_TRAINING_OT_play_run_video,
+           CADEX_TRAINING_PT_runs)
 
 
 def register():

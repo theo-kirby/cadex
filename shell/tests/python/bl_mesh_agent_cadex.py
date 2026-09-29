@@ -3806,6 +3806,33 @@ def test_the_viewport_paints_each_part_in_its_role(root):
                      "painted": 2}
 
 
+def test_render_now_draws_what_cadex_render_draws(root):
+    """The Renders panel's Render Now (cadex ADR-452).
+
+    The engine's studio draws the accepted design into ``review/render/``,
+    the files ``cadex render`` writes, and the panel then presents them as
+    this design's. Runs after the roles test, on the same accepted design.
+    """
+
+    print("test_render_now_draws_what_cadex_render_draws")
+    from mesh_agent import cadex_presentation
+
+    started = time.perf_counter()
+    result = cadex_presentation.render_now(bpy.context.scene)
+    seconds = time.perf_counter() - started
+    check(result.get("ok") is True, "the studio renders the accepted design ({!r})".format(
+        result.get("error")))
+    names = sorted(os.path.basename(path) for path in result.get("files") or [])
+    check({"hero.png", "sheet.png", "summary.json"} <= set(names),
+          "hero, sheet and summary are written ({!r})".format(names))
+    shown = cadex_presentation.presentation(cadex_backend.project_root(bpy.context.scene))
+    check(shown.get("available") and shown.get("relation") == "current"
+          and set(shown.get("files") or {}) == {"hero", "sheet"},
+          "and the panel presents them as this design's ({!r})".format(
+              {k: shown.get(k) for k in ("relation", "source", "reason")}))
+    GATE["render_now"] = {"seconds": round(seconds, 3)}
+
+
 def test_the_collision_overlay_measures_every_primitive(root):
     """Extents per type, against the record's own independently-computed size.
 
@@ -6032,6 +6059,7 @@ def main():
         test_render_views_frames_the_engines_geometry(views_root)
         test_the_agent_sees_and_measures_its_design(look_root)
         test_the_viewport_paints_each_part_in_its_role(look_root)
+        test_render_now_draws_what_cadex_render_draws(look_root)
         test_the_collision_overlay_draws_adr074(collision_root)
         test_the_collision_overlay_measures_every_primitive(shapes_root)
         test_the_collision_overlay_is_isolated(isolate_root)

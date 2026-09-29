@@ -3765,7 +3765,7 @@ def test_the_runs_panel_reads_what_the_dashboard_reads():
           "and its progress reads at a glance ({!r})".format(cadex_runs.progress_line(second)))
     check(first["outcome"] == "completed" and first["relation"] == "historical"
           and first["params"] == {"leg": 40} and first["policy"] == "stand.cxpolicy"
-          and first["video"] == {"state": "done", "count": 1},
+          and first["video"] == {"state": "done", "count": 1, "path": "final.webm"},
           "a finished run keeps its identity, parameters, policy and video")
     legacy = by_name["legacy"]
     check(legacy["source"] == "review.json" and legacy["revision"] == rev_a
@@ -3830,6 +3830,59 @@ def test_the_runs_panel_reads_what_the_dashboard_reads():
               and ui_panel_poll(), "whose numbers the Training panel shows")
         check(cadex_training_plot.curve_from(report) == [(0, 0.1), (500, 0.3), (999, 0.39)],
               "and whose curve the plot draws")
+        # ADR-452: a run's video is offered only when it is on disk, inside the run.
+        check(cadex_runs.video_file(root, first) == "",
+              "a listed video that is not on disk is not offered")
+        write("first/final.webm", "not really a webm")
+        first = {run["run"]: run for run in cadex_runs.read_runs(root)["runs"]}["first"]
+        check(cadex_runs.video_file(root, first) == os.path.join(runs, "first", "final.webm"),
+              "a video on disk is offered to the system's player")
+        check(cadex_runs.video_file(root, dict(first, video={"path": "../second/x.webm"})) == "",
+              "a video path that leaves the run is never offered")
+
+        # ADR-452: which render the Renders panel presents -- the dashboard's rule.
+        from mesh_agent import cadex_presentation as show
+        check(show.presentation(root)["available"] is False, "no render yet, and it says so")
+
+        def render(relative, revision, sheet):
+            directory = os.path.join(root, *relative.split("/"))
+            os.makedirs(directory, exist_ok=True)
+            summary = {"revision": revision, "hero": {"path": relative + "/hero.png"}}
+            open(os.path.join(directory, "hero.png"), "wb").close()
+            if sheet:
+                summary["sheet"] = {"path": relative + "/sheet.png", "numbers": {"mass_kg": 1.25}}
+                open(os.path.join(directory, "sheet.png"), "wb").close()
+            with open(os.path.join(directory, "summary.json"), "w", encoding="utf-8") as handle:
+                json.dump(summary, handle)
+
+        render("review/render", rev_a, sheet=True)
+        shown = show.presentation(root)
+        check(shown["available"] and shown["relation"] == "historical"
+              and shown["source"] == "review/render" and set(shown["files"]) == {"hero", "sheet"},
+              "the last cadex render is shown, marked as an older design")
+        render("review/render/" + rev_b, rev_b, sheet=False)
+        check(show.presentation(root)["source"] == "review/render",
+              "a render with a sheet is preferred over the accepted one without")
+        render("review/render/" + rev_b, rev_b, sheet=True)
+        shown = show.presentation(root)
+        check(shown["source"] == "review/render/" + rev_b and shown["relation"] == "current"
+              and shown["numbers"] == {"mass_kg": 1.25},
+              "the accepted revision's own render wins once it drew a sheet")
+        request = show.render_request(root, {"revision": rev_b, "display": {"x": {}}}, None, None)
+        check(request["kind"] == "render" and request["relative_dir"] == "review/render"
+              and request["out_dir"] == os.path.join(root, "review", "render")
+              and request["reply"]["accepted_revision"] == rev_b,
+              "Render Now asks the studio for what cadex render writes")
+        drawn = type("Drawn", (), {"layout": _Layout()})()
+        try:
+            show.CADEX_TRAINING_PT_presentation.draw(drawn, bpy.context)
+            ok = True
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            ok = False
+        check(ok, "the Renders panel draws without raising")
+
         bpy.context.window_manager.cadex_run_selected = "../second"
         check(cadex_training.selected_run(scene) == "",
               "a selection that is not one run name is ignored")

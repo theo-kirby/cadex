@@ -164,7 +164,8 @@ def hydrate(payload, animate=True):
         if animate:
             state = _state_for(root)
             state.accepted = {"display": payload.get("display") or {},
-                              "revision": str(payload.get("revision") or "")}
+                              "revision": str(payload.get("revision") or ""),
+                              "digest": str(payload.get("digest") or "")}
     except Exception:
         traceback.print_exc()
     cadex_views.hydrate_views(hydration, payload, root, animate)
