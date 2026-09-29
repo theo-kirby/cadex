@@ -60,12 +60,42 @@ POLL_SECONDS = 2.0
 _cache: dict[str, tuple] = {}
 
 
-def progress_path(scene) -> str:
-    """Where this scene's run would report, whether or not it does."""
+#: The run the Runs panel selected (``cadex_runs``, ADR-451), read off the
+#: WindowManager by name so this module still imports nothing of ours.
+SELECTED_RUN_PROP = "cadex_run_selected"
+
+
+def selected_run(scene) -> str:
+    """The selected run's name when it has a report of its own, else ``""``."""
 
     from . import cadex_backend
 
-    return os.path.join(cadex_backend.project_root(scene), PROGRESS_NAME)
+    manager = getattr(bpy.context, "window_manager", None)
+    name = str(getattr(manager, SELECTED_RUN_PROP, "") or "")
+    if not name or os.path.basename(name) != name or name in {".", ".."}:
+        return ""
+    path = os.path.join(cadex_backend.project_root(scene), "runs", name,
+                        "train", "progress.json")
+    return name if os.path.isfile(path) else ""
+
+
+def progress_path(scene) -> str:
+    """Where this scene's run would report, whether or not it does.
+
+    The live mirror beside the project, unless a run selected in the Runs
+    panel has a trainer's report of its own: then that run's
+    ``runs/<name>/train/progress.json``, the file the review dashboard
+    draws its curve from (ADR-451). One format, so the panel and the plot
+    read either without knowing which.
+    """
+
+    from . import cadex_backend
+
+    root = cadex_backend.project_root(scene)
+    run = selected_run(scene)
+    if run:
+        return os.path.join(root, "runs", run, "train", "progress.json")
+    return os.path.join(root, PROGRESS_NAME)
 
 
 def read_progress(scene):

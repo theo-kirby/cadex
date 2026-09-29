@@ -3716,6 +3716,10 @@ def test_the_runs_panel_reads_what_the_dashboard_reads():
     """
 
     from mesh_agent import cadex_backend, cadex_runs
+    from mesh_agent import ui as ui_module
+
+    def ui_panel_poll():
+        return ui_module.CADEX_TRAINING_PT_training.poll(bpy.context)
 
     root = tempfile.mkdtemp(prefix="cadex-runs-")
     runs = os.path.join(root, "runs")
@@ -3807,6 +3811,28 @@ def test_the_runs_panel_reads_what_the_dashboard_reads():
             traceback.print_exc()
             ok = False
         check(ok, "the panel draws a selected run without raising")
+
+        # ADR-451: a selected run with a trainer's report of its own is what
+        # the Training panel and the curve read; without one, the live mirror.
+        from mesh_agent import cadex_training, cadex_training_plot
+        mirror = os.path.join(root, cadex_training.PROGRESS_NAME)
+        check(cadex_training.progress_path(scene) == mirror,
+              "a run with no report of its own leaves the live mirror in place")
+        progress["curve"] = [[0, 0.1], [500, 0.3], [999, 0.39]]
+        write("second/train/progress.json", progress)
+        bpy.context.window_manager.cadex_run_selected = "second"
+        check(cadex_training.selected_run(scene) == "second"
+              and cadex_training.progress_path(scene)
+              == os.path.join(runs, "second", "train", "progress.json"),
+              "selecting a training run points the Training editor at its report")
+        report = cadex_training.read_progress(scene)
+        check(report is not None and report["iteration"] == 999
+              and ui_panel_poll(), "whose numbers the Training panel shows")
+        check(cadex_training_plot.curve_from(report) == [(0, 0.1), (500, 0.3), (999, 0.39)],
+              "and whose curve the plot draws")
+        bpy.context.window_manager.cadex_run_selected = "../second"
+        check(cadex_training.selected_run(scene) == "",
+              "a selection that is not one run name is ignored")
     finally:
         del scene[cadex_backend.ROOT_PROP]
         bpy.context.window_manager.cadex_run_selected = ""

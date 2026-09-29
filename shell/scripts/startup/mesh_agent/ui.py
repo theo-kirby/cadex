@@ -893,6 +893,12 @@ class CADEX_TRAINING_PT_training(Panel):
         icon = {"training": 'PLAY', "starting": 'TIME',
                 "done": 'CHECKMARK', "failed": 'ERROR'}.get(state, 'INFO')
         row.label(text=state.title() or "Unknown", icon=icon)
+        # Which report this is: a run picked in the Runs panel (ADR-451), or
+        # the live mirror.
+        run = cadex_training.selected_run(context.scene)
+        source = row.row()
+        source.enabled = False
+        source.label(text="run " + run if run else "live")
         label = str(report.get("label") or "")
         if label:
             sub = row.row()
@@ -982,8 +988,10 @@ class CADEX_TRAINING_PT_training(Panel):
         # directory is the failure this whole path exists to avoid.
         note = layout.row()
         note.enabled = False
-        note.label(text="in the project folder, beside " +
-                        cadex_training.PROGRESS_NAME)
+        run = cadex_training.selected_run(context.scene)
+        note.label(text=("in runs/{:s}/train/".format(run) if run else
+                         "in the project folder, beside " +
+                         cadex_training.PROGRESS_NAME))
 
 
 def _draw_printable(layout, scene):

@@ -29565,3 +29565,24 @@ stat while its file is unchanged. A run directory that resolves outside
 `runs/` is listed and never opened. The reader needs no engine, and the
 no-engine suite tests it (`test_the_runs_panel_reads_what_the_dashboard_reads`).
 The shell diff is under `mesh_agent/` and `shell/tests/python/` only.
+
+## ADR-451 — A selected run's curve is drawn in the Training editor (2026-09-29)
+
+**Decision.** When a run selected in the Runs panel (ADR-450) has a
+trainer's report of its own, `runs/<name>/train/progress.json`, the
+Training panel's numbers and the reward-curve plot read that file in place
+of the live mirror `training-progress.json`. The panel names its source
+(`live` or `run <name>`). Deselect the run to return to the live mirror.
+The whole change is `cadex_training.progress_path`: the panel and the plot
+already read through it, and both files use one schema,
+`cadex-training-progress-v1`.
+
+**Reason.** GUI-parity slice 6 (ADR-445): per-run curves in the app, as the
+review dashboard draws them from the same file.
+
+**Consequences.** `cadex_training` reads the selection off the
+WindowManager by property name and imports nothing new, so its pinned
+import closure stays `{json, os, bpy}`. A selection that is not one path
+component is ignored. A run with no report leaves the live mirror in
+place, so a run that trains now is never hidden by an old one without a
+curve.
