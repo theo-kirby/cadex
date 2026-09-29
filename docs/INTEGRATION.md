@@ -516,6 +516,18 @@ ok, kind, files, facts | summary}` or `{ok: false, error}`; exit 0 on
 success, 1 on a refusal, 2 for an unreadable request. `facts` is exactly what
 the CLI agent's `look` returns as text, so the two agents read the same thing.
 
+### The agent guidance: engine data, not code `[Cadex-new — ADR-446]`
+
+`Mod/cadex/CadexAgentGuidance.md` is the part of every front end's system
+prompt that is about designing well rather than about the front end: proof
+by measured facts, the design language, a complete robot, what a policy may
+read, how a walking task is rewarded. It is read as a file -- the CLI from
+the engine it resolved, the shell from its bundled payload -- so reading it
+crosses no import boundary. Everything below the `<!-- guidance -->` line is
+the text; `{{look}}`, `{{inspect}}`, `{{write_script}}`, `{{edit_script}}`,
+`{{set_params}}` and `{{rebuild}}` are tool names each client fills with its
+own, and a placeholder a client leaves unfilled is refused by that client.
+
 Non-GUI Qt (Core, Xml, Concurrent, Network) is unavoidable — FreeCAD's App
 layer links it and `FreeCADCmd` inherits that. Qt **GUI**, PySide and Coin
 are absent, and asserted absent by the payload build.

@@ -17,7 +17,8 @@ shown to the product agent. The agent learns only what is written here.
 draws a lit studio hero, xscript declares appearance roles and a palette,
 and `look` and review report the three proxies. Since ADR-417 the CLI
 overlay teaches §8's order — concept, skeleton, shell, refine with `look` —
-and the rules of §1–§6 in it. Whether an unassisted design follows them is
+and the rules of §1–§6 in it; since ADR-446 that text is the engine's
+`Mod/cadex/CadexAgentGuidance.md`, which every front end pastes in. Whether an unassisted design follows them is
 A5's measurement, not a claim this doc makes. The baseline is hex3, which
 scores 2 of 21 on the rubric (`docs/probes/ot10/README.md`, *Baseline*).
 

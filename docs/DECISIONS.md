@@ -29395,3 +29395,36 @@ video recorded after this change carries a new `style_sha256`; nothing
 compares the field, so no existing video is re-rendered. Two scene
 tests that exercised the regex reader are deleted with it. Tests of the
 drawing stay in `cli/tests/` and now patch the loaded engine module.
+
+## ADR-446 — The agent guidance is engine data both front ends paste in (2026-09-29)
+
+**Decision.** The part of `CLI_OVERLAY` that is about designing well rather
+than about the terminal -- from *you see your work with `look`* through
+*when a call is refused* -- moves verbatim into
+`src/Mod/cadex/CadexAgentGuidance.md`, installed in the payload beside
+`CadexStudio.py`. The CLI builds its overlay from it
+(`cadex_cli.agent.agent_guidance`), filling `{{look}}`, `{{inspect}}`,
+`{{write_script}}`, `{{edit_script}}`, `{{set_params}}` and `{{rebuild}}`
+with its own tool names. One sentence changed: "`cadex train` refuses a
+task..." became "Training refuses a task...", the only CLI-only phrase in
+the moved text. The shell will read the same file from its payload
+(GUI-parity slice 3).
+
+**Reason.** GUI-parity slice 2 (the owner's direction, ADR-445): the app's
+agent is told nothing of the design language (ADR-411, ADR-417), measured
+fit (ADR-346, ADR-366), catalog identity (ADR-362), a complete robot
+(ADR-407), grounded policy inputs (ADR-408) or a walking reward (ADR-409).
+Two copies of that text would drift the way the palette could have. A file
+rather than a `describe_api` field: the text belongs in the system prompt,
+not behind a tool call, and a field would cost a response-spec change and
+goldens for what is prose. A data file crosses no import boundary, so the
+shell's rule (no cadex imports) holds.
+
+**Consequences.** `CLI_OVERLAY` is byte-identical to before except the one
+sentence (checked against the previous commit when it moved).
+`cadex_tests/test_agent_guidance.py` pins the marker, the closed set of
+placeholders, the section headings, that no front-end-only name is in the
+text, and the CMake install; `cli/tests/test_agent_guidance.py` pins that
+the overlay carries the file verbatim and that an unfilled placeholder or
+a missing marker is refused. Editing the design language is now an edit to
+one engine file, and changes both agents at once.

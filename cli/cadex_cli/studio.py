@@ -43,5 +43,7 @@ def _default_module_dir() -> Path:
         return DEV_MODULE_DIR
 
 
+#: The engine module directory the CLI reads engine code and data from.
+ENGINE_MODULE_DIR = _default_module_dir()
 #: The loaded renderer. Every drawing call in the CLI goes through it.
-STUDIO = load_studio(_default_module_dir())
+STUDIO = load_studio(ENGINE_MODULE_DIR)

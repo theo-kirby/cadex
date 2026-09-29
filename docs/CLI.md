@@ -2524,7 +2524,16 @@ The system prompt is the CLI's own overlay plus `describe_api`'s live
 API.** Both front ends ask the engine for it, which is what keeps one
 contract from becoming two.
 
-The overlay says things the engine does not:
+The overlay says things `describe_api` does not. Most of it -- from *you
+see your work with `look`* through *when a call is refused* -- is not the
+CLI's own text: it is the engine's agent guidance, `Mod/cadex/CadexAgentGuidance.md`
+(ADR-446), read from the engine the CLI resolved and pasted in with the
+CLI's tool names filled in, so the shell's agent is told the same thing.
+What stays CLI-only is the headless situation, *build it parametric*,
+purchased hardware, `describe_api` first, assets and policies, the project
+docs, revision guards and when to stop.
+
+The overlay says:
 
 - **Build it parametric**, because the cheap sweep only exists if the
   expensive turn made one possible.
