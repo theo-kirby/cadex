@@ -124,6 +124,21 @@ The human owns the checkboxes; roles report results and do not tick them.
   - A policy that misses it is an honest incomplete result, with a
     diagnosis and a recorded next step. Do not weaken the gait thresholds to
     pass it.
+- [ ] **A7 (stretch, added by the owner mid-run). The designs reach the
+  reference level, not just the bar.**
+  - For each of the three body plans, the latest pre-registered
+    confirmation turn, at the final revision, scores **17 or more of 21**
+    and **T4 (form) at 3**. It must also meet every other A5 bar item: the
+    proxies, static and swept fit, and the electronics.
+  - Everything is judged under A1's frozen rubric, judge and procedure,
+    unchanged. Pre-register every confirmation turn before it runs, and
+    publish every attempt and score, misses included.
+  - The target is the gap the A5 designs show: a rounded box on legs, servo
+    cases hanging outside the shell, and a form score that never reaches 3.
+    Close it with product changes: the design language, the overlay, the API
+    and the engine. The actor never authors robot geometry.
+  - Missing this at the ceiling is an honest incomplete result.
+
 - [ ] **C1. Regressions and a closing report are complete.**
   - Both full suites pass at the final revision, plus the packaged
     lifecycle gate for any engine or payload change.
@@ -221,7 +236,12 @@ The human owns the checkboxes; roles report results and do not tick them.
 ## Exhaustion policy
 
 `report_done`.
-- Once A1–A6, W1, W2 and C1 have evidence, write the closing report,
+- **Do not claim done before the 72-hour ceiling** unless A7 is met. A5 is
+  the owner's to judge from the confirmation turns: its letter ("one failing
+  design fails") cannot close after published misses. Do not spend
+  iterations re-claiming done against it.
+- Until the ceiling, work A7 first, then the long-term rung.
+- Once A1–A7, W1, W2 and C1 have evidence, write the closing report,
   reconcile and claim done. Two consecutive critic acceptances stop the run.
 - If the 72-hour ceiling arrives first, report the highest bar reached and
   every failed design and seed. Do not redefine success.
