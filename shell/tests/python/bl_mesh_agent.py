@@ -96,6 +96,95 @@ def make_agent(script, tool_cap=None):
     return agent, holder, undo_pushes
 
 
+def test_the_session_monitor_counts_turns_tools_and_tokens():
+    """The chat's session monitor (cadex ADR-453).
+
+    Time and tool calls are counted by the agent; tokens and cost are what
+    each harness reports on its result frame, normalized to one shape.
+    """
+    print("test_the_session_monitor_counts_turns_tools_and_tokens")
+    from mesh_agent import backend as backend_module
+    usage_from = agent_module.usage_from
+
+    # One shape for three harnesses: input counts the cache, whatever each calls it.
+    claude = usage_from({"type": "result", "total_cost_usd": 0.42, "num_turns": 7,
+                         "usage": {"input_tokens": 1200, "cache_read_input_tokens": 150000,
+                                   "cache_creation_input_tokens": 30000, "output_tokens": 6200}})
+    check(claude == {"input_tokens": 181200, "cached_tokens": 150000,
+                     "output_tokens": 6200, "cost_usd": 0.42},
+          "Claude Code's input leaves the cache out; the monitor adds it ({!r})".format(claude))
+    codex = usage_from({"type": "result", "usage": {"input_tokens": 50000,
+                                                    "cached_input_tokens": 40000,
+                                                    "output_tokens": 900}})
+    check(codex == {"input_tokens": 50000, "cached_tokens": 40000, "output_tokens": 900,
+                    "cost_usd": None}, "Codex's input already counts it, and it prices nothing")
+    pi = usage_from({"type": "result", "usage": {"input": 100, "cacheRead": 900, "cacheWrite": 0,
+                                                 "output": 50, "cost": 0.01}})
+    check(pi == {"input_tokens": 1000, "cached_tokens": 900, "output_tokens": 50,
+                 "cost_usd": 0.01}, "pi's own field names read the same")
+    check(usage_from({"type": "result", "is_error": False}) is None,
+          "a harness that reports nothing reads as nothing, not as zero")
+
+    # The translators carry usage only when there is some, so old frames stay exact.
+    codex_backend = backend_module.CodexBackend.__new__(backend_module.CodexBackend)
+    frames = codex_backend._translate({"type": "turn.completed",
+                                       "usage": {"input_tokens": 5, "cached_input_tokens": 0,
+                                                 "output_tokens": 2}})
+    check(frames[0].get("usage", {}).get("output_tokens") == 2,
+          "Codex's turn.completed hands its usage on")
+    pi_backend = backend_module.PiBackend.__new__(backend_module.PiBackend)
+    pi_backend._error, pi_backend._usage = "", {}
+    pi_backend._saw_end = pi_backend._result_emitted = False
+    for tokens in (10, 20):
+        pi_backend._translate({"type": "message_end", "message": {
+            "role": "assistant", "usage": {"input": tokens, "output": 1, "cacheRead": 0,
+                                           "cacheWrite": 0, "cost": {"total": 0.5}}}})
+    frames = pi_backend._translate({"type": "agent_settled"})
+    check(frames[0].get("usage") == {"input": 30, "output": 2, "cacheRead": 0,
+                                     "cacheWrite": 0, "cost": 1.0},
+          "pi's per-message usage is summed over the turn ({!r})".format(frames[0].get("usage")))
+
+    script = [[
+        ("tool", "get_attached_image", {"index": 0}),
+        ("tool", "get_attached_image", {"index": 1}),
+        ("result", False, "Nothing attached."),
+    ]]
+    agent, _holder, _undo = make_agent(script)
+    try:
+        check(run_turn(agent, "look at these"), "turn completes")
+        turn, session = agent.turn_stats, agent.session_stats
+        check(turn["tool_calls"] == 2 and turn["seconds"] is not None and turn["usage"] is None,
+              "the turn's tools and time are counted; the mock reports no usage")
+        check(session["turns"] == 1 and session["tool_calls"] == 2,
+              "and added to the session")
+        line = agent_module.turn_line(turn)
+        check(line.endswith("2 tools") and "in" not in line,
+              "the last-turn line shows time and tools only ({!r})".format(line))
+
+        # A priced turn, as Claude Code reports one.
+        agent.turn_stats = {"started": time.monotonic() - 130, "seconds": None,
+                            "tool_calls": 14, "usage": None, "model_turns": None}
+        check(agent_module.turn_line(agent.turn_stats).startswith("2m 1"),
+              "a running turn shows its clock")
+        agent._on_stream({"type": "result", "is_error": False, "total_cost_usd": 0.42,
+                          "usage": {"input_tokens": 1200, "cache_read_input_tokens": 150000,
+                                    "cache_creation_input_tokens": 30000,
+                                    "output_tokens": 6200}})
+        agent._close_turn_stats()
+        line = agent_module.turn_line(agent.turn_stats)
+        check("14 tools · 181.2k in · 6.2k out · $0.42" in line,
+              "a finished turn shows its tokens and cost ({!r})".format(line))
+        total = agent_module.session_line(agent.session_stats)
+        check(total.startswith("session: 2 turns · 2m 1") and "16 tools" in total
+              and "$0.42" in total, "the session line sums them ({!r})".format(total))
+
+        agent.new_conversation()
+        check(agent.turn_stats is None and agent.session_stats["turns"] == 0,
+              "a new conversation starts the counts again")
+    finally:
+        agent.shutdown()
+
+
 def test_image_attachment_roundtrip():
     """An attached image must reach the model through get_attached_image."""
     print("test_image_attachment_roundtrip")
@@ -3975,6 +4064,7 @@ def main():
     try:
         test_bridge_chunked_request()
         test_image_attachment_roundtrip()
+        test_the_session_monitor_counts_turns_tools_and_tokens()
         test_tool_call_cap()
         test_transcript_persistence()
         test_tool_call_runs_collapse_in_the_transcript()

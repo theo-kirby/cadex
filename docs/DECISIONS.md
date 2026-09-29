@@ -29616,3 +29616,27 @@ The render-selection rule is now written twice, in `review_server.py` and
 in `cadex_presentation.py`, against the `summary.json` contract (ADR-430).
 Both are short, and the no-engine suite holds the app's copy to the
 dashboard's three cases.
+
+## ADR-453 — The chat shows the running turn and the session's cost (2026-09-29)
+
+**Decision.** The app's agent counts each chat turn's time and tool calls,
+and it reads the turn's tokens and cost off the harness's result frame.
+`agent.usage_from` puts the three harnesses into one shape: Claude Code's
+`usage` and `total_cost_usd`; Codex's `turn.completed` `usage`, which the
+backend now hands on; and pi's per-message `usage`, which the backend now
+sums over the turn. The prompt count includes the cached part whatever each
+harness calls it. While a turn runs, the chat says
+`Thinking…  2m 10s · 14 tools`, redrawn once a second. After the turn it
+says `last turn: …` with tokens and cost, and gives the conversation's
+totals. A new conversation starts the counts again.
+
+**Reason.** GUI-parity slice 8 (ADR-445): watch long agent runs in the app.
+A turn that runs for twenty minutes read `Thinking…` from start to end,
+which looks the same as a hang, and its cost was invisible.
+
+**Consequences.** The counts are session state and are not saved with the
+transcript. A harness that reports no usage shows time and tools only,
+never zeros. A backend adds `usage` to its result frame only when it
+has some, so the existing frame-exact translator tests hold unchanged.
+Cost shows only when the harness priced the turn: Claude Code and pi do,
+and Codex does not.

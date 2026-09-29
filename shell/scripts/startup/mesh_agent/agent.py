@@ -21,6 +21,7 @@ whole chat turn.
 import os
 import queue
 import threading
+import time
 import traceback
 
 from . import history as history_module
@@ -146,6 +147,11 @@ class Agent:
         self._tool_calls = 0
         self._mutations = 0
         self._got_result = False
+        # The session monitor (ADR-453): the running or last turn, and the
+        # conversation's totals. Session state; a new conversation clears it.
+        self.turn_stats = None
+        self.session_stats = new_session_stats()
+        self._last_tick = 0.0
         self._timer_fn = self._timer
         # A tool call whose engine work is still running: (request, Pending).
         # At most one, because the bridge socket thread blocks on the reply,
@@ -225,6 +231,8 @@ class Agent:
             self.backend.session_id = None
         self.attachments = []
         self._sent_attachments = 0
+        self.turn_stats = None
+        self.session_stats = new_session_stats()
         self.save_state()
         _tag_redraw()
         return True
@@ -436,6 +444,8 @@ class Agent:
         self._imitated_tool_call = False
         self.last_error = ""
         self._cancel_event.clear()
+        self.turn_stats = {"started": time.monotonic(), "seconds": None,
+                           "tool_calls": 0, "usage": None, "model_turns": None}
         self.busy = True
         self.history.begin_assistant()
         # The transcript shows the plain prompt; the model additionally gets
@@ -484,6 +494,11 @@ class Agent:
             self.drain()
         except Exception:
             traceback.print_exc()
+        # The running turn's clock is on screen: redraw once a second even
+        # when nothing arrived, or a long tool call reads as a frozen turn.
+        if self.busy and time.monotonic() - self._last_tick >= 1.0:
+            self._last_tick = time.monotonic()
+            _tag_redraw()
         return 0.1 if self.busy else None
 
     def _ensure_timer(self):
@@ -551,6 +566,8 @@ class Agent:
                 True)
             return
         self._tool_calls += 1
+        if self.turn_stats is not None:
+            self.turn_stats["tool_calls"] = self._tool_calls
         result = tools.execute(request.tool, request.input, agent=self)
         if isinstance(result, tools.Pending):
             self._pending = (request, result)
@@ -632,6 +649,10 @@ class Agent:
                     self.history.begin_assistant()
         elif obj_type == "result":
             self._got_result = True
+            if self.turn_stats is not None:
+                self.turn_stats["usage"] = usage_from(obj)
+                if isinstance(obj.get("num_turns"), int):
+                    self.turn_stats["model_turns"] = obj["num_turns"]
             if obj.get("is_error"):
                 self.last_error = str(obj.get("result", "unknown error"))
 
@@ -653,6 +674,7 @@ class Agent:
                 [{"type": "text", "text": "The turn ended before this tool "
                                           "finished."}], True))
         self.busy = False
+        self._close_turn_stats()
         self.history.end_assistant()
         if error:
             self.last_error = str(error)
@@ -664,6 +686,119 @@ class Agent:
             self.save_state()
         except Exception:
             traceback.print_exc()
+
+    def _close_turn_stats(self):
+        """Stop the turn's clock and add it to the session's totals."""
+        turn = self.turn_stats
+        if turn is None or turn.get("seconds") is not None:
+            return
+        turn["seconds"] = time.monotonic() - turn["started"]
+        session = self.session_stats
+        session["turns"] += 1
+        session["tool_calls"] += turn["tool_calls"]
+        session["seconds"] += turn["seconds"]
+        usage = turn.get("usage")
+        if usage:
+            session["reported"] += 1
+            for key in ("input_tokens", "cached_tokens", "output_tokens"):
+                session[key] += usage[key]
+            if usage["cost_usd"] is not None:
+                session["cost_usd"] = (session["cost_usd"] or 0.0) + usage["cost_usd"]
+
+
+# -- the session monitor (ADR-453) --------------------------------------------
+
+def _count(value):
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
+
+
+def usage_from(frame):
+    """A result frame's token counts and cost, one shape for every harness.
+
+    ``{"input_tokens", "cached_tokens", "output_tokens", "cost_usd"}``, or
+    ``None`` when the harness reported neither. ``input_tokens`` is the
+    whole prompt, cached part included, whatever each harness counts it as:
+    Claude Code's ``input_tokens`` leaves the cache out, Codex's includes it,
+    and pi names its fields ``input``/``cacheRead``/``cacheWrite``.
+    ``cost_usd`` is ``None`` unless the harness priced the turn.
+    """
+    if not isinstance(frame, dict):
+        return None
+    usage = frame.get("usage") if isinstance(frame.get("usage"), dict) else {}
+    cost = frame.get("total_cost_usd")
+    cost = float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None
+    if "cached_input_tokens" in usage:  # Codex: input already counts the cache
+        cached = _count(usage.get("cached_input_tokens"))
+        prompt = _count(usage.get("input_tokens"))
+        output = _count(usage.get("output_tokens"))
+    elif "input" in usage or "cacheRead" in usage:  # pi
+        cached = _count(usage.get("cacheRead"))
+        prompt = _count(usage.get("input")) + cached + _count(usage.get("cacheWrite"))
+        output = _count(usage.get("output"))
+        if cost is None and isinstance(usage.get("cost"), (int, float)):
+            cost = float(usage["cost"])
+    else:  # Claude Code: input leaves the cache out
+        cached = _count(usage.get("cache_read_input_tokens"))
+        prompt = (_count(usage.get("input_tokens")) + cached
+                  + _count(usage.get("cache_creation_input_tokens")))
+        output = _count(usage.get("output_tokens"))
+    if not usage and cost is None:
+        return None
+    return {"input_tokens": int(prompt), "cached_tokens": int(cached),
+            "output_tokens": int(output), "cost_usd": cost}
+
+
+def new_session_stats():
+    return {"turns": 0, "tool_calls": 0, "seconds": 0.0, "input_tokens": 0,
+            "cached_tokens": 0, "output_tokens": 0, "cost_usd": None, "reported": 0}
+
+
+def format_duration(seconds):
+    seconds = max(int(seconds or 0), 0)
+    if seconds < 60:
+        return "{:d}s".format(seconds)
+    if seconds < 3600:
+        return "{:d}m {:02d}s".format(seconds // 60, seconds % 60)
+    return "{:d}h {:02d}m".format(seconds // 3600, (seconds % 3600) // 60)
+
+
+def format_tokens(count):
+    count = int(count or 0)
+    if count < 1000:
+        return str(count)
+    if count < 1_000_000:
+        return "{:.1f}k".format(count / 1000.0).replace(".0k", "k")
+    return "{:.2f}M".format(count / 1_000_000.0)
+
+
+def _figures(stats):
+    """``"22 tools · 180k in · 6.2k out · $0.42"`` for a turn or a session."""
+    parts = ["{:d} tool{:s}".format(stats["tool_calls"], "" if stats["tool_calls"] == 1 else "s")]
+    usage = stats.get("usage", stats)
+    if usage and (usage.get("input_tokens") or usage.get("output_tokens")):
+        parts.append("{:s} in".format(format_tokens(usage["input_tokens"])))
+        parts.append("{:s} out".format(format_tokens(usage["output_tokens"])))
+    if usage and usage.get("cost_usd") is not None:
+        parts.append("${:.2f}".format(usage["cost_usd"]))
+    return " · ".join(parts)
+
+
+def turn_line(turn, now=None):
+    """The running turn, ``"2m 10s · 14 tools"``; the finished one, with its usage."""
+    if not turn:
+        return ""
+    seconds = turn["seconds"] if turn.get("seconds") is not None else \
+        (now if now is not None else time.monotonic()) - turn["started"]
+    return format_duration(seconds) + " · " + _figures(turn)
+
+
+def session_line(session):
+    """``"session: 3 turns · 12m 04s · 41 tools · ..."`` once a turn has ended."""
+    if not session or not session["turns"]:
+        return ""
+    return "session: {:d} turn{:s} · {:s} · {:s}".format(
+        session["turns"], "" if session["turns"] == 1 else "s",
+        format_duration(session["seconds"]), _figures(session))
 
 
 # Module-level singleton used by the UI.

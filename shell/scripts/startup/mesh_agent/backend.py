@@ -524,7 +524,12 @@ class CodexBackend:
                                                       "name": name}]}}]
             return []
         if kind == "turn.completed":
-            return [{"type": "result", "is_error": False}]
+            frame = {"type": "result", "is_error": False}
+            # The turn's token counts, for the session monitor (ADR-453).
+            usage = obj.get("usage")
+            if isinstance(usage, dict) and usage:
+                frame["usage"] = usage
+            return [frame]
         if kind == "turn.failed":
             error = obj.get("error") or {}
             message = _unwrap_codex_error(str(error.get("message")
@@ -602,6 +607,7 @@ class PiBackend:
         self._error = ""
         self._saw_end = False
         self._result_emitted = False
+        self._usage = {}
 
     def _extension_path(self):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -667,6 +673,7 @@ class PiBackend:
         self._error = ""
         self._saw_end = False
         self._result_emitted = False
+        self._usage = {}
         stderr_tail = []
 
         def read_stderr():
@@ -733,6 +740,18 @@ class PiBackend:
             return []
         if kind == "message_end":
             message = obj.get("message") or {}
+            # pi reports usage per assistant message; the turn is their sum,
+            # carried on the result for the session monitor (ADR-453).
+            usage = message.get("usage")
+            if message.get("role") == "assistant" and isinstance(usage, dict):
+                for key in ("input", "output", "cacheRead", "cacheWrite"):
+                    value = usage.get(key)
+                    if isinstance(value, (int, float)):
+                        self._usage[key] = self._usage.get(key, 0) + value
+                cost = (usage.get("cost") or {}).get("total") \
+                    if isinstance(usage.get("cost"), dict) else None
+                if isinstance(cost, (int, float)):
+                    self._usage["cost"] = self._usage.get("cost", 0.0) + cost
             if (message.get("role") == "assistant"
                     and message.get("stopReason") == "error"):
                 self._error = str(message.get("errorMessage")
@@ -744,8 +763,11 @@ class PiBackend:
         if kind == "agent_settled":
             self._saw_end = True
             self._result_emitted = True
-            return [{"type": "result", "is_error": bool(self._error),
-                     "result": self._error}]
+            frame = {"type": "result", "is_error": bool(self._error),
+                     "result": self._error}
+            if self._usage:
+                frame["usage"] = dict(self._usage)
+            return [frame]
         return []
 
     def cancel(self):

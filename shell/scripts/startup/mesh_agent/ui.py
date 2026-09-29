@@ -1337,9 +1337,24 @@ class CADEX_CHAT_PT_transcript(Panel):
 
         if agent.busy:
             row = layout.row()
-            row.label(text="Thinking…", icon='SORTTIME')
+            # The running turn's clock and tool count (ADR-453): a long
+            # agent run is watched here, and "Thinking…" alone for twenty
+            # minutes reads the same as a hang.
+            live = agent_module.turn_line(agent.turn_stats)
+            row.label(text="Thinking…" + ("  " + live if live else ""),
+                      icon='SORTTIME')
             row.operator(MESH_AGENT_OT_chat_cancel.bl_idname,
                          text="", icon='CANCEL')
+        elif agent.turn_stats is not None:
+            # The last turn and the conversation so far, as the harness
+            # reported them: time, tools, tokens and cost when priced.
+            column = layout.column(align=True)
+            column.enabled = False
+            column.label(text="last turn: " + agent_module.turn_line(agent.turn_stats),
+                         icon='TIME')
+            total = agent_module.session_line(agent.session_stats)
+            if total:
+                column.label(text=total)
 
 
 class CADEX_CHAT_PT_input(Panel):
