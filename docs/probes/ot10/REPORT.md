@@ -572,3 +572,11 @@ The last reconcile must fold `keen-comet-6140` (A8), `glad-oak-4897`
 iteration may not do that, so it falls to the reconcile pass; done is
 re-claimed once `STATE.md` shows them folded and `hypergraph check`
 exits 0.
+
+**Done re-claimed after the reconcile (2026-09-29).** Reconcile commit
+`a4304da6` folded all three records, and `hypergraph check` exits 0 with 0
+violations. The final gates stand as above: engine 2,282 passed and 53
+skipped, CLI 1,085 passed and 1 skipped, packaged gate 23 passed. Done is
+re-claimed for critic review on A1–A4, A6, A8, W1, W2 and C1. A5 is the
+owner's to judge, A7 is open and carried forward, W2 carries the owner's
+verdict that `w2-2` shuffles, and no box is ticked.
