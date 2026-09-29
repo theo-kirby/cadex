@@ -37,6 +37,26 @@ stand. One W2 run, `w2-2` on `ot10-quadruped-3`, has
 `walked = true` under the unchanged thresholds. It went 1.44 m forward in
 10 s, upright the whole time. The run before it, `w2-1`, did not walk.
 
+**The owner's verdict on `w2-2`: it shuffles; it does not walk.** The gait
+check's `walked = true` is a false positive for gait quality, and this
+report does not present W2 as a walking robot. What the check can and
+cannot see is under [*What the gait check cannot see*](#what-the-gait-check-cannot-see).
+
+**Where each criterion stands.** The owner ticks the boxes, so this list
+reports and does not tick. By the owner's exhaustion decision
+(2026-09-29), ot10 ends after A8, and done is judged on A1–A4, A6, A8, W1,
+W2 and C1.
+
+- **A5 is the owner's to judge** from the counted and confirmation turns
+  below. By the letter of its "one failing design" clause it is not met.
+  It does not block done.
+- **A7 is open and carried forward** (see [A7](#a7-open-carried-forward)).
+  No A7 confirmation turn ran, and no design reached 17 of 21 or T4 at 3.
+- **A8 landed** (ADR-444). Every presented image is drawn on the
+  viewport's dark prototype floor, from one palette source.
+- **W2 is an honest measured result**: `walked = true` under the unchanged
+  thresholds, plus the owner's verdict that the robot shuffles.
+
 This page summarises. The evidence is the contract and its probe log,
 [`README.md`](README.md), with every raw judge reply in the `*-score.json`
 files beside it. `cli/tests/test_ot10_report.py` holds this page's score
@@ -202,6 +222,10 @@ Drawing each A5 design's sheet took 1.1–1.9 s, and its render 7.0–9.3 s.
 Finch in 117.5 s, `w2-1` in 72.8 s and `w2-2` in 153.9 s. Each webm stays
 in its project copy's `runs/`, never in git. The dashboard's Chromium
 playback check ran on `w2-1`'s video. It was not repeated for `w2-2`'s.
+The dark-floor re-render of `w2-2` (ADR-444) took 189.0 s for 101 frames
+against the same 300 s bound. It was rendered on a scratch copy, and its
+webm was not played back in the dashboard: **dashboard playback of the
+dark video was not re-checked.**
 
 ## The training runs (W2)
 
@@ -224,11 +248,108 @@ horizon, with the 0.90 bar unchanged. Both runs were re-reviewed from
 their stored inputs. The training curves are in [`README.md`](README.md)
 under *W2*.
 
+**The owner's verdict: `w2-2` shuffles; it does not walk.** The owner
+reviewed the run and found that it shuffles. `walked = true` is therefore
+a false positive for gait quality, and W2 stands as a measured result, not
+as a walking robot. The gait thresholds were not weakened to pass it, and
+no new training ran to fix it. The owner has made the policy design and
+evaluation loop the next charter. The probe log's line for `w2-2`, "the
+feet step rather than slide", is withdrawn by this verdict. It rested on
+the foot solid's centre crossing a 3 mm lift line: 48 and 52 times for the
+front feet and 100 and 124 times for the rear, in 10 s. Those counts are
+what a foot that chatters or drags in small hops also produces. No contact
+was read, so no stance was measured.
+
+### What the gait check cannot see
+
+`gait_from_trace` (`cli/cadex_cli/walk.py`, ADR-409, ADR-433) reads one
+thing from the rollout: the placement of the free-floating base body in
+each solved frame. Its verdict is `walked = not findings`, and there are
+four findings:
+
+- the base tipped past 45°;
+- its heading swung past 90°;
+- the episode terminated early;
+- training episodes lasted under 0.90 of the horizon over a trailing
+  window.
+
+Travel and speed are reported but never judged. A robot that stood still,
+upright and facing forward, for the whole episode would pass. Nothing in
+the check reads a leg, a foot or a contact, so it cannot see any of these:
+
+- **Stepping.** It cannot tell whether each foot leaves the ground, lands
+  and bears weight in turn. A body carried forward by feet that never lift
+  looks the same as one carried by a stride.
+- **Foot clearance.** It cannot tell how high a swinging foot rises above
+  the floor, or whether it rises at all. A lift threshold on the foot
+  solid's centre, as used in the probe log, counts chatter as steps.
+- **Slip.** It cannot tell whether a foot in stance stays put on the floor
+  or slides along it. Forward travel made by sliding feet reads as
+  progress.
+- **Duty factor.** It cannot see the share of each cycle a foot spends on
+  the ground, or the phase between feet. Those are what separate a walk, a
+  trot and a shuffle, and give a gait its regular, repeated shape.
+
+Each needs per-foot contact from the rollout. MuJoCo computes it, but the
+trace does not carry it. The trace does carry each component's placement,
+so a foot's position is already there. Measuring these four is
+the next charter's work, together with the policy loop they would judge.
+This run does not add them.
+
 ## A4: refusals
 
 None of the four hex refusal classes recurred: 0 of 231 refused calls,
 across all 20 ot10 transcripts. The count is mechanical, and
 [`refusals.json`](refusals.json) pins it.
+
+## A7: open, carried forward
+
+The owner added A7 mid-run and then deferred it. The owner's exhaustion
+decision (2026-09-29) ends the run after A8, and A7 does not block done.
+Its bar is 17 or more of 21 and T4 (form) at 3, on the latest
+pre-registered confirmation turn for each body plan. It is open, and it
+carries forward to the next charter.
+
+- **No A7 confirmation turn was pre-registered or run.** The last product
+  turns (`ot10-hexapod-12` and `ot10-hexapod-13`) were registered for A5.
+- **The measured distance to the bar.** The highest judged total is 16:
+  `ot10-quadruped-2`, `ot10-hexapod-5` and `ot10-quadruped-4`. No design
+  scores 3 on T4, and the best reached is 2. ADR-443 records the gap the
+  judges named on all three 16/21 designs: a rounded box on legs, with
+  servo cases hanging outside the shell.
+- **Product changes aimed at that gap, with no judged turn behind them:**
+  - the joint cap over the horn, sized from the horn (ADR-440);
+  - housed parts carry their own bay (ADR-442);
+  - a servo carries its own bay, and the overlay tells a limb to wrap it
+    (ADR-443).
+
+  Read-only on the 16/21 designs, printed material fills 0.198 and 0.390
+  of a 2 mm wall around the quadrupeds' hip servos. Every knee, and
+  `ot10-hexapod-5`'s hips, measure 0.714–0.848. No turn has used `.bay()` yet, so no score shows its effect.
+- **A dark-floor judged probe needs a decision first.** Since ADR-444, a
+  judged probe would see dark renders, and A1's frozen procedure was
+  scored on light ones. Running one is a recorded decision that re-scores
+  every earlier probe, hex3 included.
+
+## A8: the dark prototype floor
+
+`cli/cadex_cli/scene.py` is the one palette source (ADR-444). It reads
+the scene background `#141414` and the mat's `#1c1c1c` / `#232323` tiles
+and `#3a3a3a` major line from the viewport's own `environment.js`, and the
+chrome's tokens from `review.css`. The studio hero, `look`, the concept
+sheet and the rollout video all draw from it, and the light backdrop is
+deleted. `cli/tests/test_scene_palette.py` fails if the renderer and the
+viewport drift apart.
+
+- **Measured on `ot10-quadruped-3`.** The four views and the 1024 px hero
+  took 15.2 s, inside A2's 60 s. The proxies were unchanged. The contact
+  shadow takes the floor at the feet from tiles of 28–35 down to 6 of 255.
+- **The `w2-2` video** re-rendered in 189.0 s, against its 300 s bound.
+- **Before and after images** are in the renders table above, all 300 KB
+  or less.
+- **Nothing was re-scored.** This is a presentation change. The frozen
+  rubric's anchor still says "seamless backdrop" and was not edited.
+- **Dashboard playback of the dark video was not re-checked.**
 
 ## Remaining defects
 
@@ -422,3 +543,24 @@ miss. A work iteration is not allowed to fold them, so a housekeeping pass
 has to do it. Until then, the done claim stands for review on the
 evidence above, with A5 **not met**. No further A5 turn will run, because
 none can change a criterion that has already failed.
+
+**Final run after A8, at `fc279bfe` with this page's closing edit on top**
+(2026-09-29). This is the run's last revision. It comes after ADR-441 to
+ADR-443, which changed the engine, and ADR-444, which changed only `cli/`.
+The staged payload matched the engine source file for file on all 57
+files, so it was not rebuilt, and the gate ran against it:
+
+| suite | result |
+|---|---|
+| `pixi run test-engine` | 2,282 passed, **53 skipped**, 0 failed (425 s) |
+| `pixi run python -m pytest cli/tests` | 1,085 passed, **1 skipped**, 0 failed (885 s) |
+| packaged lifecycle gate, `CADEX_ENGINE_ROOT=<staged payload>` | 23 passed, 0 skipped |
+
+The skips have the same four causes as the first table. This page's own
+tests, `test_ot10_report.py` and `test_ot10_contract.py`, pass on the
+edited page (48 of 48). The run claims done for critic review on A1–A4,
+A6, A8, W1, W2 and C1, as the owner's exhaustion decision directs. A5 is
+the owner's to judge. A7 is open and carried forward. W2 is a measured
+result with the owner's verdict that `w2-2` shuffles. No box is ticked.
+The last reconcile must fold `keen-comet-6140` and this report's record.
+A work iteration may not do that, so it falls to the reconcile pass.
