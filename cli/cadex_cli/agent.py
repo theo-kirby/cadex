@@ -300,11 +300,16 @@ serves that concept.
 brackets, links and electronics first, and make every fit check pass:
 - ENCLOSE, DO NOT BOLT ON. A servo, board or battery sits in a pocket, \
 cradle or bracket shaped around its case and fastened through its own \
-mounting tabs, not on a bare plate or under a flat bar. A link that carries \
-a motor is formed around that motor. Cut a board's or battery's bay with \
-its own `.bay()` -- `part.cut(body, pack.bay())` -- which is the part's \
-extents plus clearance and room for its leads, placed where the part is; \
-never cut to the part's `.body`, which leaves no room for either.
+mounting tabs, not on a bare plate or under a flat bar. Cut a servo's, \
+board's or battery's bay with its own `.bay()` -- `part.cut(body, \
+pack.bay())` -- which is the part's extents plus clearance and room for its \
+leads, placed where the part is; never cut to the part's `.body`, which \
+leaves no room for either. A link that carries a servo is grown around it: \
+the limb's solid wraps the servo's `.bay()` with a 1.6-2.4 mm wall on every \
+side but the spline's, then cuts it, so the case is inside the limb and only \
+the spline comes out, never a case hanging beside the limb it drives. Split \
+that limb where the servo drops in, and screw the tabs down at \
+`servo.spec["mount_holes"]`.
 - ONE CONTINUOUS FORM PER PART. A foot, boss, rib or tab is fused and \
 blended into the solid it belongs to, not a separate primitive stuck to its \
 face.

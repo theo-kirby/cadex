@@ -215,7 +215,37 @@ def _positive(operation: str, name: str, value: Any) -> float:
     return value
 
 
-class ServoPart(LibraryPart):
+def _bay_allowance(operation: str, name: str, value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) \
+            or not math.isfinite(value) or value < 0:
+        raise LibraryError(f"{operation}: {name} must be a finite number of "
+                           f"millimetres, 0 or more; got {value!r}.")
+    return float(value)
+
+
+class _BayPart(LibraryPart):
+    """A purchased part that is housed rather than bolted on (ADR-442).
+
+    ``.bay(...)`` is the keep-out solid a printed part cuts to house this
+    one: the part's own extents grown by ``clearance`` on every open side,
+    plus the room its leads need, placed where the part is placed. It is a
+    cutting tool, never a component: ``part.cut(shell, pack.bay())``.
+    """
+
+    __slots__ = ("_lib", "_frame_placement")
+
+    def __init__(self, lib, family, part_number, body, spec, frame_placement):
+        super().__init__(family, part_number, body, spec)
+        object.__setattr__(self, "_lib", lib)
+        object.__setattr__(self, "_frame_placement", frame_placement)
+
+    def _bay_box(self, operation, low, high, label):
+        size = [b - a for a, b in zip(low, high)]
+        cavity = self._lib._part.box(*size, origin=tuple(low), label=label)
+        return self._lib._place_frame(operation, cavity, self._frame_placement)
+
+
+class ServoPart(_BayPart):
     """A placed servo: geometry, datasheet numbers, horn and actuator.
 
     The local frame is uniform across the family: the origin is the point
@@ -225,7 +255,7 @@ class ServoPart(LibraryPart):
     lists the mounting-hole centres in that frame.
     """
 
-    __slots__ = ("_lib", "_frame_placement")
+    __slots__ = ()
 
     def __init__(
         self,
@@ -235,9 +265,47 @@ class ServoPart(LibraryPart):
         spec: Mapping[str, Any],
         frame_placement: tuple,
     ) -> None:
-        super().__init__("servo", part_number, body, spec)
-        object.__setattr__(self, "_lib", lib)
-        object.__setattr__(self, "_frame_placement", frame_placement)
+        super().__init__(lib, "servo", part_number, body, spec, frame_placement)
+
+    def bay(self, *, clearance: float = 0.5, lead_room: float = 6.0,
+            label: str = "") -> Any:
+        """The servo's keep-out solid: grow a limb around it, then cut it.
+
+        The case and the mounting-tab plate each grown by ``clearance`` on
+        every side, the spline's column out through the case top (so the
+        horn seats outside the wall), and ``lead_room`` beyond the back
+        (-X) end face below the tabs, where the three-wire lead is taken to
+        leave. The tabs land on the ledge the cut leaves under them; drill
+        the screws at ``spec['mount_holes']``. Defaults: 0.5 mm, a printed
+        servo pocket; 6 mm, room for the lead to turn. The lead exit is a
+        convention, not a datasheet dimension.
+        """
+        operation = "servo.bay"
+        c = _bay_allowance(operation, "clearance", clearance)
+        room = _bay_allowance(operation, "lead_room", lead_room)
+        spec = self.spec
+        front = spec["shaft_offset_from_front_mm"]
+        back = front - spec["body_length_mm"]
+        half = spec["body_width_mm"] / 2.0 + c
+        bottom = -spec["case_height_mm"] - c
+        plate_z = spec["mount_hole_z_mm"]
+        centre = front - spec["body_length_mm"] / 2.0
+        tab_half = spec["overall_tab_length_mm"] / 2.0 + c
+        part = self._lib._part
+
+        def box(low, high):
+            return part.box(*(b - a for a, b in zip(low, high)), origin=low)
+
+        pieces = [
+            box((back - c, -half, bottom), (front + c, half, c)),
+            box((centre - tab_half, -half, plate_z - c),
+                (centre + tab_half, half, plate_z + spec["tab_thickness_mm"] + c)),
+            part.cylinder(spec["spline_dia_mm"] / 2.0 + c, spec["spline_height_mm"]),
+        ]
+        if room > 0.0:
+            pieces.append(box((back - c - room, -half, bottom), (back - c, half, plate_z - c)))
+        cavity = part.fuse(pieces, label=label)
+        return self._lib._place_frame(operation, cavity, self._frame_placement)
 
     def horn(
         self,
@@ -322,36 +390,6 @@ class ServoPart(LibraryPart):
             friction_loss_nmm=friction_loss_nmm,
             label=label,
         )
-
-
-def _bay_allowance(operation: str, name: str, value: Any) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) \
-            or not math.isfinite(value) or value < 0:
-        raise LibraryError(f"{operation}: {name} must be a finite number of "
-                           f"millimetres, 0 or more; got {value!r}.")
-    return float(value)
-
-
-class _BayPart(LibraryPart):
-    """A purchased part that is housed rather than bolted on (ADR-442).
-
-    ``.bay(...)`` is the keep-out solid a printed part cuts to house this
-    one: the part's own extents grown by ``clearance`` on every open side,
-    plus the room its leads need, placed where the part is placed. It is a
-    cutting tool, never a component: ``part.cut(shell, pack.bay())``.
-    """
-
-    __slots__ = ("_lib", "_frame_placement")
-
-    def __init__(self, lib, family, part_number, body, spec, frame_placement):
-        super().__init__(family, part_number, body, spec)
-        object.__setattr__(self, "_lib", lib)
-        object.__setattr__(self, "_frame_placement", frame_placement)
-
-    def _bay_box(self, operation, low, high, label):
-        size = [b - a for a, b in zip(low, high)]
-        cavity = self._lib._part.box(*size, origin=tuple(low), label=label)
-        return self._lib._place_frame(operation, cavity, self._frame_placement)
 
 
 class BatteryPart(_BayPart):
@@ -1150,8 +1188,10 @@ class LibraryAPI:
         flange height, shaft position — and ``spec['approximate']`` names
         any field no datasheet dimensions. ``.horn(...)`` seats the matching
         horn on the spline; ``.actuator(joint, control_deg=...)`` puts this
-        servo's real torque limit on a joint; ``spec`` carries the mass and
-        the effective density ``assembly.body`` wants.
+        servo's real torque limit on a joint; ``.bay()`` is the keep-out a
+        limb is grown around and cut with, so the case sits inside the limb;
+        ``spec`` carries the mass and the effective density
+        ``assembly.body`` wants.
         """
 
         operation = "servo"
@@ -1623,8 +1663,9 @@ def library_listing() -> dict[str, Any]:
             "other parts stand on their base face. Interface dimensions are the standard's; "
             "threads and knurls are deliberately not modelled, so cut "
             "mating holes with lib.clearance_hole/tap_drill/insert_hole "
-            "rather than measuring the shank. A battery or board is housed, "
-            "not bolted on: cut its .bay() -- its extents plus clearance and "
-            "lead room, placed with it -- from the part that carries it."
+            "rather than measuring the shank. A servo, battery or board is "
+            "housed, not bolted on: cut its .bay() -- its extents plus "
+            "clearance and lead room, placed with it -- from the part that "
+            "carries it."
         ),
     }

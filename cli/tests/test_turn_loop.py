@@ -644,6 +644,16 @@ def test_the_overlay_cuts_electronics_bays_with_bay() -> None:
     assert "cut with their `.bay()`" in complete[:400]
 
 
+def test_the_overlay_grows_a_limb_around_the_servo_bay() -> None:
+    """ADR-443: a servo is housed inside its limb, not hung beside it."""
+
+    enclose = next(i for i in _overlay_items(CLI_OVERLAY)
+                   if i.startswith("- ENCLOSE, DO NOT BOLT ON."))
+    assert "Cut a servo's, board's or battery's bay with its own `.bay()`" in enclose
+    assert "wraps the servo's `.bay()`" in enclose
+    assert "never a case hanging beside the limb it drives" in enclose
+
+
 def _overlay_items(text: str) -> list[str]:
     """Every paragraph of the overlay, with a bulleted list split into its items."""
     import re

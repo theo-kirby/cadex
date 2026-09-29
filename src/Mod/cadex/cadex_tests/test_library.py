@@ -618,6 +618,66 @@ def test_esp32_bay_covers_the_module_overhanging_its_pcb():
     assert high[1] == pytest.approx(23.0 + 31.30)  # past the 48.26 mm PCB
 
 
+def _boxes(bay):
+    return sorted(
+        (tuple(b.properties["origin"]),
+         tuple(o + a for o, a in zip(b.properties["origin"], b.arguments)))
+        for b in _ops(bay, "box"))
+
+
+def _servo_bay_bounds(servo, **kwargs):
+    boxes = _boxes(servo.bay(**kwargs))
+    return (tuple(min(low[i] for low, _ in boxes) for i in range(3)),
+            tuple(max(high[i] for _, high in boxes) for i in range(3)))
+
+
+@pytest.mark.parametrize("sku", ["sg90", "mg90s", "ds3218"])
+def test_servo_bay_houses_the_case_tabs_and_lead(sku):
+    """ADR-443: a limb grows around the servo's own keep-out, not a guess."""
+    servo = _servo_lib().servo(sku)
+    spec = servo.spec
+    front = spec["shaft_offset_from_front_mm"]
+    back = front - spec["body_length_mm"]
+    half = spec["body_width_mm"] / 2
+    plate_z = spec["mount_hole_z_mm"]
+    centre = front - spec["body_length_mm"] / 2
+    tab = spec["overall_tab_length_mm"] / 2
+    boxes = _boxes(servo.bay())
+    assert len(boxes) == 3
+    assert ((back - 0.5, -half - 0.5, -spec["case_height_mm"] - 0.5),
+            (front + 0.5, half + 0.5, 0.5)) in [
+        (pytest.approx(lo), pytest.approx(hi)) for lo, hi in boxes]
+    assert ((centre - tab - 0.5, -half - 0.5, plate_z - 0.5),
+            (centre + tab + 0.5, half + 0.5, plate_z + spec["tab_thickness_mm"] + 0.5)) in [
+        (pytest.approx(lo), pytest.approx(hi)) for lo, hi in boxes]
+    assert ((back - 6.5, -half - 0.5, -spec["case_height_mm"] - 0.5),
+            (back - 0.5, half + 0.5, plate_z - 0.5)) in [
+        (pytest.approx(lo), pytest.approx(hi)) for lo, hi in boxes]
+    (column,) = _ops(servo.bay(), "cylinder")
+    assert column.arguments == (pytest.approx(spec["spline_dia_mm"] / 2 + 0.5),
+                                spec["spline_height_mm"])
+    # Without lead room the lead box is gone, not a zero-length solid.
+    assert len(_boxes(servo.bay(lead_room=0))) == 2
+    assert catalog_identity_of(servo.bay()) is None
+
+
+def test_servo_bay_contains_the_servo_body():
+    servo = _servo_lib().servo("mg90s")
+    low, high = _servo_bay_bounds(servo, clearance=0, lead_room=0)
+    body_boxes = _boxes(servo.body)
+    assert low == pytest.approx(tuple(min(b[0][i] for b in body_boxes) for i in range(3)))
+    assert high[:2] == pytest.approx(tuple(max(b[1][i] for b in body_boxes)
+                                           for i in range(2)))
+
+
+def test_servo_bay_follows_the_servo_placement():
+    servo = _servo_lib().servo("mg90s", origin=(10, 20, 30), direction=(0, 1, 0),
+                               roll_degrees=90)
+    bay = servo.bay(label="hip_bay")
+    assert bay.operation == "transform"
+    assert bay.properties == servo.body.properties
+
+
 @pytest.mark.parametrize("name,value", [("clearance", -1), ("lead_room", float("nan")),
                                         ("clearance", True), ("underside", "2")])
 def test_bay_allowances_refuse_by_name(name, value):
@@ -627,6 +687,8 @@ def test_bay_allowances_refuse_by_name(name, value):
     if name != "underside":
         with pytest.raises(LibraryError, match=f"battery.bay: {name} must be"):
             _lib().battery("gensace-gea2s100045d").bay(**{name: value})
+        with pytest.raises(LibraryError, match=f"servo.bay: {name} must be"):
+            _servo_lib().servo("mg90s").bay(**{name: value})
 
 
 def catalog_identity_of(body):

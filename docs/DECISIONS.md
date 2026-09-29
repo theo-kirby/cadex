@@ -29249,3 +29249,50 @@ not modelled. `underside` is the knob for headers, and the docstring says so.
 `test_bay_allowances_refuse_by_name`. All eleven cases fail on the previous
 source. `cli/tests/test_turn_loop.py`:
 `test_the_overlay_cuts_electronics_bays_with_bay`.
+
+## ADR-443 — A servo carries its own bay, and a limb is grown around it (2026-09-29)
+
+**Context.** A7's gap, as the judge named it on every 16/21 design, is a
+rounded box on legs with servo cases hanging outside the shell, and T4
+(form) never reaching 3. ADR-442 gave boards and batteries a `.bay()`; the
+servo, the part the gap is actually about, still had none, so every servo
+pocket was hand-cut from magic numbers (`ot10-quadruped-4` cuts
+`box(-6.4, 6.4, 8.3, ...)`). Measured read-only on the three 16/21 designs
+(`ot10-quadruped-2`, `ot10-hexapod-5`, `ot10-quadruped-4`), with each
+servo's frame recovered from its own solid (the bay at zero allowance holds
+100.00% of every one of the 28 servo solids): the share of a 2 mm wall
+around the servo's case and tabs, outside a 0.5 mm clearance, that is
+printed material is **0.198** on `ot10-quadruped-2`'s hips and **0.390** on
+`ot10-quadruped-4`'s (the hip cases hang beside the body), against
+0.714–0.848 on every knee and on `ot10-hexapod-5`'s hips. Printed material
+inside the default bay is 273–2,814 mm³ per servo: every pocket in all three
+is tighter than 0.5 mm somewhere or has no exit for the lead.
+
+**Decision.** `lib.servo(...)` returns a `ServoPart` that is now a `_BayPart`
+like the battery and board, and carries `.bay(clearance=0.5,
+lead_room=6.0)`: the case and the tab plate each grown by `clearance`, the
+spline's column (radius plus `clearance`) from the case top to the spline
+top so the horn seats outside the wall, and `lead_room` beyond the back
+(-X) end face below the tabs, where the lead is taken to leave. It is
+placed with the servo's own frame and is never catalogued. The overlay's
+ENCLOSE rule now names the servo's `.bay()` alongside the board's and
+battery's, and says a limb that carries a servo wraps its `.bay()` with a
+1.6–2.4 mm wall on every side but the spline's and then cuts it, so the
+case is inside the limb, never hanging beside it; split the limb where the
+servo drops in, and screw the tabs at `spec["mount_holes"]`. The lead exit
+is a convention, not a datasheet dimension. `docs/XSCRIPT.md` gains the
+servo row in the bay table.
+
+**Not done.** No confirmation turn has been run against the new overlay;
+none may run until its pre-registration is committed. The wall-share figure
+above is a read-only diagnostic taken outside the product, not an A1 proxy,
+and nothing is re-scored. A 25T horn is still undimensioned, so the
+standard servos' bay passes only the spline.
+
+**Tests.** `cadex_tests/test_library.py`:
+`test_servo_bay_houses_the_case_tabs_and_lead` (sg90, mg90s, ds3218),
+`test_servo_bay_contains_the_servo_body`,
+`test_servo_bay_follows_the_servo_placement`, and three servo cases in
+`test_bay_allowances_refuse_by_name`. All eight fail on the previous source.
+`cli/tests/test_turn_loop.py`:
+`test_the_overlay_grows_a_limb_around_the_servo_bay`.

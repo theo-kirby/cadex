@@ -287,7 +287,12 @@ the report was written, and none is closed.
    intruded: the battery pocket leaves 0.4 mm where the bay asks 1 mm
    (2,884 mm³ of chassis inside the bay without lead room), and the four
    boards sit straight on the deck with no room under them for their solder
-   joints (2,044–5,059 mm³ each). No A5 turn has used `.bay()` yet. Still
+   joints (2,044–5,059 mm³ each). The servo now has one too (ADR-443), and
+   the overlay tells a limb to wrap it. Read-only on the three 16/21
+   designs, printed material fills 0.198 of a 2 mm wall around each hip
+   servo on `ot10-quadruped-2` and 0.390 on `ot10-quadruped-4`, against
+   0.714–0.848 on every knee and on `ot10-hexapod-5`'s hips: the quadrupeds'
+   hip cases hang beside the body. No A5 turn has used `.bay()` yet. Still
    open: a Cadex signature that holds across body plans, and stalls.
 8. **The floor set the robot's render resolution (fixed, ADR-439).**
    `cadex render` sized its vertex-clustering grid from the extent of

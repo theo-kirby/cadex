@@ -584,19 +584,21 @@ face, length along local X, width along Y, height along +direction. Leads
 are not modelled; `spec["density_kg_m3"]` is the stated mass over the
 envelope, for `assembly.body`.
 
-A battery or board is housed, not bolted on, so both carry `.bay(...)`: a
-**keep-out solid** placed exactly where the part is, which the part that
-carries it cuts. It is a cutting tool and never a component, and it is not
+A servo, battery or board is housed, not bolted on, so each carries
+`.bay(...)`: a **keep-out solid** placed exactly where the part is, which the
+part that carries it cuts. It is a cutting tool and never a component, and it is not
 catalogued hardware, so it never counts as purchased in `look`'s measures.
 
 | call | extents, in the part's own frame |
 |---|---|
+| `servo.bay(clearance=0.5, lead_room=6.0)` | the case and the mounting-tab plate, each plus `clearance` on every side; the spline's column (its radius plus `clearance`) from the case top to the spline top, so the horn seats outside the wall; and `lead_room` beyond the back (**−X**) end face, below the tabs, where the lead is taken to leave (ADR-443). The tabs land on the ledge the cut leaves under them; drill their screws at `spec["mount_holes"]`. Grow the limb around it — a 1.6–2.4 mm wall on every side but the spline's — then cut it, so the case sits inside the limb. |
 | `pack.bay(clearance=1.0, lead_room=15.0)` | the envelope plus `clearance` on the four sides and the top, plus `lead_room` beyond the **+X** end face, where the leads are taken to leave (roll the pack 180° to lead out of −X). Nothing below the base face: that is the seat. |
 | `board.bay(clearance=1.0, underside=2.0, lead_room=8.0)` | the PCB and component-marker footprint (the ESP32 module overhangs its PCB) plus `clearance`; from `underside + clearance` below the PCB to `lead_room + clearance` above its tallest component. Raise `underside` to the pin length when headers are fitted; fitted connectors (USB, HDMI) are not modelled. |
 
 Every allowance is a finite number of millimetres, zero or more; anything
 else refuses naming the call and the argument (`board.bay: underside must
-be ...`).
+be ...`). The lead exits (servo −X, pack +X) are conventions, not
+datasheet dimensions.
 
 ```python
 pack = lib.battery("gensace-gea2s100045d", origin=(0, 0, 4))
