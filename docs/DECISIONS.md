@@ -29536,3 +29536,32 @@ type while it is on. Nothing runs in background mode, because a studio
 process and two `inspect` reads per accept would sit inside every gate
 timing; the gate calls `cadex_roles.refresh()` itself. The shell diff is
 under `mesh_agent/` and `shell/tests/python/` only.
+
+## ADR-450 — The app's Training editor lists the project's runs (2026-09-29)
+
+**Decision.** A `Runs` panel in the Training editor lists every `cadex walk`
+run under `<project>/runs/`, newest first: its status in words, whether it
+ran on the accepted design, its live training progress and its video state.
+A click shows a run's identity, error, policy, reward and parameters. The
+new `mesh_agent/cadex_runs.py` reads the files the review dashboard reads
+(`run.json`, else a legacy `review.json`, `train/progress.json`,
+`video.json` and the project's `script.json`), and it is written against
+`docs/CLI.md`, the contract for those files.
+
+**Reason.** GUI-parity slice 5 (the owner's direction, ADR-445): monitor
+long agent runs in the app as in the dashboard. The owner chose native
+panels that read the same on-disk files. This slice takes that option
+literally and does not move `review_record` into the engine, for two
+reasons. First, the dashboard's reader verifies video and snapshot digests
+with a cache that lives in its own process, so a child process on every
+poll would hash every video again. Second, the CLI tests patch that
+module's internals.
+
+**Consequences.** There are two readers of one file format. The
+dashboard's reader stays the complete one: it resolves references, checks
+digests and verifies the policy store, and a run's `problems` are its to
+report. The app's reader is smaller and never hashes. Each read costs one
+stat while its file is unchanged. A run directory that resolves outside
+`runs/` is listed and never opened. The reader needs no engine, and the
+no-engine suite tests it (`test_the_runs_panel_reads_what_the_dashboard_reads`).
+The shell diff is under `mesh_agent/` and `shell/tests/python/` only.

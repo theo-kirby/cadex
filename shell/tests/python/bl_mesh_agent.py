@@ -3707,6 +3707,111 @@ def test_measurement_anchors_follow_the_placement_of_what_they_measure():
           "...and so are its ray endpoints")
 
 
+def test_the_runs_panel_reads_what_the_dashboard_reads():
+    """``runs/*`` in the Training editor (cadex ADR-450), with no engine.
+
+    The files are the ones ``cadex walk`` writes and ``cadex review``
+    serves: a run record, a legacy ``review.json``, a live trainer's
+    ``train/progress.json`` and a policy video's ``video.json``.
+    """
+
+    from mesh_agent import cadex_backend, cadex_runs
+
+    root = tempfile.mkdtemp(prefix="cadex-runs-")
+    runs = os.path.join(root, "runs")
+
+    def write(relative, payload):
+        path = os.path.join(runs, relative)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(payload if isinstance(payload, str) else json.dumps(payload))
+
+    check(cadex_runs.read_runs(root) == {"accepted": "", "runs": []},
+          "a project with no runs has nothing to show")
+    rev_a, rev_b = "a" * 64, "b" * 64
+    with open(os.path.join(root, "script.json"), "w", encoding="utf-8") as handle:
+        json.dump({"schema": "cadex-project-script-v1", "accepted_revision": rev_b}, handle)
+    write("first/run.json", {
+        "schema": "cadex-run-record-v1", "run": "first", "status": "ok",
+        "recorded_at": "2026-09-20T10:00:00Z", "mode": "local",
+        "model": {"accepted_revision": rev_a}, "params": {"values": {"leg": 40}},
+        "policy": {"name": "stand.cxpolicy"}, "rollout": {"total_reward": 12.5}})
+    write("first/video.json", {"schema": "cadex-run-video-v1", "state": "done",
+                               "videos": [{"path": "final.webm"}]})
+    write("second/run.json", {
+        "schema": "cadex-run-record-v1", "run": "second", "status": "running",
+        "recorded_at": "2026-09-29T10:00:00Z", "model": {"accepted_revision": rev_b}})
+    progress = {"schema": "cadex-training-progress-v1", "state": "training",
+                "iteration": 419, "total": 2000, "reward_per_step": 0.391}
+    write("second/train/progress.json", progress)
+    write("legacy/review.json", {"params": {"leg": 38}, "weights": "old.cxpolicy",
+                                 "legs": [{"accepted_revision": rev_a}]})
+    write("torn/run.json", '{"schema": "cadex-run-rec')
+    os.makedirs(os.path.join(runs, "bare"))
+
+    review = cadex_runs.read_runs(root)
+    by_name = {run["run"]: run for run in review["runs"]}
+    check(review["accepted"] == rev_b, "the accepted revision comes from the manifest")
+    check([run["run"] for run in review["runs"]][:2] == ["second", "first"],
+          "newest recorded first")
+    second, first = by_name["second"], by_name["first"]
+    check(cadex_runs.is_live(second) and second["relation"] == "current",
+          "a running record with a training trainer is live, on the current design")
+    check(cadex_runs.progress_line(second) == "420 / 2000  +0.391/step",
+          "and its progress reads at a glance ({!r})".format(cadex_runs.progress_line(second)))
+    check(first["outcome"] == "completed" and first["relation"] == "historical"
+          and first["params"] == {"leg": 40} and first["policy"] == "stand.cxpolicy"
+          and first["video"] == {"state": "done", "count": 1},
+          "a finished run keeps its identity, parameters, policy and video")
+    legacy = by_name["legacy"]
+    check(legacy["source"] == "review.json" and legacy["revision"] == rev_a
+          and legacy["params"] == {"leg": 38}, "a legacy run reads its identity off review.json")
+    check(by_name["torn"]["status"] == "empty" and by_name["bare"]["outcome"] == "no record",
+          "a torn or missing record is listed, not skipped")
+
+    # A run directory that is a symlink out of the project is listed, never read.
+    outside = tempfile.mkdtemp(prefix="cadex-runs-outside-")
+    with open(os.path.join(outside, "run.json"), "w", encoding="utf-8") as handle:
+        json.dump({"schema": "cadex-run-record-v1", "status": "ok"}, handle)
+    os.symlink(outside, os.path.join(runs, "escape"))
+    escape = {run["run"]: run for run in cadex_runs.read_runs(root)["runs"]}["escape"]
+    check(escape["status"] == "unreadable" and escape["source"] is None,
+          "a run directory outside the project is never opened")
+
+    # The same progress moves: the panel's reading follows the file.
+    progress["iteration"] = 999
+    write("second/train/progress.json", progress)
+    second = {run["run"]: run for run in cadex_runs.read_runs(root)["runs"]}["second"]
+    check(cadex_runs.progress_line(second).startswith("1000 / 2000"),
+          "a moved progress file is re-read")
+
+    # The panel polls on the scene's project and draws without raising.
+    scene = bpy.context.scene
+    scene[cadex_backend.ROOT_PROP] = root
+    try:
+        panel = cadex_runs.CADEX_TRAINING_PT_runs
+        check(panel.poll(bpy.context), "the Runs panel appears on a project with runs")
+        bpy.context.window_manager.cadex_run_selected = "first"
+
+        class _Layout:
+            def __getattr__(self, name):
+                return lambda *args, **kwargs: self
+
+        # A plain object: a registered bpy_struct refuses ``__new__``.
+        drawn = type("Drawn", (), {"layout": _Layout()})()
+        try:
+            panel.draw(drawn, bpy.context)
+            ok = True
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            ok = False
+        check(ok, "the panel draws a selected run without raising")
+    finally:
+        del scene[cadex_backend.ROOT_PROP]
+        bpy.context.window_manager.cadex_run_selected = ""
+
+
 def test_training_plot_layout_is_pure_arithmetic():
     """The reward-curve plot's numbers, with no region and no GPU.
 
@@ -3834,6 +3939,7 @@ def main():
         test_radius_and_angle_draw_drafting_geometry()
         test_measurement_anchors_follow_the_placement_of_what_they_measure()
         test_training_plot_layout_is_pure_arithmetic()
+        test_the_runs_panel_reads_what_the_dashboard_reads()
         if os.environ.get("MESH_AGENT_LIVE"):
             test_live_claude_turn()
         else:
