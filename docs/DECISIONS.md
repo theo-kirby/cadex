@@ -29006,3 +29006,86 @@ No probe is re-scored, and no dependency is added.
 - A real-OCCT test checks that a board in a hollow tub and under a
   hemispherical dome, in both argument orders, reads exactly the
   whole-shell distance (25.0 and 19.687… mm).
+
+## ADR-438 — A touching pair's `common` is first run on the region the two can share (2026-09-28)
+
+**Context.** After ADR-437, `ot10-hexapod-10`'s refused 12:40 build still
+went over its 300 CPU-s budget, and among the costliest fit stages left were
+touching pairs, where the boolean `common` must still decide the volume: `c_tub / c_visor`
+cost 53.7 CPU-s in the worker, and 77 of the harness's 103 were `common`,
+to answer 0.0. The critic asked for an exact zero-volume proof that skips
+`common`, or a recorded dead end.
+
+**What was tried first, and why it was dropped.** A separating-axis proof
+from the two solids' exact boxes. The kernel's boxes carry their own
+inflation of about 1e-7 mm per box, and more on a B-spline (the dome read
+3.8e-7 mm of overlap against the flat deck it only touches). So the proof
+can show only that the two solids overlap by no more than a slab of that
+thickness. On the deck and the tub, that slab bounds the volume at about
+4e-3 mm³, above the 1e-6 mm³ at which the fit calls an intersection. It
+cannot prove the verdict without appealing to the kernel's tolerances, and
+it proves nothing for the tub and the visor, which meet along curved walls
+no plane separates. **No exact zero-volume proof that skips the boolean was
+found in this unit.**
+
+**Decision.** Keep the boolean, and run it where the volume can be: on the
+two solids cut to the region they can share
+(`_clipped_common_is_zero`, `cadex_assembly_worker.py`). The static fit only.
+1. Two solids share volume only inside both their boxes. The region is that
+   overlap grown by 1 mm on every side (`_CLIP_MARGIN_MM`), so every point
+   of the common lies inside it, away from any cut face. The common of the
+   cut solids is the same set as the common of the whole ones.
+2. A side is cut only when fewer than half its faces' exact boxes meet the
+   region. Otherwise the cut is a second boolean that removes little.
+3. **The cut decides only a zero.** If the cut `common` answers exactly 0.0,
+   that is the row's volume. Any other answer, a failed cut, or no side worth
+   cutting runs the whole `common` as before. So every non-zero volume the
+   fit publishes is still the uncut boolean's, digit for digit.
+4. The swept fit is unchanged, as in ADR-437: it passes no boxes.
+
+**Measured.** The harness is ADR-437's: the same `_measure_clearance` over
+the dumped world shapes, timed per pair.
+- Before any rule, the cut and the whole `common` were compared on all
+  176 touching pairs of both builds, including the twelve screws that
+  really overlap the tub (0.2984 mm³). All 176 answers were identical to
+  the last digit.
+- Refused-build shapes, 2,850 pairs: the static fit fell from 701.7 to
+  600.3 CPU-s (586.7 on a second run). All rows are identical to ADR-437's.
+  - tub/visor: 102.9 → 33.2.
+  - deck/tub: 63.4 → 49.8.
+  - hip_servo/tub (×6): about 20 → 6–13 each.
+  - The twelve screws through the tub are each about 3 CPU-s slower: the
+    cut answers 0.2984, and the whole boolean then runs.
+- Accepted-build shapes, 1,326 pairs: 111.7 → 120.5 CPU-s (117.3 on a
+  second run). All rows are identical. This is a small loss, on cheap
+  touching pairs (foot/tibia, coxa/hip_horn), where the cut costs more than
+  the whole boolean did. It is below the 120.4 CPU-s the same shapes cost
+  before ADR-437.
+- **Accepted rebuild** through `cadex script --set` on a `/tmp` copy: all
+  1,326 static rows identical, and the complete swept fit identical with
+  timings stripped. It took 143.7 user CPU-s and 86 s wall (ADR-437's: 142
+  and 84).
+- **Refused replay** on a `/tmp` copy: still refused, now at 292 CPU-s in
+  `static fit c_dome / c_pca9685`, further along the pairs than before.
+  `c_tub / c_visor` is no longer among the five costliest stages, where it
+  was at 53.7. The five are `output tub` 72.9, `c_deck / c_dome` 24.7,
+  `c_tub / c_deck` 20.6, `output dome` 19.9 and `c_dome / c_visor` 13.9.
+
+**Not changed.** The 10 mm cull, the 0.001 mm disjoint rule, the fit
+thresholds and verdicts, the sweep, the 300 CPU-s limit, every protocol op
+and `OP_ARG_SPECS`, and the rubric, bar, judge and A5 prompts. No probe is
+re-scored, and no dependency is added.
+
+**Regression.** `cadex_tests/test_touching_fit_common.py`:
+- A fake tub, eight of whose ten faces lie outside the region, touching a
+  visor, in both orders, through `_measure_clearance`: the tub is cut and
+  the whole boolean never runs.
+- A cut that answers non-zero publishes the whole boolean's volume.
+- No side worth cutting, and the sweep's call with no boxes, run whole.
+- On real OCCT, a drilled hollow tub with a visor seated on its rim, and a
+  screw through its wall, in both orders: every volume equals the whole
+  `common` exactly, the visor's 0.0 is decided on the cut, and the screw's
+  70.69 mm³ is not.
+
+The first three fail on the previous worker, which ran `['whole common']`.
+The real-OCCT test fails there too, because the helper does not exist.

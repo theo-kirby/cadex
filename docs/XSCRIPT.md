@@ -1650,6 +1650,15 @@ re-measured on the solids, which contain them. The swept fit is unchanged: it
 measures each pair at every sample on freshly placed shapes, where the bounds
 cost more than they save.
 
+**A touching pair's `common` is first run where the two can meet** (ADR-438).
+Two solids share volume only inside both their boxes, so the static fit cuts
+a side to that overlap, grown by 1 mm, when fewer than half its faces meet
+it, and runs `common` on the cut solids. The cut decides only a zero: any
+other answer, or a failed cut, runs the whole boolean as before, so every
+non-zero volume is still the uncut one. On hexapod-10's refused build the
+tub and its visor cost 103 CPU-s before and 33 after, and every static row of
+both builds is unchanged. The swept fit is unchanged.
+
 A pair joined by an **unsuppressed `fixed` joint is not an undeclared pair**
 (ADR-372) and is exempt from that 0.1 mm: welding two components is the design
 declaring them one rigid body, so meeting face to face is what the declaration

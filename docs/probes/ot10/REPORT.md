@@ -225,9 +225,13 @@ the report was written, and none is closed.
    static fit search a housing's faces best first against the part's box.
    On that build's shapes the static fit fell from 1,143 to 702 CPU-s
    (tub/pca9685 from 157 to 1.3), and on the accepted build from 120 to
-   112. No row changed. The build is still over the limit: geometry takes
-   about 115 CPU-s, and touching pairs still need `common` (tub/visor
-   53.7 CPU-s). No probe has run since.
+   112. No row changed. ADR-438 then ran a touching pair's `common` on
+   the solids cut to where they can meet, and kept only a zero from the
+   cut. On the same shapes that took the static fit from 702 to 600 CPU-s
+   (tub/visor 103 to 33). The accepted build went from 112 to 117–121,
+   and no row changed. The build is still over the limit: it is refused
+   at 292 CPU-s in dome/pca9685, with geometry (`output tub` 73) and
+   deck/dome 25 the costliest stages. No probe has run since.
 2. **Sandbox refusals**: 37. The agent reaches for `dir`, `getattr`,
    `hasattr`, `type`, undefined names, imports and private attributes, and each refusal costs a
    turn.

@@ -5778,7 +5778,8 @@ def _measure_clearance(
                 # Surface-only geometry does not establish solid intersection.
                 if not a.Solids or not b.Solids:
                     raise ValueError("Common volume requires solid components")
-                volume = _common_volume(a, b, distance) if a.BoundBox.intersect(b.BoundBox) else 0.0
+                volume = (_common_volume(a, b, distance, (box(first), box(second)), face_boxes)
+                          if a.BoundBox.intersect(b.BoundBox) else 0.0)
                 if not math.isfinite(volume) or volume < 0:
                     raise ValueError("Invalid common volume")
                 row["common_volume_mm3"] = volume
@@ -5792,7 +5793,7 @@ def _measure_clearance(
 _DISJOINT_DISTANCE_MM = 1e-3
 
 
-def _common_volume(first, second, distance):
+def _common_volume(first, second, distance, boxes=None, face_boxes=None):
     """The two solids' common volume, proved zero when their distance is positive (ADR-436).
 
     Two solids a measured distance apart cannot share volume, so the boolean
@@ -5801,12 +5802,64 @@ def _common_volume(first, second, distance):
     deck, their boxes overlap, and ``common`` on the two lofted shells ran
     past 137 CPU-seconds without answering: the worker's whole 300 CPU-second
     budget went on a volume the distance had already proved to be 0.0. At or
-    below :data:`_DISJOINT_DISTANCE_MM` the boolean still decides.
+    below :data:`_DISJOINT_DISTANCE_MM` the boolean still decides -- first on
+    the two solids cut to where they can meet, when the static fit passes
+    ``boxes`` (:func:`_clipped_common_is_zero`, ADR-438).
     """
 
     if distance > _DISJOINT_DISTANCE_MM:
         return 0.0
+    if boxes is not None and face_boxes is not None and _clipped_common_is_zero(
+            first, second, boxes, face_boxes):
+        return 0.0
     return float(first.common(second).Volume)
+
+
+#: How far the region a touching pair is cut to reaches past the two boxes'
+#: overlap, so no cut face lies where the solids can meet (ADR-438).
+_CLIP_MARGIN_MM = 1.0
+
+
+def _clipped_common_is_zero(first, second, boxes, face_boxes):
+    """Whether ``common`` answers 0.0 on the two solids cut to the region they can share (ADR-438).
+
+    Two solids can only share volume inside both their boxes. Cut each to
+    that overlap grown by :data:`_CLIP_MARGIN_MM` and their common is the
+    same set, because every point of it lies inside the region, away from
+    the cut. A touching pair's ``common`` spends its time on the faces far
+    from the contact: on ``ot10-hexapod-10``'s refused build the tub and the
+    visor it carries cost 77 CPU-seconds whole and 9 cut, for the same 0.0.
+    A side is cut only when fewer than half of its faces meet the region --
+    otherwise the cut is a second boolean that removes little -- and the cut
+    decides only a zero: any other answer, or a failed cut, returns False
+    and the whole solids are measured as before, so a volume that is not
+    zero is always the one the uncut boolean gives.
+    """
+
+    try:
+        import FreeCAD as App
+        import Part
+        lo = [max(a, b) - _CLIP_MARGIN_MM for a, b in (
+            (boxes[0].XMin, boxes[1].XMin), (boxes[0].YMin, boxes[1].YMin), (boxes[0].ZMin, boxes[1].ZMin))]
+        hi = [min(a, b) + _CLIP_MARGIN_MM for a, b in (
+            (boxes[0].XMax, boxes[1].XMax), (boxes[0].YMax, boxes[1].YMax), (boxes[0].ZMax, boxes[1].ZMax))]
+        if any(h <= l for l, h in zip(lo, hi)):
+            return False
+        cut = []
+        for shape in (first, second):
+            if id(shape) not in face_boxes:
+                face_boxes[id(shape)] = [face.optimalBoundingBox(False, True) for face in shape.Faces]
+            meeting = sum(1 for box in face_boxes[id(shape)] if (
+                box.XMin <= hi[0] and box.XMax >= lo[0] and box.YMin <= hi[1]
+                and box.YMax >= lo[1] and box.ZMin <= hi[2] and box.ZMax >= lo[2]))
+            cut.append(2 * meeting < len(face_boxes[id(shape)]))
+        if not any(cut):
+            return False
+        region = Part.makeBox(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], App.Vector(*lo))
+        parts = [shape.common(region) if clip else shape for shape, clip in zip((first, second), cut)]
+        return float(parts[0].common(parts[1]).Volume) == 0.0
+    except Exception:
+        return False
 
 
 #: A static pair whose exact-geometry boxes are further apart than this is
