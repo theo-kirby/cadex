@@ -58,9 +58,11 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - ADR-429: renaming the assembly output re-keys the live assembly instead of wedging the document (details in `forest-wind-0342`) [rec: brisk-lodge-6248].
 - ADR-434: a refused project publish rolls back completely, and an output type with no publisher (`actuator`) is refused at validation — the leak that ended biped-2 (details in `forest-wind-0342`) [rec: civic-falcon-6725].
 
+- ADR-436/437/438: CPU-limit refusals name their costly stages; the static fit skips needless `common`, searches housing faces best first and cuts touching pairs to their shared region — hexapod-10's refused build static fit 1,143 → 600 CPU-s, rows identical (details in `forest-wind-0342`) [rec: mellow-light-0451] [rec: flat-tower-6825] [rec: scarlet-crane-7693].
+
 ### Still open
 - `docs/probes/ot10/REPORT.md` lists every counted A5 turn (16, ten misses) and states the verdict plainly: not met by its letter. Whether to accept it is the owner's call [rec: old-cabin-6515].
-- CPU-limit refusals remain the largest refusal class (hexapod-8: 3 of 20; hexapod-10: 6 of 15) [rec: shady-ember-3607] [rec: fierce-vale-7652].
+- CPU-limit refusals remain the largest refusal class (44 of 213 measured; hexapod-8: 3 of 20; hexapod-10: 6 of 15) [rec: shady-ember-3607] [rec: fierce-vale-7652] [rec: mellow-light-0451]. Diagnosed on hexapod-10's refused 12:40 build: geometry took 119 CPU-s and the static fit the rest. ADR-436/437/438 (details in `forest-wind-0342`) name the costly stages in the refusal and cut the static fit's housing and touching-pair cost; the build now passes every tub pair and tub/visor and dies at 292 CPU-s in dome/pca9685, with geometry (tub 73 s) and deck/dome 25 s the named remainder. **No A5 probe has run since**, so the class is not yet shown smaller in a transcript [rec: mellow-light-0451] [rec: flat-tower-6825] [rec: scarlet-crane-7693].
 - The build reply that was too large to read (59.8 KB on hexapod-5, so the agent paged `inspect scope=clearance` by hand) is now bounded for the model by ADR-435, about 12–14 KB on ot10 projects (see `chilly-union-8972`) [rec: humble-lily-1303] [rec: patient-banner-4052] [rec: sharp-tide-2612].
 - T4 (form) is the recurring weak trait; it reached 2 on quadruped-3 and hexapod-5. The hero camera (`render.HERO`, 35° from −Y) sees a +X face nearly edge-on; ADR-422 records it as *Not taken*, and it is a renderer unit, not the cause of a miss [rec: rustic-ivy-4753] [rec: patient-banner-4052].
 - Measurement hygiene: re-measure and score only on `/tmp` copies — restore opens are not read-only (they bump `script.json`); hex1–hex3 are read-only. `cadex render` re-accepts through `rebuild`, so scoring moves `accepted_digest` with the revision unchanged [rec: amber-flame-4976] [rec: humble-lily-1303] [rec: pale-ledge-0992].
@@ -109,3 +111,6 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - civic-falcon-6725 — ADR-434 fixes the biped-2 leak; no score changes; next is a new biped turn
 - tidy-banner-2442 — ot10-biped-3, a separate pre-registration, meets the bar at 14/21 with swept fit 6/6; six designs now meet the bar, ten misses stand
 - old-cabin-6515 — REPORT.md at HEAD states the A5 clause (16 turns, 10 misses); suites green; done claimed for critic review
+- mellow-light-0451 — CPU-limit class (44 of 213) diagnosed on hexapod-10; ADR-436 names costly stages and skips needless common; no A5 probe since
+- flat-tower-6825 — ADR-437: refused hexapod-10 build now passes every tub pair, dies at 293 CPU-s in deck/dome
+- scarlet-crane-7693 — ADR-438: refused hexapod-10 build passes tub/visor, dies at 292 CPU-s in dome/pca9685; no A5 probe since
