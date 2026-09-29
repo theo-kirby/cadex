@@ -4,10 +4,13 @@ Verified against source: 2026-09-29. [Cadex-new]
 
 **Result.** A5 is **not met** by its letter. The charter gives each body
 plan one design-only turn and says one failing design fails the
-criterion. Twelve turns were counted and nine missed the bar, so A5
-fails. The highest bar reached is one design per body plan that meets
-it: `ot10-biped-1` scores 15 of 21, `ot10-quadruped-3` 15, and
-`ot10-hexapod-10` 14. hex3's baseline scores 2. Each of those three
+criterion. Eighteen turns were counted in the end, and eleven missed the
+bar, so A5 fails. The highest bar reached is **7 of 18** counted turns
+meeting it, with at least one on every body plan. The rest of this
+paragraph tells it in order. The first twelve counted turns had nine
+misses, and three met the bar, one per body plan: `ot10-biped-1` scores
+15 of 21, `ot10-quadruped-3` 15, and `ot10-hexapod-10` 14. hex3's
+baseline scores 2. Each of those three
 passes every proxy and every fit gate and carries its electronics. All
 nine misses are published below with their scores. A pre-registered
 confirmation round then started, one more turn per body plan (see
@@ -181,6 +184,8 @@ What the run did reach, stated as the highest bar and not as success:
 | hero and five `look` views for each attempt | A2, A5 | `ot10-<project>-hero.png`, `ot10-<project>-look_<view>.png`, one set per row above |
 | hex3 in the studio renderer | A2 | [`hex3-studio_hero.png`](hex3-studio_hero.png), [`hex3-studio_iso.png`](hex3-studio_iso.png) |
 | concept sheets of the seven designs that meet the bar | A6 | [`ot10-biped-1-sheet.png`](ot10-biped-1-sheet.png), [`ot10-quadruped-3-sheet.png`](ot10-quadruped-3-sheet.png), [`ot10-hexapod-10-sheet.png`](ot10-hexapod-10-sheet.png), [`ot10-hexapod-11-sheet.png`](ot10-hexapod-11-sheet.png), [`ot10-quadruped-4-sheet.png`](ot10-quadruped-4-sheet.png), [`ot10-biped-3-sheet.png`](ot10-biped-3-sheet.png), [`ot10-hexapod-13-sheet.png`](ot10-hexapod-13-sheet.png) |
+| concept sheets of the two later misses | A6 | [`ot10-biped-2-sheet.png`](ot10-biped-2-sheet.png), [`ot10-hexapod-12-sheet.png`](ot10-hexapod-12-sheet.png) |
+| `ot10-hexapod-12` hero after the render-grid fix | A2 | [`ot10-hexapod-12-hero-grid-after.png`](ot10-hexapod-12-hero-grid-after.png) (ADR-439; the counted score stands) |
 | Finch rollout, before and after the studio look | W1 | [`w1-finch-rollout-scene.png`](w1-finch-rollout-scene.png), [`w1-finch-rollout-studio.png`](w1-finch-rollout-studio.png) |
 | `w2-1` rollout, floor fixed | W1 | [`w1-quadruped-rollout-reach-floor.png`](w1-quadruped-rollout-reach-floor.png), [`w1-quadruped-rollout-studio.png`](w1-quadruped-rollout-studio.png) |
 | `w2-2` rollout | W1, W2 | [`w2-2-quadruped-rollout-studio.png`](w2-2-quadruped-rollout-studio.png) |
@@ -373,3 +378,19 @@ source file for file on all 57 files, so it was not rebuilt. This report's
 own test, `cli/tests/test_ot10_report.py`, was added after those runs. It
 passes (6 of 6), and so does `test_ot10_contract.py` beside it (35 of
 35).
+
+**Closing run, at `f2b97e01` with this page's closing edit on top**
+(2026-09-29). It comes after ADR-436 to ADR-440, the last changes of the
+run. The engine suite and the CLI suite ran on the source at that head.
+The staged payload matched the engine source file for file on all 57
+files, so it was not rebuilt, and the gate ran against it:
+
+| suite | result |
+|---|---|
+| `pixi run test-engine` | 2,263 passed, **53 skipped**, 0 failed (307 s) |
+| `pixi run python -m pytest cli/tests` | 1,075 passed, **1 skipped**, 0 failed (736 s) |
+| packaged lifecycle gate, `CADEX_ENGINE_ROOT=<staged payload>` | 23 passed, 0 skipped |
+
+The skip counts are the same as above, and so are their causes. This
+report claims done for review with A5 **not met**: 7 of 18 counted turns
+meet the bar and 11 miss. It ticks no box.
