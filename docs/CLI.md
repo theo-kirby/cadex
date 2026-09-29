@@ -2085,10 +2085,12 @@ cli/cadex_cli/
   agent.py             one `claude -p` turn; the system prompt
   export.py            STEP/STL/BREP out of the display block; the rest copied
   render.py            `cadex render` as a job: rebuild, read fit/inventory, write the files
-  studio.py            loads THAT engine's CadexStudio: the renderer, sheet and palette (ADR-445)
   clearance.py         inspect scope=clearance -> docs/clearance.md; read-time thresholds;
-                       and the `fit` block every build reply carries (ADR-346)
-  inventory.py         inspect scope=inventory -> the project's docs/inventory.md
+                       reads the value the `fit` block is built from (the block
+                       itself is the engine's CadexFitReport, ADR-447)
+  inventory.py         inspect scope=inventory -> the project's docs/inventory.md;
+                       the inventory block is CadexFitReport's too
+  studio.py            loads THAT engine's CadexStudio and CadexFitReport (ADR-445, ADR-447)
   train.py             the offboard trainer as a subprocess, local or remote
   walk.py              the lifecycle walk's leg plan (ADR-199)
   project_docs.py      the project's own docs, PROGRESS.md rows and repo

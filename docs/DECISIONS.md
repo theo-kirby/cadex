@@ -29428,3 +29428,38 @@ text, and the CMake install; `cli/tests/test_agent_guidance.py` pins that
 the overlay carries the file verbatim and that an unfilled placeholder or
 a missing marker is refused. Editing the design language is now an edit to
 one engine file, and changes both agents at once.
+
+## ADR-447 — The fit and inventory blocks are engine code, built beside the service (2026-09-29)
+
+**Decision.** The pure functions that turn the published `inspect
+scope=clearance` and `scope=inventory` values into the `fit` and
+`inventory` blocks every build reply carries -- `fit_summary` with its
+swept (`sweep_summary`) and fixed-joint (`attachment_summary`) halves,
+`pair_status`, `inventory_summary`, `printed_edges` and the thresholds and
+source notes they print -- move unchanged from `cli/cadex_cli/clearance.py`
+and `inventory.py` into `src/Mod/cadex/CadexFitReport.py`, with the bounded
+model views of both blocks, `fit_view` and `inventory_view` (ADR-435), from
+`bridge.py`. The CLI binds
+the same names from the module it loads by path, so every caller and test
+is unchanged; it keeps the paged reads and the markdown reports.
+`CadexStudio`'s process entry takes the raw values as `clearance` and
+`inventory_value` and builds the blocks itself, and gains `kind: "blocks"`,
+which returns them and their bounded views without drawing.
+
+**Reason.** GUI-parity slice 3a (the owner's direction, ADR-445). The
+app's agent gets no `fit` block today: the CLI bridge builds it, not the
+engine. The block is what ADR-346 made the evidence that a design fits,
+and a second implementation in the GPL shell would be a second source of
+that truth. The shell already reads paged `inspect` values
+(`cadex_backend._inspect_full`); what it cannot do is import engine code,
+so it hands the values to the child process slice 1 created. An `inspect
+scope=fit` served by cadexd was the alternative: it costs a protocol scope
+and loses the CLI's read-time thresholds (`--min-clearance-mm`), and it
+would be the only engine-computed summary of a published report.
+
+**Consequences.** No protocol change. `CadexFitReport` is installed and
+outside the service's closure; the process builds blocks equal to the
+CLI's in-process ones and refuses a malformed value as a result, not a
+traceback (`cadex_tests/test_studio_process.py`). Tests of the summaries
+stay in `cli/tests/test_clearance.py` and `test_inventory.py`, and now
+exercise the engine's functions through the CLI's names.

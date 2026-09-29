@@ -507,12 +507,19 @@ allow:
   `python Mod/cadex/CadexStudio.py REQUEST.json`, and reads one JSON line
   from stdout.
 
-The request is `{schema: "cadex-studio-request-v1", kind: "render" | "look",
-reply, fit, inventory, out_dir, project_root?, relative_dir?, views?, focus?}`:
-`reply` is the accepted modelling or `rebuild` reply with its display block,
-`fit` and `inventory` are the `inspect` blocks for it (either may be `null`),
-and `out_dir` is absolute. The result is `{schema: "cadex-studio-result-v1",
-ok, kind, files, facts | summary}` or `{ok: false, error}`; exit 0 on
+The request is `{schema: "cadex-studio-request-v1", kind: "render" | "look" |
+"blocks", reply, fit, inventory, clearance?, inventory_value?, out_dir,
+project_root?, relative_dir?, views?, focus?}`: `reply` is the accepted
+modelling or `rebuild` reply with its display block, and `out_dir` is
+absolute. The fit and inventory blocks come either built, as `fit` and
+`inventory`, or raw, as the `inspect scope=clearance` and `scope=inventory`
+values in `clearance` and `inventory_value`, which the process turns into
+blocks with `CadexFitReport` (ADR-447) -- how a client that may not import
+engine code gets the same blocks the CLI builds in process. Any of the four
+may be `null`. `kind: "blocks"` draws nothing and needs no `reply` or
+`out_dir`: it returns the two blocks alone, and each bounded the way a
+build reply shows it to the model (`fit_view`, `inventory_view`, ADR-435). The result is `{schema: "cadex-studio-result-v1", ok, kind, files,
+facts | summary, fit?, inventory?}` or `{ok: false, error}`; exit 0 on
 success, 1 on a refusal, 2 for an unreadable request. `facts` is exactly what
 the CLI agent's `look` returns as text, so the two agents read the same thing.
 

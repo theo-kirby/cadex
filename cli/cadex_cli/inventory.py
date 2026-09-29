@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .project_docs import DOMAIN_DOCS_DIRNAME
+from .studio import FIT_REPORT
 
 
 INVENTORY_DOC_NAME = "inventory.md"
@@ -188,166 +189,10 @@ def _read_path(client: Any, base: Mapping[str, Any], path: str) -> Any:
         offset = next_offset
 
 
-#: Where the inventory block's counts come from, said in the block itself
-#: so the agent reading it cannot mistake it for the script's own claim
-#: about which parts it took from the catalog.
-INVENTORY_SOURCE = (
-    "the published inventory of the accepted revision (inspect "
-    "scope=inventory): one row per placed assembly component, with a catalog "
-    "row only where the placed output is what a lib.* generator built. Not "
-    "the script's stdout. Advisory, not a fit check: a printed part is "
-    "expected here, a purchased part is not."
-)
-
-
-def printed_edges(
-    components: Sequence[Mapping[str, Any]], uncatalogued: Sequence[str]
-) -> dict[str, Any]:
-    """P2's inputs summed over the printed components (ADR-415).
-
-    Every placed component whose output no ``lib.*`` generator built as-is
-    counts once per placement: two legs from one output are two printed
-    solids. The engine reports each output's solid edge length and the
-    sharp convex part of it (``sharp_edges``); a printed output without
-    that fact (a mesh, or a revision built before it existed) is named
-    under ``unmeasured`` rather than counted as smooth. An edge the engine
-    could not evaluate counts towards the total and never as sharp, so
-    ``unresolved_edges`` says how far the share is a lower bound.
-    ``by_component`` keeps each measured placement's own figures, so the
-    proxy can leave out the world geometry the fit names (ADR-424).
-    """
-
-    printed = set(uncatalogued)
-    total = sharp = 0.0
-    unresolved = 0
-    measured: list[str] = []
-    unmeasured: list[str] = []
-    by_component: dict[str, dict[str, Any]] = {}
-    for row in components:
-        if str(row.get("source_output") or "") not in printed:
-            continue
-        name = str(row.get("component") or "")
-        facts = (row.get("source_facts") or {}).get("sharp_edges")
-        if not isinstance(facts, Mapping):
-            unmeasured.append(name)
-            continue
-        own = {
-            "edge_length_mm": float(facts.get("edge_length_mm") or 0.0),
-            "sharp_convex_length_mm": float(facts.get("sharp_convex_length_mm") or 0.0),
-            "unresolved_edges": int(facts.get("unresolved_edges") or 0),
-        }
-        total += own["edge_length_mm"]
-        sharp += own["sharp_convex_length_mm"]
-        unresolved += own["unresolved_edges"]
-        measured.append(name)
-        by_component[name] = own
-    return {
-        "edge_length_mm": round(total, 3),
-        "sharp_convex_length_mm": round(sharp, 3),
-        "unresolved_edges": unresolved,
-        "measured": sorted(measured),
-        "unmeasured": sorted(unmeasured),
-        "by_component": dict(sorted(by_component.items())),
-    }
-
-
-def inventory_summary(value: Any) -> dict[str, Any]:
-    """The catalog identity of a build as its reply carries it (ADR-362).
-
-    ``value`` is an ``inspect scope=inventory`` value. The block is the
-    component count, how many components place a catalog part, the catalog
-    roll-up by ``family/part_number``, and the name of **every** placed
-    output that no ``lib.*`` generator built as-is -- a hand-modelled
-    bracket, but also a servo body the script drilled after taking it from
-    the catalog, since a cut catalog body is no longer the catalog part.
-    The block is advisory: it names no failure and refuses nothing. What
-    ``derived_catalog_sources`` names the ones the engine can prove are a
-    modified purchase rather than a printed part -- the catalog body their
-    base was cut from (ADR-381). What
-    it removes is the blind spot ot7's F5 measured over four turns, an
-    agent that reported every purchased part as catalog hardware while
-    the published inventory listed its servos and horns as uncatalogued,
-    because nothing in its reply carried catalog identity. ``available``
-    is false when the accepted revision publishes no assembly.
-    """
-
-    if not isinstance(value, Mapping):
-        value = {}
-    components = [
-        row for row in list(value.get("components") or []) if isinstance(row, Mapping)
-    ]
-    counts = {
-        str(key): int(count)
-        for key, count in dict(value.get("catalog_counts") or {}).items()
-    }
-    catalogued = sum(counts.values())
-    uncatalogued = sorted({
-        str(item) for item in list(value.get("uncatalogued_sources") or [])
-    })
-    derived = [
-        {
-            "source_output": str(row.get("source_output") or ""),
-            "family": str(row.get("family") or ""),
-            "part_number": str(row.get("part_number") or ""),
-        }
-        for row in list(value.get("derived_catalog_sources") or [])
-        if isinstance(row, Mapping)
-    ]
-    derived.sort(key=lambda row: row["source_output"])
-    assembly = str(value.get("assembly") or "")
-    summary: dict[str, Any] = {
-        "available": bool(assembly),
-        "source": INVENTORY_SOURCE,
-        "revision": str(value.get("revision") or ""),
-        "assembly": assembly,
-        "component_count": len(components),
-        "catalogued_count": catalogued,
-        "uncatalogued_count": max(len(components) - catalogued, 0),
-        "catalog_counts": dict(sorted(counts.items())),
-        "uncatalogued_sources": uncatalogued,
-        "derived_catalog_sources": derived,
-        # What the script declared about how each part looks (ADR-413):
-        # component -> role for the components that declare one, and the
-        # role colours the assembly set. Undeclared parts are drawn by
-        # supplier (purchased mechanism, printed shell).
-        "appearance": {
-            str(row.get("component") or ""): str(row["appearance"])
-            for row in components if row.get("appearance")
-        },
-        "palette": {
-            str(role): str(colour)
-            for role, colour in dict(value.get("palette") or {}).items()
-        },
-        "printed_edges": printed_edges(components, uncatalogued),
-    }
-    if not assembly:
-        summary["note"] = (
-            "No published assembly: catalog identity is read per placed "
-            "assembly component, and this revision places none."
-        )
-    elif uncatalogued:
-        note = (
-            "Each name under uncatalogued_sources is a placed output no lib.* "
-            "generator built as-is. Printed parts belong here. A purchased "
-            "part listed here has lost its catalog identity -- usually "
-            "because the script cut, drilled or re-clocked the catalog body "
-            "-- and is not catalog hardware whatever the script prints."
-        )
-        if derived:
-            note += (
-                " derived_catalog_sources names the ones the engine can "
-                "prove are exactly that: "
-                + ", ".join(
-                    "{:s} (cut from {:s}/{:s})".format(
-                        row["source_output"], row["family"], row["part_number"]
-                    )
-                    for row in derived
-                )
-                + ". Place the untouched catalog body as the component and "
-                "put the cut in the printed part that receives it."
-            )
-        summary["note"] = note
-    return summary
+# The inventory block is engine code shared with the shell (ADR-447).
+INVENTORY_SOURCE = FIT_REPORT.INVENTORY_SOURCE
+printed_edges = FIT_REPORT.printed_edges
+inventory_summary = FIT_REPORT.inventory_summary
 
 
 def read_inventory_summary(client: Any, *, target: str = "") -> dict[str, Any]:

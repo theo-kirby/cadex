@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""Load the engine's studio renderer, ``CadexStudio`` (ADR-445).
+"""Load the engine's shared client code: ``CadexStudio`` (ADR-445) and ``CadexFitReport`` (ADR-447).
 
 The renderer, the concept sheet and the dark scene palette are engine code, so
 the CLI and the shell draw with one implementation. Loaded by path, as
@@ -22,12 +22,13 @@ class StudioUnavailable(RuntimeError):
     """The engine module directory has no importable ``CadexStudio.py``."""
 
 
-def load_studio(module_dir: Path | str) -> ModuleType:
-    source = Path(module_dir).resolve() / "CadexStudio.py"
+def load_studio(module_dir: Path | str, name: str = "CadexStudio") -> ModuleType:
+    """Load the engine module ``name`` (default the renderer) from ``module_dir``, by path."""
+    source = Path(module_dir).resolve() / f"{name}.py"
     if not source.is_file():
         raise StudioUnavailable(f"{source} does not exist; not a cadex engine module directory.")
     spec = importlib.util.spec_from_file_location(
-        f"_cadex_cli_studio_{abs(hash(str(source))):x}", source)
+        f"_cadex_cli_{name}_{abs(hash(str(source))):x}", source)
     if spec is None or spec.loader is None:
         raise StudioUnavailable(f"Could not load {source}.")
     module = importlib.util.module_from_spec(spec)
@@ -47,3 +48,5 @@ def _default_module_dir() -> Path:
 ENGINE_MODULE_DIR = _default_module_dir()
 #: The loaded renderer. Every drawing call in the CLI goes through it.
 STUDIO = load_studio(ENGINE_MODULE_DIR)
+#: The fit and inventory blocks every build reply carries (ADR-447).
+FIT_REPORT = load_studio(ENGINE_MODULE_DIR, "CadexFitReport")

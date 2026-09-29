@@ -1328,28 +1328,62 @@ REQUEST_SCHEMA = 'cadex-studio-request-v1'
 RESULT_SCHEMA = 'cadex-studio-result-v1'
 
 
+def _blocks(request):
+    """``(fit, inventory)`` from a request: given as blocks, or built from raw values.
+
+    A client that may not import engine code (the shell) sends the raw
+    ``inspect scope=clearance`` and ``scope=inventory`` values as
+    ``clearance`` and ``inventory_value``, and the blocks are built here by
+    ``CadexFitReport`` (ADR-447), exactly as the CLI builds them in process.
+    A block given directly wins over a raw value; either may be ``null``.
+    """
+    fit, inventory = request.get('fit'), request.get('inventory')
+    if fit is None and request.get('clearance') is not None or \
+            inventory is None and request.get('inventory_value') is not None:
+        import CadexFitReport  # the process entry has this module's directory on sys.path
+        try:
+            if fit is None and request.get('clearance') is not None:
+                fit = CadexFitReport.fit_summary(request['clearance'])
+            if inventory is None and request.get('inventory_value') is not None:
+                inventory = CadexFitReport.inventory_summary(request['inventory_value'])
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise StudioError(f'blocks: malformed inspect value: {type(exc).__name__}: {exc}') from exc
+    return fit, inventory
+
+
 def run_request(request):
     """One request (``REQUEST_SCHEMA``) to one result (``RESULT_SCHEMA``); never raises.
 
     ``kind`` is ``render`` (``render_files`` into ``out_dir``, summary paths
-    under ``relative_dir``) or ``look`` (one ``<view>.png`` per view into
-    ``out_dir`` plus the look's facts). ``reply`` is the accepted reply
-    with its display block; ``fit`` and ``inventory`` may be ``null``.
+    under ``relative_dir``), ``look`` (one ``<view>.png`` per view into
+    ``out_dir`` plus the look's facts) or ``blocks`` (the ``fit`` and
+    ``inventory`` blocks and their bounded model views ``fit_view`` and
+    ``inventory_view``, no drawing, no ``out_dir``). ``reply`` is the
+    accepted reply with its display block. The blocks come as ``fit`` and
+    ``inventory``, or raw as ``clearance`` and ``inventory_value``
+    (:func:`_blocks`); any of them may be ``null``.
     """
     try:
         _require(isinstance(request, dict) and request.get('schema') == REQUEST_SCHEMA,
                  'request schema must be ' + REQUEST_SCHEMA)
         kind, out_dir = request.get('kind'), request.get('out_dir')
-        _require(kind in ('render', 'look'), "kind must be 'render' or 'look'")
+        _require(kind in ('render', 'look', 'blocks'), "kind must be 'render', 'look' or 'blocks'")
+        fit, inventory = _blocks(request)
+        if kind == 'blocks':
+            # ...and each bounded as a build reply shows it to the model (ADR-435).
+            import CadexFitReport
+            return {'schema': RESULT_SCHEMA, 'ok': True, 'kind': kind, 'fit': fit, 'inventory': inventory,
+                    'fit_view': None if fit is None else CadexFitReport.fit_view(fit),
+                    'inventory_view': None if inventory is None else CadexFitReport.inventory_view(inventory)}
         _require(isinstance(out_dir, str) and Path(out_dir).is_absolute(), 'out_dir must be an absolute path')
-        reply, fit, inventory = request.get('reply'), request.get('fit'), request.get('inventory')
+        reply = request.get('reply')
         _require(isinstance(reply, dict), 'reply must be the accepted reply')
         if kind == 'look':
             facts, shots = look_report(reply, fit, inventory, request.get('views') or LOOK_DEFAULT_VIEWS,
                                        request.get('focus') or ())
             written = write_files(out_dir, {f'{view}.png': data for view, data, _ in shots})
             return {'schema': RESULT_SCHEMA, 'ok': True, 'kind': kind, 'facts': facts,
-                    'files': [str(path) for path in written]}
+                    'fit': fit, 'inventory': inventory, 'files': [str(path) for path in written]}
         root = request.get('project_root')
         _require(isinstance(root, str) and root, 'project_root is required for a render')
         triangles, source = snapshot(reply, world(fit))
