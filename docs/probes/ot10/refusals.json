@@ -1409,6 +1409,68 @@
         }
       ]
     },
+    "ot10-hexapod-12": {
+      "status": "failed_attempt",
+      "transcript_sha256": "1c02cc8a6f8c75fd849ab2999e97298f19641f2198fd9cc5226bdd21ee565f05",
+      "refused": 8,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 2,
+        "kernel": 1,
+        "json_pointer": 3,
+        "edit_replacement": 1,
+        "outputs_dropped": 0,
+        "retire_linked_output": 0,
+        "reset_variation": 0,
+        "other": 1
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/revision'."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: the boolean succeeded and refining its result produced an invalid shape"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts'."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "INSPECTION_FAILED",
+          "error": "JSON Pointer path does not exist: '/facts'."
+        },
+        {
+          "tool": "inspect",
+          "failure_code": "CADEXD_PROTOCOL_ERROR",
+          "error": "inspect capture failed: Object not found by exact internal name: 'model'."
+        }
+      ]
+    },
     "ot10-hexapod-9": {
       "status": "not_an_attempt",
       "transcript_sha256": "49c2b34addcf094793c97430df8932c6a142e9a5195ee6a9516048ea1b6dc388",

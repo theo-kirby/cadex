@@ -72,7 +72,7 @@ def _gate(section, label):
 def test_every_scored_design_has_one_row_and_nothing_else_does():
     scored = {p.name.removesuffix("-score.json") for p in OT10.glob("ot10-*-score.json")}
     assert set(ROWS) == scored | {"hex3"}
-    assert len(scored) == 16
+    assert len(scored) == 17
 
 
 def test_each_rows_scores_equal_its_score_file():
@@ -134,9 +134,9 @@ def test_each_verdict_follows_from_the_frozen_bar():
 
 def test_the_report_names_the_census_and_the_walk_verdicts():
     census = json.loads((OT10 / "refusals.json").read_text(encoding="utf-8"))
-    assert "0 of 213 refused calls" in REPORT and "all 18 ot10 transcripts" in REPORT
-    assert len(census["projects"]) == 18
-    assert sum(p["refused"] for p in census["projects"].values()) == 213
+    assert "0 of 221 refused calls" in REPORT and "all 19 ot10 transcripts" in REPORT
+    assert len(census["projects"]) == 19
+    assert sum(p["refused"] for p in census["projects"].values()) == 221
     assert "| `w2-1` | cold |" in REPORT and "`walked = false` |" in REPORT
     assert "**`walked = true`** |" in REPORT
     assert "`w2-2` | `84ff4c98adabb6e5` | `7a4e8c233214341e`" in README

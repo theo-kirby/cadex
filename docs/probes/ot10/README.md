@@ -1848,11 +1848,125 @@ also in this engine. No A5 turn has yet run on any of the four.
 - **A harness kill is not an attempt.** A turn killed before it has an exit
   status is kept read-only as the receipt, and the plan gets a new project.
 
+## A5 attempt 12: the hexapod (`ot10-hexapod-12`)
+
+**Misses the bar on its total: 12 of 21, against the frozen 14.** Every
+other item meets its bar. No trait scores 0, P1, P2 and P3 are within
+their bars, the static fit is clean, the swept fit is complete and passing
+on all 12 joints, and the design carries its electronics. **It had no
+CPU-limit refusal**: 0 of its 8 refused calls, against 6 of 15 in
+`ot10-hexapod-10`. That is one turn against one turn, not a rate. It ran
+exactly as pre-registered above. The frozen hexapod prompt was read from
+`contract.json` `a5.prompts.hexapod`. It ran once on the new project
+`ot10-hexapod-12`, with no continuation, `claude-opus-5-5` and
+`CADEX_EFFORT=medium` (the process list at launch shows
+`--model claude-opus-5-5` and `--effort medium`, and the child's
+environment has `CADEX_EFFORT=medium`). It was launched detached
+(`setsid`) at 2026-09-29T02:15:08Z at revision `e4d3fd28`, on the
+dev-tree engine, which carries ADR-435 to ADR-438. The turn ended on its
+own at 02:47:29Z (32 min), exit 0 with `ok: true`, at accepted revision
+`47c3e9b8cda4…` (digest `7e94b2e23b34…`). It was rendered and judged from
+a `/tmp` copy of the project, so the project itself is unchanged. It is an
+eleventh miss. It re-scores nothing, and the six designs that meet the
+bar stand.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| hexapod attempt 10, median | 2 | 2 | 1 | 2 | 2 | 3 | 2 | **14** |
+| hexapod attempt 12, call 1 | 2 | 2 | 1 | 1 | 2 | 2 | 2 | 12 |
+| hexapod attempt 12, call 2 | 2 | 2 | 1 | 1 | 2 | 2 | 2 | 12 |
+| hexapod attempt 12, call 3 | 2 | 2 | 1 | 2 | 1 | 2 | 2 | 12 |
+| hexapod attempt 12, median | 2 | 2 | 1 | 1 | 2 | 2 | 2 | **12** |
+
+Every raw reply is kept in
+[`ot10-hexapod-12-score.json`](ot10-hexapod-12-score.json), under the same
+rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | **12** | **no** |
+| no trait 0 | lowest is 1 (T3, T4) | yes |
+| above hex3 (2) | 12 | yes |
+| P1 ≤ 0.20 | **0.0038** (549 of 146,234 subsamples) | yes |
+| P2 ≤ 0.25 | **0.1844** (5,810 of 31,507 mm, 33 printed components; `c_floor` left out under ADR-424) | yes |
+| P3 2 or 3 | **3** (`#2B2E33`, `#ECE6DA`, `#FF6A1F`), every component's role declared | yes |
+| static fit | 1,953 pairs: 1,947 clear, 0 intersections, 0 below clearance, 6 foot–floor contacts. One failing row, the floor's advisory world-geometry row. 49 fixed-joint pairs checked, all touching | yes |
+| swept fit | **complete and passing, 12 of 12 joints** at 10° steps, 0 failing pairs | yes |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S with cross horns. A walking task was declared in the same turn; the policy stays behind `policy_on` 0 | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-12-hero.png),
+[`iso`](ot10-hexapod-12-look_iso.png),
+[`iso_back`](ot10-hexapod-12-look_iso_back.png),
+[`front`](ot10-hexapod-12-look_front.png),
+[`right`](ot10-hexapod-12-look_right.png) and
+[`top`](ot10-hexapod-12-look_top.png). The same `cadex render` wrote its
+concept sheet, [`ot10-hexapod-12-sheet.png`](ot10-hexapod-12-sheet.png)
+(167 KB): 0.60 kg, 12 servos, 261 × 278 × 92 mm. The whole command took
+4 min 35 s of wall time. Acquiring the tessellation took 120.0 s, and
+drawing took 4.5 s (1.7 s for the 1024 px hero), at 52,303 drawn
+triangles.
+
+**What the renders show.** A wide, low, off-white rounded box sits on a
+dark deck, with a dark band across its front end. Six rounded pods carry
+the knee servos, and each tibia arches down to an orange ball foot. The
+three calls agree on four things. The splined servo horns show bare
+beside the pods (T3 is 1 in all three calls). The legs read as lumpy,
+bent bars (T4 is 1 in two calls). The dark band reads as trim rather than
+a face (T5 is 1 in one call). The body is a flat, wide slab in a
+sprawling stance (T6 is 2).
+
+**Diagnosis of the miss.** Two causes, measured, and one of them is not
+the design's:
+
+- **The render drew this design four times coarser than the others**, and
+  the reason is the floor. `cadex render` clusters vertices on a grid when
+  the input is over its triangle budget, and it sizes that grid from the
+  extent of *every* part it loaded (`cli/cadex_cli/render.py`, the
+  `extent` above `FIRST_CELL_FRACTION`). The world floor is among those
+  parts, and it is only dropped from the drawing afterwards. This agent
+  declared a 3,000 mm floor plane. Every earlier ot10 floor measured from
+  its render copy is 1,200 mm or less. So the grid cell was 1.46 mm, and
+  the robot drew as 52,303 triangles out of 970,004. The other hexapods
+  drew at 0.39–0.59 mm cells and 141,438–231,185 triangles, and those
+  cells were set by their floors too (a 1,200 mm floor gives 0.59 mm). On 5 mm tibias that is the
+  faceting that all three calls name ("lumpy", "faceted"). The agent said
+  the same in its own summary: the tibias look faceted, the render's mesh
+  causes it, and the outline is smooth. This is a renderer defect
+  (the environment sets the robot's resolution), and it is the next unit.
+  It does not change this score: the score stands as it was taken, and
+  no one can say what T4 would have been.
+- **The horns are the design's.** The judges read bare splined horns
+  beside the pods (T3 1) in all three calls. The design uses the catalog
+  cross horns with 12 mm caps on the joints, but the horn faces stay
+  visible. T3 has been the weakest hexapod trait since attempt 3, and
+  both counted hexapods score 1 on it too.
+
+**How the turn got there.** The agent's notes name its concept first: a
+six-legged "beetle" with a rounded white dome over a dark chassis and a
+dark wraparound visor as its face. It probed the catalog before sizing
+anything. It widened a hub bore that its spline tip touched, then read a
+clean static fit and a clean 12-joint sweep. It rendered with `look`
+five times. It tried a box floor, found that the floor is flagged as world
+geometry either way, and reverted to the plane. **No write ran past the
+CPU limit**, no worker crashed, and no publish was refused. The turn made
+5 `write_script`, 8 `edit_script`, 21 `inspect`, 5 `look` and 4
+`describe_api` calls.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 8 refused calls:
+- 2 sandbox or source-policy refusals (`dir` is not defined; an import);
+- 3 guessed JSON pointers (`/revision`, and `/facts` twice);
+- 1 `api.fuse` refusal (refining the result produced an invalid shape);
+- 1 `edit_script` replacement whose text occurred 0 times;
+- 1 `inspect` of an object named `model` that did not exist.
+
 ## A4: the refusal census, every ot10 transcript
 
 **None of A4's four refusal classes recurred in any ot10 product-agent
-transcript: 0 of 213 refused calls across 18 transcripts.** That covers the
-six counted A5 designs, the ten failed attempts, and the two aborted
+transcript: 0 of 221 refused calls across 19 transcripts.** That covers the
+six counted A5 designs, the eleven failed attempts, and the two aborted
 turns that were not attempts. The count is mechanical.
 [`runner/refusals.py`](runner/refusals.py) reads each session transcript
 (local to this machine, never committed), takes every tool result marked
@@ -1887,21 +2001,23 @@ emits today, for all four classes.
 | `ot10-hexapod-8` | failed attempt | 0 | 0 | 0 | 0 | 20 | 3 | 4 | 1 | 1 | 11 |
 | `ot10-quadruped-2` | failed attempt | 0 | 0 | 0 | 0 | 11 | 0 | 3 | 4 | 0 | 4 |
 | `ot10-biped-2` | failed attempt | 0 | 0 | 0 | 0 | 7 | 0 | 0 | 0 | 1 | 6 |
+| `ot10-hexapod-12` | failed attempt | 0 | 0 | 0 | 0 | 8 | 0 | 2 | 1 | 3 | 2 |
 | `ot10-hexapod-9` | not an attempt | 0 | 0 | 0 | 0 | 4 | 0 | 2 | 0 | 2 | 0 |
 | `ot10-quadruped-1` | not an attempt | 0 | 0 | 0 | 0 | 2 | 0 | 2 | 0 | 0 | 0 |
-| **all** | 18 transcripts | **0** | **0** | **0** | **0** | 213 | 44 | 37 | 33 | 28 | 71 |
+| **all** | 19 transcripts | **0** | **0** | **0** | **0** | 221 | 44 | 39 | 34 | 31 | 73 |
 
-"Rest" is the 71 refusals outside those eight columns. They are: 16
-`Cannot retire` refusals of an output that a component still linked, 11
+"Rest" is the 73 refusals outside those eight columns. They are: 16
+`Cannot retire` refusals of an output that a component still linked, 12
 `edit_script` replacements that did not match, 11 reset-variation refusals
-that named the lift, 3 `PROJECT_OUTPUTS_DROPPED` guards, and 30 others. The
-30 are single-cause API, MJCF, publication and worker refusals, plus two
+that named the lift, 3 `PROJECT_OUTPUTS_DROPPED` guards, and 31 others. The
+31 are single-cause API, MJCF, publication and worker refusals, plus two
 calls to a tool name that does not exist. Three of them are worker crashes
 in `ot10-hexapod-11`, and three are the publication refusals that ended
-`ot10-biped-2`. After the CPU limit (44), the
-recurring costs are sandbox refusals (37: `dir`, `getattr`, `hasattr`,
+`ot10-biped-2`, and one is an `inspect` of a missing object in
+`ot10-hexapod-12`. After the CPU limit (44), the
+recurring costs are sandbox refusals (39: `dir`, `getattr`, `hasattr`,
 `type`, undefined names, imports, private attributes) and guessed JSON
-pointers (28). Each one costs
+pointers (31). Each one costs
 turns. None is one of the four classes A4 closed.
 
 ## Baseline

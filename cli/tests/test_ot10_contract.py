@@ -490,6 +490,37 @@ def test_a5_biped_attempt_3_is_pre_registered_and_meets_the_bar():
     assert "The confirmation round\nstays closed at 2 of 3" in section
 
 
+def test_a5_hexapod_attempt_12_is_pre_registered_and_misses_on_its_total():
+    # Registered before the turn, on the ADR-436..438 engine, to measure the
+    # CPU-limit refusals on a real turn; a miss adds a miss and re-scores nothing.
+    prereg = README.partition("## A5 hexapod turn 12, pre-registered")[2].partition("\n## ")[0]
+    assert "`ot10-hexapod-12`" in prereg and "6 of 15" in prereg
+    assert "**Nothing is re-scored.**" in prereg and "ADR-438" in prereg
+    score = json.loads((OT10 / "ot10-hexapod-12-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 12
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-hexapod-12-hero.png"] + [
+        f"ot10-hexapod-12-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    assert (OT10 / "ot10-hexapod-12-sheet.png").stat().st_size <= 300 * 1024
+    # Under the total, no trait 0: the miss is the total alone.
+    assert score["total"] < CONTRACT["bar"]["total_min"]
+    assert min(score["medians"].values()) >= CONTRACT["bar"]["trait_min"]
+    assert "| hexapod attempt 12, median | 2 | 2 | 1 | 1 | 2 | 2 | 2 | **12** |" in README
+    heading = "## A5 attempt 12: the hexapod (`ot10-hexapod-12`)"
+    assert README.index("## A5 hexapod turn 12, pre-registered") < README.index(heading)
+    section = README.partition(heading)[2].partition("\n## ")[0]
+    assert section.startswith("\n\n**Misses the bar on its total: 12 of 21")
+    assert "at revision `e4d3fd28`" in section and "**Diagnosis of the miss.**" in section
+    census = json.loads((OT10 / "refusals.json").read_text(encoding="utf-8"))
+    assert census["projects"]["ot10-hexapod-12"]["counts"]["cpu_limit"] == 0
+    assert census["projects"]["ot10-hexapod-10"]["counts"]["cpu_limit"] == 6
+
+
 # -- A4: the refusal census --------------------------------------------------
 
 _rspec = importlib.util.spec_from_file_location("ot10_refusals", OT10 / "runner/refusals.py")
@@ -515,6 +546,7 @@ REFUSED = {
     "ot10-hexapod-8": ("failed_attempt", 20, 3),
     "ot10-quadruped-2": ("failed_attempt", 11, 0),
     "ot10-biped-2": ("failed_attempt", 7, 0),
+    "ot10-hexapod-12": ("failed_attempt", 8, 0),
     "ot10-hexapod-9": ("not_an_attempt", 4, 0),
     "ot10-quadruped-1": ("not_an_attempt", 2, 0),
 }
@@ -575,7 +607,7 @@ def test_the_refusal_census_is_pinned_and_rederives_from_its_file():
 
 def test_the_census_table_is_published_equal_to_its_file():
     assert refusals.table(CENSUS) in README
-    assert ("| **all** | 18 transcripts | **0** | **0** | **0** | **0** | 213 |"
+    assert ("| **all** | 19 transcripts | **0** | **0** | **0** | **0** | 221 |"
             in README)
 
 

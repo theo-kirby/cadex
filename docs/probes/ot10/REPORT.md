@@ -21,9 +21,12 @@ a counted miss. The round ends 2 of 3, adds turns, and does not undo the
 nine misses, so A5 stays not met by its letter, now with ten misses. A
 further biped turn was pre-registered after the defect's fix (ADR-434)
 and ran on a new project: `ot10-biped-3` meets the bar at 14. It adds a
-counted design and re-scores nothing, so the ten misses stand. The last
-change of the run, ADR-435, bounds the build reply the model sees and
-has no A5 turn behind it. One W2 run, `w2-2` on `ot10-quadruped-3`, has
+counted design and re-scores nothing, so the ten misses stand. ADR-435
+then bounded the build reply the model sees, and ADR-436 to ADR-438 cut
+the static fit's CPU cost. One more hexapod turn was pre-registered on
+that engine: `ot10-hexapod-12` misses at 12, on its total alone, with no
+CPU-limit refusal (0 of 8, against `ot10-hexapod-10`'s 6 of 15). That is
+an eleventh miss. One W2 run, `w2-2` on `ot10-quadruped-3`, has
 `walked = true` under the unchanged thresholds. It went 1.44 m forward in
 10 s, upright the whole time. The run before it, `w2-1`, did not walk.
 
@@ -55,11 +58,11 @@ rubric, the bar and the procedure never changed.
 | | hex3 (baseline) | best after |
 |---|---|---|
 | judged total | **2** of 21 | **16** (`ot10-quadruped-2`, `ot10-hexapod-5`, and `ot10-quadruped-4`, which meets the bar); **16**, **15** and **14** for the six that meet the bar |
-| T1 shell | 0 | 2 on every design except hexapod 8 |
+| T1 shell | 0 | 2 on every design except hexapod 8 and biped 2 |
 | T5 face | 0 | 2 on every counted design but `ot10-biped-3`, which scores 3 |
-| P1 hardware silhouette | 0.373, over its bar | 0.0001 to 0.078 over the fifteen attempts it was measured on (biped 2 published no inventory) |
+| P1 hardware silhouette | 0.373, over its bar | 0.0001 to 0.078 over the sixteen attempts it was measured on (biped 2 published no inventory) |
 | P2 sharp printed edges | 0.189 | 0.040 to 0.508 (hexapod 1 is the only one over the bar; biped 2 unmeasured) |
-| P3 materials | 2 | 3 on thirteen attempts, 2 on two, 4 on biped 2 (no roles declared) |
+| P3 materials | 2 | 3 on fourteen attempts, 2 on two, 4 on biped 2 (no roles declared) |
 | render | flat, orthographic | studio hero, 1024 px |
 
 | view | before | after |
@@ -97,6 +100,7 @@ fit was complete and passing.
 | `ot10-quadruped-4` | counted | 2 | 3 | 3 | 1 | 2 | 3 | 2 | 16 | 0.0022 | 0.1624 | 3 | yes | yes | yes | **meets the bar** |
 | `ot10-biped-2` | failed | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 2 | unmeasured | unmeasured | 4 | no | no | no | misses: total, T1, T3, T4, T5, T6, P1, P2, P3, static, swept, electronics |
 | `ot10-biped-3` | counted | 2 | 2 | 2 | 1 | 3 | 2 | 2 | 14 | 0.0035 | 0.2214 | 3 | yes | yes | yes | **meets the bar** |
+| `ot10-hexapod-12` | failed | 2 | 2 | 1 | 1 | 2 | 2 | 2 | 12 | 0.0038 | 0.1844 | 3 | yes | yes | yes | misses: total |
 <!-- attempts:end -->
 
 Two turns started and are not attempts: `ot10-quadruped-1` and
@@ -135,9 +139,9 @@ receipt, and neither is scored.
 **A5 is not met, and what the clause means.** The charter gives each
 body plan one design-only turn and says "one failing design fails this
 criterion". Read plainly, the clause is about every counted attempt, not
-the best one per body plan. Sixteen turns were counted on the frozen
-prompts, and ten of them missed the bar: hexapods 1 to 8, quadruped 2 and
-biped 2. Any one of those ten fails A5 on its own, and a later turn that
+the best one per body plan. Seventeen turns were counted on the frozen
+prompts, and eleven of them missed the bar: hexapods 1 to 8, quadruped 2,
+biped 2 and hexapod 12. Any one of those eleven fails A5 on its own, and a later turn that
 meets the bar does not reverse it. Nothing in this report re-scores a
 miss, retires one, or counts only the latest turn per body plan.
 
@@ -153,13 +157,15 @@ What the run did reach, stated as the highest bar and not as success:
   `ot10-biped-2` (misses at 2 on the publication defect). `ot10-biped-3`
   is not part of that round. It was pre-registered separately after
   ADR-434 fixed the defect, and ran on the fixed engine. So the latest
-  turn on each body plan meets the bar, but the round as registered did
-  not.
-- **Two tool changes came after the last counted turn.** ADR-434 (a
+  turn on each body plan met the bar until `ot10-hexapod-12`, but the
+  round as registered did not.
+- **The last tool changes have one counted turn behind them.** ADR-434 (a
   refused publish rolls back) landed before `ot10-biped-3`. ADR-435 (a
-  build reply the model sees is bounded) landed after it and has no
-  counted turn behind it. No A5 turn has run on the ADR-435 CLI, so this
-  report makes no claim about its effect on a design.
+  build reply the model sees is bounded) and ADR-436 to ADR-438 (the
+  static fit's CPU cost) landed after it. `ot10-hexapod-12` is the one
+  turn run on them. It had no CPU-limit refusal and misses on its total.
+  One turn is not a rate, so this report claims no effect beyond that
+  turn.
 
 ## The renders, sheets and videos
 
@@ -206,8 +212,8 @@ under *W2*.
 
 ## A4: refusals
 
-None of the four hex refusal classes recurred: 0 of 213 refused calls,
-across all 18 ot10 transcripts. The count is mechanical, and
+None of the four hex refusal classes recurred: 0 of 221 refused calls,
+across all 19 ot10 transcripts. The count is mechanical, and
 [`refusals.json`](refusals.json) pins it.
 
 ## Remaining defects
@@ -216,7 +222,7 @@ Each of these is measured. Only the first has had engine changes since
 the report was written, and none is closed.
 
 1. **The worker's CPU limit is the largest cost left.** It accounts for
-   44 of the 213 refusals, with 6 of them in `ot10-hexapod-10`. ADR-428
+   44 of the 221 refusals, with 6 of them in `ot10-hexapod-10`. ADR-428
    showed that the sweep is not what spends the CPU. ADR-436 re-ran
    hexapod-10's first refused build. Geometry took 119 CPU-s, and the static
    fit spent the rest: `common` on two lofted shells 2.4 mm apart ran past
@@ -231,11 +237,14 @@ the report was written, and none is closed.
    (tub/visor 103 to 33). The accepted build went from 112 to 117–121,
    and no row changed. The build is still over the limit: it is refused
    at 292 CPU-s in dome/pca9685, with geometry (`output tub` 73) and
-   deck/dome 25 the costliest stages. No probe has run since.
-2. **Sandbox refusals**: 37. The agent reaches for `dir`, `getattr`,
+   deck/dome 25 the costliest stages. One A5 turn has run since:
+   `ot10-hexapod-12` had 0 CPU-limit refusals out of 8, against
+   hexapod-10's 6 of 15. That is one turn against one turn, with a
+   different design, so it is not a measured rate.
+2. **Sandbox refusals**: 39. The agent reaches for `dir`, `getattr`,
    `hasattr`, `type`, undefined names, imports and private attributes, and each refusal costs a
    turn.
-3. **Guessed JSON pointers**: 28 refusals where the agent guessed a
+3. **Guessed JSON pointers**: 31 refusals where the agent guessed a
    pointer into a result.
 4. **`w2-1` did not walk.** It stood, drifted sideways and tipped at
    4.36 s. Its task pays about twice as much for surviving as for
@@ -244,19 +253,29 @@ the report was written, and none is closed.
 5. **The rollout seed is `null`** in the script and the trace, for both
    runs. The review records it as it found it.
 6. **The weakest traits are joints and form** (T3, T4). Both counted
-   hexapods score 1 on T3. Both counted bipeds and `ot10-quadruped-4` score 1 on T4:
+   hexapods score 1 on T3, and so does `ot10-hexapod-12`, whose judges
+   read its splined horns as bare in all three calls. Both counted bipeds and `ot10-quadruped-4` score 1 on T4:
    the quadruped's legs are constant-thickness plates on a filleted box, even
    though it is the first counted design to score 3 on T3. No design scores
    3 on T1, so every design still shows some hardware.
 7. **The long-term ladder is not started.** That covers a Cadex signature
    that holds across body plans, `hip_pitch` ranges, stalls, and
    electronics bays shaped around their parts.
-8. **A fillet can crash the worker without naming itself.** Three
+8. **The floor sets the robot's render resolution.** `cadex render`
+   sizes its vertex-clustering grid from the extent of every loaded part,
+   the world floor included, and drops the floor from the drawing only
+   afterwards. `ot10-hexapod-12` declared a 3,000 mm floor plane, so its
+   robot drew on a 1.46 mm grid as 52,303 of 970,004 triangles. The other
+   hexapods drew on 0.39–0.59 mm grids. All three judge calls named
+   faceted or lumpy legs, and T4 was 1 in two of them. The score stands
+   as taken. The renderer is the next unit, with before and after images
+   of the same design.
+9. **A fillet can crash the worker without naming itself.** Three
    `edit_script` calls in `ot10-hexapod-11` ended in
    `DOMAIN_WORKER_NO_RESULT`. The agent traced them to OCCT's fillet kernel
    on small fillets over every edge after the boolean cuts, and got past
    them by filleting first. The refusal said only that the worker exited.
-9. **A refused publish can leak into the live document.** The daemon's
+10. **A refused publish can leak into the live document.** The daemon's
    document runs with `UndoMode 0`, so a publish that raises after it has
    created objects leaves them behind while the refusal reports
    `accepted_live_state_preserved: true`. It ended `ot10-biped-2`. The
@@ -265,7 +284,7 @@ the report was written, and none is closed.
    project publish now rolls back, and an argument value in `result` is
    refused at validation with the fix named. `ot10-biped-2`'s score stands,
    because it was taken on the source it ran against.
-10. **A build reply could overflow the model's tool limit.** On
+11. **A build reply could overflow the model's tool limit.** On
     `ot10-biped-3` (215 outputs) a `rebuild` reply measured 85,954
     characters, over the 21,500 budget of ADR-359, so its agent read the
     fit by paging `inspect scope=clearance`. *Fixed after the last counted
