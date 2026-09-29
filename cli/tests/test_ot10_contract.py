@@ -135,7 +135,7 @@ def test_baseline_is_scored_and_committed():
 
 
 def test_the_proxies_measure_against_the_frozen_bars():
-    from cadex_cli import render
+    from cadex_cli.studio import STUDIO as render
 
     p1, p2, p3 = (CONTRACT["proxies"][key] for key in ("P1", "P2", "P3"))
     assert render.PROXY_BARS == {

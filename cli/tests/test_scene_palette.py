@@ -2,21 +2,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """ot10 A8 (ADR-444): every presented image is drawn on the viewport's dark prototype mat.
 
-One palette source: :mod:`cadex_cli.scene` reads the viewport's own
-``environment.js`` and the page's ``review.css``, and the studio renderer,
-``look``, the concept sheet and the rollout video take their colours from it.
-These tests fail if the renderer's colours drift from the viewport's.
+One palette source (ADR-445): the engine's ``CadexStudio.PALETTE``, which the
+studio renderer, ``look``, the concept sheet and the rollout video draw with,
+in the CLI and the shell alike. The browser cannot import Python, so the
+viewport's ``environment.js`` and the page's ``review.css`` carry the same
+colours, and these tests fail if either drifts from the engine's table.
 """
-import importlib
 import re
+import shutil
 from pathlib import Path
 
-import pytest
+from cadex_cli import video
+from cadex_cli.studio import STUDIO as render
 
-from cadex_cli import render, scene, sheet, video
-
-STATIC = Path(scene.__file__).resolve().parent / 'review_static'
-CLI = Path(scene.__file__).resolve().parent
+# The palette, the sheet chrome and the renderer are one engine module now.
+scene = sheet = render
+CLI = Path(video.__file__).resolve().parent
+STATIC = CLI / 'review_static'
 
 
 def _hex(rgb):
@@ -60,15 +62,14 @@ def test_the_grid_is_the_viewports_grid():
     assert scene.grid_pitch_mm(1) == 10
 
 
-def test_no_image_module_carries_a_colour_of_its_own_for_the_scene():
-    """The light backdrop and paper are gone; no second copy of a scene colour."""
-    for path in (CLI / 'render.py', CLI / 'sheet.py', CLI / 'video.py'):
+def test_no_cli_module_carries_a_colour_of_its_own_for_the_scene():
+    """The light backdrop and paper are gone; no second Python copy of a scene colour."""
+    for path in (CLI / 'render.py', CLI / 'studio.py', CLI / 'video.py'):
         source = path.read_text()
         assert 'BACKDROP' not in source and '#f6f7fa' not in source, path.name
         for colour in _viewport().values():
             assert colour not in source.lower(), (path.name, colour)
-    # The video's identity changes when the palette source does.
-    assert set(scene.SOURCES) == {STATIC / 'environment.js', STATIC / 'review.css'}
+    assert not (CLI / 'scene.py').exists() and not (CLI / 'sheet.py').exists()
 
 
 def _scene_triangles(size=(20.0, 20.0, 20.0)):
@@ -127,17 +128,10 @@ def test_the_mat_fades_towards_the_scene_background_with_distance():
     assert backdrop(32, 32, 1.0) != scene.PALETTE['bg']
 
 
-def test_the_images_follow_the_viewport_when_its_palette_changes(tmp_path, monkeypatch):
-    """Change the viewport's palette and the renderer draws the new colours."""
-    environment = (STATIC / 'environment.js').read_text().replace('"#1c1c1c"', '"#401010"', 1)
-    css = (STATIC / 'review.css').read_text().replace('--bg: #141414', '--bg: #102040', 1)
-    environment = environment.replace('bg: 0x141414', 'bg: 0x102040', 1)
-    (tmp_path / 'environment.js').write_text(environment)
-    (tmp_path / 'review.css').write_text(css)
-    monkeypatch.setattr(scene, 'SOURCES', (tmp_path / 'environment.js', tmp_path / 'review.css'))
-    changed = scene._read()
-    assert changed['tile_a'] == (0x40, 0x10, 0x10) and changed['bg'] == (0x10, 0x20, 0x40)
-    monkeypatch.setattr(scene, 'PALETTE', changed)
+def test_the_images_follow_the_palette_when_it_changes(monkeypatch):
+    """Change the engine's palette and the renderer draws the new colours."""
+    changed = {**render.PALETTE, 'tile_a': (0x40, 0x10, 0x10), 'bg': (0x10, 0x20, 0x40)}
+    monkeypatch.setattr(render, 'PALETTE', changed)
     size = 160
     pixels, _ = _draw(_scene_triangles(), size=size)
     colours = {_at(pixels, size, x, y) for y in range(size) for x in range(size)}
@@ -146,17 +140,10 @@ def test_the_images_follow_the_viewport_when_its_palette_changes(tmp_path, monke
     assert _at(front, 32, 0, 0) == (0x10, 0x20, 0x40)
 
 
-def test_a_palette_source_without_the_scene_is_refused(tmp_path, monkeypatch):
-    (tmp_path / 'environment.js').write_text('export const OTHER = {};\n')
-    (tmp_path / 'review.css').write_text((STATIC / 'review.css').read_text())
-    monkeypatch.setattr(scene, 'SOURCES', (tmp_path / 'environment.js', tmp_path / 'review.css'))
-    with pytest.raises(RuntimeError, match='no PALETTE'):
-        scene._read()
-
-
-def test_the_studio_video_identity_covers_the_palette_source(tmp_path, monkeypatch):
+def test_the_studio_video_identity_covers_the_engine_renderer(tmp_path, monkeypatch):
     before = video.studio_digest()
-    changed = tmp_path / 'review.css'
-    changed.write_text((STATIC / 'review.css').read_text() + '\n')
-    monkeypatch.setattr(scene, 'SOURCES', (STATIC / 'environment.js', changed))
+    changed = tmp_path / 'CadexStudio.py'
+    shutil.copyfile(render.__file__, changed)
+    changed.write_text(changed.read_text() + '\n')
+    monkeypatch.setattr(render, '__file__', str(changed))
     assert video.studio_digest() != before

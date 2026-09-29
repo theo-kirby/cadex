@@ -622,13 +622,15 @@ scene: the studio hero, the four review views, `look`, the concept sheet
 major line — and the sheet's chrome is this page's `--ink`, `--ink-2` and
 `--rule`.
 
-**One source.** `cli/cadex_cli/scene.py` reads those colours out of
-`review_static/environment.js` (`PALETTE`) and `review_static/review.css`
-(`:root`) — the files this page loads — so no image module carries a scene
-colour of its own. Change the viewport and the images follow it; a
-`PALETTE` block that cannot be read refuses the import.
+**One source.** The engine's `CadexStudio.PALETTE` (ADR-445) is the table
+every image is drawn with, in the CLI and in the shell. A browser cannot
+import Python, so `review_static/environment.js` (`PALETTE`) and
+`review_static/review.css` (`:root`) carry the same colours, and
+`cli/tests/test_scene_palette.py` fails when either drifts from the engine.
+Change a colour in the engine and in both files together; no CLI module
+carries a scene colour of its own.
 
-**The floor.** The CPU renderer (`render._floor`) intersects each
+**The floor.** The CPU renderer (`CadexStudio._floor`) intersects each
 orthographic ray with the floor plane: a checker one pitch square, the
 major line on every multiple of the pitch anchored at the world origin, the
 pitch chosen by `floor.js`'s own `chooseGridPitch` ladder for the framed

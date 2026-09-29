@@ -40,8 +40,8 @@ from typing import Any
 
 from .clearance import read_fit
 from .client import CadexdClient
-from .inventory import InventoryError, read_inventory_summary
-from . import render
+from .inventory import read_inventory_summary
+from .studio import STUDIO
 from .tools import (
     BRIDGE_TOOLS, STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision,
     tool_definitions,
@@ -322,59 +322,12 @@ class Bridge:
                     self.state.last_inventory = self._read_inventory()
             fit, inventory = self.state.last_fit, self.state.last_inventory
             try:
-                triangles, summary = render.snapshot(reply, render.world(fit))
-                world, purchased = render.classify(summary, fit, inventory)
-                appearance, palette = render.declared(inventory)
-                # Focus names may be outputs as well as the components that
-                # place them; accept either.
-                by_source = {item["source"]: name for name, item in summary["objects"].items()}
-                focus_objects = [by_source.get(name, name) for name in focus]
-                shots = render.look(
-                    triangles, summary, views, focus=focus_objects,
-                    exclude=world, purchased=purchased, appearance=appearance, palette=palette,
-                )
-                proxies = render.design_proxies(
-                    triangles, summary, exclude=world, purchased=purchased,
-                    appearance=appearance, palette=palette,
-                )
-                proxies["sharp_outside_edge_share"] = render.edge_proxy(inventory, world)
-            except InventoryError as exc:
+                facts, shots = STUDIO.look_report(reply, fit, inventory, views, focus)
+            except STUDIO.StudioError as exc:
                 call = ToolCall("look", dict(arguments), False, str(exc))
                 self._record(call)
                 return _content(str(exc), is_error=True)
-        text = json.dumps(
-            {
-                "ok": True,
-                "revision": summary["revision"],
-                "views": [view for view, _, _ in shots],
-                "focus": focus,
-                "left_out_as_environment": sorted(world),
-                "colours": (
-                    "by appearance role: " + ", ".join(
-                        "{:s} #{:02X}{:02X}{:02X}".format(role, *rgb)
-                        for role, rgb in {**render.ROLE_COLORS, **palette}.items())
-                    + f"; {len(appearance)} component(s) declare a role, the rest are drawn "
-                      "shell if printed and mechanism if purchased"
-                    if purchased is not None else
-                    "index palette (no inventory to tell printed from purchased)"
-                ),
-                "components_drawn": len(summary["objects"]) - len(world & set(summary["objects"])),
-                # The design-language measures (docs/DESIGN-LANGUAGE.md):
-                # how much of the hero silhouette is bought hardware, how
-                # much printed outside edge is left sharp, and how many
-                # materials it shows, each against its bar.
-                "measures": {
-                    key: {k: proxies[key][k] for k in ("value", "bar", "meets")}
-                    for key in ("hardware_silhouette_share", "sharp_outside_edge_share",
-                                "material_count")
-                },
-                "triangles": summary["triangles"],
-                "approximation": "orthographic studio render of the tessellation at the solved "
-                                 "pose: lit, antialiased, contact shadow; no edges, dimensions "
-                                 "or transparency",
-            },
-            indent=2,
-        )
+        text = json.dumps(facts, indent=2)
         content = [{"type": "text", "text": text}]
         for _view, data, _details in shots:
             content.append({
@@ -385,7 +338,7 @@ class Bridge:
         self._record(ToolCall(
             "look", dict(arguments), True,
             f"{', '.join(views)}{' focus ' + ', '.join(focus) if focus else ''} "
-            f"({summary['revision'][:12]})",
+            f"({facts['revision'][:12]})",
         ))
         return {"content": content, "is_error": False}
 

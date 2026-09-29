@@ -8,9 +8,13 @@ import zlib
 
 import pytest
 
-from cadex_cli import render
+from cadex_cli import render as cli_render
+from cadex_cli.studio import STUDIO as render
 from cadex_cli.bridge import Bridge
 from cadex_cli.inventory import InventoryError
+
+#: A refusal from the CLI job or from the engine's renderer it drives.
+REFUSED = (InventoryError, render.StudioError)
 
 from fake_cadexd import FakeCadexd
 
@@ -132,7 +136,7 @@ def test_look_material_comes_from_the_declared_role_and_palette(tmp_path):
     assert details['materials'] == ['#E9E6DF', '#F26A1B']
     looks = render.materials(summary, purchased={'c_pin'}, palette={'shell': (201, 174, 134)})
     assert looks['c_body'] == ('shell', (201, 174, 134)) and looks['c_pin'][0] == 'mechanism'
-    with pytest.raises(InventoryError, match='unknown appearance role chrome'):
+    with pytest.raises(REFUSED, match='unknown appearance role chrome'):
         render.look(triangles, summary, ['iso'], appearance={'c_pin': 'chrome'})
 
 
@@ -147,11 +151,11 @@ def test_look_focus_frames_a_close_up(tmp_path):
 
 def test_look_refuses_unknown_names_and_views(tmp_path):
     triangles, summary = render.snapshot(_reply(tmp_path))
-    with pytest.raises(InventoryError, match='unknown focus'):
+    with pytest.raises(REFUSED, match='unknown focus'):
         render.look(triangles, summary, ['iso'], focus={'c_nothing'})
-    with pytest.raises(InventoryError, match='unknown view'):
+    with pytest.raises(REFUSED, match='unknown view'):
         render.look(triangles, summary, ['perspective'])
-    with pytest.raises(InventoryError, match='nothing to draw'):
+    with pytest.raises(REFUSED, match='nothing to draw'):
         render.look(triangles, summary, ['iso'], exclude=set(summary['objects']))
 
 
@@ -232,7 +236,7 @@ def test_hero_is_a_low_three_quarter_studio_shot(tmp_path):
     assert details['contact_shadow'] is True
     # The dark prototype mat (ADR-444): the floor is the viewport's tiles and
     # grid, fading into its scene background, and never a light backdrop.
-    from cadex_cli import scene
+    scene = render
     assert details['floor']['kind'] == 'prototype mat'
     edge = [row[0:3] for row in rows]
     assert all(max(p) <= max(scene.PALETTE['line']) and max(p) == min(p) for p in edge)
@@ -306,7 +310,7 @@ def test_render_writes_a_1024_px_studio_hero(tmp_path):
                 return reply
             raise RuntimeError('no published blocks here')  # fit/inventory unreadable
 
-    path, summary = render.write_render(Client(), tmp_path / 'project')
+    path, summary = cli_render.write_render(Client(), tmp_path / 'project')
     hero = (path.parent / 'hero.png').read_bytes()
     size, _ = _pixels(hero)
     assert size == render.HERO_SIZE == 1024 and len(hero) < 300 * 1024
@@ -337,7 +341,7 @@ def test_declared_reads_roles_and_palette_from_the_inventory_block():
     # Nothing declared, or nothing readable: supplier decides, as before.
     assert render.declared(None) == ({}, {})
     assert render.declared({'available': False, 'appearance': {'c_pin': 'accent'}}) == ({}, {})
-    with pytest.raises(InventoryError, match='invalid palette colour'):
+    with pytest.raises(REFUSED, match='invalid palette colour'):
         render.declared({'palette': {'shell': 'bone'}})
 
 
@@ -352,8 +356,8 @@ def test_render_draws_the_declared_role_in_the_declared_palette(tmp_path, monkey
             return reply
 
     fit = {'failing': [{'first': 'c_floor', 'second': '', 'status': 'world geometry'}]}
-    monkeypatch.setattr(render, '_published_blocks', lambda client: [fit, _declared_inventory()])
-    path, summary = render.write_render(Client(), tmp_path / 'project')
+    monkeypatch.setattr(cli_render, '_published_blocks', lambda client: [fit, _declared_inventory()])
+    path, summary = cli_render.write_render(Client(), tmp_path / 'project')
     assert summary['appearance'] == {
         'c_body': {'role': 'shell', 'color': '#C9AE86', 'source': 'declared'},
         'c_pin': {'role': 'accent', 'color': '#179C98', 'source': 'declared'},
@@ -450,13 +454,13 @@ def test_render_and_bridge_look_report_the_proxies(tmp_path, monkeypatch):
             return reply
 
     fit = {'failing': [{'first': 'c_floor', 'second': '', 'status': 'world geometry'}]}
-    monkeypatch.setattr(render, '_published_blocks', lambda client: [fit, _declared_inventory()])
-    path, summary = render.write_render(Client(), tmp_path / 'project')
+    monkeypatch.setattr(cli_render, '_published_blocks', lambda client: [fit, _declared_inventory()])
+    path, summary = cli_render.write_render(Client(), tmp_path / 'project')
     proxies = summary['proxies']
     assert json.loads(path.read_text())['proxies'] == proxies
     assert proxies['material_count']['materials'] == ['#179C98', '#C9AE86']
     assert 0 < proxies['hardware_silhouette_share']['value'] < 1
-    line = render.describe_proxies(proxies)
+    line = cli_render.describe_proxies(proxies)
     assert 'hardware share of hero silhouette' in line and '2 material(s)' in line
     with Bridge(FakeCadexd()) as bridge:
         bridge.state.last_accepted = reply
@@ -525,7 +529,7 @@ def test_sharp_outside_edge_share_is_unmeasured_rather_than_zero():
     for missing in (None, {'available': False}):
         none = render.edge_proxy(missing)
         assert none['value'] is None and 'no inventory' in none['reason']
-    line = render.describe_proxies({
+    line = cli_render.describe_proxies({
         'hardware_silhouette_share': {'value': 0.1, 'meets': True, 'bar': {'max': 0.2}},
         'sharp_outside_edge_share': render.edge_proxy(_edge_inventory({'deck': (100.0, 60.0)})),
         'material_count': {'value': 2, 'materials': ['#000000', '#FFFFFF'], 'meets': True,
@@ -549,7 +553,7 @@ def test_sharp_outside_edge_share_says_when_it_is_a_lower_bound():
     assert edges['unresolved_edges'] == 4
     proxy = render.edge_proxy({'printed_edges': edges})
     assert proxy['value'] == 0.1 and proxy['unresolved_edges'] == 4
-    line = render.describe_proxies({
+    line = cli_render.describe_proxies({
         'hardware_silhouette_share': {'value': 0.1, 'meets': True, 'bar': {'max': 0.2}},
         'sharp_outside_edge_share': proxy,
         'material_count': {'value': 2, 'materials': ['#000000', '#FFFFFF'], 'meets': True,

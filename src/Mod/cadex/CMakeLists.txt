@@ -21,6 +21,7 @@ set(Cadex_Scripts
     CadexCage.py
     CadexPrintables.py
     CadexBlueprints.py
+    CadexStudio.py
     CadexLinkedPart.py
     CadexProject.py
     CadexScriptStore.py

@@ -7,7 +7,7 @@ an external encoder, never imported. One render per project at a time; no traine
 handles, process groups or training files are touched.
 
 Two styles draw the same validated frames. ``studio`` (the command's default,
-ot10 W1, ADR-431) draws each one with :mod:`cadex_cli.render`'s studio
+ot10 W1, ADR-431) draws each one with the engine's ``CadexStudio`` studio
 renderer on the CPU, in the design's own materials, with no browser and no
 display. ``scene`` is the review viewport's Three.js scene in headless
 Chromium (ADR-332).
@@ -30,8 +30,7 @@ import subprocess
 import tempfile
 import time
 
-from . import render as studio_render
-from . import scene, sheet
+from .studio import STUDIO as studio_render
 from .browser import HeadlessBrowser, find_browser
 from .review_server import serve, STATIC_DIR
 from .review_record import read_run_record, resolve_reference
@@ -462,7 +461,7 @@ def _hann(track, half):
 
 
 def _studio_frames(root, record, names, meshes, frames, times, count, sample, work, started):
-    """The design's studio look (render.studio) drawn on the CPU at every sampled pose.
+    """The design's studio look (CadexStudio.studio) drawn on the CPU at every sampled pose.
 
     The hero view, followed: each component is prepared once in its own frame
     (normals smoothed below the crease angle) and moved rigidly per pose. The
@@ -512,7 +511,7 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
     for (cx, cy), k in zip(track, used):
         b = boxes[k]
         reach = max(reach, 1.02*max(cx-b[0], b[2]-cx, cy-b[1], b[3]-cy))
-    clock_colour = sheet.MUTED
+    clock_colour = studio_render.MUTED
     for i, k in enumerate(used):
         require(time.monotonic()-started < RENDER_SECONDS, f'render exceeded {RENDER_SECONDS} seconds')
         posed = [t for name in names for t in _posed(local[name], frames[k]['component_placements'][name])]
@@ -520,13 +519,13 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
         cx, cy = track[i]
         pixels, _ = studio_render.studio(posed, studio_render.HERO, bounds=([cx-reach, cy-reach], [cx+reach, cy+reach]),
                                          size=size, shadow=shadow)
-        canvas = sheet.Canvas(size, size, (0, 0, 0))
+        canvas = studio_render.Canvas(size, size, (0, 0, 0))
         canvas.pixels = pixels
         clock = times[-1] if i == count-1 else i/FPS
         canvas.text(14, size-28, f'T {clock:4.1f} S', 2, clock_colour)
         (work / f'{i:04d}.png').write_bytes(studio_render.png(bytes(canvas.pixels), size))
     return {'style': 'studio', 'style_sha256': studio_digest(),
-            'renderer': 'cadex_cli.render studio, CPU, no browser or display',
+            'renderer': 'CadexStudio studio (engine), CPU, no browser or display',
             'width': size, 'height': size, 'materials': materials,
             'appearance': {name: {'role': looks[name][0], 'color': '#%02X%02X%02X' % looks[name][1]}
                            for name in names},
@@ -544,8 +543,7 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
 def studio_digest():
     """Identity of the code that determines a studio video's pixels."""
     h = hashlib.sha256()
-    for path in (Path(studio_render.__file__), Path(sheet.__file__), Path(__file__),
-                 Path(scene.__file__), *scene.SOURCES):
+    for path in (Path(studio_render.__file__), Path(__file__)):
         h.update(path.name.encode())
         h.update(path.read_bytes())
     return h.hexdigest()

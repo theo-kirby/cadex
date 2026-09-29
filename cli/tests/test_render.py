@@ -9,9 +9,13 @@ import zlib
 
 import pytest
 
-from cadex_cli import render
+from cadex_cli import render as cli_render
+from cadex_cli.studio import STUDIO as render
 from cadex_cli.__main__ import main
 from cadex_cli.inventory import InventoryError
+
+#: A refusal from the CLI job or from the engine's renderer it drives.
+REFUSED = (InventoryError, render.StudioError)
 
 
 def draw(triangles, basis, *, bounds=None, size=render.SIZE):
@@ -78,7 +82,7 @@ def test_refuses_bad_or_excessive_snapshot(tmp_path, monkeypatch, failure):
         monkeypatch.setattr(render, 'MAX_BYTES', 10)
     elif failure == 'triangles':
         monkeypatch.setattr(render, 'MAX_INPUT_TRIANGLES', 0)
-    with pytest.raises(InventoryError, match='render:'):
+    with pytest.raises(REFUSED, match='render:'):
         render.snapshot(reply)
 
 
@@ -112,8 +116,8 @@ def test_render_work_refusal_writes_no_new_files(tmp_path, monkeypatch):
     class Client:
         def request(self, *args):
             return reply
-    with pytest.raises(InventoryError, match='budget'):
-        render.write_render(Client(), tmp_path)
+    with pytest.raises(REFUSED, match='budget'):
+        cli_render.write_render(Client(), tmp_path)
     assert not (tmp_path / 'review').exists()
 
 
@@ -276,17 +280,17 @@ def test_acquire_snapshot_reads_the_floor_from_the_accepted_fit(tmp_path, monkey
 
     monkeypatch.setattr(clearance, 'read_fit', lambda client: {
         'failing': [{'first': 'floor', 'second': 'grid', 'status': 'world geometry'}]})
-    _, summary = render.acquire_snapshot(Client())
+    _, summary = cli_render.acquire_snapshot(Client())
     assert summary['decimation']['extent_excludes'] == ['floor']
     # An unreadable fit draws as before rather than failing the render.
     monkeypatch.setattr(clearance, 'read_fit', lambda client: (_ for _ in ()).throw(InventoryError('no fit')))
-    _, summary = render.acquire_snapshot(Client())
+    _, summary = cli_render.acquire_snapshot(Client())
     assert summary['decimation']['extent_excludes'] == []
 
 
 def test_clustering_that_cannot_reach_the_budget_still_refuses(tmp_path, monkeypatch):
     monkeypatch.setattr(render, 'MAX_TRIANGLES', 0)
-    with pytest.raises(InventoryError, match='triangle budget exceeded'):
+    with pytest.raises(REFUSED, match='triangle budget exceeded'):
         render.snapshot(grid_reply(tmp_path, n=4))
 
 
@@ -299,5 +303,5 @@ def test_the_pixel_budget_scales_with_the_image_area(monkeypatch):
     assert large > render.MAX_SAMPLES
     draw([tri], render.BASES['top'], size=2 * render.SIZE)
     monkeypatch.setattr(render, 'MAX_SAMPLES', large // 4 - 1)
-    with pytest.raises(InventoryError, match='pixel work'):
+    with pytest.raises(REFUSED, match='pixel work'):
         draw([tri], render.BASES['top'], size=2 * render.SIZE)

@@ -208,7 +208,8 @@ A design is judged the way it is shown. (`07-white-hood-quadruped-yellow-studio.
   major line on every grid pitch, fading into the background with
   distance, so there is no horizon line. A mostly white robot reads on it
   by its form, and the grid makes stride and foot slip legible in a video.
-  The colours are the viewport's own, never a copy (`cli/cadex_cli/scene.py`).
+  The colours are one table, `CadexStudio.PALETTE` in the engine (ADR-445);
+  the viewport's copies are test-held equal to it.
   This rule replaced a light seamless backdrop taken from the references
   above; A1's frozen rubric and judge are unchanged by it.
 - **A soft contact shadow** under the robot, so it stands on something. On

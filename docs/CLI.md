@@ -1909,8 +1909,8 @@ and a rim light with a Blinn highlight per role finish, on normals smoothed
 across each object's shared vertices except over a 40° crease, so a fillet
 reads as a curve and a box keeps its edges. The design stands on the review
 viewport's **dark prototype mat** (ADR-444, `docs/REVIEW-DESIGN.md` §16):
-the colours are read by `cadex_cli/scene.py` from the viewport's own
-`environment.js` and `review.css`, the grid pitch is the viewport's for the
+the colours are the engine's `CadexStudio.PALETTE` (ADR-445), which the
+viewport's own `environment.js` and `review.css` are test-held equal to, the grid pitch is the viewport's for the
 framed span, anchored at the world origin and antialiased, and the mat fades
 into the `#141414` background with distance; a level view draws the
 background alone. A **contact shadow** is measured from the
@@ -1969,7 +1969,7 @@ The agent's `look` reports all three under `measures`, and each report adds
 one `measures:` line.
 
 **The concept sheet (ADR-430).** `sheet.png` is one 1536×1024 PNG
-(`cadex_cli/sheet.py`): the 1024 px hero, pixel for pixel, on the left; on
+(`CadexStudio.compose`, ADR-445): the 1024 px hero, pixel for pixel, on the left; on
 the right the project's name, the revision, the key numbers, a swatch per
 appearance role the design uses in the colour in effect, the `front`,
 `right` and `top` views as **line drawings**, and A1's three proxies. A line
@@ -2084,7 +2084,8 @@ cli/cadex_cli/
   mcp.py               the MCP stdio server `claude` spawns
   agent.py             one `claude -p` turn; the system prompt
   export.py            STEP/STL/BREP out of the display block; the rest copied
-  render.py            accepted tessellation -> studio-lit named-angle SVG previews and hero PNG
+  render.py            `cadex render` as a job: rebuild, read fit/inventory, write the files
+  studio.py            loads THAT engine's CadexStudio: the renderer, sheet and palette (ADR-445)
   clearance.py         inspect scope=clearance -> docs/clearance.md; read-time thresholds;
                        and the `fit` block every build reply carries (ADR-346)
   inventory.py         inspect scope=inventory -> the project's docs/inventory.md

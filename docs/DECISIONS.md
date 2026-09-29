@@ -29351,3 +29351,47 @@ mat and fades; a level view is the background; a changed viewport palette
 changes the drawn pixels; an unreadable `PALETTE` refuses; the video's
 identity covers the palette files. `test_look.py` and `test_sheet.py`
 updated where they encoded the light backdrop and dark ink.
+
+## ADR-445 — The studio renderer is engine code, run beside the service rather than in it (2026-09-29)
+
+**Decision.** `cli/cadex_cli/render.py`'s rasteriser, `sheet.py` and
+`scene.py` move into the engine as one module, `src/Mod/cadex/CadexStudio.py`,
+unchanged in what they draw. The CLI loads it by path from the engine it
+resolved (`cli/cadex_cli/studio.py`, the `protocol.py` precedent), and keeps
+only the client half of `cadex render`: rebuild, read the fit and inventory
+blocks, write the files. `sheet.py` and `scene.py` are deleted. The look's
+facts move with it (`CadexStudio.look_report`), so the bridge's `look` is a
+call and a wrapper. The shell will run the same module as a **child
+process** with a JSON request file (`cadex-studio-request-v1`,
+`docs/INTEGRATION.md`); it is not a cadexd op. The dark scene palette is now
+a literal table in the engine, and the review page's `environment.js` and
+`review.css` are held equal to it by `cli/tests/test_scene_palette.py`
+rather than read by a regex.
+
+**Reason.** The owner chose to bring the GUI app up to the CLI (the design
+language, `look`, the studio render, the concept sheet) with **one
+implementation** rather than two that drift. ADR-406 kept `look` out of the
+engine to leave the protocol surface alone and cross nothing to the shell;
+both still hold, which is why this is a module and not an op. An op was
+measured out: cadexd dispatches serially, a render is about 12 s (the ot10
+probes), and a read op that long would stall the slider drag queued behind
+it. The shell may import no cadex code (`docs/INTEGRATION.md`), so it gets a
+process boundary, the same shape as CalculiX in `analysis/`. ADR-444 made
+the viewport's files the palette source so images could not drift from the
+page; the engine cannot read `cli/` (no payload carries it), so the
+direction inverts and a test keeps the same guarantee.
+
+**Consequences.** The protocol is unchanged: no `OP_ARG_SPECS` entry, no
+golden, no shell diff in this change. `CadexStudio` is installed by
+`src/Mod/cadex/CMakeLists.txt` and is outside the service's import closure,
+both asserted by `cadex_tests/test_studio_process.py`, which also runs a
+look and a render through the process entry and checks the process look
+equals the in-process one. The CLI draws with the renderer of the engine
+`CADEX_ENGINE_ROOT` names, else the development tree's; `--engine` on the
+command line does not rebind it (the renderer reads schema-versioned
+tessellation, not protocol frames). The studio video's identity
+(`video.studio_digest`) now hashes `CadexStudio.py` and `video.py`, so a
+video recorded after this change carries a new `style_sha256`; nothing
+compares the field, so no existing video is re-rendered. Two scene
+tests that exercised the regex reader are deleted with it. Tests of the
+drawing stay in `cli/tests/` and now patch the loaded engine module.

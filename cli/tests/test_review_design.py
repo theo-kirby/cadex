@@ -1093,8 +1093,9 @@ def test_the_page_leads_with_the_concept_sheet_when_the_project_has_one(served, 
     the desk stage opens on *Concept* and the phone column reads it before
     the model; the image is the sheet itself, named by its revision."""
 
-    from cadex_cli import render, sheet
+    from cadex_cli.studio import STUDIO as render
     from test_review_server import REVISION_B
+    sheet = render
 
     root, server = served
     directory = root / "review" / "render"

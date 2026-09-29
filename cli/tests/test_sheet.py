@@ -8,7 +8,9 @@ import zlib
 
 import pytest
 
-from cadex_cli import render, sheet
+from cadex_cli import render as cli_render
+from cadex_cli.studio import STUDIO as render
+sheet = render
 from cadex_cli.review_server import presentation, serve
 
 from test_look import _box, _mesh, _reply, IDENTITY
@@ -62,8 +64,8 @@ def _render(tmp_path, monkeypatch, *, inventory=None, **accepted):
         def request(self, op, args=None):
             return reply
     fit = {'failing': [{'first': 'c_floor', 'second': '', 'status': 'world geometry'}]}
-    monkeypatch.setattr(render, '_published_blocks', lambda client: [fit, inventory])
-    path, summary = render.write_render(Client(), root)
+    monkeypatch.setattr(cli_render, '_published_blocks', lambda client: [fit, inventory])
+    path, summary = cli_render.write_render(Client(), root)
     return root, path.parent, summary
 
 

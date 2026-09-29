@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-09-28
+Verified against source: 2026-09-29
 
 **Optional Blender recipe runtime (ADR-185).** A shell-owned cadexd child
 receives `CADEX_BLENDER_EXECUTABLE` naming the shell's own binary. The engine
@@ -490,6 +490,31 @@ and there is no such crossing. What survives is the part that was never
 about transport — one bundle, discovery by manifest, and a payload gate that
 runs the lifecycle test against the *packaged* tree, because a source tree
 that passes proves nothing about a payload.
+
+### The studio renderer: a second program in the payload `cadex-studio-request-v1` `[Cadex-new — ADR-445]`
+
+`Mod/cadex/CadexStudio.py` draws the review views, the studio hero, the
+concept sheet and the agent's `look` from an accepted reply's display block.
+It is **not a cadexd op**: cadexd dispatches serially, and a render takes
+about 12 s, which would stall a slider drag queued behind it. Nothing in the
+service imports it (`test_studio_process.py` asserts the closure). It is pure
+standard library, and it reaches each client in the way that client's rules
+allow:
+
+- the CLI (LGPL) loads it by path from the engine it resolved, exactly as it
+  loads `CadexdProtocol`;
+- the shell (GPL, which imports no cadex code) runs it as a **child process**:
+  `python Mod/cadex/CadexStudio.py REQUEST.json`, and reads one JSON line
+  from stdout.
+
+The request is `{schema: "cadex-studio-request-v1", kind: "render" | "look",
+reply, fit, inventory, out_dir, project_root?, relative_dir?, views?, focus?}`:
+`reply` is the accepted modelling or `rebuild` reply with its display block,
+`fit` and `inventory` are the `inspect` blocks for it (either may be `null`),
+and `out_dir` is absolute. The result is `{schema: "cadex-studio-result-v1",
+ok, kind, files, facts | summary}` or `{ok: false, error}`; exit 0 on
+success, 1 on a refusal, 2 for an unreadable request. `facts` is exactly what
+the CLI agent's `look` returns as text, so the two agents read the same thing.
 
 Non-GUI Qt (Core, Xml, Concurrent, Network) is unavoidable — FreeCAD's App
 layer links it and `FreeCADCmd` inherits that. Qt **GUI**, PySide and Coin

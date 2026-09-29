@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-09-28
+Verified against source: 2026-09-29
 
 **Native Blender geometry (ADR-185).** The mesh domain now includes
 `mesh.blender`: an xscript-owned recipe with named mesh inputs and JSON
@@ -262,6 +262,7 @@ resolved. Its whole model-facing tool surface is generated from
 | `cadexd.py` | The service: serial dispatch, cancel, busy, the ephemeral document, the restore pass, the per-output `display` block. |
 | `CadexTools.py` | `FAILURE_STAGES`, the `tool_failure` envelope every refusal is shaped as (and every shell parses), `unchanged_state`, `ToolSpec` as a declaration. |
 | `CadexEngineSettings.py` | The engine's own preference group and sandbox budget defaults. Split from the Qt preferences in C1. |
+| `CadexStudio.py` | The studio renderer (ADR-445): accepted tessellation to lit, antialiased review views, the 1024 px hero, the concept sheet and the agent's `look`, plus the dark scene `PALETTE` every image stands on and the design proxies P1-P3. Pure standard library. **Not in the service's closure**: the CLI loads it by path and the shell runs it as a child process (`docs/INTEGRATION.md`, `cadex-studio-request-v1`), because cadexd dispatches serially and a render takes seconds. Moved from `cli/cadex_cli/{render,sheet,scene}.py`. `[Cadex-new]` |
 | `CadexInspection.py` | The bounded `inspect` read surface (scopes `document`, `object`, `script`, `api`, `image`, `output`, `assets`, `history`, `wiring`, `blueprint`; `output`/`assets` added in ADR-043 — per-output facts from the pinned accepted attempt, and the importable-asset listing — `history` in ADR-045, the accepted-revision undo trail `restore_version` reads, and `blueprint` in ADR-150, the stored drawing sheets: the listing, or one entry plus its containment-checked store path, never pixels. `selection` was shell-only and is gone). |
 | `CadexReferenceContracts.py` | Geometry pins: shared handle + owner + subelement hint + geometric fingerprint, and fingerprint re-resolution when the revision moved. |
 | `CadexPinResolution.py` | Resolves a pick or fingerprint against the accepted revision's staged BREP. |
