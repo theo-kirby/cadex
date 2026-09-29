@@ -97,7 +97,7 @@ def test_render_writes_the_concept_sheet_with_the_hero_numbers_palette_and_line_
     assert _pixel(rows, 1024 + 40 + swatch + 24 + 10, y) == (0x17, 0x9C, 0x98)
     # The line views are ink on paper, and the panel is paper elsewhere.
     ink = sum(1 for yy in range(540, 1000) for xx in range(1064, 1496)
-              if max(_pixel(rows, xx, yy)) < 120)
+              if min(_pixel(rows, xx, yy)) > 120)
     assert ink > 200
     assert _pixel(rows, sheet.WIDTH - 5, sheet.HEIGHT - 5) == sheet.PAPER
 
@@ -130,15 +130,16 @@ def test_line_view_draws_silhouettes_and_creases_but_not_coplanar_splits(tmp_pat
     iso, _ = sheet.line_view(triangles, summary, ['c_box'], render.BASES['iso'], size=100)
     # Front on, a cube is one face split into two triangles: its outline and
     # nothing across its diagonal.
-    grey = [min(front[3 * i:3 * i + 3]) for i in range(100 * 100)]
+    # Light ink on the dark scene paper (ADR-444).
+    grey = [max(front[3 * i:3 * i + 3]) for i in range(100 * 100)]
     assert details['ink_pixels'] > 0
-    assert grey[50 * 100 + 50] >= 240
+    assert grey[50 * 100 + 50] == max(sheet.PAPER)
     diagonal = [grey[k * 100 + k] for k in range(20, 80)]
-    assert min(diagonal) >= 240
+    assert max(diagonal) == max(sheet.PAPER)
     # In three-quarter view the three visible faces meet at creases: ink
     # inside the silhouette, not only around it.
-    inside = [min(iso[3 * (y * 100 + 50):3 * (y * 100 + 50) + 3]) for y in range(30, 70)]
-    assert min(inside) < 150
+    inside = [max(iso[3 * (y * 100 + 50):3 * (y * 100 + 50) + 3]) for y in range(30, 70)]
+    assert max(inside) > 120
 
 
 def test_the_face_draws_every_glyph_and_marks_what_it_lacks():

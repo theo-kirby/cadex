@@ -16,7 +16,7 @@ import struct
 import time
 import zlib
 
-from . import sheet
+from . import scene, sheet
 from .inventory import InventoryError
 
 SIZE = 512
@@ -85,16 +85,20 @@ PROXY_BARS = {'hardware_silhouette_share': {'max': 0.2}, 'sharp_outside_edge_sha
               'material_count': {'min': 2, 'max': 3}}
 #: The hero is measured at this size, whatever size it is drawn at.
 PROXY_SIZE = 512
-BACKDROP_TOP = (208, 211, 216)
-BACKDROP_BOTTOM = (243, 243, 241)
+#: The floor every studio image stands on is the review viewport's dark
+#: prototype mat (ot10 A8, ADR-444): its colours come from :mod:`scene`, which
+#: reads them out of the viewport's own ``environment.js``. The mat fades into
+#: the scene background between these multiples of the framed extent,
+#: measured on the floor from the point under the image centre.
+FLOOR_FADE = (0.75, 1.9)
 PALETTE = [(91, 157, 205), (230, 151, 76), (115, 182, 135), (180, 134, 200)]
 LIMITS = {'buffer_bytes': MAX_BYTES, 'triangles': MAX_TRIANGLES, 'input_triangles': MAX_INPUT_TRIANGLES,
           'vertices_per_source': MAX_VERTICES,
           'placed_vertices': MAX_PLACED_VERTICES,
           'pixel_visits_per_view': MAX_SAMPLES, 'image_size': SIZE, 'hero_size': HERO_SIZE}
 APPROXIMATION = ('Opaque standard tessellation, initial solved pose, orthographic; studio-lit '
-                 '(key, fill, rim; normals smoothed below a crease angle), 2x2 supersampled, on a '
-                 'seamless backdrop with a contact shadow measured from the geometry; no '
+                 '(key, fill, rim; normals smoothed below a crease angle), 2x2 supersampled, on the '
+                 'review viewport\'s dark prototype mat with a contact shadow measured from the geometry; no '
                  'transparency, edges or dimensions. Environment geometry the fit names is left '
                  'out. Shell-only visibility is not carried by the protocol. Placed source copies '
                  'are excluded. Above the drawn triangle budget, vertices are clustered on a '
@@ -407,20 +411,82 @@ def _contact_shadow(prepared, floor=None):
         if not (0 <= i < width and 0 <= j < height):
             return 1.0
         k = j * width + i
-        return max(0.45, 1.0 - 0.45 * near[k] - 0.35 * wide[k])
+        # Deeper than a light backdrop needs: on the dark mat (ADR-444) a
+        # tile has little brightness to lose, so the same share reads faint.
+        return max(0.2, 1.0 - 0.65 * near[k] - 0.45 * wide[k])
     return floor, lookup
 
 
+def _floor(basis, bounds, size, floor_z):
+    """``pixel(ox, oy, dark) -> rgb``: the dark prototype mat behind a view.
+
+    The mat is the viewport's (:mod:`scene`): a ``tile_a``/``tile_b``
+    checker one grid pitch square, major lines on every multiple of the pitch
+    anchored at the world origin (so a walk slides over a fixed grid), fading
+    into the scene background with distance. The pitch is the viewport's own
+    choice for the framed span. Every orthographic ray meets the floor plane
+    at a point linear in the pixel, so each line's coverage of a pixel is
+    exact to first order: that is what antialiases the grid. ``dark`` is the
+    contact shadow's multiplier at the pixel. A view that cannot see the
+    floor (level or from below) gets the plain background.
+    """
+    palette = scene.PALETTE
+    bg = palette['bg']
+    right, up, toward = basis
+    rx, ry, rz = right; ux, uy, uz = up; tx, ty, tz = toward
+    if floor_z is None or tz <= 0.05:
+        return lambda ox, oy, dark: bg
+    lo, hi = bounds
+    extent = max(hi[0] - lo[0], hi[1] - lo[1])
+    step = extent / size
+    cx0, cy0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
+    pitch = scene.grid_pitch_mm(extent)
+    half = pitch * scene.LINE_FRACTION / 2
+
+    def at(sx, sy):
+        along = (floor_z - sx*rz - sy*uz) / tz
+        return sx*rx + sy*ux + along*tx, sx*ry + sy*uy + along*ty
+    mx, my = at(cx0, cy0)
+    ax, ay = at(cx0 + step, cy0)
+    bx, by = at(cx0, cy0 + step)
+    # The floor footprint of one pixel along each world axis.
+    wx = abs(ax - mx) + abs(bx - mx) or 1e-9
+    wy = abs(ay - my) + abs(by - my) or 1e-9
+    near, far = FLOOR_FADE[0] * extent, FLOOR_FADE[1] * extent
+    tile_a, tile_b, line = palette['tile_a'], palette['tile_b'], palette['line']
+
+    def pixel(ox, oy, dark):
+        sx = cx0 + (ox + .5 - size / 2) * step
+        sy = cy0 - (oy + .5 - size / 2) * step
+        fx, fy = at(sx, sy)
+        distance = math.hypot(fx - mx, fy - my)
+        if distance >= far:
+            return bg
+        i, j = math.floor(fx / pitch), math.floor(fy / pitch)
+        base = tile_a if (i + j) % 2 == 0 else tile_b
+        dx, dy = fx - pitch * round(fx / pitch), fy - pitch * round(fy / pitch)
+        cover_x = min(1.0, max(0.0, (half - abs(dx)) / wx + 0.5))
+        cover_y = min(1.0, max(0.0, (half - abs(dy)) / wy + 0.5))
+        cover = cover_x + cover_y - cover_x * cover_y
+        mat = [(base[c] + (line[c] - base[c]) * cover) * dark for c in range(3)]
+        if distance <= near:
+            return mat
+        f = (distance - near) / (far - near)
+        f = f * f * (3 - 2 * f)
+        return [mat[c] + (bg[c] - mat[c]) * f for c in range(3)]
+    return pixel
+
+
 def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
-    """A lit, antialiased image of prepared triangles on a seamless backdrop.
+    """A lit, antialiased image of prepared triangles on the dark prototype mat.
 
     Orthographic along ``basis``; ``bounds`` is the framed projection window.
     Every pixel is ``samples`` squared subsamples: a depth pass keeps the
     nearest triangle per subsample, then only visible subsamples are shaded
     (key, fill and rim light, Blinn specular per role finish, normals
-    interpolated across the triangle), and the rest take the backdrop, with
-    ``shadow`` (from :func:`_contact_shadow`) darkening the floor under the
-    design when the camera is above it.
+    interpolated across the triangle), and the rest take the floor
+    (:func:`_floor`), with ``shadow`` (from :func:`_contact_shadow`)
+    darkening it under the design when the camera is above it.
     """
     right, up, toward = basis
     lo, hi = bounds
@@ -433,20 +499,21 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
     key = _unit((-0.45, 0.6, 0.66)); fill = _unit((0.8, 0.05, 0.6))
     half = _unit((key[0], key[1], key[2] + 1.0))
     floor_z, lookup = shadow if shadow is not None and tz > 0.05 else (None, None)
+    # The mat lies at the shadow's floor, or under the design's lowest point
+    # when no shadow was measured.
+    mat_z = shadow[0] if shadow is not None else min((p[2] for _, tri, _ in prepared for p in tri), default=0.0)
+    backdrop = _floor(basis, bounds, size, mat_z)
     image, covered = bytearray(3 * size * size), 0
     inv = 1.0 / (samples * samples)
     for oy in range(size):
-        f = (oy + .5) / size
-        back = [BACKDROP_TOP[c] + (BACKDROP_BOTTOM[c] - BACKDROP_TOP[c]) * f for c in range(3)]
         sy = cy0 - (oy + .5 - size / 2) * extent / size
         for ox in range(size):
-            bg = back
+            dark = 1.0
             if lookup is not None:
                 sx = cx0 + (ox + .5 - size / 2) * extent / size
                 along = (floor_z - sx*rz - sy*uz) / tz
                 dark = lookup(sx*rx + sy*ux + along*tx, sx*ry + sy*uy + along*ty)
-                if dark < 1.0:
-                    bg = [c * dark for c in back]
+            bg = backdrop(ox, oy, dark)
             r = g = b = 0.0
             for dj in range(samples):
                 row = (oy * samples + dj) * n + ox * samples
@@ -480,7 +547,9 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
             image[at] = round(r * inv); image[at+1] = round(g * inv); image[at+2] = round(b * inv)
     return image, {'projection_bounds_mm': [list(lo), list(hi)], 'pixel_visits': visits,
                    'covered_pixels': round(covered * inv), 'samples_per_pixel': samples * samples,
-                   'contact_shadow': lookup is not None}
+                   'contact_shadow': lookup is not None,
+                   'floor': ({'kind': 'prototype mat', 'pitch_mm': scene.grid_pitch_mm(extent),
+                              'z_mm': mat_z} if tz > 0.05 else {'kind': 'scene background'})}
 
 
 def _depth_pass(prepared, basis, bounds, size, samples):
@@ -783,14 +852,15 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
     prepared = _prepare(_studio_parts(triangles, summary, names, looks))
     shadow = _contact_shadow(prepared)
     files, summary['views'] = {}, {}
+    paper, caption = scene.hex_colour(scene.PALETTE['bg']), scene.hex_colour(scene.PALETTE['ink_2'])
     for name, basis in BASES.items():
         pixels, details = studio(prepared, basis, bounds=_frame(prepared, basis, 0.08), size=SIZE, shadow=shadow)
         encoded = base64.b64encode(png(pixels)).decode('ascii')
         title = html.escape(f"{name} | accepted {summary['revision']} | tessellation preview")
         files[name + '.svg'] = (f'<svg xmlns="http://www.w3.org/2000/svg" width="512" height="552" viewBox="0 0 512 552">'
-                               f'<title>{title}</title><rect width="512" height="552" fill="#f6f7fa"/>'
+                               f'<title>{title}</title><rect width="512" height="552" fill="{paper}"/>'
                                f'<image width="512" height="512" href="data:image/png;base64,{encoded}"/>'
-                               f'<text x="16" y="536" font-family="sans-serif" font-size="12">'
+                               f'<text x="16" y="536" font-family="sans-serif" font-size="12" fill="{caption}">'
                                f'{name} | {summary["revision"][:12]} | tessellation preview</text></svg>\n')
         summary['views'][name] = {**details, 'basis': basis, 'path': f'{relative_dir}/{name}.svg'}
     # The studio hero (DESIGN-LANGUAGE.md section 7): one PNG, the design's

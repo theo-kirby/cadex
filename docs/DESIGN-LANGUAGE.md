@@ -1,6 +1,6 @@
 # The Cadex design language — small printed servo robots
 
-Verified against source: 2026-09-28. Provenance: `[Cadex-new]`.
+Verified against source: 2026-09-29. Provenance: `[Cadex-new]`.
 
 This is how a robot that Cadex designs should look: a small legged or
 wheeled machine, 3D-printed around hobby servos (MG90S class), carrying its
@@ -202,9 +202,17 @@ A design is judged the way it is shown. (`07-white-hood-quadruped-yellow-studio.
 - **Studio light, so that curvature reads.** A key light, a soft fill and
   a rim light give smooth shading across large radii. Flat shading, which
   is what `look` drew before ADR-412, hides the only thing radii are for.
-- **A seamless backdrop**: light grey, or one saturated colour taken from
-  the accent. There is no horizon line and no grid.
-- **A soft contact shadow** under the robot, so it stands on something.
+- **The dark prototype floor** (owner's decision, ot10 A8, ADR-444): every
+  presented image stands on the review viewport's mat — the scene
+  background `#141414`, a `#1c1c1c` / `#232323` checker and a `#3a3a3a`
+  major line on every grid pitch, fading into the background with
+  distance, so there is no horizon line. A mostly white robot reads on it
+  by its form, and the grid makes stride and foot slip legible in a video.
+  The colours are the viewport's own, never a copy (`cli/cadex_cli/scene.py`).
+  This rule replaced a light seamless backdrop taken from the references
+  above; A1's frozen rubric and judge are unchanged by it.
+- **A soft contact shadow** under the robot, so it stands on something. On
+  the dark floor it is deeper than a light backdrop needs.
 - **Antialiased edges.**
 - **A concept sheet** presents a design: the hero, orthographic line
   views, the palette swatches, the name and the key numbers (mass, servo

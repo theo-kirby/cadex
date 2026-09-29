@@ -189,6 +189,8 @@ What the run did reach, stated as the highest bar and not as success:
 | Finch rollout, before and after the studio look | W1 | [`w1-finch-rollout-scene.png`](w1-finch-rollout-scene.png), [`w1-finch-rollout-studio.png`](w1-finch-rollout-studio.png) |
 | `w2-1` rollout, floor fixed | W1 | [`w1-quadruped-rollout-reach-floor.png`](w1-quadruped-rollout-reach-floor.png), [`w1-quadruped-rollout-studio.png`](w1-quadruped-rollout-studio.png) |
 | `w2-2` rollout | W1, W2 | [`w2-2-quadruped-rollout-studio.png`](w2-2-quadruped-rollout-studio.png) |
+| `ot10-quadruped-3` hero and sheet, before and after the dark prototype floor | A8 | before: [`ot10-quadruped-3-hero.png`](ot10-quadruped-3-hero.png), [`ot10-quadruped-3-sheet.png`](ot10-quadruped-3-sheet.png); after: [`a8-quadruped-3-hero-dark.png`](a8-quadruped-3-hero-dark.png), [`a8-quadruped-3-sheet-dark.png`](a8-quadruped-3-sheet-dark.png) (ADR-444) |
+| `w2-2` rollout on the dark prototype floor | A8, W1 | before: [`w2-2-quadruped-rollout-studio.png`](w2-2-quadruped-rollout-studio.png); after: [`a8-w2-2-rollout-dark.png`](a8-w2-2-rollout-dark.png) (ADR-444) |
 
 **A2's time bound.** For hex3's accepted design, the four 512 px views
 and the 1024 px hero took 6.5 s, the hero alone 2.2 s. That is against a

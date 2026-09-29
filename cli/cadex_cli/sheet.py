@@ -17,16 +17,22 @@ import json
 import math
 from pathlib import Path
 
+from . import scene
+
 WIDTH, HEIGHT = 1536, 1024
 #: The orthographic views the sheet draws as lines, in the order it lays them out.
 LINE_VIEWS = ('front', 'right', 'top')
 LINE_SIZE = 204
 #: Two faces of one object meeting at more than this draw a line.
 LINE_CREASE_DEGREES = 35.0
-PAPER = (246, 245, 241)
-INK = (43, 47, 54)
-MUTED = (122, 126, 133)
-RULE = (214, 212, 206)
+#: The sheet is drawn on the dark scene (ot10 A8, ADR-444): paper is the
+#: viewport's background, and ink, muted ink and rules are the review page's
+#: ``--ink``, ``--ink-2`` and ``--rule``, all read by :mod:`scene` from the
+#: files the dashboard itself loads.
+PAPER = scene.PALETTE['bg']
+INK = scene.PALETTE['ink']
+MUTED = scene.PALETTE['ink_2']
+RULE = scene.PALETTE['rule']
 #: The catalog family whose placed components the sheet counts as servos.
 SERVO_FAMILY = 'servo'
 

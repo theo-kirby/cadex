@@ -29296,3 +29296,58 @@ standard servos' bay passes only the spline.
 `test_bay_allowances_refuse_by_name`. All eight fail on the previous source.
 `cli/tests/test_turn_loop.py`:
 `test_the_overlay_grows_a_limb_around_the_servo_bay`.
+
+## ADR-444 — Every presented image stands on the viewport's dark prototype floor (2026-09-29)
+
+**Context.** ot10 A8, added by the owner: the robots are mostly white, and
+on the dashboard's dark mat their form and their motion over the ground are
+easy to see, where the studio renderer (ADR-412) drew them on a light grey
+seamless gradient. The concept sheet (ADR-430) was a light sheet, and a
+studio video (ADR-431) a light image inside the dark chrome. The viewport
+itself has been dark only since ADR-331.
+
+**Decision.** `cli/cadex_cli/scene.py` is the one palette source for the
+images: it reads the scene background and the mat's tiles and major line
+from `PALETTE` in `review_static/environment.js`, and the chrome's `--ink`,
+`--ink-2` and `--rule` from `review_static/review.css`, the files the
+dashboard itself loads. `render.studio` draws the floor behind a design as
+that mat (`render._floor`): each orthographic ray meets the floor plane, a
+checker one pitch square, the major line on every multiple of the pitch
+anchored at the world origin (5/256 of the pitch wide, as `floor.js` paints
+it), the pitch from `floor.js`'s ladder for the framed span, each line's
+coverage computed from the pixel's floor footprint (antialiased), fading
+into the background between 0.75× and 1.9× the framed extent. A level view
+draws the background alone. The mat lies at the contact shadow's floor, or
+under the design's lowest point when none is measured. The contact shadow's
+floor is 20 % (was 45 %) and its terms 0.65/0.45 (were 0.45/0.35): a dark
+tile has little brightness to lose. The concept sheet's paper, ink, muted
+ink and rules are the scene's; the review SVGs' paper and caption too. The
+studio video's identity (`video.studio_digest`) now hashes `scene.py` and
+both palette files. `BACKDROP_TOP`/`BACKDROP_BOTTOM`, the sheet's light
+colours and the SVG's `#f6f7fa` are deleted, not kept behind a switch.
+
+**Not changed, and why.** No minor lines and no baked labels: the viewport
+draws them at close framings, and at a hero's scale they are noise. The
+judge's procedure and rubric (A1, `docs/probes/ot10/README.md`) are frozen
+and untouched, and no probe is re-scored: this is a presentation change.
+A future judged probe would see dark renders; that is a change in what the
+judge sees, and running one is a recorded decision that re-scores every
+earlier probe first. None is run this run (A7 is deferred by the owner).
+
+**Measured.** `ot10-quadruped-3` (the W2 design) re-rendered on a scratch
+copy at its accepted revision `7de6eea6…`: four views and the 1024 px hero
+15.2 s (hero 4.6 s, sheet 3.1 s) — inside A2's 60 s — and the proxies
+unchanged (hardware share 0.0 %, sharp edges 11.6 %, 3 materials). The
+floor at its feet falls from tiles of 28–35 to 6. `w2-2`'s studio video
+re-rendered on a scratch copy of `ot10-quadruped-3-w2`: 101 frames in
+189.0 s against its 300 s bound (153.9 s on the light backdrop; the floor
+costs about a fifth more per frame). Images: `docs/probes/ot10/a8-*.png`.
+
+**Tests.** `cli/tests/test_scene_palette.py` (new): the renderer's palette
+equals the viewport's, parsed independently, and the charter's four
+values; `floor.js`'s fallback tile, pitch ladder and line width; no image
+module carries a scene colour or the old backdrop; the hero stands on the
+mat and fades; a level view is the background; a changed viewport palette
+changes the drawn pixels; an unreadable `PALETTE` refuses; the video's
+identity covers the palette files. `test_look.py` and `test_sheet.py`
+updated where they encoded the light backdrop and dark ink.

@@ -107,7 +107,9 @@ def _kinds(data):
     pixels = [tuple(row[i:i + 3]) for row in rows for i in range(0, len(row), 3)]
     return {
         'shell': sum(min(p) > 150 and p[0] >= p[2] and p[0] - p[2] < 30 for p in pixels),
-        'mechanism': sum(max(p) < 90 and max(p) - min(p) < 20 for p in pixels),
+        # Graphite is faintly blue; the dark prototype mat it stands on is
+        # neutral grey (ADR-444), so a neutral pixel is floor, not mechanism.
+        'mechanism': sum(max(p) < 90 and max(p) - min(p) < 20 and p[2] - p[0] >= 3 for p in pixels),
         'accent': sum(p[0] > 170 and p[1] < 150 and p[2] < 100 for p in pixels),
     }
 
@@ -228,11 +230,13 @@ def test_hero_is_a_low_three_quarter_studio_shot(tmp_path):
     assert view == 'hero' and size == render.LOOK_SIZE
     assert details['samples_per_pixel'] == render.SUPERSAMPLE ** 2 == 4
     assert details['contact_shadow'] is True
-    # A seamless backdrop: down the left edge, darker at the top, lighter at
-    # the bottom, and no step between neighbouring rows (no horizon line).
-    edge = [row[0] for row in rows]
-    assert edge[0] < edge[-1]
-    assert max(abs(a - b) for a, b in zip(edge, edge[1:])) <= 2
+    # The dark prototype mat (ADR-444): the floor is the viewport's tiles and
+    # grid, fading into its scene background, and never a light backdrop.
+    from cadex_cli import scene
+    assert details['floor']['kind'] == 'prototype mat'
+    edge = [row[0:3] for row in rows]
+    assert all(max(p) <= max(scene.PALETTE['line']) and max(p) == min(p) for p in edge)
+    assert {tuple(p) for p in edge} & {scene.PALETTE['tile_a'], scene.PALETTE['tile_b']}
 
 
 def test_contact_shadow_darkens_the_floor_under_the_design_only(tmp_path):
@@ -244,7 +248,9 @@ def test_contact_shadow_darkens_the_floor_under_the_design_only(tmp_path):
     lit, details = render.studio(prepared, render.HERO, bounds=bounds, size=96, shadow=render._contact_shadow(prepared))
     bare, _ = render.studio(prepared, render.HERO, bounds=bounds, size=96)
     darker = [a - b for a, b in zip(bare, lit)]
-    assert details['contact_shadow'] and max(darker) > 30 and min(darker) >= 0
+    # On the dark mat a tile has ~30 levels to lose; the shadow takes over half.
+    floor = [i for i in range(len(bare)) if bare[i] <= 60 and lit[i] < bare[i]]
+    assert details['contact_shadow'] and min(lit[i] / bare[i] for i in floor) < 0.65 and min(darker) >= 0
     assert lit[:3 * 96] == bare[:3 * 96]  # the top row, far from the floor, is untouched
     # ...and a camera level with the floor cannot see a shadow on it.
     front = render.studio(prepared, render.BASES['front'], bounds=render._frame(prepared, render.BASES['front'], .1),
@@ -252,8 +258,10 @@ def test_contact_shadow_darkens_the_floor_under_the_design_only(tmp_path):
     assert front['contact_shadow'] is False
 
 
-def test_supersampling_antialiases_edges():
+def test_supersampling_antialiases_edges(monkeypatch):
     """One subsample per pixel gives each row two colours; four give the edge its blend."""
+    # On a plain background, so the mat's own grid is not counted as an edge.
+    monkeypatch.setattr(render, '_floor', lambda *args: (lambda ox, oy, dark: (20, 20, 20)))
     tri = render._prepare([(((233, 230, 223), render.FINISH['shell']), [((0, 0, 0), (10, 3, 0), (4, 10, 0))])])
     bounds = ([-1, -1], [11, 11])
     def most_colours_in_a_row(samples):
@@ -354,7 +362,7 @@ def test_render_draws_the_declared_role_in_the_declared_palette(tmp_path, monkey
     _, rows = _pixels((path.parent / 'hero.png').read_bytes())
     pixels = [tuple(row[i:i + 3]) for row in rows for i in range(0, len(row), 3)]
     assert sum(_teal(p) for p in pixels) > 1000
-    assert sum(max(p) < 90 and max(p) - min(p) < 20 for p in pixels) < 50  # no graphite pin
+    assert sum(max(p) < 90 and max(p) - min(p) < 20 and p[2] - p[0] >= 3 for p in pixels) < 50  # no graphite pin
 
 
 def test_bridge_look_draws_and_reports_the_declared_roles(tmp_path):

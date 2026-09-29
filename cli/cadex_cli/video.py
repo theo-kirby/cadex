@@ -31,7 +31,7 @@ import tempfile
 import time
 
 from . import render as studio_render
-from . import sheet
+from . import scene, sheet
 from .browser import HeadlessBrowser, find_browser
 from .review_server import serve, STATIC_DIR
 from .review_record import read_run_record, resolve_reference
@@ -544,7 +544,8 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
 def studio_digest():
     """Identity of the code that determines a studio video's pixels."""
     h = hashlib.sha256()
-    for path in (Path(studio_render.__file__), Path(sheet.__file__), Path(__file__)):
+    for path in (Path(studio_render.__file__), Path(sheet.__file__), Path(__file__),
+                 Path(scene.__file__), *scene.SOURCES):
         h.update(path.name.encode())
         h.update(path.read_bytes())
     return h.hexdigest()

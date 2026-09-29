@@ -1,6 +1,6 @@
 # REVIEW-DESIGN.md — The review dashboard as one designed page
 
-Verified against source: 2026-09-28. [Cadex-new]
+Verified against source: 2026-09-29. [Cadex-new]
 
 This is the design specification for the page `cadex review` serves
 (`cli/cadex_cli/review_static/`, ADR-286) and for the operator dashboard that
@@ -562,8 +562,9 @@ Under the ot10 charter (A6) a project is presented before it is inspected.
 the left and, on the right, the project's name, its revision, three key
 numbers (mass, servo count, size), a swatch per appearance role, the
 `front`, `right` and `top` views as line drawings, and A1's proxies. It is
-a light sheet — paper `#F6F5F1`, ink `#2B2F36` — because it is a printed
-artefact, the thing a person sends, not part of the dark chrome.
+drawn on the dark scene (ADR-444, §16): paper is the viewport's `#141414`,
+ink the page's `--ink`, labels `--ink-2` and rules `--rule`, and the hero on
+its left stands on the prototype mat. It was a light sheet until ot10 A8.
 
 **Where it sits.** The stage's first tab is **Concept**. When
 `/api/project` carries `presentation.available`, the stage opens on it once,
@@ -591,15 +592,15 @@ identity, numbers and routes.
 
 Under ot10's W1, a run's video is drawn by default in the design's studio
 look (`python -m cadex_cli.video --project P --run R`, `--style studio`).
-It uses the hero view and the design's own materials, on the light seamless
-backdrop with a contact shadow, and has a timer at the bottom left. It is
+It uses the hero view and the design's own materials, on the dark prototype
+mat (§16) with a contact shadow, and has a timer at the bottom left. It is
 drawn on the CPU with no browser. The Videos tab (region 5) plays it
 exactly as it plays a scene-style clip. The identity strip names the style
 (`studio`, or the scene's `cadex-prototype-dark-v1`), so a reader can tell
 the two apart. The dark viewport and its capture (§10) are unchanged, and
-`--style scene` still records in them. A studio clip is a light image inside
-the dark chrome, like the concept sheet (§14), because it is the design
-presented rather than the workbench.
+`--style scene` still records in them. Since ADR-444 a studio clip stands on
+the same floor as the viewport, so its grid is anchored at the world origin
+and the robot's stride and any foot slip read against it.
 
 A studio clip stands on the design's floor (ADR-432). When the render
 summary names an environment, that environment is not drawn, and the shadow
@@ -611,6 +612,47 @@ within a triangle budget, and says how many it read and drew.
 **Held by** `test_dashboard_serves_the_studio_video_it_lists` (listed with
 its style, served byte for byte as `video/webm`) and the studio tests
 beside it in `cli/tests/test_video.py`.
+
+## 16. One scene for every image (ADR-444)
+
+Under ot10's A8, every image Cadex presents is drawn in the viewport's dark
+scene: the studio hero, the four review views, `look`, the concept sheet
+(§14) and the studio video (§15). The floor is the prototype mat §10 draws —
+`PALETTE.scene.bg` `#141414`, tiles `#1c1c1c` / `#232323` and the `#3a3a3a`
+major line — and the sheet's chrome is this page's `--ink`, `--ink-2` and
+`--rule`.
+
+**One source.** `cli/cadex_cli/scene.py` reads those colours out of
+`review_static/environment.js` (`PALETTE`) and `review_static/review.css`
+(`:root`) — the files this page loads — so no image module carries a scene
+colour of its own. Change the viewport and the images follow it; a
+`PALETTE` block that cannot be read refuses the import.
+
+**The floor.** The CPU renderer (`render._floor`) intersects each
+orthographic ray with the floor plane: a checker one pitch square, the
+major line on every multiple of the pitch anchored at the world origin, the
+pitch chosen by `floor.js`'s own `chooseGridPitch` ladder for the framed
+span, and each line's pixel coverage computed from the floor footprint of
+the pixel, which antialiases it. The mat fades into the background between
+0.75× and 1.9× the framed extent from the point under the image centre. A
+level view (`front`, `right`) sees no floor and draws the background. No
+minor lines and no baked labels: at a hero's framing they are noise.
+
+**The shadow** is the measured contact shadow (§15, ADR-432), deepened for a
+dark floor — it may take a tile to 20 % of its brightness (was 45 %). On
+`ot10-quadruped-3`'s hero the tiles at its feet fall from 28–35 to 6.
+
+**Not changed.** The judge: A1's frozen procedure keeps its rubric, and no
+probe is re-scored (ADR-444). The viewport and its capture (§10) are the
+source, not a consumer, and are unchanged.
+
+**Held by** `cli/tests/test_scene_palette.py` (the renderer's palette is the
+viewport's, parsed independently, and the charter's values; the ladder and
+line width are `floor.js`'s; no image module carries a scene colour; the
+hero stands on the mat and fades; a changed viewport palette changes the
+drawn image; the studio video's identity covers the palette source), with
+the shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`.
+Before/after: `docs/probes/ot10/a8-*.png`.
 
 ## Operator run status (ADR-387)
 

@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-28. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-29. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -1907,8 +1907,13 @@ new dependency. A depth pass keeps the nearest triangle per subsample at
 filter down to the image size antialiases edges. Shading is a key, a fill
 and a rim light with a Blinn highlight per role finish, on normals smoothed
 across each object's shared vertices except over a 40° crease, so a fillet
-reads as a curve and a box keeps its edges. Behind the design is a seamless
-vertical gradient with no horizon. A **contact shadow** is measured from the
+reads as a curve and a box keeps its edges. The design stands on the review
+viewport's **dark prototype mat** (ADR-444, `docs/REVIEW-DESIGN.md` §16):
+the colours are read by `cadex_cli/scene.py` from the viewport's own
+`environment.js` and `review.css`, the grid pitch is the viewport's for the
+framed span, anchored at the world origin and antialiased, and the mat fades
+into the `#141414` background with distance; a level view draws the
+background alone. A **contact shadow** is measured from the
 geometry: a top-down map of how high the lowest surface over each cell sits
 above the lowest point of the design, turned into a tight contact term and a
 wide soft term, each blurred, and applied to the floor wherever the camera is
