@@ -11,6 +11,8 @@ Status: open
 
 ## Current
 
+**Housed parts carry their own bay (ADR-442, commit `422a4ac6`) [rec: clever-path-5078].** `lib.battery` and `lib.board` parts expose `.bay(clearance, lead_room[, underside])`: a keep-out box of the part's extents plus clearance and lead room, placed with the part and never catalogued. Measured read-only on `ot10-quadruped-4`, every housed part's hand-cut bay is intruded — the battery at 0.4 mm clearance (2,884 mm³), boards flat on the deck (2,044–5,059 mm³ each).
+
 **A robot's missing electronics are catalogued (ADR-407, commit `bdda55cb`) [rec: smooth-heron-8904].** A new `batteries` family serves `lib.battery("gensace-gea2s100045d")` (2S 1000 mAh LiPo, 72 × 36 × 13 mm, 64 g, density from stated mass over envelope), and two `lib.board` rows add the Adafruit 4754 BNO085 IMU and the Pololu 4092 D36V50F6 6 V regulator, each manufacturer-sourced with approximations listed. The motivation: hex2 had twelve servos and nothing to drive, power or sense them [rec: polished-path-3774].
 
 Catalogued hardware is available as the **lib script namespace** over `CadexCatalog`, composed as parametric BREP values with source-qualified mounting interfaces and deliberately simple cosmetics (ADR-181, Phase 17) [rec: twilight-lake-8164].
@@ -95,3 +97,4 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - fierce-falcon-2378 — ADR-373: the `clearances=` declaration for a catalog running fit reaches the agent's instructions; no catalog row moved and no retained design was re-declared
 - winter-creek-7660 — ot8's arm places both servos and both horns as unmodified catalog parts from the same frozen prompt that left ot7's four hand-modelled
 - smooth-heron-8904 — ADR-407: batteries family, BNO085 and D36V50F6 rows
+- clever-path-5078 — ADR-442: `.bay()` on lib.battery/lib.board; every hand-cut bay on ot10-quadruped-4 measured intruded

@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+*The overlay teaches bays from the part (ADR-442) [rec: clever-path-5078].* The ENCLOSE rule and the complete-machine paragraph tell the agent to cut a board's or battery's bay with its `.bay()`, never to its `.body`. No A5 turn has used it yet.
+
 **The CLI agent's overlay changed three ways after hex2 [rec: polished-path-3774].** It no longer says the agent cannot see, and adds a six-rule design language for printed parts and a look-critique-fix loop before done (ADR-406) [rec: light-hill-1224]; it requires a self-moving design to carry controller, servo driver, IMU and battery-through-regulator or say why not (ADR-407) [rec: smooth-heron-8904]; and it tells the agent to ground what the policy reads with `api.sensor` and `role=` (ADR-408) [rec: nimble-meadow-6874]. `BRIDGE_TOOLS` (`look`) is a second tool list beside `CLI_TOOL_OPS`, outside the protocol surface; `cadex train`/`walk` gain `--allow-ungrounded`.
 
 *The overlay's design rules were sharpened after hexapod attempt 7 (ADR-428) [rec: lawful-basin-3006].* TAPER TO A FOOT now requires taper in depth, not only in plan, and SHELLS HIDE THE HARDWARE names servo-shaped printed cradles as hardware to cover or round; a regression in `test_turn_loop.py` pins both. Unmeasured on a design until hexapod attempt 8.
@@ -314,3 +316,4 @@ Walk sections share the named-view snapshot, retain explicit outcomes and rollou
 - hidden-tooth-3627 — ADR-430 concept sheet in `cadex render` and the review's presentation block
 - golden-falcon-9792 — ADR-431 studio-style rollout video in `cadex_cli.video`
 - sharp-tide-2612 — ADR-435: the model's build reply bounded — outputs summarised, fit/inventory worst first at 12 rows, unswept joints only; ~86 KB → ~12 KB on ot10-biped-3
+- clever-path-5078 — ADR-442: overlay's ENCLOSE rule cuts bays with `.bay()`, not `.body`; unmeasured on a turn

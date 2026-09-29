@@ -67,6 +67,8 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 
 - ADR-436/437/438: CPU-limit refusals name their costly stages; the static fit skips needless `common`, searches housing faces best first and cuts touching pairs to their shared region — hexapod-10's refused build static fit 1,143 → 600 CPU-s, rows identical (details in `forest-wind-0342`) [rec: mellow-light-0451] [rec: flat-tower-6825] [rec: scarlet-crane-7693].
 
+- ADR-441 (`f95b1595`, long-term rung 2): the hip_pitch gap hex left open was an engine defect — MJCF export verification refused values below MuJoCo's writer zero; hex2's `hip_pitch = 48/52` now accepts. No A5 turn was run and nothing re-scored (details in `salty-isle-4063`) [rec: honest-stream-0109].
+
 ### Still open
 - `docs/probes/ot10/REPORT.md` lists every counted A5 turn and states the verdict plainly: **not met by its letter — eighteen counted turns, eleven misses, seven that meet the bar**. The loop does not accept it; whether to accept it is the owner's call [rec: morning-tooth-4242] [rec: rich-path-1948].
 - CPU-limit refusals remain the largest refusal class (44 of 213 measured; hexapod-8: 3 of 20; hexapod-10: 6 of 15) [rec: shady-ember-3607] [rec: fierce-vale-7652] [rec: mellow-light-0451]. Diagnosed on hexapod-10's refused 12:40 build: geometry took 119 CPU-s and the static fit the rest. ADR-436/437/438 (details in `forest-wind-0342`) name the costly stages in the refusal and cut the static fit's housing and touching-pair cost; the build now passes every tub pair and tub/visor and dies at 292 CPU-s in dome/pca9685, with geometry (tub 73 s) and deck/dome 25 s the named remainder. The first real turn since, hexapod-12, had **0 CPU-limit refusals of 8** against hexapod-10's 6 of 15 — one turn against one, a different design, so not a rate and no causal claim for ADR-436..438 [rec: mellow-light-0451] [rec: flat-tower-6825] [rec: scarlet-crane-7693] [rec: sweet-harvest-8650].
@@ -126,3 +128,4 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - smooth-ivy-2460 — ADR-440 overlay teaches the cap over the horn, sized from its spec; hexapod-13 pre-registered, not run
 - morning-tooth-4242 — ot10-hexapod-13 meets the bar at 15/21, swept 12/12, T3 2; 18 counted, 11 misses, 7 meet; hexapod retries stop
 - rich-path-1948 — C1 closing run: REPORT opens on 18 counted, 11 misses, 7 meeting; A5 unmet by its letter
+- honest-stream-0109 — long-term rung 2 started: hex's hip_pitch gap closed as an engine defect (ADR-441); no A5 turn run, nothing re-scored
