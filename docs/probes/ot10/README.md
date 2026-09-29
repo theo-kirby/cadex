@@ -1,6 +1,6 @@
 # ot10 — the design-quality contract
 
-Verified against source: 2026-09-28. [Cadex-new]
+Verified against source: 2026-09-29. [Cadex-new]
 
 **This is A1's frozen instrument.** Every ot10 design, including hex3's
 baseline, is measured with it: the rubric, the measurable proxies, the A5
@@ -2010,11 +2010,124 @@ overlay's joint cap goes over the horn and is sized from the horn's
 - **A harness kill is not an attempt.** A turn killed before it has an exit
   status is kept read-only as the receipt, and the plan gets a new project.
 
+## A5 attempt 13: the hexapod (`ot10-hexapod-13`)
+
+**Meets the bar: 15 of 21, against the frozen 14.** No trait scores 0.
+P1, P2 and P3 are within their bars. The static fit is clean, the swept
+fit is complete and passing on all 12 joints, and the design carries its
+electronics. It ran exactly as pre-registered above, at revision
+`deccf6d9`. The frozen hexapod prompt was read from `contract.json`
+`a5.prompts.hexapod`. It ran once on the new project `ot10-hexapod-13`,
+with no continuation, `claude-opus-5-5` and `CADEX_EFFORT=medium`. The
+process list at launch shows `--model claude-opus-5-5` and
+`--effort medium`, and the child's environment has `CADEX_EFFORT=medium`.
+Before launch, the installed `build/release/Mod/cadex` matched
+`src/Mod/cadex` file for file in its Python. Only `CMakeLists.txt`,
+`CadexGeometryWorker.cpp` and `cadex_tests` differ, and none of them is
+installed. It was launched detached (`setsid`) at 2026-09-29T04:06:53Z
+from `c245e539`, which differs from `deccf6d9` only in graph files. It ran
+on the dev-tree engine, which carries ADR-439 and ADR-440. The turn ended
+on its own at 04:38:21Z (31 min), exit 0 with `ok: true`, at accepted
+revision `59d8c5eb086d…` (digest `537a95dda09e…`). It was rendered and
+judged from a `/tmp` copy of the project, so the project itself is
+unchanged. It adds a seventh design that meets the bar. It re-scores
+nothing, and **the eleven misses stand**: A5 is still not met by its letter.
+
+| trait | T1 | T2 | T3 | T4 | T5 | T6 | T7 | **total** |
+|---|---|---|---|---|---|---|---|---|
+| hex3 baseline | 0 | 1 | 0 | 0 | 0 | 0 | 1 | **2** |
+| hexapod attempt 12, median | 2 | 2 | 1 | 1 | 2 | 2 | 2 | **12** |
+| hexapod attempt 13, call 1 | 2 | 3 | 2 | 1 | 2 | 2 | 2 | 14 |
+| hexapod attempt 13, call 2 | 2 | 3 | 2 | 2 | 2 | 2 | 2 | 15 |
+| hexapod attempt 13, call 3 | 2 | 3 | 2 | 2 | 2 | 2 | 2 | 15 |
+| hexapod attempt 13, median | 2 | 3 | 2 | 2 | 2 | 2 | 2 | **15** |
+
+Every raw reply is kept in
+[`ot10-hexapod-13-score.json`](ot10-hexapod-13-score.json), under the same
+rule as before: no product prompt may quote it.
+
+| bar item | measured | meets |
+|---|---|---|
+| judged total ≥ 14 | **15** | yes |
+| no trait 0 | lowest median is 2; lowest single score is 1 (T4, call 1) | yes |
+| above hex3 (2) | 15 | yes |
+| P1 ≤ 0.20 | **0.0031** (496 of 162,092 subsamples) | yes |
+| P2 ≤ 0.25 | **0.214** (7,346 of 34,326 mm, 22 printed components; `c_floor` left out under ADR-424) | yes |
+| P3 2 or 3 | **3** (`#2A2C30`, `#E9E3D5`, `#FF6A1A`), every component's role declared | yes |
+| static fit | 2,850 pairs: 2,844 clear, 0 intersections, 0 below clearance, 6 foot–floor contacts. One failing row, the floor's advisory world-geometry row. 62 fixed-joint pairs checked, all touching | yes |
+| swept fit | **complete and passing, 12 of 12 joints** at 10° steps, 0 failing pairs | yes |
+| electronics | ESP32, PCA9685, BNO085, D36V50F6, 2S LiPo, 12 × MG90S with double-arm horns, 24 × M2×8. A walking task was declared in the same turn; the policy stays behind `policy_on` 0 | yes |
+
+The candidate set, in the order the judge saw it:
+[`hero`](ot10-hexapod-13-hero.png),
+[`iso`](ot10-hexapod-13-look_iso.png),
+[`iso_back`](ot10-hexapod-13-look_iso_back.png),
+[`front`](ot10-hexapod-13-look_front.png),
+[`right`](ot10-hexapod-13-look_right.png) and
+[`top`](ot10-hexapod-13-look_top.png). The same `cadex render` wrote its
+concept sheet, [`ot10-hexapod-13-sheet.png`](ot10-hexapod-13-sheet.png)
+(214 KB): 0.60 kg, 12 servos, 227 × 255 × 80 mm. The whole command took
+7 min 49 s of wall time. Acquiring the tessellation took 224.9 s, and
+drawing took 12.1 s (3.2 s for the 1024 px hero). This is the first A5
+turn rendered under ADR-439. The grid was sized from the robot's 255 mm,
+with `c_floor` excluded, to a 0.498 mm cell, and it drew 231,405 of
+978,992 input triangles.
+
+**What the renders show.** A lobed cream tray carries an ellipsoid dome.
+The front half of the dome is dark and reads as a visor. Six dark hip
+caps sit on the tray, dark knee-servo blocks stand out from it, and cream
+discs cover the knees. Each slender cream tibia ends in an orange ball
+foot. The three calls agree on three points:
+- the palette is disciplined, and the one accent is kept to the feet (T2
+  is 3 in all three calls);
+- the knee-servo blocks read as bare boxes (T1 2, T4 1–2);
+- the stance is low, wide and sprawling (T6 2).
+
+**The two pre-registered measures.**
+- **T3's median is 2, against `ot10-hexapod-12`'s 1.** It is 2 in all
+  three calls. Every call says the axes have round caps concentric with
+  them. Every call also names the same inconsistency: the hip caps are
+  dark and the knee discs are cream, and "some discs look like horn
+  plates".
+- **The caps go over the horns.** The accepted script sets
+  `CAP_R = HORN_REACH + 1.6` with `HORN_REACH = 16.0`. It fuses a disc of
+  that radius (17.6 mm) into the coxa at the hip and into the tibia at
+  the knee. It then cuts each one with the horn's own `.body` and with a
+  `CAP_IN` = 15.8 mm pocket. 16.0 is the catalog's `arm_reach_mm` for the
+  `double_arm` horn this design uses, so the radius meets ADR-440's rule.
+  The script, however, writes the value as a literal and does not read it
+  from `.spec["arm_reach_mm"]`.
+
+This is one turn against one turn. It is not a rate, and it makes no
+causal claim for ADR-439 or ADR-440.
+
+**How the turn got there.** The agent's notes name a six-legged "beetle"
+first, and then probe the MG90S and horn specs before any geometry. The
+first full build was refused because a boolean's refinement produced an
+invalid shape. The agent resent the whole script with that fixed. An
+offset approach to the lobed outline was refused. The agent built the
+outline as a 2D face instead, rounded its concave corners with a 2D
+offset, extruded it and filleted it. Then it widened the visor and read
+all pairs still clear. **No write ran past the CPU limit**, and no worker
+crashed. The turn made 8 `write_script`, 8 `edit_script`, 23 `inspect`,
+3 `look`, 4 `describe_api` and 1 `set_params` calls.
+
+**A4's refusal classes in this transcript: none of the four recurred.**
+The turn had 10 refused calls:
+- 2 sandbox or source-policy refusals (`dir` is not defined; an import);
+- 3 kernel refusals: a fuse's refinement was invalid, a fuse produced a
+  compound of 6 solids, and an `api.offset` returned a null shape;
+- 3 `edit_script` replacements whose text occurred 0 times;
+- 2 `output_type` refusals, one each from `api.common` and
+  `api.offset2d`, and each names the value it needs.
+
+No JSON pointer was guessed.
+
 ## A4: the refusal census, every ot10 transcript
 
 **None of A4's four refusal classes recurred in any ot10 product-agent
-transcript: 0 of 221 refused calls across 19 transcripts.** That covers the
-six counted A5 designs, the eleven failed attempts, and the two aborted
+transcript: 0 of 231 refused calls across 20 transcripts.** That covers the
+seven counted A5 designs, the eleven failed attempts, and the two aborted
 turns that were not attempts. The count is mechanical.
 [`runner/refusals.py`](runner/refusals.py) reads each session transcript
 (local to this machine, never committed), takes every tool result marked
@@ -2039,6 +2152,7 @@ emits today, for all four classes.
 | `ot10-quadruped-3` | counted | 0 | 0 | 0 | 0 | 10 | 0 | 2 | 3 | 2 | 3 |
 | `ot10-quadruped-4` | counted | 0 | 0 | 0 | 0 | 6 | 0 | 1 | 1 | 2 | 2 |
 | `ot10-biped-3` | counted | 0 | 0 | 0 | 0 | 5 | 0 | 2 | 1 | 1 | 1 |
+| `ot10-hexapod-13` | counted | 0 | 0 | 0 | 0 | 10 | 0 | 2 | 3 | 0 | 5 |
 | `ot10-hexapod-1` | failed attempt | 0 | 0 | 0 | 0 | 33 | 19 | 2 | 5 | 1 | 6 |
 | `ot10-hexapod-2` | failed attempt | 0 | 0 | 0 | 0 | 10 | 3 | 2 | 0 | 2 | 3 |
 | `ot10-hexapod-3` | failed attempt | 0 | 0 | 0 | 0 | 20 | 4 | 2 | 7 | 2 | 5 |
@@ -2052,18 +2166,19 @@ emits today, for all four classes.
 | `ot10-hexapod-12` | failed attempt | 0 | 0 | 0 | 0 | 8 | 0 | 2 | 1 | 3 | 2 |
 | `ot10-hexapod-9` | not an attempt | 0 | 0 | 0 | 0 | 4 | 0 | 2 | 0 | 2 | 0 |
 | `ot10-quadruped-1` | not an attempt | 0 | 0 | 0 | 0 | 2 | 0 | 2 | 0 | 0 | 0 |
-| **all** | 19 transcripts | **0** | **0** | **0** | **0** | 221 | 44 | 39 | 34 | 31 | 73 |
+| **all** | 20 transcripts | **0** | **0** | **0** | **0** | 231 | 44 | 41 | 37 | 31 | 78 |
 
-"Rest" is the 73 refusals outside those eight columns. They are: 16
-`Cannot retire` refusals of an output that a component still linked, 12
+"Rest" is the 78 refusals outside those eight columns. They are: 16
+`Cannot retire` refusals of an output that a component still linked, 15
 `edit_script` replacements that did not match, 11 reset-variation refusals
-that named the lift, 3 `PROJECT_OUTPUTS_DROPPED` guards, and 31 others. The
-31 are single-cause API, MJCF, publication and worker refusals, plus two
+that named the lift, 3 `PROJECT_OUTPUTS_DROPPED` guards, and 33 others. The
+33 are single-cause API, MJCF, publication and worker refusals, plus two
 calls to a tool name that does not exist. Three of them are worker crashes
 in `ot10-hexapod-11`, and three are the publication refusals that ended
 `ot10-biped-2`, and one is an `inspect` of a missing object in
-`ot10-hexapod-12`. After the CPU limit (44), the
-recurring costs are sandbox refusals (39: `dir`, `getattr`, `hasattr`,
+`ot10-hexapod-12`, and two are `output_type` refusals in
+`ot10-hexapod-13`. After the CPU limit (44), the
+recurring costs are sandbox refusals (41: `dir`, `getattr`, `hasattr`,
 `type`, undefined names, imports, private attributes) and guessed JSON
 pointers (31). Each one costs
 turns. None is one of the four classes A4 closed.

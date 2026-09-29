@@ -72,7 +72,7 @@ def _gate(section, label):
 def test_every_scored_design_has_one_row_and_nothing_else_does():
     scored = {p.name.removesuffix("-score.json") for p in OT10.glob("ot10-*-score.json")}
     assert set(ROWS) == scored | {"hex3"}
-    assert len(scored) == 17
+    assert len(scored) == 18
 
 
 def test_each_rows_scores_equal_its_score_file():
@@ -129,14 +129,14 @@ def test_each_verdict_follows_from_the_frozen_bar():
             assert row["status"] == "counted", project
     counted = {p for p, r in ROWS.items() if r["status"] == "counted"}
     assert counted == {"ot10-biped-1", "ot10-quadruped-3", "ot10-hexapod-10", "ot10-hexapod-11",
-                       "ot10-quadruped-4", "ot10-biped-3"}
+                       "ot10-quadruped-4", "ot10-biped-3", "ot10-hexapod-13"}
 
 
 def test_the_report_names_the_census_and_the_walk_verdicts():
     census = json.loads((OT10 / "refusals.json").read_text(encoding="utf-8"))
-    assert "0 of 221 refused calls" in REPORT and "all 19 ot10 transcripts" in REPORT
-    assert len(census["projects"]) == 19
-    assert sum(p["refused"] for p in census["projects"].values()) == 221
+    assert "0 of 231 refused calls" in REPORT and "all 20 ot10 transcripts" in REPORT
+    assert len(census["projects"]) == 20
+    assert sum(p["refused"] for p in census["projects"].values()) == 231
     assert "| `w2-1` | cold |" in REPORT and "`walked = false` |" in REPORT
     assert "**`walked = true`** |" in REPORT
     assert "`w2-2` | `84ff4c98adabb6e5` | `7a4e8c233214341e`" in README

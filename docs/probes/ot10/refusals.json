@@ -429,6 +429,78 @@
         }
       ]
     },
+    "ot10-hexapod-13": {
+      "status": "counted",
+      "transcript_sha256": "67944d7c2f516d15650a04bb3128c22b369a22db0d69f855d7acd72ccd04298f",
+      "refused": 10,
+      "counts": {
+        "horn_style": 0,
+        "edit_before_script": 0,
+        "assembly_output_count": 0,
+        "joint_listing": 0,
+        "cpu_limit": 0,
+        "sandbox": 2,
+        "kernel": 3,
+        "json_pointer": 0,
+        "edit_replacement": 3,
+        "outputs_dropped": 0,
+        "retire_linked_output": 0,
+        "reset_variation": 0,
+        "other": 2
+      },
+      "calls": [
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "name 'dir' is not defined"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "INVALID_PROGRAM_SOURCE",
+          "error": "XScript source policy violation: line 1: imports are not allowed"
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: the boolean succeeded and refining its result produced an invalid shape"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "write_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.fuse: declared solid but OpenCascade produced Compound containing 6 solids"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.offset: OpenCascade rejected the requested operation: ValueError: Null shape"
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.common: invalid output_type: is required when input topology types differ or are non-publishable edges."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "REPLACEMENT_NOT_UNIQUE",
+          "error": "replacements[0].old must occur exactly once; found 0."
+        },
+        {
+          "tool": "edit_script",
+          "failure_code": "DOMAIN_CANDIDATE_FAILED",
+          "error": "api.offset2d: invalid output_type: must be 'wire' for the supplied topology and options. Received 'face'."
+        }
+      ]
+    },
     "ot10-hexapod-1": {
       "status": "failed_attempt",
       "transcript_sha256": "7d2dce34be7cf29fa8eb7409f322dd085c87d9a066f58c27f18f5499d884fdb7",

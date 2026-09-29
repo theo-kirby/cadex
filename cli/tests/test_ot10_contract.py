@@ -533,6 +533,35 @@ def test_a5_hexapod_turn_13_is_pre_registered_after_the_horn_cap_change():
     assert not (OT10 / "ot10-hexapod-13-score.json").exists() or "## A5 attempt 13" in README
 
 
+def test_a5_hexapod_attempt_13_is_pre_registered_and_meets_the_bar():
+    # The one turn on the ADR-439/440 engine: it meets the bar, adds a counted
+    # design, and the eleven misses stand. T3 is measured against hexapod-12's 1.
+    score = json.loads((OT10 / "ot10-hexapod-13-score.json").read_text(encoding="utf-8"))
+    assert score["rubric_sha256"] == RUBRIC_SHA256 and score["model"] == "claude-opus-5-5"
+    assert score["total"] == sum(score["medians"].values()) == 15
+    assert len([r for r in score["raw"] if "scores" in r]) == 3
+    files = ["ot10-hexapod-13-hero.png"] + [
+        f"ot10-hexapod-13-look_{view}.png" for view in ("iso", "iso_back", "front", "right", "top")]
+    for candidate, name in zip(score["candidates"], files, strict=True):
+        path = OT10 / name
+        assert path.stat().st_size <= 300 * 1024
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == candidate["sha256"]
+    assert (OT10 / "ot10-hexapod-13-sheet.png").stat().st_size <= 300 * 1024
+    assert score["total"] >= CONTRACT["bar"]["total_min"]
+    assert min(score["medians"].values()) >= CONTRACT["bar"]["trait_min"]
+    twelve = json.loads((OT10 / "ot10-hexapod-12-score.json").read_text(encoding="utf-8"))
+    assert (twelve["medians"]["T3"], score["medians"]["T3"]) == (1, 2)
+    assert "| hexapod attempt 13, median | 2 | 3 | 2 | 2 | 2 | 2 | 2 | **15** |" in README
+    heading = "## A5 attempt 13: the hexapod (`ot10-hexapod-13`)"
+    assert README.index("## A5 hexapod turn 13, pre-registered") < README.index(heading)
+    section = README.partition(heading)[2].partition("\n## ")[0]
+    assert section.startswith("\n\n**Meets the bar: 15 of 21")
+    assert "at revision\n`deccf6d9`" in section and "**the eleven misses stand**" in section
+    assert "`CAP_R = HORN_REACH + 1.6`" in section
+    census = json.loads((OT10 / "refusals.json").read_text(encoding="utf-8"))
+    assert census["projects"]["ot10-hexapod-13"]["counts"]["cpu_limit"] == 0
+
+
 # -- A4: the refusal census --------------------------------------------------
 
 _rspec = importlib.util.spec_from_file_location("ot10_refusals", OT10 / "runner/refusals.py")
@@ -548,6 +577,7 @@ REFUSED = {
     "ot10-quadruped-3": ("counted", 10, 0),
     "ot10-quadruped-4": ("counted", 6, 0),
     "ot10-biped-3": ("counted", 5, 0),
+    "ot10-hexapod-13": ("counted", 10, 0),
     "ot10-hexapod-1": ("failed_attempt", 33, 19),
     "ot10-hexapod-2": ("failed_attempt", 10, 3),
     "ot10-hexapod-3": ("failed_attempt", 20, 4),
@@ -613,13 +643,14 @@ def test_the_refusal_census_is_pinned_and_rederives_from_its_file():
     # The three designs the A5 criterion counts are all in the census.
     counted = sorted(n for n, p in projects.items() if p["status"] == "counted")
     assert counted == ["ot10-biped-1", "ot10-biped-3", "ot10-hexapod-10", "ot10-hexapod-11",
+                       "ot10-hexapod-13",
                        "ot10-quadruped-3", "ot10-quadruped-4"]
     assert "/home/" not in (OT10 / "refusals.json").read_text(encoding="utf-8")
 
 
 def test_the_census_table_is_published_equal_to_its_file():
     assert refusals.table(CENSUS) in README
-    assert ("| **all** | 19 transcripts | **0** | **0** | **0** | **0** | 221 |"
+    assert ("| **all** | 20 transcripts | **0** | **0** | **0** | **0** | 231 |"
             in README)
 
 
