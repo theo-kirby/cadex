@@ -394,3 +394,14 @@ files, so it was not rebuilt, and the gate ran against it:
 The skip counts are the same as above, and so are their causes. This
 report claims done for review with A5 **not met**: 7 of 18 counted turns
 meet the bar and 11 miss. It ticks no box.
+
+**Reconcile before done (2026-09-29).** C1 says to reconcile, then claim
+done. At this revision `hypergraph check` exits 0 with 0 violations and
+0 warnings. Two records are still unfolded: `morning-tooth-4242` (hexapod
+13) and `rich-path-1948` (the closing run above). Their impacts are pending
+on `loyal-fountain-8709` and `southern-prairie-3683`. When they are folded,
+`loyal-fountain-8709` must read 18 counted turns: 7 meet the bar and 11
+miss. A work iteration is not allowed to fold them, so a housekeeping pass
+has to do it. Until then, the done claim stands for review on the
+evidence above, with A5 **not met**. No further A5 turn will run, because
+none can change a criterion that has already failed.
