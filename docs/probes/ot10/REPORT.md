@@ -212,7 +212,7 @@ across all 18 ot10 transcripts. The count is mechanical, and
 
 ## Remaining defects
 
-Each of these is measured. Only the first has had an engine change since
+Each of these is measured. Only the first has had engine changes since
 the report was written, and none is closed.
 
 1. **The worker's CPU limit is the largest cost left.** It accounts for
@@ -221,9 +221,13 @@ the report was written, and none is closed.
    hexapod-10's first refused build. Geometry took 119 CPU-s, and the static
    fit spent the rest: `common` on two lofted shells 2.4 mm apart ran past
    137 CPU-s. The fit now skips `common` on a pair measured apart, and a
-   CPU refusal names its stage and costliest stages. That build is still
-   over the limit, because the tub's box encloses every part it houses. No
-   probe has run since.
+   CPU refusal names its stage and costliest stages. ADR-437 then made the
+   static fit search a housing's faces best first against the part's box.
+   On that build's shapes the static fit fell from 1,143 to 702 CPU-s
+   (tub/pca9685 from 157 to 1.3), and on the accepted build from 120 to
+   112. No row changed. The build is still over the limit: geometry takes
+   about 115 CPU-s, and touching pairs still need `common` (tub/visor
+   53.7 CPU-s). No probe has run since.
 2. **Sandbox refusals**: 37. The agent reaches for `dir`, `getattr`,
    `hasattr`, `type`, undefined names, imports and private attributes, and each refusal costs a
    turn.

@@ -1636,6 +1636,20 @@ reads 0.0 without the boolean. On `ot10-hexapod-10` the tub and the dome sat
 without answering. Rebuilt with this rule, the accepted `ot10-hexapod-10`
 reproduces all 1,326 of its static rows exactly.
 
+**A housing's faces are searched best first** (ADR-437). A hollow shell (a
+tub, a dome) has faces whose boxes overlap the parts it houses, and no box
+culls them, so the whole-shell distance met every such face against every
+face of the part. When the part with the smaller box has more than six faces,
+the static fit searches the other side's faces in order of a lower bound: first
+the gap between the face's exact box and the part's, then the face's distance to
+the part's box as a solid. A face is measured only while its bound is below
+the least distance found. The answer is the same number: over the
+2,850 static pairs of hexapod-10's refused build and the 1,326 of its accepted
+one, every row is identical to the last digit. Shells measured exactly 0.0 apart are not
+re-measured on the solids, which contain them. The swept fit is unchanged: it
+measures each pair at every sample on freshly placed shapes, where the bounds
+cost more than they save.
+
 A pair joined by an **unsuppressed `fixed` joint is not an undeclared pair**
 (ADR-372) and is exempt from that 0.1 mm: welding two components is the design
 declaring them one rigid body, so meeting face to face is what the declaration
@@ -1763,7 +1777,7 @@ An exact swept distance is measured between the two parts' boundary shells
 when no solid of either can lie inside the other, which is the same number
 at a fraction of the cost (ADR-425). The solids are measured instead when a
 vertex of one lies on or inside the other, or the shells come within
-0.001 mm.
+0.001 mm; shells exactly 0.0 apart are not re-measured (ADR-437).
 
 A limited joint whose kind's step is undeclared (a slider under
 `sweep_step_degrees` alone, or a hinge under `sweep_step_mm` alone) is

@@ -5728,6 +5728,7 @@ def _measure_clearance(
     floors = floors or {}
     shapes: dict[str, Any] = {}
     boxes: dict[str, Any] = {}
+    face_boxes: dict[int, Any] = {}
 
     def world(name):
         if name not in shapes:
@@ -5767,7 +5768,9 @@ def _measure_clearance(
                 # refusal names the pairs that spent it (ADR-436).
                 _cpu_stage(f"static fit {first} / {second}")
                 # The shells measure the solids' distance, faster (ADR-425).
-                distance = (float(_boundary_distance(a, b)) if a.Solids and b.Solids
+                # A housing is culled face by face against its part's box (ADR-437).
+                distance = (float(_boundary_distance(a, b, (box(first), box(second)), face_boxes))
+                            if a.Solids and b.Solids
                             else float(a.distToShape(b)[0]))
                 if not math.isfinite(distance) or distance < 0:
                     raise ValueError("Invalid minimum distance")
@@ -5908,7 +5911,7 @@ _SWEEP_KINDS = {
 _SHELL_DISTANCE_RECHECK_MM = 1e-3
 
 
-def _boundary_distance(first, second):
+def _boundary_distance(first, second, boxes=None, face_boxes=None):
     """The minimum distance between two solid shapes, on their shells when that is exact.
 
     ``distToShape`` was 25 of a hip child's 28 s on ``ot10-hexapod-5``
@@ -5918,7 +5921,8 @@ def _boundary_distance(first, second):
     distance between the two boundaries. So each solid of each side must
     show one vertex strictly outside the other shape; otherwise, or when
     the boundaries come within :data:`_SHELL_DISTANCE_RECHECK_MM`, the solids
-    are measured as before.
+    are measured as before. ``boxes`` and ``face_boxes`` let the static fit
+    cull a housing's faces (:func:`_shell_distance`).
     """
 
     import Part
@@ -5926,8 +5930,76 @@ def _boundary_distance(first, second):
         for solid in inner.Solids:
             if not solid.Vertexes or outer.isInside(solid.Vertexes[0].Point, 1e-7, True):
                 return float(first.distToShape(second)[0])
-    distance = float(Part.Compound(first.Shells).distToShape(Part.Compound(second.Shells))[0])
-    return distance if distance > _SHELL_DISTANCE_RECHECK_MM else float(first.distToShape(second)[0])
+    distance = _shell_distance(first, second, boxes, face_boxes)
+    # The solids contain their shells, so shells that touch prove the solids
+    # touch: 0.0 is not re-measured (ADR-437).
+    if distance == 0.0 or distance > _SHELL_DISTANCE_RECHECK_MM:
+        return distance
+    return float(first.distToShape(second)[0])
+
+
+def _shell_distance(first, second, boxes=None, face_boxes=None):
+    """The distance between two solids' shells, a housing's faces culled against a box (ADR-437).
+
+    A hollow shell -- a tub, a dome -- has faces whose boxes overlap the
+    parts it houses, and ``distToShape`` can cull no pair of faces on their
+    boxes there: it meets each such face against every face of the part. On
+    ``ot10-hexapod-10`` three tub faces 28-30 mm from a board spent 111 of
+    the 117 CPU-seconds that pair cost, while the board's nearest tub face
+    is 12.4 mm away. So when the side with the smaller box has more faces
+    than a box, the other side's faces are searched best first. Each face
+    has two lower bounds on its distance to the smaller side: the gap
+    between its exact box and that side's, which is free, and its distance
+    to that side's box as a solid, which holds that side. The face with the
+    least bound is refined to the second bound if it has not been, and
+    measured if it has; the search ends when the least bound is not below
+    the least distance measured, which is then the shells' distance.
+
+    Only the static fit passes ``boxes`` (the two exact boxes) and
+    ``face_boxes`` (a cache of each shape's face boxes, by ``id``): it
+    measures each pair once, and holds its shapes for the whole fit. The
+    swept fit measures every pair at every sample on freshly placed shapes,
+    where the bounds cost more than they save, so it measures whole.
+    """
+
+    import heapq
+    import Part
+    shapes = (first, second)
+    whole = (Part.Compound(first.Shells), Part.Compound(second.Shells))
+    if boxes is None or face_boxes is None:
+        return float(whole[0].distToShape(whole[1])[0])
+    outer = 0 if boxes[0].XLength * boxes[0].YLength * boxes[0].ZLength >= (
+        boxes[1].XLength * boxes[1].YLength * boxes[1].ZLength) else 1
+    inner = 1 - outer
+    box = boxes[inner]
+    if len(shapes[inner].Faces) <= 6 or min(box.XLength, box.YLength, box.ZLength) <= 0:
+        return float(whole[0].distToShape(whole[1])[0])
+    faces = shapes[outer].Faces
+    if id(shapes[outer]) not in face_boxes:
+        face_boxes[id(shapes[outer])] = [face.optimalBoundingBox(False, True) for face in faces]
+    import FreeCAD as App
+    bound = Part.makeBox(box.XLength, box.YLength, box.ZLength, App.Vector(box.XMin, box.YMin, box.ZMin))
+    queue = [(_box_gap(face_box, box), index, False)
+             for index, face_box in enumerate(face_boxes[id(shapes[outer])])]
+    heapq.heapify(queue)
+    best = math.inf
+    while queue and queue[0][0] < best:
+        lower, index, refined = heapq.heappop(queue)
+        if not refined:
+            heapq.heappush(queue, (max(lower, float(faces[index].distToShape(bound)[0])), index, True))
+            continue
+        # The arguments keep the pair's order: extrema are not symmetric to the last digit.
+        pair = (faces[index], whole[inner]) if outer == 0 else (whole[inner], faces[index])
+        best = min(best, float(pair[0].distToShape(pair[1])[0]))
+    return best
+
+
+def _box_gap(first, second):
+    """The distance between two boxes, zero when they overlap."""
+    return math.sqrt(sum(max(0.0, lo_a - hi_b, lo_b - hi_a) ** 2 for lo_a, hi_a, lo_b, hi_b in (
+        (first.XMin, first.XMax, second.XMin, second.XMax),
+        (first.YMin, first.YMax, second.YMin, second.YMax),
+        (first.ZMin, first.ZMax, second.ZMin, second.ZMax))))
 
 
 def _sweep_joint(components, component_data, joint_data, baseline, name, step):

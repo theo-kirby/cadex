@@ -72,7 +72,7 @@ class _Shell:
 def _measure(monkeypatch, shapes):
     monkeypatch.setattr(cadex_assembly_worker, "_component_world_shape", lambda component: shapes[component])
     monkeypatch.setattr(cadex_assembly_worker, "_boundary_distance",
-                        lambda first, second: first.distToShape(second)[0])
+                        lambda first, second, *_boxes: first.distToShape(second)[0])
     return cadex_assembly_worker._measure_clearance({name: name for name in shapes})
 
 

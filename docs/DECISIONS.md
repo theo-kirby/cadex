@@ -28915,3 +28915,94 @@ them next time.
 and the per-pair ledger stage, fail on the previous assembly worker. A real
 SIGXCPU kill of a process that marked `static fit c_tub / c_dome` must be
 refused with that stage named.
+
+## ADR-437 — The static fit searches a housing's faces best first against the part's box (2026-09-28)
+
+**Context.** ADR-436 left `ot10-hexapod-10`'s refused 12:40 build over its
+300 CPU-s budget. The static fit measured the tub exactly against every part
+it houses. Each of those pairs costs a whole-shell `distToShape`, and on
+housed parts that call cannot cull anything. Dumping that build's world
+shapes and timing each tub face against the PCA9685 board showed why:
+- The pair cost 117 CPU-s face by face (55 s whole) for a 12.4 mm answer.
+- 111 of those seconds went on three tub faces 28–30 mm from the board:
+  a 6-edge plane, a lofted B-spline and an offset surface.
+- Their exact boxes overlap the board's box, so `BRepExtrema` must meet
+  each of them against all 77 board faces.
+- Each face's distance to the board's box, taken as a six-face solid,
+  cost about 0.3 s and read 28.08, 30.60 and 28.08 mm.
+
+**Decision.**
+1. **Best-first face search** (`_shell_distance`, `cadex_assembly_worker.py`).
+   It applies when the static fit measures a pair and the part with the
+   smaller box has more than six faces.
+   - The other side's faces sit in a queue, keyed by the gap between each
+     face's exact box and the part's box. Each component's face boxes are
+     computed once per fit.
+   - The face at the front is refined once, to its distance from the part's
+     box as a solid. That box holds the part, so this is still a lower bound.
+     Then it is re-queued. A refined face at the front is measured against
+     the part's shells, with the arguments in the pair's order.
+   - The search stops when the front bound is not below the least distance
+     measured. That distance is the shells' distance.
+2. **Shells that measure exactly 0.0 apart are not re-measured on the
+   solids.** The solids contain their shells, so 0.0 is proved. A reading
+   above 0.0 and at or below 0.001 mm still goes to the solids (ADR-425).
+3. **The swept fit is unchanged.** It measures every pair at every sample on
+   freshly placed shapes. Tried there, the bounds cost more than they saved:
+   an accepted rebuild's per-joint sweep went from about 5 s to 25 s, and
+   five joints ran out of budget. So only the static fit passes the boxes.
+
+**Measured after.**
+- **Harness.** The same `_measure_clearance` was run over dumped world
+  shapes, with the old and new workers, and CPU was timed per pair.
+  - Refused-build shapes, 2,850 pairs, 296 of them measured exactly: the
+    static fit fell from 1,143.4 to 701.7 CPU-s.
+    - tub/pca9685: 157.3 → 1.3.
+    - tub/esp32: 62.9 → 1.1.
+    - tub/bno085: 61.9 → 2.5.
+    - tub/regulator: 46.0 → 1.9.
+    - tub/dome: 44.8 → 10.2.
+    - dome/bno085: 48.6 → 22.9.
+  - Accepted-build shapes, 1,326 pairs: 120.4 → 111.7 CPU-s.
+  - Some pairs got slower: 55 on the refused build, by at most 2.8 s each
+    and 36.8 s in total; 59 on the accepted build, by at most 1.3 s each.
+    These are cheap pairs (coxa/tibia 0.6 → 1.8), where the bounds cost
+    about as much as the whole call did.
+  - **Every one of the 4,176 rows is identical to the old worker's, to the
+    last digit.**
+- **Accepted rebuild.** The accepted `ot10-hexapod-10` script was rebuilt
+  through `cadex script --set` on a `/tmp` copy. It reproduces:
+  - all 1,326 static clearance rows, verdicts included;
+  - the complete swept fit, identical with timings stripped.
+
+  It took 142 user CPU-s and 84 s wall. The old worker on another copy took
+  151 and 93.
+- **Refused replay.** The 12:40 script replayed on a `/tmp` copy is still
+  refused. Before, it died in `static fit c_tub / c_hip_screw_lr0` with
+  tub/pca9685 among its five costliest stages. Now it gets through every
+  tub pair and dies in `static fit c_deck / c_dome` at 293 CPU-s. What is
+  left is:
+  - geometry (`output tub` 75.2, `output dome` 20.6, `output visor` 13.4);
+  - touching pairs, whose `common` must still run (`c_tub / c_visor` 53.7,
+    `c_tub / c_deck` 24.7).
+
+**Not changed.** Unchanged:
+- the 10 mm cull, the 0.001 mm recheck, the fit thresholds and the
+  verdicts;
+- the sweep's path and budgets;
+- the 300 CPU-s limit;
+- every protocol op and `OP_ARG_SPECS`;
+- the rubric, bar, judge and A5 prompts.
+
+No probe is re-scored, and no dependency is added.
+
+**Regression.** `cadex_tests/test_housed_fit_distance.py`:
+- A fake tub with five faces must reach the board's 12.4 mm by measuring
+  only two faces. That test goes through `_measure_clearance`, in both
+  orders.
+- Shells at exactly 0.0 must not call the solids.
+- Both tests fail on the previous worker: it measured `['whole']`, and it
+  called `['whole', 'solid']`.
+- A real-OCCT test checks that a board in a hollow tub and under a
+  hemispherical dome, in both argument orders, reads exactly the
+  whole-shell distance (25.0 and 19.687… mm).
