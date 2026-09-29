@@ -154,6 +154,10 @@ def _build_mesh(name, vertices, triangles):
     mesh.polygons.foreach_set(
         "loop_total", np.full(triangle_count, 3, dtype=np.int32))
     mesh.update(calc_edges=True)
+    # One empty slot: the object-linked role material (``cadex_roles``,
+    # ADR-449) lives in it, and an object keeps its slots across a mesh swap
+    # only when the new mesh has as many.
+    mesh.materials.append(None)
     return mesh
 
 

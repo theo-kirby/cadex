@@ -168,3 +168,37 @@ def test_the_service_never_imports_the_renderer_and_the_payload_ships_it():
     assert not {'CadexStudio', 'CadexFitReport'} & set(_engine_closure())
     cmake = (MODULE_DIR / 'CMakeLists.txt').read_text(encoding='utf-8')
     assert '    CadexStudio.py\n' in cmake and '    CadexFitReport.py\n' in cmake
+
+
+def test_blocks_with_a_display_say_what_colour_each_part_is_drawn_in(tmp_path):
+    """ADR-449: the viewport paints by the rules the studio draws with."""
+    reply = _reply(tmp_path)
+    code, result = _run(tmp_path, {'schema': CadexStudio.REQUEST_SCHEMA, 'kind': 'blocks',
+                                   'clearance': CLEARANCE, 'inventory_value': INVENTORY_VALUE,
+                                   'display': reply['display']})
+    assert code == 0
+    colours = result['appearance']
+    # The floor is world geometry; the placed sources are not objects of their own.
+    assert colours['environment'] == ['c_floor'] and set(colours['objects']) == {'c_body', 'c_pin'}
+    assert colours['objects']['c_pin'] == {'role': 'accent', 'color': '#FF0000', 'source': 'declared'}
+    assert colours['objects']['c_body'] == {'role': 'shell', 'color': '#E9E6DF', 'source': 'supplier'}
+    assert colours['palette'] == {'shell': '#E9E6DF', 'mechanism': '#2F3237', 'accent': '#FF0000'}
+
+
+def test_the_viewport_colours_are_the_render_colours(tmp_path):
+    root = tmp_path / 'project'
+    root.mkdir()
+    _, rendered = _run(tmp_path, _request(tmp_path, 'render', project_root=str(root)))
+    colours = CadexStudio.role_colours(_reply(tmp_path)['display'], FIT, INVENTORY)
+    assert colours['objects'] == rendered['summary']['appearance']
+    assert colours['palette'] == rendered['summary']['palette']
+
+
+def test_with_no_inventory_only_declared_roles_are_painted():
+    display = {'body': {'tessellation': {'sidecar_path': 'x'}},
+               'c_body': {'source_output': 'body', 'placement': IDENTITY},
+               'lid': {'tessellation': {'sidecar_path': 'y'}}}
+    assert CadexStudio.display_objects(display) == {'c_body': 'body', 'lid': 'lid'}
+    assert CadexStudio.role_colours(display)['objects'] == {}
+    painted = CadexStudio.role_colours(display, None, {'appearance': {'lid': 'accent'}})
+    assert painted['objects'] == {'lid': {'role': 'accent', 'color': '#F26A1B', 'source': 'declared'}}

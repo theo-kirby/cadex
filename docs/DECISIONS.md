@@ -29498,3 +29498,41 @@ but ships in the same payload as the API it names. The shell diff is
 entirely under `mesh_agent/` and `shell/tests/python/`; `BLENDER-TREE.md`
 §2 is unchanged. The eight gate failures on clean `main` (the restore
 lockout scenario) are unchanged by this and still open.
+
+## ADR-449 — The app's viewport paints each part in its appearance role (2026-09-29)
+
+**Decision.** The shell's viewport draws every part in its appearance role
+(`shell`, `mechanism`, `accent`) and in the assembly's palette, by the rule
+the engine's studio draws `look`, the hero and the sheet with. The rule stays
+in the engine: `CadexStudio.role_colours(display, fit, inventory)` resolves
+it from the display map alone (declared role, else purchased is mechanism
+and printed is shell; world geometry left out), and a studio `blocks`
+request that carries the accepted `display` returns it as `appearance`.
+`render_files` builds its `summary['appearance']` with the same helper, and
+a test holds the two equal. The new `mesh_agent/cadex_roles.py` turns the
+table into one material per role (`Cadex shell` / `Cadex mechanism` /
+`Cadex accent`, tagged `cadex_role`), linked to the object. It is a
+`cadex_views` record (`roles`, order 10) that runs on settled accepts only:
+it measures on a worker thread and paints from a timer. `measure_blocks`
+caches its result per revision, so the agent's build reply and the paint
+share one studio process. `cadex_hydrate._build_mesh` gives every mesh one
+empty material slot.
+
+**Reason.** GUI-parity slice 4 (the owner's direction, ADR-445). Before
+this, the viewport drew every part in Blender's default grey. So the design
+the user looked at was not the design the agent judged with `look`, and the
+declared roles and palette (ADR-411, ADR-413) were visible only in the
+CLI's renders.
+
+**Consequences.** The materials are object-linked because instances share
+one mesh datablock, and forty screws may differ in role. Because each new
+mesh has one slot, the object keeps its slot, and so its role, across the
+mesh swap that a drag or a reshape does, and a draft rebuild needs no
+repaint. A slot holding a material with no `cadex_role` tag is the user's
+and is never painted over. With no inventory and no declared role the
+table is empty, and nothing is painted: the studio's index colours say
+nothing about a design. Blueprint (ADR-150) still overrides the colour
+type while it is on. Nothing runs in background mode, because a studio
+process and two `inspect` reads per accept would sit inside every gate
+timing; the gate calls `cadex_roles.refresh()` itself. The shell diff is
+under `mesh_agent/` and `shell/tests/python/` only.

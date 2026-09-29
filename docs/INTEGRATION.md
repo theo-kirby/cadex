@@ -509,7 +509,7 @@ allow:
   from stdout.
 
 The request is `{schema: "cadex-studio-request-v1", kind: "render" | "look" |
-"blocks", reply, fit, inventory, clearance?, inventory_value?, out_dir,
+"blocks", reply, fit, inventory, clearance?, inventory_value?, display?, out_dir,
 project_root?, relative_dir?, views?, focus?}`: `reply` is the accepted
 modelling or `rebuild` reply with its display block, and `out_dir` is
 absolute. The fit and inventory blocks come either built, as `fit` and
@@ -519,8 +519,14 @@ blocks with `CadexFitReport` (ADR-447) -- how a client that may not import
 engine code gets the same blocks the CLI builds in process. Any of the four
 may be `null`. `kind: "blocks"` draws nothing and needs no `reply` or
 `out_dir`: it returns the two blocks alone, and each bounded the way a
-build reply shows it to the model (`fit_view`, `inventory_view`, ADR-435). The result is `{schema: "cadex-studio-result-v1", ok, kind, files,
-facts | summary, fit?, inventory?}` or `{ok: false, error}`; exit 0 on
+build reply shows it to the model (`fit_view`, `inventory_view`, ADR-435).
+Given the accepted `display` map as well, it also returns `appearance`:
+`{objects: {name: {role, color, source}}, palette, environment}`, the role
+and colour each object is drawn in, by the same rule and in the same shape
+as a render's `summary.json` (ADR-449). No buffer is read for it, and an
+object with neither a declared role nor an inventory to judge it by is left
+out, so a viewport keeps its own colour for it. The result is `{schema: "cadex-studio-result-v1", ok, kind, files,
+facts | summary, fit?, inventory?, appearance?}` or `{ok: false, error}`; exit 0 on
 success, 1 on a refusal, 2 for an unreadable request. `facts` is exactly what
 the CLI agent's `look` returns as text, so the two agents read the same thing.
 

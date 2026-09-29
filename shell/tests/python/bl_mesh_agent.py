@@ -2364,12 +2364,12 @@ def test_blueprint_styles_the_viewport_from_one_table():
           and cadex_blueprint.PRODUCT_LOOK["overlay.show_axis_z"] is True,
           "the fallback equals the pinned startup look the gate asserts")
 
-    # The registry orders the five views; blueprint suspends for
-    # render_views and hooks nothing else.
+    # The registry orders the views; blueprint suspends for render_views
+    # and hooks nothing else. Roles paint first (ADR-449).
     names = [view.name for view in cadex_views.registered()]
-    check(names == ["collision", "section", "explode", "dimensions",
+    check(names == ["roles", "collision", "section", "explode", "dimensions",
                     "blueprint", "drawings"],
-          "the view registry is the six views in order: {!r}".format(names))
+          "the view registry is the seven views in order: {!r}".format(names))
     blueprint_view = next(view for view in cadex_views.registered()
                           if view.name == "blueprint")
     check(blueprint_view.suspend is not None

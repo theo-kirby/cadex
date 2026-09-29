@@ -1240,6 +1240,59 @@ def look_report(reply, fit, inventory, views=LOOK_DEFAULT_VIEWS, focus=()):
     return facts, shots
 
 
+def _appearance_rows(names, looks, appearance, purchased):
+    """Per drawn object: its role, colour and where the role came from."""
+    return {name: {'role': looks[name][0], 'color': '#%02X%02X%02X' % looks[name][1],
+                   'source': ('declared' if name in appearance else
+                              'supplier' if purchased is not None else 'index')}
+            for name in names}
+
+
+def _palette_hex(palette):
+    return {role: '#%02X%02X%02X' % tuple(rgb) for role, rgb in {**ROLE_COLORS, **palette}.items()}
+
+
+def display_objects(display):
+    """``object -> source`` for a display map, as :func:`snapshot` names them.
+
+    Components by their own name, placing their ``source_output``; an output
+    with geometry of its own and no component placing it, by its name. No
+    buffer is read, so this is cheap enough to run on every accepted build.
+    """
+    display = {str(k): v for k, v in dict(display or {}).items() if isinstance(v, dict)}
+    sources = {str(e['source_output']) for e in display.values() if e.get('source_output')}
+    objects = {}
+    for name, entry in sorted(display.items()):
+        source = str(entry.get('source_output') or name)
+        if name in sources or source == name and not entry.get('tessellation'):
+            continue
+        objects[name] = source
+    return objects
+
+
+def role_colours(display, fit=None, inventory=None):
+    """What a viewport paints each object, by the rules the studio draws with.
+
+    ``{'objects': {object: {role, color, source}}, 'palette': {role: hex},
+    'environment': [...]}``. The same resolution as a render's
+    ``summary['appearance']`` -- declared role, else supplier -- so a part is
+    the colour in the app's viewport that it is in ``look``, the hero and the
+    sheet. World geometry the fit names is left out. With no inventory to
+    tell printed from purchased, ``objects`` holds only declared roles: the
+    studio's index colours say nothing about a design, and a viewport keeps
+    its own.
+    """
+    summary = {'objects': {name: {'source': source, 'color': (0, 0, 0)}
+                           for name, source in display_objects(display).items()}}
+    environment, purchased = classify(summary, fit, inventory)
+    appearance, palette = declared(inventory)
+    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
+    names = [name for name in summary['objects']
+             if name not in environment and (purchased is not None or name in appearance)]
+    return {'objects': _appearance_rows(names, looks, appearance, purchased),
+            'palette': _palette_hex(palette), 'environment': sorted(environment)}
+
+
 def render_files(triangles, source, root, fit, inventory, relative_dir):
     """``(files, summary)``: the review render of one snapshot, not yet written.
 
@@ -1256,12 +1309,8 @@ def render_files(triangles, source, root, fit, inventory, relative_dir):
     _require(any(summary['objects'][n]['triangles'] for n in names),
              'nothing to draw once environment geometry is left out')
     summary['environment'] = sorted(environment)
-    summary['appearance'] = {name: {'role': looks[name][0], 'color': '#%02X%02X%02X' % looks[name][1],
-                                    'source': ('declared' if name in appearance else
-                                               'supplier' if purchased is not None else 'index')}
-                             for name in names}
-    summary['palette'] = {role: '#%02X%02X%02X' % tuple(rgb)
-                          for role, rgb in {**ROLE_COLORS, **palette}.items()}
+    summary['appearance'] = _appearance_rows(names, looks, appearance, purchased)
+    summary['palette'] = _palette_hex(palette)
     start = time.perf_counter()
     prepared = _prepare(_studio_parts(triangles, summary, names, looks))
     shadow = _contact_shadow(prepared)
@@ -1358,7 +1407,8 @@ def run_request(request):
     under ``relative_dir``), ``look`` (one ``<view>.png`` per view into
     ``out_dir`` plus the look's facts) or ``blocks`` (the ``fit`` and
     ``inventory`` blocks and their bounded model views ``fit_view`` and
-    ``inventory_view``, no drawing, no ``out_dir``). ``reply`` is the
+    ``inventory_view``, no drawing, no ``out_dir``; given the accepted
+    ``display`` as well, ``appearance`` is :func:`role_colours`). ``reply`` is the
     accepted reply with its display block. The blocks come as ``fit`` and
     ``inventory``, or raw as ``clearance`` and ``inventory_value``
     (:func:`_blocks`); any of them may be ``null``.
@@ -1372,9 +1422,14 @@ def run_request(request):
         if kind == 'blocks':
             # ...and each bounded as a build reply shows it to the model (ADR-435).
             import CadexFitReport
+            # With the accepted ``display`` too, the colour each object is
+            # drawn in, for a viewport to paint (ADR-449).
+            display = request.get('display')
+            _require(display is None or isinstance(display, dict), 'display must be a display map')
             return {'schema': RESULT_SCHEMA, 'ok': True, 'kind': kind, 'fit': fit, 'inventory': inventory,
                     'fit_view': None if fit is None else CadexFitReport.fit_view(fit),
-                    'inventory_view': None if inventory is None else CadexFitReport.inventory_view(inventory)}
+                    'inventory_view': None if inventory is None else CadexFitReport.inventory_view(inventory),
+                    'appearance': None if display is None else role_colours(display, fit, inventory)}
         _require(isinstance(out_dir, str) and Path(out_dir).is_absolute(), 'out_dir must be an absolute path')
         reply = request.get('reply')
         _require(isinstance(reply, dict), 'reply must be the accepted reply')

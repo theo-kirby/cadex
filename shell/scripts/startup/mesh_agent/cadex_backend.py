@@ -208,15 +208,28 @@ def measure_blocks(root, client, module_dir, revision):
     built by the payload's studio process from the published values -- the
     same blocks, bounded the same way, the headless CLI's agent reads.
     Returns the studio's result: ``fit_view`` and ``inventory_view`` on
-    success, ``error`` otherwise.
+    success, ``error`` otherwise -- and, since the accepted ``display`` goes
+    with the request, the ``appearance`` table the viewport paints by
+    (ADR-449). A success is cached per revision, so the agent's reply and
+    the viewport's paint cost one studio process between them.
     """
     from . import cadex_studio
+    state = _state_for(root)
+    cached = state.measured
+    if revision and cached.get("revision") == revision and cached.get("blocks"):
+        return cached["blocks"]
     try:
         clearance, inventory = measured_values(root, client, revision)
     except Exception:
         return {"ok": False, "error": traceback.format_exc(limit=2)}
-    return cadex_studio.run({"kind": "blocks", "clearance": clearance,
-                             "inventory_value": inventory}, module_dir=module_dir)
+    accepted = state.accepted or {}
+    display = accepted.get("display") if accepted.get("revision") == revision else None
+    result = cadex_studio.run({"kind": "blocks", "clearance": clearance,
+                               "inventory_value": inventory, "display": display},
+                              module_dir=module_dir)
+    if result.get("ok") and state.measured.get("revision") == revision:
+        state.measured = dict(state.measured, blocks=result)
+    return result
 
 
 def last_accepted(root=None):

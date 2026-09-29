@@ -31,7 +31,7 @@ A record carries up to three hooks, each optional:
   one undo :func:`suspend_for_render` returns unwinds them in reverse.
 
 ``order`` is the contract the hand wiring kept implicitly and the registry
-keeps explicitly: collision 20, section 30, explode 40, dimensions 50,
+keeps explicitly: roles 10 (ADR-449), collision 20, section 30, explode 40, dimensions 50,
 blueprint 60. Section before explode is load-bearing on the preview path
 (the clip planes are re-aimed before the explosion re-poses); dimensions
 last because it reads the shapes every earlier view has finished posing.
@@ -131,7 +131,15 @@ def suspend_for_render():
     return restore
 
 
-# -- the two views with no register() of their own ---------------------------
+# -- the three views with no register() of their own -------------------------
+
+def _roles_hydrate(payload, root, animate):
+    """The appearance-role materials (ADR-449): settled builds only."""
+
+    from . import cadex_roles
+
+    return cadex_roles._on_hydrate(payload, root, animate)
+
 
 def _collision_hydrate(payload, root, animate):
     """The collision overlay (ADR-091), on the geometry's own terms.
@@ -172,12 +180,13 @@ def _dimensions_hydrate(payload, _root, _animate):
 def install():
     """Register the views that own no ``register()`` of their own.
 
-    Collision and dimensions register no PropertyGroup and no class, so
+    Roles, collision and dimensions register no PropertyGroup and no class, so
     they have nowhere to self-register from; the modules that do
     (section, explode, blueprint) call :func:`register_view` inside their
     own ``register()``.
     """
 
+    register_view(name="roles", order=10, on_hydrate=_roles_hydrate)
     register_view(name="collision", order=20, on_hydrate=_collision_hydrate)
     register_view(name="dimensions", order=50, on_hydrate=_dimensions_hydrate)
 

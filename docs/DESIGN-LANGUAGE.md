@@ -93,7 +93,9 @@ Three **appearance roles**, and every part has exactly one:
 xscript declares the role per part and the palette per assembly
 (`assembly.component(..., appearance=)`, `assembly.assembly(..., palette=)`,
 `docs/XSCRIPT.md`, ADR-413), and inventory, `render`, `look` and review
-carry them. An undeclared part is drawn by supplier until it declares one.
+carry them, and the app's viewport paints them (ADR-449) by the same rule
+the studio draws with. An undeclared part is drawn by supplier until it
+declares one.
 
 ## 3. Joints are features
 

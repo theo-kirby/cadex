@@ -3749,6 +3749,63 @@ def test_the_agent_sees_and_measures_its_design(root):
                     "fit_verdict": fit.get("verdict")}
 
 
+def test_the_viewport_paints_each_part_in_its_role(root):
+    """The viewport shows the colours `look` judged (cadex ADR-449).
+
+    The engine's studio says which role and colour each part is drawn in;
+    the viewport paints one object-linked material per role, keeps it
+    across a mesh rebuild, and never paints over a material the user set.
+    Runs after the look test, on the same accepted design.
+    """
+
+    print("test_the_viewport_paints_each_part_in_its_role")
+    import bpy
+    from mesh_agent import cadex_roles
+
+    def slot(name):
+        obj = next((o for o in bpy.data.objects
+                    if o.get("cadex_output") == name and not o.name.endswith(" Edges")), None)
+        return obj, (obj.material_slots[0] if obj is not None and obj.material_slots else None)
+
+    started = time.perf_counter()
+    report = cadex_roles.refresh(bpy.context.scene) or {}
+    paint_seconds = time.perf_counter() - started
+    check(report.get("painted") == 2, "both parts are painted ({!r})".format(report))
+    _base, base_slot = slot("base")
+    swing, swing_slot = slot("swing")
+    check(base_slot is not None and base_slot.link == 'OBJECT'
+          and base_slot.material is not None and base_slot.material.name == "Cadex shell",
+          "the plate is shell")
+    check(swing_slot is not None and swing_slot.material is not None
+          and swing_slot.material.name == "Cadex accent", "the arm is accent")
+    if swing_slot is not None and swing_slot.material is not None:
+        red = tuple(round(c, 3) for c in swing_slot.material.diffuse_color)
+        check(red == (1.0, 0.0, 0.0, 1.0),
+              "in the assembly's palette, #FF0000 ({!r})".format(red))
+
+    # A new shape swaps the meshes; the object-linked roles stay with the parts.
+    ok, report_text = run_tool("write_script", {"content": LOOK_SCRIPT.replace(
+        "part.box(30, 6, 6)", "part.box(32, 6, 6)")})
+    check(ok, "the reshaped arm is accepted")
+    swing, swing_slot = slot("swing")
+    check(swing_slot is not None and swing_slot.material is not None
+          and swing_slot.material.name == "Cadex accent",
+          "the arm keeps its role across the rebuild")
+
+    # A material the user set is theirs.
+    mine = bpy.data.materials.new("user paint")
+    if swing_slot is not None:
+        swing_slot.material = mine
+    report = cadex_roles.refresh(bpy.context.scene) or {}
+    swing, swing_slot = slot("swing")
+    check(swing_slot is not None and swing_slot.material is mine
+          and swing.name in report.get("kept", []),
+          "a user's material is never painted over ({!r})".format(report))
+
+    GATE["roles"] = {"paint_seconds": round(paint_seconds, 3),
+                     "painted": 2}
+
+
 def test_the_collision_overlay_measures_every_primitive(root):
     """Extents per type, against the record's own independently-computed size.
 
@@ -5974,6 +6031,7 @@ def main():
         test_a_shape_slider_falls_back_to_set_params(fallback_root)
         test_render_views_frames_the_engines_geometry(views_root)
         test_the_agent_sees_and_measures_its_design(look_root)
+        test_the_viewport_paints_each_part_in_its_role(look_root)
         test_the_collision_overlay_draws_adr074(collision_root)
         test_the_collision_overlay_measures_every_primitive(shapes_root)
         test_the_collision_overlay_is_isolated(isolate_root)
