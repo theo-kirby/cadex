@@ -254,7 +254,10 @@ the report was written, and none is closed.
    runs. The review records it as it found it.
 6. **The weakest traits are joints and form** (T3, T4). Both counted
    hexapods score 1 on T3, and so does `ot10-hexapod-12`, whose judges
-   read its splined horns as bare in all three calls. Both counted bipeds and `ot10-quadruped-4` score 1 on T4:
+   read its splined horns as bare in all three calls. Its caps sat on the
+   servo's far face and beside the hub, not over the horn. The overlay now
+   says where the cap goes and sizes it from the horn's
+   `.spec["arm_reach_mm"]` (ADR-440). No turn has yet run on it. Both counted bipeds and `ot10-quadruped-4` score 1 on T4:
    the quadruped's legs are constant-thickness plates on a filleted box, even
    though it is the first counted design to score 3 on T3. No design scores
    3 on T1, so every design still shows some hardware.

@@ -521,6 +521,18 @@ def test_a5_hexapod_attempt_12_is_pre_registered_and_misses_on_its_total():
     assert census["projects"]["ot10-hexapod-10"]["counts"]["cpu_limit"] == 6
 
 
+def test_a5_hexapod_turn_13_is_pre_registered_after_the_horn_cap_change():
+    # Registered before the turn, after ADR-439 and ADR-440, to measure T3
+    # against hexapod-12's 1; a miss adds a miss and re-scores nothing.
+    heading = "## A5 hexapod turn 13, pre-registered"
+    prereg = README.partition(heading)[2].partition("\n## ")[0]
+    assert "`ot10-hexapod-13`" in prereg and "ADR-439" in prereg and "ADR-440" in prereg
+    assert "**Nothing is re-scored.**" in prereg and "twelfth miss" in prereg
+    assert "`CADEX_EFFORT=medium`" in prereg and "`claude-opus-5-5`" in prereg
+    assert README.index("## A5 attempt 12: the hexapod (`ot10-hexapod-12`)") < README.index(heading)
+    assert not (OT10 / "ot10-hexapod-13-score.json").exists() or "## A5 attempt 13" in README
+
+
 # -- A4: the refusal census --------------------------------------------------
 
 _rspec = importlib.util.spec_from_file_location("ot10_refusals", OT10 / "runner/refusals.py")

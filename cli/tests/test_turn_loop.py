@@ -701,6 +701,40 @@ def test_the_face_is_sized_contrasted_and_checked_from_its_own_side() -> None:
     assert "A FACE" in refine
 
 
+def test_the_joint_cap_goes_over_the_horn_and_is_sized_from_its_spec() -> None:
+    """ADR-440 (ot10 A5): hexapod turn 12 built caps, and every horn still showed.
+
+    Its caps sat on the servo's far face and beside the hub, so the horn
+    between the case top and the driven part stayed in view (T3 1 in all
+    three calls). The overlay says where the cap goes, sizes it from the
+    horn's own `.spec`, and names a visible horn as a crude thing to fix.
+    """
+
+    design = CLI_OVERLAY[CLI_OVERLAY.index("DESIGN IT; DO NOT ONLY MAKE IT FIT"):
+                         CLI_OVERLAY.index("A ROBOT IS A COMPLETE MACHINE")]
+    joints = next(i for i in _overlay_items(design) if i.startswith("- JOINTS ARE FEATURES."))
+    for phrase in ("The cap goes where the horn is", "servo's far face",
+                   "Make the driven part's hub the cap", '`.spec["arm_reach_mm"]`',
+                   "cut with `horn.body`", "within 1 mm of the case top",
+                   "both sides of the joint"):
+        assert phrase in joints
+    refine = design[design.index("4. REFINE WITH `look`"):]
+    assert "a horn you can see" in refine
+
+
+def test_the_horn_spec_carries_the_reach_the_overlay_sizes_the_cap_from() -> None:
+    """The key the overlay names is a real key of every horn's catalog row."""
+
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[2] / "src/Mod/cadex/CadexCatalog.py"
+    spec = importlib.util.spec_from_file_location("cadex_catalog_for_overlay", path)
+    catalog = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(catalog)
+    assert '`.spec["arm_reach_mm"]`' in CLI_OVERLAY
+    assert catalog.MICRO_HORNS and all(row["arm_reach_mm"] > 0 for row in catalog.MICRO_HORNS.values())
+
+
 def test_the_prompt_says_a_robot_carries_its_brain_sensors_and_power() -> None:
     """ADR-407: hex2 had twelve servos and nothing to drive them."""
 

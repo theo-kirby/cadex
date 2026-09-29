@@ -335,7 +335,14 @@ turns a corner. Use one set of radii across the whole design.
 - JOINTS ARE FEATURES. Every actuated axis carries the same round cap, \
 concentric with the axis and at least as wide as the horn it covers, so a \
 horn reads as a hub, never a bare arm. One cap design serves the whole \
-robot.
+robot. The cap goes where the horn is: the horn sits between the servo's \
+case top and the part it drives, so a disc on the servo's far face or \
+beside the hub leaves the horn in view. Make the driven part's hub the \
+cap: a disc of radius at least the horn's `.spec["arm_reach_mm"]` plus a \
+1.6 mm wall, cut with `horn.body` so the horn and its screw sit inside it, \
+with a skirt reaching down past the horn to within 1 mm of the case top. \
+Where the servo's other face shows, put the same disc there too, so both \
+sides of the joint read alike.
 - A FACE. One focal element on the forward face, on the same +X the IMU \
 points along: a visor slot, one or two round eyes, or a dark face panel, \
 recessed into or split from the shell and filling about a quarter to a half \
@@ -367,7 +374,8 @@ is the worst thing to fix. Read its `measures` first -- the share of the hero si
 is purchased hardware, the share of printed outside edge left sharp, and \
 the number of materials, each against its bar -- and then the pictures. \
 Name in one line each what reads as crude -- a sharp edge, an exposed case, \
-a floating bar, a primitive stuck on, a missing face -- fix the worst one, \
+a floating bar, a primitive stuck on, a missing face, a horn you can see \
+-- fix the worst one, \
 and look again. Stop when every measure meets its bar and it reads as the \
 concept you decided in step 1, a product someone designed rather than a fit \
 check that passed.

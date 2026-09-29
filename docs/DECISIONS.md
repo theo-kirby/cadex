@@ -29126,3 +29126,36 @@ or procedure changed, and no score is re-taken.
 grid beside a 3,000 mm floor: the cell equals the grid alone) and
 `test_acquire_snapshot_reads_the_floor_from_the_accepted_fit` both fail on
 the previous source.
+
+## ADR-440 — The joint cap goes over the horn, sized from the horn's own spec (2026-09-28)
+
+**Context.** `ot10-hexapod-12` scored T3 1 in all three judge calls
+(`docs/probes/ot10/ot10-hexapod-12-score.json`). The agent did build joint
+caps: its script declares `cap_r = 12 mm` and places a `mechanism` cap at
+every hip and knee. But each cap sat on the servo's far face or beside the
+hub. The horn sits between the case top and the part it drives, so every
+horn stayed in view (`ot10-hexapod-12-hero-grid-after.png`). The design
+language already says a printed cap covers the horn and its screw
+(`docs/DESIGN-LANGUAGE.md` §3). The overlay said only that each axis
+"carries" a cap at least as wide as the horn, and gave no size to check
+against. Neither the catalog nor xscript has a cap part: `servo.horn()`
+returns the horn, and its `.spec` carries `arm_reach_mm`, `hub_dia_mm` and
+`hub_height_mm`.
+
+**Decision.** This is a teaching change, not a new part. Where a cap
+belongs depends on the design, so a generated cap would be a second joint
+model inside the library. The overlay's JOINTS ARE FEATURES bullet now says
+three things. The cap goes where the horn is. The driven part's hub is the
+cap: a disc of radius at least `.spec["arm_reach_mm"]` plus a 1.6 mm wall,
+cut with `horn.body`, with a skirt that comes down to within 1 mm of the
+case top. The same disc goes on the servo's other face where that face
+shows. Step 4's list of crude things to name now includes "a horn you can
+see". The judge's rubric, proxies, bar and procedure are unchanged, and no
+earlier probe is re-scored. The wording comes from §3 of the design
+language, not from the judge's replies.
+
+**Tests.** `test_the_joint_cap_goes_over_the_horn_and_is_sized_from_its_spec`
+and `test_the_horn_spec_carries_the_reach_the_overlay_sizes_the_cap_from`
+(`cli/tests/test_turn_loop.py`) both fail on the previous overlay. The
+second checks that the key the overlay names exists on every catalog horn
+row.

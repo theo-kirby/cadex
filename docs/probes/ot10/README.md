@@ -1980,6 +1980,36 @@ hex3's baseline (500 mm floor over 173 mm), also had a floor wider than the
 robot, so each would now draw on a finer grid than the one it was judged
 on.
 
+## A5 hexapod turn 13, pre-registered
+
+Registered on 2026-09-28, before the turn starts, at the revision that
+commits this section. It follows two changes made after
+`ot10-hexapod-12`'s diagnosed miss: ADR-439 (the render's clustering grid
+is sized from the drawn parts, not from the floor) and ADR-440 (the
+overlay's joint cap goes over the horn and is sized from the horn's
+`.spec["arm_reach_mm"]`). No A5 turn has yet run on either.
+
+- **One turn, once.** It runs on the new project `ot10-hexapod-13`, on the
+  frozen prompt from `contract.json` `a5.prompts.hexapod`, with the frozen
+  argv above: `claude-opus-5-5`, `CADEX_EFFORT=medium` and no
+  continuation. Before launch, the installed `build/release/Mod/cadex` is
+  compared file by file with `src/Mod/cadex`, and the result is recorded.
+- **What it measures, besides the bar.** T3's median, against
+  `ot10-hexapod-12`'s 1. The record also says whether the accepted script
+  puts its caps over the horns: a disc cut with the horn's body, at least
+  `arm_reach_mm` + 1.6 mm in radius. It reports one turn against one turn,
+  not as a rate or a causal claim.
+- **Nothing is re-scored.** The eleven failed attempts stand as published
+  misses, and the confirmation round stays at 2 of 3. This turn adds a
+  counted attempt, and a miss adds a twelfth miss.
+- **Scoring is unchanged.** The design is rendered and scored blind with
+  `runner/judge.py` from a `/tmp` copy of the project, under the frozen
+  rubric, proxies, bar and judging procedure.
+- **A miss is diagnosed before anything changes.** No prompt, overlay or
+  tool change follows a miss until it is diagnosed and recorded.
+- **A harness kill is not an attempt.** A turn killed before it has an exit
+  status is kept read-only as the receipt, and the plan gets a new project.
+
 ## A4: the refusal census, every ot10 transcript
 
 **None of A4's four refusal classes recurred in any ot10 product-agent
