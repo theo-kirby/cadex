@@ -16,6 +16,7 @@ import struct
 import time
 import zlib
 
+from . import scene, sheet
 from .inventory import InventoryError
 
 SIZE = 512
@@ -45,21 +46,63 @@ BASES = {
 #: opposite three-quarter view, so the far side of a design is not unseen.
 LOOK_VIEWS = {**BASES, 'iso_back': ((-1/s2, -1/s2, 0), (1/s6, -1/s6, 2/s6), (-1/s3, 1/s3, 1/s3))}
 LOOK_SIZE = 768
-#: `look` colours by what a part is, not by its index: printed parts in one
-#: filament colour so a design reads as the object it would be, purchased
-#: parts in a neutral dark grey.
-PRINTED_COLOR = (222, 124, 64)
-PURCHASED_COLOR = (74, 78, 86)
+
+
+def camera(azimuth_deg, elevation_deg):
+    """An orthographic basis (right, up, toward the viewer) for a camera
+    ``azimuth_deg`` round from the front (-Y) towards +X and
+    ``elevation_deg`` above the floor."""
+    a, e = math.radians(azimuth_deg), math.radians(elevation_deg)
+    right = (math.cos(a), math.sin(a), 0.0)
+    toward = (math.cos(e) * math.sin(a), -math.cos(e) * math.cos(a), math.sin(e))
+    up = (toward[1]*right[2] - toward[2]*right[1], toward[2]*right[0] - toward[0]*right[2],
+          toward[0]*right[1] - toward[1]*right[0])
+    return right, up, toward
+
+
+#: The studio hero (docs/DESIGN-LANGUAGE.md section 7): a low three-quarter
+#: view, 20 degrees above the floor and 35 degrees round from the front.
+HERO = camera(35.0, 20.0)
+LOOK_VIEWS['hero'] = HERO
+HERO_SIZE = 1024
+#: Subsamples per axis: every studio image is drawn at twice its size and
+#: box-filtered down, which is what antialiases its edges.
+SUPERSAMPLE = 2
+#: The appearance roles and their default colours (DESIGN-LANGUAGE.md
+#: section 2): bone shell, graphite mechanism, signal-orange accent. A part
+#: with no declared role is `mechanism` when purchased and `shell` when
+#: printed; being purchased is otherwise not a colour.
+ROLE_COLORS = {'shell': (233, 230, 223), 'mechanism': (47, 50, 55), 'accent': (242, 106, 27)}
+#: Per role: (specular strength, Blinn exponent). Satin shell, harder mechanism.
+FINISH = {'shell': (0.16, 20.0), 'mechanism': (0.30, 16.0), 'accent': (0.22, 28.0)}
+#: A tessellation corner keeps its face's normal when the smoothed normal
+#: turns further than this from it: fillets shade smooth, box edges stay crisp.
+CREASE_DEGREES = 40.0
+#: A1's frozen bars for the proxies (docs/probes/ot10/contract.json;
+#: test_ot10_contract holds them equal). P2 is a BREP measure, read from the
+#: inventory rather than the image.
+PROXY_BARS = {'hardware_silhouette_share': {'max': 0.2}, 'sharp_outside_edge_share': {'max': 0.25},
+              'material_count': {'min': 2, 'max': 3}}
+#: The hero is measured at this size, whatever size it is drawn at.
+PROXY_SIZE = 512
+#: The floor every studio image stands on is the review viewport's dark
+#: prototype mat (ot10 A8, ADR-444): its colours come from :mod:`scene`, which
+#: reads them out of the viewport's own ``environment.js``. The mat fades into
+#: the scene background between these multiples of the framed extent,
+#: measured on the floor from the point under the image centre.
+FLOOR_FADE = (0.75, 1.9)
 PALETTE = [(91, 157, 205), (230, 151, 76), (115, 182, 135), (180, 134, 200)]
 LIMITS = {'buffer_bytes': MAX_BYTES, 'triangles': MAX_TRIANGLES, 'input_triangles': MAX_INPUT_TRIANGLES,
           'vertices_per_source': MAX_VERTICES,
           'placed_vertices': MAX_PLACED_VERTICES,
-          'pixel_visits_per_view': MAX_SAMPLES, 'image_size': SIZE}
-APPROXIMATION = ('Opaque standard tessellation, initial solved pose; 512px pixel-center depth, '
-                 'flat lighting, no transparency, edges, dimensions or subpixel guarantees. '
-                 'Shell-only visibility is not carried by the protocol. Placed source copies '
-                 'are excluded; all other published triangle geometry is shown. Above the drawn '
-                 'triangle budget, vertices are clustered on a grid (summary: decimation).')
+          'pixel_visits_per_view': MAX_SAMPLES, 'image_size': SIZE, 'hero_size': HERO_SIZE}
+APPROXIMATION = ('Opaque standard tessellation, initial solved pose, orthographic; studio-lit '
+                 '(key, fill, rim; normals smoothed below a crease angle), 2x2 supersampled, on the '
+                 'review viewport\'s dark prototype mat with a contact shadow measured from the geometry; no '
+                 'transparency, edges or dimensions. Environment geometry the fit names is left '
+                 'out. Shell-only visibility is not carried by the protocol. Placed source copies '
+                 'are excluded. Above the drawn triangle budget, vertices are clustered on a '
+                 'grid (summary: decimation).')
 
 
 def _require(condition, message):
@@ -67,8 +110,14 @@ def _require(condition, message):
         raise InventoryError('render: ' + message)
 
 
-def snapshot(reply):
-    """Copy and validate all geometry before any subsequent engine request."""
+def snapshot(reply, environment=()):
+    """Copy and validate all geometry before any subsequent engine request.
+
+    ``environment`` names world geometry (see :func:`world`). It is still
+    read and clustered, but it does not size the clustering grid: a 3 m
+    floor under a 300 mm robot drew the robot on a 1.46 mm grid
+    (ot10-hexapod-12, ADR-439).
+    """
     _require(reply.get('ok') is True, str(reply.get('error') or 'rebuild failed'))
     revision = reply.get('revision')
     _require(isinstance(revision, str) and len(revision) == 64 and
@@ -155,8 +204,9 @@ def snapshot(reply):
     _require(bool(parts), 'no published triangle geometry')
     decimation = None
     if raw_triangles > MAX_TRIANGLES:
-        extent = max(max(p[j] for *_, points, _ in parts for p in points)
-                     - min(p[j] for *_, points, _ in parts for p in points) for j in range(3))
+        drawn = [part for part in parts if part[0] not in environment] or parts
+        extent = max(max(p[j] for *_, points, _ in drawn for p in points)
+                     - min(p[j] for *_, points, _ in drawn for p in points) for j in range(3))
         _require(extent > 0, 'zero model extent')
         cell = extent * FIRST_CELL_FRACTION
         while True:
@@ -167,8 +217,9 @@ def snapshot(reply):
             _require(cell < extent, 'triangle budget exceeded')
             cell *= 2.0
         parts = [(*part[:4], tris) for part, tris in zip(parts, clustered)]
-        decimation = {'input_triangles': raw_triangles, 'cell_mm': cell,
-                      'cell_fraction_of_extent': cell / extent}
+        decimation = {'input_triangles': raw_triangles, 'cell_mm': cell, 'extent_mm': extent,
+                      'cell_fraction_of_extent': cell / extent,
+                      'extent_excludes': sorted({part[0] for part in parts} - {part[0] for part in drawn})}
     for name, source, matrix, points, indices in parts:
         color = PALETTE[len(objects) % len(PALETTE)]
         first = len(triangles)
@@ -206,104 +257,573 @@ def _cluster(points, indices, cell):
     return kept
 
 
-def rasterize(triangles, basis, *, bounds=None, size=SIZE):
-    projected = [(color, [tuple(sum(p[j]*axis[j] for j in range(3)) for axis in basis)
-                          for p in points]) for color, points in triangles]
-    points = [p for _, tri in projected for p in tri]
-    lo, hi = ([fn(p[j] for p in points) for j in range(2)] for fn in (min, max))
-    if bounds is not None:
-        lo, hi = bounds
-    extent = max(hi[j] - lo[j] for j in range(2))
-    _require(extent > 0, 'zero projected extent')
-    scale = (size - 64) / extent
-    pixels = bytearray(bytes((246, 247, 250)) * size * size)
-    depth = [-math.inf] * (size * size)
-    samples = 0
-    for color, tri in projected:
-        a, b, c = [(size/2 + (p[0]-(lo[0]+hi[0])/2)*scale,
-                    size/2 - (p[1]-(lo[1]+hi[1])/2)*scale, p[2]) for p in tri]
-        area = (b[1]-c[1])*(a[0]-c[0]) + (c[0]-b[0])*(a[1]-c[1])
-        if abs(area) < 1e-12:
-            continue
-        xmin, xmax = max(0, math.floor(min(a[0], b[0], c[0]))), min(size-1, math.ceil(max(a[0], b[0], c[0])))
-        ymin, ymax = max(0, math.floor(min(a[1], b[1], c[1]))), min(size-1, math.ceil(max(a[1], b[1], c[1])))
-        # Off-canvas triangles (a focused `look`) clamp to zero, never to a
-        # product of two negative spans.
-        samples += max(0, xmax-xmin+1)*max(0, ymax-ymin+1)
-        _require(samples <= MAX_SAMPLES * (size / SIZE) ** 2, 'pixel work budget exceeded')
-        u, v = ([tri[1][j]-tri[0][j] for j in range(3)], [tri[2][j]-tri[0][j] for j in range(3)])
-        normal = (u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0])
-        norm = math.sqrt(sum(n*n for n in normal))
-        light = (.25, -.45, math.sqrt(.735))
-        shade = .55 + .45 * abs(sum(n*l for n, l in zip(normal, light))) / norm if norm else 1
-        rgb = bytes(round(channel * shade) for channel in color)
-        for y in range(ymin, ymax+1):
-            for x in range(xmin, xmax+1):
-                w0 = ((b[1]-c[1])*(x+.5-c[0]) + (c[0]-b[0])*(y+.5-c[1])) / area
-                w1 = ((c[1]-a[1])*(x+.5-c[0]) + (a[0]-c[0])*(y+.5-c[1])) / area
-                w2 = 1-w0-w1
-                if min(w0, w1, w2) < -1e-10:
-                    continue
-                z = w0*a[2] + w1*b[2] + w2*c[2]
-                i = y*size+x
-                # Equal-depth ties are stable in sorted output/triangle order.
-                if z > depth[i]:
-                    depth[i] = z
-                    pixels[3*i:3*i+3] = rgb
-    return pixels, {'projection_bounds_mm': [lo, hi], 'pixel_visits': samples,
-                    'covered_pixels': sum(d > -math.inf for d in depth)}
+def png(pixels, size=SIZE, height=None):
+    """8-bit RGB PNG bytes, ``size`` wide and ``height`` (default ``size``) tall."""
+    height = size if height is None else height
 
-
-def png(pixels, size=SIZE):
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind+data))
-    rows = b''.join(b'\0' + pixels[y*size*3:(y+1)*size*3] for y in range(size))
-    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>2I5B', size, size, 8, 2, 0, 0, 0)) +
+    rows = b''.join(b'\0' + pixels[y*size*3:(y+1)*size*3] for y in range(height))
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>2I5B', size, height, 8, 2, 0, 0, 0)) +
             chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
 
 
-def look(triangles, summary, views, *, focus=(), exclude=(), purchased=None, size=LOOK_SIZE):
+def materials(summary, *, purchased=None, appearance=None, palette=None):
+    """``object -> (role, rgb)``: what each object is drawn in.
+
+    ``appearance`` maps an object to its declared role (A3's hook: xscript
+    declares it, inventory carries it); ``palette`` overrides a role's
+    colour. Undeclared objects fall back on ``purchased``: mechanism if
+    bought, shell if printed. With neither, each object keeps its index
+    colour from the snapshot, which is all a design with no inventory says.
+    """
+    appearance, colours = dict(appearance or {}), {**ROLE_COLORS, **dict(palette or {})}
+    unknown = sorted({str(r) for r in appearance.values()} - set(ROLE_COLORS))
+    _require(not unknown, 'unknown appearance role ' + ', '.join(unknown) +
+             '; roles: ' + ', '.join(ROLE_COLORS))
+    result = {}
+    for name, item in summary['objects'].items():
+        role = appearance.get(name)
+        if role is None and purchased is not None:
+            role = 'mechanism' if name in purchased else 'shell'
+        result[name] = (role or 'shell', tuple(colours[role]) if role else tuple(item['color']))
+    return result
+
+
+def _prepare(parts):
+    """Per drawn triangle: its corners and a normal per corner, in world space.
+
+    Each corner's normal averages the faces sharing that vertex whose normals
+    lie within CREASE_DEGREES of this face's own, weighted by area: large
+    radii shade as the curves they are, and a box keeps its edges however its
+    faces happen to be split into triangles.
+    """
+    limit = math.cos(math.radians(CREASE_DEGREES))
+    prepared = []
+    for material, tris in parts:
+        index, around, faces = {}, [], []
+        for points in tris:
+            (ax, ay, az), (bx, by, bz), (cx, cy, cz) = points
+            ux, uy, uz, vx, vy, vz = bx-ax, by-ay, bz-az, cx-ax, cy-ay, cz-az
+            n = (uy*vz - uz*vy, uz*vx - ux*vz, ux*vy - uy*vx)
+            length = math.sqrt(n[0]*n[0] + n[1]*n[1] + n[2]*n[2])
+            if length == 0:
+                continue
+            face = (n[0]/length, n[1]/length, n[2]/length, length)
+            corners = []
+            for p in points:
+                k = index.get(p)
+                if k is None:
+                    k = index[p] = len(around)
+                    around.append([])
+                around[k].append(face)
+                corners.append(k)
+            faces.append((points, face, corners))
+        for points, face, corners in faces:
+            fx, fy, fz, _ = face
+            normals = []
+            for k in corners:
+                x = y = z = 0.0
+                for gx, gy, gz, weight in around[k]:
+                    if gx*fx + gy*fy + gz*fz >= limit:
+                        x += gx*weight; y += gy*weight; z += gz*weight
+                length = math.sqrt(x*x + y*y + z*z)
+                normals.append((x/length, y/length, z/length))
+            prepared.append((material, points, normals))
+    return prepared
+
+
+def _blur(grid, width, height, radius):
+    """Two separable box passes over a row-major grid: close to a Gaussian."""
+    if radius < 1:
+        return grid
+    for _ in range(2):
+        for across in (True, False):
+            lines, length = (height, width) if across else (width, height)
+            out = [0.0] * len(grid)
+            for line in range(lines):
+                at = (lambda i: line*width + i) if across else (lambda i: i*width + line)
+                values = [grid[at(i)] for i in range(length)]
+                total, span = 0.0, 2*radius + 1
+                prefix = [0.0]
+                for v in values:
+                    total += v
+                    prefix.append(total)
+                for i in range(length):
+                    lo_i, hi_i = max(0, i - radius), min(length, i + radius + 1)
+                    out[at(i)] = (prefix[hi_i] - prefix[lo_i]) / span
+            grid = out
+    return grid
+
+
+def _contact_shadow(prepared, floor=None):
+    """A soft shadow on the floor under the design, as a function of (x, y).
+
+    Measured, not painted: a top-down map of how high the lowest surface
+    over each cell sits above the floor, turned into a tight dark contact
+    term (what touches the floor) and a wide soft term (what hovers over
+    it), each blurred. The floor is the design's lowest point unless
+    ``floor`` names one (a rollout's, fixed across its frames). Returns
+    ``(floor_z, lookup)``.
+    """
+    points = [p for _, tri, _ in prepared for p in tri]
+    lo = [min(p[j] for p in points) for j in range(3)]
+    hi = [max(p[j] for p in points) for j in range(3)]
+    extent = max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 1e-9)
+    margin, cells = 0.3 * extent, 160
+    x0, y0 = lo[0] - margin, lo[1] - margin
+    cell = (max(hi[0] - lo[0], hi[1] - lo[1]) + 2 * margin) / cells
+    width = int((hi[0] - lo[0] + 2 * margin) / cell) + 1
+    height = int((hi[1] - lo[1] + 2 * margin) / cell) + 1
+    lowest = [math.inf] * (width * height)
+    for _, tri, _ in prepared:
+        # Corners and centroid always land: a sliver thinner than a cell
+        # (a leg seen from above) must still cast its shadow.
+        centre = tuple(sum(p[j] for p in tri) / 3 for j in range(3))
+        for x, y, z in (*tri, centre):
+            k = int((y - y0) / cell) * width + int((x - x0) / cell)
+            if z < lowest[k]:
+                lowest[k] = z
+        (ax, ay, az), (bx, by, bz), (cx, cy, cz) = tri
+        area = (bx-ax)*(cy-ay) - (cx-ax)*(by-ay)
+        if abs(area) < cell * cell:
+            continue
+        for j in range(int((min(ay, by, cy) - y0) / cell), int((max(ay, by, cy) - y0) / cell) + 1):
+            py = y0 + (j + .5) * cell
+            for i in range(int((min(ax, bx, cx) - x0) / cell), int((max(ax, bx, cx) - x0) / cell) + 1):
+                px = x0 + (i + .5) * cell
+                w1 = ((px-ax)*(cy-ay) - (cx-ax)*(py-ay)) / area
+                w2 = ((bx-ax)*(py-ay) - (px-ax)*(by-ay)) / area
+                if w1 < 0 or w2 < 0 or w1 + w2 > 1:
+                    continue
+                z = az + w1*(bz-az) + w2*(cz-az)
+                if z < lowest[j*width + i]:
+                    lowest[j*width + i] = z
+    floor = lo[2] if floor is None else min(floor, lo[2])
+    tall = max(hi[2] - floor, 1e-9)
+    near = [math.exp(-(z - floor) / (0.05 * tall)) if z < math.inf else 0.0 for z in lowest]
+    wide = [math.exp(-(z - floor) / tall) if z < math.inf else 0.0 for z in lowest]
+    near = _blur(near, width, height, max(1, round(0.012 * extent / cell)))
+    wide = _blur(wide, width, height, max(1, round(0.07 * extent / cell)))
+
+    def lookup(x, y):
+        i, j = int((x - x0) / cell), int((y - y0) / cell)
+        if not (0 <= i < width and 0 <= j < height):
+            return 1.0
+        k = j * width + i
+        # Deeper than a light backdrop needs: on the dark mat (ADR-444) a
+        # tile has little brightness to lose, so the same share reads faint.
+        return max(0.2, 1.0 - 0.65 * near[k] - 0.45 * wide[k])
+    return floor, lookup
+
+
+def _floor(basis, bounds, size, floor_z):
+    """``pixel(ox, oy, dark) -> rgb``: the dark prototype mat behind a view.
+
+    The mat is the viewport's (:mod:`scene`): a ``tile_a``/``tile_b``
+    checker one grid pitch square, major lines on every multiple of the pitch
+    anchored at the world origin (so a walk slides over a fixed grid), fading
+    into the scene background with distance. The pitch is the viewport's own
+    choice for the framed span. Every orthographic ray meets the floor plane
+    at a point linear in the pixel, so each line's coverage of a pixel is
+    exact to first order: that is what antialiases the grid. ``dark`` is the
+    contact shadow's multiplier at the pixel. A view that cannot see the
+    floor (level or from below) gets the plain background.
+    """
+    palette = scene.PALETTE
+    bg = palette['bg']
+    right, up, toward = basis
+    rx, ry, rz = right; ux, uy, uz = up; tx, ty, tz = toward
+    if floor_z is None or tz <= 0.05:
+        return lambda ox, oy, dark: bg
+    lo, hi = bounds
+    extent = max(hi[0] - lo[0], hi[1] - lo[1])
+    step = extent / size
+    cx0, cy0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
+    pitch = scene.grid_pitch_mm(extent)
+    half = pitch * scene.LINE_FRACTION / 2
+
+    def at(sx, sy):
+        along = (floor_z - sx*rz - sy*uz) / tz
+        return sx*rx + sy*ux + along*tx, sx*ry + sy*uy + along*ty
+    mx, my = at(cx0, cy0)
+    ax, ay = at(cx0 + step, cy0)
+    bx, by = at(cx0, cy0 + step)
+    # The floor footprint of one pixel along each world axis.
+    wx = abs(ax - mx) + abs(bx - mx) or 1e-9
+    wy = abs(ay - my) + abs(by - my) or 1e-9
+    near, far = FLOOR_FADE[0] * extent, FLOOR_FADE[1] * extent
+    tile_a, tile_b, line = palette['tile_a'], palette['tile_b'], palette['line']
+
+    def pixel(ox, oy, dark):
+        sx = cx0 + (ox + .5 - size / 2) * step
+        sy = cy0 - (oy + .5 - size / 2) * step
+        fx, fy = at(sx, sy)
+        distance = math.hypot(fx - mx, fy - my)
+        if distance >= far:
+            return bg
+        i, j = math.floor(fx / pitch), math.floor(fy / pitch)
+        base = tile_a if (i + j) % 2 == 0 else tile_b
+        dx, dy = fx - pitch * round(fx / pitch), fy - pitch * round(fy / pitch)
+        cover_x = min(1.0, max(0.0, (half - abs(dx)) / wx + 0.5))
+        cover_y = min(1.0, max(0.0, (half - abs(dy)) / wy + 0.5))
+        cover = cover_x + cover_y - cover_x * cover_y
+        mat = [(base[c] + (line[c] - base[c]) * cover) * dark for c in range(3)]
+        if distance <= near:
+            return mat
+        f = (distance - near) / (far - near)
+        f = f * f * (3 - 2 * f)
+        return [mat[c] + (bg[c] - mat[c]) * f for c in range(3)]
+    return pixel
+
+
+def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
+    """A lit, antialiased image of prepared triangles on the dark prototype mat.
+
+    Orthographic along ``basis``; ``bounds`` is the framed projection window.
+    Every pixel is ``samples`` squared subsamples: a depth pass keeps the
+    nearest triangle per subsample, then only visible subsamples are shaded
+    (key, fill and rim light, Blinn specular per role finish, normals
+    interpolated across the triangle), and the rest take the floor
+    (:func:`_floor`), with ``shadow`` (from :func:`_contact_shadow`)
+    darkening it under the design when the camera is above it.
+    """
+    right, up, toward = basis
+    lo, hi = bounds
+    extent = max(hi[0] - lo[0], hi[1] - lo[1])
+    n = size * samples
+    cx0, cy0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
+    rx, ry, rz = right; ux, uy, uz = up; tx, ty, tz = toward
+    owner, shading, visits = _depth_pass(prepared, basis, bounds, size, samples)
+    # Lights in view space: x right, y up, z towards the viewer.
+    key = _unit((-0.45, 0.6, 0.66)); fill = _unit((0.8, 0.05, 0.6))
+    half = _unit((key[0], key[1], key[2] + 1.0))
+    floor_z, lookup = shadow if shadow is not None and tz > 0.05 else (None, None)
+    # The mat lies at the shadow's floor, or under the design's lowest point
+    # when no shadow was measured.
+    mat_z = shadow[0] if shadow is not None else min((p[2] for _, tri, _ in prepared for p in tri), default=0.0)
+    backdrop = _floor(basis, bounds, size, mat_z)
+    image, covered = bytearray(3 * size * size), 0
+    inv = 1.0 / (samples * samples)
+    for oy in range(size):
+        sy = cy0 - (oy + .5 - size / 2) * extent / size
+        for ox in range(size):
+            dark = 1.0
+            if lookup is not None:
+                sx = cx0 + (ox + .5 - size / 2) * extent / size
+                along = (floor_z - sx*rz - sy*uz) / tz
+                dark = lookup(sx*rx + sy*ux + along*tx, sx*ry + sy*uy + along*ty)
+            bg = backdrop(ox, oy, dark)
+            r = g = b = 0.0
+            for dj in range(samples):
+                row = (oy * samples + dj) * n + ox * samples
+                for k in range(row, row + samples):
+                    t = owner[k]
+                    if t < 0:
+                        r += bg[0]; g += bg[1]; b += bg[2]
+                        continue
+                    covered += 1
+                    (rgb, finish), ax, ay, w1x, w1y, w2x, w2y, vn = shading[t]
+                    px, py = k % n + .5 - ax, k // n + .5 - ay
+                    w1 = min(1.0, max(0.0, px*w1x + py*w1y))
+                    w2 = min(1.0 - w1, max(0.0, px*w2x + py*w2y))
+                    w0 = 1.0 - w1 - w2
+                    (a0, a1, a2), (b0, b1, b2), (c0, c1, c2) = vn
+                    nx, ny, nz = w0*a0 + w1*b0 + w2*c0, w0*a1 + w1*b1 + w2*c1, w0*a2 + w1*b2 + w2*c2
+                    length = math.sqrt(nx*nx + ny*ny + nz*nz) or 1.0
+                    if nz < 0:
+                        length = -length
+                    nx, ny, nz = nx/length, ny/length, nz/length
+                    diffuse = (0.36 + 0.08 * ny + 0.58 * max(0.0, nx*key[0] + ny*key[1] + nz*key[2])
+                               + 0.20 * max(0.0, nx*fill[0] + ny*fill[1] + nz*fill[2]))
+                    gloss = finish[0] * max(0.0, nx*half[0] + ny*half[1] + nz*half[2]) ** finish[1]
+                    # A sheen of the studio's sky, strongest on a hard finish: what
+                    # keeps graphite from reading as a black hole.
+                    glow = 255.0 * (gloss + 0.28 * (1.0 - nz) ** 3 + finish[0] * 0.25 * (0.5 + 0.5 * ny))
+                    r += min(255.0, rgb[0]*diffuse + glow)
+                    g += min(255.0, rgb[1]*diffuse + glow)
+                    b += min(255.0, rgb[2]*diffuse + glow)
+            at = 3 * (oy * size + ox)
+            image[at] = round(r * inv); image[at+1] = round(g * inv); image[at+2] = round(b * inv)
+    return image, {'projection_bounds_mm': [list(lo), list(hi)], 'pixel_visits': visits,
+                   'covered_pixels': round(covered * inv), 'samples_per_pixel': samples * samples,
+                   'contact_shadow': lookup is not None,
+                   'floor': ({'kind': 'prototype mat', 'pitch_mm': scene.grid_pitch_mm(extent),
+                              'z_mm': mat_z} if tz > 0.05 else {'kind': 'scene background'})}
+
+
+def _depth_pass(prepared, basis, bounds, size, samples):
+    """``(owner, shading, visits)``: the nearest triangle per subsample.
+
+    ``owner`` holds an index into ``shading`` (or -1 for backdrop), whose
+    entries are ``(material, ax, ay, w1x, w1y, w2x, w2y, view_normals)``:
+    the screen plane each visible subsample reads its weights back from.
+    Triangles with no normals (a measurement pass) carry ``None`` for them.
+    """
+    right, up, toward = basis
+    lo, hi = bounds
+    extent = max(hi[0] - lo[0], hi[1] - lo[1])
+    _require(extent > 0, 'zero projected extent')
+    n = size * samples
+    scale = n / extent
+    cx0, cy0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
+    depth, owner = [-math.inf] * (n * n), [-1] * (n * n)
+    shading, visits = [], 0
+    budget = MAX_SAMPLES * (size / SIZE) ** 2
+    rx, ry, rz = right; ux, uy, uz = up; tx, ty, tz = toward
+    for material, tri, normals in prepared:
+        s = [(n/2 + ((p[0]*rx + p[1]*ry + p[2]*rz) - cx0) * scale,
+              n/2 - ((p[0]*ux + p[1]*uy + p[2]*uz) - cy0) * scale,
+              p[0]*tx + p[1]*ty + p[2]*tz) for p in tri]
+        (ax, ay, az), (bx, by, bz), (qx, qy, qz) = s
+        area = (bx-ax)*(qy-ay) - (qx-ax)*(by-ay)
+        if abs(area) < 1e-12:
+            continue
+        # z as a plane over the screen, and the barycentric weights of b and
+        # c as two more; the shading pass reads them back per subsample.
+        w1x, w1y = (qy-ay) / area, -(qx-ax) / area
+        w2x, w2y = -(by-ay) / area, (bx-ax) / area
+        dzdx = (bz-az)*w1x + (qz-az)*w2x
+        dzdy = (bz-az)*w1y + (qz-az)*w2y
+        t = len(shading)
+        vn = None if normals is None else [
+            (m[0]*rx + m[1]*ry + m[2]*rz, m[0]*ux + m[1]*uy + m[2]*uz, m[0]*tx + m[1]*ty + m[2]*tz)
+            for m in normals]
+        shading.append((material, ax, ay, w1x, w1y, w2x, w2y, vn))
+        top, mid, bot = sorted(s, key=lambda v: v[1])
+        j0, j1 = max(0, math.ceil(top[1] - .5)), min(n, math.ceil(bot[1] - .5))
+        for j in range(j0, j1):
+            py = j + .5
+            xl = top[0] + (py - top[1]) * (bot[0] - top[0]) / (bot[1] - top[1])
+            if py < mid[1]:
+                xr = top[0] + (py - top[1]) * (mid[0] - top[0]) / (mid[1] - top[1])
+            else:
+                xr = mid[0] + (py - mid[1]) * (bot[0] - mid[0]) / (bot[1] - mid[1]) if bot[1] > mid[1] else mid[0]
+            if xr < xl:
+                xl, xr = xr, xl
+            i0, i1 = max(0, math.ceil(xl - .5)), min(n, math.ceil(xr - .5))
+            if i1 <= i0:
+                continue
+            visits += i1 - i0
+            z = az + (i0 + .5 - ax) * dzdx + (py - ay) * dzdy
+            row = j * n
+            for k in range(row + i0, row + i1):
+                if z > depth[k]:
+                    depth[k] = z
+                    owner[k] = t
+                z += dzdx
+        _require(visits <= budget, 'pixel work budget exceeded')
+    return owner, shading, visits
+
+
+def design_proxies(triangles, summary, *, exclude=(), purchased=None, appearance=None, palette=None):
+    """A1's image proxies of the drawn design, measured in the hero view.
+
+    P1 ``hardware_silhouette_share``: of the hero pixels the design covers,
+    the fraction whose front-most surface is a purchased component (``None``
+    when there is no inventory to say what was purchased). P3
+    ``material_count``: the distinct colours of the objects visible in the
+    hero. Both are frozen in docs/probes/ot10/README.md with their bars;
+    the hero is measured at PROXY_SIZE by a depth pass alone, so ``look``
+    and review report the same numbers whatever size they draw at.
+    ``exclude`` and the material arguments are :func:`look`'s.
+    """
+    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
+    names = [name for name in summary['objects'] if name not in exclude]
+    prepared = [(name, points, None) for name in names
+                for _, points in triangles[summary['objects'][name]['first']:
+                                           summary['objects'][name]['first'] + summary['objects'][name]['triangles']]]
+    owner, shading, _ = _depth_pass(prepared, HERO, _frame(prepared, HERO, 0.10), PROXY_SIZE, SUPERSAMPLE)
+    pixels = {}
+    for t in owner:
+        if t >= 0:
+            name = shading[t][0]
+            pixels[name] = pixels.get(name, 0) + 1
+    covered = sum(pixels.values())
+    hardware = None if purchased is None else sum(c for name, c in pixels.items() if name in purchased)
+    share = None if hardware is None or not covered else hardware / covered
+    colours = sorted({'#%02X%02X%02X' % tuple(looks[name][1]) for name in pixels})
+    p1, p3 = PROXY_BARS['hardware_silhouette_share'], PROXY_BARS['material_count']
+    return {
+        'view': 'hero', 'size': PROXY_SIZE, 'samples_per_pixel': SUPERSAMPLE * SUPERSAMPLE,
+        'definitions': 'docs/probes/ot10/README.md',
+        'hardware_silhouette_share': {
+            'value': None if share is None else round(share, 4), 'bar': dict(p1),
+            'meets': None if share is None else share <= p1['max'],
+            'design_subsamples': covered, 'hardware_subsamples': hardware,
+            **({} if purchased is not None else {'reason': 'no inventory to tell purchased from printed'}),
+        },
+        'material_count': {
+            'value': len(colours), 'materials': colours, 'bar': dict(p3),
+            'meets': p3['min'] <= len(colours) <= p3['max'],
+        },
+    }
+
+
+def edge_proxy(inventory, environment=()):
+    """A1's P2 ``sharp_outside_edge_share`` from the inventory block (ADR-415).
+
+    Sharp convex edge length over total solid edge length, summed over the
+    printed components as the engine measured them. ``environment`` names
+    the world geometry the fit reports (a floor): it is uncatalogued but
+    not printed, so it is left out here as P1 and ``look`` leave it out of
+    the picture (ADR-424). ``None`` with a reason when there is no
+    inventory to say what was printed, or when a printed part carries no
+    edge measurement (zero would be a false pass). With no printed edges
+    at all the share is 0, as frozen. ``unresolved_edges`` counts edges the
+    engine could not evaluate: they are in the total and never sharp, so a
+    nonzero count makes the share a lower bound.
+    """
+    bar = PROXY_BARS['sharp_outside_edge_share']
+    edges = (inventory or {}).get('printed_edges') if inventory and inventory.get('available', True) else None
+    if not isinstance(edges, dict):
+        return {'value': None, 'bar': dict(bar), 'meets': None,
+                'reason': 'no inventory to tell printed from purchased'}
+    left_out = set(environment)
+    counted = {name: own for name, own in edges['by_component'].items() if name not in left_out}
+    unmeasured = [name for name in edges['unmeasured'] if name not in left_out]
+    total = sum(own['edge_length_mm'] for own in counted.values())
+    sharp = sum(own['sharp_convex_length_mm'] for own in counted.values())
+    result = {'bar': dict(bar), 'edge_length_mm': round(total, 3),
+              'sharp_convex_length_mm': round(sharp, 3),
+              'unresolved_edges': sum(own['unresolved_edges'] for own in counted.values()),
+              'printed_components': len(counted) + len(unmeasured),
+              'left_out_as_environment': sorted(left_out & (set(edges['by_component']) | set(edges['unmeasured'])))}
+    if unmeasured:
+        return {**result, 'value': None, 'meets': None, 'unmeasured': unmeasured,
+                'reason': 'printed parts with no edge measurement: ' + ', '.join(unmeasured)}
+    share = sharp / total if total else 0.0
+    return {**result, 'value': round(share, 4), 'meets': share <= bar['max']}
+
+
+def _unit(v):
+    length = math.sqrt(sum(c*c for c in v))
+    return tuple(c / length for c in v)
+
+
+def _frame(prepared, basis, pad):
+    right, up = basis[0], basis[1]
+    xs = [p[0]*right[0] + p[1]*right[1] + p[2]*right[2] for _, tri, _ in prepared for p in tri]
+    ys = [p[0]*up[0] + p[1]*up[1] + p[2]*up[2] for _, tri, _ in prepared for p in tri]
+    lo, hi = [min(xs), min(ys)], [max(xs), max(ys)]
+    margin = pad * max(hi[0] - lo[0], hi[1] - lo[1])
+    return [lo[0] - margin, lo[1] - margin], [hi[0] + margin, hi[1] + margin]
+
+
+def _studio_parts(triangles, summary, drawn_names, looks):
+    parts = []
+    for name in drawn_names:
+        item = summary['objects'][name]
+        role, rgb = looks[name]
+        tris = [points for _, points in triangles[item['first']:item['first'] + item['triangles']]]
+        parts.append(((rgb, FINISH[role]), tris))
+    return parts
+
+
+def look(triangles, summary, views, *, focus=(), exclude=(), purchased=None, appearance=None,
+         palette=None, size=LOOK_SIZE):
     """The agent's own views of a snapshot: PNG bytes per requested view.
 
     ``exclude`` names objects left out entirely (environment geometry: a floor
     would otherwise set the framing and shrink the design to a speck);
     ``focus`` names the objects the view is framed on, with everything else
-    still drawn; ``purchased`` is the set of objects to colour as bought
-    hardware, every other one being printed. ``None`` keeps the index palette.
+    still drawn; ``purchased``, ``appearance`` and ``palette`` choose each
+    object's material (see :func:`materials`). Every view is a studio image
+    (:func:`studio`); ``hero`` is the presentation view.
     """
     objects = summary['objects']
     unknown = sorted(set(focus) - set(objects))
     _require(not unknown, 'unknown focus ' + ', '.join(unknown) + '; drawable: ' + ', '.join(sorted(objects)))
     _require(all(v in LOOK_VIEWS for v in views),
              'unknown view; choose from ' + ', '.join(LOOK_VIEWS))
-    drawn, framed = [], []
-    for name, item in objects.items():
-        if name in exclude:
-            continue
-        part = triangles[item['first']:item['first'] + item['triangles']]
-        if purchased is not None:
-            color = PURCHASED_COLOR if name in purchased else PRINTED_COLOR
-            part = [(color, points) for _, points in part]
-        drawn.extend(part)
-        if not focus or name in focus:
-            framed.extend(part)
-    _require(bool(framed), 'nothing to draw once environment geometry is left out')
+    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
+    names = [name for name in objects if name not in exclude]
+    framed_names = [name for name in names if not focus or name in focus]
+    _require(bool(framed_names) and any(objects[n]['triangles'] for n in framed_names),
+             'nothing to draw once environment geometry is left out')
+    prepared = _prepare(_studio_parts(triangles, summary, names, looks))
+    framed = prepared if not focus else _prepare(_studio_parts(triangles, summary, framed_names, looks))
+    shadow = _contact_shadow(prepared)
     shots = []
     for view in views:
         basis = LOOK_VIEWS[view]
-        points = [[sum(p[j]*axis[j] for j in range(3)) for axis in basis[:2]]
-                  for _, tri in framed for p in tri]
-        lo, hi = ([fn(p[j] for p in points) for j in range(2)] for fn in (min, max))
-        pad = 0.04 * max(hi[0] - lo[0], hi[1] - lo[1])
-        pixels, details = rasterize(drawn, basis, bounds=([lo[0]-pad, lo[1]-pad], [hi[0]+pad, hi[1]+pad]), size=size)
+        bounds = _frame(framed, basis, 0.10 if view == 'hero' else 0.04)
+        pixels, details = studio(prepared, basis, bounds=bounds, size=size, shadow=shadow)
+        details['materials'] = sorted({'#%02X%02X%02X' % looks[name][1] for name in names})
         shots.append((view, png(pixels, size), details))
     return shots
+
+
+def world(fit):
+    """The names the fit block calls world geometry (a declared floor)."""
+    return {str(row.get('first') or '') for row in (fit or {}).get('failing') or []
+            if row.get('status') == 'world geometry'}
+
+
+def classify(summary, fit=None, inventory=None):
+    """``(environment, purchased)`` for a snapshot, from the fit and inventory blocks.
+
+    Environment is the world geometry the fit names (a floor); purchased is
+    every object whose source no inventory row calls uncatalogued, or
+    ``None`` when there is no inventory to say.
+    """
+    environment = world(fit) & set(summary['objects'])
+    purchased = None
+    if inventory and inventory.get('available', True) and 'uncatalogued_sources' in inventory:
+        printed = set(inventory.get('uncatalogued_sources') or [])
+        purchased = {name for name, item in summary['objects'].items() if item['source'] not in printed}
+    return environment, purchased
+
+
+def declared(inventory):
+    """``(appearance, palette)`` the script declared, as the inventory block carries them.
+
+    ``appearance`` is component -> role for the components that declare
+    one; ``palette`` is role -> rgb for the roles the assembly recoloured
+    (ADR-413). Both are empty for a design that declares nothing, or when
+    there is no readable inventory, and :func:`materials` then falls back
+    on supplier.
+    """
+    if not inventory or not inventory.get('available', True):
+        return {}, {}
+    appearance = {str(k): str(v) for k, v in dict(inventory.get('appearance') or {}).items()}
+    palette = {}
+    for role, colour in dict(inventory.get('palette') or {}).items():
+        text = str(colour)
+        _require(len(text) == 7 and text[0] == '#', f'invalid palette colour {text!r} for {role}')
+        try:
+            palette[str(role)] = tuple(int(text[i:i + 2], 16) for i in (1, 3, 5))
+        except ValueError as exc:
+            raise InventoryError(f'render: invalid palette colour {text!r} for {role}') from exc
+    return appearance, palette
+
+
+def _published_blocks(client):
+    """The fit and inventory blocks for the accepted revision; ``None`` for either unreadable."""
+    from .clearance import read_fit
+    from .inventory import read_inventory_summary
+    blocks = []
+    for read in (read_fit, read_inventory_summary):
+        try:
+            blocks.append(read(client))
+        except Exception:  # a render with no inventory still draws, in index colours
+            blocks.append(None)
+    return blocks
 
 
 def acquire_snapshot(client):
     start = time.perf_counter()
     reply = client.request('rebuild', {'display': {'quality': 'standard', 'edges': False}})
-    triangles, summary = snapshot(reply)
+    # The accepted revision's fit names the floor, which must not size the
+    # clustering grid; a fit that cannot be read leaves every part sizing it.
+    fit = None
+    if reply.get('ok') is True:
+        from .clearance import read_fit
+        try:
+            fit = read_fit(client)
+        except Exception:
+            pass
+    triangles, summary = snapshot(reply, world(fit))
     summary['acquisition_seconds'] = time.perf_counter() - start
     return triangles, summary
 
@@ -314,26 +834,88 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
     if expected_revision is not None:
         _require(summary['revision'] == expected_revision, 'accepted revision differs from rollout')
     relative_dir = 'review/render' + (f'/{expected_revision}' if expected_revision else '')
+    fit, inventory = _published_blocks(client)
+    environment, purchased = classify(summary, fit, inventory)
+    appearance, palette = declared(inventory)
+    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
+    names = [name for name in summary['objects'] if name not in environment]
+    _require(any(summary['objects'][n]['triangles'] for n in names),
+             'nothing to draw once environment geometry is left out')
+    summary['environment'] = sorted(environment)
+    summary['appearance'] = {name: {'role': looks[name][0], 'color': '#%02X%02X%02X' % looks[name][1],
+                                    'source': ('declared' if name in appearance else
+                                               'supplier' if purchased is not None else 'index')}
+                             for name in names}
+    summary['palette'] = {role: '#%02X%02X%02X' % tuple(rgb)
+                          for role, rgb in {**ROLE_COLORS, **palette}.items()}
     start = time.perf_counter()
+    prepared = _prepare(_studio_parts(triangles, summary, names, looks))
+    shadow = _contact_shadow(prepared)
     files, summary['views'] = {}, {}
+    paper, caption = scene.hex_colour(scene.PALETTE['bg']), scene.hex_colour(scene.PALETTE['ink_2'])
     for name, basis in BASES.items():
-        pixels, details = rasterize(triangles, basis)
+        pixels, details = studio(prepared, basis, bounds=_frame(prepared, basis, 0.08), size=SIZE, shadow=shadow)
         encoded = base64.b64encode(png(pixels)).decode('ascii')
         title = html.escape(f"{name} | accepted {summary['revision']} | tessellation preview")
         files[name + '.svg'] = (f'<svg xmlns="http://www.w3.org/2000/svg" width="512" height="552" viewBox="0 0 512 552">'
-                               f'<title>{title}</title><rect width="512" height="552" fill="#f6f7fa"/>'
+                               f'<title>{title}</title><rect width="512" height="552" fill="{paper}"/>'
                                f'<image width="512" height="512" href="data:image/png;base64,{encoded}"/>'
-                               f'<text x="16" y="536" font-family="sans-serif" font-size="12">'
+                               f'<text x="16" y="536" font-family="sans-serif" font-size="12" fill="{caption}">'
                                f'{name} | {summary["revision"][:12]} | tessellation preview</text></svg>\n')
         summary['views'][name] = {**details, 'basis': basis, 'path': f'{relative_dir}/{name}.svg'}
+    # The studio hero (DESIGN-LANGUAGE.md section 7): one PNG, the design's
+    # presented image rather than a review view.
+    hero_start = time.perf_counter()
+    pixels, details = studio(prepared, HERO, bounds=_frame(prepared, HERO, 0.10), size=HERO_SIZE, shadow=shadow)
+    files['hero.png'] = png(pixels, HERO_SIZE)
+    summary['hero'] = {**details, 'basis': HERO, 'size': HERO_SIZE, 'path': f'{relative_dir}/hero.png',
+                       'seconds': time.perf_counter() - hero_start}
     summary['render_seconds'] = time.perf_counter() - start
+    summary['proxies'] = design_proxies(triangles, summary, exclude=environment, purchased=purchased,
+                                        appearance=appearance, palette=palette)
+    summary['proxies']['sharp_outside_edge_share'] = edge_proxy(inventory, environment)
+    # The concept sheet (ot10 A6, ADR-430): the hero just drawn, the key
+    # numbers, the palette and three line views, as one PNG.
+    sheet_start = time.perf_counter()
+    lines = {view: sheet.line_view(triangles, summary, names, BASES[view])[0] for view in sheet.LINE_VIEWS}
+    numbers = sheet.key_numbers(root, summary, names, inventory, environment)
+    roles = {entry['role'] for entry in summary['appearance'].values()}
+    files['sheet.png'] = sheet.compose(pixels, HERO_SIZE, lines, numbers, summary['palette'], roles,
+                                       summary['proxies'], summary['revision'])
+    summary['sheet'] = {'path': f'{relative_dir}/sheet.png', 'size': [sheet.WIDTH, sheet.HEIGHT],
+                        'revision': summary['revision'], 'digest': summary.get('digest'),
+                        'line_views': list(sheet.LINE_VIEWS), 'numbers': numbers,
+                        'seconds': time.perf_counter() - sheet_start}
     files['summary.json'] = json.dumps(summary, indent=2) + '\n'
     # Do not leave partial new views on geometry/render refusal.
     directory = Path(root) / relative_dir
     try:
         directory.mkdir(parents=True, exist_ok=True)
         for name, content in files.items():
-            (directory / name).write_text(content, encoding='utf-8')
+            if isinstance(content, bytes):
+                (directory / name).write_bytes(content)
+            else:
+                (directory / name).write_text(content, encoding='utf-8')
     except OSError as exc:
         raise InventoryError('render: cannot write views: ' + str(exc)) from exc
     return directory / 'summary.json', summary
+
+
+def describe_proxies(proxies):
+    """One line for a report: each proxy's value against its bar."""
+    p1, p3 = proxies['hardware_silhouette_share'], proxies['material_count']
+
+    def share(proxy):
+        if proxy['value'] is None:
+            return 'unmeasured (' + proxy['reason'] + ')'
+        text = '{:.1%} ({:s} {:.0%})'.format(proxy['value'], 'meets' if proxy['meets'] else 'over',
+                                             proxy['bar']['max'])
+        if proxy.get('unresolved_edges'):
+            text += ', a lower bound: {:d} edge(s) unresolved'.format(proxy['unresolved_edges'])
+        return text
+    edges = ''
+    if 'sharp_outside_edge_share' in proxies:
+        edges = '; sharp printed outside edges ' + share(proxies['sharp_outside_edge_share'])
+    return 'hardware share of hero silhouette {:s}{:s}; {:d} material(s) {:s} ({:s} {:d}-{:d})'.format(
+        share(p1), edges, p3['value'], ', '.join(p3['materials']), 'meets' if p3['meets'] else 'outside',
+        p3['bar']['min'], p3['bar']['max'])

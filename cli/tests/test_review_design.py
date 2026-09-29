@@ -156,9 +156,9 @@ def test_the_spec_itself_names_no_private_address():
 
 # §2's reading order: what a phone reads top to bottom, and what the desk
 # frame distributes between its left sidebar, stage and right sidebar.
-READING_ORDER = ("#sidebar", "#identity", "#model", "#model-settings", "#curves", "#videos-region",
+READING_ORDER = ("#sidebar", "#identity", "#concept", "#model", "#model-settings", "#curves", "#videos-region",
                  "#record", "#params-panel", "#artifacts-panel", "#docs-panel")
-HEADINGS = ["Runs", "Documents and decisions", "Model", "Curves", "Videos", "Identity", "Model settings",
+HEADINGS = ["Runs", "Documents and decisions", "Concept", "Model", "Curves", "Videos", "Identity", "Model settings",
             "Training and rollout", "Parameters and specs", "Artifacts"]
 
 MEASURE = """(function () {
@@ -1084,3 +1084,40 @@ def _open_plain(browser, url):
     page = browser.page(url)
     page.wait_for("document.readyState === 'complete'")
     return page
+
+
+@needs_browser
+@pytest.mark.parametrize("size", sorted(SIZES))
+def test_the_page_leads_with_the_concept_sheet_when_the_project_has_one(served, browser, size) -> None:
+    """§14 (ADR-430): with a concept sheet drawn for the accepted revision,
+    the desk stage opens on *Concept* and the phone column reads it before
+    the model; the image is the sheet itself, named by its revision."""
+
+    from cadex_cli import render, sheet
+    from test_review_server import REVISION_B
+
+    root, server = served
+    directory = root / "review" / "render"
+    directory.mkdir(parents=True, exist_ok=True)
+    blank = sheet.Canvas(sheet.WIDTH, sheet.HEIGHT, sheet.PAPER)
+    (directory / "sheet.png").write_bytes(render.png(blank.pixels, sheet.WIDTH, sheet.HEIGHT))
+    (directory / "hero.png").write_bytes(render.png(bytearray(3 * 4), 2))
+    (directory / "summary.json").write_text(json.dumps({
+        "revision": REVISION_B, "digest": "d" * 64, "palette": {},
+        "hero": {"path": "review/render/hero.png"},
+        "sheet": {"path": "review/render/sheet.png",
+                  "numbers": {"name": root.name, "mass_kg": 0.39, "servo_count": 6, "size_mm": [92, 108, 221]}}}))
+    page = _rendered(browser, server.url, size)
+    page.wait_for("document.getElementById('concept-sheet').complete"
+                  " && document.getElementById('concept-sheet').naturalWidth > 0")
+    assert page.evaluate("document.getElementById('concept-sheet').naturalWidth") == sheet.WIDTH
+    assert page.attribute("#concept-status", "data-state") == "current"
+    assert page.text("#concept-caption") == f"{root.name} · 0.39 kg · 6 servos · 92 × 108 × 221 mm"
+    concept, model = page.rect("#concept"), page.rect("#model")
+    if size == "desk":
+        assert page.evaluate("document.getElementById('stage').dataset.active") == "concept"
+        assert page.evaluate("document.getElementById('concept').checkVisibility({visibilityProperty: true})")
+        assert page.evaluate("document.documentElement.scrollHeight <= innerHeight")
+    else:
+        assert concept["y"] < model["y"]
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

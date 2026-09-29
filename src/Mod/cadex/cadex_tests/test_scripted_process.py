@@ -136,3 +136,66 @@ def test_a_cpu_cap_kill_is_a_budget_refusal_not_a_missing_result(tmp_path) -> No
 
     clean = dict(process, returncode=0)
     assert _resource_signal_failure(clean, {"tool_name": "write_script", "timeout_seconds": 300.0}) is None
+
+
+def test_a_worker_runs_on_four_cpus_whatever_the_host_has(monkeypatch) -> None:
+    """RLIMIT_CPU means the same thing on a laptop and on a 32-core box.
+
+    OCCT sizes its thread pools from the CPUs it can see, and the cap is
+    charged across every thread. Measured on ot10-hexapod-1's accepted
+    revision: 280 CPU-seconds on 32 CPUs for 28 s of wall-clock, 94 on
+    four CPUs for 31 s. The pairwise ``distToShape`` fit was most of it,
+    and the agent stripped its design to fit the difference (ADR-418).
+    """
+
+    import cadex_domain_worker as worker
+
+    assert worker.WORKER_CPUS == 4
+    pinned: list[set[int]] = []
+    monkeypatch.setattr(worker.os, "sched_getaffinity", lambda _pid: set(range(32)), raising=False)
+    monkeypatch.setattr(worker.os, "sched_setaffinity", lambda _pid, cpus: pinned.append(set(cpus)), raising=False)
+    monkeypatch.setattr(worker.os, "getpid", lambda: 30)
+
+    worker._resource_limits({})
+
+    assert pinned == [{30, 31, 0, 1}]
+
+
+def test_a_small_host_keeps_every_cpu_it_has(monkeypatch) -> None:
+    import cadex_domain_worker as worker
+
+    pinned: list[set[int]] = []
+    monkeypatch.setattr(worker.os, "sched_getaffinity", lambda _pid: {0, 1}, raising=False)
+    monkeypatch.setattr(worker.os, "sched_setaffinity", lambda _pid, cpus: pinned.append(set(cpus)), raising=False)
+
+    worker._resource_limits({})
+
+    assert pinned == []
+
+
+@pytest.mark.skipif(not hasattr(os, "sched_getaffinity"), reason="Linux CPU affinity")
+def test_the_cpu_pin_reaches_threads_and_children_of_a_real_worker(tmp_path) -> None:
+    """The sweep runs in a child FreeCADCmd and OCCT in its own threads."""
+
+    module_root = Path(__file__).resolve().parents[1]
+    probe = (
+        f"import os,sys,threading,subprocess;sys.path.insert(0,{str(module_root)!r});"
+        "import cadex_domain_worker as w;w._resource_limits({});"
+        "seen=[];t=threading.Thread(target=lambda: seen.append(len(os.sched_getaffinity(0))));"
+        "t.start();t.join();"
+        "child=subprocess.run([sys.executable,'-c','import os;print(len(os.sched_getaffinity(0)))'],"
+        "capture_output=True,text=True).stdout.strip();"
+        "print(len(os.sched_getaffinity(0)),seen[0],child)"
+    )
+    process = run_process(
+        [sys.executable, "-c", probe],
+        cwd=tmp_path,
+        environment=dict(os.environ),
+        cancellation_check=None,
+        timeout_seconds=60.0,
+        memory_limit_bytes=0,
+    )
+
+    assert process["returncode"] == 0, process
+    expected = str(min(4, len(os.sched_getaffinity(0))))
+    assert process["stdout"].split() == [expected, expected, expected]

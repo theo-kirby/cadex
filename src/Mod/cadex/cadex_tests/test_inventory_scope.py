@@ -71,7 +71,7 @@ def _part_output(name: str, value: DomainValue, **extra) -> dict:
     return item
 
 
-def _component_output(name: str, source: str, *, position, grounded=False) -> dict:
+def _component_output(name: str, source: str, *, position, grounded=False, appearance=None) -> dict:
     return {
         "name": name,
         "type": "component_link",
@@ -81,7 +81,10 @@ def _component_output(name: str, source: str, *, position, grounded=False) -> di
             "operation": "component",
             "output_type": "component_link",
             "arguments": [{"document_uid": "inline", "object_name": "tok"}],
-            "properties": {"label": f"{name} label", "grounded": grounded},
+            "properties": {
+                "label": f"{name} label", "grounded": grounded,
+                **({"appearance": appearance} if appearance else {}),
+            },
         },
         "source_output": source,
         "solved_placement_matrix": [
@@ -543,5 +546,102 @@ result = {"bolt_drilled": bolt_drilled, "plate": plate, "first": first,
             {"source_output": "bolt_drilled", "family": "bolt",
              "part_number": "m3x12-socket"},
         ]
+    finally:
+        _stop(client)
+
+
+# --------------------------------------------------------------------------
+# appearance (ADR-413)
+# --------------------------------------------------------------------------
+
+
+def test_appearance_is_declared_on_the_component_and_palette_on_the_assembly() -> None:
+    from test_swept_clearance import _api, _solid as _swept_solid
+
+    api = _api()
+    plain = api.component(_swept_solid())
+    # Undeclared stays out of the definition, so no legacy digest moves.
+    assert "appearance" not in plain.properties
+    hood = api.component(_swept_solid(), appearance=" Shell ")
+    assert hood.properties["appearance"] == "shell"
+    assert "palette" not in api.assembly([plain, hood]).properties
+    model = api.assembly([plain, hood], palette={"accent": "#f2b40a", "shell": "#E9E6DF"})
+    # Normalised: upper case, in role order.
+    assert model.properties["palette"] == {"shell": "#E9E6DF", "accent": "#F2B40A"}
+    with pytest.raises(ValueError, match=r"appearance: must be one of \['shell', 'mechanism', 'accent'\]"):
+        api.component(_swept_solid(), appearance="chrome")
+    for palette, message in [
+        ({"chrome": "#FFFFFF"}, "keys must be among"),
+        ({"shell": "bone"}, "expected a '#RRGGBB' colour"),
+        ({"shell": "#FFF"}, "expected a '#RRGGBB' colour"),
+        ({}, "non-empty object"),
+        (["#FFFFFF"], "non-empty object"),
+    ]:
+        with pytest.raises(ValueError, match=message):
+            api.assembly([plain, hood], palette=palette)
+
+
+def test_the_inventory_carries_declared_roles_and_the_palette(tmp_path) -> None:
+    plate = _solid("box", [40.0, 20.0, 4.0])
+    eye = _solid("sphere", [3.0])
+    outputs = [
+        _part_output("plate", plate),
+        _part_output("eye_body", eye),
+        _component_output("base", "plate", position=(0.0, 0.0, 0.0), grounded=True,
+                          appearance="shell"),
+        _component_output("eye", "eye_body", position=(0.0, 10.0, 4.0), appearance="accent"),
+        _component_output("spare", "plate", position=(0.0, 0.0, 10.0)),
+        {
+            "name": "asm", "type": "assembly", "domain": "assembly",
+            "definition": {
+                "domain": "assembly", "operation": "assembly", "output_type": "assembly",
+                "arguments": [], "properties": {"palette": {"accent": "#179C98"}},
+            },
+        },
+    ]
+    root = _store(tmp_path, {"ok": True, "digest": DIGEST, "outputs": outputs})
+
+    assert _inventory(root)["value"]["palette"] == {"accent": "#179C98"}
+    rows = _inventory(root, path="/components", limit=50)["value"]
+    assert [row.get("appearance") for row in rows] == ["shell", "accent", None]
+    assert "appearance" not in rows[2]
+    # A project with no palette reports an empty one, not a default.
+    assert _inventory(_project(tmp_path / "other"))["value"]["palette"] == {}
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for the real-kernel inventory.",
+)
+def test_a_built_script_carries_its_declared_appearance(tmp_path) -> None:
+    """The declaration survives a real build into the inventory (ADR-413)."""
+    from test_cadexd_lifecycle import _spawn_cadexd, _stop
+
+    source = """
+plate = part.box(40, 20, 4)
+bolt = lib.bolt("M3", 12.0).body
+base = assembly.component(plate, grounded=True, appearance="shell")
+pin = assembly.component(bolt, appearance="accent")
+asm = assembly.assembly([base, pin], palette={"accent": "#F2B40A"})
+diag = assembly.solve(asm)
+result = {"plate": plate, "bolt": bolt, "base": base, "pin": pin,
+          "asm": asm, "diag": diag}
+"""
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(tmp_path)})["ok"]
+        written = client.request("write_script", {"source": source, "expected_revision": ""})
+        assert written["ok"], written
+        reply = client.request("inspect", {"scope": "inventory"})
+        assert reply["ok"], reply
+        assert reply["value"]["palette"] == {"accent": "#F2B40A"}
+        roles = {}
+        for index in range(2):
+            name, role = (client.request("inspect", {
+                "scope": "inventory", "path": f"/components/{index}/{field}",
+            })["value"] for field in ("component", "appearance"))
+            roles[name] = role
+        assert roles == {"base": "shell", "pin": "accent"}
     finally:
         _stop(client)

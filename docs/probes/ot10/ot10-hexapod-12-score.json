@@ -1,0 +1,216 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "035d5a374af747adcaf53a25102c33bb8649cefe90f07e26e00226994c96fa65"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "60bbb107f80689607cec31673ac879cdcf814a6181630a9388e469707ac51766"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "7052fc7ad74a765a6d8b55e56a83a5128912d7f9c83acdff581a3b1c4c9fd92f"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "df67a2acfff47b229584e3a05f09cb28bf4a60fb8e2ebf8ad47ebc04e5894734"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "5c11d381883606dd29334515e9f8f0fab7a54729a5ca4272043f6c5cbfef126d"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "b92dd5ed1b8d3f3890b0b224684bd0fc99e7feafd38417652f0570d2523acfc1"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 2,
+    "T3": 1,
+    "T4": 1,
+    "T5": 2,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 12,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell encloses the body, but the servo cases on every leg and the dark board underneath are clearly exposed."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The cream shell and dark mechanism band are used by role, and the orange accent sits deliberately on the feet, but the servo cases are shell-coloured and some horns are light, so the mechanism colour isn't consistent."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "The rotation axes show as bare fluted servo horns and discs bolted beside boxy servos, not as styled round bosses."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a well-filleted rounded box, but the limbs are lumpy bent bars and boxy servo blocks that don't merge with the body."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark band on one end hints at a visor-style front, but it's a generic stripe with no clear face or character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs end in distinct orange ball feet, but they are near-uniform bent rods with no taper, and the flat wide body sprawls."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "It's shaded on a clean gradient background from a three-quarter view with faint foot shadows, but the high angle, faceted leg surfaces and lack of a real contact shadow fall short of a studio hero."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell encloses the body, but the servo cases on every leg and the dark board underneath are clearly exposed.\"},\n \"T2\": {\"score\": 2, \"reason\": \"The cream shell and dark mechanism band are used by role, and the orange accent sits deliberately on the feet, but the servo cases are shell-coloured and some horns are light, so the mechanism colour isn't consistent.\"},\n \"T3\": {\"score\": 1, \"reason\": \"The rotation axes show as bare fluted servo horns and discs bolted beside boxy servos, not as styled round bosses.\"},\n \"T4\": {\"score\": 1, \"reason\": \"The body is a well-filleted rounded box, but the limbs are lumpy bent bars and boxy servo blocks that don't merge with the body.\"},\n \"T5\": {\"score\": 2, \"reason\": \"A dark band on one end hints at a visor-style front, but it's a generic stripe with no clear face or character.\"},\n \"T6\": {\"score\": 2, \"reason\": \"The legs end in distinct orange ball feet, but they are near-uniform bent rods with no taper, and the flat wide body sprawls.\"},\n \"T7\": {\"score\": 2, \"reason\": \"It's shaded on a clean gradient background from a three-quarter view with faint foot shadows, but the high angle, faceted leg surfaces and lack of a real contact shadow fall short of a studio hero.\"}}\n```",
+      "session_id": "582f4b82-ee61-4812-ab55-c0f4dfd4bc1c",
+      "duration_ms": 21145,
+      "num_turns": 17,
+      "total_cost_usd": 0.14125959999999999,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2460,
+          "cacheReadInputTokens": 3378,
+          "cacheCreationInputTokens": 11421,
+          "webSearchRequests": 0,
+          "costUSD": 0.14125959999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 698,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded-box shell hides the body's hardware, but every leg shows a servo-shaped box with a bare, serrated servo horn."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "Cream shell, dark mechanism and orange feet are mostly used by role, but the servo horns switch between dark discs and cream gears from joint to joint."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "Joints are recognisable, but many show as bare serrated servo horns and bracket stubs rather than styled round bosses."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a soft rounded box, but the limbs are small-fillet servo boxes and constant-section bent bars with lumpy surfaces, so the robot reads as box and bar parts."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark band wrapping one end hints at a visor and gives a front, but it is a generic slot with no clear face or character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The orange ball feet are distinct, but the legs are near-uniform thin bars and the flat, wide body sits in a sprawling stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Clean gradient backdrop with a faint shadow under each foot and curvature that reads, but the views sit high, the model has faceting artefacts and there is no studio polish."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded-box shell hides the body's hardware, but every leg shows a servo-shaped box with a bare, serrated servo horn.\"}, \"T2\": {\"score\": 2, \"reason\": \"Cream shell, dark mechanism and orange feet are mostly used by role, but the servo horns switch between dark discs and cream gears from joint to joint.\"}, \"T3\": {\"score\": 1, \"reason\": \"Joints are recognisable, but many show as bare serrated servo horns and bracket stubs rather than styled round bosses.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a soft rounded box, but the limbs are small-fillet servo boxes and constant-section bent bars with lumpy surfaces, so the robot reads as box and bar parts.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark band wrapping one end hints at a visor and gives a front, but it is a generic slot with no clear face or character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The orange ball feet are distinct, but the legs are near-uniform thin bars and the flat, wide body sits in a sprawling stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"Clean gradient backdrop with a faint shadow under each foot and curvature that reads, but the views sit high, the model has faceting artefacts and there is no studio polish.\"}}",
+      "session_id": "f3c643be-5efb-4b08-91ea-90292a4e60b3",
+      "duration_ms": 24186,
+      "num_turns": 17,
+      "total_cost_usd": 0.1229858,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2432,
+          "cacheReadInputTokens": 5649,
+          "cacheCreationInputTokens": 9150,
+          "webSearchRequests": 0,
+          "costUSD": 0.1229858,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 688,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The rounded body shell is continuous and hides the core hardware, but servo cases and splined horns show plainly on every leg."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "There's a cream shell, a dark band and dark bits of mechanism, with a single orange accent deliberately placed on the feet, but the mechanism colour isn't used consistently because many horns and joint discs stay light grey or cream."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "You can make out the joints, but they read as bare serrated servo horns and discs next to boxy servo pods, not as styled round bosses."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft rounded box with generous radii and the legs are bent and lightly shaped, but the servo pods are still separate boxes and the leg surfaces look lumpy."
+        },
+        "T5": {
+          "score": 1,
+          "reason": "The only hint of a front is the dark band on one end, which reads as trim rather than a face, so there's no clear focal face or character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The orange ball feet are clearly distinct, but the body is a flat, wide slab and the thin legs barely taper, so the stance looks sprawling more than balanced."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The lighting shows the curvature on a clean gradient background, but contact shadows are faint, the view is a high three-quarter and the leg meshes look faceted."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"The rounded body shell is continuous and hides the core hardware, but servo cases and splined horns show plainly on every leg.\"},\n\"T2\": {\"score\": 2, \"reason\": \"There's a cream shell, a dark band and dark bits of mechanism, with a single orange accent deliberately placed on the feet, but the mechanism colour isn't used consistently because many horns and joint discs stay light grey or cream.\"},\n\"T3\": {\"score\": 1, \"reason\": \"You can make out the joints, but they read as bare serrated servo horns and discs next to boxy servo pods, not as styled round bosses.\"},\n\"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft rounded box with generous radii and the legs are bent and lightly shaped, but the servo pods are still separate boxes and the leg surfaces look lumpy.\"},\n\"T5\": {\"score\": 1, \"reason\": \"The only hint of a front is the dark band on one end, which reads as trim rather than a face, so there's no clear focal face or character.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The orange ball feet are clearly distinct, but the body is a flat, wide slab and the thin legs barely taper, so the stance looks sprawling more than balanced.\"},\n\"T7\": {\"score\": 2, \"reason\": \"The lighting shows the curvature on a clean gradient background, but contact shadows are faint, the view is a high three-quarter and the leg meshes look faceted.\"}}\n```",
+      "session_id": "3b85daf5-4119-4d27-ad88-1b7ae7401ccd",
+      "duration_ms": 25392,
+      "num_turns": 17,
+      "total_cost_usd": 0.1307566,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2810,
+          "cacheReadInputTokens": 5663,
+          "cacheCreationInputTokens": 9176,
+          "webSearchRequests": 0,
+          "costUSD": 0.1307566,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1023,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

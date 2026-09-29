@@ -678,3 +678,58 @@ def test_a_body_whose_mass_is_not_a_short_decimal_still_exports() -> None:
     )
     assert drift <= dyn.MJCF_MASS_TOLERANCE * max(1.0, abs(source))
     assert written == pytest.approx(source, rel=1.0e-5)
+
+
+def test_a_model_whose_body_positions_are_round_off_still_exports() -> None:
+    """hex2 at ``hip_pitch=48``, reproduced on the pendulum (ADR-441).
+
+    hex2's accepted hexapod builds every body at the origin, so its
+    ``body_pos`` is zero everywhere but three entries of -7.1e-18 m. The
+    writer emits those as ``0``, and ``_field_drift`` took the field's own
+    largest magnitude -- the round-off -- as its scale: exactly 1.0 relative
+    drift, and a design inside its own parameter range was refused.
+    """
+
+    components, joints, _placements = fx.pendulum()
+    built = dict(dyn.build_model(components, joints))
+    spec = built["spec"]
+    spec.body("base").pos = [-7.105427357601002e-18, 0.0, 0.0]
+    spec.body("arm").pos = [0.0, 0.0, 0.0]
+    built["model"] = spec.compile()
+    assert float(built["model"].body_pos[1][0]) != 0.0, (
+        "the round-off did not survive compilation; the fixture no longer "
+        "reaches the defect"
+    )
+
+    exported = dyn.export_mjcf(built)          # refused before ADR-441
+    reloaded = mujoco.MjModel.from_xml_string(exported["xml"].decode("utf-8"))
+    assert float(reloaded.body_pos[1][0]) == 0.0
+
+
+def test_the_writer_zero_is_the_writers() -> None:
+    """``MJCF_WRITER_ZERO`` is a measurement of this MuJoCo, re-taken here.
+
+    If a MuJoCo upgrade moves the threshold, this fails before the snap
+    either hides a number the file carries or refuses one it cannot.
+    """
+
+    def written(value: float) -> float:
+        spec = mujoco.MjSpec()
+        body = spec.worldbody.add_body(pos=[value, 0.0, 0.0], mass=1.0,
+                                       inertia=[1.0, 1.0, 1.0])
+        body.add_geom(size=[0.01, 0.0, 0.0])
+        return float(mujoco.MjModel.from_xml_string(spec.to_xml()).body_pos[1][0])
+
+    below = dyn.MJCF_WRITER_ZERO * 0.999
+    assert written(below) == 0.0
+    assert written(-below) == 0.0
+    assert written(dyn.MJCF_WRITER_ZERO) == dyn.MJCF_WRITER_ZERO
+
+
+def test_the_writer_zero_does_not_admit_a_real_change() -> None:
+    """Only what the file cannot carry is forgiven; a nanometre is not."""
+
+    assert dyn._field_drift([-7.105427357601002e-18, 0.0], [0.0, 0.0]) == 0.0
+    assert dyn._field_drift([1.0e-9, 0.0], [0.0, 0.0]) == 1.0
+    assert dyn._field_drift([0.1, 5.0e-13], [0.1, 0.0]) == 0.0
+    assert dyn._field_drift([0.1, 2.0e-6], [0.1, 0.0]) > dyn.MJCF_FIELD_TOLERANCE

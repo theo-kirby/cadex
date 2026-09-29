@@ -573,6 +573,129 @@ def test_battery_envelope_mass_and_density():
         _lib().battery("generic-2s")
 
 
+def _box_extents(bay):
+    (box,) = _ops(bay, "box")
+    low = box.properties["origin"]
+    return tuple(low), tuple(a + b for a, b in zip(low, box.arguments))
+
+
+def test_battery_bay_houses_the_pack_with_room_for_its_leads():
+    """ADR-442: a bay is cut from the pack's own extents, not guessed."""
+    placed = _lib().battery("gensace-gea2s100045d", origin=(10, 20, 30),
+                            direction=(1, 0, 0), roll_degrees=90)
+    bay = placed.bay()
+    assert bay.operation == "transform"
+    # The bay follows the pack's placement exactly.
+    assert bay.properties == placed.body.properties
+    low, high = _box_extents(bay)
+    assert low == pytest.approx((-37.0, -19.0, 0.0))  # seat, not clearance, below
+    assert high == pytest.approx((36.0 + 1.0 + 15.0, 19.0, 14.0))
+    low, high = _box_extents(placed.bay(clearance=2, lead_room=0))
+    assert (low, high) == (pytest.approx((-38, -20, 0)), pytest.approx((38, 20, 15)))
+    # A bay is a cutting tool, never catalogued hardware.
+    assert catalog_identity_of(bay) is None
+
+
+@pytest.mark.parametrize("sku", ["esp32-devkitc-v4", "pi-zero-2-w",
+                                 "pca9685-adafruit-rev-c", "bno085-adafruit-4754",
+                                 "pololu-d36v50f6"])
+def test_board_bay_contains_the_board_and_its_overhang(sku):
+    board = _lib().board(sku)
+    spec = board.spec
+    low, high = _box_extents(board.bay())
+    (mx, my, mz), (sx, sy, sz) = spec["cosmetic_origin"], spec["cosmetic_size"]
+    assert low[:2] == pytest.approx((min(0, mx) - 1, min(0, my) - 1))
+    assert high[:2] == pytest.approx((max(spec["width_mm"], mx + sx) + 1,
+                                      max(spec["length_mm"], my + sy) + 1))
+    assert low[2] == pytest.approx(-3.0)
+    assert high[2] == pytest.approx(max(spec["thickness_mm"], mz + sz) + 1 + 8)
+    assert catalog_identity_of(board.bay()) is None
+
+
+def test_esp32_bay_covers_the_module_overhanging_its_pcb():
+    esp = _lib().board("esp32-devkitc-v4")
+    _low, high = _box_extents(esp.bay(clearance=0, lead_room=0))
+    assert high[1] == pytest.approx(23.0 + 31.30)  # past the 48.26 mm PCB
+
+
+def _boxes(bay):
+    return sorted(
+        (tuple(b.properties["origin"]),
+         tuple(o + a for o, a in zip(b.properties["origin"], b.arguments)))
+        for b in _ops(bay, "box"))
+
+
+def _servo_bay_bounds(servo, **kwargs):
+    boxes = _boxes(servo.bay(**kwargs))
+    return (tuple(min(low[i] for low, _ in boxes) for i in range(3)),
+            tuple(max(high[i] for _, high in boxes) for i in range(3)))
+
+
+@pytest.mark.parametrize("sku", ["sg90", "mg90s", "ds3218"])
+def test_servo_bay_houses_the_case_tabs_and_lead(sku):
+    """ADR-443: a limb grows around the servo's own keep-out, not a guess."""
+    servo = _servo_lib().servo(sku)
+    spec = servo.spec
+    front = spec["shaft_offset_from_front_mm"]
+    back = front - spec["body_length_mm"]
+    half = spec["body_width_mm"] / 2
+    plate_z = spec["mount_hole_z_mm"]
+    centre = front - spec["body_length_mm"] / 2
+    tab = spec["overall_tab_length_mm"] / 2
+    boxes = _boxes(servo.bay())
+    assert len(boxes) == 3
+    assert ((back - 0.5, -half - 0.5, -spec["case_height_mm"] - 0.5),
+            (front + 0.5, half + 0.5, 0.5)) in [
+        (pytest.approx(lo), pytest.approx(hi)) for lo, hi in boxes]
+    assert ((centre - tab - 0.5, -half - 0.5, plate_z - 0.5),
+            (centre + tab + 0.5, half + 0.5, plate_z + spec["tab_thickness_mm"] + 0.5)) in [
+        (pytest.approx(lo), pytest.approx(hi)) for lo, hi in boxes]
+    assert ((back - 6.5, -half - 0.5, -spec["case_height_mm"] - 0.5),
+            (back - 0.5, half + 0.5, plate_z - 0.5)) in [
+        (pytest.approx(lo), pytest.approx(hi)) for lo, hi in boxes]
+    (column,) = _ops(servo.bay(), "cylinder")
+    assert column.arguments == (pytest.approx(spec["spline_dia_mm"] / 2 + 0.5),
+                                spec["spline_height_mm"])
+    # Without lead room the lead box is gone, not a zero-length solid.
+    assert len(_boxes(servo.bay(lead_room=0))) == 2
+    assert catalog_identity_of(servo.bay()) is None
+
+
+def test_servo_bay_contains_the_servo_body():
+    servo = _servo_lib().servo("mg90s")
+    low, high = _servo_bay_bounds(servo, clearance=0, lead_room=0)
+    body_boxes = _boxes(servo.body)
+    assert low == pytest.approx(tuple(min(b[0][i] for b in body_boxes) for i in range(3)))
+    assert high[:2] == pytest.approx(tuple(max(b[1][i] for b in body_boxes)
+                                           for i in range(2)))
+
+
+def test_servo_bay_follows_the_servo_placement():
+    servo = _servo_lib().servo("mg90s", origin=(10, 20, 30), direction=(0, 1, 0),
+                               roll_degrees=90)
+    bay = servo.bay(label="hip_bay")
+    assert bay.operation == "transform"
+    assert bay.properties == servo.body.properties
+
+
+@pytest.mark.parametrize("name,value", [("clearance", -1), ("lead_room", float("nan")),
+                                        ("clearance", True), ("underside", "2")])
+def test_bay_allowances_refuse_by_name(name, value):
+    board = _lib().board("pi-zero-2-w")
+    with pytest.raises(LibraryError, match=f"board.bay: {name} must be"):
+        board.bay(**{name: value})
+    if name != "underside":
+        with pytest.raises(LibraryError, match=f"battery.bay: {name} must be"):
+            _lib().battery("gensace-gea2s100045d").bay(**{name: value})
+        with pytest.raises(LibraryError, match=f"servo.bay: {name} must be"):
+            _servo_lib().servo("mg90s").bay(**{name: value})
+
+
+def catalog_identity_of(body):
+    from cadex_library_api import _CATALOG_IDENTITY, _definition_key
+    return _CATALOG_IDENTITY.get(_definition_key(body))
+
+
 def test_board_terminals_follow_placement_and_enter_wiring_table():
     from CadexBoards import board as declare_board
     placed = _lib().board("pi-zero-2-w", origin=(10, 20, 30),

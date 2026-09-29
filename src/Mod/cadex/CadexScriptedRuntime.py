@@ -985,6 +985,7 @@ def worker_environment(staging: str | Path) -> dict[str, str]:
             "TMPDIR": staging,
             "CADEX_XSCRIPT_DOMAIN_REQUEST": str(Path(staging) / "request.json"),
             "CADEX_XSCRIPT_DOMAIN_RESULT": str(Path(staging) / "result.json"),
+            "CADEX_XSCRIPT_DOMAIN_PROGRESS": str(Path(staging) / "progress.json"),
         }
     )
     if sys.platform == "win32":
@@ -1032,12 +1033,63 @@ def _resource_signal_failure(
     if known is None:
         return None
     code, template = known
+    message = template.format(seconds=float(prepared["timeout_seconds"]))
+    observed = dict(process)
+    if code == "DOMAIN_CPU_LIMIT_EXCEEDED":
+        ledger = _cpu_ledger(Path(str(prepared.get("staging") or "")))
+        if ledger is not None:
+            message = f"{message} {_cpu_ledger_sentence(ledger)}"
+            observed["cpu_ledger"] = ledger
     return _failure(
         str(prepared["tool_name"]),
         code,
         "external_process",
-        template.format(seconds=float(prepared["timeout_seconds"])),
-        observed=process,
+        message,
+        observed=observed,
+    )
+
+
+def _cpu_ledger(staging: Path) -> dict[str, Any] | None:
+    """The worker's last CPU ledger, or None when it never wrote one (ADR-436)."""
+
+    if not str(staging):
+        return None
+    try:
+        ledger = json.loads((staging / "progress.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    current = ledger.get("current") if isinstance(ledger, Mapping) else None
+    if not isinstance(current, Mapping) or not str(current.get("stage") or ""):
+        return None
+    finished = [
+        {"stage": str(item.get("stage")), "cpu_seconds": float(item.get("cpu_seconds") or 0.0)}
+        for item in list(ledger.get("finished") or [])
+        if isinstance(item, Mapping) and item.get("stage")
+    ]
+    return {
+        "current": {
+            "stage": str(current["stage"]),
+            "started_cpu_seconds": float(current.get("started_cpu_seconds") or 0.0),
+        },
+        "finished": finished,
+    }
+
+
+def _cpu_ledger_sentence(ledger: Mapping[str, Any]) -> str:
+    current = ledger["current"]
+    sentence = (
+        f"It was in {current['stage']!r}, which started {current['started_cpu_seconds']:g} "
+        "CPU-seconds in."
+    )
+    costly = [item for item in ledger["finished"] if item["cpu_seconds"] >= 1.0]
+    if costly:
+        spent = ", ".join(f"{item['stage']!r} {item['cpu_seconds']:g}" for item in costly)
+        sentence += f" Costliest finished stages, in CPU-seconds: {spent}."
+    return sentence + (
+        " Make the named stages cheaper rather than retrying: an 'output NAME' "
+        "stage is that shape's own construction, and a 'static fit A / B' stage "
+        "is the exact fit check between those two components, run because their "
+        "boxes come within 10 mm."
     )
 
 
@@ -1593,11 +1645,25 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             )
     elif operation == "edit_script":
         if not current_source:
+            # hex3's first write_script was refused (a wrong horn style) and
+            # its next call edited the refused source. A refused candidate is
+            # rolled back (ADR-044), so say that, and say what to send.
+            latest = state.get("latest_candidate")
+            refused = isinstance(latest, Mapping) and latest.get("status") == "failed"
             _raise(
                 tool_name,
                 "NO_PROJECT_SCRIPT",
                 "precondition",
-                "There is no project script to edit yet; use write_script.",
+                (
+                    "There is no accepted project script to edit yet: the last "
+                    "write_script was refused and rolled back, and edit_script "
+                    "only edits an accepted source. "
+                    if refused
+                    else "There is no project script to edit yet. "
+                )
+                + "Resend the whole corrected source with write_script and "
+                "expected_revision=''.",
+                required_changes=[{"tool": "write_script", "expected_revision": ""}],
             )
         try:
             source = _apply_replacements(
@@ -1866,6 +1932,7 @@ def validate_project_result(
     """Check the worker report, record the contract, persist working state."""
 
     from CadexScriptStore import CadexProjectScriptStore
+    from CadexScriptedDomainPublication import publishable_output_type
 
     tool_name = str(prepared["tool_name"])
     if execution.get("schema") != PROJECT_WORKER_SCHEMA:
@@ -1920,6 +1987,26 @@ def validate_project_result(
                 observed={"name": name, "domain": domain, "type": output_type},
             )
         seen.add(name)
+        if not publishable_output_type(output_type):
+            # Refused here, before the document is touched: an argument
+            # value in `result` used to raise half-way through the assembly
+            # pass (ADR-434).
+            _raise(
+                tool_name,
+                "PROJECT_OUTPUT_UNPUBLISHABLE",
+                "postcondition",
+                f"Project output {name!r} is a `{domain}.{output_type}` value, "
+                "which is an argument to another call and cannot be published "
+                f"on its own. Remove {name!r} from `result` and pass it to the "
+                "call that uses it"
+                + (
+                    " (assembly.mjcf(..., actuators=[...]) and "
+                    "assembly.task(..., actions=[...]))."
+                    if output_type == "actuator"
+                    else "."
+                ),
+                observed={"name": name, "domain": domain, "type": output_type},
+            )
         if str(item.get("artifact_kind") or "") == "brep":
             path = _staged_artifact_path(
                 prepared,
@@ -2899,7 +2986,14 @@ def describe_project_api() -> dict[str, Any]:
             "Assign result to a dict. Every kept value must be a key: keys "
             "become the stable published output names, values must come from "
             "the sketcher/part/partdesign/mesh/assembly APIs (assembly.solve "
-            "diagnostics included). Outputs may mix domains."
+            "diagnostics included). Outputs may mix domains. A script with "
+            "an assembly returns exactly one assembly.assembly(...) value and "
+            "exactly one assembly.solve(<that assembly>) value, and every "
+            "component and joint that assembly lists, each under a key of its "
+            "own and once: a component or joint kept only in a Python list is "
+            "not returned. Assign each one where you create it "
+            "(`result['hip_' + tag] = j_hip`), or loop a list into result "
+            "(`for i, j in enumerate(joints): result['joint_' + str(i)] = j`)."
         ),
         "mutation_selection": {
             "write_script": "Replace the complete script source.",
@@ -2918,7 +3012,10 @@ def describe_project_api() -> dict[str, Any]:
             "Guard every mutation with expected_revision equal to the working "
             "revision from core.inspect scope='script' or the previous write "
             "result; use an empty string only when no script exists yet. A "
-            "failed candidate becomes the working revision while the previous "
-            "accepted revision stays live."
+            "refused candidate is rolled back: the previous accepted revision "
+            "stays live and stays the working revision, and edit_script edits "
+            "that accepted source, never the refused one. So until a "
+            "write_script is accepted there is nothing to edit -- resend the "
+            "whole corrected source with write_script."
         ),
     }

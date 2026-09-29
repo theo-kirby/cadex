@@ -2356,6 +2356,8 @@ def test_an_offset_project_reopens_although_its_bytes_never_repeat(tmp_path):
             state["accepted_digest"]
         ), learned
         assert len(learned["accepted_geometry"]["geometry_digest"]) == 64, learned
+        from CadexGeometryDigest import GEOMETRY_DIGEST_SCHEMA
+        assert learned["accepted_geometry"]["schema"] == GEOMETRY_DIGEST_SCHEMA
         assert retained.is_dir(), "restore pruned the pinned accepted artifacts"
         assert {
             path.relative_to(retained): hashlib.sha256(path.read_bytes()).hexdigest()
@@ -2399,6 +2401,10 @@ def test_a_changed_script_is_still_refused_at_the_restore_pass(tmp_path):
             after = json.loads((root / "script.json").read_text())
             assert after["accepted_digest"] == state["accepted_digest"]
             assert after["accepted_attempt"] == state["accepted_attempt"]
+            # The refused restore run was accepted by write_script on its
+            # way through; it must not stay named as the latest accepted
+            # candidate (ot10-biped-1, ADR-421).
+            assert after["latest_candidate"] == state["latest_candidate"]
             assert (retained / "result.json").read_bytes() == original_result
     finally:
         _stop(client)

@@ -165,12 +165,16 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
     "look": {
         "description": (
             "SEE the accepted design: rendered images of the last accepted "
-            "revision, returned to you as pictures. Printed parts are drawn "
-            "in one filament orange and purchased parts in dark grey, so the "
-            "design reads as the object it would be; environment geometry "
-            "(a floor) is left out. Views: `iso` (front-right, from above), "
+            "revision, returned to you as pictures. Each part is drawn in the "
+            "appearance role you declared (`assembly.component(..., "
+            "appearance='shell'|'mechanism'|'accent')`) in the assembly's "
+            "`palette`; an undeclared part is bone shell if printed and "
+            "graphite mechanism if purchased. Environment geometry "
+            "(a floor) is left out. Views: `hero` (the presented studio shot: "
+            "low, front-right, three-quarter), `iso` (front-right, from above), "
             "`iso_back` (back-left, from above), `front`, `right`, `top`. "
-            "Orthographic, flat-shaded, no edges or dimensions. Pass `focus` "
+            "Orthographic and studio-lit so curvature reads, with a contact "
+            "shadow on the floor; no edges or dimensions. Pass `focus` "
             "with component or output names to frame a close-up on them. "
             "Look after every accepted shape change and before you say a "
             "design is done: numbers prove it fits, only a look shows "
@@ -181,7 +185,7 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
             "properties": {
                 "views": {
                     "type": "array",
-                    "items": {"type": "string", "enum": ["iso", "iso_back", "front", "right", "top"]},
+                    "items": {"type": "string", "enum": ["hero", "iso", "iso_back", "front", "right", "top"]},
                     "description": "Which views, in order; default iso and iso_back. At most 5.",
                 },
                 "focus": {

@@ -1,0 +1,216 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "8903860db8effc09de7d15e324c4b1edf6bd570723a0a08d19aa1f286bc5b482"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "8bc0942478c8cfedd0220f1fae653cd7c1ad6824d5ae0208a521ca9ad8bf023e"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "715dcc466337240b77342886dfa038cd8f2e813bd746de5d14e6b0fd2d4730d3"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "cb42ccaf4d38eba667b8bef84c5b6120e037dd1d08736745ddd7880864af050c"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "b037bbf4ab21df8621f72657c0d63ec9c41cd248e1f8071153a466182332036a"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "6717efb4aec5cd3dbbba1fe3c2e62b8526eac50fd8bf94cb63f32f369889ed1d"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 2,
+    "T3": 1,
+    "T4": 1,
+    "T5": 2,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 12,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded slab encloses the body hardware, and the hip servos sit under cream pod covers, but dark servo shafts and cases show through the gaps at every hip."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The cream shell and dark mechanism are used consistently (dark face slot and servo bits), but there is no saturated accent."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "The hip joints read as a bare horn-like disc with a dark shaft stub and a rod bolted on, not styled concentric bosses."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "A flat rounded slab with rounded-box pods stuck on top and thin bent rods still reads as plates, boxes and bars, with no merged forms."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A single dark slot on one end hints at a face and a front, but it is generic and hard to read as character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs end in distinct ball feet, but the body is a wide flat slab and the six-legged stance sprawls rather than reading as compact."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "It is cleanly lit on a gradient backdrop with a soft shadow and antialiasing, but the viewpoint is high and the material looks like plain CAD shading, not studio polish."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded slab encloses the body hardware, and the hip servos sit under cream pod covers, but dark servo shafts and cases show through the gaps at every hip.\"},\n\"T2\": {\"score\": 2, \"reason\": \"The cream shell and dark mechanism are used consistently (dark face slot and servo bits), but there is no saturated accent.\"},\n\"T3\": {\"score\": 1, \"reason\": \"The hip joints read as a bare horn-like disc with a dark shaft stub and a rod bolted on, not styled concentric bosses.\"},\n\"T4\": {\"score\": 1, \"reason\": \"A flat rounded slab with rounded-box pods stuck on top and thin bent rods still reads as plates, boxes and bars, with no merged forms.\"},\n\"T5\": {\"score\": 2, \"reason\": \"A single dark slot on one end hints at a face and a front, but it is generic and hard to read as character.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The legs end in distinct ball feet, but the body is a wide flat slab and the six-legged stance sprawls rather than reading as compact.\"},\n\"T7\": {\"score\": 2, \"reason\": \"It is cleanly lit on a gradient backdrop with a soft shadow and antialiasing, but the viewpoint is high and the material looks like plain CAD shading, not studio polish.\"}}\n```",
+      "session_id": "fb217bfa-26fa-432f-9ab4-9470f73a1d36",
+      "duration_ms": 23866,
+      "num_turns": 17,
+      "total_cost_usd": 0.14651039999999999,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2712,
+          "cacheReadInputTokens": 3392,
+          "cacheCreationInputTokens": 11447,
+          "webSearchRequests": 0,
+          "costUSD": 0.14651039999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 961,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded slab encloses the body, but the servos sit in separate boxy pods on top, and their dark cases and horns show through the gaps next to the hip joints."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "Cream shell and dark grey mechanism are used by role (face slot, horn stubs), and there is no saturated accent."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "Some hips have round disc bosses, but many joints read as bare dark horn stubs and brackets, and they are not consistent across the robot."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a filleted flat box, the servo pods are small rounded cubes and the legs are constant-section bent rods, so it still reads as plates and bars."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A single dark slot on one end serves as a face, but it is generic and does not give the flat, table-like silhouette much character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs end in distinct ball feet but barely taper, and the flat, wide-spread six-leg layout feels more sprawling than compact."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is cleanly lit on a gradient backdrop with antialiased edges and faint shadows, but the view angle is high, the shadows are weak and the materials are flat."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded slab encloses the body, but the servos sit in separate boxy pods on top, and their dark cases and horns show through the gaps next to the hip joints.\"}, \"T2\": {\"score\": 2, \"reason\": \"Cream shell and dark grey mechanism are used by role (face slot, horn stubs), and there is no saturated accent.\"}, \"T3\": {\"score\": 1, \"reason\": \"Some hips have round disc bosses, but many joints read as bare dark horn stubs and brackets, and they are not consistent across the robot.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a filleted flat box, the servo pods are small rounded cubes and the legs are constant-section bent rods, so it still reads as plates and bars.\"}, \"T5\": {\"score\": 2, \"reason\": \"A single dark slot on one end serves as a face, but it is generic and does not give the flat, table-like silhouette much character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The legs end in distinct ball feet but barely taper, and the flat, wide-spread six-leg layout feels more sprawling than compact.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render is cleanly lit on a gradient backdrop with antialiased edges and faint shadows, but the view angle is high, the shadows are weak and the materials are flat.\"}}",
+      "session_id": "64889bbb-42ed-40ab-a289-35cf24b593b6",
+      "duration_ms": 24621,
+      "num_turns": 17,
+      "total_cost_usd": 0.124673,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 2437,
+          "cacheReadInputTokens": 11185,
+          "cacheCreationInputTokens": 9209,
+          "webSearchRequests": 0,
+          "costUSD": 0.124673,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 686,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The body is a closed rounded shell, but the six servos sit on top as separate box caps, and dark servo bodies and output shafts show through gaps underneath."
+        },
+        "T2": {
+          "score": 1,
+          "reason": "It is almost entirely one off-white colour, with dark used only on a front slot and tiny shaft stubs, so there is no real mechanism colour and no accent."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "The rotation axes read as bare horn discs and dark shaft stubs where the leg bars bolt to the servo caps, not as styled, consistent round bosses."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a flat slab with only moderate fillets, the servo caps are small rounded boxes, and the legs are bent constant-section bars, so it still reads as plates and bars."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A single dark rectangular slot on one short side is the only face element, which is generic and weak against the symmetrical table-like silhouette."
+        },
+        "T6": {
+          "score": 1,
+          "reason": "The body is compact, but the flat slab sits on thin, uniform, sprawling leg bars, and the small ball feet are not enough to give a balanced, intentional stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "It is cleanly lit on a light gradient backdrop from a reasonable three-quarter angle, with only faint shadows and plain CAD shading, so it lacks studio polish."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"The body is a closed rounded shell, but the six servos sit on top as separate box caps, and dark servo bodies and output shafts show through gaps underneath.\"}, \"T2\": {\"score\": 1, \"reason\": \"It is almost entirely one off-white colour, with dark used only on a front slot and tiny shaft stubs, so there is no real mechanism colour and no accent.\"}, \"T3\": {\"score\": 1, \"reason\": \"The rotation axes read as bare horn discs and dark shaft stubs where the leg bars bolt to the servo caps, not as styled, consistent round bosses.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a flat slab with only moderate fillets, the servo caps are small rounded boxes, and the legs are bent constant-section bars, so it still reads as plates and bars.\"}, \"T5\": {\"score\": 2, \"reason\": \"A single dark rectangular slot on one short side is the only face element, which is generic and weak against the symmetrical table-like silhouette.\"}, \"T6\": {\"score\": 1, \"reason\": \"The body is compact, but the flat slab sits on thin, uniform, sprawling leg bars, and the small ball feet are not enough to give a balanced, intentional stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"It is cleanly lit on a light gradient backdrop from a reasonable three-quarter angle, with only faint shadows and plain CAD shading, so it lacks studio polish.\"}}",
+      "session_id": "705a8160-721a-4c48-8f72-5aa75795b7c2",
+      "duration_ms": 25690,
+      "num_turns": 17,
+      "total_cost_usd": 0.1289712,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2726,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.1289712,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 945,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

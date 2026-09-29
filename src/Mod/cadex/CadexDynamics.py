@@ -4304,6 +4304,12 @@ MJCF_MASS_TOLERANCE = 1.0e-5
 MJCF_INERTIA_TOLERANCE = 1.0e-5
 MJCF_FIELD_TOLERANCE = 1.0e-5
 
+#: The magnitude below which MuJoCo's XML writer emits a float as ``0``,
+#: measured on 3.10.0 across ``body_pos``, ``body_quat`` and ``geom_pos``:
+#: 9.99e-13 is written as 0 and 1e-12 survives (ADR-441). A number the
+#: file cannot carry is not a number the export can be said to have moved.
+MJCF_WRITER_ZERO = 1.0e-12
+
 #: How far a body may sit from where the engine put it, at the solved pose,
 #: in millimetres. The worst fixture measured 2.5e-4 mm; a hundredth of a
 #: millimetre is two orders of headroom and is still far finer than any
@@ -4374,10 +4380,16 @@ def _field_drift(first: Any, second: Any) -> float:
     element: a ``diaginertia`` whose smallest entry is 1e-5 of its largest
     would otherwise report the formatter's rounding of a near-zero number
     as total disagreement.
+
+    Values below :data:`MJCF_WRITER_ZERO` are compared as the zero the XML
+    writer turns them into (ADR-441). Without that, a field whose whole
+    content is round-off -- hex2's ``body_pos``, zero everywhere but three
+    entries of -7.1e-18 m -- is its own scale, and the writer's ``0`` reads
+    as exactly 1.0 relative drift.
     """
 
-    left = _flattened(first)
-    right = _flattened(second)
+    left = [0.0 if abs(v) < MJCF_WRITER_ZERO else v for v in _flattened(first)]
+    right = [0.0 if abs(v) < MJCF_WRITER_ZERO else v for v in _flattened(second)]
     if len(left) != len(right):
         return float("inf")
     if not left:

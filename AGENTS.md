@@ -108,6 +108,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/INTEGRATION.md` | **The process contract**: the cadexd protocol (test-enforced on both requests and responses) and the engine payload. |
 | `docs/BLENDER.md` | The shell: `mesh_agent`'s file map, its tools, and how to run its suites. |
 | `docs/CLI.md` | The headless CLI: subcommands, exit codes, the `--json` envelope, and how it reaches the engine. |
+| `docs/DESIGN-LANGUAGE.md` | **How a Cadex robot should look** (ADR-411): shell over skeleton, the `shell`/`mechanism`/`accent` roles and palette, joints, face, taper, printability, presentation. `docs/probes/ot10/README.md` freezes the rubric and blind judge it is scored with. |
 | `docs/REVIEW-DESIGN.md` | **The review dashboard's design spec** (ADR-328): purpose, hierarchy, type scale, the dark palette shared by chrome and viewport, spacing, breakpoints, and the measured "before" it is held against. Change the page and this doc together. |
 | `docs/IDEAS.md` | Parking lot for uncommitted ideas. |
 | `docs/cadex-release-packaging.md` | One bundle: what ships, how it is gated. |

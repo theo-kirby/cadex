@@ -27621,3 +27621,1733 @@ Regressions:
 - `test_stop_on_collapse_reaches_the_trainer_by_its_real_name`;
 - the walk's train-leg argv assertion;
 - the extended walking-task prompt test.
+
+## ADR-411 — Cadex has a design language, and a frozen blind way to judge it (2026-09-27)
+
+**Context.** ot10's charter asks that a robot the product agent designs
+look like a designed product. hex3, the latest unassisted design, is a
+flat deck of plates with bare boards and square servo boxes. Nothing in
+the repo said what "designed" means beyond the six form rules of the
+ADR-406 overlay, and nothing measured it.
+
+**Decision.**
+- `docs/DESIGN-LANGUAGE.md` is Cadex's design language for small printed
+  servo robots: shell over skeleton, three appearance roles (`shell`,
+  `mechanism`, `accent`) with a default palette, joints as round
+  features with a proposed signature (the Cadex joint cap), a face,
+  proportion and taper, printability, presentation, and the order of
+  design (concept, skeleton, shell, refine with `look`). Each rule cites
+  the owner's core references by filename only. The references stay
+  gitignored and the product agent never sees them.
+- `docs/probes/ot10/README.md` freezes a seven-trait rubric (0–3 each,
+  with anchors), three proxies with thresholds
+  (`hardware_silhouette_share` ≤ 0.20, `sharp_outside_edge_share` ≤ 0.25,
+  `material_count` 2–3), the A5 bar (judged total ≥ 14 of 21, no trait
+  at 0, above hex3, the proxies, the fit gates) and the judging
+  procedure. `contract.json` is its machine-readable copy.
+  `docs/probes/ot10/runner/judge.py` is the procedure: three fresh
+  `claude-opus-5-5` calls with no fallback. Each runs in an empty
+  temporary directory with `Read` as its only tool, no MCP, no user
+  settings, and the rubric as its whole system prompt. It reads the ten
+  core references in place and the candidate's renders under neutral
+  names. Each trait scores the median of the three calls.
+- `cli/tests/test_ot10_contract.py` pins the rubric hash, the thresholds,
+  the procedure's argv and the baseline. Changing any of them is a new
+  decision that re-scores every earlier probe.
+- hex3's accepted design (revision `c1704bfcb631…`) is scored as the
+  baseline from its five `look` views, rendered from a copy outside the
+  read-only project.
+
+**Consequences.** Nothing in the product changed. The language is the
+target for A2 (renderer), A3 (roles and proxies) and A4 (overlay). The
+judge is a model and can drift. Three calls and a median bound its
+variance but do not remove it, and every raw reply is kept.
+
+## ADR-412 — `render` and `look` draw a studio render, with a hero view and material by role (2026-09-27)
+
+**Context.** ot10 A2 asks for a design shown as a product: materials per
+part, light that makes curvature read, a seamless backdrop, a soft contact
+shadow, antialiased edges and a low three-quarter hero view. It has to be
+headless, CPU only and dependency-light, and hex3 has to render at 1024 px
+in under 60 s. The ADR-406 renderer drew flat-shaded facets on a flat
+background, at one sample per pixel, in two fixed colours: printed orange
+and purchased grey. The baseline judge gave it T7 = 1.
+
+**Decision.**
+- `cli/cadex_cli/render.py` has one renderer, `studio`, in pure Python
+  with no new dependency. The CLI stays "plain Python with no compiled
+  dependency", which is why numpy was not used.
+  - A depth pass stores the nearest triangle per subsample, at 2×2
+    subsamples per pixel, by scanline spans. Only visible subsamples
+    are shaded, and a box filter down to the image size antialiases the
+    edges.
+  - Shading is a key, a fill and a rim light, a Blinn highlight per role
+    finish, and a small sky sheen, so graphite does not go black. It
+    uses normals interpolated across each triangle. Corner normals
+    average the faces sharing the vertex within 40° of the face's own
+    normal, so a fillet reads as a curve and a box keeps its edges.
+  - The backdrop is a seamless vertical gradient.
+  - The contact shadow is measured, not painted. A top-down map of the
+    lowest surface over each cell becomes a tight contact term and a
+    wide soft term, each blurred. It darkens the floor wherever the
+    camera is above it.
+- **The flat rasteriser is deleted**, not kept beside the new one. Its
+  tests now drive `studio`.
+- **`hero`** (`render.HERO`: 20° above the floor, 35° round from the front)
+  is a `look` view and `cadex render`'s new `hero.png` at 1024 px. The
+  summary records it, with `environment` and `appearance`.
+- **Material comes from a role, not from supply.** `render.materials`
+  resolves each object to (`shell` | `mechanism` | `accent`, colour).
+  A declared `appearance` role wins, and a `palette` recolours a role;
+  this is the hook A3 fills from xscript. An undeclared object falls back
+  on the inventory: purchased is `mechanism` graphite `#2F3237`, printed
+  is `shell` bone `#E9E6DF` (DESIGN-LANGUAGE.md §2). With no inventory,
+  the index colours stay. `render.classify` is now the single place that
+  derives the environment and purchased sets from the fit and inventory.
+  The bridge and `cadex render` both use it, so `render` also leaves
+  the floor out now.
+
+**Measured.** On hex3's accepted design, in a `/tmp` copy, with
+`cadex render`: the four views and the hero take 6.5 s, the 1024 px hero
+2.2 s. The 207 s engine rebuild that acquires the tessellation is not
+part of the renderer and did not change. Before and after images of the
+same view are in `docs/probes/ot10/`.
+
+**Consequences.** Every `look` image the agent sees is now a studio image.
+Printed parts turn from orange to bone. The `look` tool description says
+so, and it offers `hero`. The pixel budget is now counted in subsamples
+actually visited, and still scales with output area. The judge's
+candidate set leads with the hero from A5 on. hex3's baseline is not
+re-scored, because its frozen renders stand as they were judged.
+
+## ADR-413 — xscript declares each part's appearance role and the assembly's palette (2026-09-27)
+
+**Context.** ot10 A3 asks that a script say how each part looks, in the
+roles `docs/DESIGN-LANGUAGE.md` §2 defines (`shell`, `mechanism`,
+`accent`), and that inventory, `render`, `look` and review carry it.
+ADR-412 left the hook: `render.materials` takes an `appearance` and a
+`palette`, but nothing filled them, so every part was coloured by
+supplier (purchased graphite, printed bone). A servo that should read as
+an accent ring, or a printed foot that should read as mechanism, had no
+way to say so.
+
+**Decision.**
+- `assembly.component(..., appearance="shell"|"mechanism"|"accent")` and
+  `assembly.assembly(..., palette={role: "#RRGGBB"})`. Both are validated
+  at declaration (unknown role, malformed colour and empty palette are
+  refused, naming the fix); the palette is normalised to upper case in
+  role order. The project script's own `component` wrapper passes
+  `appearance` through; a real-kernel test caught that it did not.
+- **Undeclared stays out of the definition.** Each key is added only when
+  set, as `world=True` is, so no existing script's content digest moves.
+  A declared colour is a definition change like a label, and re-accepts.
+- `inspect scope="inventory"` rows carry `appearance` when declared, and
+  the value carries the assembly's `palette` (empty when none). The CLI's
+  inventory block adds `appearance` (declared components only) and
+  `palette`; `docs/inventory.md` gets an appearance column and a palette
+  line; `render.declared` turns the block into the renderer's inputs, used
+  by both `cadex render` and the bridge's `look`. `render`'s summary (and
+  so the review's `render` block) records each object's role, colour and
+  `source` — `declared`, `supplier` or `index` — and the palette in effect.
+- No protocol op changes: `inspect` already takes `{"scope": ...}`, and the
+  new fields are inside its value. No new dependency.
+
+**Consequences.** A design can now be drawn in the language before any
+proxy measures it; the three A3 proxies (hardware share of the hero
+silhouette, sharp printed outside edges, material count) are the next
+unit. The agent is told the keyword exists — in the `look` description
+and one sentence of the overlay that had gone stale under ADR-412 — but
+is not yet *taught* the language; that is A4.
+
+## ADR-414 — `render`, `look` and review measure P1 and P3 on the hero (2026-09-27)
+
+**Context.** A1 froze three proxies (`docs/probes/ot10/README.md`) and A3
+asks that `look` and review report them, computed from the accepted
+solids and renders. ADR-413 made the roles declarable. Two of the three
+are image measures (P1, the hardware share of the hero silhouette; P3,
+the material count); P2, the share of printed outside edge length left
+sharp, needs the BREP edges and their faces, which only the worker holds.
+
+**Decision.**
+- `render.design_proxies` measures P1 and P3 on the hero view with the
+  studio renderer's own depth pass (extracted as `_depth_pass`; the
+  shading pass is unchanged and hex3's hero is byte-identical), at a fixed
+  512 px and 2×2 subsamples, so `render`, `look` and review report the
+  same numbers whatever size they draw at. Environment geometry is left
+  out as in the image. Each proxy carries its frozen bar and `meets`;
+  `render.PROXY_BARS` is held equal to `contract.json` by a test.
+- With no readable inventory P1 is `null` with a reason: nothing says what
+  was purchased, and zero would be a false pass.
+- `cadex render` writes them to `summary.json` as `proxies`; the walk's
+  review carries that summary as its `render` block (so `review.json` has
+  the roles of ADR-413 and the proxies), and both add a `measures:` note.
+  The agent's `look` reply gains a `measures` fact.
+- **P2 is split out**, not stubbed: it is an engine measure (a per-output
+  fact from the worker, carried by inventory) with its own packaged gate,
+  and it is the next unit. No field for it is emitted until it is measured.
+- No protocol op, no engine change and no dependency.
+
+**Consequences.** hex3 measures P1 0.373 (over 0.20) and P3 2 (within 2–3).
+The agent now sees, on every `look`, how much of its silhouette is bought
+hardware against the bar — a measure in the language's terms, not the
+judge's words.
+
+## ADR-415 — The worker measures sharp printed edges, and P2 is reported beside P1 and P3 (2026-09-27)
+
+**Context.** ADR-414 measured A1's two image proxies and split out P2, the
+share of printed outside edge length left sharp, because it needs each
+BREP edge and the two faces on either side of it — facts only the worker
+holds. The frozen definition (`docs/probes/ot10/README.md`) is: over every
+non-seam edge of every printed solid, sharp convex length ÷ total length,
+where an edge is sharp convex when its faces' outward normals turn outward
+by more than 60° at its midpoint; bar ≤ 0.25.
+
+**Decision.**
+- `cadex_part_worker.sharp_edge_facts(shape)` measures it per output, and
+  `part_shape_facts` carries it as `sharp_edges`:
+  `{threshold_deg, edge_length_mm, sharp_convex_length_mm, unresolved_edges}`.
+  Edges are grouped by `hashCode` and settled by `isSame`; an edge bounded
+  by the same face twice (a seam) or by other than two faces is left out.
+  Convexity is read from the edge's orientation in its first face —
+  `(n1 × n2) · t > 0` — so no solid classifier runs. An edge whose normals
+  cannot be evaluated counts toward the total and `unresolved_edges`, never
+  as sharp. The threshold is `SHARP_EDGE_DEGREES = 60.0`, held to the frozen
+  value by a test.
+- The assembly worker's two `part_shape_facts` calls, which read counts
+  only, pass `edge_convexity=False` and pay nothing for it.
+- `CadexInspection._INVENTORY_FACT_KEYS` gains `sharp_edges`, so the
+  inventory scope's `source_facts` carries it. It is absent on a revision
+  accepted before this ADR; nothing is back-filled.
+- The CLI sums both lengths over the printed components
+  (`inventory.printed_edges`), once per placement, and
+  `render.edge_proxy` divides. A printed component with no measurement (a
+  mesh, or an older revision) makes P2 `null` with a `reason` naming it,
+  never a false zero; with no printed edges it is 0, as frozen.
+  `render`'s summary, the review's `render` block and the agent's `look`
+  report it beside P1 and P3; `render.PROXY_BARS` gains its bar, still held
+  equal to `contract.json`.
+- No protocol op changes: the fact is inside `inspect`'s existing value,
+  and `docs/INTEGRATION.md`'s inventory cell says so. No new dependency.
+  The worker change is a payload change and was rebuilt, staged and run
+  through the packaged lifecycle gate.
+
+**Consequences.** All three A1 proxies are now reported by `render`,
+`look` and review, so A3's measurement half is complete. The measure costs
+one normal evaluation per edge on every part build; on a revision built
+before it, P2 says `unmeasured` until the design is rebuilt.
+
+## ADR-416 — The four hex refusal classes are prevented where the agent reads, and each refusal names its fix (2026-09-27)
+
+**Context.** hex2 and hex3 learned the same four API rules by failing, in
+the same order (`docs/probes/hex/hex2-GAPS.md`, `hex3-GAPS.md`), and A4
+asks for each to be prevented at the source. The session transcripts give
+the real inputs and texts:
+
+1. `s.horn("arm")` (hex2) and `s.horn("single")` (hex3) →
+   `lib.servo.horn: style must be one of cross, double_arm, single_arm.`
+   The library listing the agent reads said only `.horn(style)`.
+2. `edit_script` straight after a refused first `write_script` (hex3) →
+   `There is no project script to edit yet; use write_script.` The engine's
+   own `revision_rule` told the agent that "a failed candidate becomes the
+   working revision", which ADR-044's rollback made false long ago — so the
+   edit was the reasonable reading of a stale contract.
+3. A script that returned its assembly and never solved it (both runs) →
+   `An Assembly program must return exactly one assembly and one
+   solver_diagnostics output.`
+4. Joints kept only in a Python list (hex3; hex2 met the component twin) →
+   `Every joint listed in api.assembly must be returned exactly once, and no
+   unlisted joint output is allowed.` Classes 3 and 4 each cost a full
+   12–14 KB resend.
+
+**Decision.**
+- *Prevented in the reference.* The servos family note in the library
+  listing names every horn style (generated from `MICRO_HORNS`) and the
+  default. `revision_rule` now says a refused candidate is rolled back, that
+  `edit_script` edits the accepted source only, and that until a
+  `write_script` is accepted the fix is a whole resend. `result_contract`
+  states the assembly result shape: one `assembly.assembly(...)`, one
+  `assembly.solve(<that assembly>)`, every listed component and joint under
+  its own key once, with the two idioms that do it. These are prose inside
+  existing `describe_api` keys, which both the CLI's system prompt and the
+  shell's backend paste in; no key or shape changes.
+- *Named in the refusal.* The horn refusal names the style the guess meant
+  (substring first, then `difflib`, stdlib). `NO_PROJECT_SCRIPT` says the
+  last write was refused and rolled back when `latest_candidate` says so,
+  and carries `required_changes: [{"tool": "write_script",
+  "expected_revision": ""}]`. The assembly-count refusal says how many of
+  each it found, by output name, and the line to add
+  (`result['solve'] = assembly.solve(<name>)`), or that two assemblies must
+  become one. The component/joint refusal names every unreturned value by
+  its label (or its place in `api.assembly`) and every returned-but-unlisted
+  output, with the fix; `details` gains `unreturned_*` and `unlisted_*`
+  beside the existing keys. A value returned under two keys names both.
+- `cadex_tests/test_authoring_refusal_classes.py` pins each class with the
+  hex inputs: 12 of its 14 tests fail on the previous source, and the two
+  that pass either way are the controls (an empty project, a complete
+  result).
+- P2's `unresolved_edges` (ADR-415) is summed per printed placement and
+  reported by `render.edge_proxy`; the one-line summary calls the share a
+  lower bound when it is nonzero, so it is no longer silent.
+
+**Consequences.** No protocol op, output type or payload file changes. A5's
+transcripts are the test of whether these refusals stop recurring; that is
+A4's last clause and is not claimed here. The CLI overlay's design section
+still has a sentence cut off mid-rule ("PRINTABLE. … no unsupported") —
+noted for A4's overlay rewrite, not touched here.
+
+## ADR-417 — The overlay teaches design as concept, skeleton, shell, then `look` (2026-09-27)
+
+**Context.** ot10 A4 asks the CLI overlay to teach the design language
+(`docs/DESIGN-LANGUAGE.md`) as something to do first. ADR-406's section was
+six flat rules of form ahead of a look loop: it never asked for a concept,
+never said a shell is a separate part over the skeleton, and named neither
+joints, a face, taper, palette nor the `measures` `look` now reports
+(ADR-414, ADR-415). hex3 followed it and scored 2 of 21.
+
+**Decision.** `cli/cadex_cli/agent.py`'s `DESIGN IT` section is rewritten as
+four numbered steps in §8's order:
+1. **Concept first**: silhouette (one body primitive), character (the
+   face), palette (one shell colour, at most one accent) and proportion,
+   said before the first `write_script` and repeated as `DECISION:` lines.
+2. **Skeleton**: ADR-406's enclose, one-form, mirror, proportion and
+   printable rules, unchanged in substance.
+3. **Shell over skeleton**: separate printed parts with roles, ≥1 mm from
+   what they cover through every joint's range; radii of 10–20% of the
+   part's smallest size (it said 1–3 mm before, which §1 contradicts); one
+   joint cap per axis; a face on +X; limbs that taper to a distinct foot;
+   two materials and one accent, colour by role not supplier.
+4. **Refine with `look`**: `hero`, `iso`, `iso_back`, then `focus`; read
+   `measures` first, then the pictures; fix the worst thing; stop when
+   every measure meets its bar.
+
+The rubric was not read for wording; the text comes from the design
+language, which is what the charter allows the agent to be taught.
+
+**The cut-off sentence.** ADR-416 reported the PRINTABLE rule as cut off at
+"no unsupported". It was not: that line ends in a `\` continuation and the
+sentence finishes on the next ("overhang past 45 degrees, …"). A new test
+(`test_the_overlay_is_well_formed`) holds every paragraph and bullet of
+the overlay to ending as a sentence, with balanced backticks and brackets.
+It passes on the previous source as well, which is the measured answer to
+the report; the ordering test fails on the previous source.
+
+**Consequences.** No engine, protocol or payload change. `docs/CLI.md` and
+`docs/DESIGN-LANGUAGE.md` (its stale *exists today* paragraph) move with
+it. Whether the agent follows the order is A5's measurement.
+
+## ADR-418 — A worker runs on four CPUs, so its CPU-second cap means the same everywhere (2026-09-27)
+
+**Context.** ot10's first A5 hexapod (`ot10-hexapod-1`) took 19 refusals
+at the worker's 300 CPU-second `RLIMIT_CPU`. To fit, the agent stripped its
+joint caps, leg fillets and swept fit, and that cost it the bar. The
+refused candidates were rebuilt from the turn's transcript and replayed
+through the project worker, uncapped, with the same request. Measured on
+the accepted revision (46 components, 1,035 pairs), with 32 CPUs visible:
+
+| phase | wall s |
+|---|---|
+| total | 28.7 |
+| pairwise fit (`_measure_clearance`) | 24.3, of which `distToShape` is 21.2 and `common` is 2.0 |
+| part build | 1.7 |
+| publish (serialise) | 2.1 |
+| display tessellation | 1.3 |
+
+The largest refused candidate splits the same way: 107 s of `distToShape`
+in 138 s of wall. The FreeCAD binding runs `BRepExtrema_DistShapeShape`
+with `SetMultiThread(true)`, and OCCT sizes its pool from the CPUs it can
+see. On this 32-CPU box, the accepted revision cost **280 CPU-s** for 28 s
+of wall. Pinned to four CPUs it cost **94 CPU-s** for 31 s, and on one CPU
+70 CPU-s for 71 s. The cap was charging for thread overhead: the design
+that passed at 93% of the cap here would pass at a third of it on a laptop.
+ADR-250 named this unit asymmetry and pinned BLAS for address space; it
+left CPU count to the host.
+
+**Decision.** `cadex_domain_worker._resource_limits` first pins the worker
+to `WORKER_CPUS = 4` by affinity. Its threads and children inherit the pin,
+so the sweep's child `FreeCADCmd` is pinned too. Which four rotates with the
+pid, and a host with four or fewer keeps what it has. The caps themselves
+are unchanged: 300 s of wall and 300 CPU-s. On four CPUs the CPU cap now
+binds at 75 s of wall rather than about 10 s.
+
+**Measured.** The 19 refused candidates were replayed on the fixed worker
+under the real 300 CPU-s cap. **15 are accepted** (86–223 CPU-s, 31–79 s of
+wall). **4 are still refused**: the first assembly attempts (15, 16 and
+17) and one loft revision (21). Their single-CPU cost is 390 s or more,
+which is real `distToShape` work rather than overhead. The accepted
+revision's output digest is identical before and after (`ab571337…`).
+
+**Consequences.** Engine zone only: no protocol op, no payload layout. The
+wall cost is about 10% on the accepted revision (28.1 → 32.1 s). Exact
+pairwise distance remains the dominant cost of a many-part fit. Making
+far-apart pairs cheaper would change what `distance_mm` promises, which the
+review table and `smoke_geometry` read, so it is a separate decision.
+`docs/XSCRIPT.md` and `docs/ARCHITECTURE.md` move with this. There are
+three regressions in `cadex_tests/test_scripted_process.py`. Two fail on
+the previous source (the pin itself, and the pin reaching a real worker's
+threads and children on a host with more than four CPUs).
+
+## ADR-419 — A joint sweep measures near moving pairs exactly and bounds the far ones (2026-09-27)
+
+**Context.** Neither ot10 A5 hexapod attempt 2 (`ot10-hexapod-2`, 63
+components, 1,953 pairs) nor the quadruped (`ot10-quadruped-2`) could
+declare a sweep that finished. At 15° steps the first hip joint used its
+whole 90 s and both knees got nothing, so both agents turned the sweep off
+and both missed A5. The hip's own payload, profiled on one CPU:
+
+| | before | after |
+|---|---|---|
+| hip sweep, 5 samples | 287 s | 7.3 s |
+| `distToShape` calls | 4,153 (280.6 s) | 114 (5.1 s) |
+| knee sweep, 6 samples | not reached | 19.5 s |
+| all 12 joints in a real rebuild | 0 complete, 180 s | **12 complete, 112 s** |
+
+The calls went two places. 1,953 of them re-measured *every* pair at the
+solved pose for the agreement check, once per joint, including pairs the
+joint cannot move. The rest measured all 440 moving pairs at every sample,
+and `distToShape` is slowest on far pairs: a hip cap against the opposite
+tibia, 114 mm apart, costs 0.8 s. BREP import is 0.02 s, so serialising
+was not the cost.
+
+**Decision.** In `_sweep_joint`:
+1. A rigid pair's row takes its value from the static measurement without
+   measuring again.
+2. A moving pair's exact-geometry boxes (`optimalBoundingBox`, not the
+   triangulation box, which sits inside a curved surface) are carried to
+   each sample by the rigid motion. A pair whose box gap stays above
+   `_SWEEP_CULL_MM` (10 mm) at every sample is `culled`. It keeps that gap
+   as a lower-bound `minimum_distance_mm`, 0.0 common volume and no first
+   contact.
+3. Every other moving pair is checked for solved-pose agreement, then
+   measured exactly at every sample, as before.
+
+`_measure_joint_sweeps` serialises the BREPs once per assembly, not once
+per joint.
+
+This is the separate decision ADR-418 named. It is scoped to swept rows:
+the static `distance_mm` still promises an exact measurement of every pair.
+The bound errs one way only: the client's `below clearance` check can fail
+a culled pair whose declared floor exceeds 10 mm, and never passes one
+wrongly.
+
+**Measured.**
+- On the hexapod, 421 of 440 hip pairs are culled, and 215 to 227 of 236
+  knee pairs. Every culled bound is 10.1 mm or more.
+- The complete sweep now reports a real failure the agent could not see: at
+  15° each knee drives its tibia and foot into `c_floor`, up to 111 mm³.
+  The CLI's swept verdict is `fail` on those 12 pairs alone. Whether a
+  swept limb against the declared floor should count is a separate
+  decision; this ADR does not make it.
+
+**Consequences.** Engine zone. A response row gains one optional key
+(`culled`), documented in `docs/INTEGRATION.md`. No op argument changed,
+and no reader needed a change. `docs/XSCRIPT.md` moves with it. There is one
+regression in `cadex_tests/test_joint_fit_sweep.py`, and it fails on the
+previous source.
+
+## ADR-420 — A swept finding against world geometry is reported, never failed (2026-09-27)
+
+**Context.** ADR-419 made the 63-component `ot10-hexapod-2` sweep complete,
+and its complete sweep then read `fail` on twelve pairs alone: each knee,
+swept across [-35°, 35°] at 15° with the rest of the body held at the solved
+pose, drives its tibia (65.309 mm³) and its foot (97.098–110.972 mm³) into
+`c_floor`. The static block already names `c_floor` world geometry — "collision
+plane declared on design component" — and keeps it apart from its pair
+checks, and the frozen A5 bar reads that static row as advisory. The swept
+block had no such rule, so no standing legged design could pass it: a leg
+reaching below its stance meets the ground by construction.
+
+**Decision.** In the CLI's `sweep_summary` (`cli/cadex_cli/clearance.py`), a
+swept finding — intersection, closed gap or unmeasured pair — one side of
+which the static block's `world_geometry` names is published under
+`fit.sweep.world_geometry` with the engine's reason and a
+`world_geometry_note`, and is counted in `world_geometry_count`, never in
+`failing` or `failing_count`. The verdict does not see it. A printed or
+purchased pair fails exactly as before. The progress line appends
+`; N against world geometry (advisory)` and the prose report prints each
+finding marked advisory. The overlay says so in one sentence.
+
+This is a client verdict change only: the engine, the protocol and the
+published measurements are untouched, the joint rows' extrema still include
+the floor, and the rule reuses the engine's existing world-geometry
+detection (`_check_fit`) rather than a name. Reversible by deleting one
+routing function.
+
+**Measured.** Replayed on a read-only copy of `ot10-hexapod-2` rebuilt with
+`sweep_step=15` (3 min 27 s wall, exit 0): before, `sweep fail`, 12/12 joints
+complete, 12 failing pairs, all `c_floor ∩ c_{tibia,foot}_*`; after,
+`sweep pass: 12 joint(s) swept; 12 against world geometry (advisory)`,
+0 failing. Two regressions in `cli/tests/test_clearance.py` (the measured
+knee rows; and a printed, a purchased and an unmeasured pair beside the
+floor still failing) fail on the previous source and pass on this one.
+
+**Not decided here.** The static verdict still reads `fail` on the world
+geometry row itself, as it did; A5 already reads that row as advisory. P2's
+inclusion of `c_floor` in `printed_edges.measured` is a frozen-proxy change
+and needs its own recorded re-score.
+
+## ADR-421 — The geometry fingerprint drops areas, and a refused restore leaves the store as it found it (2026-09-27)
+
+**Context.** `ot10-biped-1` passed every fit gate in its turn and then
+refused every reopen, `render`, `look` and review with
+`CADEXD_RESTORE_FAILED`. Of 127 outputs exactly one, `src_hood`
+(`part.fillet ∘ part.cut(refine=True) ∘ part.fillet(part.box)`), differed
+across its three retained attempts, and only in integrated measures: one
+planar face's area (114.68601535158916 mm² against 114.68601535158984), so
+the total area, and — found only after areas were dropped and the reopen
+still refused — two 0.4π mm fillet arcs' lengths (1.256637061435912 against
+1.2566370614359201). Its vertex set, counts and bounds were bit-identical.
+ADR-389's fingerprint hashed all of them exactly. Separately, the refused
+restore left `script.json` `latest_candidate` naming the restore run's
+attempt with `status: accepted`, a revision the project never accepted.
+
+**Decision.** `shape_geometry_fingerprint` drops edge lengths, per-face areas
+and the total area, as ADR-389 dropped volume: all are integrals, and all are
+measured to drift. It keeps what the BREP stores or counts — the counts, the
+exact vertex set, the bounding box — and, at the digest level, the canonical
+definition. `GEOMETRY_DIGEST_SCHEMA` moves to
+`cadex-project-geometry-digest-v2`; a learned `accepted_geometry` now stores
+the schema it was measured under, and `_remembered_geometry` ignores one
+stored under any other schema (or none), so a project that learned a v1
+digest re-measures its accepted attempt rather than refusing. The restore
+path's rollback write also puts back the project's own `latest_candidate`.
+
+**What this gives up.** A shape edit that changes a curve or a surface while
+leaving every vertex, every count and the box unchanged (a spline face
+bulged inside a boundary that does not move, say) would no longer move the
+geometry digest. That digest is consulted only after the byte digest
+has disagreed, and a script edit moves the definition hash first, so the
+guard against a changed model is the recipe, as it was.
+
+**Measured.** Unit regressions in `test_geometry_digest.py` (the measured
+area and arc-length pairs; a v1 and a schema-less remembered digest) and an assertion on
+`latest_candidate` in `test_a_changed_script_is_still_refused_at_the_restore_pass`
+fail on the previous source and pass on this one. The byte digest and its
+frozen fixture are unchanged.
+Replayed on `ot10-biped-1` (design untouched): with areas alone dropped, the
+reopen still refused, and diffing the three attempts found the arcs; with
+both dropped, all 127 outputs fingerprint alike, `cadex render` opens it
+through the geometry path and draws it, and the refused open in between left
+`latest_candidate` as it was. Engine suite 2,236 passed, 53 skipped; packaged
+lifecycle gate 23 passed.
+
+## ADR-422 — A face has a checkable size, a contrast rule for either surround, and is looked at from +X (2026-09-27)
+
+**Context.** `ot10-hexapod-3` passed every fit gate and missed the A5 bar
+by one point (13 of the frozen 14). T5 fell to 1 in all three judge calls.
+The agent had declared a face where §4 asks for one — a visor in a front
+notch on the IMU's +X axis — but gave it the `mechanism` role on a graphite
+tub, about 60 × 8 px across a body about 350 px wide in the `right` view.
+§4 stated the proportion only as a share of an area the agent never
+measured, and its colour rule ("sits in `mechanism` graphite") only works
+when the surround is shell-coloured; it did not say so. The overlay's
+refine step told the agent to look at `hero`, `iso` and `iso_back`, none of
+which looks at +X.
+
+**Decision.** `docs/DESIGN-LANGUAGE.md` §4 gains three rules, each citing
+core references by filename: the face, seen from +X, spans at least half
+the body's width and a quarter of its height there; it contrasts with its
+surround — graphite in a shell-coloured front, the accent when the front
+around it is graphite; and it is checked from its own side before
+acceptance. The CLI overlay's A FACE bullet carries the size and contrast
+rules, and step 4 adds `look` at `right` (the view from +X) with an
+explicit check of the face before accepting. No rubric, proxy, bar or
+judging text changed, and no judge wording was used.
+
+**Measured.** `test_the_face_is_sized_contrasted_and_checked_from_its_own_side`
+fails on the previous overlay and passes on this one. Whether it moves T5 is
+hexapod attempt 4's measurement, on a new `ot10-*` project with the frozen
+prompt and flags.
+
+**Not taken.** The hero camera (`render.HERO`, 35° round from −Y towards
++X) looks mostly at the −Y side, so a face at +X is near edge-on in the
+hero. Moving the hero is a renderer change with its own before/after, not
+part of this entry.
+
+## ADR-423 — The solved-pose clearance bounds far pairs instead of measuring them (2026-09-28)
+
+**Context.** Four `ot10` hexapod attempts spent the 300 CPU-second worker
+limit on a different trait each; `ot10-hexapod-4` hit it eight times and
+merged its accent feet into the links to fit, dropping T2 from 3 to 2.
+Replaying the accepted revision's own worker request with the limit lifted
+(read-only on the project) located the cost: the worker spent 83 CPU-s, 21
+of its 25 s of `_measure_clearance` in `distToShape` over 1,035 pairs
+(46 components), against about 2.4 s of geometry. The joint sweeps run in
+child processes with limits of their own. The candidate the agent gave up —
+separate accent feet, filleted links and feet, 51 components — replayed at
+**416.6 CPU-s**, reproducing the refusal. ADR-419 had already bounded the
+far pairs of a sweep; the static check still measured every pair exactly.
+
+**Decision.** `_measure_clearance` measures only near pairs. A pair whose
+exact-geometry boxes (`optimalBoundingBox`, as ADR-419) are more than
+`_CLEARANCE_CULL_MM` (10 mm) apart, or more than the pair's declared
+`clearances=` minimum when larger, carries `culled: true`, its box gap as a
+lower-bound `distance_mm`, and `common_volume_mm3` 0.0. No engine verdict
+can change: every floor a culled pair is held to is below its bound, a
+declared contact is missed either way, and a weld reads `not touching`
+either way. The sweep carries a static bound onto a rigid row with
+`culled: true`, and checks a bounded moving pair it measures exactly against
+the bound rather than for equality. Its `common` call is now gated by the
+exact-geometry boxes it already carries rather than `BoundBox`: the old
+parent's `common` calls on loosely-boxed far pairs had stored pcurves on
+the shapes it serialised, which the children inherited, and without that
+side effect the sweeps cost 25% more until the gate was tightened.
+`smoke_geometry.py` accepts a bounded static row when the exact first-frame
+distance reaches the bound, and `cadex clearance` reads a bounded row
+under a floor above its bound as `unknown`, not a breach.
+
+**Measured.** Replayed on this machine, same requests, before → after:
+accepted `ot10-hexapod-4` worker CPU 83.3 → 28.2 s, wall 71 → 56 s, sweep
+children 104 → 105 CPU-s; 857 of 1,035 static pairs bounded, 0 changed fit
+verdicts, 0 changed exact rows, attachments and world geometry identical,
+every sweep row identical or a valid bound, sweep complete. The refused
+51-component candidate: 416.6 → **114.5 CPU-s**, now inside the limit,
+1,099 of 1,275 pairs bounded, 0 changed verdicts. Two kernel regressions and
+one CLI test fail on the previous source.
+
+**Not taken.** No limit was raised and no prompt or language changed. The
+static near-pair `common` gate still uses `BoundBox`.
+
+## ADR-424 — P2 leaves out world geometry, and every earlier probe is re-scored (2026-09-28)
+
+**Context.** A1 froze P2 `sharp_outside_edge_share` over "every printed
+(uncatalogued) solid". A floor is uncatalogued, so every ot10 P2 so far
+counted the ground. P1 and `look` already left the fit's world geometry out;
+P2 did not, and the floor moved it in both directions. A bare floor box is
+all sharp edge: `ot10-quadruped-2` read 0.238 against the 0.25 bar, 7,220 mm
+of it the floor. A filleted floor is none: `ot10-hexapod-4`'s 24,019 mm of
+smooth floor edge was nearly half its total and read the design's 0.220 as
+0.114. The critic named it an unrecorded change waiting to happen to a frozen
+proxy.
+
+**Decision.** P2 counts printed parts only. `inventory.printed_edges` keeps
+each measured placement's own figures under `by_component`, and
+`render.edge_proxy(inventory, environment)` leaves out the components the fit
+reports as world geometry, the same set P1 leaves out, and names them under
+`left_out_as_environment`. An unmeasured floor no longer makes the share
+unmeasured. `render` and `look` pass the set. The definition in
+`docs/probes/ot10/README.md` changes to say so. The threshold, the rubric,
+the bar and the judging procedure do not change, and `contract.json` is
+unchanged.
+
+**Re-score.** This is a change to a frozen proxy, so every earlier probe was
+re-measured at its accepted revision from the engine's per-component facts,
+before → after: hex3 0.332 → **0.189**, hexapod-1 0.655 → 0.508, hexapod-2
+0.088 → 0.134, quadruped-2 0.238 → 0.040, biped-1 0.068 → 0.103, hexapod-3
+0.240 → 0.048, hexapod-4 0.114 → 0.220. One verdict changes: hex3's P2 now
+passes. hex3 is the baseline and still misses P1 and the judged bar. No A5
+verdict changes, and no judged score can, because the judge never sees P2.
+A CLI regression fails on the previous source.
+
+**Not taken.** The inventory rows do not carry the script's `world=True`
+flag, so the fit's world-geometry rows decide, as they do for P1. No new
+"printed" classification was invented.
+
+## ADR-425 — The swept fit measures boundary shells when no solid can sit inside the other (2026-09-28)
+
+**Context.** `ot10-hexapod-5` (58 components, 12 limited joints) was accepted
+with its swept fit incomplete: 10 of 12 joints, then 9 of 12 on replay, inside
+the unchanged 180 s total budget, even after the agent coarsened its step to
+80° (two samples per joint). ADR-423 had moved the binding limit from the
+static check to here. Profiled read-only on a `/tmp` copy by replaying the
+accepted revision's own worker request with each joint child's input
+captured: hip children took 18–31 s and knee children 10–17 s. The candidates
+named for the cost were the per-joint `FreeCADCmd` spawn (0.06 s), BREP
+deserialisation (0.03 s for all 58), pair preparation (`optimalBoundingBox`,
+1.1 s) and exact measurement. Exact measurement dominated: on `hip_fr`,
+`distToShape` took 25.5 s of 28.5 s wall time over 93 calls (31 solved-pose
+agreement checks and 62 samples), pinned to the worker's four CPUs as the
+worker runs (ADR-418). No single pair dominated: the largest was 1.8 s, the
+BSpline dome against the femur. Measuring the two parts' shells instead of
+their solids gave the same distance to 1e-6 mm, 10 to 70 times faster on most
+pairs (chassis against coxa 0.876 → 0.083 s) and about 1.3 times on the dome.
+
+**Decision.** `_sweep_joint`'s exact distance goes through
+`_boundary_distance`. It measures `Part.Compound(Shells)` against
+`Part.Compound(Shells)` when each solid of each side has a vertex strictly
+outside the other shape (`isInside` with faces counted as inside). A solid
+distance differs from the boundary distance only when one solid lies inside
+the other, so that refutes the one case where the two disagree. It falls back
+to the solids when a solid has no vertex, when a vertex is on or inside the
+other shape, or when the shells come within 0.001 mm (the contact threshold).
+The last rule makes a touching pair read the solids' exact 0.0 rather than
+2.9e-14. The solved-pose agreement check is unchanged and still compares
+every exact row to the static measurement taken on the solids.
+
+**Measured.** Same accepted request, replayed on this machine, before →
+after: the sweep went from **9/12 joints at 180.0 s (incomplete)** to
+**12/12 joints in 125.1 s (complete)**. The nine joints both runs reached
+went from 176 to 112 s, and `hip_fr` from 31.1 to 18.6 s. Worker CPU went
+from 826 to 574 s. All 14,877 rows of the nine joints both runs reached are
+identical, including the 233 exactly measured moving rows. The remaining cost
+is mostly the dome's BSpline faces.
+
+**Not taken.** No budget constant, prompt, language or cull margin changed.
+The solved-pose agreement measurement is still repeated in every joint child
+(a third of the exact calls at two samples). The static `_measure_clearance`
+still measures solids; it is not binding since ADR-423. Joints are not run
+concurrently, because that would spend CPUs the worker is pinned away from.
+One stub regression test fails on the previous source, and a real-kernel test
+pins a cavity pair (shells, 4.0 mm) and a buried pair (solids, 0.0 mm and the
+bead's whole volume).
+
+## ADR-426 — The swept fit's pair budget counts the pairs a joint moves (2026-09-28)
+
+**Context.** `ot10-hexapod-6` was accepted with its swept fit incomplete,
+0 of 12 joints, every one `pair budget exceeded`. The agent had added 24
+servo-tab screws, taking the design from 63 to 87 components and from 1,953
+to 3,741 pairs. `_sweep_joint` compared the length of the whole solved-pose
+baseline with `_SWEEP_MAX_PAIRS` (2,000). But only the pairs with exactly one
+side in the swept subtree are measured; a rigid pair's row is copied from the
+solved pose (ADR-374, ADR-419). Measured read-only on a `/tmp` copy of the
+accepted request, with `extract_tree` on its own components and joints: each
+hip moves 10 of 87 components, **770 moving pairs**, and each knee moves 4,
+**332**. No joint came within a factor of 2.5 of the budget it was refused
+by.
+
+**Decision.** The budget counts the baseline rows with exactly one side in
+the moving subtree, and is checked after that subtree is known. The limit
+stays 2,000. The reason now names the count: `pair budget exceeded: N moving
+pairs, more than 2000`. The rows, their order and every other limit are
+unchanged.
+
+**Measured.** The same accepted revision (`3cb2b1d0`, `fasteners=1`),
+rebuilt on a second `/tmp` copy with this source: the sweep went from
+**0/12 (pair budget exceeded)** to **12/12 complete at 5° in 97.9 s**, inside
+the unchanged 180 s. Hips took 6.1–7.5 s and knees 9.0–10.0 s, with 22–31
+exact moving rows per joint. The CLI's `sweep_summary` reads it as `pass`:
+0 failing pairs, and 12 world-geometry rows (feet and shins through
+`c_floor`), advisory under ADR-420. The accepted project is unchanged; this
+does not make attempt 6 pass A5, and its static pass still reports six feet
+`below clearance` on `c_floor`.
+
+**Not taken.** The 2,000 limit, the cull margin and the runtime budgets are
+unchanged. A real-kernel regression adds 64 far grounded blocks to the hinge
+fixture: 2,145 pairs, 65 of them moving. It is `incomplete` on the previous
+source and `complete` on this one, with the hinge's own row identical to the
+two-component run.
+
+## ADR-427 — A part resting on world geometry at the solved pose is reported, never failed (2026-09-28)
+
+**Context.** `ot10-hexapod-6` is the first ot10 design that stands on its
+floor at the solved pose. Each of its six ball feet rests on `c_floor` at
+0.0 mm with 0.0 mm³ common volume, and the static fit block failed each as
+`below clearance` against the default 0.1 mm gap. ADR-420 had already made a
+*swept* finding against world geometry advisory, and ADR-424 had taken world
+geometry out of P2; the static pair rows were the one place the floor was
+still held to a gap between two parts. Read on a `/tmp` copy of the accepted
+revision `3cb2b1d0`: the feet do not interpenetrate the floor.
+
+**Decision.** In the CLI's `fit_summary` (`cli/cadex_cli/clearance.py`), a
+solved-pose pair one side of which the static block names world geometry,
+and whose status is `below clearance`, is published under
+`world_geometry_contacts` with the engine's reason, counted in
+`world_geometry_contact_count` and `counts["world geometry contact"]`, and
+never in `failing`. The progress line appends `; N resting on world
+geometry (advisory)` and the prose report prints each one marked advisory.
+
+It is narrower than ADR-420 on purpose. An **intersection** with world
+geometry still fails at the solved pose: the sweep holds the body still, so
+a leg driven into the floor is an artefact of the method, but the solved
+pose is the design's own rest pose and the pose a simulation starts from,
+and a foot sunk into the ground there is a defect. An **unmeasured** pair
+still fails. The world geometry's own row stays in `failing`, as A5 already
+reads it. The engine, the protocol, the published measurements, the 0.1 mm
+default and the overlay are unchanged.
+
+**Measured.** The accepted revision rebuilt on a fresh `/tmp` copy
+(`cadex params --set fasteners=1`, 3 min 58 s, the same revision
+`3cb2b1d0`): before, 7 failing rows (the floor's row and six `c_floor ∩
+c_foot_*` at 0.0 mm, 0.0 mm³); after, 1 failing row (the floor's own), 6
+world-geometry contacts, 3,735 clear, 0 intersections; the sweep 12/12
+pass (ADR-426). Two regressions in `cli/tests/test_clearance.py`: the foot
+on the floor fails on the previous source; a sunk foot, an unmeasured floor
+pair and a printed pair below its gap beside the floor still fail. The
+accepted `ot10-hexapod-6` project and its published verdict are unchanged.
+
+## ADR-428 — The sweep is not what spends the build's CPU; limbs taper in depth and cradles do not show as servos (2026-09-28)
+
+**Context.** `ot10-hexapod-7` (accepted `f0a77bfb`) was judged 13/21, a
+miss on T3 and T4, and its agent wrote that it coarsened its sweep to 17.5°
+because a 10° build "ran past the 300 CPU-second limit". Before changing
+the overlay, the budget or the sweep, that claim was measured on three
+`/tmp` copies of the accepted revision, rebuilt with `cadex script --set`
+while `/proc` was polled for every worker's CPU.
+
+**Measured.** The sandboxed domain worker that builds the geometry spent
+**209.9 CPU-s at a 10° step and 212.0 CPU-s with the sweep off**: the sweep
+charges it nothing, because the sweep runs one child process per joint and
+each child carries its own limit. At 10° the twelve children spent 12.7 to
+55.6 CPU-s each (456 in all) and the sweep stopped **incomplete** on its
+180 s *wall* budget at `hip_rr`, with 10 of 12 joints complete; at 17.5° it
+completed 12/12 in 129.2 s. So a 10° sweep on this design is refused by the
+wall budget, as an incomplete sweep, never by the CPU limit, and the one
+CPU-limit refusal in the turn came from geometry: the accepted geometry
+alone costs 70% of the worker's 300 CPU-s, and the loft-edge fillets the
+agent then dropped are what pushed it over. No budget or sweep change
+follows from this.
+
+**Decision.** The judges' T3/T4 reasons become language, not tooling. The
+overlay's `TAPER TO A FOOT` now says the section tapers in depth as well as
+width, so a limb narrows in the side view too (attempt 7's legs kept one
+4.0 mm thickness from hip to foot). `SHELLS HIDE THE HARDWARE` now says a
+printed cradle that follows a servo case face for face still reads as the
+case, whatever its colour, and is covered by the limb's `shell` part or
+rounded into the limb and joint cap (attempt 7's graphite knee cradles,
+which P1 cannot see because they are printed). `docs/DESIGN-LANGUAGE.md` §1
+and §5 carry the same two rules. The rubric, proxies, bar and judging
+procedure are unchanged, and the new sentences use none of the rubric's
+anchor wording. Regression: `test_limbs_taper_in_depth_and_cradles_do_not_show_as_servos`
+in `cli/tests/test_turn_loop.py` fails on the previous overlay.
+
+## ADR-429 — Renaming a project's assembly output re-keys the live assembly instead of wedging the document (2026-09-28)
+
+**Context.** Hexapod attempt 8 (`ot10-hexapod-8`) accepted a probe whose
+assembly output was `probe`, then renamed it in its next full design. From
+that write on, every publish, including a one-box script, was refused with
+`PUBLICATION_UNTAGGED_OBJECT: ['Joints']`, then `['Joints', 'Joints001']`.
+The agent had no way to recover and stopped on the probe. The three CPU-limit
+kills before the wedge were a coincidence. They happen in the sandboxed
+worker, before publication, and leave the document as accepted.
+
+**Measured** under FreeCADCmd, on a two-component assembly with one revolute
+joint and one grounded component. Renaming the assembly output published as
+retire-plus-create:
+- `_create_object` gave the new assembly a fresh `Joints001`.
+- `_remove_owned_objects` removed the old assembly alone.
+- The old assembly's untagged `Assembly::JointGroup "Joints"` was left
+  behind. The joints updated in place were still inside it, and the
+  component links were in the retired assembly's `Group`.
+- The ownership lint refused the publish.
+- The live document runs with `UndoMode 0`, so `abortTransaction` restored
+  nothing. The half-built `robot` assembly and `Joints001` stayed, and every
+  later publish found both groups.
+
+**Decision.** A program publishes at most one assembly. When exactly one live
+assembly leaves the contract and exactly one new assembly output enters it,
+they are the same assembly. `_rekey_renamed_assembly` in
+`CadexScriptedDomainPublication.py` re-keys the live object's
+`CadexXScriptOutputName`, and its dependency anchor's, to the new name before
+the publish computes what exists and what retires. The groups, joints,
+grounding joints and component links under it survive, and so do external
+references to it, because the object is unchanged. The live object keeps its
+original internal name (`VibeAssembly_project_probe`). Nothing derives an
+output name from an internal name. No protocol op, result shape or payload
+file changes.
+
+**Not taken.**
+- Tagging the `JointGroup`, or reclaiming parentless groups on the next
+  publish, would have silenced the lint over a broken document: joints
+  outside any assembly, and components in a retired one.
+- Turning on the document's undo, so that a refused publish really rolls
+  back, is a wider change. It would touch every domain's publish and its
+  memory cost. It is recorded here as a known gap, because
+  `accepted_live_state_preserved: true` in a refusal is not guaranteed while
+  `UndoMode` is 0. *Taken in ADR-434, for the project publish's own
+  transaction, after `ot10-biped-2` wedged on it.*
+
+**Found, not fixed here.** A script that drops the assembly and also drops a
+part that one of its components links is refused with `Cannot retire XScript
+output 'arm'; … foreign document objects still reference it`. The part pass
+runs before the assembly pass and before the project's orphan GC. That is
+the second refusal the hexapod-8 agent met when it fell back to a placeholder
+script.
+
+**Regression.** `cadex_tests/test_publication_assembly_rename_live.py` runs
+the real kernel:
+- A pass killed at the CPU limit (`DOMAIN_CPU_LIMIT_EXCEEDED`, one-second
+  budget) leaves the document as accepted.
+- Renaming `probe` to `robot` publishes with one `Joints` group under the
+  renamed assembly, still holding both joints.
+- A rename refused by an unrelated untagged object publishes on retry, and
+  so does the edit after it.
+
+On the previous source, the second and third tests fail with the two
+hexapod-8 errors verbatim.
+
+## ADR-430 — `cadex render` draws a concept sheet, and `cadex review` leads with it (2026-09-28)
+
+**Context.** ot10's A6 asks that a design be presented, not screenshotted:
+the review leads each project with its studio hero and a concept sheet (the
+hero, orthographic line views, the palette, the name and the key numbers),
+the sheet is one PNG in the project's review directory, and
+`docs/REVIEW-DESIGN.md` changes with the page. Before this the page opened
+on the orbitable model, and `cadex render` wrote the hero but nothing that
+named the design or said what it weighed.
+
+**Decision.**
+- `cadex render` writes `review/render/sheet.png` beside `hero.png`: one
+  1536×1024 PNG with the 1024 px hero, pixel for pixel, on the left, and on
+  the right the project's name, the revision, mass, servo count and size, a
+  swatch per appearance role the design uses, `front`/`right`/`top` as line
+  drawings, and A1's three proxies. `summary.sheet` records its identity
+  (revision, digest), its numbers and their sources, and its seconds.
+- The line views reuse the renderer's depth pass, keyed by object and flat
+  face normal: ink where the nearest surface changes object, meets the
+  backdrop, or turns by more than 35°. The lettering is a 5×7 bitmap face in
+  `cli/cadex_cli/sheet.py`. No new dependency, no font file, no image
+  library, CPU only.
+- **Mass** is the sum of the accepted MJCF output's per-component inertials
+  with the environment left out, read from the pinned accepted attempt's
+  `result.json`, and only when that attempt is the revision drawn and
+  carries the accepted digest. **Servo count** is the inventory's
+  `catalog_counts` in family `servo` (horns are their own family).
+  **Size** is the drawn solids' extent. A number that cannot be read is
+  `null` with a reason and prints `N/A`; it is never estimated.
+- `/api/project` carries a read-only `presentation` block (revision, digest,
+  relation to the accepted revision, offered files, numbers). The page's
+  stage gains a first tab, **Concept**, and opens on it once when a sheet
+  exists; the phone column reads it before the model.
+  `/presentation/{sheet,hero}.png` serve only what the block offers.
+
+**Not taken.**
+- A separate `cadex sheet` command. The sheet needs the snapshot the render
+  already holds; a second command would pay a second rebuild for it.
+- Composing the sheet in the review server. `cadex review` writes nothing
+  (ADR-286), and the sheet must be a file in the project.
+- Hidden-line removal and dimensions. The line views are an image-space
+  drawing of the tessellation, like every other view; `docs/CLI.md` says so.
+- Reading mass from the inventory. It carries volumes but no densities; the
+  MJCF inertials are the numbers the engine already verified against MuJoCo.
+
+**Measured** on fresh `/tmp` copies of the three A5 designs that met the
+bar, with `./cadex render --project <copy>`. The ot10 projects were not
+touched. Composing the sheet took 1.2 s for `ot10-biped-1` (0.389 kg, 6
+servos), 1.1 s for `ot10-quadruped-3` (0.479 kg, 8) and 1.9 s for
+`ot10-hexapod-10` (0.654 kg, 12). Those times come on top of 7–9 s for the
+views and hero and 58–98 s of rebuild. The sheets are 138, 210 and 212 KB,
+committed as `docs/probes/ot10/ot10-*-sheet.png`, with the table in that
+directory's README.
+
+**Tests.** `cli/tests/test_sheet.py` pins the shape (1536×1024, ≤300 KB),
+the identity (revision, digest, the hero's own pixels), the numbers
+(environment excluded from mass and size, horns not counted as servos), the
+refusals (no model, no inventory, an attempt that is not the one drawn, a
+wrong digest), the line view (silhouette and creases, no line across a
+coplanar split), the face, the `presentation` block and its routes (anything
+but the two offered images is a 404).
+`test_the_page_leads_with_the_concept_sheet_when_the_project_has_one` renders
+the page at both charter sizes.
+
+## ADR-431 — A policy video is drawn in the studio look, on the CPU, by default (2026-09-28)
+
+**Context.** ot10's W1 asks for a rollout video of the accepted policy on
+the accepted model, rendered headless on this machine within a stated bound,
+in A2's studio style, stored in the project and never in git, and played by
+the dashboard. `python -m cadex_cli.video` already made a verified,
+identity-stamped webm that the Videos tab plays (ADR-321, ADR-332). It drew
+that webm in the review viewport's dark Three.js scene in headless Chromium,
+with the index colours, not in the design's own materials.
+
+**Decision.**
+- `cadex_cli.video.render(project, run, style)` gains a `studio` style, and
+  the command defaults to it (`--style studio|scene`). Both styles share
+  everything but the drawing: the identity checks (accepted revision, model
+  digest, policy, task, seed, trace), the 10 fps sampling, the FFmpeg VP9
+  encoding and the decode-every-frame check before publishing,
+  `runs/<run>/video.json` and the `rollout-<sha256>.webm` name. So the
+  dashboard plays a studio video with no change to the page.
+- A studio frame is `render.studio` in the hero view: each component
+  prepared once in its own frame and moved rigidly per pose, lit and
+  antialiased as the hero is, on the seamless backdrop. It has a contact
+  shadow on a floor fixed at the lowest point the rollout reaches, and a
+  timer stamped in the concept sheet's bitmap face. The window follows the
+  robot. It is fixed in size (the largest pose plus a 12% pad) and widened
+  until no pose leaves it. Its centre is a Hann-smoothed track (4 frames a
+  side).
+- **Materials come from the design.** They are read from the render
+  summary at the run's own revision: the run's recorded render, then
+  `review/render/<revision>/`, then `review/render/`. That summary carries
+  the declared and supplier-derived roles (A3). A run with no such summary
+  is drawn all in the shell material, and the video records
+  `materials.declared = false` rather than guessing what was bought.
+  An invalid declared role refuses.
+- The whole render has a declared bound, `RENDER_SECONDS = 300`, which the
+  video records as `render_bound_seconds`. The `scene` style keeps the same
+  bound.
+- `render._contact_shadow` takes an optional floor. With none, the floor
+  is the design's lowest point as before, so `render` and `look` are
+  unchanged.
+
+**Not taken.**
+- An animated PNG. The page's `<video>` element, its seeking and its
+  download already serve webm, and an APNG would need a second player.
+- Removing the `scene` style. The ot5 probes and their evidence scripts
+  were made with it, and `docs/HEADLESS-BIPED-REVIEW.md` now names it.
+- A perspective follow camera. The studio renderer is orthographic, as
+  the hero is.
+- Any new dependency. FFmpeg was already the encoder.
+
+**Measured** on a `/tmp` copy of ot6 Finch's `finch1-final` walk (accepted
+revision `b6862234…`, policy `0f0997e1…`, seed 0, 8.0 s, 95,212
+triangles). `./cadex render` on the copy rebuilt that same revision and
+digest, and wrote the supplier-derived materials it reads (2 materials).
+The studio video's 81 frames took **117.5 s**, inside the 300 s bound; the
+process wall time was 117.7 s with 385 MB peak RSS. The before/after strip
+(frames at 0, 4 and 8 s, the same decoded frames of the same trace) is
+committed as `docs/probes/ot10/w1-finch-rollout-scene.png` and
+`…-studio.png`. The two views face the robot from sides about 100°
+apart: the scene camera looks from +X+Y and the hero from the front
+right. Re-drawing the 8 s pose from the scene's yaw and pitch gives the
+scene's pose, so the difference is the view, not the geometry.
+
+**Tests.** In `cli/tests/test_video.py`: the studio video pins its
+identity (revision, model digest, policy, task, seed, trace and file
+digests, the name from its digest) and its bound, and never looks for a
+browser. It draws declared materials (an accent body shows orange pixels
+in the decoded frame, and an undeclared one shows none) and says where they
+came from. It refuses an unknown style and an invalid declared role,
+leaving no webm. The dashboard lists it and serves its exact bytes as
+`video/webm`. The five-fault refusal test runs under both styles.
+
+## ADR-432 — A studio video reads the rollout's full tessellation, draws it within a budget, and stands on the declared floor (2026-09-28)
+
+**Context.** W1's remaining half was a video of an A5 design's own policy.
+W2's run `w2-1` on a copy of `ot10-quadruped-3` produced one. On that run,
+`python -m cadex_cli.video` refused before drawing a frame with
+`artifact size/type refused`. The rollout leg writes each solid at its own
+tessellation, far finer than `render`'s snapshot: 2,528,456 triangles in
+611 MB of ASCII STL, with `deck.stl` alone 172 MB and 680,616 triangles.
+The render of the same revision draws 78,419. The video's caps (32 MB a
+file, 500k triangles in total) exist for the `scene` style, whose page
+loads every retained solid whole. The earlier estimate in the ot10 W2
+notes, that the video would draw the render's 78,419 triangles "with no
+extra decimation", was wrong: the video reads the rollout's files, not the
+render's snapshot. Past the caps, a second defect showed. The studio floor
+sat at the lowest point the solids ever reach, which was −18.5 mm, because
+the rollout collides on box and capsule proxies (ADR-281) and the tipping
+solids pass through the floor. So the whole walk floated about 18 mm above
+its shadow. And the render summary names `c_floor` as environment, and it
+had no appearance, so the studio style would have refused it anyway.
+
+**Decision.**
+- The studio style reads each solid as a stream into flat doubles
+  (`stl_stream`), under its own input caps: `STUDIO_SOURCE_BYTES` = 256 MB
+  a file and `STUDIO_INPUT_TRIANGLES` = 4,000,000 in total. Past the caps it
+  refuses as `excessive input geometry` before drawing. It then clusters
+  vertices, as `render`'s snapshot does, into a grid cell a quarter of a
+  512 px pixel of the largest extent, doubled until the drawn total is at
+  most `STUDIO_TRIANGLES` = 120,000. Every drawn corner is a corner of the
+  source. The video records `geometry` (input and drawn triangles, the
+  cell, the budget). The `scene` style keeps its caps unchanged.
+- The components the render summary names as `environment` get no
+  material and are not drawn, as in `render` and `look`. The video records
+  them as `materials.environment_omitted`. The studio floor is the top face
+  of that environment at the first solved pose. Without an environment it
+  is the lowest reach, as before. The video records `floor_z_mm`,
+  `lowest_reach_z_mm` and `floor_source`, so a solid below the floor is a
+  number rather than a hidden fact.
+- `retained(base, relative, limit)` reads its default cap at call time.
+
+**Not taken.**
+- Reading the render's snapshot instead of the rollout's files. That
+  would have posed geometry from a different source than the trace's own
+  component frames, which is the composition defect class of ADR-241 and
+  ADR-242.
+- Changing the engine's rollout tessellation. That is engine and payload
+  work, behind the packaged gate, and the reader is where the cost falls.
+- Clamping solids to the floor. The video draws what the trace says.
+
+**Measured** on `~/cadex-projects/ot10-quadruped-3-w2`, run `w2-1`
+(revision `f6d32a586ecc…`, policy `d8b87d2e1215…`, 4.38 s, 45 frames). The
+render took **72.8 s** against the 300 s bound, and the process ran 72.9 s
+with 357 MB peak RSS. It drew 86,200 of 2,528,456 triangles at a 0.586 mm
+cell, the render's own cell. The floor is at 0.0 mm from `c_floor`, and the
+lowest reach is −18.5 mm. The video is
+`rollout-bdd0da27ec4e….webm` (153,574 bytes), in the project and not in
+git. Before and after strips (frames 0, 22 and 44 of each decoded webm) are
+committed as `docs/probes/ot10/w1-quadruped-rollout-reach-floor.png` and
+`…-studio.png`.
+
+**Tests.** In `cli/tests/test_video.py`, two tests. The first: a studio
+video reads a solid past the scene caps, clusters it within the budget,
+reports it, keeps the bounds within one cell of the exact ones, and
+refuses past the input cap, while the scene style still refuses. The
+second: the environment gets no material, the floor is its top face, and
+the lowest reach is recorded. Both fail on the ADR-431 source, with
+`artifact size/type refused` and `render summary gives shin no valid
+appearance`.
+
+## ADR-433 — The gait check reads training survival over a trailing window, not off the last iteration (2026-09-28)
+
+**This is a measurement correction. The 0.90 bar (`SURVIVAL_FRACTION`) is
+unchanged, and so are the tipped, upright and turned thresholds.**
+
+**Context.** ADR-409's gait check fails a run whose training episodes ended
+early, and it read that from the *last* entry of the trainer's
+`episode_steps_curve`. The trainer's figure is `unroll × envs / endings`
+(`training/cadex_train.py`, the mean-episode-length block), and `endings`
+counts every `done`, time-limit truncations included. With the default
+unroll of 20 on a 500-step horizon, every 25th batch closes on a horizon
+boundary, where every env that has not fallen since its last reset
+truncates at once, and the figure drops to near `unroll × envs / envs`.
+Iteration 999 of a 1,000-iteration run is always such a batch. ot10's W2
+run `w2-2` walked 1.44 m in 10 s at 100% upright with no termination, and
+failed only on `32 of 500 steps at the last iteration`; its other sampled
+iterations over the last 50 read 787.7 to 1,575. `w2-1` read 213.3 there
+and 455–594 elsewhere. The stored curves carry no `terminals` field and no
+unroll, so a terminations-only count could not re-score the runs already
+made.
+
+**Decision.** `_training_survival` (`cli/cadex_cli/walk.py`) reads the
+**median** of the stored samples from the last `SURVIVAL_WINDOW` = 50
+iterations, each capped at the horizon as before, and passes when it is at
+least 0.90 of the horizon. Boundary batches are at most one in
+`horizon / unroll` of the window, so they cannot carry the median while the
+horizon exceeds two unrolls. The block now reports `window_iterations`,
+`window_samples`, `median_episode_steps` and `median_fraction`, and keeps
+`final_episode_steps` as a reported, unjudged number. The finding reads
+`training episodes ended early: a median of N of H steps over the last 50
+iterations`, and `thresholds` gains `survival_window`.
+
+**Not taken.** Counting true terminations in the trainer: right for future
+runs, but it re-scores nothing already stored, and it is a trainer change
+in its own unit. A harmonic mean of the window (total steps over total
+endings): exact on a full curve, but the stored curve keeps 512 of 1,000
+iterations, so whether a boundary was kept moves it — `w2-2`'s last 50
+read 315 that way and its last 100 read 506. Lowering the bar.
+
+**Measured**, re-reading each run's stored `review.json` inputs (trace,
+model, task bundle, `train/progress.json`) on
+`~/cadex-projects/ot10-quadruped-3-w2`. Every other gait field agrees
+exactly with the stored review.
+
+| run | old survival | new median (26 samples, 950–999) | verdict |
+|---|---|---|---|
+| `w2-1` | 213.3 of 500: fails | 487.6 (0.975): passes | `walked = false` — still tipped at 4.36 s and terminated at step 218 |
+| `w2-2` | 31.9 of 500: fails | 500 (1.00): passes | **`walked = true`** |
+
+Cross-check with the unroll the policy header records (20) and 2,048 envs:
+total steps over total endings across the two full horizon periods in
+950–999 give a mean episode of 485.5 steps for `w2-1` and 489.5 for `w2-2`,
+both above 450, so the median's verdict is not an artefact of the cap.
+
+**Tests.** In `cli/tests/test_walk.py`, on a curve with `w2-2`'s shape (kept
+every other iteration plus 974 and 999, a boundary dip every 25th): a
+steady 1,107 with 31.9 at the boundaries survives and walks; a steady 30 or
+440 still fails with the new finding. Both fail on the ADR-409 source.
+
+## ADR-434 — A refused project publish rolls back, and an argument value in `result` is refused at validation (2026-09-28; amends ADR-429)
+
+**Context.** The ot10 biped (`ot10-biped-2`) returned its servo actuators
+in `result`. Validation accepted them. The assembly pass created the
+assembly, its components and its joints, then raised `No native publisher
+exists for output type 'actuator'`. ADR-429 had recorded the gap this fell
+into: the live document runs with `UndoMode 0`, so `abortTransaction`
+restored nothing. The objects stayed, the refusal said
+`accepted_live_state_preserved: true`, and every later write was refused
+with `PUBLICATION_UNTAGGED_OBJECT`. The turn ended on a probe and scored 2
+of 21.
+
+**Measured** under FreeCADCmd, from a parts-only accepted revision:
+- The refused assembly publish left 16 objects behind, and the next,
+  valid publish was refused over 15 of them.
+- With `UndoMode 1` set on the same document, the same refusal left the
+  one accepted object, and the next publish succeeded.
+
+**Decision.**
+- `publish_project_candidate` turns undo on for its own transaction. After
+  the commit or the abort it calls `clearUndos()` and restores the
+  document's mode. The rollback covers objects created, objects retired
+  and properties edited in place. Nothing is kept once the publish returns,
+  so the memory cost ADR-429 worried about lasts only as long as one
+  publish. This is the "turn on the document's undo" option ADR-429 did not
+  take. It was chosen over tracking and deleting created objects, because
+  that would not restore an edited shape or a retired object.
+- `validate_project_result` refuses any output whose type has no publisher
+  (`publishable_output_type`) with `PROJECT_OUTPUT_UNPUBLISHABLE`. The
+  message names the fix: remove the name from `result` and pass it to the
+  call that uses it. For an actuator it also names `assembly.mjcf(...,
+  actuators=[...])` and `assembly.task(..., actions=[...])`. The refusal
+  happens before the document is touched. No protocol op or result shape
+  changes.
+
+**Not changed.** The cadexd document itself still starts at `UndoMode 0`.
+The per-domain `publish_candidate` with `manage_transaction=True` is not
+the path cadexd uses for a project and is left as it was. ADR-429's "found,
+not fixed" retire-linked refusal is a separate defect and is still open.
+
+**Regression.** `cadex_tests/test_publication_refused_rollback_live.py`
+runs the real kernel:
+- A publish that raises after the assembly pass has created objects leaves
+  the document exactly as accepted, and the next publish succeeds.
+- A refused in-place edit restores the edited shape's volume.
+- Undo mode and undo count are back to 0 afterwards.
+- An actuator in `result` is refused at validation with the fix, and the
+  document is unchanged.
+
+A kernel-free unit test pins the validation refusal as well. On the
+previous source, all four kernel tests fail.
+
+## ADR-435 — A build reply the model sees is bounded: outputs summarised, fit lists worst first (2026-09-28; amends ADR-346)
+
+**Context.** `ot10-biped-3`'s agent noted that its build replies overflowed
+the tool limit at about 200 outputs, so it read its fit by paging `inspect
+scope=clearance` (record `tidy-banner-2442`). Measured by replaying a
+`rebuild` of each accepted revision through the bridge:
+- `ot10-biped-3` (215 outputs): 85,954 characters.
+- `ot10-hexapod-11` (186 outputs): 82,981 characters.
+
+The harness was measured to refuse 82,523 and accept up to 21,742
+(ADR-359, `API_VIEW_CHAR_BUDGET` = 21,500). On the biped, 60,669 characters
+were `outputs` and `live_outputs`: every declared name, twice, with
+FreeCAD's object name and type id. The fit block was 9,578 characters, of
+which 6,694 were the swept joint rows. The inventory was 8,611.
+ADR-346's rule that the reply names every failing pair was therefore
+delivering none of them at robot scale.
+
+**Decision.** The engine reply is unchanged. The bridge's model view of a
+successful modelling op is bounded (`cli/cadex_cli/bridge.py`):
+- `outputs` becomes `outputs_view`: count, counts by `domain type`, names
+  when 40 or fewer, `not_live`, and the rows that carry facts or
+  diagnostics. `live_outputs` is dropped. The pointer is `inspect
+  scope=output target=<name>`.
+- `fit_view` keeps every verdict, count and threshold. Each pair list
+  (`failing`, `world_geometry_contacts`, `sweep.failing`,
+  `sweep.world_geometry`, `attachments.reported`) is worst first and cut
+  at `BUILD_VIEW_LIST_LIMIT` = 12, with `<list>_omitted` and a
+  `<list>_rest` scope path. `sweep.joints` lists only joints not swept to
+  completion; `joints_complete` counts the rest.
+- `inventory_view` turns `appearance` into a count per role, and
+  `printed_edges.by_component` into its 12 sharpest parts plus
+  `measured_count`. `uncatalogued_sources` and `derived_catalog_sources`
+  are cut the same way.
+- The turn report, `state.last_fit`, `state.last_inventory` and `look`
+  still read the whole blocks.
+
+Measured after: biped 12,163 characters, hexapod 13,758.
+
+**Amends ADR-346.** Its "never cut short" rule becomes "counted whole,
+listed worst first". At sixty failing pairs the model sees the twelve
+worst, `failing_count: 60`, and where the other 48 are read.
+`test_sixty_failing_pairs_reach_the_model_worst_first_and_counted`
+replaces the test that pinned the old rule.
+
+**Not changed.** No protocol op, `OP_ARG_SPECS` entry, engine result shape
+or shell client moves, so `docs/INTEGRATION.md` and the packaged gate are
+unaffected. The overlay's two sentences that promised every pair and one
+row per joint now describe the view. The rubric, bar, judge and A5 prompts
+are untouched, and no A5 probe is re-scored.
+
+## ADR-436 — A CPU refusal names the stage that spent the budget, and fit stops intersecting pairs measured apart (2026-09-28)
+
+**Context.** `DOMAIN_CPU_LIMIT_EXCEEDED` was the largest refusal class still
+measured in ot10: 44 of 213 refusals, 6 of them in `ot10-hexapod-10`
+(`docs/probes/ot10/refusals.json`). `RLIMIT_CPU` ends the worker with
+SIGXCPU and no `result.json`. The refusal named the cap and nothing else,
+so the agent could only guess what to cut. All six hexapod-10 receipts
+died 90–101 s in, with the native solver's `MbD` lines already in stdout.
+Across the seven ot10 transcripts with CPU refusals, 27 of 45 matching
+results died after the solve and 18 before it.
+
+The first refused script (the agent's 12:40 `write_script`) was re-run on a
+`/tmp` copy of the project with a stage ledger and a per-pair timer:
+- One worker spent 299 CPU-s in 98 s.
+- Geometry took 119 CPU-s: `output tub` 75.7, `output dome` 20.7,
+  `output visor` 13.4.
+- The rest went to the **static fit**. `c_tub`/`c_deck` took 24 CPU-s, 16 of
+  them in `common`, and measured 0.0 mm³.
+- `c_tub`/`c_dome` measured 2.4 mm apart in 20 CPU-s, then spent over
+  137 CPU-s in `common` without answering. The two are lofted shells either
+  side of the deck, and their bounding boxes overlap.
+
+ADR-428's finding stands: the sweep's children carry their own limits, and
+the sweep did not spend this worker's CPU.
+
+**Decision.**
+1. **A pair measured apart is not intersected.** `_common_volume`
+   (`cadex_assembly_worker.py`) runs the boolean only when the pair's
+   distance is 0.001 mm or less. Otherwise it returns 0.0, which the
+   distance proves. The static fit and the sweep both use it.
+2. **The static fit measures distance the way the sweep does**, between the
+   boundary shells when that is exact (`_boundary_distance`, ADR-425).
+3. **The worker keeps a CPU ledger.** `cpu_stage` in
+   `cadex_domain_worker.py` rewrites `progress.json` in the staging
+   directory at every stage boundary, with the running stage and the five
+   costliest finished stages in `process_time`. The stages are:
+   - `script`;
+   - `output NAME`;
+   - `assembly components` and `assembly solve`;
+   - `assembly static fit`, then one `static fit A / B` per exactly
+     measured pair;
+   - `assembly swept fit` and `assembly derived outputs`;
+   - `partdesign bodies` and `display tessellation`.
+
+   The file is written between stages, never inside one, so it survives the
+   kill. `CADEX_XSCRIPT_DOMAIN_PROGRESS` names it in `worker_environment`.
+4. **The refusal names the cheaper path.** On SIGXCPU,
+   `_resource_signal_failure` reads the ledger. The message then says:
+   - which stage was running, and when it started;
+   - the finished stages that cost at least 1 CPU-s;
+   - that an `output NAME` stage is that shape's own construction, and a
+     `static fit A / B` stage is the exact check between two components
+     whose boxes come within 10 mm.
+
+   `observed.cpu_ledger` carries the ledger. With no ledger, the refusal is
+   unchanged.
+
+**Measured after.** The same script is still refused, and its build is now
+honestly over budget. Geometry takes about 115 CPU-s. The static fit
+measures the tub exactly against every part it houses, because the tub's
+box encloses them all. The refusal now reads:
+"It was in 'static fit c_tub / c_hip_servo_lr', which started 298.47
+CPU-seconds in. Costliest finished stages, in CPU-seconds: 'output tub'
+75.01, 'static fit c_tub / c_visor' 52.85, 'static fit c_tub / c_deck'
+24.27, 'static fit c_tub / c_pca9685' 23.68, 'output dome' 20.57."
+The agent found the tub by trial. It replaced `part.offset` with a lofted
+inner cage, and that build passed. Its next two builds, which added the
+boards inside the tub's box, were refused again. The ledger names that part
+in one refusal.
+
+The accepted `ot10-hexapod-10` script was rebuilt on a `/tmp` copy in 83 s.
+Its 1,326 static clearance rows are identical to those the old engine
+published, verdicts included.
+
+**Not changed.** The 300 CPU-s limit, the 10 mm cull, the fit thresholds
+and verdicts, and the sweep's budgets are unchanged. No protocol op or
+`OP_ARG_SPECS` entry moves: the ledger rides in `observed`, which the
+response spec already admits. The rubric, bar, judge and A5 prompts are
+untouched, and no probe is re-scored. The 18 refusals that died before the
+solve were not re-run, so their stages are unmeasured; the ledger will name
+them next time.
+
+**Regression.** `cadex_tests/test_cpu_ledger.py`. A pair 2.4 mm apart whose
+`common` would answer 5.0 must read 0.0 with no `common` call. That test,
+and the per-pair ledger stage, fail on the previous assembly worker. A real
+SIGXCPU kill of a process that marked `static fit c_tub / c_dome` must be
+refused with that stage named.
+
+## ADR-437 — The static fit searches a housing's faces best first against the part's box (2026-09-28)
+
+**Context.** ADR-436 left `ot10-hexapod-10`'s refused 12:40 build over its
+300 CPU-s budget. The static fit measured the tub exactly against every part
+it houses. Each of those pairs costs a whole-shell `distToShape`, and on
+housed parts that call cannot cull anything. Dumping that build's world
+shapes and timing each tub face against the PCA9685 board showed why:
+- The pair cost 117 CPU-s face by face (55 s whole) for a 12.4 mm answer.
+- 111 of those seconds went on three tub faces 28–30 mm from the board:
+  a 6-edge plane, a lofted B-spline and an offset surface.
+- Their exact boxes overlap the board's box, so `BRepExtrema` must meet
+  each of them against all 77 board faces.
+- Each face's distance to the board's box, taken as a six-face solid,
+  cost about 0.3 s and read 28.08, 30.60 and 28.08 mm.
+
+**Decision.**
+1. **Best-first face search** (`_shell_distance`, `cadex_assembly_worker.py`).
+   It applies when the static fit measures a pair and the part with the
+   smaller box has more than six faces.
+   - The other side's faces sit in a queue, keyed by the gap between each
+     face's exact box and the part's box. Each component's face boxes are
+     computed once per fit.
+   - The face at the front is refined once, to its distance from the part's
+     box as a solid. That box holds the part, so this is still a lower bound.
+     Then it is re-queued. A refined face at the front is measured against
+     the part's shells, with the arguments in the pair's order.
+   - The search stops when the front bound is not below the least distance
+     measured. That distance is the shells' distance.
+2. **Shells that measure exactly 0.0 apart are not re-measured on the
+   solids.** The solids contain their shells, so 0.0 is proved. A reading
+   above 0.0 and at or below 0.001 mm still goes to the solids (ADR-425).
+3. **The swept fit is unchanged.** It measures every pair at every sample on
+   freshly placed shapes. Tried there, the bounds cost more than they saved:
+   an accepted rebuild's per-joint sweep went from about 5 s to 25 s, and
+   five joints ran out of budget. So only the static fit passes the boxes.
+
+**Measured after.**
+- **Harness.** The same `_measure_clearance` was run over dumped world
+  shapes, with the old and new workers, and CPU was timed per pair.
+  - Refused-build shapes, 2,850 pairs, 296 of them measured exactly: the
+    static fit fell from 1,143.4 to 701.7 CPU-s.
+    - tub/pca9685: 157.3 → 1.3.
+    - tub/esp32: 62.9 → 1.1.
+    - tub/bno085: 61.9 → 2.5.
+    - tub/regulator: 46.0 → 1.9.
+    - tub/dome: 44.8 → 10.2.
+    - dome/bno085: 48.6 → 22.9.
+  - Accepted-build shapes, 1,326 pairs: 120.4 → 111.7 CPU-s.
+  - Some pairs got slower: 55 on the refused build, by at most 2.8 s each
+    and 36.8 s in total; 59 on the accepted build, by at most 1.3 s each.
+    These are cheap pairs (coxa/tibia 0.6 → 1.8), where the bounds cost
+    about as much as the whole call did.
+  - **Every one of the 4,176 rows is identical to the old worker's, to the
+    last digit.**
+- **Accepted rebuild.** The accepted `ot10-hexapod-10` script was rebuilt
+  through `cadex script --set` on a `/tmp` copy. It reproduces:
+  - all 1,326 static clearance rows, verdicts included;
+  - the complete swept fit, identical with timings stripped.
+
+  It took 142 user CPU-s and 84 s wall. The old worker on another copy took
+  151 and 93.
+- **Refused replay.** The 12:40 script replayed on a `/tmp` copy is still
+  refused. Before, it died in `static fit c_tub / c_hip_screw_lr0` with
+  tub/pca9685 among its five costliest stages. Now it gets through every
+  tub pair and dies in `static fit c_deck / c_dome` at 293 CPU-s. What is
+  left is:
+  - geometry (`output tub` 75.2, `output dome` 20.6, `output visor` 13.4);
+  - touching pairs, whose `common` must still run (`c_tub / c_visor` 53.7,
+    `c_tub / c_deck` 24.7).
+
+**Not changed.** Unchanged:
+- the 10 mm cull, the 0.001 mm recheck, the fit thresholds and the
+  verdicts;
+- the sweep's path and budgets;
+- the 300 CPU-s limit;
+- every protocol op and `OP_ARG_SPECS`;
+- the rubric, bar, judge and A5 prompts.
+
+No probe is re-scored, and no dependency is added.
+
+**Regression.** `cadex_tests/test_housed_fit_distance.py`:
+- A fake tub with five faces must reach the board's 12.4 mm by measuring
+  only two faces. That test goes through `_measure_clearance`, in both
+  orders.
+- Shells at exactly 0.0 must not call the solids.
+- Both tests fail on the previous worker: it measured `['whole']`, and it
+  called `['whole', 'solid']`.
+- A real-OCCT test checks that a board in a hollow tub and under a
+  hemispherical dome, in both argument orders, reads exactly the
+  whole-shell distance (25.0 and 19.687… mm).
+
+## ADR-438 — A touching pair's `common` is first run on the region the two can share (2026-09-28)
+
+**Context.** After ADR-437, `ot10-hexapod-10`'s refused 12:40 build still
+went over its 300 CPU-s budget, and among the costliest fit stages left were
+touching pairs, where the boolean `common` must still decide the volume: `c_tub / c_visor`
+cost 53.7 CPU-s in the worker, and 77 of the harness's 103 were `common`,
+to answer 0.0. The critic asked for an exact zero-volume proof that skips
+`common`, or a recorded dead end.
+
+**What was tried first, and why it was dropped.** A separating-axis proof
+from the two solids' exact boxes. The kernel's boxes carry their own
+inflation of about 1e-7 mm per box, and more on a B-spline (the dome read
+3.8e-7 mm of overlap against the flat deck it only touches). So the proof
+can show only that the two solids overlap by no more than a slab of that
+thickness. On the deck and the tub, that slab bounds the volume at about
+4e-3 mm³, above the 1e-6 mm³ at which the fit calls an intersection. It
+cannot prove the verdict without appealing to the kernel's tolerances, and
+it proves nothing for the tub and the visor, which meet along curved walls
+no plane separates. **No exact zero-volume proof that skips the boolean was
+found in this unit.**
+
+**Decision.** Keep the boolean, and run it where the volume can be: on the
+two solids cut to the region they can share
+(`_clipped_common_is_zero`, `cadex_assembly_worker.py`). The static fit only.
+1. Two solids share volume only inside both their boxes. The region is that
+   overlap grown by 1 mm on every side (`_CLIP_MARGIN_MM`), so every point
+   of the common lies inside it, away from any cut face. The common of the
+   cut solids is the same set as the common of the whole ones.
+2. A side is cut only when fewer than half its faces' exact boxes meet the
+   region. Otherwise the cut is a second boolean that removes little.
+3. **The cut decides only a zero.** If the cut `common` answers exactly 0.0,
+   that is the row's volume. Any other answer, a failed cut, or no side worth
+   cutting runs the whole `common` as before. So every non-zero volume the
+   fit publishes is still the uncut boolean's, digit for digit.
+4. The swept fit is unchanged, as in ADR-437: it passes no boxes.
+
+**Measured.** The harness is ADR-437's: the same `_measure_clearance` over
+the dumped world shapes, timed per pair.
+- Before any rule, the cut and the whole `common` were compared on all
+  176 touching pairs of both builds, including the twelve screws that
+  really overlap the tub (0.2984 mm³). All 176 answers were identical to
+  the last digit.
+- Refused-build shapes, 2,850 pairs: the static fit fell from 701.7 to
+  600.3 CPU-s (586.7 on a second run). All rows are identical to ADR-437's.
+  - tub/visor: 102.9 → 33.2.
+  - deck/tub: 63.4 → 49.8.
+  - hip_servo/tub (×6): about 20 → 6–13 each.
+  - The twelve screws through the tub are each about 3 CPU-s slower: the
+    cut answers 0.2984, and the whole boolean then runs.
+- Accepted-build shapes, 1,326 pairs: 111.7 → 120.5 CPU-s (117.3 on a
+  second run). All rows are identical. This is a small loss, on cheap
+  touching pairs (foot/tibia, coxa/hip_horn), where the cut costs more than
+  the whole boolean did. It is below the 120.4 CPU-s the same shapes cost
+  before ADR-437.
+- **Accepted rebuild** through `cadex script --set` on a `/tmp` copy: all
+  1,326 static rows identical, and the complete swept fit identical with
+  timings stripped. It took 143.7 user CPU-s and 86 s wall (ADR-437's: 142
+  and 84).
+- **Refused replay** on a `/tmp` copy: still refused, now at 292 CPU-s in
+  `static fit c_dome / c_pca9685`, further along the pairs than before.
+  `c_tub / c_visor` is no longer among the five costliest stages, where it
+  was at 53.7. The five are `output tub` 72.9, `c_deck / c_dome` 24.7,
+  `c_tub / c_deck` 20.6, `output dome` 19.9 and `c_dome / c_visor` 13.9.
+
+**Not changed.** The 10 mm cull, the 0.001 mm disjoint rule, the fit
+thresholds and verdicts, the sweep, the 300 CPU-s limit, every protocol op
+and `OP_ARG_SPECS`, and the rubric, bar, judge and A5 prompts. No probe is
+re-scored, and no dependency is added.
+
+**Regression.** `cadex_tests/test_touching_fit_common.py`:
+- A fake tub, eight of whose ten faces lie outside the region, touching a
+  visor, in both orders, through `_measure_clearance`: the tub is cut and
+  the whole boolean never runs.
+- A cut that answers non-zero publishes the whole boolean's volume.
+- No side worth cutting, and the sweep's call with no boxes, run whole.
+- On real OCCT, a drilled hollow tub with a visor seated on its rim, and a
+  screw through its wall, in both orders: every volume equals the whole
+  `common` exactly, the visor's 0.0 is decided on the cut, and the screw's
+  70.69 mm³ is not.
+
+The first three fail on the previous worker, which ran `['whole common']`.
+The real-OCCT test fails there too, because the helper does not exist.
+
+## ADR-439 — The render's clustering grid is sized from what is drawn, not from the floor (2026-09-28)
+
+**Context.** Above 400,000 triangles, `cadex render` and `look` cluster
+vertices on a grid that starts at a quarter pixel of the model's largest
+extent (ADR-410). That extent covered every loaded part, including the
+world floor, which is then left out of the drawing. `ot10-hexapod-12`
+declared a 3,000 mm floor under a 278 mm robot, so the robot was drawn on a
+1.465 mm grid as 52,303 of 970,004 triangles, and every judge call named
+faceted or lumpy legs.
+
+**Decision.** `render.snapshot` takes the environment names and sizes the
+extent from the other parts. The floor is still read, clustered on the
+robot's grid and budgeted. The names come from the accepted revision's fit,
+which calls the floor world geometry (`render.world`): `acquire_snapshot`
+reads the fit after its rebuild, and the bridge's `look` passes the fit it
+already holds. A fit that cannot be read leaves every part in the extent,
+which is the old behaviour, rather than failing the render.
+`summary.decimation` now also carries `extent_mm` and `extent_excludes`.
+
+**Measured.** The same accepted revision of `ot10-hexapod-12`, from a
+project copy: the cell goes from 1.465 mm to 0.271 mm and the drawn
+triangles from 52,303 to 352,317. Drawing takes 14.5 s (hero 3.1 s)
+against 4.5 s (1.7 s), inside A2's 60 s. The before and after heroes are
+`docs/probes/ot10/ot10-hexapod-12-hero.png` and
+`ot10-hexapod-12-hero-grid-after.png`.
+
+**A finding, not a re-score.** Every earlier decimated ot10 render had a
+floor wider than its robot: hex3's baseline (500 mm over 173 mm), the
+hexapods and quadrupeds (800–1,200 mm over 174–306 mm). Each would now draw
+on a finer grid than the one it was judged on. No frozen rubric, proxy, bar
+or procedure changed, and no score is re-taken.
+
+**Tests.** `test_the_floor_does_not_size_the_clustering_grid` (a 10 mm
+grid beside a 3,000 mm floor: the cell equals the grid alone) and
+`test_acquire_snapshot_reads_the_floor_from_the_accepted_fit` both fail on
+the previous source.
+
+## ADR-440 — The joint cap goes over the horn, sized from the horn's own spec (2026-09-28)
+
+**Context.** `ot10-hexapod-12` scored T3 1 in all three judge calls
+(`docs/probes/ot10/ot10-hexapod-12-score.json`). The agent did build joint
+caps: its script declares `cap_r = 12 mm` and places a `mechanism` cap at
+every hip and knee. But each cap sat on the servo's far face or beside the
+hub. The horn sits between the case top and the part it drives, so every
+horn stayed in view (`ot10-hexapod-12-hero-grid-after.png`). The design
+language already says a printed cap covers the horn and its screw
+(`docs/DESIGN-LANGUAGE.md` §3). The overlay said only that each axis
+"carries" a cap at least as wide as the horn, and gave no size to check
+against. Neither the catalog nor xscript has a cap part: `servo.horn()`
+returns the horn, and its `.spec` carries `arm_reach_mm`, `hub_dia_mm` and
+`hub_height_mm`.
+
+**Decision.** This is a teaching change, not a new part. Where a cap
+belongs depends on the design, so a generated cap would be a second joint
+model inside the library. The overlay's JOINTS ARE FEATURES bullet now says
+three things. The cap goes where the horn is. The driven part's hub is the
+cap: a disc of radius at least `.spec["arm_reach_mm"]` plus a 1.6 mm wall,
+cut with `horn.body`, with a skirt that comes down to within 1 mm of the
+case top. The same disc goes on the servo's other face where that face
+shows. Step 4's list of crude things to name now includes "a horn you can
+see". The judge's rubric, proxies, bar and procedure are unchanged, and no
+earlier probe is re-scored. The wording comes from §3 of the design
+language, not from the judge's replies.
+
+**Tests.** `test_the_joint_cap_goes_over_the_horn_and_is_sized_from_its_spec`
+and `test_the_horn_spec_carries_the_reach_the_overlay_sizes_the_cap_from`
+(`cli/tests/test_turn_loop.py`) both fail on the previous overlay. The
+second checks that the key the overlay names exists on every catalog horn
+row.
+
+## ADR-441 — The export check compares what the MJCF writer can carry (2026-09-29)
+
+**Context.** hex2's `hip_pitch` parameter declares a range of 46–52 mm.
+At 48 the design was refused with "The MJCF exported for assembly output
+'hexapod' changed body_pos by 1 relative; the accepted maximum is 1e-05"
+(`docs/probes/hex/hex2-GAPS.md`). 47 was accepted. The agent took the
+first failures for a nondeterministic settle, spent three rebuilds on
+them, and then settled on 47. `docs/probes/hex/README.md` listed the case
+as a suspected engine defect that had not been reproduced. It reproduces
+on the current engine in 23 s on a copy of the project. hex2 builds every
+body at the origin, so `body_pos` is all zeros except three entries of
+−7.1e-18 m, which are round-off from the placement arithmetic. MuJoCo
+3.10.0's XML writer emits any float below 1e-12 in magnitude as `0`. This
+was measured on `body_pos`, `body_quat` and `geom_pos`: 9.99e-13 is
+written as 0 and 1e-12 survives. `_field_drift` divides the worst
+difference by the field's own largest magnitude, which here was the
+round-off itself. Noise against noise therefore read as a drift of
+exactly 1.0. So this was not a sign or frame error. The failure depended
+on the parameter value only through which values produced the round-off.
+
+**Decision.** `_field_drift` compares values below the new
+`MJCF_WRITER_ZERO = 1e-12` as the zero the writer turns them into, on
+both sides. The rule is not a tolerance. It models what the file can
+represent, so a number the file cannot carry does not count as moved.
+ADR-134's floor on `body_ipos` is 1e-9 and applies only in
+`model_differences`. That floor is unchanged. The new floor is three
+orders tighter and holds for every field, because it is the writer's
+own zero and not a bound chosen by hand. Against a limb moment of 1e-5
+kg·m² it is 1e-7 relative, inside the 1e-5 bound that ADR-134 refused
+to loosen.
+
+**Tests.** In `cadex_tests/test_dynamics_mjcf_model.py`:
+`test_a_model_whose_body_positions_are_round_off_still_exports` uses the
+pendulum with its bodies at the origin, one of them at −7.1e-18 m.
+`test_the_writer_zero_is_the_writers` re-measures the threshold on the
+installed MuJoCo. `test_the_writer_zero_does_not_admit_a_real_change`
+checks that 1e-9 m and 2e-6 m against zero are still refused. All three
+fail on the previous source. On a copy of hex2, `cadex params --set
+hip_pitch=48 --set policy_on=0` and `hip_pitch=52` are now accepted. With
+`policy_on=1`, the next refusal is the stored policy's task digest, which
+is correct for a changed design.
+
+## ADR-442 — A housed part carries its own bay (2026-09-29)
+
+**Context.** The overlay has told the product agent since ADR-406 to
+enclose a board or battery in a printed bay "with room for their leads and
+connectors", and ADR-407's `lib.battery` docstring told it to "leave
+margin". Neither gave it a number or a shape, so every bay was hand-cut
+from a guess. Measured read-only on an export of `ot10-quadruped-4`, the
+highest-scoring counted A5 design: all five housed parts clear every
+printed part (0 mm³ of body interference, so the fit checks pass), but the
+battery pocket leaves 0.4 mm on its sides and top, with no lead room at
+either end, and the IMU, ESP32, PCA9685 and regulator sit flat on the
+chassis deck with nothing under them for solder joints or the regulator's
+1.8 mm of bottom-side parts. Cut with the defaults below, the bays those
+parts would need overlap the chassis by 4,001 mm³ (battery) and
+2,044–5,059 mm³ (each board), and the shell above the boards by
+1,362–3,569 mm³.
+
+**Decision.** `lib.battery(...)` returns a `BatteryPart` and `lib.board(...)`
+a `BoardPart`, both carrying `.bay(...)`: a keep-out box in the part's own
+frame, placed with the part's own frame. The battery's bay is its envelope
+plus `clearance` (default 1 mm) on the four sides and the top, and
+`lead_room` (default 15 mm) beyond the +X end. Nothing is added below the
+base face, which is the seat. The board's bay is the PCB and
+component-marker footprint (the ESP32 module overhangs its PCB by 6 mm)
+plus `clearance`, from `underside + clearance` below the PCB (default 2 mm,
+covering the D36V50F6's stated 1.8 mm) to `lead_room + clearance` above the
+tallest component (default 8 mm). A bay is a cutting tool. It is never
+registered as catalogued hardware, so it never counts as purchased in
+`look`'s measures. Allowances must be finite, zero or more, and not bool.
+Anything else is refused by name. The overlay's ENCLOSE rule and the
+complete-machine paragraph name `.bay()` and tell the agent not to cut to
+`.body`. `docs/XSCRIPT.md` gains the battery section it never had. The
+lead end is a convention (+X), not a datasheet fact: the Gens Ace listing
+does not dimension where its leads leave.
+
+**Not done.** No A5 turn has been run against the new overlay. The
+measurement above is of what the surface would have changed, not of a
+design that used it. Fitted connectors (USB, HDMI, pin headers) are still
+not modelled. `underside` is the knob for headers, and the docstring says so.
+
+**Tests.** `cadex_tests/test_library.py`:
+`test_battery_bay_houses_the_pack_with_room_for_its_leads`,
+`test_board_bay_contains_the_board_and_its_overhang` (all five boards),
+`test_esp32_bay_covers_the_module_overhanging_its_pcb` and
+`test_bay_allowances_refuse_by_name`. All eleven cases fail on the previous
+source. `cli/tests/test_turn_loop.py`:
+`test_the_overlay_cuts_electronics_bays_with_bay`.
+
+## ADR-443 — A servo carries its own bay, and a limb is grown around it (2026-09-29)
+
+**Context.** A7's gap, as the judge named it on every 16/21 design, is a
+rounded box on legs with servo cases hanging outside the shell, and T4
+(form) never reaching 3. ADR-442 gave boards and batteries a `.bay()`; the
+servo, the part the gap is actually about, still had none, so every servo
+pocket was hand-cut from magic numbers (`ot10-quadruped-4` cuts
+`box(-6.4, 6.4, 8.3, ...)`). Measured read-only on the three 16/21 designs
+(`ot10-quadruped-2`, `ot10-hexapod-5`, `ot10-quadruped-4`), with each
+servo's frame recovered from its own solid (the bay at zero allowance holds
+100.00% of every one of the 28 servo solids): the share of a 2 mm wall
+around the servo's case and tabs, outside a 0.5 mm clearance, that is
+printed material is **0.198** on `ot10-quadruped-2`'s hips and **0.390** on
+`ot10-quadruped-4`'s (the hip cases hang beside the body), against
+0.714–0.848 on every knee and on `ot10-hexapod-5`'s hips. Printed material
+inside the default bay is 273–2,814 mm³ per servo: every pocket in all three
+is tighter than 0.5 mm somewhere or has no exit for the lead.
+
+**Decision.** `lib.servo(...)` returns a `ServoPart` that is now a `_BayPart`
+like the battery and board, and carries `.bay(clearance=0.5,
+lead_room=6.0)`: the case and the tab plate each grown by `clearance`, the
+spline's column (radius plus `clearance`) from the case top to the spline
+top so the horn seats outside the wall, and `lead_room` beyond the back
+(-X) end face below the tabs, where the lead is taken to leave. It is
+placed with the servo's own frame and is never catalogued. The overlay's
+ENCLOSE rule now names the servo's `.bay()` alongside the board's and
+battery's, and says a limb that carries a servo wraps its `.bay()` with a
+1.6–2.4 mm wall on every side but the spline's and then cuts it, so the
+case is inside the limb, never hanging beside it; split the limb where the
+servo drops in, and screw the tabs at `spec["mount_holes"]`. The lead exit
+is a convention, not a datasheet dimension. `docs/XSCRIPT.md` gains the
+servo row in the bay table.
+
+**Not done.** No confirmation turn has been run against the new overlay;
+none may run until its pre-registration is committed. The wall-share figure
+above is a read-only diagnostic taken outside the product, not an A1 proxy,
+and nothing is re-scored. A 25T horn is still undimensioned, so the
+standard servos' bay passes only the spline.
+
+**Tests.** `cadex_tests/test_library.py`:
+`test_servo_bay_houses_the_case_tabs_and_lead` (sg90, mg90s, ds3218),
+`test_servo_bay_contains_the_servo_body`,
+`test_servo_bay_follows_the_servo_placement`, and three servo cases in
+`test_bay_allowances_refuse_by_name`. All eight fail on the previous source.
+`cli/tests/test_turn_loop.py`:
+`test_the_overlay_grows_a_limb_around_the_servo_bay`.
+
+## ADR-444 — Every presented image stands on the viewport's dark prototype floor (2026-09-29)
+
+**Context.** ot10 A8, added by the owner: the robots are mostly white, and
+on the dashboard's dark mat their form and their motion over the ground are
+easy to see, where the studio renderer (ADR-412) drew them on a light grey
+seamless gradient. The concept sheet (ADR-430) was a light sheet, and a
+studio video (ADR-431) a light image inside the dark chrome. The viewport
+itself has been dark only since ADR-331.
+
+**Decision.** `cli/cadex_cli/scene.py` is the one palette source for the
+images: it reads the scene background and the mat's tiles and major line
+from `PALETTE` in `review_static/environment.js`, and the chrome's `--ink`,
+`--ink-2` and `--rule` from `review_static/review.css`, the files the
+dashboard itself loads. `render.studio` draws the floor behind a design as
+that mat (`render._floor`): each orthographic ray meets the floor plane, a
+checker one pitch square, the major line on every multiple of the pitch
+anchored at the world origin (5/256 of the pitch wide, as `floor.js` paints
+it), the pitch from `floor.js`'s ladder for the framed span, each line's
+coverage computed from the pixel's floor footprint (antialiased), fading
+into the background between 0.75× and 1.9× the framed extent. A level view
+draws the background alone. The mat lies at the contact shadow's floor, or
+under the design's lowest point when none is measured. The contact shadow's
+floor is 20 % (was 45 %) and its terms 0.65/0.45 (were 0.45/0.35): a dark
+tile has little brightness to lose. The concept sheet's paper, ink, muted
+ink and rules are the scene's; the review SVGs' paper and caption too. The
+studio video's identity (`video.studio_digest`) now hashes `scene.py` and
+both palette files. `BACKDROP_TOP`/`BACKDROP_BOTTOM`, the sheet's light
+colours and the SVG's `#f6f7fa` are deleted, not kept behind a switch.
+
+**Not changed, and why.** No minor lines and no baked labels: the viewport
+draws them at close framings, and at a hero's scale they are noise. The
+judge's procedure and rubric (A1, `docs/probes/ot10/README.md`) are frozen
+and untouched, and no probe is re-scored: this is a presentation change.
+A future judged probe would see dark renders; that is a change in what the
+judge sees, and running one is a recorded decision that re-scores every
+earlier probe first. None is run this run (A7 is deferred by the owner).
+
+**Measured.** `ot10-quadruped-3` (the W2 design) re-rendered on a scratch
+copy at its accepted revision `7de6eea6…`: four views and the 1024 px hero
+15.2 s (hero 4.6 s, sheet 3.1 s) — inside A2's 60 s — and the proxies
+unchanged (hardware share 0.0 %, sharp edges 11.6 %, 3 materials). The
+floor at its feet falls from tiles of 28–35 to 6. `w2-2`'s studio video
+re-rendered on a scratch copy of `ot10-quadruped-3-w2`: 101 frames in
+189.0 s against its 300 s bound (153.9 s on the light backdrop; the floor
+costs about a fifth more per frame). Images: `docs/probes/ot10/a8-*.png`.
+
+**Tests.** `cli/tests/test_scene_palette.py` (new): the renderer's palette
+equals the viewport's, parsed independently, and the charter's four
+values; `floor.js`'s fallback tile, pitch ladder and line width; no image
+module carries a scene colour or the old backdrop; the hero stands on the
+mat and fades; a level view is the background; a changed viewport palette
+changes the drawn pixels; an unreadable `PALETTE` refuses; the video's
+identity covers the palette files. `test_look.py` and `test_sheet.py`
+updated where they encoded the light backdrop and dark ink.

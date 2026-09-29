@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-26
+Verified against source: 2026-09-29
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -99,6 +99,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   declared output, so publication can bind each live component to a
   published stable object. Cross-document component references are retired;
   v0.0.1 assemblies are rigid, same-script solids (ADR-011).
+- A project publishes at most one assembly, so renaming its output key
+  (`result["probe"]` to `result["robot"]`) re-keys the live assembly in
+  place. Its joint group, joints and component links carry over, rather than
+  being retired and recreated (ADR-429).
 - `mesh.from_shape()` tessellates a same-script part value (`Mod/MeshPart`);
   `mesh.import_file()` reads one flat asset file; `mesh.transform()` places
   one (same kwargs and same order of operations as `part.transform`, composed
@@ -427,6 +431,46 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   partdesign → mesh → assembly, reusing the per-domain evaluators and
   serializers.
 
+### Appearance: role and palette `[ADR-413]`
+
+A script says how each part looks, in the terms of
+`docs/DESIGN-LANGUAGE.md` §2, and the CLI draws it that way:
+
+```python
+hood = assembly.component(hood_body, appearance="shell")
+knee = assembly.component(servo, appearance="mechanism")
+eye  = assembly.component(eye_body, appearance="accent")
+asm  = assembly.assembly([hood, knee, eye], joints,
+                         palette={"shell": "#C9AE86", "accent": "#F2B40A"})
+```
+
+- `appearance=` on `assembly.component` is one of `shell` (the printed
+  outer forms), `mechanism` (joints, links and purchased hardware that show)
+  or `accent` (one saturated colour on a few deliberate features). Case and
+  surrounding space are forgiven; any other word is refused naming the three.
+- `palette=` on `assembly.assembly` maps any of those roles to a `#RRGGBB`
+  colour, stored upper case in role order. An unnamed role keeps its default:
+  bone `#E9E6DF` shell, graphite `#2F3237` mechanism, signal orange
+  `#F26A1B` accent. An empty object, an unknown role or a colour in any
+  other form is refused.
+- **Undeclared is not a default.** Neither key enters the definition unless
+  the script sets it, so no existing script's digest moves. A component with
+  no role is drawn by supplier — `mechanism` when it places a catalog part,
+  `shell` when printed — and every consumer says which parts were declared
+  and which were inferred.
+- Carried by `inspect scope="inventory"`: each component row has
+  `appearance` when it declared one, and the value has `palette` (empty when
+  none was declared). The CLI's inventory block (on every build reply) adds
+  `appearance` (component → role, declared only) and `palette`;
+  `docs/inventory.md` gains an appearance column and a palette line;
+  `render` writes `appearance` (role, colour and `source`: `declared`,
+  `supplier` or `index`) and the effective `palette` into its
+  `summary.json`, which the review carries; `look` draws in the same
+  colours and names them in its reply.
+- Appearance is presentation only. It changes no geometry, no fit check and
+  no dynamics, and a colour change is still a definition change that the
+  project re-accepts.
+
 ### The parts library: `lib` `[ADR-181]`
 
 Catalogued hardware as parametric part values, staged as the `lib` global
@@ -531,6 +575,36 @@ result = {"controller": controller.body, "driver": driver.body}
 Use ordinary `part.cable` on the declared wire to publish its geometry, as
 in the wiring examples below. These rows declare geometry and pin labels;
 they do not simulate electrical behavior or validate voltage compatibility.
+
+#### Battery, and bays for what is housed `[ADR-407, ADR-442]`
+
+`lib.battery("gensace-gea2s100045d", origin=..., direction=..., roll_degrees=...)`
+is the pack's stated rectangular envelope: datum at the centre of the base
+face, length along local X, width along Y, height along +direction. Leads
+are not modelled; `spec["density_kg_m3"]` is the stated mass over the
+envelope, for `assembly.body`.
+
+A servo, battery or board is housed, not bolted on, so each carries
+`.bay(...)`: a **keep-out solid** placed exactly where the part is, which the
+part that carries it cuts. It is a cutting tool and never a component, and it is not
+catalogued hardware, so it never counts as purchased in `look`'s measures.
+
+| call | extents, in the part's own frame |
+|---|---|
+| `servo.bay(clearance=0.5, lead_room=6.0)` | the case and the mounting-tab plate, each plus `clearance` on every side; the spline's column (its radius plus `clearance`) from the case top to the spline top, so the horn seats outside the wall; and `lead_room` beyond the back (**−X**) end face, below the tabs, where the lead is taken to leave (ADR-443). The tabs land on the ledge the cut leaves under them; drill their screws at `spec["mount_holes"]`. Grow the limb around it — a 1.6–2.4 mm wall on every side but the spline's — then cut it, so the case sits inside the limb. |
+| `pack.bay(clearance=1.0, lead_room=15.0)` | the envelope plus `clearance` on the four sides and the top, plus `lead_room` beyond the **+X** end face, where the leads are taken to leave (roll the pack 180° to lead out of −X). Nothing below the base face: that is the seat. |
+| `board.bay(clearance=1.0, underside=2.0, lead_room=8.0)` | the PCB and component-marker footprint (the ESP32 module overhangs its PCB) plus `clearance`; from `underside + clearance` below the PCB to `lead_room + clearance` above its tallest component. Raise `underside` to the pin length when headers are fitted; fitted connectors (USB, HDMI) are not modelled. |
+
+Every allowance is a finite number of millimetres, zero or more; anything
+else refuses naming the call and the argument (`board.bay: underside must
+be ...`). The lead exits (servo −X, pack +X) are conventions, not
+datasheet dimensions.
+
+```python
+pack = lib.battery("gensace-gea2s100045d", origin=(0, 0, 4))
+esp = lib.board("esp32-devkitc-v4", origin=(-14, -24, 20))
+body = part.cut(hull, [pack.bay(), esp.bay()])
+```
 
 #### N20 gearmotor `[ADR-205]`
 
@@ -1339,7 +1413,21 @@ Source is validated before any worker runs (AST policy in
   `result.json`; those deaths surface as `DOMAIN_CPU_LIMIT_EXCEEDED` and
   `DOMAIN_OUTPUT_LIMIT_EXCEEDED` rather than as a missing result, and the
   worker's BLAS thread pool is pinned so `RLIMIT_AS` does not depend on the
-  host's core count (ADR-250).
+  host's core count (ADR-250). The worker is also pinned to four CPUs
+  (`WORKER_CPUS`, by affinity, inherited by its threads and by the sweep's
+  child), so `RLIMIT_CPU` does not depend on the core count either: OCCT
+  sizes its pools from the CPUs it can see, and on 32 of them the same
+  pairwise fit cost three times the CPU-seconds (ADR-418).
+  **A CPU refusal names where the budget went** (ADR-436). The worker
+  rewrites `progress.json` in its staging directory at every stage boundary:
+  the script, each output's construction (`output NAME`), the assembly's
+  components, solve, each exactly measured static pair
+  (`static fit A / B`), the sweep and the derived outputs. It records the
+  running stage and the five costliest finished ones in `process_time`
+  (every thread's CPU, the unit the limit is charged in). On SIGXCPU the
+  refusal's message names the running stage and the costly stages, and
+  `observed.cpu_ledger` carries the ledger. A worker that wrote none is
+  refused with the message as it was before.
 - The worker executes the script ONCE, evaluates outputs per domain, and
   produces **detached** results (BREP and mesh artifacts, records, collected
   `param_specs`, per-output validations, the content digest) on the
@@ -1353,7 +1441,10 @@ document** (and the headless rebuild driver); the shell receives the
 accepted artifacts as a `display` block and draws them however it likes
 (the Blender shell hydrates tessellation + ID maps into its scene).
 `publish_project_candidate` (`CadexScriptedDomainPublication.py`) applies
-one validated candidate under **ONE** document transaction — one undo step:
+one validated candidate under **ONE** document transaction. Undo is on for
+that transaction only and its history is cleared after it (ADR-434), so a
+refusal at any point — the lint, a pass that raised half-way — rolls the
+document back to the accepted revision, and a commit keeps no undo history:
 
 - Per-domain sub-publishes run through the existing domain publishers with
   `manage_transaction=False` (the project publisher owns the transaction
@@ -1370,6 +1461,11 @@ one validated candidate under **ONE** document transaction — one undo step:
   deleted in the same transaction and recorded in the result.
 - Output identity is durable: an output keeps its object across edits when
   unchanged; removed outputs' identities are never recycled.
+- Only values with a publisher are outputs. A value that only feeds another
+  call — an actuator, a body, an observation — returned in `result` is
+  refused at validation with `PROJECT_OUTPUT_UNPUBLISHABLE`, naming the fix
+  (remove it from `result`, pass it to the call that uses it), before the
+  document is touched (ADR-434).
 
 ### Digest and headless rebuild
 
@@ -1552,6 +1648,47 @@ At the initial solved pose, the published `clearance` rows carry `intent` and
 pair, including intended contacts; contact distance above 0.001 mm; declared
 clearance below its minimum in mm; and undeclared distance below 0.1 mm.
 
+Only the near pairs are measured exactly (ADR-423). A pair whose
+exact-geometry bounding boxes are more than 10 mm apart, or more than the
+pair's declared `clearances=` minimum when that is larger, carries
+`culled: true`: its `distance_mm` is that box gap, a lower bound on the true
+distance, and its `common_volume_mm3` is 0.0, proved by the boxes. No
+verdict above can change, because every floor a culled pair is held to is
+below its bound. A reader applying its own larger floor reads such a row as
+undecided (`cadex clearance` says `unknown`), never as a breach.
+
+A near pair is measured the way the sweep measures one (ADR-436): its distance
+between the boundary shells, when that is exact (ADR-425), and its common
+volume by the boolean `common` **only when that distance is 0.001 mm or
+less**. Two solids a measured distance apart share no volume, so a pair apart
+reads 0.0 without the boolean. On `ot10-hexapod-10` the tub and the dome sat
+2.4 mm apart, and `common` on the two lofted shells ran past 137 CPU-seconds
+without answering. Rebuilt with this rule, the accepted `ot10-hexapod-10`
+reproduces all 1,326 of its static rows exactly.
+
+**A housing's faces are searched best first** (ADR-437). A hollow shell (a
+tub, a dome) has faces whose boxes overlap the parts it houses, and no box
+culls them, so the whole-shell distance met every such face against every
+face of the part. When the part with the smaller box has more than six faces,
+the static fit searches the other side's faces in order of a lower bound: first
+the gap between the face's exact box and the part's, then the face's distance to
+the part's box as a solid. A face is measured only while its bound is below
+the least distance found. The answer is the same number: over the
+2,850 static pairs of hexapod-10's refused build and the 1,326 of its accepted
+one, every row is identical to the last digit. Shells measured exactly 0.0 apart are not
+re-measured on the solids, which contain them. The swept fit is unchanged: it
+measures each pair at every sample on freshly placed shapes, where the bounds
+cost more than they save.
+
+**A touching pair's `common` is first run where the two can meet** (ADR-438).
+Two solids share volume only inside both their boxes, so the static fit cuts
+a side to that overlap, grown by 1 mm, when fewer than half its faces meet
+it, and runs `common` on the cut solids. The cut decides only a zero: any
+other answer, or a failed cut, runs the whole boolean as before, so every
+non-zero volume is still the uncut one. On hexapod-10's refused build the
+tub and its visor cost 103 CPU-s before and 33 after, and every static row of
+both builds is unchanged. The swept fit is unchanged.
+
 A pair joined by an **unsuppressed `fixed` joint is not an undeclared pair**
 (ADR-372) and is exempt from that 0.1 mm: welding two components is the design
 declaring them one rigid body, so meeting face to face is what the declaration
@@ -1608,6 +1745,15 @@ component's name. Existing floor declarations continue to build.
 these facts. The summary counts each failing pair once, prioritising unknown,
 intersection, then intent; the row's `fit_failures` preserves all checks.
 World findings are counted separately. This is static fit, not swept motion.
+The swept block (`fit.sweep`) keeps the same separation (ADR-420): a pair
+against world geometry that overlaps or closes during a joint sweep is listed
+under `world_geometry` and does not fail the swept fit, because each joint is
+swept with the body held still and a standing leg meets its floor.
+At the solved pose (ADR-427), a pair against world geometry that is only
+`below clearance` -- a foot standing on the floor with no common volume -- is
+listed under `fit.world_geometry_contacts` and does not fail the static fit.
+Interpenetrating world geometry at the solved pose, or an unmeasured pair
+against it, still fails.
 
 **What the fixed joints hold** is measured beside these checks and is never one
 of them (ADR-370). Every pair joined by an unsuppressed `fixed` joint is
@@ -1652,8 +1798,25 @@ names its `kind`, its `unit` (`degrees` or `mm`), the `step` it used, its
 maximum common volume, and the first sample at distance <= 0.001 mm
 (`first_contact_degrees` or `first_contact_mm`, null if absent). Contact at the
 lower limit is reported there. Sampling cannot exclude contact between samples
-and is not a continuous collision proof. The solved-pose measurements must
-first agree with static clearance within 0.0001 mm and 0.001 mm³.
+and is not a continuous collision proof. Every pair the sweep measures
+exactly must first agree at the solved pose with static clearance within
+0.0001 mm and 0.001 mm³.
+
+Only the pairs a joint moves are measured, and only the near ones exactly
+(ADR-419). A pair rigid for this sweep carries its static solved-pose
+measurement unchanged — and its `culled: true` with it, when that static
+value is a bound (ADR-423). A statically bounded pair the joint moves near
+is measured exactly, and must be no closer at the solved pose than its bound. A moving pair whose exact-geometry bounding boxes
+stay more than 10 mm apart at every sample carries `culled: true`: its
+minimum distance is that smallest box gap, a lower bound on the true
+minimum; its maximum common volume is 0.0 and it has no first contact, both
+proved by the boxes. A lower bound can only make a fit verdict stricter.
+Each component's BREP is serialised once per assembly, not once per joint.
+An exact swept distance is measured between the two parts' boundary shells
+when no solid of either can lie inside the other, which is the same number
+at a fraction of the cost (ADR-425). The solids are measured instead when a
+vertex of one lies on or inside the other, or the shells come within
+0.001 mm; shells exactly 0.0 apart are not re-measured (ADR-437).
 
 A limited joint whose kind's step is undeclared (a slider under
 `sweep_step_degrees` alone, or a hinge under `sweep_step_mm` alone) is
@@ -1699,8 +1862,9 @@ at the solved pose.
 
 Each joint's native queries run in a fresh FreeCAD subprocess with a 90-second
 timeout; the assembly shares 180 seconds of sweep budget. Preparation and
-process cleanup add overhead. At most 73 poses and 2,000 pairs are allowed per
-joint. Reports carry the limits and measured elapsed seconds. Timeout, malformed
+process cleanup add overhead. At most 73 poses and 2,000 moving pairs are
+allowed per joint; rigid pairs are copied, not measured, and do not count
+(ADR-426). Reports carry the limits and measured elapsed seconds. Timeout, malformed
 or unsupported geometry, limited joints of any other kind (cylindrical included),
 flexible components, closed/coupled/static-joint graphs, and unsolved
 assemblies produce explicit `incomplete` coverage and a reason. No samples means no claim about fit. Joints

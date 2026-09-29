@@ -57,7 +57,10 @@ The human owns the checkboxes; roles report results and do not tick them.
     - a low three-quarter hero angle.
   - Material comes from the design, not a fixed two-colour split (see A3).
   - hex3's accepted design renders at 1024 px in under 60 s on this
-    machine, headless and on the CPU, with no display.
+    machine, headless and on the CPU, with no display. The 60 s bounds
+    drawing once the accepted revision's tessellation is acquired; the
+    engine rebuild that acquires it is reported separately and is not part
+    of this bar.
   - Tests pin the output shape, the limits and the refusal paths.
   - Before and after images of hex3 are committed at 300 KB or less each.
 - [ ] **A3. Appearance and design quality are declared and measured.**
@@ -121,6 +124,47 @@ The human owns the checkboxes; roles report results and do not tick them.
   - A policy that misses it is an honest incomplete result, with a
     diagnosis and a recorded next step. Do not weaken the gait thresholds to
     pass it.
+  - **Owner review of `w2-2`: it shuffles; it does not walk.** The gait
+    check's `walked = true` is a false positive for gait quality. Record
+    this as the owner's verdict. Say so in REPORT.md, and do not present
+    W2 as a walking robot. Do not start new training to fix it this run:
+    the policy design and evaluation loop is the next charter. What this
+    run may do is write down, in REPORT.md, what the gait check cannot see
+    (stepping, foot clearance, slip, duty factor).
+- [ ] **A7 (stretch, added by the owner mid-run). The designs reach the
+  reference level, not just the bar.**
+  - For each of the three body plans, the latest pre-registered
+    confirmation turn, at the final revision, scores **17 or more of 21**
+    and **T4 (form) at 3**. It must also meet every other A5 bar item: the
+    proxies, static and swept fit, and the electronics.
+  - Everything is judged under A1's frozen rubric, judge and procedure,
+    unchanged. Pre-register every confirmation turn before it runs, and
+    publish every attempt and score, misses included.
+  - The target is the gap the A5 designs show: a rounded box on legs, servo
+    cases hanging outside the shell, and a form score that never reaches 3.
+    Close it with product changes: the design language, the overlay, the API
+    and the engine. The actor never authors robot geometry.
+  - Missing this at the ceiling is an honest incomplete result.
+
+- [ ] **A8 (added by the owner mid-run). Everything is drawn on the dark
+  prototype floor.**
+  - The studio hero, the concept sheet, `look`, the rollout video and every
+    other presented image use the dashboard's dark scene. That is the
+    `PALETTE.scene` background `#141414`, plus the prototype mat: tiles
+    `#1c1c1c` / `#232323` with a `#3a3a3a` major grid line, as the review
+    viewport draws it (`docs/REVIEW-DESIGN.md`).
+  - Use one palette source, so the images and the viewport cannot drift
+    apart.
+  - Owner's reason: the robots are mostly white, and on the dark mat their
+    form and their motion over the ground are easy to see. The grid makes
+    foot slip and stride legible in a video.
+  - Keep the contact shadow and the lighting readable on the dark floor.
+  - Commit before/after images of one A5 design, plus the W2 video, at 300
+    KB or less each. Tests pin the palette to the viewport's.
+  - This is a presentation change: it does not re-score A5 or A7. The judge
+    keeps seeing what A1 froze until a recorded decision re-scores every
+    probe.
+
 - [ ] **C1. Regressions and a closing report are complete.**
   - Both full suites pass at the final revision, plus the packaged
     lifecycle gate for any engine or payload change.
@@ -217,11 +261,27 @@ The human owns the checkboxes; roles report results and do not tick them.
 
 ## Exhaustion policy
 
-`report_done`.
-- Once A1–A6, W1, W2 and C1 have evidence, write the closing report,
-  reconcile and claim done. Two consecutive critic acceptances stop the run.
-- If the 72-hour ceiling arrives first, report the highest bar reached and
-  every failed design and seed. Do not redefine success.
+`report_done`. **Owner decision (2026-09-29): ot10 ends after A8.** The
+policy design-and-evaluation loop is the next charter.
+- **Finish the unit in progress.** If it is an A7 change, land it with its
+  tests and record, and do not start another A7 confirmation turn.
+- **Then do A8.** It is the last product work of this run.
+- **Then close:**
+  1. Write the W2 note on what the gait check cannot see.
+  2. Write the closing report (C1). A7 goes in it as open and carried
+     forward, with whatever was measured towards it.
+  3. Run both suites, plus the packaged gate if the engine or payload
+     changed.
+  4. Reconcile, and claim done.
+- **Done is judged on A1–A4, A6, A8, W1, W2 and C1.**
+  - A5 is the owner's to judge from the confirmation turns, and it does not
+    block done.
+  - A7 is deferred by the owner, and it does not block done.
+  - W2 is met as an honest measured result with the owner's shuffle
+    verdict recorded, not as a walking robot.
+- Two consecutive critic acceptances stop the run.
+- If the 72-hour ceiling arrives first, report the highest bar reached. Do
+  not redefine success.
 
 ## Quality bar
 

@@ -52,6 +52,7 @@ from .review_record import (
     PROJECT_SCRIPT_SCHEMA,
     RUN_ARTIFACT_KEYS,
     RUNS_DIRNAME,
+    read_accepted_identity,
     read_project_review,
     read_run_record,
     resolve_reference,
@@ -78,6 +79,7 @@ CONTENT_TYPES = {
     ".py": "text/x-python; charset=utf-8",
     ".xml": "application/xml; charset=utf-8",
     ".svg": "image/svg+xml",
+    ".png": "image/png",
     ".stl": "model/stl",
     ".mp4": "video/mp4",
     ".webm": "video/webm",
@@ -107,6 +109,78 @@ def _load_json(path: Path, limit: int = JSON_READ_LIMIT) -> dict[str, Any] | Non
     except (OSError, ValueError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+#: Where ``cadex render`` leaves the project's presentation (ADR-430): the
+#: studio hero and the concept sheet, beside the summary that names them. A
+#: walk renders per revision, under ``review/render/<revision>/``.
+PRESENTATION_DIR = "review/render"
+PRESENTATION_FILES = ("hero", "sheet")
+
+
+def _presentation_source(root: Path, accepted: Mapping[str, Any]) -> tuple[str, dict[str, Any] | None]:
+    """``(relative directory, summary)`` of the render to present.
+
+    The accepted revision's own walk render when it drew a sheet, else the
+    project's last ``cadex render``, whatever revision it drew; a render
+    with a sheet is preferred over one without.
+    """
+
+    candidates = [PRESENTATION_DIR]
+    revision = accepted.get("revision") if accepted.get("available") else None
+    if isinstance(revision, str) and len(revision) == 64 and revision.isalnum():
+        candidates.insert(0, f"{PRESENTATION_DIR}/{revision}")
+    found = []
+    for relative in candidates:
+        summary = _load_json(root / relative / "summary.json")
+        if summary and isinstance(summary.get("revision"), str):
+            found.append((relative, summary))
+    with_sheet = [item for item in found if isinstance(item[1].get("sheet"), dict)]
+    return (with_sheet or found or [(PRESENTATION_DIR, None)])[0]
+
+
+def presentation(project_root: Path | str, accepted: Mapping[str, Any]) -> dict[str, Any]:
+    """The project's studio hero and concept sheet, as a render left them.
+
+    Read from the render's ``summary.json`` (:func:`_presentation_source`);
+    an image is offered only when the summary names it at its own path and
+    the file is there. The block carries the render's revision and its
+    relation to the accepted revision now -- ``current``, ``historical`` or
+    ``unknown`` -- so a sheet drawn for an earlier design never reads as
+    this one. Read-only: a project with no render, or a render from before
+    the sheet, says so and what makes one.
+    """
+
+    root = Path(project_root).expanduser()
+    relative, summary = _presentation_source(root, accepted)
+    if summary is None:
+        return {"available": False, "reason": "no render yet: cadex render draws the hero and the sheet"}
+    files: dict[str, dict[str, Any]] = {}
+    for key in PRESENTATION_FILES:
+        block = summary.get(key)
+        path = root / relative / f"{key}.png"
+        if isinstance(block, dict) and block.get("path") == f"{relative}/{key}.png" and path.is_file():
+            files[key] = {"url": f"presentation/{key}.png", "bytes": path.stat().st_size}
+    revision = summary["revision"]
+    if accepted.get("available"):
+        relation = "current" if revision == accepted.get("revision") else "historical"
+    else:
+        relation = "unknown"
+    result: dict[str, Any] = {
+        "available": "sheet" in files,
+        "revision": revision,
+        "digest": summary.get("digest"),
+        "relation": relation,
+        "source": relative,
+        "files": files,
+    }
+    sheet = summary.get("sheet")
+    if isinstance(sheet, dict):
+        result["numbers"] = sheet.get("numbers")
+        result["palette"] = summary.get("palette")
+    else:
+        result["reason"] = "this render predates the concept sheet: run cadex render again"
+    return result
 
 
 def _placement(entry: Any) -> dict[str, list[float]] | None:
@@ -970,6 +1044,7 @@ class ReviewProject:
         review = read_project_review(self.root)
         for record in review["runs"]:
             record["telemetry"] = training_telemetry(self.root, record, detail=False)
+        review["presentation"] = presentation(self.root, review["accepted"])
         review["served_at"] = _now()
         return review
 
@@ -1031,6 +1106,15 @@ class ReviewProject:
             return None
         path = self.root / item["path"]
         return path if path.is_file() else None
+
+    def presentation_image(self, name: str) -> Path | None:
+        """``hero.png`` or ``sheet.png``, only when the presentation offers it."""
+
+        key = name[:-4] if name.endswith(".png") else ""
+        offered = presentation(self.root, read_accepted_identity(self.root))
+        if key not in offered.get("files", {}):
+            return None
+        return self.root / offered["source"] / name
 
     def run_video(self, name: str, index: int) -> Path | None:
         record = self.run(name)
@@ -1298,6 +1382,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             path = project.run_artifact(rest[1], rest[2])
         elif head == "artifact" and rest[:1] == ["project"] and len(rest) == 3:
             path = project.project_artifact(rest[1], rest[2])
+        elif head == "presentation" and len(rest) == 1:
+            path = project.presentation_image(rest[0])
         elif head == "video" and rest[:1] == ["run"] and len(rest) == 3 and rest[2].isdigit():
             path = project.run_video(rest[1], int(rest[2]))
         elif head == "doc" and rest[:1] == ["run"] and len(rest) >= 3:

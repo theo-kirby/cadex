@@ -567,7 +567,7 @@ def _load_assembly_hierarchy(root: Path, value: Any, *, context: str) -> dict[st
             # Counts only: this check reads seven count fields and never a
             # subelement detail, so computing 32 face + 32 edge details for
             # it was pure waste.
-            facts = part_shape_facts(shape, max_subelements=0)
+            facts = part_shape_facts(shape, max_subelements=0, edge_convexity=False)
             reported = shape_artifact.get("facts")
             if not isinstance(reported, dict):
                 raise ValueError(f"{node_context} BREP has no topology facts.")
@@ -789,7 +789,7 @@ def configure_assembly_references(
             {"document_uid": key[0], "object_name": key[1]}
         )
         # Counts only, as above.
-        facts = part_shape_facts(shape, max_subelements=0)
+        facts = part_shape_facts(shape, max_subelements=0, edge_convexity=False)
         if facts["null"] or not facts["valid"] or int(facts["solids"]) < 1:
             raise ValueError(
                 f"Assembly component reference {key[1]!r} must contain at least "
@@ -1767,6 +1767,64 @@ def _native_connector_sides(
     return sides
 
 
+def _graph_value_name(value: DomainValue, index: int, kind: str) -> str:
+    """How a refusal names a graph value the script did not return.
+
+    An unreturned value has no output name, so it is named by the label the
+    script gave it, and failing that by its place in the api.assembly list.
+    """
+
+    label = str(dict(value.properties).get("label") or "")
+    return repr(label) if label else f"{kind} #{index} in api.assembly"
+
+
+def _unreturned_refusal(
+    kind: str,
+    listed: list[Any],
+    returned: dict[int, str],
+) -> AssemblyCandidateError:
+    """The refusal for listed-but-unreturned or returned-but-unlisted values.
+
+    hex2 and hex3 each met this as one sentence that named nothing, and fixed
+    it by resending the whole script. Name every value on each side, and the
+    line that fixes it.
+    """
+
+    listed_ids = {id(value) for value in listed}
+    missing = [
+        _graph_value_name(value, index, kind)
+        for index, value in enumerate(listed)
+        if id(value) not in returned
+    ]
+    unlisted = sorted(name for key, name in returned.items() if key not in listed_ids)
+    shown = 8
+    parts = []
+    if missing:
+        more = f" and {len(missing) - shown} more" if len(missing) > shown else ""
+        parts.append(
+            f"{len(missing)} {kind}(s) listed in api.assembly are not returned in "
+            f"result: {', '.join(missing[:shown])}{more}. Give each its own "
+            f"result key where you create it, or loop the list into result "
+            f"(`for i, v in enumerate({kind}s): result['{kind}_' + str(i)] = v`)."
+        )
+    if unlisted:
+        parts.append(
+            f"result returns {kind} output(s) the assembly does not list: "
+            f"{', '.join(repr(name) for name in unlisted)}. Add them to "
+            f"api.assembly or drop them from result."
+        )
+    return AssemblyCandidateError(
+        f"Every {kind} listed in api.assembly must be returned exactly once, "
+        f"and no unlisted {kind} output is allowed. " + " ".join(parts),
+        details={
+            f"returned_{kind}s": list(returned.values()),
+            f"assembly_{kind}_count": len(listed),
+            f"unreturned_{kind}s": missing,
+            f"unlisted_{kind}_outputs": unlisted,
+        },
+    )
+
+
 def _graph_contract(
     raw_result: Mapping[str, Any],
 ) -> tuple[
@@ -1777,9 +1835,17 @@ def _graph_contract(
     dict[int, str],
     dict[int, str],
 ]:
-    if len({id(value) for value in raw_result.values()}) != len(raw_result):
+    names_by_value: dict[int, list[str]] = {}
+    for name, value in raw_result.items():
+        names_by_value.setdefault(id(value), []).append(name)
+    repeated = [names for names in names_by_value.values() if len(names) > 1]
+    if repeated:
         raise AssemblyCandidateError(
-            "Each Assembly graph value must be returned exactly once under one output name."
+            "Each Assembly graph value must be returned exactly once under one "
+            "output name; these keys hold the same value: "
+            + "; ".join(" and ".join(repr(name) for name in names) for names in repeated)
+            + ". Keep one key for each.",
+            details={"repeated_outputs": repeated},
         )
     assemblies = [
         (name, value)
@@ -1792,12 +1858,35 @@ def _graph_contract(
         if isinstance(value, DomainValue) and value.output_type == "solver_diagnostics"
     ]
     if len(assemblies) != 1 or len(diagnostics) != 1:
+        assembly_names = [name for name, _value in assemblies]
+        diagnostic_names = [name for name, _value in diagnostics]
+        # hex2 and hex3 both returned the assembly and never solved it.
+        if not assemblies:
+            fix = (
+                "Return the api.assembly(...) value, e.g. `result['asm'] = asm`, "
+                "and its solve."
+            )
+        elif len(assemblies) > 1:
+            fix = (
+                "A project has one assembly: put every component and joint in a "
+                "single api.assembly(...) and return only that one."
+            )
+        elif not diagnostics:
+            fix = (
+                f"Add `result['solve'] = assembly.solve({assembly_names[0]})` -- "
+                f"the solve of the assembly returned as {assembly_names[0]!r}."
+            )
+        else:
+            fix = "Solve the one assembly once and return only that solve."
         raise AssemblyCandidateError(
             "An Assembly program must return exactly one assembly and one "
-            "solver_diagnostics output.",
+            "solver_diagnostics output; result returns "
+            f"{len(assemblies)} assembly ({', '.join(map(repr, assembly_names)) or 'none'}) "
+            f"and {len(diagnostics)} solver_diagnostics "
+            f"({', '.join(map(repr, diagnostic_names)) or 'none'}). {fix}",
             details={
-                "assembly_outputs": [name for name, _value in assemblies],
-                "diagnostic_outputs": [name for name, _value in diagnostics],
+                "assembly_outputs": assembly_names,
+                "diagnostic_outputs": diagnostic_names,
             },
         )
     assembly_name, assembly_value = assemblies[0]
@@ -1822,23 +1911,9 @@ def _graph_contract(
         if isinstance(value, DomainValue) and value.output_type == "joint"
     }
     if {id(value) for value in components} != set(component_outputs):
-        raise AssemblyCandidateError(
-            "Every component listed in api.assembly must be returned exactly once, "
-            "and no unlisted component_link output is allowed.",
-            details={
-                "returned_components": list(component_outputs.values()),
-                "assembly_component_count": len(components),
-            },
-        )
+        raise _unreturned_refusal("component", components, component_outputs)
     if {id(value) for value in joints} != set(joint_outputs):
-        raise AssemblyCandidateError(
-            "Every joint listed in api.assembly must be returned exactly once, "
-            "and no unlisted joint output is allowed.",
-            details={
-                "returned_joints": list(joint_outputs.values()),
-                "assembly_joint_count": len(joints),
-            },
-        )
+        raise _unreturned_refusal("joint", joints, joint_outputs)
     if not diagnostics_value.arguments or diagnostics_value.arguments[0] is not assembly_value:
         raise AssemblyCandidateError(
             "api.solve must receive the exact api.assembly variable returned in result."
@@ -5626,15 +5701,47 @@ def _linked_source_shape(component: Any) -> Any | None:
     return local
 
 
+def _cpu_stage(stage: str) -> None:
+    """Mark an assembly stage in the worker's CPU ledger (ADR-436)."""
+
+    from cadex_domain_worker import cpu_stage
+
+    cpu_stage(stage)
+
+
 def _measure_clearance(
-    components: Mapping[str, Any], *, solved: bool = True
+    components: Mapping[str, Any], *, solved: bool = True,
+    floors: Mapping[frozenset, float] | None = None,
 ) -> list[dict[str, Any]]:
     """All pairs at the initial solved pose; failures remain unmeasured.
 
-    Distance includes disjoint boxes. Only common-volume work is pruned by
-    box separation. These derived facts live beside the hashed definition.
+    **Only the near pairs are measured exactly** (ADR-423). A pair whose
+    exact-geometry boxes are more than :data:`_CLEARANCE_CULL_MM` apart --
+    or more than its declared floor in ``floors``, when that is larger --
+    carries ``culled: true``: its distance is that box gap, a lower bound
+    on the true distance, and its common volume is 0.0, proved by the boxes.
+    No fit verdict changes, because the floor a pair is held to is below the
+    bound that culled it. ``ot10-hexapod-4`` spent 21 of its 25 s here in
+    ``distToShape`` over 1,275 pairs, nearly all of them far apart.
     """
     names = list(components)
+    floors = floors or {}
+    shapes: dict[str, Any] = {}
+    boxes: dict[str, Any] = {}
+    face_boxes: dict[int, Any] = {}
+
+    def world(name):
+        if name not in shapes:
+            shapes[name] = _component_world_shape(components[name])
+        return shapes[name]
+
+    def box(name):
+        # Exact geometry, not triangulation, so the gap bounds the distance
+        # from below (the same box ADR-419's sweep culls with).
+        if name not in boxes:
+            boxes[name] = world(name).optimalBoundingBox(False, True)
+        return boxes[name]
+
     rows = []
     for index, first in enumerate(names):
         for second in names[index + 1:]:
@@ -5643,18 +5750,36 @@ def _measure_clearance(
             try:
                 if not solved:
                     raise ValueError("Assembly solver did not produce a solved pose")
-                a = _component_world_shape(components[first])
-                b = _component_world_shape(components[second])
+                a = world(first)
+                b = world(second)
                 if a.isNull() or b.isNull():
                     raise ValueError("Component has no measurable shape")
-                distance = float(a.distToShape(b)[0])
+                if a.Solids and b.Solids:
+                    p, q = box(first), box(second)
+                    gap = math.sqrt(sum(max(0.0, lo_a - hi_b, lo_b - hi_a) ** 2 for lo_a, hi_a, lo_b, hi_b in (
+                        (p.XMin, p.XMax, q.XMin, q.XMax), (p.YMin, p.YMax, q.YMin, q.YMax),
+                        (p.ZMin, p.ZMax, q.ZMin, q.ZMax))))
+                    margin = max(_CLEARANCE_CULL_MM, float(floors.get(frozenset((first, second)), 0.0)))
+                    if math.isfinite(gap) and gap > margin:
+                        row.update(distance_mm=gap, common_volume_mm3=0.0, culled=True)
+                        rows.append(row)
+                        continue
+                # Each exactly measured pair is its own ledger stage, so a CPU
+                # refusal names the pairs that spent it (ADR-436).
+                _cpu_stage(f"static fit {first} / {second}")
+                # The shells measure the solids' distance, faster (ADR-425).
+                # A housing is culled face by face against its part's box (ADR-437).
+                distance = (float(_boundary_distance(a, b, (box(first), box(second)), face_boxes))
+                            if a.Solids and b.Solids
+                            else float(a.distToShape(b)[0]))
                 if not math.isfinite(distance) or distance < 0:
                     raise ValueError("Invalid minimum distance")
                 row["distance_mm"] = distance
                 # Surface-only geometry does not establish solid intersection.
                 if not a.Solids or not b.Solids:
                     raise ValueError("Common volume requires solid components")
-                volume = float(a.common(b).Volume) if a.BoundBox.intersect(b.BoundBox) else 0.0
+                volume = (_common_volume(a, b, distance, (box(first), box(second)), face_boxes)
+                          if a.BoundBox.intersect(b.BoundBox) else 0.0)
                 if not math.isfinite(volume) or volume < 0:
                     raise ValueError("Invalid common volume")
                 row["common_volume_mm3"] = volume
@@ -5664,23 +5789,128 @@ def _measure_clearance(
     return rows
 
 
+#: A pair measured further apart than this is disjoint, and shares no volume.
+_DISJOINT_DISTANCE_MM = 1e-3
+
+
+def _common_volume(first, second, distance, boxes=None, face_boxes=None):
+    """The two solids' common volume, proved zero when their distance is positive (ADR-436).
+
+    Two solids a measured distance apart cannot share volume, so the boolean
+    ``common`` is only run on a pair that touches or overlaps. On
+    ``ot10-hexapod-10`` the tub and the dome sit 2.4 mm apart across the
+    deck, their boxes overlap, and ``common`` on the two lofted shells ran
+    past 137 CPU-seconds without answering: the worker's whole 300 CPU-second
+    budget went on a volume the distance had already proved to be 0.0. At or
+    below :data:`_DISJOINT_DISTANCE_MM` the boolean still decides -- first on
+    the two solids cut to where they can meet, when the static fit passes
+    ``boxes`` (:func:`_clipped_common_is_zero`, ADR-438).
+    """
+
+    if distance > _DISJOINT_DISTANCE_MM:
+        return 0.0
+    if boxes is not None and face_boxes is not None and _clipped_common_is_zero(
+            first, second, boxes, face_boxes):
+        return 0.0
+    return float(first.common(second).Volume)
+
+
+#: How far the region a touching pair is cut to reaches past the two boxes'
+#: overlap, so no cut face lies where the solids can meet (ADR-438).
+_CLIP_MARGIN_MM = 1.0
+
+
+def _clipped_common_is_zero(first, second, boxes, face_boxes):
+    """Whether ``common`` answers 0.0 on the two solids cut to the region they can share (ADR-438).
+
+    Two solids can only share volume inside both their boxes. Cut each to
+    that overlap grown by :data:`_CLIP_MARGIN_MM` and their common is the
+    same set, because every point of it lies inside the region, away from
+    the cut. A touching pair's ``common`` spends its time on the faces far
+    from the contact: on ``ot10-hexapod-10``'s refused build the tub and the
+    visor it carries cost 77 CPU-seconds whole and 9 cut, for the same 0.0.
+    A side is cut only when fewer than half of its faces meet the region --
+    otherwise the cut is a second boolean that removes little -- and the cut
+    decides only a zero: any other answer, or a failed cut, returns False
+    and the whole solids are measured as before, so a volume that is not
+    zero is always the one the uncut boolean gives.
+    """
+
+    try:
+        import FreeCAD as App
+        import Part
+        lo = [max(a, b) - _CLIP_MARGIN_MM for a, b in (
+            (boxes[0].XMin, boxes[1].XMin), (boxes[0].YMin, boxes[1].YMin), (boxes[0].ZMin, boxes[1].ZMin))]
+        hi = [min(a, b) + _CLIP_MARGIN_MM for a, b in (
+            (boxes[0].XMax, boxes[1].XMax), (boxes[0].YMax, boxes[1].YMax), (boxes[0].ZMax, boxes[1].ZMax))]
+        if any(h <= l for l, h in zip(lo, hi)):
+            return False
+        cut = []
+        for shape in (first, second):
+            if id(shape) not in face_boxes:
+                face_boxes[id(shape)] = [face.optimalBoundingBox(False, True) for face in shape.Faces]
+            meeting = sum(1 for box in face_boxes[id(shape)] if (
+                box.XMin <= hi[0] and box.XMax >= lo[0] and box.YMin <= hi[1]
+                and box.YMax >= lo[1] and box.ZMin <= hi[2] and box.ZMax >= lo[2]))
+            cut.append(2 * meeting < len(face_boxes[id(shape)]))
+        if not any(cut):
+            return False
+        region = Part.makeBox(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], App.Vector(*lo))
+        parts = [shape.common(region) if clip else shape for shape, clip in zip((first, second), cut)]
+        return float(parts[0].common(parts[1]).Volume) == 0.0
+    except Exception:
+        return False
+
+
+#: A static pair whose exact-geometry boxes are further apart than this is
+#: bounded, not measured (ADR-423) -- the sweep's margin (ADR-419).
+_CLEARANCE_CULL_MM = 10.0
+
+
+def _declared_floors(properties, component_outputs):
+    """Each declared ``clearances=`` pair's minimum, keyed by its two names.
+
+    What :func:`_measure_clearance` must measure exactly rather than bound:
+    a pair held to a floor above the cull margin is culled only past it.
+    """
+
+    floors = {}
+    for intent in properties.get("fit_intent", ()):
+        try:
+            key = frozenset(component_outputs[id(intent[side])] for side in ("first", "second"))
+            minimum = float(intent.get("minimum_mm") or 0.0)
+        except Exception:
+            continue
+        if math.isfinite(minimum):
+            floors[key] = max(minimum, floors.get(key, 0.0))
+    return floors
+
+
 # A child owns native queries so a stuck OCCT operation cannot exceed the budget.
 _SWEEP_JOINT_SECONDS = 90.0
 _SWEEP_TOTAL_SECONDS = 180.0
 _SWEEP_MAX_POSES = 73
+#: Pairs one joint moves, which are the pairs its sweep measures (ADR-426).
 _SWEEP_MAX_PAIRS = 2000
+#: A moving pair whose exact-geometry boxes stay this far apart at every
+#: sample is bounded, not measured (ADR-419): no fit floor reaches it.
+_SWEEP_CULL_MM = 10.0
 
 
-def _bounded_sweep_call(components, component_data, joint_data, baseline, name, step, seconds):
+def _sweep_payload_components(components):
+    """Each component's world BREP and placement, serialised once per sweep."""
+    return {n: {"brep": _component_world_shape(obj).exportBrepToString(),
+                "placement": list(obj.Placement.toMatrix().A)} for n, obj in components.items()}
+
+
+def _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step, seconds):
     import FreeCAD as App
     import subprocess
     import tempfile
     import time
     start = time.monotonic()
     try:
-        payload = {"components": {n: {
-            "brep": _component_world_shape(obj).exportBrepToString(),
-            "placement": list(obj.Placement.toMatrix().A)} for n, obj in components.items()},
+        payload = {"components": serialised,
             "component_data": component_data, "joint_data": joint_data,
             "baseline": baseline, "name": name, "step": step}
         with tempfile.TemporaryDirectory(prefix="cadex-fit-sweep-") as directory:
@@ -5729,6 +5959,102 @@ _SWEEP_KINDS = {
 }
 
 
+#: At or below this, a shell distance is re-measured on the solids, so a
+#: touching or first-contact reading is the one the solids give (ADR-425).
+_SHELL_DISTANCE_RECHECK_MM = 1e-3
+
+
+def _boundary_distance(first, second, boxes=None, face_boxes=None):
+    """The minimum distance between two solid shapes, on their shells when that is exact.
+
+    ``distToShape`` was 25 of a hip child's 28 s on ``ot10-hexapod-5``
+    (ADR-425). The two shells measure the same number, 10 to 70 times
+    faster on most of its pairs and about 1.3 times on its BSpline dome. A solid distance also answers
+    zero for a solid lying inside the other, and only then differs from the
+    distance between the two boundaries. So each solid of each side must
+    show one vertex strictly outside the other shape; otherwise, or when
+    the boundaries come within :data:`_SHELL_DISTANCE_RECHECK_MM`, the solids
+    are measured as before. ``boxes`` and ``face_boxes`` let the static fit
+    cull a housing's faces (:func:`_shell_distance`).
+    """
+
+    import Part
+    for inner, outer in ((first, second), (second, first)):
+        for solid in inner.Solids:
+            if not solid.Vertexes or outer.isInside(solid.Vertexes[0].Point, 1e-7, True):
+                return float(first.distToShape(second)[0])
+    distance = _shell_distance(first, second, boxes, face_boxes)
+    # The solids contain their shells, so shells that touch prove the solids
+    # touch: 0.0 is not re-measured (ADR-437).
+    if distance == 0.0 or distance > _SHELL_DISTANCE_RECHECK_MM:
+        return distance
+    return float(first.distToShape(second)[0])
+
+
+def _shell_distance(first, second, boxes=None, face_boxes=None):
+    """The distance between two solids' shells, a housing's faces culled against a box (ADR-437).
+
+    A hollow shell -- a tub, a dome -- has faces whose boxes overlap the
+    parts it houses, and ``distToShape`` can cull no pair of faces on their
+    boxes there: it meets each such face against every face of the part. On
+    ``ot10-hexapod-10`` three tub faces 28-30 mm from a board spent 111 of
+    the 117 CPU-seconds that pair cost, while the board's nearest tub face
+    is 12.4 mm away. So when the side with the smaller box has more faces
+    than a box, the other side's faces are searched best first. Each face
+    has two lower bounds on its distance to the smaller side: the gap
+    between its exact box and that side's, which is free, and its distance
+    to that side's box as a solid, which holds that side. The face with the
+    least bound is refined to the second bound if it has not been, and
+    measured if it has; the search ends when the least bound is not below
+    the least distance measured, which is then the shells' distance.
+
+    Only the static fit passes ``boxes`` (the two exact boxes) and
+    ``face_boxes`` (a cache of each shape's face boxes, by ``id``): it
+    measures each pair once, and holds its shapes for the whole fit. The
+    swept fit measures every pair at every sample on freshly placed shapes,
+    where the bounds cost more than they save, so it measures whole.
+    """
+
+    import heapq
+    import Part
+    shapes = (first, second)
+    whole = (Part.Compound(first.Shells), Part.Compound(second.Shells))
+    if boxes is None or face_boxes is None:
+        return float(whole[0].distToShape(whole[1])[0])
+    outer = 0 if boxes[0].XLength * boxes[0].YLength * boxes[0].ZLength >= (
+        boxes[1].XLength * boxes[1].YLength * boxes[1].ZLength) else 1
+    inner = 1 - outer
+    box = boxes[inner]
+    if len(shapes[inner].Faces) <= 6 or min(box.XLength, box.YLength, box.ZLength) <= 0:
+        return float(whole[0].distToShape(whole[1])[0])
+    faces = shapes[outer].Faces
+    if id(shapes[outer]) not in face_boxes:
+        face_boxes[id(shapes[outer])] = [face.optimalBoundingBox(False, True) for face in faces]
+    import FreeCAD as App
+    bound = Part.makeBox(box.XLength, box.YLength, box.ZLength, App.Vector(box.XMin, box.YMin, box.ZMin))
+    queue = [(_box_gap(face_box, box), index, False)
+             for index, face_box in enumerate(face_boxes[id(shapes[outer])])]
+    heapq.heapify(queue)
+    best = math.inf
+    while queue and queue[0][0] < best:
+        lower, index, refined = heapq.heappop(queue)
+        if not refined:
+            heapq.heappush(queue, (max(lower, float(faces[index].distToShape(bound)[0])), index, True))
+            continue
+        # The arguments keep the pair's order: extrema are not symmetric to the last digit.
+        pair = (faces[index], whole[inner]) if outer == 0 else (whole[inner], faces[index])
+        best = min(best, float(pair[0].distToShape(pair[1])[0]))
+    return best
+
+
+def _box_gap(first, second):
+    """The distance between two boxes, zero when they overlap."""
+    return math.sqrt(sum(max(0.0, lo_a - hi_b, lo_b - hi_a) ** 2 for lo_a, hi_a, lo_b, hi_b in (
+        (first.XMin, first.XMax, second.XMin, second.XMax),
+        (first.YMin, first.YMax, second.YMin, second.YMax),
+        (first.ZMin, first.ZMax, second.ZMin, second.ZMax))))
+
+
 def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     """Sample one limited hinge or slider of a rigid tree with exact solids.
 
@@ -5744,6 +6070,16 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     0.0 mm here and first contact at the bottom of the range, which is the
     weld and not the motion. The flag is what lets a reader keep the two
     apart; the rows themselves are unchanged.
+
+    **Only the pairs this joint moves are measured, and only the near ones
+    exactly** (ADR-419). A rigid pair's row carries its solved-pose
+    measurement from ``baseline`` unchanged, since the sweep cannot move it.
+    A moving pair whose exact-geometry bounding boxes stay more than
+    :data:`_SWEEP_CULL_MM` apart at every sample is ``culled``: its minimum
+    distance is that box gap, a lower bound on the true minimum; its
+    common volume is 0.0 and it has no first contact, both proved by the
+    boxes. A lower bound can only make a verdict stricter. Solved-pose
+    agreement is checked on every pair the sweep measures exactly.
     """
     import FreeCAD as App
     from CadexDynamics import extract_tree, joint_transform, joint_coordinates, length_mm
@@ -5767,36 +6103,60 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     if count < 0 or count + 1 > _SWEEP_MAX_POSES:
         raise ValueError("pose budget exceeded")
     values = [min(low + i * step, high) for i in range(count + 1)]
-    if len(baseline) > _SWEEP_MAX_PAIRS:
-        raise ValueError("pair budget exceeded")
     body = next(b for b in tree["bodies"] if b["joint"] == name)
     moving = {body["name"]}
     for b in tree["bodies"]:
         if b["parent"] in moving:
             moving.add(b["name"])
+    # The budget counts the pairs this joint moves, the only ones measured
+    # (ADR-426); a rigid row is a copy of its solved-pose value.
+    moving_pairs = sum((row["first"] in moving) != (row["second"] in moving) for row in baseline)
+    if moving_pairs > _SWEEP_MAX_PAIRS:
+        raise ValueError(f"pair budget exceeded: {moving_pairs} moving pairs, "
+                         f"more than {_SWEEP_MAX_PAIRS}")
     poses = {n: obj.Placement for n, obj in components.items()}
     shapes = {n: _component_world_shape(obj).copy() for n, obj in components.items()}
     solved_shapes = {n: shape.Placement for n, shape in shapes.items()}
+    boxes = {}
 
-    def measure(a, b):
+    def corners(n):
+        # Exact geometry, not triangulation: a tessellated BoundBox can sit
+        # inside the surface and would not bound the distance from below.
+        if n not in boxes:
+            if shapes[n].isNull():
+                raise ValueError("sweep requires solid components")
+            box = shapes[n].optimalBoundingBox(False, True)
+            boxes[n] = [App.Vector(x, y, z) for x in (box.XMin, box.XMax)
+                        for y in (box.YMin, box.YMax) for z in (box.ZMin, box.ZMax)]
+        return boxes[n]
+
+    def box_at(n, boxes_at):
+        return (boxes_at or {}).get(n) or [f(c[i] for c in corners(n)) for f in (min, max) for i in range(3)]
+
+    def measure(a, b, boxes_at=None):
+        # Disjoint exact-geometry boxes prove zero common volume (ADR-423);
+        # ``BoundBox`` is looser and sent far pairs into ``common``.
+        first, second = box_at(a, boxes_at), box_at(b, boxes_at)
+        overlap = all(first[i] <= second[i + 3] and second[i] <= first[i + 3] for i in range(3))
         a, b = shapes[a], shapes[b]
         if a.isNull() or b.isNull() or not a.Solids or not b.Solids:
             raise ValueError("sweep requires solid components")
-        d = float(a.distToShape(b)[0])
-        v = float(a.common(b).Volume) if a.BoundBox.intersect(b.BoundBox) else 0.0
+        d = _boundary_distance(a, b)
+        v = _common_volume(a, b, d) if overlap else 0.0
         if not math.isfinite(d) or not math.isfinite(v) or min(d, v) < 0:
             raise ValueError("invalid native measurement")
         return d, v
 
     cached = {}
+    bounded = set()
     for row in baseline:
         key = row["first"], row["second"]
-        d, v = measure(*key)
-        if (row.get("error") or row["distance_mm"] is None or row["common_volume_mm3"] is None
-                or abs(d - row["distance_mm"]) > 1e-4
-                or abs(v - row["common_volume_mm3"]) > 1e-3):
+        if row.get("error") or row["distance_mm"] is None or row["common_volume_mm3"] is None:
             raise ValueError("solved-pose clearance disagreement")
-        cached[key] = d, v
+        cached[key] = row["distance_mm"], row["common_volume_mm3"]
+        if row.get("culled"):
+            # A static bound (ADR-423): no measurement to agree with.
+            bounded.add(key)
     connectors = joint["connectors"]
     a, b = [c["component"] for c in connectors]
     coords = joint_coordinates(joint["kind"], joint_transform(
@@ -5818,18 +6178,49 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     # number the motion produced from one it merely repeated.
     rows = [{"first": a, "second": b, "relative_motion": (a in moving) != (b in moving),
              "minimum_distance_mm": None,
-             "maximum_common_volume_mm3": None, contact_key: None}
+             "maximum_common_volume_mm3": None, contact_key: None,
+             **({"culled": True, "minimum_distance_mm": cached[a, b][0],
+                 "maximum_common_volume_mm3": cached[a, b][1]}
+                if (a, b) in bounded and (a in moving) == (b in moving) else {})}
             for a, b in cached]
+    deltas = []
     for value in values:
         travel = (value - initial) * (1 if side == 0 else -1)
         motion = (App.Placement(App.Vector(), App.Rotation(App.Vector(0, 0, 1), travel))
                   if unit == "degrees" else App.Placement(App.Vector(0, 0, travel), App.Rotation()))
-        delta = frame.multiply(motion).multiply(frame.inverse())
+        deltas.append(frame.multiply(motion).multiply(frame.inverse()))
+    # The moving side's box at a sample is the box of its solved box's
+    # corners carried by the rigid motion, which still contains the solid.
+    sample_boxes = [{n: [f(delta.multVec(c)[i] for c in corners(n)) for f in (min, max) for i in range(3)]
+                     for n in moving} for delta in deltas]
+    for row in rows:
+        a, b = row["first"], row["second"]
+        if not row["relative_motion"]:
+            continue
+        gaps = []
+        for boxes_at in sample_boxes:
+            first, second = box_at(a, boxes_at), box_at(b, boxes_at)
+            gaps.append(math.sqrt(sum(max(0.0, first[i] - second[i + 3], second[i] - first[i + 3]) ** 2
+                                      for i in range(3))))
+        if min(gaps) > _SWEEP_CULL_MM:
+            row.update(culled=True, minimum_distance_mm=min(gaps), maximum_common_volume_mm3=0.0)
+            continue
+        d, v = measure(a, b)
+        distance, volume = cached[a, b]
+        if (a, b) in bounded:
+            if d < distance - 1e-4 or v > 1e-3:
+                raise ValueError("solved-pose clearance disagreement")
+            cached[a, b] = d, v
+        elif abs(d - distance) > 1e-4 or abs(v - volume) > 1e-3:
+            raise ValueError("solved-pose clearance disagreement")
+    for value, delta, boxes_at in zip(values, deltas, sample_boxes):
         for n in moving:
             shapes[n].Placement = delta.multiply(solved_shapes[n])
         for row in rows:
             a, b = row["first"], row["second"]
-            d, v = (measure(a, b) if row["relative_motion"] else cached[a, b])
+            if row.get("culled"):
+                continue
+            d, v = (measure(a, b, boxes_at) if row["relative_motion"] else cached[a, b])
             if row["minimum_distance_mm"] is None or d < row["minimum_distance_mm"]:
                 row["minimum_distance_mm"] = d
             if row["maximum_common_volume_mm3"] is None or v > row["maximum_common_volume_mm3"]:
@@ -5878,6 +6269,7 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
               "per_joint_seconds": _SWEEP_JOINT_SECONDS, "total_seconds": _SWEEP_TOTAL_SECONDS,
               "max_poses": _SWEEP_MAX_POSES, "max_pairs": _SWEEP_MAX_PAIRS, "joints": []}
     start = time.monotonic()
+    serialised = None
     for name, joint in joint_data.items():
         kind = joint.get("kind")
         limited = (joint.get("angle_limits_degrees") is not None
@@ -5909,7 +6301,9 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
         elif not solved or remaining <= 0:
             result = {"status": "incomplete", "reason": "unsolved assembly or total runtime budget exceeded"}
         else:
-            result = _bounded_sweep_call(components, component_data, joint_data, baseline, name, step,
+            if serialised is None:
+                serialised = _sweep_payload_components(components)
+            result = _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step,
                 min(remaining, _SWEEP_JOINT_SECONDS))
         report["joints"].append({"joint": name, "kind": kind, "unit": unit, **result})
         if result["status"] not in ("complete", "skipped"):
@@ -6193,6 +6587,7 @@ def validate_and_solve_assembly(
     assembly.Label = str(assembly_properties.get("label") or assembly_output)
     joint_group = assembly.newObject("Assembly::JointGroup", "Joints")
 
+    _cpu_stage("assembly components")
     source_objects: dict[tuple[str, str], Any] = {}
     source_reconstructions: dict[tuple[str, str], dict[str, Any]] = {}
     components: dict[str, Any] = {}
@@ -6523,6 +6918,7 @@ def validate_and_solve_assembly(
             },
         )
 
+    _cpu_stage("assembly solve")
     document.recompute()
     solver_code = int(assembly.solve(False))
     document.recompute()
@@ -6584,7 +6980,9 @@ def validate_and_solve_assembly(
                      **diagnostics},
         )
 
-    clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
+    _cpu_stage("assembly static fit")
+    clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved",
+                                   floors=_declared_floors(assembly_properties, component_outputs))
     world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result,
                                 joint_data, assembly_output)
     attachments = _check_attachments(clearance, joint_data, assembly_output)
@@ -6597,9 +6995,11 @@ def validate_and_solve_assembly(
     # with no step to sweep at, every joint short-circuits before any
     # geometry call, and an assembly with no limited joint reports complete
     # coverage of an empty set.
+    _cpu_stage("assembly swept fit")
     clearance_sweep = _measure_joint_sweeps(
         components, component_data, joint_data, clearance,
         sweep_steps, diagnostics["status"] == "solved")
+    _cpu_stage("assembly derived outputs")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
     if simulation_contract is not None:

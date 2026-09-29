@@ -50,6 +50,11 @@ main#frame { display: flex; flex-direction: column; gap: var(--s4); padding: var
 #curves { order: 5; } #videos-region { order: 6; } #record { order: 7; } #params-panel { order: 8; }
 #artifacts-panel { order: 9; } #docs-panel { order: 10; } #doc-panel { order: 11; }
 #doc-panel:has(#doc-view.hidden) { display: none; }
+/* The concept sheet leads the model in the column (§14): same order, earlier in the source. */
+#concept { order: 3; }
+#concept figure { margin: var(--s2) 0 0; }
+#concept img { display: block; width: 100%; height: auto; border-radius: var(--radius-sm); }
+#concept figcaption { margin-top: var(--s2); font-size: var(--fs-0); color: var(--ink-2); }
 .card { background: var(--surface); border: var(--bw) solid var(--rule); border-radius: var(--radius); padding: var(--pad); }
 .muted { color: var(--ink-2); }
 .small { font-size: var(--fs-0); }
@@ -246,7 +251,10 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
                  padding: var(--s5); scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
   .stage-panel > h2 { display: none; }
   #stage[data-active="model"] #model, #stage[data-active="curves"] #curves,
-  #stage[data-active="videos"] #videos-region, #stage[data-active="doc"] #doc-panel { visibility: visible; }
+  #stage[data-active="videos"] #videos-region, #stage[data-active="doc"] #doc-panel,
+  #stage[data-active="concept"] #concept { visibility: visible; }
+  #concept figure { display: flex; flex-direction: column; align-items: center; }
+  #concept img { width: auto; max-width: 100%; max-height: calc(100vh - var(--bar) - 150px); object-fit: contain; }
   #doc-panel:has(#doc-view.hidden) { display: block; }
 
   /* The model fills the stage; its status and controls float over the scene. */

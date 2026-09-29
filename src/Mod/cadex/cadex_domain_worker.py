@@ -99,7 +99,72 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+PROGRESS_ENV = "CADEX_XSCRIPT_DOMAIN_PROGRESS"
+#: How many finished stages the ledger keeps, costliest first.
+PROGRESS_KEPT_STAGES = 5
+_progress: dict[str, Any] = {"current": None, "finished": []}
+
+
+def cpu_stage(stage: str) -> None:
+    """Close the running stage and open ``stage`` in the CPU ledger (ADR-436).
+
+    ``RLIMIT_CPU`` ends the worker with SIGXCPU and no ``result.json``, so a
+    CPU refusal used to name no stage at all: ``ot10-hexapod-10`` met it six
+    times and could only guess what to cut. The ledger is rewritten at every
+    stage boundary, never inside one, so it survives the kill and the runtime
+    reads what was running and what had cost the most. ``process_time`` is
+    the process's CPU across every thread, the unit the limit is charged in.
+    """
+
+    path = os.environ.get(PROGRESS_ENV)
+    if not path:
+        return
+    now = time.process_time()
+    current = _progress["current"]
+    if current is not None:
+        finished = _progress["finished"]
+        finished.append(
+            {"stage": current["stage"], "cpu_seconds": round(now - current["started_cpu_seconds"], 2)}
+        )
+        finished.sort(key=lambda item: -item["cpu_seconds"])
+        del finished[PROGRESS_KEPT_STAGES:]
+    _progress["current"] = {"stage": str(stage), "started_cpu_seconds": round(now, 2)}
+    try:
+        _write_json(Path(path), _progress)
+    except OSError:
+        return
+
+
+#: How many CPUs a worker may run on. RLIMIT_CPU is charged across every
+#: thread, and OCCT sizes its pools from the CPUs it can see, so without this
+#: the same script costs four times the CPU-seconds on a 32-core box that it
+#: costs on a laptop (ADR-418). Same four everywhere, as ADR-250 pins BLAS.
+WORKER_CPUS = 4
+
+
+def _pin_worker_cpus() -> None:
+    """Confine this worker, and every thread and child it starts, to four CPUs.
+
+    Which four rotates with the pid, so a preview worker and a run worker
+    started together do not queue on the same cores.
+    """
+
+    try:
+        allowed = sorted(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return
+    if len(allowed) <= WORKER_CPUS:
+        return
+    start = os.getpid() % len(allowed)
+    chosen = {allowed[(start + index) % len(allowed)] for index in range(WORKER_CPUS)}
+    try:
+        os.sched_setaffinity(0, chosen)
+    except OSError:
+        return
+
+
 def _resource_limits(request: dict[str, Any]) -> None:
+    _pin_worker_cpus()
     try:
         import resource
     except ImportError:

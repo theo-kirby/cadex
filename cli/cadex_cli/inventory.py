@@ -37,8 +37,8 @@ _HEADER = """# Inventory — {name}
 
 Accepted revision `{revision}`{assembly}. {count} component(s).
 
-| component | places | catalog | position (mm) | volume (mm³) |
-|---|---|---|---|---|
+| component | places | catalog | appearance | position (mm) | volume (mm³) |
+|---|---|---|---|---|---|
 """
 
 
@@ -99,13 +99,18 @@ def render_inventory(value: Mapping[str, Any], *, name: str) -> str:
     if not assembly:
         text += "\nInventory unavailable: no published assembly.\n"
     for row in components:
-        text += "| `{:s}` | `{:s}` | {:s} | {:s} | {:s} |\n".format(
+        text += "| `{:s}` | `{:s}` | {:s} | {:s} | {:s} | {:s} |\n".format(
             _cell(row.get("component")),
             _cell(row.get("source_output")),
             _catalog(row),
+            _cell(row.get("appearance")),
             _position(row),
             _volume(row),
         )
+    palette = dict(value.get("palette") or {})
+    if palette:
+        text += "\nPalette: " + ", ".join(
+            f"{role} `{palette[role]}`" for role in sorted(palette)) + ".\n"
     counts = dict(value.get("catalog_counts") or {})
     if counts:
         text += "\n## Catalog roll-up\n\n"
@@ -195,6 +200,57 @@ INVENTORY_SOURCE = (
 )
 
 
+def printed_edges(
+    components: Sequence[Mapping[str, Any]], uncatalogued: Sequence[str]
+) -> dict[str, Any]:
+    """P2's inputs summed over the printed components (ADR-415).
+
+    Every placed component whose output no ``lib.*`` generator built as-is
+    counts once per placement: two legs from one output are two printed
+    solids. The engine reports each output's solid edge length and the
+    sharp convex part of it (``sharp_edges``); a printed output without
+    that fact (a mesh, or a revision built before it existed) is named
+    under ``unmeasured`` rather than counted as smooth. An edge the engine
+    could not evaluate counts towards the total and never as sharp, so
+    ``unresolved_edges`` says how far the share is a lower bound.
+    ``by_component`` keeps each measured placement's own figures, so the
+    proxy can leave out the world geometry the fit names (ADR-424).
+    """
+
+    printed = set(uncatalogued)
+    total = sharp = 0.0
+    unresolved = 0
+    measured: list[str] = []
+    unmeasured: list[str] = []
+    by_component: dict[str, dict[str, Any]] = {}
+    for row in components:
+        if str(row.get("source_output") or "") not in printed:
+            continue
+        name = str(row.get("component") or "")
+        facts = (row.get("source_facts") or {}).get("sharp_edges")
+        if not isinstance(facts, Mapping):
+            unmeasured.append(name)
+            continue
+        own = {
+            "edge_length_mm": float(facts.get("edge_length_mm") or 0.0),
+            "sharp_convex_length_mm": float(facts.get("sharp_convex_length_mm") or 0.0),
+            "unresolved_edges": int(facts.get("unresolved_edges") or 0),
+        }
+        total += own["edge_length_mm"]
+        sharp += own["sharp_convex_length_mm"]
+        unresolved += own["unresolved_edges"]
+        measured.append(name)
+        by_component[name] = own
+    return {
+        "edge_length_mm": round(total, 3),
+        "sharp_convex_length_mm": round(sharp, 3),
+        "unresolved_edges": unresolved,
+        "measured": sorted(measured),
+        "unmeasured": sorted(unmeasured),
+        "by_component": dict(sorted(by_component.items())),
+    }
+
+
 def inventory_summary(value: Any) -> dict[str, Any]:
     """The catalog identity of a build as its reply carries it (ADR-362).
 
@@ -250,6 +306,19 @@ def inventory_summary(value: Any) -> dict[str, Any]:
         "catalog_counts": dict(sorted(counts.items())),
         "uncatalogued_sources": uncatalogued,
         "derived_catalog_sources": derived,
+        # What the script declared about how each part looks (ADR-413):
+        # component -> role for the components that declare one, and the
+        # role colours the assembly set. Undeclared parts are drawn by
+        # supplier (purchased mechanism, printed shell).
+        "appearance": {
+            str(row.get("component") or ""): str(row["appearance"])
+            for row in components if row.get("appearance")
+        },
+        "palette": {
+            str(role): str(colour)
+            for role, colour in dict(value.get("palette") or {}).items()
+        },
+        "printed_edges": printed_edges(components, uncatalogued),
     }
     if not assembly:
         summary["note"] = (

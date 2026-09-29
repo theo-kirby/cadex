@@ -273,10 +273,12 @@ class Bridge:
         )
         self._record(call)
         view = _model_view(tool, reply, args, view_args)
+        # The model sees both blocks bounded (ADR-435); the turn report and
+        # `state` keep them whole.
         if fit is not None:
-            view["fit"] = fit
+            view["fit"] = fit_view(fit)
         if inventory is not None:
-            view["inventory"] = inventory
+            view["inventory"] = inventory_view(inventory)
         return _content(
             json.dumps(view, indent=2, sort_keys=True, default=str),
             is_error=not ok,
@@ -289,8 +291,9 @@ class Bridge:
         bridge holds one -- the tessellation the build already published, so
         looking costs no rebuild -- and from a ``rebuild`` only when a turn
         opens on a revision this bridge has not built yet. World geometry the
-        fit block names is left out, and the inventory block decides which
-        parts are drawn as printed and which as purchased.
+        fit block names is left out. Each part is drawn in the appearance
+        role the script declared, in the assembly's palette (ADR-413); an
+        undeclared part is drawn by supplier, from the inventory block.
         """
 
         views = [str(v) for v in (arguments.get("views") or ["iso", "iso_back"])]
@@ -298,7 +301,7 @@ class Bridge:
         unknown = set(arguments) - {"views", "focus"}
         if unknown or not views or len(views) > 5:
             return _content(
-                "look takes `views` (1 to 5 of iso, iso_back, front, right, top) and "
+                "look takes `views` (1 to 5 of hero, iso, iso_back, front, right, top) and "
                 "`focus` (names), nothing else.", is_error=True,
             )
         with self._lock:
@@ -319,30 +322,22 @@ class Bridge:
                     self.state.last_inventory = self._read_inventory()
             fit, inventory = self.state.last_fit, self.state.last_inventory
             try:
-                triangles, summary = render.snapshot(reply)
-                world = {
-                    str(row.get("first") or "")
-                    for row in (fit or {}).get("failing") or []
-                    if row.get("status") == "world geometry"
-                }
-                printed_sources = (
-                    set(inventory.get("uncatalogued_sources") or [])
-                    if inventory and inventory.get("available") else None
-                )
-                purchased = None
-                if printed_sources is not None:
-                    purchased = {
-                        name for name, item in summary["objects"].items()
-                        if item["source"] not in printed_sources
-                    }
+                triangles, summary = render.snapshot(reply, render.world(fit))
+                world, purchased = render.classify(summary, fit, inventory)
+                appearance, palette = render.declared(inventory)
                 # Focus names may be outputs as well as the components that
                 # place them; accept either.
                 by_source = {item["source"]: name for name, item in summary["objects"].items()}
                 focus_objects = [by_source.get(name, name) for name in focus]
                 shots = render.look(
                     triangles, summary, views, focus=focus_objects,
-                    exclude=world, purchased=purchased,
+                    exclude=world, purchased=purchased, appearance=appearance, palette=palette,
                 )
+                proxies = render.design_proxies(
+                    triangles, summary, exclude=world, purchased=purchased,
+                    appearance=appearance, palette=palette,
+                )
+                proxies["sharp_outside_edge_share"] = render.edge_proxy(inventory, world)
             except InventoryError as exc:
                 call = ToolCall("look", dict(arguments), False, str(exc))
                 self._record(call)
@@ -355,14 +350,28 @@ class Bridge:
                 "focus": focus,
                 "left_out_as_environment": sorted(world),
                 "colours": (
-                    "orange = printed, dark grey = purchased"
+                    "by appearance role: " + ", ".join(
+                        "{:s} #{:02X}{:02X}{:02X}".format(role, *rgb)
+                        for role, rgb in {**render.ROLE_COLORS, **palette}.items())
+                    + f"; {len(appearance)} component(s) declare a role, the rest are drawn "
+                      "shell if printed and mechanism if purchased"
                     if purchased is not None else
                     "index palette (no inventory to tell printed from purchased)"
                 ),
                 "components_drawn": len(summary["objects"]) - len(world & set(summary["objects"])),
+                # The design-language measures (docs/DESIGN-LANGUAGE.md):
+                # how much of the hero silhouette is bought hardware, how
+                # much printed outside edge is left sharp, and how many
+                # materials it shows, each against its bar.
+                "measures": {
+                    key: {k: proxies[key][k] for k in ("value", "bar", "meets")}
+                    for key in ("hardware_silhouette_share", "sharp_outside_edge_share",
+                                "material_count")
+                },
                 "triangles": summary["triangles"],
-                "approximation": "orthographic, flat-shaded tessellation at the solved pose; "
-                                 "no edges, dimensions or transparency",
+                "approximation": "orthographic studio render of the tessellation at the solved "
+                                 "pose: lit, antialiased, contact shadow; no edges, dimensions "
+                                 "or transparency",
             },
             indent=2,
         )
@@ -626,14 +635,197 @@ def _model_view(
     ``expected_revision`` is added back so the guard the bridge supplied is
     visible rather than merely absent. A ``describe_api`` reply is cut to
     the size of one tool result by :func:`api_view` — the index, or the
-    one section ``view_args`` asks for.
+    one section ``view_args`` asks for. A successful build's ``outputs``
+    and ``live_outputs`` become one :func:`outputs_view` (ADR-435): two
+    echoes of every declared name were most of a 200-output reply.
     """
 
     view = {key: value for key, value in reply.items() if key not in {"display", "id"}}
     if tool == "describe_api" and reply.get("ok") is True:
         view = api_view(view, (view_args or {}).get("section"))
+    if tool in MODELLING_OPS and reply.get("ok") is True:
+        view.pop("live_outputs", None)
+        view["outputs"] = outputs_view(reply)
     if "expected_revision" in args:
         view["expected_revision_used"] = args["expected_revision"]
+    return view
+
+
+#: The most rows any one list in a build reply's model view carries
+#: (ADR-435): failing pairs, world-geometry contacts, unswept joints,
+#: per-output details, the sharpest printed parts. Past it the list is the
+#: worst rows first, with its full count and where the rest are read.
+BUILD_VIEW_LIST_LIMIT = 12
+
+#: Output names are listed while there are at most this many; past it the
+#: view counts them by kind (ADR-435). The model wrote every one of them.
+BUILD_VIEW_NAME_LIMIT = 40
+
+#: The row keys an output carries that are about the output rather than
+#: about FreeCAD's object for it. Only a row with one of these is detailed.
+_OUTPUT_DETAIL_KEYS = (
+    "facts", "diagnostics", "sketch_validation", "mesh_data",
+    "operation_diagnostics", "assembly_data", "stale_reason",
+)
+
+
+def _cut(block: dict[str, Any], key: str, rows: list[Any], where: str) -> None:
+    """Put ``rows`` under ``key``, cut to the limit, saying what was cut."""
+
+    block[key] = rows[:BUILD_VIEW_LIST_LIMIT]
+    if len(rows) > BUILD_VIEW_LIST_LIMIT:
+        block[key + "_omitted"] = len(rows) - BUILD_VIEW_LIST_LIMIT
+        block[key + "_rest"] = where
+
+
+def _worst_first(rows: Any) -> list[Any]:
+    """Pair findings ordered worst first; a stable sort, so ties keep order.
+
+    Unmeasured and world-geometry rows (no numbers) lead, then the largest
+    common volume, then the smallest distance: the order a designer fixes
+    them in.
+    """
+
+    def number(row: dict[str, Any], *keys: str) -> float | None:
+        for key in keys:
+            value = row.get(key)
+            if isinstance(value, (int, float)):
+                return float(value)
+        return None
+
+    def severity(row: Any) -> tuple[int, float, float]:
+        if not isinstance(row, dict):
+            return (1, 0.0, 0.0)
+        volume = number(row, "common_volume_mm3", "maximum_common_volume_mm3")
+        distance = number(row, "distance_mm", "minimum_distance_mm")
+        if volume is None and distance is None:
+            return (0, 0.0, 0.0)
+        return (1, -(volume or 0.0), distance if distance is not None else 0.0)
+
+    return sorted(list(rows or []), key=severity)
+
+
+def outputs_view(reply: dict[str, Any]) -> dict[str, Any]:
+    """A build's declared outputs as the model needs them (ADR-435).
+
+    The engine reply lists every output twice -- ``outputs`` and
+    ``live_outputs`` -- and on ``ot10-biped-3`` (215 outputs) the two were
+    60,669 of the reply's 85,954 characters. What the model reasons with is
+    the count, the kinds, any output that has no live object, and any
+    output that carries facts or diagnostics; each output's full row is one
+    ``inspect scope=output target=<name>`` away.
+    """
+
+    rows = [row for row in (reply.get("outputs") or []) if isinstance(row, dict)]
+    live = reply.get("live_outputs") if isinstance(reply.get("live_outputs"), dict) else {}
+    kinds: dict[str, int] = {}
+    detailed: list[dict[str, Any]] = []
+    for row in rows:
+        name = str(row.get("name") or "")
+        live_row = live.get(name) if isinstance(live.get(name), dict) else {}
+        merged = {**live_row, **row}
+        kind = " ".join(str(part) for part in (
+            merged.get("domain"), merged.get("type") or merged.get("output_type"),
+        ) if part)
+        kinds[kind or "unknown"] = kinds.get(kind or "unknown", 0) + 1
+        detail = {key: merged[key] for key in _OUTPUT_DETAIL_KEYS if merged.get(key)}
+        if detail:
+            detailed.append({"name": name, **detail})
+    names = _output_names(rows)
+    view: dict[str, Any] = {"count": len(rows), "by_kind": dict(sorted(kinds.items()))}
+    if len(names) <= BUILD_VIEW_NAME_LIMIT:
+        view["names"] = names
+    view["not_live"] = [name for name in names if name not in live]
+    _cut(view, "detail", detailed, "inspect scope=output target=<name>")
+    view["note"] = (
+        "Summarised: one output's full row is inspect scope=output target=<name>."
+    )
+    return view
+
+
+def fit_view(fit: dict[str, Any]) -> dict[str, Any]:
+    """The fit block as the model sees it: bounded, never re-judged (ADR-435).
+
+    Verdicts, counts and thresholds are the whole block's. Each list keeps
+    its worst :data:`BUILD_VIEW_LIST_LIMIT` rows with a count of the rest
+    and the ``inspect scope=clearance`` path that holds them. The swept
+    half lists only the joints that were not swept to completion: a
+    complete joint is in ``joints_complete``, and its failing pairs are in
+    ``sweep.failing`` by joint name.
+    """
+
+    view = dict(fit)
+    _cut(view, "failing", _worst_first(fit.get("failing")),
+         "inspect scope=clearance path=/pairs (and /world_geometry)")
+    if "world_geometry_contacts" in fit:
+        _cut(view, "world_geometry_contacts", _worst_first(fit.get("world_geometry_contacts")),
+             "inspect scope=clearance path=/pairs")
+    sweep = fit.get("sweep")
+    if isinstance(sweep, dict):
+        swept = dict(sweep)
+        joints = [joint for joint in (sweep.get("joints") or [])
+                  if not (isinstance(joint, dict) and joint.get("status") == "complete")]
+        _cut(swept, "joints", joints, "inspect scope=clearance path=/clearance_sweep/joints")
+        swept["joints_note"] = (
+            "Only joints not swept to completion are listed; every joint's row, "
+            "first contact included, is inspect scope=clearance "
+            "path=/clearance_sweep/joints."
+        )
+        _cut(swept, "failing", _worst_first(sweep.get("failing")),
+             "inspect scope=clearance path=/clearance_sweep/joints")
+        if "world_geometry" in sweep:
+            _cut(swept, "world_geometry", _worst_first(sweep.get("world_geometry")),
+                 "inspect scope=clearance path=/clearance_sweep/joints")
+        view["sweep"] = swept
+    attachments = fit.get("attachments")
+    if isinstance(attachments, dict) and "reported" in attachments:
+        held = dict(attachments)
+        _cut(held, "reported", _worst_first(attachments.get("reported")),
+             "inspect scope=clearance path=/attachments")
+        view["attachments"] = held
+    return view
+
+
+def inventory_view(inventory: dict[str, Any]) -> dict[str, Any]:
+    """The inventory block as the model sees it: bounded (ADR-435).
+
+    ``appearance`` becomes a count per role and ``printed_edges`` keeps the
+    parts with the most sharp convex edge -- the ones worth a fillet -- and
+    its totals; every row is ``inspect scope=inventory``.
+    """
+
+    view = dict(inventory)
+    appearance = inventory.get("appearance")
+    if isinstance(appearance, dict):
+        roles: dict[str, int] = {}
+        for role in appearance.values():
+            roles[str(role)] = roles.get(str(role), 0) + 1
+        view["appearance"] = dict(sorted(roles.items()))
+        view["appearance_note"] = (
+            "Components declaring each role; which component declares which is "
+            "inspect scope=inventory path=/components."
+        )
+    for key in ("uncatalogued_sources", "derived_catalog_sources"):
+        if isinstance(inventory.get(key), list):
+            _cut(view, key, list(inventory[key]), "inspect scope=inventory path=/components")
+    edges = inventory.get("printed_edges")
+    if isinstance(edges, dict):
+        held = {key: value for key, value in edges.items() if key not in {"by_component", "measured"}}
+        held["measured_count"] = len(edges.get("measured") or [])
+        by_component = edges.get("by_component")
+        if isinstance(by_component, dict):
+            sharpest = sorted(
+                by_component.items(),
+                key=lambda item: -float((item[1] or {}).get("sharp_convex_length_mm") or 0.0)
+                if isinstance(item[1], dict) else 0.0,
+            )
+            rows = [{"component": name, **(row if isinstance(row, dict) else {})}
+                    for name, row in sharpest]
+            _cut(held, "sharpest", rows, "inspect scope=inventory path=/components")
+        if isinstance(edges.get("unmeasured"), list):
+            _cut(held, "unmeasured", list(edges["unmeasured"]),
+                 "inspect scope=inventory path=/components")
+        view["printed_edges"] = held
     return view
 
 
@@ -667,6 +859,11 @@ def _fit_line(fit: dict[str, Any]) -> str:
             verdict, int(fit.get("failing_count") or 0),
             int(fit.get("pairs_checked") or 0),
         )
+        # Never in the count (ADR-427), but a pass that hid them would read
+        # as a robot that never touches its floor.
+        resting = int(fit.get("world_geometry_contact_count") or 0)
+        if resting:
+            line += "; {:d} resting on world geometry (advisory)".format(resting)
     sweep = fit.get("sweep")
     line += ("  " + _sweep_line(sweep)) if isinstance(sweep, dict) else ""
     attachments = fit.get("attachments")
@@ -690,7 +887,12 @@ def _sweep_line(sweep: dict[str, Any]) -> str:
     # Suppressed joints are rows this block does not judge (ADR-371), so they
     # are never counted as unswept coverage and never inflate a pass.
     skipped = int(sweep.get("joints_skipped") or 0)
-    suppressed = "; {:d} suppressed".format(skipped) if skipped else ""
+    suffix = "; {:d} suppressed".format(skipped) if skipped else ""
+    # Findings against world geometry never move the verdict (ADR-420), but
+    # a pass that hides them would read as a leg that never meets the floor.
+    world = int(sweep.get("world_geometry_count") or 0)
+    if world:
+        suffix += "; {:d} against world geometry (advisory)".format(world)
     if verdict == "unavailable":
         # Two different facts wear this verdict (ADR-368), and a bare
         # "unavailable" hides which: a revision accepted before ADR-367
@@ -709,13 +911,13 @@ def _sweep_line(sweep: dict[str, Any]) -> str:
         # "failing", not "overlapping": since ADR-378 a pair can fail this
         # block by closing below its minimum without ever interpenetrating.
         return "sweep fail: {:d} failing pair(s) over {:d} of {:d} joint(s) swept{:s}".format(
-            int(sweep.get("failing_count") or 0), complete, checked - skipped, suppressed
+            int(sweep.get("failing_count") or 0), complete, checked - skipped, suffix
         )
     if verdict == "incomplete":
         return "sweep incomplete: {:d} of {:d} joint(s) unswept{:s}".format(
-            checked - complete - skipped, checked - skipped, suppressed
+            checked - complete - skipped, checked - skipped, suffix
         )
-    return "sweep pass: {:d} joint(s) swept{:s}".format(complete, suppressed)
+    return "sweep pass: {:d} joint(s) swept{:s}".format(complete, suffix)
 
 
 def _inventory_line(inventory: dict[str, Any]) -> str:

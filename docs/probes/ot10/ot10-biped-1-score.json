@@ -1,0 +1,216 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "9f6724c43346deb8ded08ab0f5555ac4c2e1cd9510b434d6fea8a7ca74792be8"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "c592652a0877059b89d82ff01fbc56f32c0ee2328831467783b6ffa2c988a04f"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "3d9ade579eff5bfe8116261fad60456c3c006829c1b38e624c97d26be5bf945c"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "cc2450a9ea9d3a2bac15a318789705592277fa77408bd61520c0f1bfebd72718"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "029232d5f61294af577ad1becf932b436d493f2510952264ed234b79aea03d65"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "070cffa58cb20c457264d8121c1152779c50a47aa6eecba8f8f41bcf02724dd2"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 3,
+    "T3": 3,
+    "T4": 1,
+    "T5": 2,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 15,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A rounded two-part shell encloses the body, and the leg servos sit under shell-coloured covers, but they read as separate boxes hung on exposed flat link plates rather than one continuous limb shell."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Cream is used for the shell and dark grey for the feet, brackets and hubs, with one saturated orange accent kept to the joint caps and the face slot."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "The hip, knee and ankle axes all carry the same round orange cap on a dark hub, concentric with each axis, so the joints read as deliberate features."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a soft rounded box, but the limbs are flat constant-thickness link plates, box-shaped servo covers and flat rectangular feet, and none of the parts merge into each other."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor with an orange slot gives the robot a clear front, but it is a generic box-on-legs face with little character and a plain silhouette."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The dark foot plates are distinct and the stance is balanced, but the links taper only slightly and the long legs under a tall box make the proportions less intentional."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is cleanly lit on a gradient backdrop so the curvature reads, but it has no contact shadow, the camera angle is high rather than a low three-quarter view, and the top view shows jagged edges."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A rounded two-part shell encloses the body, and the leg servos sit under shell-coloured covers, but they read as separate boxes hung on exposed flat link plates rather than one continuous limb shell.\"}, \"T2\": {\"score\": 3, \"reason\": \"Cream is used for the shell and dark grey for the feet, brackets and hubs, with one saturated orange accent kept to the joint caps and the face slot.\"}, \"T3\": {\"score\": 3, \"reason\": \"The hip, knee and ankle axes all carry the same round orange cap on a dark hub, concentric with each axis, so the joints read as deliberate features.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a soft rounded box, but the limbs are flat constant-thickness link plates, box-shaped servo covers and flat rectangular feet, and none of the parts merge into each other.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor with an orange slot gives the robot a clear front, but it is a generic box-on-legs face with little character and a plain silhouette.\"}, \"T6\": {\"score\": 2, \"reason\": \"The dark foot plates are distinct and the stance is balanced, but the links taper only slightly and the long legs under a tall box make the proportions less intentional.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render is cleanly lit on a gradient backdrop so the curvature reads, but it has no contact shadow, the camera angle is high rather than a low three-quarter view, and the top view shows jagged edges.\"}}",
+      "session_id": "3a0de034-3d39-4f45-bb29-ceadb219312b",
+      "duration_ms": 26046,
+      "num_turns": 17,
+      "total_cost_usd": 0.150325,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2908,
+          "cacheReadInputTokens": 3385,
+          "cacheCreationInputTokens": 11434,
+          "webSearchRequests": 0,
+          "costUSD": 0.150325,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1106,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell with a split line encloses the body, but the legs carry exposed servo-shaped blocks that are only boxed in cream."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The cream shell and the dark charcoal on the feet, face panel and axles are applied by role, and saturated orange appears only on the joint caps and the face slot."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every rotation axis, at hip, knee and ankle, is marked by the same round orange cap centred on its axis."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a softly filleted rounded box, but the legs read as flat constant-thickness links, box blocks and flat foot plates."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor panel with an orange slot sets a clear front, but the face is a generic slot and gives little character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The feet are distinct dark plates on brackets, but the leg links taper only slightly and the servo blocks make the tall, top-heavy stance look assembled rather than shaped."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is cleanly lit on a smooth gradient backdrop from good three-quarter angles, but there is no soft contact shadow and the view is high rather than a low hero angle."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell with a split line encloses the body, but the legs carry exposed servo-shaped blocks that are only boxed in cream.\"},\n\"T2\": {\"score\": 3, \"reason\": \"The cream shell and the dark charcoal on the feet, face panel and axles are applied by role, and saturated orange appears only on the joint caps and the face slot.\"},\n\"T3\": {\"score\": 3, \"reason\": \"Every rotation axis, at hip, knee and ankle, is marked by the same round orange cap centred on its axis.\"},\n\"T4\": {\"score\": 1, \"reason\": \"The body is a softly filleted rounded box, but the legs read as flat constant-thickness links, box blocks and flat foot plates.\"},\n\"T5\": {\"score\": 2, \"reason\": \"A dark visor panel with an orange slot sets a clear front, but the face is a generic slot and gives little character.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The feet are distinct dark plates on brackets, but the leg links taper only slightly and the servo blocks make the tall, top-heavy stance look assembled rather than shaped.\"},\n\"T7\": {\"score\": 2, \"reason\": \"The render is cleanly lit on a smooth gradient backdrop from good three-quarter angles, but there is no soft contact shadow and the view is high rather than a low hero angle.\"}}\n```",
+      "session_id": "13bb2526-1a88-4415-9f40-c5a55024985b",
+      "duration_ms": 22895,
+      "num_turns": 17,
+      "total_cost_usd": 0.1261058,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2588,
+          "cacheReadInputTokens": 5649,
+          "cacheCreationInputTokens": 9150,
+          "webSearchRequests": 0,
+          "costUSD": 0.1261058,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 847,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell encloses the body, but the leg servos sit in separate servo-shaped box covers bolted onto open flat link plates, so the limbs still read as hardware rather than one continuous shell."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The robot uses a cream shell and dark grey for the feet and face visor, with one saturated orange accent kept to the joint caps and the face slot."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every rotation axis has the same orange round cap concentric with it, so the joints read as one consistent, deliberate feature."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a soft rounded box with generous radii, but the legs are flat, barely tapered link plates carrying boxy servo covers, and the feet are flat slabs, so below the body it still reads as plates and bars."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with its orange slot is one clear focal face that gives the robot an obvious front and a readable boxy-walker silhouette."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the dark plate feet are distinct, but the legs are near-uniform thin bars with only slight taper, and the stance looks top-heavy."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Clean gradient backdrop with shading that shows the curvature and a decent three-quarter view, but there is no contact shadow and the top view has pixelated edges."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell encloses the body, but the leg servos sit in separate servo-shaped box covers bolted onto open flat link plates, so the limbs still read as hardware rather than one continuous shell.\"}, \"T2\": {\"score\": 3, \"reason\": \"The robot uses a cream shell and dark grey for the feet and face visor, with one saturated orange accent kept to the joint caps and the face slot.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every rotation axis has the same orange round cap concentric with it, so the joints read as one consistent, deliberate feature.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a soft rounded box with generous radii, but the legs are flat, barely tapered link plates carrying boxy servo covers, and the feet are flat slabs, so below the body it still reads as plates and bars.\"}, \"T5\": {\"score\": 3, \"reason\": \"The dark visor with its orange slot is one clear focal face that gives the robot an obvious front and a readable boxy-walker silhouette.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the dark plate feet are distinct, but the legs are near-uniform thin bars with only slight taper, and the stance looks top-heavy.\"}, \"T7\": {\"score\": 2, \"reason\": \"Clean gradient backdrop with shading that shows the curvature and a decent three-quarter view, but there is no contact shadow and the top view has pixelated edges.\"}}",
+      "session_id": "68479dea-f4c8-4fcf-8f07-219c2db8f080",
+      "duration_ms": 24550,
+      "num_turns": 17,
+      "total_cost_usd": 0.1294912,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2752,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.1294912,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 966,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # hex — one unassisted hexapod, end to end (2026-09-25/26)
 
-Verified against source: 2026-09-27. Provenance: `[Cadex-new]`.
+Verified against source: 2026-09-29. Provenance: `[Cadex-new]`.
 
 The owner's question was whether the product, left alone, can take one
 prompt to a robot that walks: "design a hexapod walking robot using MG90S
@@ -30,6 +30,7 @@ watching; this page is the summary.
 | The policy read joint angles an MG90S cannot report and a CoM velocity nothing measures | ADR-408 sensors, roles, asymmetric actor-critic, refusal at training |
 | The task paid for tumbling; the walk called a 5 m tumble a verified run; servo speed was a hand-picked damping | ADR-409 `gait` review block, `servo.joint_dynamics`, walking-task overlay |
 | hex3: `look` and the review refused at 589k triangles; the task paid for ending episodes; training ran on for 7 h after collapsing | ADR-410 render decimation, review survives a render failure, alive-bonus rule, `--stop-on-collapse` |
+| hex2: `hip_pitch=48`, inside its declared range, was refused as "changed body_pos by 1 relative" because the writer zeroed 7.1e-18 m of round-off | ADR-441 export check compares what the writer can carry |
 
 ## Still open (from the logs)
 
@@ -42,9 +43,6 @@ watching; this page is the summary.
   deterministically on both runs.
 - **A rejected candidate cannot be edited**, only rewritten whole: about
   ten minutes per 12 KB resend on hex2.
-- **`hip_pitch=48`**, inside its own declared range, fails MJCF export
-  verification with "changed body_pos by 1 relative" while 47 passes — a
-  suspected engine defect, not yet reproduced in isolation.
 - **Each build with a 12-joint sweep costs about 2.7 minutes**, which is
   most of the design phase.
 - **`fit fail: 1 failing of 703`** is the floor's advisory world-geometry

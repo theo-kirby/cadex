@@ -72,11 +72,22 @@ frozen = {'hinge': dict(joints['hinge'], suppressed=True)}
 suppressed = _measure_joint_sweeps(components,data,frozen,baseline,DEG,True)
 mixed = _measure_joint_sweeps(components,data,
     dict(joints, frozen=dict(joints['hinge'], suppressed=True)),baseline,DEG,True)
+# 64 grounded blocks far from the hinge (ADR-426): 2,080 rigid pairs and
+# 65 moving ones, so the assembly is over the pair budget and the joint is not.
+crowd, crowd_data = dict(components), dict(data)
+for i in range(64):
+    block = D.addObject('Part::Feature', 'block%d' % i)
+    block.Shape = Part.makeBox(2, 2, 2, App.Vector(40 * (i % 8), -200 - 40 * (i // 8), 0))
+    crowd['block%d' % i], crowd_data['block%d' % i] = block, {'grounded': True}
+D.recompute()
+crowd_baseline = _measure_clearance(crowd)
+crowded = _measure_joint_sweeps(crowd,crowd_data,joints,crowd_baseline,DEG,True)
+crowded['baseline_pairs'] = len(crowd_baseline)
 joints['hinge']['kind'] = 'cylindrical'
 unsupported = _measure_joint_sweeps(components,data,joints,baseline,{'sweep_step_degrees': 1, 'sweep_step_mm': 1},True)
 print('CLEARANCE-FRAME ' + json.dumps(dict(report=report, disagreement=disagreement,
     capped=capped, unsupported=unsupported, timeout=timeout, exhausted=exhausted, pair_cap=pair_cap,
-    closed=closed_report, open_ended=open_report, undeclared=undeclared,
+    crowded=crowded, closed=closed_report, open_ended=open_report, undeclared=undeclared,
     suppressed=suppressed, mixed=mixed)))
 '''
 
@@ -105,6 +116,18 @@ def test_known_angle_solved_agreement_and_incomplete_coverage(tmp_path, monkeypa
         assert result[name]['status'] == 'incomplete', result[name]
         assert reason in result[name]['joints'][0]['reason']
     assert result['undeclared']['step_mm'] == 1 and result['undeclared']['step_degrees'] is None
+    # The pair budget counts the pairs the joint moves, not every pair in the
+    # assembly (ADR-426). Before this, 64 far grounded blocks put this hinge
+    # over the budget with 65 pairs to measure, as 87 components put every
+    # joint of ot10-hexapod-6 over it with at most 770.
+    crowded = result['crowded']
+    assert crowded['baseline_pairs'] == 2145 > crowded['max_pairs'] == 2000
+    assert crowded['status'] == 'complete', crowded
+    hinge = crowded['joints'][0]
+    assert sum(p['relative_motion'] for p in hinge['pairs']) == 65
+    assert len(hinge['pairs']) == 2145
+    assert hinge['pairs'][0] == joint['pairs'][0]
+    assert '2001 moving pairs' in result['pair_cap']['joints'][0]['reason']
     assert result['unsupported']['joints'][0]['unit'] is None
     # A suppressed joint is not a coverage hole (ADR-371): the solver ignores
     # it, so it has no range to sweep, its row is `skipped` rather than
@@ -484,3 +507,244 @@ def test_a_hinge_that_grazes_closes_a_gap_the_solved_pose_cannot_see(tmp_path, m
     # common volume anywhere in the range.
     assert pair['maximum_common_volume_mm3'] == 0
     assert pair['first_contact_degrees'] is None
+
+
+_CULL_DRIVER = r'''
+import json, sys
+import FreeCAD as App
+import Part
+sys.path.insert(0, sys.argv[-1])
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps
+D = App.newDocument('Cull')
+fixed = D.addObject('Part::Feature','fixed')
+fixed.Shape = Part.makeSphere(1, App.Vector(0, 12.04, 0))
+far = D.addObject('Part::Feature','far')
+far.Shape = Part.makeSphere(1, App.Vector(0, -60, 0))
+moving = D.addObject('Part::Feature','moving')
+moving.Shape = Part.makeSphere(1, App.Vector(10, 0, 0))
+moving.Placement = App.Placement(App.Vector(), App.Rotation(App.Vector(0,0,1), 20))
+D.recompute()
+components = {'fixed': fixed, 'far': far, 'moving': moving}
+data = {'fixed': {'grounded': True}, 'far': {'grounded': True}, 'moving': {'grounded': False}}
+joints = {'hinge': {'kind':'revolute','suppressed':False,'parameters':{},
+  'angle_limits_degrees':[20,90],'length_limits_mm':None,
+  'connectors':[{'component_output':'fixed','local_frame':{'matrix':list(App.Matrix().A)}},
+                {'component_output':'moving','local_frame':{'matrix':list(App.Matrix().A)}}]}}
+baseline = _measure_clearance(components)
+report = _measure_joint_sweeps(components, data, joints, baseline,
+                               {'sweep_step_degrees': 1}, True)
+print('CLEARANCE-FRAME ' + json.dumps(dict(baseline=baseline, report=report)))
+'''
+
+
+@pytest.mark.skipif(kernel.FREECADCMD is None, reason='Needs real OCCT')
+def test_a_pair_the_motion_cannot_bring_near_is_bounded_not_measured(tmp_path, monkeypatch):
+    """ADR-419: a far moving pair is culled with a lower bound; near pairs stay exact.
+
+    hexapod-2's hip sweep spent 280 of its 287 s in ``distToShape``, most of
+    it on pairs over 100 mm apart (0.8 s each), and re-measured every rigid
+    pair at the solved pose. A pair whose exact-geometry boxes never come
+    within ``_SWEEP_CULL_MM`` carries that box gap instead: a lower bound, so
+    a fit floor read against it can only fail harder, never pass wrongly.
+    """
+
+    monkeypatch.setattr(kernel, '_FRAME_DRIVER', _CULL_DRIVER)
+    result = kernel._drive_frame(tmp_path)
+    (joint,) = result['report']['joints']
+    assert joint['status'] == 'complete' and joint['solved_pose_agreement']
+    rows = {(row['first'], row['second']): row for row in joint['pairs']}
+    baseline = {(row['first'], row['second']): row for row in result['baseline']}
+    near, far = rows['fixed', 'moving'], rows['far', 'moving']
+    # The near pair is measured exactly, as before this change.
+    assert 'culled' not in near
+    assert near['minimum_distance_mm'] == pytest.approx(0.04, abs=1e-9)
+    # The far pair is bounded: above the cull margin, and no more than the
+    # true minimum over the same samples.
+    exact = min(math.hypot(10 * math.cos(math.radians(a)), 10 * math.sin(math.radians(a)) + 60) - 2
+                for a in range(20, 91))
+    assert far['culled'] is True and far['relative_motion'] is True
+    assert 10.0 < far['minimum_distance_mm'] <= exact + 1e-9
+    assert far['maximum_common_volume_mm3'] == 0.0 and far['first_contact_degrees'] is None
+    # A rigid pair is the solved-pose value, carried rather than redone --
+    # here a static bound (ADR-423), so it says so and keeps its number.
+    rigid = rows['fixed', 'far']
+    assert rigid['relative_motion'] is False and rigid['culled'] is True
+    assert baseline['fixed', 'far']['culled'] is True
+    assert rigid['minimum_distance_mm'] == baseline['fixed', 'far']['distance_mm']
+    assert rigid['maximum_common_volume_mm3'] == 0.0 and rigid['first_contact_degrees'] is None
+
+
+_STATIC_CULL_DRIVER = r'''
+import json, sys
+import FreeCAD as App
+import Part
+sys.path.insert(0, sys.argv[-1])
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps
+D = App.newDocument('StaticCull')
+near = D.addObject('Part::Feature','near')
+near.Shape = Part.makeSphere(1, App.Vector(0, 14.5, 0))
+far = D.addObject('Part::Feature','far')
+far.Shape = Part.makeSphere(1, App.Vector(0, -60, 0))
+moving = D.addObject('Part::Feature','moving')
+moving.Shape = Part.makeSphere(1, App.Vector(10, 0, 0))
+moving.Placement = App.Placement(App.Vector(), App.Rotation(App.Vector(0,0,1), 20))
+D.recompute()
+components = {'near': near, 'far': far, 'moving': moving}
+data = {'near': {'grounded': True}, 'far': {'grounded': True}, 'moving': {'grounded': False}}
+joints = {'hinge': {'kind':'revolute','suppressed':False,'parameters':{},
+  'angle_limits_degrees':[20,90],'length_limits_mm':None,
+  'connectors':[{'component_output':'near','local_frame':{'matrix':list(App.Matrix().A)}},
+                {'component_output':'moving','local_frame':{'matrix':list(App.Matrix().A)}}]}}
+baseline = _measure_clearance(components)
+floored = _measure_clearance(components, floors={frozenset(('near', 'moving')): 50.0})
+report = _measure_joint_sweeps(components, data, joints, baseline,
+                               {'sweep_step_degrees': 1}, True)
+print('CLEARANCE-FRAME ' + json.dumps(dict(baseline=baseline, floored=floored, report=report)))
+'''
+
+
+@pytest.mark.skipif(kernel.FREECADCMD is None, reason='Needs real OCCT')
+def test_static_clearance_bounds_far_pairs_and_the_sweep_still_measures_them(tmp_path, monkeypatch):
+    """ADR-423: the solved-pose check bounds a far pair instead of measuring it.
+
+    ``ot10-hexapod-4``'s candidate with separate accent feet spent 416 of the
+    worker's 300 CPU-seconds, most in ``distToShape`` over 1,275 pairs of
+    which 1,099 were more than 10 mm apart. A far pair now carries its
+    exact-geometry box gap as a lower bound; a declared floor above the
+    margin keeps it exact; and a statically bounded pair that the hinge
+    brings near is still measured exactly by the sweep, and must not be
+    lower than the bound it started from.
+    """
+
+    monkeypatch.setattr(kernel, '_FRAME_DRIVER', _STATIC_CULL_DRIVER)
+    result = kernel._drive_frame(tmp_path)
+    rows = {(r['first'], r['second']): r for r in result['baseline']}
+    solved_nm = math.hypot(10 * math.cos(math.radians(20)), 14.5 - 10 * math.sin(math.radians(20))) - 2
+    near, far = rows['near', 'moving'], rows['near', 'far']
+    for row, exact in ((near, solved_nm), (far, 72.5)):
+        assert row['culled'] is True and row['common_volume_mm3'] == 0.0
+        assert 10.0 < row['distance_mm'] <= exact + 1e-9
+    # A floor of 50 mm is not decided by an 11.7 mm bound: measured exactly.
+    floored = {(r['first'], r['second']): r for r in result['floored']}
+    assert 'culled' not in floored['near', 'moving']
+    assert floored['near', 'moving']['distance_mm'] == pytest.approx(solved_nm, abs=1e-6)
+    assert floored['near', 'far']['culled'] is True
+    # The sweep measures the bounded moving pair exactly: 2.5 mm at 90 degrees.
+    (joint,) = result['report']['joints']
+    assert joint['status'] == 'complete', joint
+    pair = {(r['first'], r['second']): r for r in joint['pairs']}['near', 'moving']
+    assert 'culled' not in pair and pair['relative_motion'] is True
+    assert pair['minimum_distance_mm'] == pytest.approx(2.5, abs=1e-9)
+    assert pair['maximum_common_volume_mm3'] == 0.0
+
+
+def test_a_sweep_measures_boundaries_unless_a_solid_may_sit_inside_the_other(monkeypatch):
+    """ADR-425: a sweep's exact distance is taken on shells when that is exact.
+
+    ``ot10-hexapod-5``'s swept fit reached 10 of 12 joints in its 180 s,
+    with ``distToShape`` on solids 25 of a hip child's 28 s. Two solids
+    are measured on their shells unless one may lie wholly inside the other
+    (a vertex of it on or inside the other shape) or the boundaries come
+    within the contact recheck, where the solids answer as before.
+    """
+
+    import sys
+    import types
+    import cadex_assembly_worker as worker
+
+    calls = []
+
+    class Measured:
+        def __init__(self, kind, value):
+            self.kind, self.value = kind, value
+
+        def distToShape(self, other):
+            calls.append(self.kind)
+            return (self.value[self.kind], None, None)
+
+    class Solid:
+        def __init__(self, point):
+            self.Vertexes = [types.SimpleNamespace(Point=point)] if point else []
+
+    class Shape(Measured):
+        def __init__(self, points, inside, value):
+            super().__init__('solid', value)
+            self.Solids, self.Shells, self.inside = [Solid(p) for p in points], ['shell'], inside
+
+        def isInside(self, point, tolerance, on_face):
+            assert tolerance > 0 and on_face is True
+            return point in self.inside
+
+    part = types.ModuleType('Part')
+    part.Compound = lambda shells: Measured('shell', value)
+    monkeypatch.setitem(sys.modules, 'Part', part)
+
+    value = {'solid': 5.0, 'shell': 5.0}
+    apart = Shape(['a'], set(), value), Shape(['b'], set(), value)
+    assert worker._boundary_distance(*apart) == 5.0 and calls == ['shell']
+    # A vertex inside (or on) the other shape: the solids decide, shells never run.
+    for points, inside in ((['a'], {'a'}), ([None], set()), (['a', 'c'], {'c'})):
+        calls.clear()
+        value.update(solid=0.0)
+        first = Shape(points, set(), value)
+        second = Shape(['b'], inside, value)
+        assert worker._boundary_distance(first, second) == 0.0 and calls == ['solid']
+        calls.clear()
+        assert worker._boundary_distance(second, first) == 0.0 and calls == ['solid']
+    # Touching boundaries are re-measured on the solids.
+    calls.clear()
+    value.update(solid=0.0, shell=2e-14)
+    assert worker._boundary_distance(*apart) == 0.0 and calls == ['shell', 'solid']
+
+
+_SHELL_DRIVER = r'''
+import json, sys
+import FreeCAD as App
+import Part
+sys.path.insert(0, sys.argv[-1])
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps
+D = App.newDocument('Shells')
+hollow = D.addObject('Part::Feature','hollow')
+hollow.Shape = Part.makeSphere(20).cut(Part.makeSphere(15))
+ring = D.addObject('Part::Feature','ring')
+ring.Shape = Part.makeTorus(100, 5)
+moving = D.addObject('Part::Feature','moving')
+moving.Shape = Part.makeCompound([Part.makeSphere(1, App.Vector(10, 0, 0)),
+                                  Part.makeSphere(1, App.Vector(100, 0, 0))])
+moving.Placement = App.Placement(App.Vector(), App.Rotation(App.Vector(0,0,1), 20))
+D.recompute()
+components = {'hollow': hollow, 'ring': ring, 'moving': moving}
+data = {'hollow': {'grounded': True}, 'ring': {'grounded': True}, 'moving': {'grounded': False}}
+joints = {'hinge': {'kind':'revolute','suppressed':False,'parameters':{},
+  'angle_limits_degrees':[20,90],'length_limits_mm':None,
+  'connectors':[{'component_output':'hollow','local_frame':{'matrix':list(App.Matrix().A)}},
+                {'component_output':'moving','local_frame':{'matrix':list(App.Matrix().A)}}]}}
+baseline = _measure_clearance(components)
+report = _measure_joint_sweeps(components, data, joints, baseline,
+                               {'sweep_step_degrees': 35}, True)
+print('CLEARANCE-FRAME ' + json.dumps(dict(baseline=baseline, report=report)))
+'''
+
+
+@pytest.mark.skipif(kernel.FREECADCMD is None, reason='Needs real OCCT')
+def test_a_swept_bead_in_a_cavity_and_one_buried_in_a_solid_read_true(tmp_path, monkeypatch):
+    """ADR-425 on real OCCT: shells where exact, solids where one is buried.
+
+    One moving compound carries a bead through a hollow sphere's cavity,
+    4 mm from the inner wall, and a bead buried inside a torus. The cavity
+    pair is measured on shells (its bead is outside the hollow's material);
+    the buried pair must still read zero with the bead's whole volume.
+    """
+
+    monkeypatch.setattr(kernel, '_FRAME_DRIVER', _SHELL_DRIVER)
+    result = kernel._drive_frame(tmp_path)
+    (joint,) = result['report']['joints']
+    assert joint['status'] == 'complete' and joint['solved_pose_agreement'], joint
+    rows = {frozenset((r['first'], r['second'])): r for r in joint['pairs']}
+    cavity, buried = rows[frozenset(('hollow', 'moving'))], rows[frozenset(('moving', 'ring'))]
+    assert 'culled' not in cavity and 'culled' not in buried
+    assert cavity['minimum_distance_mm'] == pytest.approx(4.0, abs=1e-6)
+    assert cavity['maximum_common_volume_mm3'] == 0.0 and cavity['first_contact_degrees'] is None
+    assert buried['minimum_distance_mm'] == 0.0
+    assert buried['maximum_common_volume_mm3'] == pytest.approx(4 * math.pi / 3, rel=1e-3)
+    assert buried['first_contact_degrees'] == 20

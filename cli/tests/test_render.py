@@ -14,6 +14,12 @@ from cadex_cli.__main__ import main
 from cadex_cli.inventory import InventoryError
 
 
+def draw(triangles, basis, *, bounds=None, size=render.SIZE):
+    """The studio renderer over bare ``(colour, points)`` triangles, framed on them."""
+    prepared = render._prepare([((colour, render.FINISH['shell']), [points]) for colour, points in triangles])
+    return render.studio(prepared, basis, bounds=bounds or render._frame(prepared, basis, 0.04), size=size)
+
+
 def buffer_reply(tmp_path):
     vertices = [(0, 0, 0), (10, 0, 0), (0, 20, 0)]
     data = b''.join(struct.pack('<3f', *v) for v in vertices) + struct.pack('<3I', 0, 1, 2)
@@ -37,7 +43,7 @@ def test_snapshot_poses_once_and_excludes_definition(tmp_path):
     for path in tmp_path.iterdir():
         path.unlink()
     assert triangles[0][1] == ((12, 30, 6), (12, 40, 6), (-8, 30, 6))
-    assert render.rasterize(triangles, render.BASES['top'])[1]['covered_pixels'] > 0
+    assert draw(triangles, render.BASES['top'])[1]['covered_pixels'] > 0
 
 
 @pytest.mark.parametrize('failure', ['revision', 'empty', 'layout', 'index', 'nan', 'missing', 'pose', 'bytes', 'triangles', 'sidecar', 'absent_tessellation', 'placed_vertices'])
@@ -82,8 +88,8 @@ def test_depth_crossing_is_independent_of_triangle_order():
     red, blue = (250, 10, 10), (10, 10, 250)
     a = (red, ((0, 0, 0), (10, 0, 10), (0, 10, 0)))
     b = (blue, ((0, 0, 10), (10, 0, 0), (0, 10, 10)))
-    image, _ = render.rasterize([a, b], render.BASES['top'])
-    reverse, _ = render.rasterize([b, a], render.BASES['top'])
+    image, _ = draw([a, b], render.BASES['top'])
+    reverse, _ = draw([b, a], render.BASES['top'])
     # Interior samples away from the equal-depth tie and triangle edges.
     def pixel(img, x, y):
         offset = (y * render.SIZE + x) * 3
@@ -97,7 +103,7 @@ def test_depth_crossing_is_independent_of_triangle_order():
 def test_occluded_triangle_never_overpaints_near_surface():
     a = ((220, 10, 10), ((0, 0, 2), (10, 0, 2), (0, 10, 2)))
     b = ((10, 10, 220), ((0, 0, -2), (10, 0, -2), (0, 10, -2)))
-    assert render.rasterize([a, b], render.BASES['top'])[0] == render.rasterize([b, a], render.BASES['top'])[0]
+    assert draw([a, b], render.BASES['top'])[0] == draw([b, a], render.BASES['top'])[0]
 
 
 def test_render_work_refusal_writes_no_new_files(tmp_path, monkeypatch):
@@ -221,9 +227,61 @@ def test_over_budget_geometry_is_clustered_not_refused(tmp_path, monkeypatch):
     assert summary['decimation']['input_triangles'] == 3200
     assert summary['objects']['grid']['triangles'] == len(fewer)
     # The outline survives: the same square is covered, give or take a cell.
-    before = render.rasterize(full, render.BASES['top'])[1]['covered_pixels']
-    after = render.rasterize(fewer, render.BASES['top'])[1]['covered_pixels']
+    before = draw(full, render.BASES['top'])[1]['covered_pixels']
+    after = draw(fewer, render.BASES['top'])[1]['covered_pixels']
     assert after == pytest.approx(before, rel=0.05)
+
+
+def floored_reply(tmp_path):
+    """grid_reply plus a 3,000 mm floor plane, as ot10-hexapod-12 declared."""
+    reply = grid_reply(tmp_path)
+    vertices = [(-1500, -1500, -1), (1500, -1500, -1), (1500, 1500, -1), (-1500, 1500, -1)]
+    data = b''.join(struct.pack('<3f', *v) for v in vertices) + struct.pack('<6I', 0, 1, 2, 0, 2, 3)
+    binary, side = tmp_path / 'floor.bin', tmp_path / 'floor.json'
+    binary.write_bytes(data)
+    side.write_text(json.dumps({'schema': 'cadex-tessellation-v1', 'byte_order': 'little',
+                               'layout': {'vertices': {'offset': 0, 'bytes': 48, 'dtype': 'f32'},
+                                          'triangles': {'offset': 48, 'bytes': 24, 'dtype': 'u32'}}}))
+    reply['display']['floor'] = {'tessellation': {'artifact_path': str(binary), 'sidecar_path': str(side)}}
+    return reply
+
+
+def test_the_floor_does_not_size_the_clustering_grid(tmp_path, monkeypatch):
+    """ADR-439: hexapod-12's 3 m floor drew the robot on a 1.46 mm grid."""
+    monkeypatch.setattr(render, 'MAX_TRIANGLES', 3000)
+    _, alone = render.snapshot(grid_reply(tmp_path))
+    fewer, floored = render.snapshot(floored_reply(tmp_path), {'floor'})
+    assert floored['decimation']['cell_mm'] == alone['decimation']['cell_mm']
+    assert floored['decimation']['extent_mm'] == pytest.approx(10.0)
+    assert floored['decimation']['extent_excludes'] == ['floor']
+    # The robot keeps its detail, and the floor is still read and drawn.
+    assert floored['objects']['grid']['triangles'] == alone['objects']['grid']['triangles'] > 2000
+    assert floored['objects']['floor']['triangles'] == 2
+    # Unnamed, the floor sets the grid, and the grid loses the robot.
+    _, unnamed = render.snapshot(floored_reply(tmp_path))
+    assert unnamed['decimation']['cell_mm'] == pytest.approx(3000 / 2048)
+    assert unnamed['objects']['grid']['triangles'] < alone['objects']['grid']['triangles'] / 10
+    assert unnamed['decimation']['extent_excludes'] == []
+
+
+def test_acquire_snapshot_reads_the_floor_from_the_accepted_fit(tmp_path, monkeypatch):
+    from cadex_cli import clearance
+    monkeypatch.setattr(render, 'MAX_TRIANGLES', 3000)
+    reply = floored_reply(tmp_path)
+
+    class Client:
+        def request(self, op, args):
+            assert op == 'rebuild'
+            return reply
+
+    monkeypatch.setattr(clearance, 'read_fit', lambda client: {
+        'failing': [{'first': 'floor', 'second': 'grid', 'status': 'world geometry'}]})
+    _, summary = render.acquire_snapshot(Client())
+    assert summary['decimation']['extent_excludes'] == ['floor']
+    # An unreadable fit draws as before rather than failing the render.
+    monkeypatch.setattr(clearance, 'read_fit', lambda client: (_ for _ in ()).throw(InventoryError('no fit')))
+    _, summary = render.acquire_snapshot(Client())
+    assert summary['decimation']['extent_excludes'] == []
 
 
 def test_clustering_that_cannot_reach_the_budget_still_refuses(tmp_path, monkeypatch):
@@ -235,11 +293,11 @@ def test_clustering_that_cannot_reach_the_budget_still_refuses(tmp_path, monkeyp
 def test_the_pixel_budget_scales_with_the_image_area(monkeypatch):
     """hex3's 768 px `look` needed 20.27M visits against a 20M 512 px budget."""
     tri = ((200, 10, 10), ((0, 0, 0), (10, 0, 0), (0, 10, 0)))
-    large = render.rasterize([tri], render.BASES['top'], size=2 * render.SIZE)[1]['pixel_visits']
+    large = draw([tri], render.BASES['top'], size=2 * render.SIZE)[1]['pixel_visits']
     # A budget the doubled image exceeds unscaled, and fits once scaled by 4.
     monkeypatch.setattr(render, 'MAX_SAMPLES', large // 4 + 1)
     assert large > render.MAX_SAMPLES
-    render.rasterize([tri], render.BASES['top'], size=2 * render.SIZE)
+    draw([tri], render.BASES['top'], size=2 * render.SIZE)
     monkeypatch.setattr(render, 'MAX_SAMPLES', large // 4 - 1)
     with pytest.raises(InventoryError, match='pixel work'):
-        render.rasterize([tri], render.BASES['top'], size=2 * render.SIZE)
+        draw([tri], render.BASES['top'], size=2 * render.SIZE)

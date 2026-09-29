@@ -1,6 +1,6 @@
 # REVIEW-DESIGN.md — The review dashboard as one designed page
 
-Verified against source: 2026-09-19. [Cadex-new]
+Verified against source: 2026-09-29. [Cadex-new]
 
 This is the design specification for the page `cadex review` serves
 (`cli/cadex_cli/review_static/`, ADR-286) and for the operator dashboard that
@@ -58,6 +58,7 @@ where (§12) — and the element ids do not change with the width.
 | 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. | top bar |
 | 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). | left sidebar |
 | 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. | right sidebar |
+| 2a | **Concept** | `#concept`, `#concept-status[data-state]`, `#concept-figure`, `#concept-sheet`, `#concept-caption`, `#concept-hero` | The design as presented: the concept sheet the last render drew (§14) — studio hero, name, key numbers, palette and line views — with the revision it was drawn from and its relation to the accepted one. Leads the page when there is one. | stage, *Concept* tab, first; the stage opens on it |
 | 3 | **Model** | `#model`, `#model-status[data-showing]`, `#viewer`, `#model-fit`, `#show-collision`, `#collision-note`, `#model-components` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and the labelled **show collision geometry** toggle, off by default (§11). The status line ends with what is showing. | stage, *Model* tab; toggle and component list in the right sidebar's *Model settings* (`#model-settings`) |
 | 4 | **Curves** | `#curves`, `#telemetry`, `[data-metric]`, `[data-history]`, `#checkpoint-source`, `#checkpoints` | Training telemetry: the five metrics as a stat row, the three histories (reward per step, loss, episode length) as curves side by side on desk and stacked on phone, then checkpoint provenance. | stage, *Curves* tab |
 | 5 | **Videos** | `#videos-region`, `#videos`, `#videos li[data-video][data-showing]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed, and what it shows — recordings made before that was recorded say so). | stage, *Videos* tab |
@@ -498,9 +499,9 @@ edge 16 px (64 with Shift). Widths animate over 180 ms except while dragging.
 The canvas redraws when its box changes, so the model is never stretched
 during a drag.
 
-**The stage** always holds one panel, the **Model** by default: the canvas
+**The stage** always holds one panel: the **Concept** sheet when the project has one (§14), otherwise the **Model**. In the Model panel the canvas
 fills it, the model status floats top-left and the orbit hint and *Fit*
-bottom-right, both as translucent `--bg` pills. Its tabs are **Model**,
+bottom-right, both as translucent `--bg` pills. Its tabs are **Concept**, **Model**,
 **Curves** (a dot in the telemetry state's colour), **Videos** (the count of
 playable clips) and, while one is open, **Document** — a document opened
 from the left sidebar comes onto the stage and leaves it when the view
@@ -552,6 +553,106 @@ and no page scroll with both drawers closed and off screen. It then taps
 drawers open and verifies that the model's width is unchanged, that only one
 drawer is open at a time, that a tap on the model closes a drawer, and that
 one finger still orbits without moving the page.
+
+## 14. The concept sheet leads the page (ADR-430)
+
+Under the ot10 charter (A6) a project is presented before it is inspected.
+`cadex render` draws a **concept sheet** beside the studio hero
+(`docs/CLI.md`, *The concept sheet*): one 1536×1024 PNG with the hero on
+the left and, on the right, the project's name, its revision, three key
+numbers (mass, servo count, size), a swatch per appearance role, the
+`front`, `right` and `top` views as line drawings, and A1's proxies. It is
+drawn on the dark scene (ADR-444, §16): paper is the viewport's `#141414`,
+ink the page's `--ink`, labels `--ink-2` and rules `--rule`, and the hero on
+its left stands on the prototype mat. It was a light sheet until ot10 A8.
+
+**Where it sits.** The stage's first tab is **Concept**. When
+`/api/project` carries `presentation.available`, the stage opens on it once,
+on the first poll that finds one; after that the reader's choice of tab
+stands, and polls never pull the stage back. The panel shows the sheet
+scaled to the stage (never above its own size), a status line naming the
+revision it was drawn from — *the accepted design* when `relation` is
+`current`, otherwise the relation in words, so an earlier design never
+reads as this one — and a caption with the name and the three numbers, a
+link to the hero at full size, and a download. Clicking the sheet opens it
+at full size. Without a sheet the tab stays, and says what makes one;
+the stage opens on the model as before.
+
+**On a phone** the Concept card comes before the Model card in the column
+(same `order`, earlier in the source), the sheet at the column's width.
+
+**Held by** `test_the_page_leads_with_the_concept_sheet_when_the_project_has_one`
+at both charter sizes (the stage opens on *Concept* at desk with no page
+scroll; the card precedes the model on the phone with no horizontal
+overflow; the image is the served sheet at its natural 1536 px; the caption
+reads the numbers), and by `cli/tests/test_sheet.py` for the sheet's shape,
+identity, numbers and routes.
+
+## 15. Policy videos are drawn in the studio look (ADR-431)
+
+Under ot10's W1, a run's video is drawn by default in the design's studio
+look (`python -m cadex_cli.video --project P --run R`, `--style studio`).
+It uses the hero view and the design's own materials, on the dark prototype
+mat (§16) with a contact shadow, and has a timer at the bottom left. It is
+drawn on the CPU with no browser. The Videos tab (region 5) plays it
+exactly as it plays a scene-style clip. The identity strip names the style
+(`studio`, or the scene's `cadex-prototype-dark-v1`), so a reader can tell
+the two apart. The dark viewport and its capture (§10) are unchanged, and
+`--style scene` still records in them. Since ADR-444 a studio clip stands on
+the same floor as the viewport, so its grid is anchored at the world origin
+and the robot's stride and any foot slip read against it.
+
+A studio clip stands on the design's floor (ADR-432). When the render
+summary names an environment, that environment is not drawn, and the shadow
+falls on its top face. So a robot whose solids sink through the floor
+(the rollout collides on proxies) is drawn sinking, rather than floating
+above a shadow at the lowest reach. The clip draws the rollout's own solids
+within a triangle budget, and says how many it read and drew.
+
+**Held by** `test_dashboard_serves_the_studio_video_it_lists` (listed with
+its style, served byte for byte as `video/webm`) and the studio tests
+beside it in `cli/tests/test_video.py`.
+
+## 16. One scene for every image (ADR-444)
+
+Under ot10's A8, every image Cadex presents is drawn in the viewport's dark
+scene: the studio hero, the four review views, `look`, the concept sheet
+(§14) and the studio video (§15). The floor is the prototype mat §10 draws —
+`PALETTE.scene.bg` `#141414`, tiles `#1c1c1c` / `#232323` and the `#3a3a3a`
+major line — and the sheet's chrome is this page's `--ink`, `--ink-2` and
+`--rule`.
+
+**One source.** `cli/cadex_cli/scene.py` reads those colours out of
+`review_static/environment.js` (`PALETTE`) and `review_static/review.css`
+(`:root`) — the files this page loads — so no image module carries a scene
+colour of its own. Change the viewport and the images follow it; a
+`PALETTE` block that cannot be read refuses the import.
+
+**The floor.** The CPU renderer (`render._floor`) intersects each
+orthographic ray with the floor plane: a checker one pitch square, the
+major line on every multiple of the pitch anchored at the world origin, the
+pitch chosen by `floor.js`'s own `chooseGridPitch` ladder for the framed
+span, and each line's pixel coverage computed from the floor footprint of
+the pixel, which antialiases it. The mat fades into the background between
+0.75× and 1.9× the framed extent from the point under the image centre. A
+level view (`front`, `right`) sees no floor and draws the background. No
+minor lines and no baked labels: at a hero's framing they are noise.
+
+**The shadow** is the measured contact shadow (§15, ADR-432), deepened for a
+dark floor — it may take a tile to 20 % of its brightness (was 45 %). On
+`ot10-quadruped-3`'s hero the tiles at its feet fall from 28–35 to 6.
+
+**Not changed.** The judge: A1's frozen procedure keeps its rubric, and no
+probe is re-scored (ADR-444). The viewport and its capture (§10) are the
+source, not a consumer, and are unchanged.
+
+**Held by** `cli/tests/test_scene_palette.py` (the renderer's palette is the
+viewport's, parsed independently, and the charter's values; the ladder and
+line width are `floor.js`'s; no image module carries a scene colour; the
+hero stands on the mat and fades; a changed viewport palette changes the
+drawn image; the studio video's identity covers the palette source), with
+the shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`.
+Before/after: `docs/probes/ot10/a8-*.png`.
 
 ## Operator run status (ADR-387)
 

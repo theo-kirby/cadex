@@ -1,6 +1,6 @@
 # Fresh biped review evidence
 
-Verified against source: 2026-09-13. [Cadex-new]
+Verified against source: 2026-09-28. [Cadex-new]
 
 The project is `ot5-biped` under the operator's `cadex-projects` directory,
 outside this checkout, with its own Git history. Nothing was imported from
@@ -150,7 +150,7 @@ From the product checkout, the retained evidence commands are:
 ```bash
 PYTHONPATH=cli pixi run python "$PROJECT/evidence/retain-playback.py" "$PROJECT"
 PYTHONPATH=cli pixi run python -m cadex_cli.video \
-  --project "$PROJECT" --run probe1-playback
+  --project "$PROJECT" --run probe1-playback --style scene
 PYTHONPATH=cli:cli/tests pixi run python \
   "$PROJECT/evidence/check-playback.py" "$PROJECT"
 ```
@@ -588,7 +588,7 @@ systemd-run --user --scope --unit=cadex-foot90 -p MemoryMax=20G \
 PYTHONPATH=cli:cli/tests pixi run python \
   docs/probes/reed-foot90/restart.py "$PROJECT" foot90
 # After it finishes:
-PYTHONPATH=cli pixi run python -m cadex_cli.video --project "$PROJECT" --run foot90
+PYTHONPATH=cli pixi run python -m cadex_cli.video --project "$PROJECT" --run foot90 --style scene
 PYTHONPATH=cli:cli/tests pixi run python \
   "$PROJECT/evidence/check-probe3-video.py" "$PROJECT" foot90
 PYTHONPATH=cli:cli/tests pixi run python \
@@ -702,7 +702,7 @@ systemd-run --user --scope --unit=cadex-copy29 -p MemoryMax=20G \
   ./cadex walk --project "$COPY" --out "$COPY/runs/copy100" \
   --set foot_len=100 --name copy100.cxpolicy --iterations 240 --envs 1024 \
   --seed 0 --timeout 1800 --leg-timeout 2000 --json
-PYTHONPATH=cli pixi run python -m cadex_cli.video --project "$COPY" --run copy100
+PYTHONPATH=cli pixi run python -m cadex_cli.video --project "$COPY" --run copy100 --style scene
 PYTHONPATH=cli:cli/tests pixi run python docs/probes/reed-copy/verify.py \
   "$HOME/cadex-projects/ot5-biped" "$COPY"
 ```

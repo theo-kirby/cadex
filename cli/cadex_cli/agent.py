@@ -183,9 +183,11 @@ to, so it is the truth about this version. Do not write an xscript API \
 from memory.
 
 YOU SEE YOUR WORK WITH `look`, AND YOU PROVE IT WITH FACTS. `look` renders \
-the last accepted revision and hands you the pictures: printed parts in one \
-filament orange, purchased parts in dark grey, the floor left out, and \
-`focus=[names]` for a close-up. There is still no way for the caller to \
+the last accepted revision and hands you the pictures: each part in the \
+appearance role you declared (`assembly.component(..., appearance=\
+"shell"|"mechanism"|"accent")`, colours from `assembly.assembly(..., \
+palette=...)`), an undeclared part in bone if printed and graphite if \
+purchased, the floor left out, and `focus=[names]` for a close-up. There is still no way for the caller to \
 click a face and hand it to you. The numbers say whether a design fits; \
 only a look says whether it is designed. Do both:
 
@@ -195,9 +197,11 @@ numbers are the ones you intended. A bore you meant to be through is a \
 volume you can compute in advance.
 - FIT IS MEASURED, NOT PRINTED. Every build reply (write_script, \
 edit_script, set_params, rebuild) carries a `fit` block the engine computed \
-from the exact solids at the solved pose: the check counts, and every \
-failing component pair by name with its minimum distance (mm) and common \
-volume (mm³). `inspect scope=clearance` lists every pair. A script's own \
+from the exact solids at the solved pose: the check counts, and the \
+failing component pairs by name, worst first, with minimum distance (mm) and \
+common volume (mm³). A long list is cut to its worst rows, and \
+`failing_omitted` counts the rest, which `inspect scope=clearance \
+path=/pairs` lists with every other pair. A script's own \
 `print(...)` output comes back too, but it is a claim the script makes \
 about itself; the `fit` block is the evidence, and a `fit` that names an \
 intersection, a pair below clearance or an unmeasured pair overrules any \
@@ -248,9 +252,11 @@ script that built an absent name before you call it printed. `inspect \
 scope=inventory` lists every component.
 - MOTION FIT IS MEASURED TOO, and the build reply carries it: `fit.sweep` \
 is the published exact-solid sweep of every limited joint, with its own \
-`verdict`, the coverage, one row per joint (minimum distance, maximum \
-common volume, first contact in the joint's own `unit`) and every pair \
-that fails anywhere in a range. Declare `sweep_step_degrees` \
+`verdict`, the coverage, a row for each joint NOT swept to completion \
+(`joints_complete` counts the rest; every joint's row, with its minimum \
+distance, maximum common volume and first contact in the joint's own \
+`unit`, is `inspect scope=clearance path=/clearance_sweep/joints`) and the \
+worst pairs that fail anywhere in a range. Declare `sweep_step_degrees` \
 (limited hinges) and `sweep_step_mm` (limited sliders) on the assembly to \
 acquire it; a limited joint whose step is undeclared comes back \
 `incomplete` with that reason even when the assembly declares no step at \
@@ -266,7 +272,10 @@ clearance` -- its minimum through the range misses the minimum you declared \
 for it, or 0.1 mm if you declared none -- or on a measurement the engine \
 could not take. A pair you declared a contact, or welded with a fixed \
 joint, is not held to a gap here, and a pair the solved pose already fails \
-is named in the static list instead of twice. \
+is named in the static list instead of twice. A pair against world \
+geometry -- the floor you declared -- is listed in `fit.sweep.world_geometry` \
+and never fails: each joint is swept with the body held still, so a \
+standing leg meets the ground by construction. \
 `inspect scope=clearance path=/clearance_sweep` reads the whole published \
 report, including per-joint timings.
 - The engine validates the geometry itself and refuses what it cannot build, \
@@ -274,40 +283,115 @@ so a result that says ok is a shape that exists — but it is not necessarily \
 the shape that was asked for. That part is yours.
 
 DESIGN IT; DO NOT ONLY MAKE IT FIT. Passing every fit check is the floor, \
-not the goal: a rectangle bolted to a rectangle passes too. The printed \
-parts are the design, and a person will judge the result by them. Hold \
-every printed part to one design language:
-- NO SHARP OUTSIDE CORNERS. Fillet or chamfer every outside edge of a \
-printed part (about 1 mm on small parts, 2-3 mm on a body), and fillet \
-inside corners where load turns a corner: they are stronger as well as \
-better looking. Use one set of radii across the whole design.
+not the goal: a rectangle bolted to a rectangle passes too. A person will \
+judge the result by how it looks, so design it in four steps, in this \
+order, and do not skip the first.
+
+1. CONCEPT FIRST, BEFORE ANY GEOMETRY. Decide what the machine is before \
+you write a script, say it in a few lines before your first write_script, \
+and repeat it as `DECISION:` lines when you finish: the silhouette (one \
+body primitive -- a hood, a pill, a sphere or a heavily rounded box, never \
+a deck of plates), the character (what its face is and which way it looks), \
+the palette (one shell colour and at most one accent) and the proportions \
+(a compact body, limbs that taper to distinct feet). Every later choice \
+serves that concept.
+
+2. SKELETON: THE MECHANISM FITS AND MOVES. Build the servos, horns, \
+brackets, links and electronics first, and make every fit check pass:
 - ENCLOSE, DO NOT BOLT ON. A servo, board or battery sits in a pocket, \
 cradle or bracket shaped around its case and fastened through its own \
-mounting tabs, not on a bare plate or under a flat bar. A link that carries \
-a motor is formed around that motor.
+mounting tabs, not on a bare plate or under a flat bar. Cut a servo's, \
+board's or battery's bay with its own `.bay()` -- `part.cut(body, \
+pack.bay())` -- which is the part's extents plus clearance and room for its \
+leads, placed where the part is; never cut to the part's `.body`, which \
+leaves no room for either. A link that carries a servo is grown around it: \
+the limb's solid wraps the servo's `.bay()` with a 1.6-2.4 mm wall on every \
+side but the spline's, then cuts it, so the case is inside the limb and only \
+the spline comes out, never a case hanging beside the limb it drives. Split \
+that limb where the servo drops in, and screw the tabs down at \
+`servo.spec["mount_holes"]`.
 - ONE CONTINUOUS FORM PER PART. A foot, boss, rib or tab is fused and \
 blended into the solid it belongs to, not a separate primitive stuck to its \
-face. Shape links as tapered, shelled or ribbed beams that follow the load \
-path, not constant rectangles.
+face.
 - MIRROR WHAT HAS SIDES. A mechanism with left and right sides mirrors \
 across its centre plane (`mirror`, not a copy rotated about the centre), so \
 handed parts come out handed.
-- PROPORTION AND CLEARANCE. Keep hardware inside the silhouette, mass \
-central and low, and a moving mechanism clear of the ground through its \
-whole motion.
+- PROPORTION AND CLEARANCE. Gather the mass into one compact body, the \
+battery low and central, and keep a moving mechanism clear of the ground \
+through its whole motion.
 - PRINTABLE. Each printed part has a flat face to print on, no unsupported \
 overhang past 45 degrees, walls of at least 1.6 mm and holes sized to their \
 fastener.
-After the first accepted build, `look` at `iso` and `iso_back`, then \
-`focus` on one repeated subassembly (a leg, a joint). Name in one line \
-each what reads as crude — a sharp edge, a floating bar, a primitive stuck \
-on — and fix it, then look again. Stop when it reads as a product someone \
-designed, not a fit check that passed.
+
+3. SHELL OVER SKELETON. Then give the machine its form with separate \
+printed parts laid over the skeleton, each placed as its own component with \
+an appearance role and fastened to the part that carries it:
+- SHELLS HIDE THE HARDWARE. The body primitive from step 1 is a shell, \
+1.6-2.4 mm thick, opening downwards so its rim is the print face, with at \
+least 1 mm of clearance from everything it covers, through every joint's \
+whole range. Servo cases, boards and the battery do not show; what shows of \
+the mechanism is deliberate. A seam where two shell pieces meet is the only \
+surface detail: no vents, greebles or stuck-on panels. A printed cradle or \
+bracket that follows a servo case face for face still reads as that case, \
+whatever its colour or fillet: where one would show, cover it with the \
+limb's `shell` part, or round its outside into the limb and the joint cap \
+so that no box of the servo's outline is left to see.
+- NO SHARP OUTSIDE CORNERS. Round every outside edge of a printed part with \
+a radius of about 10-20% of the part's smallest overall size -- 4-8 mm on a \
+40 mm body, 1-2 mm on a small cap -- and fillet inside corners where load \
+turns a corner. Use one set of radii across the whole design.
+- JOINTS ARE FEATURES. Every actuated axis carries the same round cap, \
+concentric with the axis and at least as wide as the horn it covers, so a \
+horn reads as a hub, never a bare arm. One cap design serves the whole \
+robot. The cap goes where the horn is: the horn sits between the servo's \
+case top and the part it drives, so a disc on the servo's far face or \
+beside the hub leaves the horn in view. Make the driven part's hub the \
+cap: a disc of radius at least the horn's `.spec["arm_reach_mm"]` plus a \
+1.6 mm wall, cut with `horn.body` so the horn and its screw sit inside it, \
+with a skirt reaching down past the horn to within 1 mm of the case top. \
+Where the servo's other face shows, put the same disc there too, so both \
+sides of the joint read alike.
+- A FACE. One focal element on the forward face, on the same +X the IMU \
+points along: a visor slot, one or two round eyes, or a dark face panel, \
+recessed into or split from the shell and filling about a quarter to a half \
+of the front. Size it by numbers: seen from +X it spans at least half the \
+body's width there and at least a quarter of its height, so a thin slot is \
+not a face. Make it stand out from what surrounds it: a `mechanism` face \
+set in a `shell`-coloured front, or, when the front around it is graphite \
+too, an `accent` face or accent eyes, since graphite on graphite disappears.
+- TAPER TO A FOOT. A limb is a tapered, shelled or ribbed beam that follows \
+the load path, about 60% of its hip section or less near the foot, and ends \
+in a distinct cap, pad or point -- never the cut end of a bar. Taper the \
+section in both directions, its depth as well as its width, so the limb \
+narrows seen from the side as well as from above: a plate of one thickness \
+cut to a tapering outline is still a flat bar edge-on.
+- TWO MATERIALS AND ONE ACCENT. Colour follows role, not supplier: \
+`shell` for the outer forms, `mechanism` for joints, face, feet and any \
+hardware that shows, `accent` for a few deliberate features such as the \
+joint cap rims, the eye or the foot tips, well under a tenth of the surface. \
+Declare the role on every component and the palette on the assembly. A \
+colour change is a part boundary: each printed colour is its own part in \
+its own filament, never paint.
+
+4. REFINE WITH `look`. After the first accepted build, `look` at `hero`, \
+`iso` and `iso_back`, then `right`, which looks from +X straight at the \
+face, then `focus` on one repeated subassembly (a leg, a joint). In \
+`right`, check the face against the size and contrast of A FACE before you \
+accept; if it is too small to find or the same colour as its surround, it \
+is the worst thing to fix. Read its `measures` first -- the share of the hero silhouette that \
+is purchased hardware, the share of printed outside edge left sharp, and \
+the number of materials, each against its bar -- and then the pictures. \
+Name in one line each what reads as crude -- a sharp edge, an exposed case, \
+a floating bar, a primitive stuck on, a missing face, a horn you can see \
+-- fix the worst one, \
+and look again. Stop when every measure meets its bar and it reads as the \
+concept you decided in step 1, a product someone designed rather than a fit \
+check that passed.
 
 A ROBOT IS A COMPLETE MACHINE. When a design moves itself -- it has \
 actuators and is meant to run untethered -- it carries what runs it, placed \
 as purchased catalog components like any other and enclosed in printed \
-bays with room for their leads and connectors:
+bays cut with their `.bay()`, which leaves room for their leads:
 - a controller: `lib.board("esp32-devkitc-v4")` by default, or \
 `lib.board("pi-zero-2-w")` when the task needs Linux;
 - a servo driver when there are more servos than the controller drives \

@@ -4,7 +4,7 @@ import json
 import pytest
 from cadex_cli.__main__ import main
 from cadex_cli.client import CadexdClient, open_project
-from cadex_cli.bridge import Bridge, _sweep_line
+from cadex_cli.bridge import Bridge, _sweep_line, fit_view
 from cadex_cli.clearance import (
     bounds_agreement, fit_summary, pair_status, write_clearance,
 )
@@ -78,7 +78,7 @@ def test_a_script_that_prints_no_overlap_gets_the_overlap_in_its_reply(engine, t
         assert failing['distance_mm'] == pytest.approx(0)
         assert fit['revision'] == payload['accepted_revision']
         assert fit['assembly'] == 'asm'
-        assert call.fit == fit
+        assert fit_view(call.fit) == fit
         # The same numbers `cadex clearance` writes, because they are the
         # same published rows.
         _, value = write_clearance(client, root)
@@ -184,7 +184,8 @@ def test_build_reply_resolves_late_fit_pages_or_reports_unavailable(
                for op, args in requests if op == 'inspect')
     assert [op for op, _ in requests].count('write_script') == 1
     fit = payload['fit']
-    assert bridge.state.last_fit == bridge.state.calls[0].fit == fit
+    assert bridge.state.last_fit == bridge.state.calls[0].fit
+    assert fit_view(bridge.state.last_fit) == fit
     if late_read_failure:
         assert fit['verdict'] == 'unavailable'
         assert 'late measurement page unreadable' in fit['error']
@@ -194,13 +195,15 @@ def test_build_reply_resolves_late_fit_pages_or_reports_unavailable(
         assert fit['counts'] == {'clear': 57, 'intersection': 1, 'below clearance': 0,
                                  'unknown': 1, 'missed contact': 1, 'world geometry': 1}
         assert fit['failing_count'] == 4
+        # Worst first in the model's view (ADR-435): the rows with no
+        # numbers, then the overlap, then the gap.
         assert [(f['first'], f['second'], f['status']) for f in fit['failing']] == [
-            ('base', 'link57', 'unknown'), ('base', 'link58', 'intersection'),
-            ('base', 'link59', 'missed contact'), ('environment', '', 'world geometry')]
+            ('base', 'link57', 'unknown'), ('environment', '', 'world geometry'),
+            ('base', 'link58', 'intersection'), ('base', 'link59', 'missed contact')]
         assert fit['failing'][0]['error'] == pairs[57]['error']
-        assert fit['failing'][1]['common_volume_mm3'] == 248.2
-        assert fit['failing'][2]['distance_mm'] == 0.2
-        assert fit['failing'][2]['intent'] == {'kind': 'contact'}
+        assert fit['failing'][2]['common_volume_mm3'] == 248.2
+        assert fit['failing'][3]['distance_mm'] == 0.2
+        assert fit['failing'][3]['intent'] == {'kind': 'contact'}
 
 
 def test_the_prose_report_prints_the_fit_and_each_failing_pair():
@@ -379,7 +382,7 @@ def test_fit_intent_survives_acceptance_and_reopen(engine, tmp_path):
         path, value = write_clearance(client, root)
         assert 'contact within 0.001 mm' in path.read_text()
         assert 'declared minimum 0.5 mm' in path.read_text()
-        assert fit_summary(value) == fit
+        assert fit_view(fit_summary(value)) == fit
     after = json.loads((root / 'script.json').read_text())
     for key in ('accepted_revision', 'accepted_digest', 'accepted_attempt'):
         assert after[key] == before[key]
@@ -560,7 +563,11 @@ def test_build_reply_carries_the_published_joint_sweep(
         if step:
             assert sweep['coverage'] == 'complete' and sweep['step_degrees'] == 5
             assert (sweep['joints_checked'], sweep['joints_complete']) == (1, 1)
-            (joint,) = sweep['joints']
+            # A complete joint's row is the parent's; the model's view lists
+            # only unswept joints and says where the rest are (ADR-435).
+            assert sweep['joints'] == []
+            assert 'path=/clearance_sweep/joints' in sweep['joints_note']
+            (joint,) = call.fit['sweep']['joints']
             assert (joint['joint'], joint['kind'], joint['unit']) == (
                 'j', 'revolute', 'degrees')
             assert joint['range_degrees'] == [0, 10] and joint['sample_count'] == 3
@@ -583,9 +590,9 @@ def test_build_reply_carries_the_published_joint_sweep(
             assert sweep['note'].startswith('Coverage means measurements exist')
             assert _sweep_line(sweep) == 'sweep incomplete: 1 of 1 joint(s) unswept'
         # The same block the progress line and the turn report read.
-        assert call.fit == fit
+        assert fit_view(call.fit) == fit
         _, value = write_clearance(client, root, sweep=True)
-        assert fit_summary(value)['sweep'] == sweep
+        assert fit_view(fit_summary(value))['sweep'] == sweep
 
 
 def test_sweep_summary_names_every_pair_that_overlaps_through_the_motion():
@@ -816,7 +823,7 @@ def test_a_weld_holding_nothing_is_reported_while_every_fit_check_passes(engine,
         assert pair['intent'] == {'kind': 'clearance', 'minimum_mm': 0.5,
                                   'joints': ['weld_gap']}
         assert pair['fit_failures'] == []
-        assert fit_summary(value)['attachments'] == attachments
+        assert fit_view(fit_summary(value))['attachments'] == attachments
         assert fit_summary(value)['failing'] == fit['failing']
 
 
@@ -902,7 +909,7 @@ def test_a_welded_pair_mounted_flush_is_not_a_failing_fit_check(engine, tmp_path
     assert fit['counts'] == {'clear': 1, 'intersection': 0, 'below clearance': 0, 'unknown': 0}
     assert fit['attachments']['verdict'] == 'touching'
     assert 'welded by fix_ab' in report
-    assert reread == fit
+    assert fit_view(reread) == fit
     fit, report, _ = reports[False]
     assert fit['verdict'] == 'fail'
     failure, = fit['failing']
@@ -1234,3 +1241,162 @@ def test_a_welded_pair_that_meets_its_declared_minimum_reaches_the_reply_clear(t
     assert 'clearance under weld' not in report
     assert 'declared minimum 0.5 mm, and welded by weld_standoff' in report
     assert '| clear |' in report and '| below clearance |' in report
+
+
+def _floor_sweep(extra_rows=()):
+    """A knee swept complete, shaped like ``ot10-hexapod-2``'s (ADR-420).
+
+    The knee drives its tibia and foot into ``c_floor`` -- the ground the
+    robot stands on, which the static block names world geometry -- and
+    moves every printed pair it carries clear of its neighbours. The two
+    floor rows are the measured ones: every hexapod knee at 15 degrees
+    published the same pair of overlaps, and nothing else failed.
+    """
+
+    rows = [
+        {'first': 'c_floor', 'second': 'c_tibia_fl', 'relative_motion': True,
+         'minimum_distance_mm': 0.0, 'maximum_common_volume_mm3': 65.309,
+         'first_contact_degrees': 25.0},
+        {'first': 'c_floor', 'second': 'c_foot_fl', 'relative_motion': True,
+         'minimum_distance_mm': 0.0, 'maximum_common_volume_mm3': 110.972,
+         'first_contact_degrees': 10.0},
+        {'first': 'c_tibia_fl', 'second': 'c_femur_fl', 'relative_motion': True,
+         'minimum_distance_mm': 1.5, 'maximum_common_volume_mm3': 0.0,
+         'first_contact_degrees': None},
+        *extra_rows,
+    ]
+    pairs = [{'first': r['first'], 'second': r['second'], 'distance_mm': 2.0,
+              'common_volume_mm3': 0.0, 'intent': {}} for r in rows]
+    return {
+        'available': True, 'pairs': pairs,
+        'world_geometry': [{'component': 'c_floor', 'status': 'world geometry',
+                            'reason': 'collision plane declared on design component'}],
+        'clearance_sweep': {'status': 'complete', 'step_degrees': 15, 'joints': [
+            {'joint': 'j_knee_fl', 'kind': 'revolute', 'unit': 'degrees',
+             'status': 'complete', 'step': 15, 'sample_count': 6,
+             'range_degrees': [-35, 35], 'initial_degrees': 0, 'pairs': rows}]},
+    }
+
+
+def test_a_leg_swept_into_the_floor_is_reported_not_failed():
+    """ADR-420: a swept finding against world geometry is advisory.
+
+    Before, the complete hexapod sweep read ``fail`` on its knee-against-floor
+    rows alone, so no standing legged design could pass. The floor rows are
+    still published, by name and with the engine's reason, and the verdict
+    and ``failing_count`` no longer count them.
+    """
+
+    block = fit_summary(_floor_sweep())['sweep']
+    assert block['verdict'] == 'pass', block['failing']
+    assert block['failing_count'] == 0 and block['failing'] == []
+    assert block['world_geometry_count'] == 2
+    assert [(f['first'], f['second'], f['status'], f['maximum_common_volume_mm3'])
+            for f in block['world_geometry']] == [
+        ('c_floor', 'c_tibia_fl', 'intersection', 65.309),
+        ('c_floor', 'c_foot_fl', 'intersection', 110.972)]
+    assert block['world_geometry'][0]['world_geometry'] == {
+        'component': 'c_floor',
+        'reason': 'collision plane declared on design component'}
+    assert block['world_geometry_note'].startswith('Reported, never')
+    assert 'note' not in block
+    # The joint's own facts still carry the floor: they are measurements.
+    assert block['joints'][0]['maximum_common_volume_mm3'] == 110.972
+    assert _sweep_line(block) == (
+        'sweep pass: 1 joint(s) swept; 2 against world geometry (advisory)')
+
+
+@pytest.mark.parametrize('row, status', [
+    # A printed pair the motion drives together still fails...
+    ({'first': 'c_tibia_fl', 'second': 'c_coxa_fl', 'relative_motion': True,
+      'minimum_distance_mm': 0.0, 'maximum_common_volume_mm3': 4.0,
+      'first_contact_degrees': -50.0}, 'intersection'),
+    # ...so does a purchased one, and a gap closed below the minimum...
+    ({'first': 'c_servo_knee_fl', 'second': 'c_tibia_fl', 'relative_motion': True,
+      'minimum_distance_mm': 0.02, 'maximum_common_volume_mm3': 0.0,
+      'first_contact_degrees': None}, 'below clearance'),
+    # ...and a pair the engine could not measure.
+    ({'first': 'c_battery', 'second': 'c_tibia_fl', 'relative_motion': True,
+      'minimum_distance_mm': None, 'maximum_common_volume_mm3': None}, 'unknown'),
+])
+def test_only_world_geometry_is_advisory_in_the_sweep(row, status):
+    block = fit_summary(_floor_sweep([row]))['sweep']
+    assert block['verdict'] == 'fail'
+    assert [(f['first'], f['second'], f['status']) for f in block['failing']] == [
+        (row['first'], row['second'], status)]
+    assert block['world_geometry_count'] == 2
+
+
+def test_a_bounded_pair_decides_only_the_floors_its_bound_clears():
+    """ADR-423: a culled row's distance is a box-gap lower bound, not a measurement.
+
+    Under the default floor it is clear; under a floor above the bound it
+    decides nothing, so it reads unknown rather than a false breach.
+    """
+
+    row = {'first': 'a', 'second': 'b', 'distance_mm': 12.0,
+           'common_volume_mm3': 0.0, 'culled': True}
+    assert pair_status(row, 0.1, 1e-6) == 'clear'
+    assert pair_status(row, 20.0, 1e-6) == 'unknown'
+    assert pair_status({k: v for k, v in row.items() if k != 'culled'}, 20.0, 1e-6) == 'below clearance'
+
+
+def _floor_stance(foot_row):
+    """A hexapod-6-shaped solved pose: a ball foot on ``c_floor`` (ADR-427)."""
+
+    return {
+        'available': True,
+        'pairs': [
+            foot_row,
+            {'first': 'c_leg_fl', 'second': 'c_coxa_fl', 'distance_mm': 1.2,
+             'common_volume_mm3': 0.0, 'intent': {}},
+        ],
+        'world_geometry': [{'component': 'c_floor', 'status': 'world geometry',
+                            'reason': 'collision plane declared on design component'}],
+        'clearance_sweep': {'status': 'complete', 'joints': []},
+    }
+
+
+def test_a_foot_resting_on_the_floor_is_reported_not_failed():
+    """ADR-427: at the solved pose, standing on world geometry is not a closed gap.
+
+    ``ot10-hexapod-6``'s six ball feet rest on ``c_floor`` at 0.0 mm with no
+    common volume, and each read ``below clearance``. They are published
+    under ``world_geometry_contacts``; only the floor's own row still fails.
+    """
+
+    from cadex_cli.bridge import _fit_line
+    foot = {'first': 'c_floor', 'second': 'c_foot_fl', 'distance_mm': 0.0,
+            'common_volume_mm3': 0.0, 'intent': {}}
+    fit = fit_summary(_floor_stance(foot))
+    assert [f['status'] for f in fit['failing']] == ['world geometry']
+    assert fit['counts']['below clearance'] == 0
+    assert fit['counts']['world geometry contact'] == 1
+    assert fit['world_geometry_contact_count'] == 1
+    assert fit['world_geometry_contacts'] == [{
+        'first': 'c_floor', 'second': 'c_foot_fl', 'status': 'below clearance',
+        'distance_mm': 0.0, 'common_volume_mm3': 0.0,
+        'world_geometry': {'component': 'c_floor',
+                           'reason': 'collision plane declared on design component'}}]
+    assert fit['world_geometry_note'].startswith('Reported, never')
+    assert _fit_line(fit).startswith(
+        'fit fail: 1 failing of 2 pair(s); 1 resting on world geometry (advisory)')
+
+
+@pytest.mark.parametrize('foot, status', [
+    # A foot sunk into the floor at the pose the simulation starts from...
+    ({'first': 'c_floor', 'second': 'c_foot_fl', 'distance_mm': 0.0,
+      'common_volume_mm3': 12.5, 'intent': {}}, 'intersection'),
+    # ...and a floor pair the engine could not measure both still fail...
+    ({'first': 'c_floor', 'second': 'c_foot_fl', 'distance_mm': None,
+      'common_volume_mm3': None, 'intent': {}, 'error': 'no measurement'}, 'unknown'),
+    # ...as does a printed pair below its gap beside the floor.
+    ({'first': 'c_foot_fl', 'second': 'c_leg_fr', 'distance_mm': 0.0,
+      'common_volume_mm3': 0.0, 'intent': {}}, 'below clearance'),
+])
+def test_only_resting_on_world_geometry_is_advisory_at_the_solved_pose(foot, status):
+    fit = fit_summary(_floor_stance(foot))
+    assert [(f['first'], f['second'], f['status']) for f in fit['failing']] == [
+        (foot['first'], foot['second'], status), ('c_floor', '', 'world geometry')]
+    assert fit['world_geometry_contact_count'] == 0
+    assert 'world_geometry_note' not in fit

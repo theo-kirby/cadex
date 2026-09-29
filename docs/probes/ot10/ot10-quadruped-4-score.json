@@ -1,0 +1,216 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "2848ce2e977fb99795329c8475debbe62a72e2d9debb11774e0bbe3c2f9ed89f"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "606fd5720501fe62cc2b8aaa0a6987adf4150963f89d06cd1bd225b920eb4ade"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "5cddd75c1062a8ccaa281bdb7a1e944c6b58e0dc90e7211e0fcb392b48bd4bf1"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "77038ebc30593fa891f7a3e97b042256df61941f90b253d07f738926ecd1085b"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "9a5fb2115aa0c4dbb9e5a0dbe5e4ae2d2ad8ad9b53aca81495e9a07d67911940"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "424c795092f4b75ff0abf0f716b7848de50fceced05c3060b48dba6b098d1664"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 3,
+    "T3": 3,
+    "T4": 1,
+    "T5": 2,
+    "T6": 3,
+    "T7": 2
+  },
+  "total": 16,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A rounded shell covers the body and the front servo pods, but the limbs are bare plates and dark axle stubs show in the gaps between the leg plates and the body."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The shell is off-white and the mechanism parts (ball feet, axle stubs, face panel) are dark, with one saturated orange accent used only on the joint caps."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every visible rotation axis has the same orange round cap, centred on its axis and set in a rounded lobe of the leg plate."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a long box with modest fillets, the legs are flat plates of constant thickness and the servo pods are separate rounded blocks, so it still reads as plates and boxes rather than merged soft forms."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "The only face is a generic dark rectangular screen on the front end: it shows which end is the front, but it gives the robot little character."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The legs taper clearly to distinct black ball feet under a fairly compact body, and the four-legged stance looks balanced and intentional."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render has a clean gradient backdrop, soft ground shadows, smooth edges and a three-quarter view, but the camera is high rather than low and the flat CAD-style shading lacks studio polish."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A rounded shell covers the body and the front servo pods, but the limbs are bare plates and dark axle stubs show in the gaps between the leg plates and the body.\"}, \"T2\": {\"score\": 3, \"reason\": \"The shell is off-white and the mechanism parts (ball feet, axle stubs, face panel) are dark, with one saturated orange accent used only on the joint caps.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every visible rotation axis has the same orange round cap, centred on its axis and set in a rounded lobe of the leg plate.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a long box with modest fillets, the legs are flat plates of constant thickness and the servo pods are separate rounded blocks, so it still reads as plates and boxes rather than merged soft forms.\"}, \"T5\": {\"score\": 2, \"reason\": \"The only face is a generic dark rectangular screen on the front end: it shows which end is the front, but it gives the robot little character.\"}, \"T6\": {\"score\": 3, \"reason\": \"The legs taper clearly to distinct black ball feet under a fairly compact body, and the four-legged stance looks balanced and intentional.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render has a clean gradient backdrop, soft ground shadows, smooth edges and a three-quarter view, but the camera is high rather than low and the flat CAD-style shading lacks studio polish.\"}}",
+      "session_id": "d7c23c4d-0e59-4be4-9f7a-cb3d74452f92",
+      "duration_ms": 22419,
+      "num_turns": 17,
+      "total_cost_usd": 0.12571120000000002,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2563,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.12571120000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 788,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A rounded white shell covers the body and the servo blocks, but the leg links are bare flat plates, and gaps and small dark shafts and connectors show between the legs and the body."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The shell is off-white and the feet, face panel and shafts are dark, with a single saturated orange accent used only on the joint caps."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every visible rotation axis has the same orange round cap, centred on its axis inside a rounded link end."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a rounded box with moderate fillets, but the legs are flat plates of constant thickness and the hip blocks are separate boxes, so the robot still reads as plates and boxes."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark rectangular panel on one end suggests a face and a front, but it is a plain, generic screen-like slot with no real character."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "A compact body stands on legs that taper to distinct dark ball feet, and the four-legged stance looks balanced."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "It is lit so curvature reads, on a clean gradient backdrop, with soft shadows and a good three-quarter view, but the materials look like plain CAD shading rather than a studio hero render."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A rounded white shell covers the body and the servo blocks, but the leg links are bare flat plates, and gaps and small dark shafts and connectors show between the legs and the body.\"}, \"T2\": {\"score\": 3, \"reason\": \"The shell is off-white and the feet, face panel and shafts are dark, with a single saturated orange accent used only on the joint caps.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every visible rotation axis has the same orange round cap, centred on its axis inside a rounded link end.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a rounded box with moderate fillets, but the legs are flat plates of constant thickness and the hip blocks are separate boxes, so the robot still reads as plates and boxes.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark rectangular panel on one end suggests a face and a front, but it is a plain, generic screen-like slot with no real character.\"}, \"T6\": {\"score\": 3, \"reason\": \"A compact body stands on legs that taper to distinct dark ball feet, and the four-legged stance looks balanced.\"}, \"T7\": {\"score\": 2, \"reason\": \"It is lit so curvature reads, on a clean gradient backdrop, with soft shadows and a good three-quarter view, but the materials look like plain CAD shading rather than a studio hero render.\"}}\n```",
+      "session_id": "e02a4147-5486-4b62-989d-473c5e2fc801",
+      "duration_ms": 28911,
+      "num_turns": 17,
+      "total_cost_usd": 0.12909120000000002,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2732,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.12909120000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 980,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell covers the body and no servo cases are visible, but the front hip blocks sit as separate boxy covers with gaps, and dark shaft stubs show between the leg plates and the body."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The robot uses an off-white shell and a dark mechanism colour for the feet, face panel and shafts, with one orange accent placed only on the joint caps."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every rotation axis has the same round orange cap, concentric with its axis, on a rounded boss at the end of the leg plate."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a long box with moderate fillets, and the legs are flat plates of constant thickness, so the whole robot reads as plates and boxes rather than soft merged forms."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark rectangular screen gives the robot a front, but it is a plain, generic panel that adds little character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs taper to distinct black ball feet, but the body is long rather than compact and the loose front blocks make the stance look arbitrary."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render has clean lighting, a gradient backdrop, soft shadows and antialiased edges, but the views are high-angle or orthographic rather than a low three-quarter hero shot, and the materials read as flat CAD colours."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell covers the body and no servo cases are visible, but the front hip blocks sit as separate boxy covers with gaps, and dark shaft stubs show between the leg plates and the body.\"}, \"T2\": {\"score\": 3, \"reason\": \"The robot uses an off-white shell and a dark mechanism colour for the feet, face panel and shafts, with one orange accent placed only on the joint caps.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every rotation axis has the same round orange cap, concentric with its axis, on a rounded boss at the end of the leg plate.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a long box with moderate fillets, and the legs are flat plates of constant thickness, so the whole robot reads as plates and boxes rather than soft merged forms.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark rectangular screen gives the robot a front, but it is a plain, generic panel that adds little character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The legs taper to distinct black ball feet, but the body is long rather than compact and the loose front blocks make the stance look arbitrary.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render has clean lighting, a gradient backdrop, soft shadows and antialiased edges, but the views are high-angle or orthographic rather than a low three-quarter hero shot, and the materials read as flat CAD colours.\"}}",
+      "session_id": "4b5273ac-6f20-49ad-8206-3415ddc1eaa9",
+      "duration_ms": 22631,
+      "num_turns": 17,
+      "total_cost_usd": 0.1249512,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2525,
+          "cacheReadInputTokens": 5656,
+          "cacheCreationInputTokens": 9163,
+          "webSearchRequests": 0,
+          "costUSD": 0.1249512,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 746,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

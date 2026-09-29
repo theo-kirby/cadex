@@ -405,19 +405,92 @@ def _edge_fact(index: int, edge: Any) -> dict[str, Any]:
     }
 
 
+#: A1's frozen P2 threshold (docs/probes/ot10/README.md): an edge is sharp
+#: when its two faces' outward normals turn by more than this at its midpoint.
+SHARP_EDGE_DEGREES = 60.0
+
+
+def sharp_edge_facts(shape: Any) -> dict[str, Any]:
+    """How much of a shape's solid edge length is a sharp convex corner (ADR-415).
+
+    Over every edge of every solid that has two distinct faces (a seam has
+    the same face on both sides and is left out, as is a degenerate edge):
+    the total length, and the length whose two outward normals, sampled at
+    the edge's midpoint, turn by more than :data:`SHARP_EDGE_DEGREES` *and*
+    meet convexly. A tangent fillet or a 45-degree chamfer is not sharp; a
+    box corner or a hole's rim is; the root of a boss is concave and is not.
+    Convexity is read from the edge's orientation in its first face -- with
+    that face's outward normal ``n1``, the other's ``n2`` and the oriented
+    tangent ``t``, the edge is convex when ``(n1 x n2) . t > 0`` -- so no
+    solid classifier runs. An edge whose normals cannot be evaluated counts
+    towards the total and ``unresolved_edges``, never as sharp.
+    """
+
+    threshold = math.cos(math.radians(SHARP_EDGE_DEGREES))
+    total = sharp = 0.0
+    unresolved = 0
+    for solid in list(getattr(shape, "Solids", []) or []):
+        faces = list(solid.Faces)
+        # Edge -> the faces it bounds. hashCode ignores orientation and
+        # isSame settles collisions; the first instance kept is the edge as
+        # its first face orients it.
+        owners: dict[int, list[tuple[Any, list[int]]]] = {}
+        for index, face in enumerate(faces):
+            for edge in face.Edges:
+                bucket = owners.setdefault(edge.hashCode(), [])
+                for known, sides in bucket:
+                    if known.isSame(edge):
+                        sides.append(index)
+                        break
+                else:
+                    bucket.append((edge, [index]))
+        for bucket in owners.values():
+            for edge, sides in bucket:
+                if len(sides) != 2 or sides[0] == sides[1]:
+                    continue
+                length = float(edge.Length)
+                total += length
+                try:
+                    middle = 0.5 * (edge.FirstParameter + edge.LastParameter)
+                    point = edge.valueAt(middle)
+                    first, second = faces[sides[0]], faces[sides[1]]
+                    n1 = first.normalAt(*first.Surface.parameter(point))
+                    n2 = second.normalAt(*second.Surface.parameter(point))
+                    if n1.dot(n2) >= threshold:
+                        continue
+                    tangent = edge.tangentAt(middle)
+                    if str(edge.Orientation) == "Reversed":
+                        tangent = tangent * -1.0
+                    if n1.cross(n2).dot(tangent) > 0.0:
+                        sharp += length
+                except Exception:  # an unevaluable surface is reported, not guessed
+                    unresolved += 1
+    return {
+        "threshold_deg": SHARP_EDGE_DEGREES,
+        "edge_length_mm": total,
+        "sharp_convex_length_mm": sharp,
+        "unresolved_edges": unresolved,
+    }
+
+
 def part_shape_facts(
     shape: Any,
     *,
     max_subelements: int = MAX_SUBELEMENT_FACTS,
+    edge_convexity: bool = True,
 ) -> dict[str, Any]:
-    """Return bounded, JSON-safe topology facts for model inspection and selectors."""
+    """Return bounded, JSON-safe topology facts for model inspection and selectors.
+
+    ``edge_convexity=False`` leaves out ``sharp_edges`` for a caller that
+    reads counts only.
+    """
 
     detail_limit = max(0, min(int(max_subelements), MAX_SUBELEMENT_FACTS))
     bounds = shape.BoundBox
     center = getattr(shape, "CenterOfMass", None)
     faces = list(getattr(shape, "Faces", []) or [])
     edges = list(getattr(shape, "Edges", []) or [])
-    return {
+    facts = {
         "shape_type": str(getattr(shape, "ShapeType", "") or ""),
         "valid": bool(shape.isValid()),
         "null": bool(shape.isNull()),
@@ -450,6 +523,9 @@ def part_shape_facts(
             len(faces) > detail_limit or len(edges) > detail_limit
         ),
     }
+    if edge_convexity:
+        facts["sharp_edges"] = sharp_edge_facts(shape)
+    return facts
 
 
 def _error(operation: str, parameter: str, message: str) -> PartOperationError:

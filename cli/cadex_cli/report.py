@@ -243,6 +243,12 @@ def human_lines(report: RunReport) -> list[str]:
                     str(pair.get("first") or ""), str(pair.get("second") or ""),
                     str(pair.get("status") or ""), _measure(pair.get("distance_mm")),
                     _measure(pair.get("common_volume_mm3"))))
+            for pair in report.fit.get("world_geometry_contacts") or []:
+                # Reported beside the failures, never among them (ADR-427).
+                lines.append("  {:s} ∩ {:s}: resting on world geometry (advisory)  distance {:s} mm  common {:s} mm³".format(
+                    str(pair.get("first") or ""), str(pair.get("second") or ""),
+                    _measure(pair.get("distance_mm")),
+                    _measure(pair.get("common_volume_mm3"))))
     sweep = report.fit.get("sweep") if report.fit else None
     if isinstance(sweep, dict):
         verdict = str(sweep.get("verdict") or "")
@@ -266,6 +272,14 @@ def human_lines(report: RunReport) -> list[str]:
                 # and the numbers alone do not say which.
                 lines.append(
                     "  {:s} ∩ {:s} through {:s}: {:s}  min {:s} mm  max common {:s} mm³".format(
+                        str(pair.get("first") or ""), str(pair.get("second") or ""),
+                        str(pair.get("joint") or ""), str(pair.get("status") or ""),
+                        _measure(pair.get("minimum_distance_mm")),
+                        _measure(pair.get("maximum_common_volume_mm3"))))
+            for pair in sweep.get("world_geometry") or []:
+                # Reported beside the failures, never among them (ADR-420).
+                lines.append(
+                    "  {:s} ∩ {:s} through {:s}: {:s} (world geometry, advisory)  min {:s} mm  max common {:s} mm³".format(
                         str(pair.get("first") or ""), str(pair.get("second") or ""),
                         str(pair.get("joint") or ""), str(pair.get("status") or ""),
                         _measure(pair.get("minimum_distance_mm")),

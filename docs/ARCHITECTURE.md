@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-09-19
+Verified against source: 2026-09-28
 
 **Native Blender geometry (ADR-185).** The mesh domain now includes
 `mesh.blender`: an xscript-owned recipe with named mesh inputs and JSON
@@ -120,7 +120,9 @@ NDJSON client with no cadex imports.
   and `RLIMIT_AS` in different units — see `docs/XSCRIPT.md` and ADR-250).
   Its environment is a closed allowlist (`worker_environment`) that pins
   `PYTHONHASHSEED` and the BLAS thread pool, so a worker's address-space
-  footprint does not vary with the host's core count. The project bundle
+  footprint does not vary with the host's core count; `_resource_limits`
+  pins the worker to four CPUs for the same reason, so its CPU-second
+  charge does not either (ADR-418). The project bundle
   (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`) stages
   all five domain api/worker modules with entry `cadex_project_worker.py`
   — **and fifteen more modules by filename**, which is the pattern worth
@@ -159,7 +161,9 @@ NDJSON client with no cadex imports.
   `manage_transaction=False`), rewrites same-script assembly component
   tokens to live names, garbage-collects owned objects whose outputs left
   the contract, and aborts on any untagged document object
-  (`PUBLICATION_UNTAGGED_OBJECT`). Failed candidates stay inspectable
+  (`PUBLICATION_UNTAGGED_OBJECT`). Undo is on for that one transaction
+  and cleared after it, so any refusal rolls the document back to the
+  accepted revision (ADR-434). Failed candidates stay inspectable
   without replacing the accepted revision. Since Phase 5 publication runs
   **only inside cadexd's ephemeral document** (and `cadex_rebuild`) — the
   split is process-level, so the pipeline modules stay in-tree, but shell
