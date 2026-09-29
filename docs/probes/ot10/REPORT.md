@@ -223,9 +223,12 @@ Finch in 117.5 s, `w2-1` in 72.8 s and `w2-2` in 153.9 s. Each webm stays
 in its project copy's `runs/`, never in git. The dashboard's Chromium
 playback check ran on `w2-1`'s video. It was not repeated for `w2-2`'s.
 The dark-floor re-render of `w2-2` (ADR-444) took 189.0 s for 101 frames
-against the same 300 s bound. It was rendered on a scratch copy, and its
-webm was not played back in the dashboard: **dashboard playback of the
-dark video was not re-checked.**
+against the same 300 s bound. It was rendered on a scratch copy. The
+dashboard's Chromium playback check was then run on that copy's webm
+(`3fb52b44…`): it loaded at 512×512 with a 10.1 s duration, played past
+1.1 s, kept playing across three polls, and downloaded as the same file,
+byte for byte (438,625 bytes, SHA-256 matched). A decoded frame's corners
+read `#161616`–`#181818`, which is the `#141414` scene after VP9.
 
 ## The training runs (W2)
 
@@ -349,7 +352,8 @@ viewport drift apart.
   or less.
 - **Nothing was re-scored.** This is a presentation change. The frozen
   rubric's anchor still says "seamless backdrop" and was not edited.
-- **Dashboard playback of the dark video was not re-checked.**
+- **The dashboard plays the dark video.** Chromium loaded, played and
+  downloaded it byte for byte, as in W1's bound above.
 
 ## Remaining defects
 
@@ -533,7 +537,8 @@ The skip counts are the same as above, and so are their causes. This
 report claims done for review with A5 **not met**: 7 of 18 counted turns
 meet the bar and 11 miss. It ticks no box.
 
-**Reconcile before done (2026-09-29).** C1 says to reconcile, then claim
+**Reconcile before done (2026-09-29, history: both records named here
+have since been folded).** C1 says to reconcile, then claim
 done. At this revision `hypergraph check` exits 0 with 0 violations and
 0 warnings. Two records are still unfolded: `morning-tooth-4242` (hexapod
 13) and `rich-path-1948` (the closing run above). Their impacts are pending
@@ -562,5 +567,8 @@ edited page (48 of 48). The run claims done for critic review on A1–A4,
 A6, A8, W1, W2 and C1, as the owner's exhaustion decision directs. A5 is
 the owner's to judge. A7 is open and carried forward. W2 is a measured
 result with the owner's verdict that `w2-2` shuffles. No box is ticked.
-The last reconcile must fold `keen-comet-6140` and this report's record.
-A work iteration may not do that, so it falls to the reconcile pass.
+The last reconcile must fold `keen-comet-6140` (A8), `glad-oak-4897`
+(this report) and the record of the dark-video playback check. A work
+iteration may not do that, so it falls to the reconcile pass; done is
+re-claimed once `STATE.md` shows them folded and `hypergraph check`
+exits 0.
