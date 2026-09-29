@@ -29089,3 +29089,40 @@ re-scored, and no dependency is added.
 
 The first three fail on the previous worker, which ran `['whole common']`.
 The real-OCCT test fails there too, because the helper does not exist.
+
+## ADR-439 — The render's clustering grid is sized from what is drawn, not from the floor (2026-09-28)
+
+**Context.** Above 400,000 triangles, `cadex render` and `look` cluster
+vertices on a grid that starts at a quarter pixel of the model's largest
+extent (ADR-410). That extent covered every loaded part, including the
+world floor, which is then left out of the drawing. `ot10-hexapod-12`
+declared a 3,000 mm floor under a 278 mm robot, so the robot was drawn on a
+1.465 mm grid as 52,303 of 970,004 triangles, and every judge call named
+faceted or lumpy legs.
+
+**Decision.** `render.snapshot` takes the environment names and sizes the
+extent from the other parts. The floor is still read, clustered on the
+robot's grid and budgeted. The names come from the accepted revision's fit,
+which calls the floor world geometry (`render.world`): `acquire_snapshot`
+reads the fit after its rebuild, and the bridge's `look` passes the fit it
+already holds. A fit that cannot be read leaves every part in the extent,
+which is the old behaviour, rather than failing the render.
+`summary.decimation` now also carries `extent_mm` and `extent_excludes`.
+
+**Measured.** The same accepted revision of `ot10-hexapod-12`, from a
+project copy: the cell goes from 1.465 mm to 0.271 mm and the drawn
+triangles from 52,303 to 352,317. Drawing takes 14.5 s (hero 3.1 s)
+against 4.5 s (1.7 s), inside A2's 60 s. The before and after heroes are
+`docs/probes/ot10/ot10-hexapod-12-hero.png` and
+`ot10-hexapod-12-hero-grid-after.png`.
+
+**A finding, not a re-score.** Every earlier decimated ot10 render had a
+floor wider than its robot: hex3's baseline (500 mm over 173 mm), the
+hexapods and quadrupeds (800–1,200 mm over 174–306 mm). Each would now draw
+on a finer grid than the one it was judged on. No frozen rubric, proxy, bar
+or procedure changed, and no score is re-taken.
+
+**Tests.** `test_the_floor_does_not_size_the_clustering_grid` (a 10 mm
+grid beside a 3,000 mm floor: the cell equals the grid alone) and
+`test_acquire_snapshot_reads_the_floor_from_the_accepted_fit` both fail on
+the previous source.

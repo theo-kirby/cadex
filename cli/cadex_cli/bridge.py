@@ -322,7 +322,7 @@ class Bridge:
                     self.state.last_inventory = self._read_inventory()
             fit, inventory = self.state.last_fit, self.state.last_inventory
             try:
-                triangles, summary = render.snapshot(reply)
+                triangles, summary = render.snapshot(reply, render.world(fit))
                 world, purchased = render.classify(summary, fit, inventory)
                 appearance, palette = render.declared(inventory)
                 # Focus names may be outputs as well as the components that

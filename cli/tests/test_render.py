@@ -232,6 +232,58 @@ def test_over_budget_geometry_is_clustered_not_refused(tmp_path, monkeypatch):
     assert after == pytest.approx(before, rel=0.05)
 
 
+def floored_reply(tmp_path):
+    """grid_reply plus a 3,000 mm floor plane, as ot10-hexapod-12 declared."""
+    reply = grid_reply(tmp_path)
+    vertices = [(-1500, -1500, -1), (1500, -1500, -1), (1500, 1500, -1), (-1500, 1500, -1)]
+    data = b''.join(struct.pack('<3f', *v) for v in vertices) + struct.pack('<6I', 0, 1, 2, 0, 2, 3)
+    binary, side = tmp_path / 'floor.bin', tmp_path / 'floor.json'
+    binary.write_bytes(data)
+    side.write_text(json.dumps({'schema': 'cadex-tessellation-v1', 'byte_order': 'little',
+                               'layout': {'vertices': {'offset': 0, 'bytes': 48, 'dtype': 'f32'},
+                                          'triangles': {'offset': 48, 'bytes': 24, 'dtype': 'u32'}}}))
+    reply['display']['floor'] = {'tessellation': {'artifact_path': str(binary), 'sidecar_path': str(side)}}
+    return reply
+
+
+def test_the_floor_does_not_size_the_clustering_grid(tmp_path, monkeypatch):
+    """ADR-439: hexapod-12's 3 m floor drew the robot on a 1.46 mm grid."""
+    monkeypatch.setattr(render, 'MAX_TRIANGLES', 3000)
+    _, alone = render.snapshot(grid_reply(tmp_path))
+    fewer, floored = render.snapshot(floored_reply(tmp_path), {'floor'})
+    assert floored['decimation']['cell_mm'] == alone['decimation']['cell_mm']
+    assert floored['decimation']['extent_mm'] == pytest.approx(10.0)
+    assert floored['decimation']['extent_excludes'] == ['floor']
+    # The robot keeps its detail, and the floor is still read and drawn.
+    assert floored['objects']['grid']['triangles'] == alone['objects']['grid']['triangles'] > 2000
+    assert floored['objects']['floor']['triangles'] == 2
+    # Unnamed, the floor sets the grid, and the grid loses the robot.
+    _, unnamed = render.snapshot(floored_reply(tmp_path))
+    assert unnamed['decimation']['cell_mm'] == pytest.approx(3000 / 2048)
+    assert unnamed['objects']['grid']['triangles'] < alone['objects']['grid']['triangles'] / 10
+    assert unnamed['decimation']['extent_excludes'] == []
+
+
+def test_acquire_snapshot_reads_the_floor_from_the_accepted_fit(tmp_path, monkeypatch):
+    from cadex_cli import clearance
+    monkeypatch.setattr(render, 'MAX_TRIANGLES', 3000)
+    reply = floored_reply(tmp_path)
+
+    class Client:
+        def request(self, op, args):
+            assert op == 'rebuild'
+            return reply
+
+    monkeypatch.setattr(clearance, 'read_fit', lambda client: {
+        'failing': [{'first': 'floor', 'second': 'grid', 'status': 'world geometry'}]})
+    _, summary = render.acquire_snapshot(Client())
+    assert summary['decimation']['extent_excludes'] == ['floor']
+    # An unreadable fit draws as before rather than failing the render.
+    monkeypatch.setattr(clearance, 'read_fit', lambda client: (_ for _ in ()).throw(InventoryError('no fit')))
+    _, summary = render.acquire_snapshot(Client())
+    assert summary['decimation']['extent_excludes'] == []
+
+
 def test_clustering_that_cannot_reach_the_budget_still_refuses(tmp_path, monkeypatch):
     monkeypatch.setattr(render, 'MAX_TRIANGLES', 0)
     with pytest.raises(InventoryError, match='triangle budget exceeded'):

@@ -261,15 +261,19 @@ the report was written, and none is closed.
 7. **The long-term ladder is not started.** That covers a Cadex signature
    that holds across body plans, `hip_pitch` ranges, stalls, and
    electronics bays shaped around their parts.
-8. **The floor sets the robot's render resolution.** `cadex render`
-   sizes its vertex-clustering grid from the extent of every loaded part,
-   the world floor included, and drops the floor from the drawing only
-   afterwards. `ot10-hexapod-12` declared a 3,000 mm floor plane, so its
+8. **The floor set the robot's render resolution (fixed, ADR-439).**
+   `cadex render` sized its vertex-clustering grid from the extent of
+   every loaded part, the world floor included, and dropped the floor from
+   the drawing only afterwards. `ot10-hexapod-12` declared a 3,000 mm floor plane, so its
    robot drew on a 1.46 mm grid as 52,303 of 970,004 triangles. The other
    hexapods drew on 0.39–0.59 mm grids. All three judge calls named
    faceted or lumpy legs, and T4 was 1 in two of them. The score stands
-   as taken. The renderer is the next unit, with before and after images
-   of the same design.
+   as taken. The grid is now sized from the drawn parts: the same
+   revision draws on a 0.271 mm cell as 352,317 triangles, in 14.5 s
+   ([before](ot10-hexapod-12-hero.png),
+   [after](ot10-hexapod-12-hero-grid-after.png)). Every earlier decimated
+   render, hex3's baseline included, had a floor wider than its robot and
+   would now draw finer; that is a finding, and nothing is re-scored.
 9. **A fillet can crash the worker without naming itself.** Three
    `edit_script` calls in `ot10-hexapod-11` ended in
    `DOMAIN_WORKER_NO_RESULT`. The agent traced them to OCCT's fillet kernel

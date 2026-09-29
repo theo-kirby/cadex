@@ -1929,7 +1929,11 @@ hero), counted in subsamples actually visited, including overdraw. Excessive, mi
 empty geometry fail explicitly. Above 400,000 triangles the snapshot clusters
 vertices on a grid, starting at a quarter pixel of the 512 px view over the
 model's largest extent and doubling until it fits; the summary's
-`decimation` names the input count and the cell (ADR-410). hex2 (110,688
+`decimation` names the input count, the cell, the `extent_mm` it was sized
+from and the world geometry that extent leaves out (ADR-410, ADR-439). A
+declared floor is left out of that extent, named by the accepted fit as world
+geometry, and is still clustered on the robot's grid; a fit that cannot be
+read leaves every part in it. hex2 (110,688
 triangles) was refused at the old 100,000 cap, and hex3 (589,268, filleted
 brackets) at ADR-406's 400,000, which lost both the agent's `look` and the
 walk's review. hex3 now draws as 106,326 triangles at a 0.24 mm cell; its

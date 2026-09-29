@@ -1962,6 +1962,24 @@ The turn had 8 refused calls:
 - 1 `edit_script` replacement whose text occurred 0 times;
 - 1 `inspect` of an object named `model` that did not exist.
 
+**The renderer fix that followed (ADR-439), a finding and not a score.**
+The clustering grid is now sized from the extent of the parts that are
+drawn, so the declared floor no longer sets the robot's resolution. The
+same accepted revision, re-rendered from a copy of the project, at the
+same hero view: before,
+[`ot10-hexapod-12-hero.png`](ot10-hexapod-12-hero.png) (the judged image,
+1.465 mm cell over the 3,000 mm floor, 52,303 drawn triangles); after,
+[`ot10-hexapod-12-hero-grid-after.png`](ot10-hexapod-12-hero-grid-after.png)
+(0.271 mm cell over the robot's 278 mm, 352,317 drawn triangles, 130 KB).
+The tibias that read as lumpy are smooth in the after image. Drawing took
+14.5 s, 3.1 s of it for the hero, against 4.5 s and 1.7 s before, which is
+far inside A2's 60 s. P1 moved from 0.0038 to 0.0036; P2 (0.1844) and
+P3 (3) did not move. **Hexapod-12's 12 of 21 stands as it was taken, and
+nothing is re-scored.** Every earlier decimated ot10 render, including
+hex3's baseline (500 mm floor over 173 mm), also had a floor wider than the
+robot, so each would now draw on a finer grid than the one it was judged
+on.
+
 ## A4: the refusal census, every ot10 transcript
 
 **None of A4's four refusal classes recurred in any ot10 product-agent

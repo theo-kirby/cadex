@@ -106,8 +106,14 @@ def _require(condition, message):
         raise InventoryError('render: ' + message)
 
 
-def snapshot(reply):
-    """Copy and validate all geometry before any subsequent engine request."""
+def snapshot(reply, environment=()):
+    """Copy and validate all geometry before any subsequent engine request.
+
+    ``environment`` names world geometry (see :func:`world`). It is still
+    read and clustered, but it does not size the clustering grid: a 3 m
+    floor under a 300 mm robot drew the robot on a 1.46 mm grid
+    (ot10-hexapod-12, ADR-439).
+    """
     _require(reply.get('ok') is True, str(reply.get('error') or 'rebuild failed'))
     revision = reply.get('revision')
     _require(isinstance(revision, str) and len(revision) == 64 and
@@ -194,8 +200,9 @@ def snapshot(reply):
     _require(bool(parts), 'no published triangle geometry')
     decimation = None
     if raw_triangles > MAX_TRIANGLES:
-        extent = max(max(p[j] for *_, points, _ in parts for p in points)
-                     - min(p[j] for *_, points, _ in parts for p in points) for j in range(3))
+        drawn = [part for part in parts if part[0] not in environment] or parts
+        extent = max(max(p[j] for *_, points, _ in drawn for p in points)
+                     - min(p[j] for *_, points, _ in drawn for p in points) for j in range(3))
         _require(extent > 0, 'zero model extent')
         cell = extent * FIRST_CELL_FRACTION
         while True:
@@ -206,8 +213,9 @@ def snapshot(reply):
             _require(cell < extent, 'triangle budget exceeded')
             cell *= 2.0
         parts = [(*part[:4], tris) for part, tris in zip(parts, clustered)]
-        decimation = {'input_triangles': raw_triangles, 'cell_mm': cell,
-                      'cell_fraction_of_extent': cell / extent}
+        decimation = {'input_triangles': raw_triangles, 'cell_mm': cell, 'extent_mm': extent,
+                      'cell_fraction_of_extent': cell / extent,
+                      'extent_excludes': sorted({part[0] for part in parts} - {part[0] for part in drawn})}
     for name, source, matrix, points, indices in parts:
         color = PALETTE[len(objects) % len(PALETTE)]
         first = len(triangles)
@@ -677,6 +685,12 @@ def look(triangles, summary, views, *, focus=(), exclude=(), purchased=None, app
     return shots
 
 
+def world(fit):
+    """The names the fit block calls world geometry (a declared floor)."""
+    return {str(row.get('first') or '') for row in (fit or {}).get('failing') or []
+            if row.get('status') == 'world geometry'}
+
+
 def classify(summary, fit=None, inventory=None):
     """``(environment, purchased)`` for a snapshot, from the fit and inventory blocks.
 
@@ -684,8 +698,7 @@ def classify(summary, fit=None, inventory=None):
     every object whose source no inventory row calls uncatalogued, or
     ``None`` when there is no inventory to say.
     """
-    environment = {str(row.get('first') or '') for row in (fit or {}).get('failing') or []
-                   if row.get('status') == 'world geometry'} & set(summary['objects'])
+    environment = world(fit) & set(summary['objects'])
     purchased = None
     if inventory and inventory.get('available', True) and 'uncatalogued_sources' in inventory:
         printed = set(inventory.get('uncatalogued_sources') or [])
@@ -732,7 +745,16 @@ def _published_blocks(client):
 def acquire_snapshot(client):
     start = time.perf_counter()
     reply = client.request('rebuild', {'display': {'quality': 'standard', 'edges': False}})
-    triangles, summary = snapshot(reply)
+    # The accepted revision's fit names the floor, which must not size the
+    # clustering grid; a fit that cannot be read leaves every part sizing it.
+    fit = None
+    if reply.get('ok') is True:
+        from .clearance import read_fit
+        try:
+            fit = read_fit(client)
+        except Exception:
+            pass
+    triangles, summary = snapshot(reply, world(fit))
     summary['acquisition_seconds'] = time.perf_counter() - start
     return triangles, summary
 
