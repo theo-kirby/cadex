@@ -1816,6 +1816,38 @@ The turn had 5 refused calls, out of 7 `write_script`, 8 `edit_script`,
 - 1 guessed JSON pointer (`/summary`);
 - 1 reset-variation refusal that named the 1.18 mm lift.
 
+## A5 hexapod turn 12, pre-registered
+
+Registered on 2026-09-29 before the turn started, at the revision that
+commits this section. It follows three engine changes aimed at the
+worker's CPU limit, each measured only on a replay of `ot10-hexapod-10`'s
+refused build: ADR-436 (the static fit skips `common` on a pair measured
+apart, and a CPU refusal names its stage), ADR-437 (a housing's faces are
+searched best first) and ADR-438 (a touching pair's `common` runs on the
+solids cut to their shared region). ADR-435 (the bounded build reply) is
+also in this engine. No A5 turn has yet run on any of the four.
+
+- **One turn, once.** It runs on the new project `ot10-hexapod-12`, on the
+  frozen prompt from `contract.json` `a5.prompts.hexapod`, with the frozen
+  argv above: `claude-opus-5-5`, `CADEX_EFFORT=medium` and no
+  continuation. The installed `build/release/Mod/cadex` was compared file
+  by file with `src/Mod/cadex` before launch and is identical.
+- **What it measures, besides the bar.** The CPU-limit refusals in its
+  transcript, counted by `runner/refusals.py`, against `ot10-hexapod-10`'s
+  6 of 15. If any remain, the stage each refusal names is recorded. The
+  comparison is one turn against one turn, and it is reported as that,
+  not as a rate.
+- **Nothing is re-scored.** The ten failed attempts stand as published
+  misses, and the confirmation round stays at 2 of 3. This turn adds a
+  counted attempt, and a miss adds an eleventh miss.
+- **Scoring is unchanged.** The design is rendered and scored blind with
+  `runner/judge.py` from a `/tmp` copy of the project, under the frozen
+  rubric, proxies, bar and judging procedure.
+- **A miss is diagnosed before anything changes.** No prompt, overlay or
+  tool change follows a miss until it is diagnosed and recorded.
+- **A harness kill is not an attempt.** A turn killed before it has an exit
+  status is kept read-only as the receipt, and the plan gets a new project.
+
 ## A4: the refusal census, every ot10 transcript
 
 **None of A4's four refusal classes recurred in any ot10 product-agent
