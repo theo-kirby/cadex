@@ -276,9 +276,12 @@ the report was written, and none is closed.
    the quadruped's legs are constant-thickness plates on a filleted box, even
    though it is the first counted design to score 3 on T3. No design scores
    3 on T1, so every design still shows some hardware.
-7. **The long-term ladder is not started.** That covers a Cadex signature
-   that holds across body plans, `hip_pitch` ranges, stalls, and
-   electronics bays shaped around their parts.
+7. **The long-term ladder has started.** The `hip_pitch` gap is closed
+   (ADR-441). hex2's refusal at 48 mm, inside the parameter's own range,
+   was the MJCF export check reading 7.1e-18 m of round-off, which the
+   writer zeroes, as a drift of 1.0. Still open: a Cadex signature that
+   holds across body plans, stalls, and electronics bays shaped around
+   their parts.
 8. **The floor set the robot's render resolution (fixed, ADR-439).**
    `cadex render` sized its vertex-clustering grid from the extent of
    every loaded part, the world floor included, and dropped the floor from

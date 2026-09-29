@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-09-26
+Verified against source: 2026-09-29
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -2115,6 +2115,11 @@ Ranked by how quietly they fail.
     carry real half-lengths. Note that an exactly-zero field is *fine* —
     `dof_damping` with no `joint_dynamics` is all zeros and passes — so the
     hazard is specifically **a field that should be zero and is dust**.
+    **Fixed at the source by ADR-441 (2026-09-29).** The writer emits any
+    float below 1e-12 as `0`, and `_field_drift` now compares values below
+    `MJCF_WRITER_ZERO` as that zero on both sides, so dust no longer
+    refuses and the component-frame workaround above is no longer required.
+    hex2 hit this as `hip_pitch=48` being refused inside its own range.
 
 13. **A witness records what the GPU rounded the network to, not what the
     network computes.**

@@ -29159,3 +29159,45 @@ and `test_the_horn_spec_carries_the_reach_the_overlay_sizes_the_cap_from`
 (`cli/tests/test_turn_loop.py`) both fail on the previous overlay. The
 second checks that the key the overlay names exists on every catalog horn
 row.
+
+## ADR-441 — The export check compares what the MJCF writer can carry (2026-09-29)
+
+**Context.** hex2's `hip_pitch` parameter declares a range of 46–52 mm.
+At 48 the design was refused with "The MJCF exported for assembly output
+'hexapod' changed body_pos by 1 relative; the accepted maximum is 1e-05"
+(`docs/probes/hex/hex2-GAPS.md`). 47 was accepted. The agent took the
+first failures for a nondeterministic settle, spent three rebuilds on
+them, and then settled on 47. `docs/probes/hex/README.md` listed the case
+as a suspected engine defect that had not been reproduced. It reproduces
+on the current engine in 23 s on a copy of the project. hex2 builds every
+body at the origin, so `body_pos` is all zeros except three entries of
+−7.1e-18 m, which are round-off from the placement arithmetic. MuJoCo
+3.10.0's XML writer emits any float below 1e-12 in magnitude as `0`. This
+was measured on `body_pos`, `body_quat` and `geom_pos`: 9.99e-13 is
+written as 0 and 1e-12 survives. `_field_drift` divides the worst
+difference by the field's own largest magnitude, which here was the
+round-off itself. Noise against noise therefore read as a drift of
+exactly 1.0. So this was not a sign or frame error. The failure depended
+on the parameter value only through which values produced the round-off.
+
+**Decision.** `_field_drift` compares values below the new
+`MJCF_WRITER_ZERO = 1e-12` as the zero the writer turns them into, on
+both sides. The rule is not a tolerance. It models what the file can
+represent, so a number the file cannot carry does not count as moved.
+ADR-134's floor on `body_ipos` is 1e-9 and applies only in
+`model_differences`. That floor is unchanged. The new floor is three
+orders tighter and holds for every field, because it is the writer's
+own zero and not a bound chosen by hand. Against a limb moment of 1e-5
+kg·m² it is 1e-7 relative, inside the 1e-5 bound that ADR-134 refused
+to loosen.
+
+**Tests.** In `cadex_tests/test_dynamics_mjcf_model.py`:
+`test_a_model_whose_body_positions_are_round_off_still_exports` uses the
+pendulum with its bodies at the origin, one of them at −7.1e-18 m.
+`test_the_writer_zero_is_the_writers` re-measures the threshold on the
+installed MuJoCo. `test_the_writer_zero_does_not_admit_a_real_change`
+checks that 1e-9 m and 2e-6 m against zero are still refused. All three
+fail on the previous source. On a copy of hex2, `cadex params --set
+hip_pitch=48 --set policy_on=0` and `hip_pitch=52` are now accepted. With
+`policy_on=1`, the next refusal is the stored policy's task digest, which
+is correct for a changed design.
