@@ -1,0 +1,208 @@
+{
+  "schema": "ot11-judge-v1",
+  "label": "r3-confirm-1",
+  "behaviour": "balance",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+  "instructions_sha256": "dfeab7c7624b2a7472baaaf1e6b9d20ebaba0c80f96953ea203d5725ef02b706",
+  "intent_sha256": "0acb4539649fa813431e691ccb7f3519570bdfb76d5530225cc3a0ea8ac216e7",
+  "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+  },
+  "evaluation": {
+    "schema": "cadex-evaluation-v1",
+    "verdict": "pass",
+    "accepted_revision": "cbf14e3c6865fd354c5dfae1404be985a696ae65f370b66864c4143af2a909a9",
+    "policy_sha256": "8919a22dae1f43bf947e66b3f8718bdf3290959a6b9a81786c569b474e901614",
+    "task_sha256": "ca60b4ce7fd49e80f53c40dac62968700a1d0a344ff14bd190da3227051404c0",
+    "model_sha256": "89ce4ad7a5213f565eee31b8a3913b2802ef983b4142634056f9db095671b7cc"
+  },
+  "seed": 1110,
+  "trace_sha256": "a7f64d819fd431d20115fe552db1a328fd22d6e8078e215b4363a645dae57c77",
+  "film_style_sha256": "1329adc73f1cdf726eb548a2f1b26debd7934641ac965c240efc5bf5ffebe29f",
+  "sheets": [
+    {
+      "sheet": "overview",
+      "sha256": "6b97a8b29cf901690cdf154b559d45427cf36b2eeb39a1fd036e01ef1c0f54b1",
+      "frames": 12,
+      "times_s": [
+        0.0,
+        0.9,
+        1.8,
+        2.72,
+        3.62,
+        4.54,
+        5.44,
+        6.36,
+        7.26,
+        8.18,
+        9.08,
+        10.0
+      ],
+      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path"
+    },
+    {
+      "sheet": "detail",
+      "sha256": "77c77127f6dbde7576f1e364c2e320fdd3906e10abc1b847fba8c50fe6d8ef6b",
+      "frames": 12,
+      "times_s": [
+        2.88,
+        3.08,
+        3.2800000000000002,
+        3.48,
+        3.68,
+        3.88,
+        4.08,
+        4.28,
+        4.48,
+        4.68,
+        4.88,
+        5.08
+      ],
+      "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+      "follows": "comp_chassis"
+    }
+  ],
+  "medians": {
+    "V1": 2,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+  },
+  "total": 11,
+  "meets_bar": true,
+  "raw": [
+    {
+      "scores": {
+        "V1": {
+          "score": 3,
+          "reason": "The robot stays upright and faces the same way in every frame from 0.00 s to 10.00 s, with no clear rolling away or turning."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "It balances on its two wheels with small corrections, with no sliding, hopping or vibrating shortcut visible."
+        },
+        "V3": {
+          "score": 3,
+          "reason": "The shove at about 3.08 s tips the body over visibly, but it is upright again by 3.28 s and stays composed afterwards."
+        },
+        "V4": {
+          "score": 3,
+          "reason": "Apart from the brief shove response, the pose looks the same across the whole episode, before and after the disturbance."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 3, \"reason\": \"The robot stays upright and faces the same way in every frame from 0.00 s to 10.00 s, with no clear rolling away or turning.\"}, \"V2\": {\"score\": 3, \"reason\": \"It balances on its two wheels with small corrections, with no sliding, hopping or vibrating shortcut visible.\"}, \"V3\": {\"score\": 3, \"reason\": \"The shove at about 3.08 s tips the body over visibly, but it is upright again by 3.28 s and stays composed afterwards.\"}, \"V4\": {\"score\": 3, \"reason\": \"Apart from the brief shove response, the pose looks the same across the whole episode, before and after the disturbance.\"}}",
+      "session_id": "e49e8906-85f6-4a9c-b41b-a81f4af949d9",
+      "duration_ms": 6900,
+      "num_turns": 3,
+      "total_cost_usd": 0.0495394,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 569,
+          "cacheReadInputTokens": 2397,
+          "cacheCreationInputTokens": 4708,
+          "webSearchRequests": 0,
+          "costUSD": 0.0495394,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 188,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 2,
+          "reason": "The robot stays upright, keeps the same heading and ends close to where it started, but its position visibly wanders during the episode, moving left after the shove and later drifting a little to the right of its start."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "It balances on its two wheels throughout, and it recovers from the shove with a quick corrective tilt rather than by sliding or vibrating."
+        },
+        "V3": {
+          "score": 3,
+          "reason": "The shove at about 3.08 s tilts the body clearly, but it is upright again by 3.28 s and stays steady and composed for the rest of the episode."
+        },
+        "V4": {
+          "score": 2,
+          "reason": "The posture is unchanging apart from the one disturbance, but the slow drift of position over the episode is a mild irregularity."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 2, \"reason\": \"The robot stays upright, keeps the same heading and ends close to where it started, but its position visibly wanders during the episode, moving left after the shove and later drifting a little to the right of its start.\"}, \"V2\": {\"score\": 3, \"reason\": \"It balances on its two wheels throughout, and it recovers from the shove with a quick corrective tilt rather than by sliding or vibrating.\"}, \"V3\": {\"score\": 3, \"reason\": \"The shove at about 3.08 s tilts the body clearly, but it is upright again by 3.28 s and stays steady and composed for the rest of the episode.\"}, \"V4\": {\"score\": 2, \"reason\": \"The posture is unchanging apart from the one disturbance, but the slow drift of position over the episode is a mild irregularity.\"}}",
+      "session_id": "ac3f5370-a37a-45b5-a9e0-a94ccbbf8833",
+      "duration_ms": 11613,
+      "num_turns": 3,
+      "total_cost_usd": 0.040963400000000004,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 839,
+          "cacheReadInputTokens": 4197,
+          "cacheCreationInputTokens": 2916,
+          "webSearchRequests": 0,
+          "costUSD": 0.040963400000000004,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 420,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 2,
+          "reason": "It stays upright and keeps the same heading for the whole 10 s, but its position drifts a little left and then right in the overview frames instead of staying exactly on its start spot."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "It holds itself up by small wheel corrections, visible as the hub markings turning, with no sliding, hopping or flailing."
+        },
+        "V3": {
+          "score": 3,
+          "reason": "The shove at about 3.08 s tips the body visibly, but by 3.28 s it is upright again and stays composed through the rest of the detail frames."
+        },
+        "V4": {
+          "score": 3,
+          "reason": "Its upright posture looks the same in every frame from start to end, apart from the brief recovery from the shove."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 2, \"reason\": \"It stays upright and keeps the same heading for the whole 10 s, but its position drifts a little left and then right in the overview frames instead of staying exactly on its start spot.\"}, \"V2\": {\"score\": 3, \"reason\": \"It holds itself up by small wheel corrections, visible as the hub markings turning, with no sliding, hopping or flailing.\"}, \"V3\": {\"score\": 3, \"reason\": \"The shove at about 3.08 s tips the body visibly, but by 3.28 s it is upright again and stays composed through the rest of the detail frames.\"}, \"V4\": {\"score\": 3, \"reason\": \"Its upright posture looks the same in every frame from start to end, apart from the brief recovery from the shove.\"}}",
+      "session_id": "82ed6820-4687-48d8-b49c-78741a227b9d",
+      "duration_ms": 10249,
+      "num_turns": 3,
+      "total_cost_usd": 0.041604,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 869,
+          "cacheReadInputTokens": 4200,
+          "cacheCreationInputTokens": 2921,
+          "webSearchRequests": 0,
+          "costUSD": 0.041604,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 466,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

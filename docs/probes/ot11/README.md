@@ -885,3 +885,68 @@ not include the transcript.
   The gyro channel reads in the world frame, not the board's. The sensor
   parts stay declared rather than modelled (ADR-408); only the product
   agent may change the mechanism.
+
+## R3's confirmation evaluation: balance on `ot11-robin-1`
+
+This is the evaluation R3 is judged on. It is not a loop round.
+
+**Pre-registered first.** `retained/r3-confirm-1-registration.json` was
+committed (`c2dd99bb`) before the evaluation ran. It fixes:
+
+- the policy, `8919a22d…` (`bal-1`'s iteration-400 checkpoint, as the
+  product agent declared it);
+- the accepted revision, the task and the model digests;
+- the spec's digest, which must be the spec `bal-1`'s round held;
+- the ten frozen seeds, the conditions, B1–B5 and the pass rule;
+- the judge's runner digest, the judged seeds, three calls a seed and the
+  bar;
+- the two commands, and that it is run once.
+
+**The spec: pass, 10 of 10 seeds.** No seed was void, and no solver
+warning was raised. Every episode ran the full 10.0 s and ended by
+truncation. The spec hashed to the registered digest. Every seed's
+metrics equal those of `bal-1`'s round evaluation exactly: the engine's
+rollout is deterministic for a seed. Receipt:
+`retained/r3-confirm-1-evaluation.json` (no paths).
+
+| seed | B2 tilt (≤ 30°) | B3 drift, COM heights (≤ 2.0) | B4 heading (≤ 20°) | B5 worst recovery (≤ 2.0 s) | shoves, × weight |
+|---|---|---|---|---|---|
+| 1101 | 9.1° | 0.72 (38 mm) | 0.63° | 0.26 s | 0.21, 0.12 |
+| 1102 | 8.3° | 0.83 (43 mm) | 0.97° | 0.42 s | 0.14, 0.19 |
+| 1103 | 7.0° | 0.55 (29 mm) | 0.66° | 0.22 s | 0.16, 0.15 |
+| 1104 | 8.6° | 0.66 (34 mm) | 0.74° | 0.27 s | 0.15, 0.15 |
+| 1105 | 9.9° | 0.66 (35 mm) | 0.85° | 0.29 s | 0.20, 0.22 |
+| 1106 | 8.3° | 0.67 (35 mm) | 0.91° | 0.40 s | 0.24, 0.18 |
+| 1107 | 9.2° | 0.41 (21 mm) | 0.87° | 0.33 s | 0.24, 0.16 |
+| 1108 | 11.2° | 0.92 (48 mm) | 0.95° | 0.34 s | 0.14, 0.24 |
+| 1109 | 8.5° | 0.71 (37 mm) | 0.65° | 0.25 s | 0.11, 0.11 |
+| 1110 | 11.5° | 0.58 (30 mm) | 0.84° | 0.36 s | 0.16, 0.19 |
+
+**The judge: the bar is met on every judged seed.** Three calls a seed,
+nine in all. Every call returned a score from `claude-opus-5-5`. None was
+refused or retried. Receipts: `retained/judge-r3-confirm-1-seed-*.json`.
+
+| seed | calls (V1 V2 V3 V4) | medians | total | bar (≥ 9, none under 2) |
+|---|---|---|---|---|
+| 1101 | 3333, 3333, 3333 | 3 3 3 3 | 12 | **met** |
+| 1105 | 3332, 3323, 3333 | 3 3 3 3 | 12 | **met** |
+| 1110 | 3333, 2332, 2333 | 2 3 3 3 | 11 | **met** |
+
+**The spec and the judge agree.** Both say pass, so there is no
+disagreement to diagnose. On 1110, two calls scored V1 (task) 2. They saw
+the robot "moving left after the shove and later drifting a little to the
+right of its start". The trace agrees: the base wandered 30 mm (0.58 COM
+heights), inside B3's limit of 2.0. The predicate is authoritative for
+drift (ADR-463), so this is a reading of the same fact, not a
+contradiction. One call on 1105 said no shove was clearly visible in its
+frames. It still scored control 3.
+
+**R3's measured bar is reached** by this confirmation: every seed passes
+B1–B5, and every judged seed meets the judge's bar. The owner ticks R3;
+this page does not.
+
+**What this confirmation does not show.** The sensors the policy reads
+(an IMU on the board, an encoder on each wheel) are declared on the
+mechanism, not modelled as parts (ADR-408). The gyro channel reads in the
+world frame (`runner/obs_parity.py`). Both are sim-to-real questions for
+the long-term rung, and neither changes this evaluation.
