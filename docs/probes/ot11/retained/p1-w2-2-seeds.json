@@ -1,0 +1,2583 @@
+{
+ "behaviour": "walk",
+ "note": "ot10's w2-2 policy on the ten contract seeds, under its own task's reset variation, mass randomisation and shove (0.3-1.5 N), rolled by CadexDynamics.rollout_policy from the run's stored bundle; the same call with no seed reproduces the project's stored trace pose for pose. Off-contract: the contract's conditions need P2 and P3.",
+ "pass": false,
+ "rig": {
+  "base": "c_tray",
+  "base_com_local_mm": [
+   -0.00748742,
+   -0.000549957,
+   86.3173
+  ],
+  "com_height_mm": 84.45862960599491,
+  "floor_mm": 0.0,
+  "hip_height_mm": 96.7006,
+  "mass_kg": 0.47909140199999994,
+  "reference_xyzw": [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ],
+  "weight_n": 4.69988665362
+ },
+ "schema": "ot11-measure-v1",
+ "traces": [
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W2",
+    "W3",
+    "W4",
+    "W5",
+    "W6",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.5898004434589801,
+      "lowest_height_hip_heights": -0.18892609447560377,
+      "lowest_height_mm": -18.26926669144757,
+      "median_step_advance_mm": 29.2563970482939,
+      "median_step_clearance_hip_heights": 0.19068782680210328,
+      "median_step_clearance_mm": 18.439627264459467,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 8.870605890283855,
+      "path_mm": 2239.0678009379108,
+      "peak_height_mm": 42.76115846398159,
+      "slip_mm": 810.0873650382862,
+      "slip_share": 0.36179671053237117,
+      "step_share": 0.28323932204592167,
+      "steps": 14,
+      "swings": 55
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.5254988913525499,
+      "lowest_height_hip_heights": -0.1847861586673836,
+      "lowest_height_mm": -17.868932414831193,
+      "median_step_advance_mm": 40.59386664111028,
+      "median_step_clearance_hip_heights": 0.19464802237842072,
+      "median_step_clearance_mm": 18.82258055280671,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 9.410128983187796,
+      "path_mm": 2113.609945193905,
+      "peak_height_mm": 40.56693262089758,
+      "slip_mm": 650.058707620859,
+      "slip_share": 0.30755850155749614,
+      "step_share": 0.400366365278859,
+      "steps": 18,
+      "swings": 58
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.6341463414634146,
+      "lowest_height_hip_heights": -0.11018915200138224,
+      "lowest_height_mm": -10.655357112024863,
+      "median_step_advance_mm": 23.23029595315717,
+      "median_step_clearance_hip_heights": 0.07879498261875006,
+      "median_step_clearance_mm": 7.619522096222703,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.605311575510563,
+      "path_mm": 2192.3439099162597,
+      "peak_height_mm": 65.40075765912758,
+      "slip_mm": 1444.1489001365346,
+      "slip_share": 0.6587237037056364,
+      "step_share": 0.04621309838459064,
+      "steps": 3,
+      "swings": 48
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.5077605321507761,
+      "lowest_height_hip_heights": -0.08655532076761352,
+      "lowest_height_mm": -8.369951451420688,
+      "median_step_advance_mm": 26.564267109074397,
+      "median_step_clearance_hip_heights": 0.09481051268252498,
+      "median_step_clearance_mm": 9.168233462707775,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.9412045612993385,
+      "path_mm": 2319.438489162688,
+      "peak_height_mm": 69.51120105583789,
+      "slip_mm": 1050.7101222322854,
+      "slip_share": 0.4530019343654116,
+      "step_share": 0.15904065561077713,
+      "steps": 9,
+      "swings": 56
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 37.41239447959002,
+    "max_tilt_deg": 44.13835662903739,
+    "mean_forward_speed_mm_s": 125.79780569948012,
+    "mean_lateral_speed_mm_s": 23.213999216644602,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     1070.4154529401962,
+     363.4690210981064
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": true,
+     "value": {
+      "duration_s": 10.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": false,
+     "value": 44.13835662903739,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": false,
+     "value": 1.5724725712435015,
+     "why": ""
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": false,
+     "value": {
+      "lateral_ratio": 0.29017499020805754,
+      "max_heading_deg": 37.41239447959002
+     },
+     "why": ""
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.28323932204592167,
+       "c_foot_fr": 0.400366365278859,
+       "c_foot_rl": 0.04621309838459064,
+       "c_foot_rr": 0.15904065561077713
+      },
+      "steps": {
+       "c_foot_fl": 14,
+       "c_foot_fr": 18,
+       "c_foot_rl": 3,
+       "c_foot_rr": 9
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.19068782680210328,
+      "c_foot_fr": 0.19464802237842072,
+      "c_foot_rl": 0.07879498261875006,
+      "c_foot_rr": 0.09481051268252498
+     },
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.36179671053237117,
+      "c_foot_fr": 0.30755850155749614,
+      "c_foot_rl": 0.6587237037056364,
+      "c_foot_rr": 0.4530019343654116
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": true,
+     "value": {
+      "c_foot_fl": 0.5898004434589801,
+      "c_foot_fr": 0.5254988913525499,
+      "c_foot_rl": 0.6341463414634146,
+      "c_foot_rr": 0.5077605321507761
+     },
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": 6.0,
+     "why": ""
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.18892609447560377,
+      "c_foot_fr": -0.1847861586673836,
+      "c_foot_rl": -0.11018915200138224,
+      "c_foot_rr": -0.08655532076761352
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1101,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "w2-2-seeds/seed-1101.json",
+   "void": []
+  },
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W2",
+    "W3",
+    "W5",
+    "W6",
+    "W7",
+    "W8",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 1.0,
+      "lowest_height_hip_heights": -0.11663260718275877,
+      "lowest_height_mm": -11.278443094137081,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 6.707847864377417,
+      "path_mm": 227.232831179743,
+      "peak_height_mm": 14.066491483392866,
+      "slip_mm": 168.1583644063188,
+      "slip_share": 0.7400267097552651,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 3
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.9889135254988913,
+      "lowest_height_hip_heights": -0.12316825143592021,
+      "lowest_height_mm": -11.910443814804346,
+      "median_step_advance_mm": 21.761058268173535,
+      "median_step_clearance_hip_heights": 0.03904242109048033,
+      "median_step_clearance_mm": 3.7754255449021024,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 4.662806801492371,
+      "path_mm": 207.00552114113947,
+      "peak_height_mm": 13.173702765050606,
+      "slip_mm": 140.4666792590613,
+      "slip_share": 0.6785648927851011,
+      "step_share": 0.10572786465400394,
+      "steps": 1,
+      "swings": 4
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.0066518847006651885,
+      "lowest_height_hip_heights": -0.0697163236714199,
+      "lowest_height_mm": -6.7416103288205065,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.759427748701782,
+      "path_mm": 235.31702482437066,
+      "peak_height_mm": 70.32920888661391,
+      "slip_mm": 92.51214656240369,
+      "slip_share": 0.3931383487083024,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 2
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.0,
+      "lowest_height_hip_heights": -0.06451465406825223,
+      "lowest_height_mm": -6.238605757192431,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.050000000000000044,
+      "median_swing_peak_mm": 5.178795975688157,
+      "path_mm": 263.71497887345464,
+      "peak_height_mm": 66.39250518885697,
+      "slip_mm": 96.93051922418711,
+      "slip_share": 0.3675578825224784,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 2
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 16.30143890035057,
+    "max_tilt_deg": 43.72169416524532,
+    "mean_forward_speed_mm_s": 2.1053406626036177,
+    "mean_lateral_speed_mm_s": 1.0015188739110108,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     26.350033126697888,
+     20.591847551467755
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": true,
+     "value": {
+      "duration_s": 10.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": false,
+     "value": 43.72169416524532,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": false,
+     "value": 0.026316758282545222,
+     "why": ""
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": true,
+     "value": {
+      "lateral_ratio": 0.012518985923887635,
+      "max_heading_deg": 16.30143890035057
+     },
+     "why": ""
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.0,
+       "c_foot_fr": 0.10572786465400394,
+       "c_foot_rl": 0.0,
+       "c_foot_rr": 0.0
+      },
+      "steps": {
+       "c_foot_fl": 0,
+       "c_foot_fr": 1,
+       "c_foot_rl": 0,
+       "c_foot_rr": 0
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": false,
+     "value": {
+      "c_foot_fl": null,
+      "c_foot_fr": 0.03904242109048033,
+      "c_foot_rl": null,
+      "c_foot_rr": null
+     },
+     "why": "a foot took no step, so it has no step clearance"
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.7400267097552651,
+      "c_foot_fr": 0.6785648927851011,
+      "c_foot_rl": 0.3931383487083024,
+      "c_foot_rr": 0.3675578825224784
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 1.0,
+      "c_foot_fr": 0.9889135254988913,
+      "c_foot_rl": 0.0066518847006651885,
+      "c_foot_rr": 0.0
+     },
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": null,
+     "why": "a foot took no step"
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.11663260718275877,
+      "c_foot_fr": -0.12316825143592021,
+      "c_foot_rl": -0.0697163236714199,
+      "c_foot_rr": -0.06451465406825223
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1102,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "w2-2-seeds/seed-1102.json",
+   "void": []
+  },
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W2",
+    "W3",
+    "W5",
+    "W6",
+    "W7",
+    "W8",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.975609756097561,
+      "lowest_height_hip_heights": -0.15272041250360405,
+      "lowest_height_mm": -14.768155521346014,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 6.456797748570162,
+      "path_mm": 365.09375971410634,
+      "peak_height_mm": 20.216220747526354,
+      "slip_mm": 178.6356527255603,
+      "slip_share": 0.48928706112491316,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 10
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.9556541019955654,
+      "lowest_height_hip_heights": -0.156858380658268,
+      "lowest_height_mm": -15.168299524682908,
+      "median_step_advance_mm": 19.53950264495812,
+      "median_step_clearance_hip_heights": 0.04042021051799317,
+      "median_step_clearance_mm": 3.90865860921625,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.90865860921625,
+      "path_mm": 388.82207092833806,
+      "peak_height_mm": 17.11592313579694,
+      "slip_mm": 201.3097136261896,
+      "slip_share": 0.5177425066060409,
+      "step_share": 0.05067509863427449,
+      "steps": 1,
+      "swings": 15
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.09534368070953436,
+      "lowest_height_hip_heights": -0.08268775186138946,
+      "lowest_height_mm": -7.995955217647477,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.07000000000000006,
+      "median_swing_peak_mm": 6.0661376396615285,
+      "path_mm": 343.802086933341,
+      "peak_height_mm": 69.41886519153627,
+      "slip_mm": 182.21194509502618,
+      "slip_share": 0.5299908058160067,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 4
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.07317073170731707,
+      "lowest_height_hip_heights": -0.08976756324394214,
+      "lowest_height_mm": -8.68057722622715,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.883257575256767,
+      "path_mm": 416.75507523726793,
+      "peak_height_mm": 68.6389660029019,
+      "slip_mm": 201.62003075503358,
+      "slip_share": 0.48378542394533963,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 6
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 12.608008522467763,
+    "max_tilt_deg": 43.5261386926937,
+    "mean_forward_speed_mm_s": 3.0805333024650015,
+    "mean_lateral_speed_mm_s": 3.3657029182099762,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     98.65391711652633,
+     27.05760350535849
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": true,
+     "value": {
+      "duration_s": 10.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": false,
+     "value": 43.5261386926937,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": false,
+     "value": 0.03850666628081252,
+     "why": ""
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": true,
+     "value": {
+      "lateral_ratio": 0.0420712864776247,
+      "max_heading_deg": 12.608008522467763
+     },
+     "why": ""
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.0,
+       "c_foot_fr": 0.05067509863427449,
+       "c_foot_rl": 0.0,
+       "c_foot_rr": 0.0
+      },
+      "steps": {
+       "c_foot_fl": 0,
+       "c_foot_fr": 1,
+       "c_foot_rl": 0,
+       "c_foot_rr": 0
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": false,
+     "value": {
+      "c_foot_fl": null,
+      "c_foot_fr": 0.04042021051799317,
+      "c_foot_rl": null,
+      "c_foot_rr": null
+     },
+     "why": "a foot took no step, so it has no step clearance"
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.48928706112491316,
+      "c_foot_fr": 0.5177425066060409,
+      "c_foot_rl": 0.5299908058160067,
+      "c_foot_rr": 0.48378542394533963
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.975609756097561,
+      "c_foot_fr": 0.9556541019955654,
+      "c_foot_rl": 0.09534368070953436,
+      "c_foot_rr": 0.07317073170731707
+     },
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": null,
+     "why": "a foot took no step"
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.15272041250360405,
+      "c_foot_fr": -0.156858380658268,
+      "c_foot_rl": -0.08268775186138946,
+      "c_foot_rr": -0.08976756324394214
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1103,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "w2-2-seeds/seed-1103.json",
+   "void": []
+  },
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W2",
+    "W3",
+    "W5",
+    "W6",
+    "W7",
+    "W8",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 1.0,
+      "lowest_height_hip_heights": -0.1631687635960863,
+      "lowest_height_mm": -15.778517340999704,
+      "median_step_advance_mm": 42.69256739909501,
+      "median_step_clearance_hip_heights": 0.2729863674464606,
+      "median_step_clearance_mm": 26.397945523893206,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 14.544233371506781,
+      "path_mm": 234.90882801609956,
+      "peak_height_mm": 26.397945523893206,
+      "slip_mm": 158.66425531381685,
+      "slip_share": 0.6754290873348648,
+      "step_share": 0.232500549343763,
+      "steps": 1,
+      "swings": 2
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.9933481152993349,
+      "lowest_height_hip_heights": -0.14663439090290523,
+      "lowest_height_mm": -14.179633580945477,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 5.6537792676885115,
+      "path_mm": 198.1148236647571,
+      "peak_height_mm": 11.875701668263204,
+      "slip_mm": 122.48235224895102,
+      "slip_share": 0.6182392108942404,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 4
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.004434589800443459,
+      "lowest_height_hip_heights": -0.09184452299383605,
+      "lowest_height_mm": -8.881420480217741,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.9910915349857135,
+      "path_mm": 198.65465707265986,
+      "peak_height_mm": 68.77490495817985,
+      "slip_mm": 85.82576738723272,
+      "slip_share": 0.4320350131829082,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 3
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.0,
+      "lowest_height_hip_heights": -0.07994792358121836,
+      "lowest_height_mm": -7.731012179057963,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.3948153349398673,
+      "path_mm": 229.30671839692354,
+      "peak_height_mm": 64.91014129211092,
+      "slip_mm": 96.532162706342,
+      "slip_share": 0.4209739835849359,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 4
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 15.303791276711081,
+    "max_tilt_deg": 43.17784582977685,
+    "mean_forward_speed_mm_s": 3.5767992066369607,
+    "mean_lateral_speed_mm_s": -1.4626815866662741,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     86.08234227294037,
+     0.20766459749501642
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": true,
+     "value": {
+      "duration_s": 10.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": false,
+     "value": 43.17784582977685,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": false,
+     "value": 0.04470999008296201,
+     "why": ""
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": true,
+     "value": {
+      "lateral_ratio": 0.018283519833328425,
+      "max_heading_deg": 15.303791276711081
+     },
+     "why": ""
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.232500549343763,
+       "c_foot_fr": 0.0,
+       "c_foot_rl": 0.0,
+       "c_foot_rr": 0.0
+      },
+      "steps": {
+       "c_foot_fl": 1,
+       "c_foot_fr": 0,
+       "c_foot_rl": 0,
+       "c_foot_rr": 0
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.2729863674464606,
+      "c_foot_fr": null,
+      "c_foot_rl": null,
+      "c_foot_rr": null
+     },
+     "why": "a foot took no step, so it has no step clearance"
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.6754290873348648,
+      "c_foot_fr": 0.6182392108942404,
+      "c_foot_rl": 0.4320350131829082,
+      "c_foot_rr": 0.4209739835849359
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 1.0,
+      "c_foot_fr": 0.9933481152993349,
+      "c_foot_rl": 0.004434589800443459,
+      "c_foot_rr": 0.0
+     },
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": null,
+     "why": "a foot took no step"
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.1631687635960863,
+      "c_foot_fr": -0.14663439090290523,
+      "c_foot_rl": -0.09184452299383605,
+      "c_foot_rr": -0.07994792358121836
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1104,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "w2-2-seeds/seed-1104.json",
+   "void": []
+  },
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W4",
+    "W5",
+    "W6",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.5254988913525499,
+      "lowest_height_hip_heights": -0.19885315997387387,
+      "lowest_height_mm": -19.229219881369588,
+      "median_step_advance_mm": 34.17592611195221,
+      "median_step_clearance_hip_heights": 0.23034724198987186,
+      "median_step_clearance_mm": 22.274716508765803,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 7.9066396210746035,
+      "path_mm": 2390.902568543831,
+      "peak_height_mm": 64.02484321095562,
+      "slip_mm": 789.4649775717814,
+      "slip_share": 0.3301953780795851,
+      "step_share": 0.2790820802309353,
+      "steps": 14,
+      "swings": 62
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.4878048780487805,
+      "lowest_height_hip_heights": -0.1989334998586897,
+      "lowest_height_mm": -19.236988796435206,
+      "median_step_advance_mm": 36.59169542684205,
+      "median_step_clearance_hip_heights": 0.20486325570649308,
+      "median_step_clearance_mm": 19.810399744771303,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 6.601169029662687,
+      "path_mm": 2250.390619559731,
+      "peak_height_mm": 66.62680353094734,
+      "slip_mm": 727.4904762793041,
+      "slip_share": 0.32327297756939244,
+      "step_share": 0.3104830116802288,
+      "steps": 16,
+      "swings": 68
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.7405764966740577,
+      "lowest_height_hip_heights": -0.17423630449496877,
+      "lowest_height_mm": -16.848755186446176,
+      "median_step_advance_mm": 32.814075263904755,
+      "median_step_clearance_hip_heights": 0.14982164989177596,
+      "median_step_clearance_mm": 14.487843437524669,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.4284782208877473,
+      "path_mm": 2157.777271520459,
+      "peak_height_mm": 15.794036806436779,
+      "slip_mm": 1366.9680940002884,
+      "slip_share": 0.6335075042462868,
+      "step_share": 0.06443257651760413,
+      "steps": 2,
+      "swings": 55
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.6851441241685144,
+      "lowest_height_hip_heights": -0.0976798399935711,
+      "lowest_height_mm": -9.445699135282322,
+      "median_step_advance_mm": 37.36057280643101,
+      "median_step_clearance_hip_heights": 0.07679908718007214,
+      "median_step_clearance_mm": 7.426517809765283,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.2002182961669376,
+      "path_mm": 2536.4609130373774,
+      "peak_height_mm": 12.374143805012132,
+      "slip_mm": 1424.302885898036,
+      "slip_share": 0.5615315728214604,
+      "step_share": 0.061227598671946,
+      "steps": 3,
+      "swings": 61
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 25.180486416432842,
+    "max_tilt_deg": 16.104245084956457,
+    "mean_forward_speed_mm_s": 80.69662284416327,
+    "mean_lateral_speed_mm_s": 27.353073888909098,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     773.4402668047297,
+     344.4825429610724
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": true,
+     "value": {
+      "duration_s": 10.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 16.104245084956457,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": true,
+     "value": 1.008707785552041,
+     "why": ""
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": false,
+     "value": {
+      "lateral_ratio": 0.34191342361136373,
+      "max_heading_deg": 25.180486416432842
+     },
+     "why": ""
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.2790820802309353,
+       "c_foot_fr": 0.3104830116802288,
+       "c_foot_rl": 0.06443257651760413,
+       "c_foot_rr": 0.061227598671946
+      },
+      "steps": {
+       "c_foot_fl": 14,
+       "c_foot_fr": 16,
+       "c_foot_rl": 2,
+       "c_foot_rr": 3
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.23034724198987186,
+      "c_foot_fr": 0.20486325570649308,
+      "c_foot_rl": 0.14982164989177596,
+      "c_foot_rr": 0.07679908718007214
+     },
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.3301953780795851,
+      "c_foot_fr": 0.32327297756939244,
+      "c_foot_rl": 0.6335075042462868,
+      "c_foot_rr": 0.5615315728214604
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": true,
+     "value": {
+      "c_foot_fl": 0.5254988913525499,
+      "c_foot_fr": 0.4878048780487805,
+      "c_foot_rl": 0.7405764966740577,
+      "c_foot_rr": 0.6851441241685144
+     },
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": 8.0,
+     "why": ""
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.19885315997387387,
+      "c_foot_fr": -0.1989334998586897,
+      "c_foot_rl": -0.17423630449496877,
+      "c_foot_rr": -0.0976798399935711
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1105,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "w2-2-seeds/seed-1105.json",
+   "void": []
+  },
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W1",
+    "W2",
+    "W5",
+    "W6",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.7116788321167883,
+      "lowest_height_hip_heights": -0.13832730478689814,
+      "lowest_height_mm": -13.376333369275923,
+      "median_step_advance_mm": 36.50682570532491,
+      "median_step_clearance_hip_heights": 0.14912442053898808,
+      "median_step_clearance_mm": 14.42042094077247,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 4.530461279893673,
+      "path_mm": 1410.2783036857327,
+      "peak_height_mm": 21.469141724327127,
+      "slip_mm": 689.8214596598146,
+      "slip_share": 0.489138532342858,
+      "step_share": 0.14440756020348636,
+      "steps": 4,
+      "swings": 34
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.6021897810218978,
+      "lowest_height_hip_heights": -0.18263154615032062,
+      "lowest_height_mm": -17.660580091663693,
+      "median_step_advance_mm": 31.201239854513023,
+      "median_step_clearance_hip_heights": 0.16388255470300694,
+      "median_step_clearance_mm": 15.847541369313593,
+      "median_swing_airborne_s": 0.050000000000000044,
+      "median_swing_peak_mm": 5.001201738299794,
+      "path_mm": 1171.1830194458068,
+      "peak_height_mm": 29.248866843094916,
+      "slip_mm": 468.461693692712,
+      "slip_share": 0.39999016884174415,
+      "step_share": 0.26954856015188444,
+      "steps": 9,
+      "swings": 40
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.5255474452554745,
+      "lowest_height_hip_heights": -0.1003288052851309,
+      "lowest_height_mm": -9.701855668355329,
+      "median_step_advance_mm": 39.279291096666604,
+      "median_step_clearance_hip_heights": 0.15209835492634477,
+      "median_step_clearance_mm": 14.708002180390494,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.0601500034681663,
+      "path_mm": 1067.7349676707245,
+      "peak_height_mm": 51.41032804853731,
+      "slip_mm": 519.6179137719778,
+      "slip_share": 0.48665439411947886,
+      "step_share": 0.1980680468118217,
+      "steps": 3,
+      "swings": 22
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.5875912408759124,
+      "lowest_height_hip_heights": -0.07970757243902624,
+      "lowest_height_mm": -7.707770079397299,
+      "median_step_advance_mm": 36.442650201082145,
+      "median_step_clearance_hip_heights": 0.05828132586653788,
+      "median_step_clearance_mm": 5.635839180089732,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.896927707953175,
+      "path_mm": 1268.6021933080917,
+      "peak_height_mm": 59.08404837528322,
+      "slip_mm": 666.1188325988314,
+      "slip_share": 0.5250809403551602,
+      "step_share": 0.031122903214753733,
+      "steps": 1,
+      "swings": 23
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 39.69681113607687,
+    "max_tilt_deg": 45.77437145170781,
+    "mean_forward_speed_mm_s": 69.42474402797303,
+    "mean_lateral_speed_mm_s": 2.6380482925102102,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     505.8950335551866,
+     52.79773116125392
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": false,
+     "value": {
+      "duration_s": 6.46,
+      "termination": "tipped",
+      "truncated": false
+     },
+     "why": "ended by tipped"
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": false,
+     "value": 45.77437145170781,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": true,
+     "value": 0.867809300349663,
+     "why": ""
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": true,
+     "value": {
+      "lateral_ratio": 0.032975603656377625,
+      "max_heading_deg": 39.69681113607687
+     },
+     "why": ""
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.14440756020348636,
+       "c_foot_fr": 0.26954856015188444,
+       "c_foot_rl": 0.1980680468118217,
+       "c_foot_rr": 0.031122903214753733
+      },
+      "steps": {
+       "c_foot_fl": 4,
+       "c_foot_fr": 9,
+       "c_foot_rl": 3,
+       "c_foot_rr": 1
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.14912442053898808,
+      "c_foot_fr": 0.16388255470300694,
+      "c_foot_rl": 0.15209835492634477,
+      "c_foot_rr": 0.05828132586653788
+     },
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.489138532342858,
+      "c_foot_fr": 0.39999016884174415,
+      "c_foot_rl": 0.48665439411947886,
+      "c_foot_rr": 0.5250809403551602
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": true,
+     "value": {
+      "c_foot_fl": 0.7116788321167883,
+      "c_foot_fr": 0.6021897810218978,
+      "c_foot_rl": 0.5255474452554745,
+      "c_foot_rr": 0.5875912408759124
+     },
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": 9.0,
+     "why": ""
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.13832730478689814,
+      "c_foot_fr": -0.18263154615032062,
+      "c_foot_rl": -0.1003288052851309,
+      "c_foot_rr": -0.07970757243902624
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1106,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "w2-2-seeds/seed-1106.json",
+   "void": []
+  },
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W3",
+    "W4",
+    "W5",
+    "W6",
+    "W7",
+    "W8",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.5875831485587583,
+      "lowest_height_hip_heights": -0.2274536611929389,
+      "lowest_height_mm": -21.994905509553906,
+      "median_step_advance_mm": 21.035369438577845,
+      "median_step_clearance_hip_heights": 0.1282839667685735,
+      "median_step_clearance_mm": 12.40513655690112,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 5.896681057314094,
+      "path_mm": 1690.438644979854,
+      "peak_height_mm": 25.235922560924195,
+      "slip_mm": 840.122052160834,
+      "slip_share": 0.4969846463554116,
+      "step_share": 0.13009154442814622,
+      "steps": 7,
+      "swings": 57
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.36807095343680707,
+      "lowest_height_hip_heights": -0.12975248995709315,
+      "lowest_height_mm": -12.54714363034488,
+      "median_step_advance_mm": 21.594495163806144,
+      "median_step_clearance_hip_heights": 0.15100095586393023,
+      "median_step_clearance_mm": 14.601883032615572,
+      "median_swing_airborne_s": 0.10000000000000009,
+      "median_swing_peak_mm": 7.787994664241664,
+      "path_mm": 1614.3315953801948,
+      "peak_height_mm": 38.262438195481735,
+      "slip_mm": 526.7745152286298,
+      "slip_share": 0.32631122176888816,
+      "step_share": 0.3462100175778393,
+      "steps": 17,
+      "swings": 54
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.5365853658536586,
+      "lowest_height_hip_heights": -0.12604898645369833,
+      "lowest_height_mm": -12.189012619464501,
+      "median_step_advance_mm": 22.701857178925124,
+      "median_step_clearance_hip_heights": 0.06350077716124729,
+      "median_step_clearance_mm": 6.140563251958909,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 3.544505047156343,
+      "path_mm": 1506.646910994071,
+      "peak_height_mm": 11.202957355205925,
+      "slip_mm": 771.037348409465,
+      "slip_share": 0.5117571627321374,
+      "step_share": 0.15851383624006088,
+      "steps": 7,
+      "swings": 52
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.8048780487804879,
+      "lowest_height_hip_heights": -0.1856755456832751,
+      "lowest_height_mm": -17.95493667290011,
+      "median_step_advance_mm": 22.260008078997597,
+      "median_step_clearance_hip_heights": 0.08035676924595234,
+      "median_step_clearance_mm": 7.770547800145138,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.871378036485469,
+      "path_mm": 1708.0887681409297,
+      "peak_height_mm": 12.133506615967619,
+      "slip_mm": 1224.1381568622164,
+      "slip_share": 0.716671275928217,
+      "step_share": 0.09410634684644006,
+      "steps": 5,
+      "swings": 40
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 90.26552303297818,
+    "max_tilt_deg": 17.455397044218085,
+    "mean_forward_speed_mm_s": -35.7806024890412,
+    "mean_lateral_speed_mm_s": 14.144626511134046,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     71.67436802149905,
+     -307.8485050529429
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": true,
+     "value": {
+      "duration_s": 10.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 17.455397044218085,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": false,
+     "value": -0.447257531113015,
+     "why": ""
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": false,
+     "value": {
+      "lateral_ratio": 0.17680783138917558,
+      "max_heading_deg": 90.26552303297818
+     },
+     "why": ""
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.13009154442814622,
+       "c_foot_fr": 0.3462100175778393,
+       "c_foot_rl": 0.15851383624006088,
+       "c_foot_rr": 0.09410634684644006
+      },
+      "steps": {
+       "c_foot_fl": 7,
+       "c_foot_fr": 17,
+       "c_foot_rl": 7,
+       "c_foot_rr": 5
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.1282839667685735,
+      "c_foot_fr": 0.15100095586393023,
+      "c_foot_rl": 0.06350077716124729,
+      "c_foot_rr": 0.08035676924595234
+     },
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.4969846463554116,
+      "c_foot_fr": 0.32631122176888816,
+      "c_foot_rl": 0.5117571627321374,
+      "c_foot_rr": 0.716671275928217
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.5875831485587583,
+      "c_foot_fr": 0.36807095343680707,
+      "c_foot_rl": 0.5365853658536586,
+      "c_foot_rr": 0.8048780487804879
+     },
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": 3.4,
+     "why": ""
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.2274536611929389,
+      "c_foot_fr": -0.12975248995709315,
+      "c_foot_rl": -0.12604898645369833,
+      "c_foot_rr": -0.1856755456832751
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1107,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "w2-2-seeds/seed-1107.json",
+   "void": []
+  },
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W1",
+    "W2",
+    "W3",
+    "W4",
+    "W5",
+    "W6",
+    "W7",
+    "W8",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": null,
+      "lowest_height_hip_heights": -0.116254796778386,
+      "lowest_height_mm": -11.241908601347992,
+      "median_step_advance_mm": 54.76830704704646,
+      "median_step_clearance_hip_heights": 0.11018146986477907,
+      "median_step_clearance_mm": 10.654614244806055,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 4.396598705766639,
+      "path_mm": 226.15442379469812,
+      "peak_height_mm": 13.174869642741193,
+      "slip_mm": 91.9544398651934,
+      "slip_share": 0.40660022617408176,
+      "step_share": 0.2501320036571869,
+      "steps": 1,
+      "swings": 5
+     },
+     "c_foot_fr": {
+      "duty_factor": null,
+      "lowest_height_hip_heights": -0.11935511175481728,
+      "lowest_height_mm": -11.541710919757882,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 4.191829387464228,
+      "path_mm": 191.90703738274945,
+      "peak_height_mm": 37.81035789601993,
+      "slip_mm": 47.83036211219974,
+      "slip_share": 0.24923714504958125,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 4
+     },
+     "c_foot_rl": {
+      "duty_factor": null,
+      "lowest_height_hip_heights": -0.08267212886758953,
+      "lowest_height_mm": -7.994444464773228,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.050000000000000044,
+      "median_swing_peak_mm": 4.370365450538422,
+      "path_mm": 211.89624490567394,
+      "peak_height_mm": 7.592409378193807,
+      "slip_mm": 113.03805512617012,
+      "slip_share": 0.5334594540667261,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 4
+     },
+     "c_foot_rr": {
+      "duty_factor": null,
+      "lowest_height_hip_heights": -0.03858994814402802,
+      "lowest_height_mm": -3.7316711394963953,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.050000000000000044,
+      "median_swing_peak_mm": 5.601432242132617,
+      "path_mm": 196.1130694577023,
+      "peak_height_mm": 57.316596888805236,
+      "slip_mm": 62.73614162173584,
+      "slip_share": 0.31989781096800785,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 2
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 10.584631764000246,
+    "max_tilt_deg": 49.90374050914779,
+    "mean_forward_speed_mm_s": null,
+    "mean_lateral_speed_mm_s": null,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     135.84663083296874,
+     15.799462854421623
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": false,
+     "value": {
+      "duration_s": 0.84,
+      "termination": "tipped",
+      "truncated": false
+     },
+     "why": "ended by tipped"
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": false,
+     "value": 49.90374050914779,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": false,
+     "value": null,
+     "why": "the episode ended inside the 1 s settle"
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": false,
+     "value": {
+      "lateral_ratio": null,
+      "max_heading_deg": 10.584631764000246
+     },
+     "why": "the episode ended inside the 1 s settle"
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.2501320036571869,
+       "c_foot_fr": 0.0,
+       "c_foot_rl": 0.0,
+       "c_foot_rr": 0.0
+      },
+      "steps": {
+       "c_foot_fl": 1,
+       "c_foot_fr": 0,
+       "c_foot_rl": 0,
+       "c_foot_rr": 0
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.11018146986477907,
+      "c_foot_fr": null,
+      "c_foot_rl": null,
+      "c_foot_rr": null
+     },
+     "why": "a foot took no step, so it has no step clearance"
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.40660022617408176,
+      "c_foot_fr": 0.24923714504958125,
+      "c_foot_rl": 0.5334594540667261,
+      "c_foot_rr": 0.31989781096800785
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": false,
+     "value": {
+      "c_foot_fl": null,
+      "c_foot_fr": null,
+      "c_foot_rl": null,
+      "c_foot_rr": null
+     },
+     "why": "the episode ended inside the 1 s settle"
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": null,
+     "why": "a foot took no step"
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.116254796778386,
+      "c_foot_fr": -0.11935511175481728,
+      "c_foot_rl": -0.08267212886758953,
+      "c_foot_rr": -0.03858994814402802
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1108,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "w2-2-seeds/seed-1108.json",
+   "void": []
+  },
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W2",
+    "W5",
+    "W6",
+    "W7",
+    "W8",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.7361419068736141,
+      "lowest_height_hip_heights": -0.18711761067990115,
+      "lowest_height_mm": -18.094385223312848,
+      "median_step_advance_mm": 47.25797758765268,
+      "median_step_clearance_hip_heights": 0.18839468988149552,
+      "median_step_clearance_mm": 18.217879548354546,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 10.212414758292315,
+      "path_mm": 2052.5593484033684,
+      "peak_height_mm": 44.8209167698525,
+      "slip_mm": 896.7921782613955,
+      "slip_share": 0.4369141281878092,
+      "step_share": 0.37017325443252286,
+      "steps": 13,
+      "swings": 35
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.7339246119733924,
+      "lowest_height_hip_heights": -0.17418435311360494,
+      "lowest_height_mm": -16.843731456697466,
+      "median_step_advance_mm": 44.211478508694505,
+      "median_step_clearance_hip_heights": 0.21181273567123843,
+      "median_step_clearance_mm": 20.48241862705016,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 6.724076642084565,
+      "path_mm": 1828.5324204668923,
+      "peak_height_mm": 46.84782945571136,
+      "slip_mm": 769.84000470917,
+      "slip_share": 0.4210152339068734,
+      "step_share": 0.2978285585516416,
+      "steps": 11,
+      "swings": 41
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.34811529933481156,
+      "lowest_height_hip_heights": -0.08764527748148736,
+      "lowest_height_mm": -8.475350919626315,
+      "median_step_advance_mm": 52.37517279156476,
+      "median_step_clearance_hip_heights": 0.05275679964135403,
+      "median_step_clearance_mm": 5.1016141793987195,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.2305071748192793,
+      "path_mm": 2161.8116431311632,
+      "peak_height_mm": 63.175044472003265,
+      "slip_mm": 863.2406445340342,
+      "slip_share": 0.39931353283106497,
+      "step_share": 0.10859547591900821,
+      "steps": 5,
+      "swings": 38
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.352549889135255,
+      "lowest_height_hip_heights": -0.08025329570155196,
+      "lowest_height_mm": -7.760541846317494,
+      "median_step_advance_mm": 69.06810248358329,
+      "median_step_clearance_hip_heights": 0.07269748554219345,
+      "median_step_clearance_mm": 7.029890470421432,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.2510107459291504,
+      "path_mm": 2188.8716035169573,
+      "peak_height_mm": 66.89610252827228,
+      "slip_mm": 885.9778379550319,
+      "slip_share": 0.4047646451858994,
+      "step_share": 0.06412765542702165,
+      "steps": 2,
+      "swings": 40
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 40.07429632875836,
+    "max_tilt_deg": 44.52203747532114,
+    "mean_forward_speed_mm_s": 92.85940727679815,
+    "mean_lateral_speed_mm_s": 17.478538886283975,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     941.9087265758163,
+     410.82504832206394
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": true,
+     "value": {
+      "duration_s": 10.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": false,
+     "value": 44.52203747532114,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": true,
+     "value": 1.160742590959977,
+     "why": ""
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": true,
+     "value": {
+      "lateral_ratio": 0.21848173607854968,
+      "max_heading_deg": 40.07429632875836
+     },
+     "why": ""
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.37017325443252286,
+       "c_foot_fr": 0.2978285585516416,
+       "c_foot_rl": 0.10859547591900821,
+       "c_foot_rr": 0.06412765542702165
+      },
+      "steps": {
+       "c_foot_fl": 13,
+       "c_foot_fr": 11,
+       "c_foot_rl": 5,
+       "c_foot_rr": 2
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.18839468988149552,
+      "c_foot_fr": 0.21181273567123843,
+      "c_foot_rl": 0.05275679964135403,
+      "c_foot_rr": 0.07269748554219345
+     },
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.4369141281878092,
+      "c_foot_fr": 0.4210152339068734,
+      "c_foot_rl": 0.39931353283106497,
+      "c_foot_rr": 0.4047646451858994
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.7361419068736141,
+      "c_foot_fr": 0.7339246119733924,
+      "c_foot_rl": 0.34811529933481156,
+      "c_foot_rr": 0.352549889135255
+     },
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": 6.5,
+     "why": ""
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.18711761067990115,
+      "c_foot_fr": -0.17418435311360494,
+      "c_foot_rl": -0.08764527748148736,
+      "c_foot_rr": -0.08025329570155196
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1109,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "w2-2-seeds/seed-1109.json",
+   "void": []
+  },
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W3",
+    "W4",
+    "W5",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.532150776053215,
+      "lowest_height_hip_heights": -0.19805288769036075,
+      "lowest_height_mm": -19.1518330713905,
+      "median_step_advance_mm": 44.884340027604814,
+      "median_step_clearance_hip_heights": 0.15890216797437812,
+      "median_step_clearance_mm": 15.365934984423149,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 6.55835950604343,
+      "path_mm": 2526.332283002714,
+      "peak_height_mm": 55.47746194391893,
+      "slip_mm": 938.6700556389476,
+      "slip_share": 0.3715544712603188,
+      "step_share": 0.4454081500969031,
+      "steps": 21,
+      "swings": 54
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.5033259423503326,
+      "lowest_height_hip_heights": -0.1860757613902298,
+      "lowest_height_mm": -17.993637771892054,
+      "median_step_advance_mm": 38.80535069978859,
+      "median_step_clearance_hip_heights": 0.17188031764899128,
+      "median_step_clearance_mm": 16.620929844848046,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 6.781497156481652,
+      "path_mm": 2277.1205153444785,
+      "peak_height_mm": 48.14987360451112,
+      "slip_mm": 816.8788416177892,
+      "slip_share": 0.35873324934416717,
+      "step_share": 0.32262339468144785,
+      "steps": 16,
+      "swings": 67
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.6208425720620843,
+      "lowest_height_hip_heights": -0.09060292811069069,
+      "lowest_height_mm": -8.761357510060655,
+      "median_step_advance_mm": 26.802784086800493,
+      "median_step_clearance_hip_heights": 0.12528319332717935,
+      "median_step_clearance_mm": 12.11495996465424,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.1897417847083247,
+      "path_mm": 2226.88310191679,
+      "peak_height_mm": 25.167484877607237,
+      "slip_mm": 1226.858177296379,
+      "slip_share": 0.5509306600963295,
+      "step_share": 0.17026232678904635,
+      "steps": 9,
+      "swings": 59
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.6718403547671841,
+      "lowest_height_hip_heights": -0.17801625659728143,
+      "lowest_height_mm": -17.214278822711073,
+      "median_step_advance_mm": 33.90786332549438,
+      "median_step_clearance_hip_heights": 0.09240224609930463,
+      "median_step_clearance_mm": 8.935352639150416,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.4691706567180134,
+      "path_mm": 2550.7670633561825,
+      "peak_height_mm": 16.210342480551386,
+      "slip_mm": 1478.7113368241069,
+      "slip_share": 0.5797124159500814,
+      "step_share": 0.13588595895485397,
+      "steps": 7,
+      "swings": 53
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 86.19619672850546,
+    "max_tilt_deg": 19.49188807175656,
+    "mean_forward_speed_mm_s": 114.2614242782464,
+    "mean_lateral_speed_mm_s": 27.76211224521932,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     1055.6894143036754,
+     378.33307376861035
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": true,
+     "value": {
+      "duration_s": 10.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 19.49188807175656,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": false,
+     "value": 1.42826780347808,
+     "why": ""
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": false,
+     "value": {
+      "lateral_ratio": 0.3470264030652415,
+      "max_heading_deg": 86.19619672850546
+     },
+     "why": ""
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.4454081500969031,
+       "c_foot_fr": 0.32262339468144785,
+       "c_foot_rl": 0.17026232678904635,
+       "c_foot_rr": 0.13588595895485397
+      },
+      "steps": {
+       "c_foot_fl": 21,
+       "c_foot_fr": 16,
+       "c_foot_rl": 9,
+       "c_foot_rr": 7
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": true,
+     "value": {
+      "c_foot_fl": 0.15890216797437812,
+      "c_foot_fr": 0.17188031764899128,
+      "c_foot_rl": 0.12528319332717935,
+      "c_foot_rr": 0.09240224609930463
+     },
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.3715544712603188,
+      "c_foot_fr": 0.35873324934416717,
+      "c_foot_rl": 0.5509306600963295,
+      "c_foot_rr": 0.5797124159500814
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": true,
+     "value": {
+      "c_foot_fl": 0.532150776053215,
+      "c_foot_fr": 0.5033259423503326,
+      "c_foot_rl": 0.6208425720620843,
+      "c_foot_rr": 0.6718403547671841
+     },
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": 3.0,
+     "why": ""
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.19805288769036075,
+      "c_foot_fr": -0.1860757613902298,
+      "c_foot_rl": -0.09060292811069069,
+      "c_foot_rr": -0.17801625659728143
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1110,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "w2-2-seeds/seed-1110.json",
+   "void": []
+  }
+ ]
+}

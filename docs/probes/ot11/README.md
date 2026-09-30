@@ -123,10 +123,30 @@ walking after a sideways shove.
 | W7 | foot slip | each foot's stance slip, as a share of its plan path | every foot: ≤ 0.15 |
 | W8 | duty factor | the share of frames in which each foot is in stance | every foot: 0.40 to 0.85 |
 | W9 | every leg works | the largest per-foot step count divided by the smallest | ≤ 1.5 |
+| W10 | on the floor, not in it | the lowest foot height of each foot over every frame | every foot: ≥ −0.05 hip heights |
 
 W5, W6 and W7 are what the ot10 gait check could not see. A foot that
 chatters in 40 ms hops takes swings but no steps (W5). A foot that lifts but
 barely clears fails W6. A foot that is dragged fails W7 and W8.
+
+### Decision: W10 was added after the freeze (ADR-454, 2026-09-30)
+
+The contract was first frozen with W1–W9 (commit `ff066f1b`), and the known
+negatives were measured after that commit. Measuring `w2-2` showed something
+no predicate read: its feet go **up to 21.3 mm below the floor plane**, on
+7.5 mm-radius feet. The likely cause is not yet measured: MuJoCo's contact
+is soft, the feet weigh 1.5 g, and the servos are strong enough to drive
+them in. The reader's foot heights equal MuJoCo's own geom positions to
+0.0000 mm, so this is the rollout and not the reading.
+
+A gait that paddles through the floor is not walking on it, so W10 was added
+the same day, before any training. Its limit is **0.05 hip heights** (4.8 mm
+on this quadruped). By estimate, a footfall at 0.3 m/s sinks about 2 mm
+under MuJoCo's default contact, so the limit leaves room for a real landing
+and none for a foot buried to its centre. Both known negatives were
+re-measured under the changed contract. No other ot11 policy existed.
+`w2-2` fails W3, W5, W7 and W9 under the contract as first frozen, and W10
+as well under this one.
 
 ## Reach
 
@@ -267,7 +287,7 @@ inputs, the judged seeds and the bar are frozen here, before either exists.
 predicates from a trace and the model it ran. It changes nothing: no
 rebuild, no rollout, no training. `cli/tests/test_ot11_measure.py` pins every
 walk and balance predicate on a synthetic trace that passes it and one that
-fails it for the stated reason — a trot with real steps passes all nine walk
+fails it for the stated reason — a trot with real steps passes all ten walk
 predicates, and a chattering shuffle fails W5, W6, W7 and W9 while passing
 W1, W2 and W3. The product's own evaluation command is P2's, and it takes
 over from this reader.
@@ -287,4 +307,75 @@ fail but can never pass.
 
 ## The known negatives
 
-KNOWN_NEGATIVES_SECTION
+Measured on 2026-09-30, before any ot11 training run. Both projects are
+read-only and nothing was written to either. Both readings are
+**off-contract**: the policies predate the contract, so they ran under their
+own tasks' conditions, not the ones above. They can fail and cannot pass.
+The video judge was not run; its runner is a later unit.
+
+### ot10's `w2-2` shuffle fails the walk spec, on stepping and slip
+
+Policy `7a4e8c23…`, model `49d11013…`, task `b0913fa0…`, on
+`ot10-quadruped-3-w2`. Hip height 96.7 mm, so a step must land 14.5 mm from
+where it lifted, a step must clear 7.7 mm and a foot may sink 4.8 mm. The
+commanded speed is taken as 80 mm/s, which is what its task's reward asked
+for. Receipt: [`retained/p1-w2-2.json`](retained/p1-w2-2.json), from the
+project's own stored rollout (no seed).
+
+| predicate | front left | front right | rear left | rear right | limit | verdict |
+|---|---|---|---|---|---|---|
+| W5 steps | 18 | 21 | 5 | 7 | ≥ 4 | pass |
+| W5 share of path made in steps | 0.36 | 0.38 | 0.14 | 0.14 | ≥ 0.70 | **fail** |
+| W6 step clearance, mm | 19.0 | 19.5 | 10.4 | 9.7 | ≥ 7.7 | pass |
+| W7 stance slip share | 0.32 | 0.33 | 0.67 | 0.57 | ≤ 0.15 | **fail** |
+| W8 duty factor | 0.52 | 0.51 | 0.73 | 0.69 | 0.40–0.85 | pass |
+| W10 lowest foot height, mm | −17.6 | −21.3 | −8.4 | −8.9 | ≥ −4.8 | **fail** |
+
+- **W5 fails.** The feet leave the floor 60, 66, 48 and 61 times in 10 s,
+  and only 18, 21, 5 and 7 of those are steps. The typical swing is airborne
+  for 0.08 s at the front and **0.04 s at the rear**, and the typical rear
+  swing peaks at **2.7 mm**. That is chatter. Steps carry 14–38 % of each
+  foot's travel.
+- **W7 fails.** A third of each front foot's travel, and 57–67 % of each
+  rear foot's, is made with the foot on the floor. The rear feet are
+  dragged.
+- **W9 fails.** The front feet take 4.2 times the steps the rear feet take
+  (limit 1.5).
+- **W3 fails.** It runs at 152.6 mm/s, 1.91 times the 80 mm/s its reward
+  asked for (limit 0.75 to 1.25).
+- **W10 fails**, as the decision above describes.
+- **W1, W2, W4, W6 and W8 pass**: it completes, tilts 15.9° at most, turns
+  30.5° at most, and the few steps it does take clear the floor. The old
+  gait check read only what these read, which is why it said `walked = true`.
+
+So the shuffle fails for the reason the owner gave: it does not step, and it
+slides. It does not fail by accident on staying up or on heading.
+
+**On the ten contract seeds**, under the w2 task's own reset variation, mass
+randomisation and 0.3–1.5 N shove, it fails on **all ten**
+([`retained/p1-w2-2-seeds.json`](retained/p1-w2-2-seeds.json)). W5, W7, W9
+and W10 fail on every seed. It also tips on two seeds (1106 at 6.46 s, 1108
+at 0.84 s) and passes 30° of tilt on five more. ot10 reviewed one rollout
+with no seed, so none of that was seen. These episodes were rolled by the
+engine's `CadexDynamics.rollout_policy` from the run's stored bundle; the
+same call with no seed reproduces the project's stored trace pose for pose.
+
+### ot9's Robin fails the balance spec: it wanders and it turns
+
+Policy `ef71f370…`, model `933b1ac6…`, task `1f8c1040…`, on `ot9-robin`:
+the ten stored ot9 evaluation traces (ot9's seeds 0–9, 8.0 s, reset
+variation only, no shove). COM height 52.4 mm, so it may move 104.8 mm.
+Receipt: [`retained/p1-robin.json`](retained/p1-robin.json).
+
+| predicate | measured, over the ten seeds | limit | verdict |
+|---|---|---|---|
+| B2 upright | 2.78° to 5.35° | ≤ 30° | pass on all ten |
+| B3 stays in place | 829.4 mm to 850.8 mm (15.8 to 16.2 COM heights) | ≤ 104.8 mm (2.0) | **fail on all ten** |
+| B4 keeps heading | 130.9° to 131.6° at most; 86.3° to 87.5° at the end | ≤ 20° | **fail on all ten** |
+| B1 completes | ran its own task's 8.0 s, by truncation | 10.0 s | not measured |
+| B5 recovers | no shove was applied | ≤ 2.0 s | not measured |
+
+Robin is upright on every seed and fails on every seed. It drives away at
+109–113 mm/s, twice the 52.4 mm/s that counts as rest, so it would not
+satisfy B5's rest either. ot9's bar passed it 10 of 10; this spec says it
+wanders.

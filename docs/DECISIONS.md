@@ -29640,3 +29640,43 @@ never zeros. A backend adds `usage` to its result frame only when it
 has some, so the existing frame-exact translator tests hold unchanged.
 Cost shows only when the harness priced the turn: Claude Code and pi do,
 and Codex does not.
+
+## ADR-454 — The ot11 evaluation contract, and the floor predicate it gained on its first day (2026-09-30)
+
+**Context.** ot10's quadruped passed the gait check and shuffled; ot9's
+Robin passed its bar and drove away. The ot11 charter's first criterion (P1)
+asks for a frozen evaluation contract for walk, reach and balance, measured
+on those two failures before anything new is trained.
+
+**Decision.** `docs/probes/ot11/README.md` and `contract.json` freeze, for
+each behaviour: a success spec as predicates on the rollout trace, none of
+which reads the reward; ten evaluation seeds (1101–1110) with their reset
+variation, goals and shoves; the pass rule (every seed, every predicate);
+and a blind video judge with its rubric, inputs, judged seeds and bar.
+Thresholds are in the mechanism's own scale (hip height, arm length, COM
+height, weight). `docs/probes/ot11/runner/measure.py` reads the walk and
+balance predicates from a trace; `cli/tests/test_ot11_contract.py` is the
+freeze and `cli/tests/test_ot11_measure.py` pins each predicate on a trace
+that passes it and one that fails it.
+
+The contract was committed with nine walk predicates (`ff066f1b`) and the
+known negatives were measured after that commit. **W10 was then added**: the
+lowest foot height of every foot, over every frame, is at least −0.05 hip
+heights.
+
+**Reason for W10.** `w2-2`'s feet go up to 21.3 mm below the floor plane on
+7.5 mm-radius feet, and no predicate read it. The reader's foot heights
+equal MuJoCo's geom positions exactly, so the penetration is in the rollout.
+A gait that goes through the floor is not a walk on it, and an evaluation
+that cannot see it is not trustworthy. The limit is 4.8 mm on that
+quadruped.
+
+**Consequences.** Both known negatives were re-measured under the changed
+contract; no other ot11 policy existed. `w2-2` fails W3, W5, W7 and W9 as
+first frozen, and W10 as added. Robin fails B3 and B4 on all ten ot9 seeds.
+The contract asks three things of later units: an evaluation rollout must
+apply the contract's conditions whatever the training task declares (P2); a
+goal must be settable per episode and changeable during it (P3); and the
+cause of the floor penetration needs measuring before a walk is trained,
+because a policy can exploit it. Any later change to a frozen item is a new
+entry here and re-evaluates every earlier ot11 policy.

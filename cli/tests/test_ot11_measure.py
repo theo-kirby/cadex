@@ -53,7 +53,7 @@ def pitch(degrees: float) -> list[float]:
 
 
 def trot(*, speed=80.0, lift=15.0, period_frames=24, seconds=10.0, swing_frames=None,
-         heading=0.0, sideways=0.0):
+         heading=0.0, sideways=0.0, sink=0.0):
     """A trot: diagonal pairs swing in turn, stance feet stay where they landed."""
 
     swing_frames = period_frames // 2 if swing_frames is None else swing_frames
@@ -70,7 +70,7 @@ def trot(*, speed=80.0, lift=15.0, period_frames=24, seconds=10.0, swing_frames=
                 along = (cycle - 1) * stride + stride * fraction
                 height = lift * math.sin(math.pi * fraction)
             else:
-                along, height = cycle * stride, 0.0
+                along, height = cycle * stride, -sink
             placements[name] = {"position_mm": [x + along, y, RADIUS + height], "rotation_xyzw": IDENTITY}
         samples.append((t, placements))
     return samples
@@ -103,7 +103,7 @@ def failing(result):
 
 def test_a_trot_with_real_steps_passes_every_walk_predicate() -> None:
     result = measure.walk(trot(), walk_rig(), 80.0, DONE)
-    assert verdict(result) == {f"W{i}": True for i in range(1, 10)}
+    assert verdict(result) == {f"W{i}": True for i in range(1, 11)}
     feet = result["metrics"]["feet"]
     for foot in feet.values():
         assert 19 <= foot["steps"] <= 21  # 10 s at 0.48 s a cycle
@@ -134,6 +134,24 @@ def test_feet_dragged_along_the_floor_fail_slip_and_duty_factor() -> None:
 def test_steps_that_barely_clear_the_floor_fail_clearance_alone() -> None:
     result = measure.walk(trot(lift=5.0), walk_rig(), 80.0, DONE)
     assert failing(result) == ["W6"]  # 5 mm on a 100 mm hip: 0.05 < 0.08
+
+
+def test_feet_driven_into_the_floor_fail_w10_alone() -> None:
+    # w2-2's other shape: real steps, but the stance foot sits most of a foot
+    # radius inside a floor that soft contact let it enter.
+    assert failing(measure.walk(trot(sink=4.0), walk_rig(), 80.0, DONE)) == []
+    result = measure.walk(trot(sink=6.0), walk_rig(), 80.0, DONE)
+    assert failing(result) == ["W10"]  # 6 mm on a 100 mm hip: -0.06 < -0.05
+    assert result["metrics"]["sink_limit_mm"] == pytest.approx(-5.0)
+
+
+def test_an_episode_that_ends_inside_the_settle_fails_with_nothing_measured() -> None:
+    ended = {**DONE, "termination": "tipped", "truncated": False, "duration_s": 0.84}
+    result = measure.walk(trot(seconds=0.84), walk_rig(), 80.0, ended)
+    rows = {row["id"]: row for row in result["predicates"]}
+    assert rows["W3"]["pass"] is False and rows["W3"]["value"] is None
+    assert "settle" in rows["W3"]["why"] and rows["W8"]["pass"] is False
+    json.dumps(result, allow_nan=False)  # no NaN reaches the report
 
 
 def test_the_wrong_speed_fails_tracking_alone() -> None:
@@ -276,11 +294,16 @@ MODEL = """<mujoco>
     <body name="base" pos="0 0 0.1">
       <freejoint/>
       <geom type="box" size="0.05 0.03 0.01" mass="0.4" contype="0" conaffinity="0"/>
-      <body name="leg" pos="0.04 0 0">
-        <joint name="hip" type="hinge" axis="0 1 0"/>
-        <geom type="capsule" fromto="0 0 0 0 0 -0.08" size="0.004" mass="0.05" contype="0" conaffinity="0"/>
-        <body name="foot" pos="0 0 -0.08">
-          <geom name="pad" type="sphere" size="0.01" pos="0 0 -0.01" mass="0.05"/>
+      <body name="servo" pos="0.04 0 0.02">
+        <body name="leg" pos="0 0 -0.02">
+          <joint name="hip" type="hinge" axis="0 1 0"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.08" size="0.004" mass="0.05" contype="0" conaffinity="0"/>
+          <body name="shin" pos="0 0 -0.04">
+            <joint name="knee" type="hinge" axis="0 1 0"/>
+            <body name="foot" pos="0 0 -0.04">
+              <geom name="pad" type="sphere" size="0.01" pos="0 0 -0.01" mass="0.05"/>
+            </body>
+          </body>
         </body>
       </body>
     </body>
@@ -296,6 +319,7 @@ def test_the_rig_is_read_from_the_model_in_millimetres(tmp_path) -> None:
     path.write_text(MODEL, encoding="utf-8")
     rig = measure.rig(path, ["foot"])
     assert rig["base"] == "base"
+    # The hip, not the knee below it, and through the welded servo above it.
     assert rig["hip_height_mm"] == pytest.approx(100.0)
     assert rig["mass_kg"] == pytest.approx(0.5)
     assert rig["weight_n"] == pytest.approx(4.905)

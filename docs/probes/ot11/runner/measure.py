@@ -128,12 +128,14 @@ def rig(model_path: Path, feet=(), keyframe: str = "solved") -> dict[str, Any]:
         if not geoms:
             raise SystemExit(f"foot {name!r} has no collision geom")
         out_feet[name] = geoms
-        link = body
-        while int(model.body_parentid[link]) != base:
-            link = int(model.body_parentid[link])
+        # The chain from the foot up to the base; the hip is the joint
+        # nearest the base, which a welded servo or horn may sit above.
+        link, joints = body, []
+        while link != base:
             if link == 0:
                 raise SystemExit(f"foot {name!r} does not hang from the base")
-        joints = [j for j in range(model.njnt) if int(model.jnt_bodyid[j]) == link]
+            joints = [j for j in range(model.njnt) if int(model.jnt_bodyid[j]) == link] or joints
+            link = int(model.body_parentid[link])
         if not joints:
             raise SystemExit(f"no joint between the base and foot {name!r}")
         hips.append(float(data.xanchor[joints[0]][2]) * 1000.0 - floor)
@@ -291,7 +293,9 @@ def gait(time, foot, hip_height_mm: float, settle_s: float) -> dict[str, Any]:
         "median_swing_airborne_s": float(np.median([s["airborne_s"] for s in swings])) if swings else None,
         "median_step_advance_mm": float(np.median([s["advance_mm"] for s in steps])) if steps else None,
         "peak_height_mm": float(height.max()),
-        "duty_factor": float(stance[settled].mean()),
+        "lowest_height_mm": float(height.min()),
+        "lowest_height_hip_heights": float(height.min()) / hip_height_mm,
+        "duty_factor": float(stance[settled].mean()) if settled.any() else None,
     }
 
 
@@ -325,8 +329,13 @@ def walk(samples, the_rig, command_mm_s: float, episode, *, off_contract: bool =
     ahead = base["forward"]
     along = (base["velocity"] * ahead).sum(axis=1)
     across = base["velocity"][:, 1] * ahead[:, 0] - base["velocity"][:, 0] * ahead[:, 1]
-    speed_ratio = float(along[settled].mean()) / command_mm_s
-    lateral_ratio = abs(float(across[settled].mean())) / command_mm_s
+    # An episode that ends inside the settle has no speed to read; that is a
+    # failed predicate with nothing measured, never a number.
+    mean_along = float(along[settled].mean()) if settled.any() else None
+    mean_across = float(across[settled].mean()) if settled.any() else None
+    speed_ratio = None if mean_along is None else mean_along / command_mm_s
+    lateral_ratio = None if mean_across is None else abs(mean_across) / command_mm_s
+    early = "" if settled.any() else f"the episode ended inside the {settle:g} s settle"
     feet = {name: gait(base["time"], foot_series(samples, {"name": name, "geoms": geoms}, the_rig["floor_mm"]),
                        hip, settle)
             for name, geoms in the_rig["feet"].items()}
@@ -339,36 +348,42 @@ def walk(samples, the_rig, command_mm_s: float, episode, *, off_contract: bool =
         return predicate("walk", identifier)
 
     max_tilt, max_heading = float(base["tilt"].max()), float(np.abs(base["heading"]).max())
-    w5, w6, w7, w8 = limits("W5"), limits("W6"), limits("W7"), limits("W8")
+    w5, w6, w7, w8, w10 = limits("W5"), limits("W6"), limits("W7"), limits("W8"), limits("W10")
     clear = per_foot("median_step_clearance_hip_heights")
     rows = [
         _completes("walk", "W1", episode, off_contract),
         _row("walk", "W2", max_tilt <= limits("W2")["max"], max_tilt),
-        _row("walk", "W3", limits("W3")["min"] <= speed_ratio <= limits("W3")["max"], speed_ratio),
-        _row("walk", "W4", lateral_ratio <= limits("W4")["max"][0] and max_heading <= limits("W4")["max"][1],
-             {"lateral_ratio": lateral_ratio, "max_heading_deg": max_heading}),
+        _row("walk", "W3", speed_ratio is not None and limits("W3")["min"] <= speed_ratio <= limits("W3")["max"],
+             speed_ratio, early),
+        _row("walk", "W4", lateral_ratio is not None and lateral_ratio <= limits("W4")["max"][0]
+             and max_heading <= limits("W4")["max"][1],
+             {"lateral_ratio": lateral_ratio, "max_heading_deg": max_heading}, early),
         _row("walk", "W5", all(f["steps"] >= w5["min"][0] and f["step_share"] >= w5["min"][1] for f in feet.values()),
              {"steps": per_foot("steps"), "step_share": per_foot("step_share")}),
         _row("walk", "W6", all(v is not None and v >= w6["min"] for v in clear.values()), clear,
              "" if all(v is not None for v in clear.values()) else "a foot took no step, so it has no step clearance"),
         _row("walk", "W7", all(f["slip_share"] <= w7["max"] for f in feet.values()), per_foot("slip_share")),
-        _row("walk", "W8", all(w8["min"] <= f["duty_factor"] <= w8["max"] for f in feet.values()),
-             per_foot("duty_factor")),
+        _row("walk", "W8", all(f["duty_factor"] is not None and w8["min"] <= f["duty_factor"] <= w8["max"]
+                               for f in feet.values()),
+             per_foot("duty_factor"), early),
         _row("walk", "W9", min(counts) > 0 and max(counts) / min(counts) <= limits("W9")["max"],
              (max(counts) / min(counts)) if min(counts) else None,
              "" if min(counts) else "a foot took no step"),
+        _row("walk", "W10", all(f["lowest_height_hip_heights"] >= w10["min"] for f in feet.values()),
+             per_foot("lowest_height_hip_heights")),
     ]
     travel = base["point"][-1] - base["point"][0]
     return {
         "predicates": rows,
         "metrics": {
             "command_mm_s": command_mm_s, "hip_height_mm": hip,
-            "mean_forward_speed_mm_s": float(along[settled].mean()),
-            "mean_lateral_speed_mm_s": float(across[settled].mean()),
+            "mean_forward_speed_mm_s": mean_along,
+            "mean_lateral_speed_mm_s": mean_across,
             "travel_mm": [float(travel[0]), float(travel[1])],
             "max_tilt_deg": max_tilt, "max_heading_deg": max_heading,
             "step_min_advance_mm": STEP_ADVANCE_HIP_HEIGHTS * hip,
             "clearance_min_mm": w6["min"] * hip,
+            "sink_limit_mm": w10["min"] * hip,
             "feet": feet,
         },
     }
