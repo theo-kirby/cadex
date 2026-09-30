@@ -1015,6 +1015,21 @@ def gait_from_trace(
     }
 
 
+def behaviour_authority(task: dict[str, Any]) -> dict[str, Any]:
+    """Which reading judges the behaviour a lifecycle walk trained (ADR-464).
+
+    The ``gait`` block is ADR-409's and knows one behaviour. A task that
+    declares a success spec is judged by that spec, through ``cadex
+    evaluate``, and the gait block beside it is advisory; it stays the only
+    reading for a task written before there were specs.
+    """
+
+    if isinstance(task.get("success"), dict):
+        return {"authority": "success spec", "command": "cadex evaluate", "gait": "advisory"}
+    return {"authority": "gait", "command": None,
+            "gait": "the only reading: the task declares no success spec"}
+
+
 def read_json(path: Path | str | None) -> dict[str, Any]:
     """A JSON object from ``path``, or ``{}`` when it is missing or unreadable."""
 
@@ -1092,6 +1107,7 @@ def write_review(
                                                 "reason": "no trace was exported."}),
         "gait": dict(review.get("gait") or {"available": False,
                                             "reason": "no trace was exported."}),
+        "behaviour": dict(review.get("behaviour") or behaviour_authority({})),
         "weights": review.get("weights"),
         "sha256": review.get("sha256"),
         "total_reward": review.get("total_reward"),

@@ -30539,3 +30539,123 @@ the jobs and both decisions against the receipts and the page.
 `pixi run python -m pytest cli/tests`: 1219 passed, 1 skipped (1212 and 1
 before). `pixi run test-engine`: 2507 passed, 57 skipped, as before. No
 packaged gate: no engine, protocol or payload file changed.
+
+## ADR-464 — The product agent runs the training loop with four bridge tools and a detached supervisor; `cadex walk` stays as one use (2026-09-30)
+
+**Context.** The ot11 charter's P4 asks that the product agent, through the
+ordinary product path, author or revise a task, its reward and its spec,
+start bounded training, read the progress, the evaluation report and the
+filmstrip, and decide the next revision — the same loop for every
+behaviour — and that this run choose the architecture and say what becomes
+of `cadex walk`. Before this, the agent's prompt said "you have no shell
+and cannot train" (ADR-190): every training run and every evaluation in
+ot5 to ot10 was started by the caller, between turns. The pieces the loop
+needs already existed as commands: `cadex train` dispatches the offboard
+trainer (ADR-191), the trainer rewrites `progress.json` every iteration and
+can checkpoint (ADR-101), and `cadex evaluate` holds a policy to its task's
+success spec and films it (ADR-457, ADR-459). What was missing is a way
+for a turn to start training without waiting out the run inside one tool
+call, and a way to come back to it. ot10's hexapod-9 run died with the
+actor session that had started it.
+
+**Decision.**
+
+1. **Four tools on the bridge, no protocol op.** `train_start`,
+   `train_status`, `train_stop` and `evaluate` join `look` in
+   `BRIDGE_TOOLS`: the CLI's bridge answers them, nothing reaches `cadexd`
+   for them, `OP_ARG_SPECS` is unchanged, and no engine file moves. They
+   are added to the turn's `--allowedTools`, which until now listed only
+   the op-named tools and left `look` to the account's permission mode.
+   Authoring and revising the task, the reward and the spec stay
+   `write_script` and `edit_script`; storing and declaring a policy stay
+   `put_asset` and `assembly.policy`, so the engine still verifies every
+   policy the loop evaluates.
+2. **A run is pre-registered, then supervised by a process that outlives
+   the turn.** `cli/cadex_cli/loop.py` writes `runs/<run>/registration.json`
+   — the accepted revision, the task and its digest, the settings and seed,
+   the wall-clock budget, the stop rule, the agent's reason and the exact
+   trainer command — before anything is launched, and refuses a run with no
+   budget. The supervisor is `python -m cadex_cli.loop RUN_DIR` in a session
+   of its own. It stops the trainer at the budget, on a stop request it
+   polls for as a file, or when it is told to terminate, and writes how
+   the run ended to `training-status.json`. It signals no process it did
+   not start.
+3. **An interruption is told from an attempt by a lock.** The supervisor
+   holds an advisory lock on its run for as long as it lives. A status that
+   still says `running` under a lock nobody holds is read as `interrupted`.
+   A second lock, the machine's, is the one training slot the charter asks
+   for: a second run is refused at registration and again by the
+   supervisor.
+4. **The bundle is the accepted one.** A run trains the task bundle and the
+   model the store retained for the accepted attempt, copied by digest and
+   never rebuilt — the same read `cadex evaluate` makes — so the turn's
+   engine is not needed after `train_start` returns and the project lock is
+   not held while a run trains.
+5. **What the loop enforces from the charter**: a budget on every run;
+   `--stop-on-collapse` always; one run at a time; a training seed that is
+   not an evaluation seed; and no training on a channel the robot cannot
+   read (ADR-408), with no override offered.
+6. **A ledger.** `loop-ledger.jsonl` in the project root records each run
+   registered with its reason, each stop, each ending and each evaluation
+   with its verdict, its failing predicates and the run that trained the
+   policy. `train_status` with no run hands it to a new turn.
+7. **The prompt says so.** The CLI overlay's "you cannot train" is replaced
+   by one paragraph: design the task and, separately, its success spec;
+   train; evaluate; revise from that evaluation, naming the measurement in
+   the next run's reason; a reward curve is never evidence.
+8. **`cadex walk` becomes one use, and is not retired.** It stays as the
+   scripted single pass over the same legs for a caller with one command,
+   which ot5 to ot10's receipts and the dashboard's run records are made
+   by. It is not the loop and the loop does not call it. Its `gait` block
+   (ADR-409) is the one behaviour-specific reading left in the CLI — and
+   the one that called `w2-2`'s shuffle a walk — so the walk's review now
+   carries `behaviour`: a task that declares a success spec is judged by
+   the spec through `cadex evaluate` and the gait reading is advisory; a
+   task with no spec has the gait reading only. R1 to R3 go through the
+   loop's tools.
+
+**Alternatives not taken.** *A protocol op for training* would put a
+long-running offboard process behind a service that dispatches serially and
+would move `OP_ARG_SPECS`, the shell client and the payload for something
+the engine must never do (ADR-084). *One blocking `train` tool* is
+`cadex train` inside a tool call: the run dies with the turn, which is the
+hexapod-9 failure. *The child `cadex train` as the supervised process* needs
+the project lock the turn's own engine holds. *Retiring `cadex walk`* would
+break the receipts and tests of five earlier runs to remove a command the
+loop does not depend on.
+
+**Not shown.** No real model has run the loop yet: the rounds in the suite
+are driven by a scripted model over the real bridge socket. P4's three
+rounds of design, train, evaluate and revise on one behaviour, with
+transcripts, are the next unit and are not claimed here. No run longer than
+two iterations has been supervised. How long a harness lets one MCP tool
+call block has not been measured; `train_status` caps its wait at 900 s and
+`evaluate` blocks for the rollouts and the film.
+
+**Not changed.** No engine file, protocol op, `OP_ARG_SPECS`, payload or
+shell file. No new dependency: `loop.py` is standard library. Nothing
+removed. The trainer is untouched. The loop trains on this machine only;
+remote dispatch stays `cadex train --remote`. The shell's agent has no loop
+tools.
+
+**Evidence.** `cli/tests/test_loop.py`, 27 tests. With a fake trainer and
+a really detached supervisor: a registration written whole before launch;
+ten refusals that leave nothing behind; a run launched from a process that
+exits at once and ending `finished` with a policy that hashes to its
+receipt; a run read while live, refused a sibling, stopped with its reason
+and leaving its checkpoint; the machine's one slot; a budget of one second
+ending `budget_exhausted`; a collapse told from a crash; SIGTERM and
+SIGKILL both read as interruptions that free the slot. Through
+`Bridge.call`: start, wait, stop, the listing and the ledger, and six
+refusals as tool errors. Against a live engine, through `command_prompt`
+and the real socket: a task accepted and a run started in one turn, and in
+the next the run read, its policy stored, declared and evaluated, the
+reply carrying the spec's verdict per predicate and per seed and two PNG
+filmstrips in under 21,500 characters; and the same round with the real
+trainer on CPU for two iterations with a checkpoint, whose policy the live
+engine verifies. Behaviour words are refused in `loop.py`, in the four
+tools and in the prompt paragraph. `cadex walk`'s `behaviour` block is
+held for a task with a spec and one without.
+`pixi run python -m pytest cli/tests`: 1246 passed, 1 skipped (1219 and 1
+before). `pixi run test-engine`: 2507 passed, 57 skipped, as before. No
+packaged gate: no engine, protocol or payload file changed.

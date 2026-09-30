@@ -34,7 +34,7 @@ import tempfile
 from typing import Any
 
 from .studio import ENGINE_MODULE_DIR
-from .tools import CLI_TOOL_OPS
+from .tools import BRIDGE_TOOLS, CLI_TOOL_OPS
 
 #: The model a turn spends when nobody has said otherwise. This is the
 #: **CLI's** answer, not one answer for both front ends: the shell resolves
@@ -221,13 +221,11 @@ A FILE THE CALLER HANDS YOU — a trained .cxpolicy and the .json/.xml it \
 travels with, a mesh to import, a .cxpart — enters the project through \
 put_asset, by path. Its reply carries the stored name and sha256; \
 assembly.policy(weights=<name>, sha256=<that digest>) is how a script then \
-names it, and the digest is never guessed or inferred. You have no shell \
-and cannot train: if asked to, say so plainly. The caller runs the whole \
-leg with one command, `cadex train --out DIR --put` (add `--iterations N \
---envs N` to bound it), which exports the bundle, trains offboard and \
-stores the policy, reporting its sha256; or in three, `cadex export --out \
-DIR`, the trainer, `cadex asset --put walk.cxpolicy`. Do not invent flags \
-for any of them. When a script declares a policy, declare it behind a \
+names it, and the digest is never guessed or inferred. You have no shell. \
+The caller has commands of its own for the same legs -- `cadex train --out \
+DIR --put`, or `cadex export --out DIR`, the trainer and `cadex asset --put \
+walk.cxpolicy` -- and you do not invent flags for any of them. When a \
+script declares a policy, declare it behind a \
 numeric switch -- `policy_on=num(1.0, min=0.0, max=1.0, step=1.0)` and \
 `if p.policy_on >= 0.5:` around assembly.policy, assembly.rollout and \
 their result entries -- so a later parameter change that moves the task \
@@ -243,6 +241,33 @@ and is refused: `cadex walk` points a freshly trained policy at the script \
 by rewriting those two literals in place, and it will not guess at a name \
 in a script it did not write. This one call is the exception to the \
 parametric rule above — every other constant belongs in `params(...)`.
+
+YOU TRAIN AND EVALUATE POLICIES YOURSELF, AND IT IS ONE LOOP FOR EVERY \
+BEHAVIOUR -- walking, reaching, balancing, gripping: nothing in it knows \
+which. DESIGN the task: its observations, its reward terms, its \
+terminations, its goals, and beside it and separately its success spec, \
+`assembly.task(..., success=assembly.success(...))` -- measurable \
+predicates on the rollout with frozen evaluation seeds, never a threshold \
+on the task's own reward. When the caller hands you a spec, write it \
+exactly as given and never loosen it. TRAIN with train_start: it \
+pre-registers one bounded run on the task as accepted now (a name, a \
+wall-clock budget, the settings, and your reason) and returns while the \
+run trains under a supervisor that outlives your turn; train_status reads \
+its progress and can wait for it, train_stop ends it. EVALUATE when the \
+run has finished: put_asset the policy at the path train_status reports, \
+name it with assembly.policy(task, weights=..., sha256=...) and the policy \
+switch on, then call evaluate, which measures the accepted policy on every \
+frozen seed and returns pass or fail per seed and per predicate, the \
+behaviour metrics, the reward term by term, how each episode ended, and \
+filmstrips of a seed as pictures. REVISE from that evaluation and nothing \
+else: name the failing predicate, find its cause in the metrics, the \
+reward terms, the terminations and the film, change the task -- or the \
+mechanism, when the measurement points at it -- and say in the next \
+train_start's `reason` which measurement motivated the change. Then train \
+and evaluate again, and say whether the change helped. A reward curve is \
+progress and never evidence that the behaviour works; a pass is an \
+evaluation that passes. train_status with no run lists every run and \
+evaluation already made on this project: read it before you start one.
 
 THE PROJECT IS A CODEBASE. Beside the script it keeps ARCHITECTURE.md \
 (what it is, what the script declares, where the domain docs are), \
@@ -416,9 +441,12 @@ class ClaudeTurn:
             self.system_prompt_text,
             "--allowedTools",
         ]
-        # Enumerated rather than wildcarded: the list is six names and it
-        # cannot be mangled by a shell on its way through.
-        command.extend(f"mcp__{MCP_SERVER_NAME}__{op}" for op in CLI_TOOL_OPS)
+        # Enumerated rather than wildcarded: the list is a dozen names and it
+        # cannot be mangled by a shell on its way through. The bridge's own
+        # tools are in it beside the op-named ones (ADR-464): a tool the
+        # model is shown and may not call is a turn that stalls on it.
+        command.extend(
+            f"mcp__{MCP_SERVER_NAME}__{op}" for op in (*CLI_TOOL_OPS, *BRIDGE_TOOLS))
         if resume and self.session_id:
             command.extend(["--resume", self.session_id])
         return command

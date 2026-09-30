@@ -2097,6 +2097,8 @@ cli/cadex_cli/
                        the inventory block is CadexFitReport's too
   studio.py            loads THAT engine's CadexStudio and CadexFitReport (ADR-445, ADR-447)
   train.py             the offboard trainer as a subprocess, local or remote
+  loop.py              the training loop's run registry and its detached
+                       supervisor (ADR-464): register, launch, read, stop
   walk.py              the lifecycle walk's leg plan (ADR-199)
   project_docs.py      the project's own docs, PROGRESS.md rows and repo
   report.py            the envelope and the prose
@@ -2141,8 +2143,9 @@ fail on it.
 ### Tool names are op names
 
 `describe_api`, `write_script`, `edit_script`, `set_params`, `rebuild`,
-`inspect`, `link_part`, `put_asset` — and then `look`, the one tool no engine
-op backs (below). The shell invented friendlier names because it had Blender's
+`inspect`, `link_part`, `put_asset` — and then the five tools no engine op
+backs (below): `look`, and the training loop's `train_start`,
+`train_status`, `train_stop` and `evaluate` (ADR-464). The shell invented friendlier names because it had Blender's
 vocabulary to reconcile; a third vocabulary would be a third thing to keep
 in sync. The input schemas are **generated from `OP_ARG_SPECS`**, so they
 cannot drift from the protocol — only the prose is hand-written, and the
@@ -2228,6 +2231,94 @@ verification was `inspect` and the fit block, and hex2 (2026-09-25) passed
 every check as a plate of bars and boxes. A live turn against a copy of hex2
 confirmed Claude Code hands the images to the model: it described the
 orange bars and the ball feet it had not been told about.
+
+### The training loop: `train_start`, `train_status`, `train_stop`, `evaluate` (ADR-464)
+
+The product agent runs the whole loop — design a task, train a policy on
+it, evaluate the policy against the task's success spec, revise — and it is
+**one loop for every behaviour**. None of the four tools, the registry
+behind them or the paragraph that tells the agent about them names a
+behaviour; `test_loop.py` refuses the words. All four are answered by the
+bridge (`BRIDGE_TOOLS`), need no protocol op, and are listed in the turn's
+`--allowedTools` beside the op-named tools.
+
+| tool | what it does |
+|---|---|
+| `train_start` | Pre-registers one bounded run on the task **as accepted now** and launches it. Takes `run` (a new name), `budget_s` (wall clock, required — a run with no budget is not started), `reason` (the measurement that motivated the run) and optional `task` and `settings`. Returns at once. |
+| `train_status` | Reads a run: its state, the trainer's progress (iteration, reward per step, mean episode length, exploration sigma, a thinned curve), its checkpoints, and when it finished the policy's path and sha256. `wait_s` (at most 900) blocks until the run ends. Without `run`: every run of the project and the loop's ledger. |
+| `train_stop` | Asks a live run's supervisor to stop it, with the reason. Checkpoints already written stay, and each is a complete policy. |
+| `evaluate` | `cadex evaluate` for the agent: the accepted policy on every frozen seed, then the verdict, pass or fail per seed and per predicate, the behaviour metrics, the reward by term and how each episode ended in one bounded text block, followed by the overview and detail filmstrips of up to two filmed seeds as `image` blocks. The full report is the same `evaluation.json`, with its video, in `evaluations/`. |
+
+**A run is a directory**, `runs/<run>/` in the project, where the review
+dashboard already looks:
+
+- `registration.json` (`cadex-training-registration-v1`) is written before
+  anything is launched: the accepted revision and digest, the task and its
+  digest, the settings and seed, the budget, the stop rule, the reason and
+  the exact trainer command. `--stop-on-collapse` is always in it.
+- `train/` holds the task bundle and the model, copied from the accepted
+  attempt the store retained (never rebuilt), the trainer's own
+  `progress.json`, its log, its checkpoints and the policy.
+- `training-status.json` (`cadex-training-status-v1`) is the supervisor's:
+  `finished` (the policy hashes to the trainer's receipt, and the receipt
+  names the registered task), `collapsed`, `failed`, `stopped`,
+  `budget_exhausted`, `interrupted` or `refused`, with the reason, the wall
+  time and the iterations run.
+- `run.json` is the dashboard's record, mode `loop`, written at
+  registration and again at the end.
+
+**The supervisor outlives the turn.** It is `python -m cadex_cli.loop
+RUN_DIR`, started in a session of its own, so the agent turn, the CLI and
+the terminal can all end while it trains; the next turn reads the run with
+`train_status`. It stops the trainer at the budget, on a stop request (a
+file it polls — no process is ever signalled by pid), or when it is itself
+told to terminate. It holds two advisory locks while it lives. The run's
+lock is how a reader tells a live run from one whose supervisor was killed:
+a status still saying `running` under a lock nobody holds is reported
+`interrupted`, **an interruption and not an attempt**. The machine's lock
+(`~/.cache/cadex/training.lock`, or `$CADEX_TRAIN_LOCK`) is the one
+training slot: a second run is refused at registration, and again by the
+supervisor if two were registered at once.
+
+**What registration refuses**, each with a sentence the agent can act on: a
+missing, zero or over-long budget (six hours is the bound on a typo); a
+reason too short to name a measurement; a run name already used; a live
+run on this project or on this machine; a training seed that is one of the
+task's evaluation seeds; a setting the trainer does not have; and a task
+whose policy reads a channel no declared sensor measures (ADR-408 — the
+loop offers no override).
+
+**The settings are the trainer's own flags**: `iterations`, `envs`, `seed`,
+`label`, `hidden`, `unroll`, `epochs`, `learning_rate`, `discount`,
+`gae_lambda`, `clip`, `entropy`, `value_weight`, `initial_std`,
+`action_filter_alpha`, `command_slew_deg`, `goal_pool`, `checkpoint_every`,
+and the warm start `init_from` with `init_from_parent_task` and
+`init_from_task_change`. A test reads them back out of
+`training/cadex_train.py`.
+
+**`loop-ledger.jsonl`**, in the project root, gets one line per thing the
+loop did: a run registered (with its reason), a stop requested, a run
+ended (with its state and the policy's digest), an evaluation measured
+(with its verdict, its failing predicates and the run that trained the
+policy). It is what `train_status` hands a new turn, and what a report
+reads the rounds back from.
+
+Storing and declaring the policy stay the tools they were: `put_asset` the
+path `train_status` reports, then `assembly.policy(task, weights=…,
+sha256=…)` by `edit_script`. The engine verifies it there, so `evaluate`
+measures a policy the engine accepted.
+
+**`cadex walk` is one use of the same legs, not the loop.** It stays as the
+scripted single pass — design turns, train, declare, verify, review — that
+a caller drives with one command. Its `gait` block (ADR-409) knows one
+behaviour, so the review now carries `behaviour`: for a task that declares
+a success spec the authority is the spec, through `cadex evaluate`, and the
+gait reading is advisory; for a task with no spec the gait reading is the
+only one. The loop never reads either.
+
+**Limits.** The loop trains on this machine only; `--remote` dispatch is
+still `cadex train` and `cadex walk`. The shell's agent has no loop tools.
+`evaluate` blocks for as long as the rollouts and the film take.
 
 ### Every build reply carries the measured fit (ADR-346)
 
@@ -2572,13 +2663,17 @@ The overlay says:
   printed parts belong there, but a purchased part listed there has lost
   its catalog identity whatever the script prints, and the agent is told
   to read it before it says hardware comes from the catalog.
-- **You cannot train, and a file comes in by path.** `put_asset` is how a
-  trained policy, its provenance or a mesh enters the project, and its
-  reply's `sha256` is the digest the script names; asked to train, the
-  agent says so and names the caller's one command, `cadex train --out
-  DIR --put` (ADR-191), or its three — `cadex export`, the trainer,
-  `cadex asset --put` — instead of inventing flags (ADR-190 — the audit
-  caught it doing exactly that).
+- **A file comes in by path, and you train and evaluate yourself.**
+  `put_asset` is how a trained policy, its provenance or a mesh enters the
+  project, and its reply's `sha256` is the digest the script names. Since
+  ADR-464 the agent is no longer told it cannot train: one paragraph gives
+  it the loop — design the task and, separately, its success spec; train
+  with `train_start`; evaluate with `evaluate`; revise from that
+  evaluation and say in the next run's `reason` which measurement
+  motivated the change — and says a reward curve is never evidence. The
+  caller's own commands (`cadex train --out DIR --put`, or `cadex export`,
+  the trainer, `cadex asset --put`) are still named, so it invents no
+  flags for them (ADR-190 — the audit caught it doing exactly that).
 - **The project is a codebase.** Its `ARCHITECTURE.md`, `DECISIONS.md`
   and `PROGRESS.md` are pasted in after the overlay, bounded, on every
   turn (ADR-193); the agent is told to read them before acting and to
@@ -2665,6 +2760,7 @@ Fast, and honest about what it did not run.
 | `test_review_lifecycle.py` | The dashboard across restart and copy (D6/D7): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. Whole-directory copy coverage checks independent accepted fixtures and historical model/curves/video access with the original path unavailable. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
 | `test_review_history_scale.py` | Bounded operation over a long run history (ADR-321): sixty-three runs with 512-sample histories and three verified checkpoints each. Over HTTP, the run list carries a telemetry summary under 1.5 KB per run with no histories and no checkpoint hashing, the per-run detail carries both, and missing/invalid/mismatched states survive the summary. In the browser, a deliberately selected historical run keeps its selection, histories and playing video while twenty runs are added and the newest run's telemetry grows; an idle poll adds no more DOM nodes after the growth than before; a fresh visit selects the training run and the current-run button reaches it with its growing history within five seconds. **Skips** the browser half without a Chromium or FFmpeg. |
 | `test_evaluate.py` | `cadex evaluate` (ADR-457) in three layers: what it reads from a hand-built retained attempt (no engine); the child run for real on the engine suite's own fixtures, which needs `mujoco` here and **skips** without it; and the command against a script a live engine accepted with a policy it verified — **skips** without a built engine. |
+| `test_loop.py` | The training loop (ADR-464) in three layers: the registry and the supervisor against a hand-built retained attempt and a fake trainer, with the supervisor really detached — registration whole before launch and each refusal, a run outliving the process that started it, stop, budget, collapse against crash, SIGTERM and SIGKILL as interruptions, one run at a time per project and per machine; the four tools through `Bridge.call`; and whole rounds through `command_prompt` and the real bridge socket with a scripted model against a live engine — a run started in one turn, its policy declared and evaluated in the next — which **skip** without a built engine, the real-trainer round also without the training venv. It also refuses behaviour words in the loop, its tools and its prompt paragraph. |
 | `test_film.py` | The evaluation's film (ADR-459) on a hand-built retained attempt and hand-written traces, with no engine: which seeds `--film` picks; the solids read from the attempt's own tessellation and refused outside it; materials from the inventory; both sheets' frame times, views, floor and dark backdrop read back from the PNGs; the detail window centred on the evaluation's base while a part is left behind, fixed for a mechanism with no floating base, and refused for a base that is not drawn (ADR-460); the early-ending and no-disturbance windows; the target marker (ADR-463): a ring read back from both sheets' pixels at the projected target of each frame's own time, hollow, drawn over the solids, jumping where the target does, held in a fixed window and in the video's, absent from a trace with no point goal, and refused for a point goal the trace cannot place; the trace digest check; the report rewritten with its film; `--film-only`'s refusals. The video tests need FFmpeg and **skip** without it. |
 | `test_review_evaluation.py` | The dashboard's view of an evaluation (ADR-459, REVIEW-DESIGN.md §17). The failing fixture is ot10's `w2-2` shuffle, from the receipt under `docs/probes/ot11/retained/`; a passing one is written in the test. Over HTTP: the bounded summary list, the whole report, the file allowlist and its refusals, one parse per file identity. In headless Chromium at 1400×900 and 400×850: every predicate's tally, every seed's verdict, ending and per-predicate values, the metrics and reward tables, the film, the reader's pick. The page half **skips** without a Chromium. |
 | `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** rendering/playback without both Chromium and FFmpeg. Fixture coverage, not fresh-biped evidence. |

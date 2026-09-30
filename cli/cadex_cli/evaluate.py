@@ -333,6 +333,58 @@ def failing_predicates(report: Mapping[str, Any]) -> list[str]:
         f"{row['id']} ({len(row['failed_seeds'])} of {seeds})" for row in rows]
 
 
+def _rounded(value: Any) -> Any:
+    """``value`` with every float cut to five significant figures."""
+
+    if isinstance(value, float):
+        return float(f"{value:.5g}")
+    if isinstance(value, Mapping):
+        return {key: _rounded(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_rounded(item) for item in value]
+    return value
+
+
+def agent_view(report: Mapping[str, Any], out: Path) -> dict[str, Any]:
+    """The evaluation as the product agent reads it (ADR-464): bounded.
+
+    The summary whole -- every predicate's tally, the terminations, the
+    reward by term and the behaviour metrics -- and one short row per seed.
+    The traces, the spec's drawn conditions and the rig stay in
+    ``evaluation.json``, which the view names.
+    """
+
+    summary = report.get("summary") or {}
+    film = report.get("film") or {}
+    return _rounded({
+        "verdict": report.get("verdict"),
+        "accepted_revision": report.get("accepted_revision"),
+        "policy_output": report.get("policy_output"),
+        "task_output": report.get("task_output"),
+        "weights": report.get("weights"),
+        "policy_sha256": report.get("policy_sha256"),
+        "label": report.get("label"),
+        "failing": failing_predicates(report),
+        "summary": {key: summary.get(key) for key in (
+            "seeds", "passed", "failed", "void", "predicates", "terminations", "reward",
+            "metrics")},
+        "seeds": [{
+            "seed": row.get("seed"),
+            "pass": row.get("pass"),
+            "void": row.get("void") or None,
+            "failing": row.get("failing"),
+            # The summary's own word for an episode nothing ended early.
+            "termination": str((row.get("episode") or {}).get("termination") or "") or "horizon",
+            "duration_s": (row.get("episode") or {}).get("duration_s"),
+            "reward_per_step": (row.get("reward") or {}).get("per_step"),
+            "metrics": row.get("metrics"),
+        } for row in report.get("seeds") or []],
+        "film": {"state": film.get("state"), "error": film.get("error"),
+                 "seeds": [row.get("seed") for row in film.get("seeds") or []]},
+        "report": str(Path(out) / REPORT_NAME),
+    })
+
+
 def evaluation_cell(report: Mapping[str, Any]) -> str:
     """The ``PROGRESS.md`` numbers cell: the verdict and what failed."""
 

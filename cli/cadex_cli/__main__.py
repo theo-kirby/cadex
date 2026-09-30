@@ -160,6 +160,7 @@ from .walk import (
     collect_detached,
     declare_policy,
     declared_note_subjects,
+    behaviour_authority,
     floating_bases,
     gait_from_trace,
     read_json,
@@ -1015,7 +1016,8 @@ def command_prompt(
 
             sys.stderr.write(text)
 
-        with Bridge(client, on_call=on_call, initial_revision=revision) as bridge:
+        with Bridge(client, on_call=on_call, initial_revision=revision,
+                    project_root=report.project_root) as bridge:
             turn = turn_factory(
                 claude_path=claude_path,
                 model=model,
@@ -2358,6 +2360,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         progress=read_json(train_dir / "progress.json")
         or read_json(train_dir / PROGRESS_FILENAME),
     ) if review.get("trace") else {"available": False, "reason": "no trace was exported."}
+    # ...and that reading is one behaviour's (ADR-464): a task with a
+    # success spec is judged by the spec, and the walk says so.
+    review["behaviour"] = behaviour_authority(read_json(known.get("task_bundle")))
     documentation = documentation_status(report.project_root, subjects)
     if model_path is not None:
         documentation["model"] = str(model_path)
@@ -2420,6 +2425,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                 gait["planar_travel_mm"], gait["duration_s"] or 0.0,
                 gait["max_tilt_deg"], gait["heading_final_deg"],
             )
+        )
+    if review["behaviour"]["command"]:
+        report.notes.append(
+            "behaviour: the task declares a success spec, so `cadex evaluate` is the "
+            "verdict on what the policy does; the gait reading is advisory."
         )
     # A model that declares nothing asks the project for nothing, and the
     # run says nothing rather than reporting an empty check.

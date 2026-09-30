@@ -201,6 +201,142 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
             "additionalProperties": False,
         },
     },
+    # The training loop (ADR-464): design a task, train on it, evaluate the
+    # policy against the task's success spec, revise. The same four tools for
+    # every behaviour; none of them knows what is being trained.
+    "train_start": {
+        "description": (
+            "START ONE BOUNDED TRAINING RUN on the accepted revision's task, and "
+            "return at once: the run trains under a supervisor that outlives this "
+            "turn. The run is pre-registered before it starts -- its settings, "
+            "its seed, its wall-clock budget, its stop rule and your reason are "
+            "written to runs/<run>/registration.json -- so say in `reason` which "
+            "measurement from the last evaluation motivated this run and what you "
+            "expect to change. It trains the task AS ACCEPTED NOW: revise the "
+            "reward, observations, terminations or success spec first, with "
+            "edit_script, and start the run after the build is accepted. It stops "
+            "at the last iteration, at `budget_s`, when the mean episode collapses, "
+            "or on train_stop. One run at a time; a run's name is used once. A "
+            "training seed may not be one of the task's evaluation seeds."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "run": {
+                    "type": "string",
+                    "description": "A new short name for this run: lowercase letters, "
+                    "digits, '.', '_' or '-'. It becomes runs/<run>/ in the project.",
+                },
+                "budget_s": {
+                    "type": "number",
+                    "description": "Wall-clock budget in seconds. Required: a run with "
+                    "no budget is not started. The run is stopped when it runs out.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "One or two sentences: the measurement that motivated "
+                    "this run and what it is expected to change.",
+                },
+                "task": {
+                    "type": "string",
+                    "description": "Which declared task output, when the script "
+                    "declares more than one.",
+                },
+                "settings": {
+                    "type": "object",
+                    "description": (
+                        "The trainer's settings, all optional: iterations (200), envs "
+                        "(256), seed (0), label, hidden (layer widths, [64, 64]), "
+                        "unroll, epochs, learning_rate, discount, gae_lambda, clip, "
+                        "entropy, value_weight, initial_std, action_filter_alpha, "
+                        "command_slew_deg, goal_pool, checkpoint_every (write a "
+                        "complete policy every N iterations plus the best so far, so "
+                        "a stopped run still leaves one), and the warm start: "
+                        "init_from (a .cxpolicy path), with init_from_parent_task and "
+                        "init_from_task_change when the task changed since."
+                    ),
+                },
+            },
+            "required": ["run", "budget_s", "reason"],
+            "additionalProperties": False,
+        },
+    },
+    "train_status": {
+        "description": (
+            "READ A TRAINING RUN: its state (running, finished, collapsed, failed, "
+            "stopped, budget_exhausted, interrupted), the trainer's progress -- "
+            "iteration, reward per step, mean episode length, exploration sigma, "
+            "the curve -- its checkpoints, and when it finished the policy's path "
+            "and sha256. `wait_s` blocks until the run ends or that long passes, "
+            "whichever is first. Without `run`: every run of this project and the "
+            "loop's ledger of runs and evaluations, which is how a new turn learns "
+            "what was already tried. A reward curve is progress, never a verdict."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "run": {"type": "string", "description": "The run's name. Omit for all runs."},
+                "wait_s": {
+                    "type": "number",
+                    "description": "Wait up to this many seconds (at most 900) for the "
+                    "run to end before answering. Default 0.",
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    },
+    "train_stop": {
+        "description": (
+            "STOP A RUNNING TRAINING RUN, with the reason. The supervisor stops the "
+            "trainer and records the run as stopped; checkpoints it already wrote "
+            "stay and each is a complete policy."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "run": {"type": "string", "description": "The run's name."},
+                "reason": {"type": "string", "description": "Why it is being stopped."},
+            },
+            "required": ["run", "reason"],
+            "additionalProperties": False,
+        },
+    },
+    "evaluate": {
+        "description": (
+            "EVALUATE THE ACCEPTED POLICY against its task's success spec: one "
+            "rollout per frozen evaluation seed under the spec's conditions. The "
+            "reply is the verdict, pass or fail per seed and per predicate, the "
+            "behaviour metrics, the reward term by term and how each episode "
+            "ended, followed by FILMSTRIPS of a seed as pictures -- an overview "
+            "of the whole episode and a detail sheet -- on the dark floor. It "
+            "evaluates the policy the accepted script declares, so store a "
+            "trained policy with put_asset and name it with assembly.policy "
+            "first. Diagnose a failure from these measurements and the film "
+            "before revising; the full report is evaluation.json in the project."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "policy": {
+                    "type": "string",
+                    "description": "Which declared policy output, when there is more than one.",
+                },
+                "task": {
+                    "type": "string",
+                    "description": "Pick the policy declared against this task output.",
+                },
+                "film": {
+                    "type": "string",
+                    "description": "Which seeds to draw: auto (the first failing seed, or "
+                    "the first seed of a pass), none, or seed numbers separated by "
+                    "commas. At most two are returned as pictures. Default auto.",
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    },
 }
 
 ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
