@@ -66,6 +66,20 @@ The human owns the checkboxes; roles report results and do not tick them.
       wanders, the spec must say so.
   - Changing a frozen item later is a recorded decision that re-evaluates
     every earlier policy.
+  - **The spec and the judge each have a job (owner, 2026-09-30).**
+    - Where the success spec measures a property (slip, stepping, foot
+      clearance, drift, heading, reach error), the spec is authoritative
+      for it.
+    - A judge blind spot on a measured property, such as the still-frame
+      judge not seeing w2-2's slip (ADR-460, ADR-461), is recorded in the
+      contract as a known limit. It does not block P1, and it does not call
+      for more judge probes.
+    - The judge's job is what the spec cannot measure: whether the
+      behaviour reads as the intended one at all, and gross failures such
+      as falling, flailing or the wrong motion.
+    - The judge's bar still applies to R1–R3. Where the judge contradicts a
+      measured predicate, the predicate wins, and the disagreement is
+      recorded.
 - [ ] **P2. The product evaluates any policy against its task's spec.**
   - The success spec is declared in xscript alongside the task, and is
     documented in `docs/XSCRIPT.md`.
