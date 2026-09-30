@@ -1202,3 +1202,34 @@ contradiction to diagnose. Two readings are worth recording:
 **R2's measured bar is reached** by this confirmation: every seed passes
 Q1–Q4 on targets the policy never trained on, and every judged seed meets
 the judge's bar. The owner ticks R2; this page does not.
+
+## Walk, on `ot11-quad-1`: the loop session, pre-registered
+
+`ot11-quad-1` is a copy (`cp -a`) of `ot10-quadruped-3-w2`, the copy of
+ot10's accepted quadruped on which `w2-1` and `w2-2` were trained. The
+original stays read-only. The copy is at accepted revision `84ff4c98…`,
+model `d67ac96c…`, hip height 96.7006 mm.
+
+**The spec the agent is handed is the whole walk contract.** Now that a
+task can state a speed goal (P3), W3 and W4's lateral half are stated too,
+so the block has all thirteen predicates. The commanded speed is a
+`speed` goal drawn in [0.6, 1.0] hip heights per second (58.02–96.70 mm/s)
+and held for the episode. The block is
+[`retained/walk-spec-block.txt`](retained/walk-spec-block.txt). It was
+built on a scratch copy before the session and accepted, and the bundle
+carried the goal and all thirteen predicates. The reset lift is written as
+the lift that clears a 3° tilt, not read from the task's `reset_tilt`
+parameter, so the agent cannot move it by editing the task.
+
+**Pre-registered first.** `retained/p4-quad-1-preregistration.json` fixes
+the driver (`runner/rounds.py`, unchanged, `a6a2a5b1…`), the prompt
+([`prompts/walk.loop.prompt.txt`](prompts/walk.loop.prompt.txt)), the
+spec block digest, four runs and four turns at most, **2400 s at most per
+run**, and `--stop-on-collapse`. The per-run budget is larger than reach's
+900 s because ot10's two runs on this mechanism took 1,866 s and 1,945 s
+for 1,000 iterations × 2,048 environments. Each run's settings, seed and
+reason are registered by `train_start` before it launches. The mechanism
+is fixed for the session, because the spec's constants are this model's.
+The prompt tells the agent what `w2-2` measured under this spec, and that
+its policy cannot be declared on a task with a goal. It does not tell the
+agent how to reward a gait.
