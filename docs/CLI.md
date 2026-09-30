@@ -2941,9 +2941,12 @@ success spec, is exit 3 with what to declare.
 **What it runs.** `cli/cadex_cli/evaluate_runner.py`, by path, under the
 engine's own interpreter. It calls `CadexDynamics.evaluate_success`: for
 each seed in the spec, one rollout of the policy in the engine's episode
-loop under the spec's horizon, randomisation, reset variation and
-disturbances (ADR-458), at one frame per control step, read by
-`CadexEvaluation` (ADR-455). The model is
+loop under the spec's horizon, randomisation, reset variation,
+disturbances (ADR-458) and goals (ADR-462), at one frame per control step,
+read by `CadexEvaluation` (ADR-455). A commanded speed and a reach target
+are the episode's own goal draws: the command takes neither as an argument,
+and each seed's `drawn.goal` in the report says what was asked and when.
+The model is
 compiled afresh for every seed, because a seeded episode writes its
 randomisation draws into the compiled model; each seed's row is the row it
 gets evaluated alone. Training stays offboard: nothing here imports JAX,

@@ -5238,6 +5238,25 @@ MAXIMUM_RANDOMISATION_ENTRIES = 32
 MAXIMUM_RESET_VARIATIONS = 4
 MAXIMUM_DISTURBANCES = 8
 
+#: Goals have a cap of their own for the same reason (ADR-462). Each one is
+#: one to three numbers a policy is told and a reward may name; four is a
+#: target, a speed and two set points, which is past any task this surface
+#: has been asked for.
+MAXIMUM_GOALS = 4
+
+#: What a goal may be. ``value`` is one number a reward gives its own
+#: meaning; ``speed`` is one number that *is* the commanded forward speed in
+#: millimetres per second, which is what lets a success spec read how well
+#: it was tracked; ``point`` is a place in the world, in millimetres, that a
+#: named tip can reach.
+GOAL_KINDS = ("value", "speed", "point")
+
+#: How many joint configurations a ``point`` goal may draw before the draw
+#: is refused, and how many whole episodes are drawn when the task is built
+#: to find a declaration that cannot be met before a trainer does.
+GOAL_POINT_ATTEMPTS = 100
+GOAL_FEASIBILITY_EPISODES = 16
+
 #: Which way a disturbance may point. ``horizontal`` reads the drawn azimuth
 #: as an angle in the ground plane; ``vertical`` reads the same draw as a
 #: sign. One draw either way, which is what keeps the stated stream the same
@@ -5313,10 +5332,17 @@ _SUCCESS_NEED_CORRECTIONS = {
         "inherits from) an assembly.disturbance with at_seconds and "
         "duration_s; a sustained force has no end to recover from."
     ),
-    "goal": (
-        "It is measured against a commanded speed or a target, and this "
-        "task states no goal. Bound a metric that needs none -- "
-        "mean_forward_speed_mm_s is a speed in millimetres per second."
+    "command": (
+        "It is measured against a commanded forward speed, and this task "
+        "states none. Give the task one -- assembly.goal('command', "
+        "kind='speed', between=[low, high]) in api.task(goals=[...]) -- or "
+        "bound a metric that needs none: mean_forward_speed_mm_s is a speed "
+        "in millimetres per second."
+    ),
+    "target": (
+        "It is measured against a target point, and this task states none. "
+        "Give the task one: assembly.goal('target', kind='point', "
+        "tip=component) in api.task(goals=[...])."
     ),
 }
 
@@ -5349,6 +5375,10 @@ TASK_SEMANTIC_FIELDS = (
     "reset_variation",
     "disturbance",
     "randomisation",
+    # Absent from every bundle that declares no goal, so such a bundle's
+    # digest is the one it always had (ADR-462).
+    "goal",
+    "goal_algorithm",
 )
 
 #: The bundle-level fields deliberately left out, and why each one is out.
@@ -5905,6 +5935,41 @@ EPISODE_VARIATION_ALGORITHM = (
     "sustained"
 )
 
+#: How an episode's goals are drawn and when each one holds (ADR-462).
+#:
+#: It is a **third** stated stream and not an extension of
+#: ``EPISODE_VARIATION_ALGORITHM``'s text, because that text is a semantic
+#: field of every bundle ever written: changing it would change the digest
+#: of tasks that declare no goal, and every policy trained on one names that
+#: digest. The draws continue the same ``random.Random`` *after* the
+#: disturbance draws, so a seed draws the reset and the shoves it always
+#: drew whether or not the task has a goal.
+#:
+#: Unlike the reset variation, the trainer **does** reproduce this one, on
+#: the host, number for number: its training goals are a pool of episodes
+#: drawn by this algorithm from its own seed. A target is a point a
+#: mechanism can reach without touching itself, which is a question for
+#: forward kinematics and a contact check, and two implementations of that
+#: which merely resembled each other would train a policy on targets the
+#: evaluation never asks for.
+GOAL_ALGORITHM = (
+    "random.Random(seed) continuing after the disturbance draws: for each "
+    "goal entry in bundle order, for each of its segments in order -- "
+    "segment k holds from control step k * resample_steps, and a goal with "
+    "resample_steps 0 has one segment held for the episode -- a value or a "
+    "speed is uniform(low, high); a point is up to `attempts` tries of "
+    "uniform(low, high) for each of its joints in order, written over the "
+    "reset keyframe's qpos, then mj_forward, then the tip point "
+    "xpos[body_id] + xmat[body_id] * local_m, accepted when its z is at "
+    "least min_z_m (if stated), no contact joins a geom pair outside "
+    "resting_contacts, and it lies at least min_separation_m from the "
+    "previous segment's point (start_m for the first); the accepted point "
+    "times scale is the goal, and a segment with no accepted try refuses "
+    "the episode. An unseeded episode holds `nominal`. The observation at "
+    "control step s and the reward of the state that step lands on both "
+    "read segment min(s // resample_steps, segments - 1)"
+)
+
 #: Everything a reward or termination expression may name beyond the
 #: observation channels themselves. ``_CONTROL_GLOBALS`` plus the three a
 #: reward actually wants: ``exp`` for a shaped bell, ``sqrt`` for a distance,
@@ -5968,12 +6033,27 @@ def policy_channels(task: Mapping[str, Any]) -> list[str]:
 
     Every channel whose row is not ``role: privileged``. For a task written
     before ADR-408 that is every channel, which is what its policies read.
+
+    **Then every goal channel, in bundle order** (ADR-462). A goal is what
+    the robot is told to do, so the policy always reads it, and it sits
+    after the sensor channels so a task that gains a goal keeps the address
+    of every channel it already had.
     """
 
     return [
         str(channel)
         for record in task["observations"]
         if str(record.get("role") or "policy") == "policy"
+        for channel in record["channels"]
+    ] + goal_channels(task)
+
+
+def goal_channels(task: Mapping[str, Any]) -> list[str]:
+    """Every goal channel a task declares, in bundle order (ADR-462)."""
+
+    return [
+        str(channel)
+        for record in task.get("goal") or ()
         for channel in record["channels"]
     ]
 
@@ -7033,6 +7113,298 @@ def _disturbance_records(
     return records
 
 
+def _goal_tip_m(data: Any, body: int, local_m: Sequence[float]) -> list[float]:
+    """One point fixed on one body, in the world, in metres.
+
+    ``xpos`` plus the body's rotation applied to the local offset, written
+    out over ``xmat``'s nine row-major numbers. Written out because the
+    trainer and the reference runner compute the same point from the same
+    arrays with no engine to call, and three copies of nine multiplies agree
+    where three uses of three different helpers might not.
+    """
+
+    origin = data.xpos[body]
+    rotation = data.xmat[body]
+    return [
+        float(origin[axis])
+        + sum(float(rotation[3 * axis + other]) * float(local_m[other])
+              for other in range(3))
+        for axis in range(3)
+    ]
+
+
+def _goal_records(
+    mujoco: Any,
+    reloaded: Any,
+    entries: Sequence[Mapping[str, Any]],
+    tree: Mapping[str, Any],
+    schedule: Mapping[str, Any],
+    *,
+    actions: Sequence[Mapping[str, Any]],
+    taken: Sequence[str],
+    context: str,
+) -> list[dict[str, Any]]:
+    """Every goal, resolved to what a draw needs and nothing a draw looks up.
+
+    The same move the other three condition lists make: what lands in the
+    bundle is addresses and SI, so the three processes that draw a goal --
+    this engine, the reference runner and the trainer's host side -- read
+    the same numbers and ask the model nothing but ``mj_forward``.
+
+    ``taken`` is every channel name already spoken for. A goal is named in
+    a reward exactly as an observation is, so one that shared a name with a
+    sensor channel would make an expression that reads correctly and means
+    whichever the evaluator happened to look up last.
+
+    ``resample_seconds`` has to land on control steps, for the reason a
+    rollout's frame rate has to divide the control rate: a goal that changed
+    between two actions would change under a policy that could not act on
+    it, and which step it fell on would depend on floating-point
+    accumulation.
+
+    A ``point`` goal is a place its tip **can reach**: a joint configuration
+    is drawn in the middle ``joint_fraction`` of every driven joint's own
+    range, and the tip's position there is the target. That is the only
+    kind of target a policy can be fairly failed for missing. The range is
+    the joint's and not the action's narrower command range, so a task that
+    narrows a servo's command can be given a target the narrowed servo
+    cannot reach -- which is the task's own statement, and is left to it.
+    """
+
+    bodies = [str(body["name"]) for body in tree["bodies"]]
+    interval = float(schedule["control_interval_s"])
+    max_steps = int(schedule["max_steps"])
+    owners = {str(name): "an observation" for name in taken}
+    seen_kinds: dict[str, str] = {}
+    records: list[dict[str, Any]] = []
+    for entry in entries:
+        name = str(entry.get("name") or "")
+        label = str(entry.get("label") or name)
+        kind = str(entry.get("kind") or "")
+        what = f"goal {name!r} in {context}"
+        if kind not in GOAL_KINDS:
+            raise DynamicsError(
+                f"{what} is a {kind!r}, which is not a kind of goal.",
+                reason="unknown_goal_kind",
+                correction=f"The kinds are {', '.join(GOAL_KINDS)}.",
+                observed={"goal": name, "kind": kind},
+            )
+        if kind != "value" and kind in seen_kinds:
+            raise DynamicsError(
+                f"{what} is a second {kind} goal beside {seen_kinds[kind]!r}.",
+                reason="duplicate_goal_kind",
+                correction=(
+                    "A success spec reads the commanded speed and the target "
+                    "point by kind, so a task states at most one of each. A "
+                    "further number a reward gives its own meaning is "
+                    "kind='value'."
+                ),
+                observed={"goal": name, "kind": kind,
+                          "earlier": seen_kinds[kind]},
+            )
+        seen_kinds[kind] = name
+        channels = (
+            [f"{name}_x", f"{name}_y", f"{name}_z"] if kind == "point" else [name]
+        )
+        for channel in channels:
+            if channel in owners:
+                raise DynamicsError(
+                    f"{what} would occupy the channel {channel!r}, which "
+                    f"{owners[channel]} already does.",
+                    reason="duplicate_goal_channel",
+                    correction=(
+                        "A reward names goals and observations alike, so two "
+                        "with one name means whichever was looked up last. "
+                        "Rename the goal. Note that a point goal expands: one "
+                        "named 'target' occupies target_x, target_y and "
+                        "target_z."
+                    ),
+                    observed={"goal": name, "channel": channel},
+                )
+            owners[channel] = f"goal {name!r}"
+
+        seconds = entry.get("resample_seconds")
+        steps = 0
+        if seconds is not None:
+            exact = float(seconds) / interval
+            steps = int(round(exact))
+            if steps < 1 or abs(exact - steps) > 1.0e-6:
+                raise DynamicsError(
+                    f"{what} changes every {float(seconds):g} s, which is "
+                    f"{exact:.6g} control steps of {interval:g} s.",
+                    reason="goal_resample_between_control_steps",
+                    correction=(
+                        "A goal changes at a control step, so that the "
+                        "policy can act on the step it changes. Give "
+                        "resample_seconds a whole number of control "
+                        f"intervals: {interval:g} s each at this task's "
+                        "control rate."
+                    ),
+                    observed={"resample_seconds": float(seconds),
+                              "control_interval_s": interval},
+                )
+        record: dict[str, Any] = {
+            "label": label,
+            "name": name,
+            "kind": kind,
+            "channels": channels,
+            # 0 is held for the episode. A period at or past the horizon is
+            # one segment too, and is recorded as the period it was given.
+            "resample_steps": steps,
+            "segments": 1 if not steps else -(-max_steps // steps),
+        }
+        if kind != "point":
+            low = float(entry.get("low", math.nan))
+            high = float(entry.get("high", math.nan))
+            if not (math.isfinite(low) and math.isfinite(high)) or high < low:
+                raise DynamicsError(
+                    f"{what} is drawn between {low!r} and {high!r}.",
+                    reason="malformed_goal",
+                    correction="Give between=[low, high], two finite numbers in order.",
+                    observed={"goal": name, "low": repr(low), "high": repr(high)},
+                )
+            record.update(
+                # A speed is the surface's own unit and is never converted:
+                # the policy reads it, the reward names it and the spec
+                # divides by it, all in millimetres per second.
+                unit="mm/s" if kind == "speed" else "",
+                low=low,
+                high=high,
+                nominal=[0.5 * (low + high)],
+            )
+            records.append(record)
+            continue
+
+        tip = str(entry.get("tip") or "")
+        if tip not in bodies:
+            raise DynamicsError(
+                f"{what} is a point its tip {tip!r} reaches, and that is not "
+                "a body in this assembly's dynamics model.",
+                reason="goal_tip_missing",
+                correction=(
+                    "Pass the same assembly.component value the assembly was "
+                    "built from. A component with no api.body has no mass "
+                    "and is not part of the model."
+                ),
+                observed={"goal": name, "tip": tip, "available": list(bodies)},
+            )
+        body_id = int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY, tip))
+        fraction = float(entry.get("joint_fraction", 0.8))
+        if not 0.0 < fraction <= 1.0:
+            raise DynamicsError(
+                f"{what} draws joints over {fraction:g} of their range.",
+                reason="malformed_goal",
+                correction="joint_fraction is a share of each joint's range: above 0, at most 1.",
+                observed={"goal": name, "joint_fraction": fraction},
+            )
+        joints: list[dict[str, Any]] = []
+        for action in actions:
+            actuator = int(action["index"])
+            joint = int(reloaded.actuator_trnid[actuator][0])
+            kind_of_joint = int(reloaded.jnt_type[joint])
+            if (
+                int(reloaded.actuator_trntype[actuator]) != int(mujoco.mjtTrn.mjTRN_JOINT)
+                or kind_of_joint not in (
+                    int(mujoco.mjtJoint.mjJNT_HINGE), int(mujoco.mjtJoint.mjJNT_SLIDE)
+                )
+                or not bool(reloaded.jnt_limited[joint])
+            ):
+                raise DynamicsError(
+                    f"{what} draws a pose for every joint the task drives, "
+                    f"and {str(action['actuator'])!r} drives one with no "
+                    "limits to draw between.",
+                    reason="goal_joint_unlimited",
+                    correction=(
+                        "A reachable point is the tip's position at a drawn "
+                        "joint configuration, so every driven joint needs "
+                        "both limits declared. A wheel or another joint that "
+                        "turns without limit has no such range."
+                    ),
+                    observed={"goal": name, "actuator": str(action["actuator"])},
+                )
+            low = float(reloaded.jnt_range[joint][0])
+            high = float(reloaded.jnt_range[joint][1])
+            middle = 0.5 * (low + high)
+            half = 0.5 * (high - low) * fraction
+            joints.append(
+                {
+                    "joint": str(
+                        mujoco.mj_id2name(reloaded, mujoco.mjtObj.mjOBJ_JOINT, joint)
+                    ),
+                    "qpos_adr": int(reloaded.jnt_qposadr[joint]),
+                    "low": middle - half,
+                    "high": middle + half,
+                }
+            )
+        local_m = vector_m(entry.get("tip_offset_mm") or (0.0, 0.0, 0.0))
+        key = int(
+            mujoco.mj_name2id(
+                reloaded, mujoco.mjtObj.mjOBJ_KEY, str(schedule["reset_keyframe"])
+            )
+        )
+        if key < 0:
+            raise DynamicsError(
+                f"The model {what} reads carries no "
+                f"{schedule['reset_keyframe']!r} keyframe, so a target has "
+                "no pose to be drawn from.",
+                reason="task_keyframe_missing",
+                observed={"keyframe": str(schedule["reset_keyframe"])},
+            )
+        data = mujoco.MjData(reloaded)
+        mujoco.mj_resetDataKeyframe(reloaded, data, key)
+        mujoco.mj_forward(reloaded, data)
+        start = _goal_tip_m(data, body_id, local_m)
+        resting = sorted(
+            {
+                (
+                    min(int(data.contact[index].geom1), int(data.contact[index].geom2)),
+                    max(int(data.contact[index].geom1), int(data.contact[index].geom2)),
+                )
+                for index in range(int(data.ncon))
+            }
+        )
+        scale = length_mm(1.0)
+        floor = entry.get("min_z_mm")
+        record.update(
+            unit="mm",
+            scale=scale,
+            body=tip,
+            body_id=body_id,
+            local_m=local_m,
+            joints=joints,
+            joint_fraction=fraction,
+            min_z_m=None if floor is None else length_m(float(floor)),
+            min_separation_m=length_m(float(entry.get("min_separation_mm") or 0.0)),
+            # Where the tip is at the reset pose: what the first target is
+            # kept apart from, and the target an unseeded episode holds.
+            start_m=start,
+            # The geom pairs already touching at the reset pose. A mechanism
+            # that rests on something is in contact before it moves, and a
+            # target is refused for the contacts its configuration *adds*.
+            resting_contacts=[list(pair) for pair in resting],
+            attempts=GOAL_POINT_ATTEMPTS,
+            nominal=[value * scale for value in start],
+        )
+        records.append(record)
+    if len(records) > MAXIMUM_GOALS:
+        raise DynamicsError(
+            f"{context} declares {len(records)} goals; the accepted maximum "
+            f"is {MAXIMUM_GOALS}.",
+            reason="too_many_goals",
+            observed={"goals": len(records), "maximum": MAXIMUM_GOALS},
+        )
+    if any(record["kind"] == "point" for record in records):
+        # A declaration no draw can meet is found here, from the file's own
+        # numbers, rather than by an evaluation seed or a training run.
+        import random
+
+        rng = random.Random(0)
+        probe = {"goal": records, "episode": dict(schedule)}
+        for _ in range(GOAL_FEASIBILITY_EPISODES):
+            draw_episode_goals(mujoco, reloaded, probe, rng)
+    return records
+
+
 def _deepest_penetration_m(data: Any) -> float:
     """The deepest contact overlap in a forwarded state, as a positive depth.
 
@@ -7147,6 +7519,8 @@ def _success_records(
     joint_records: Sequence[Mapping[str, Any]],
     *,
     reward_labels: Sequence[str],
+    actions: Sequence[Mapping[str, Any]] = (),
+    goal: Sequence[Mapping[str, Any]] = (),
     context: str,
 ) -> dict[str, Any]:
     """One success spec, resolved against the vocabulary and the model.
@@ -7169,6 +7543,13 @@ def _success_records(
     to be judged on a mass nobody chose, and the draws come first in a
     seed's stream, so they move every value drawn after them. A spec states
     ``[]`` to be judged on the mechanism as built.
+
+    The goals are conditions too (ADR-462), with one rule the others do not
+    need: a spec's goals are **the task's goals by name, kind and channel**.
+    ``goal`` is the task's resolved list. The policy reads those channels by
+    position, so a spec may change what a goal is drawn from -- a wider
+    range, a stricter separation, another period -- and may not add, drop
+    or rename one.
     """
 
     import CadexEvaluation
@@ -7191,16 +7572,22 @@ def _success_records(
     disturbance_entries = spec.get("disturbance")
     if disturbance_entries is None:
         disturbance_entries = task.get("disturbance") or ()
+    goal_entries = spec.get("goal")
+    if goal_entries is None:
+        goal_entries = task.get("goal") or ()
     feet = [str(name) for name in spec.get("feet") or ()]
     tip = spec.get("tip")
 
+    goal_kinds = {str(entry.get("kind") or "") for entry in goal_entries}
     have = {
         "feet": bool(feet),
         "tip": tip is not None,
         "shove": any(not entry.get("sustained") for entry in disturbance_entries),
-        # A task states no goal, so nothing a rollout did can be measured
-        # against one.
-        "goal": False,
+        # Read by kind: the commanded speed is the task's one speed goal and
+        # the target its one point goal, and a task that states neither has
+        # given a rollout nothing to be measured against.
+        "command": "speed" in goal_kinds,
+        "target": "point" in goal_kinds,
     }
     rows: list[dict[str, Any]] = []
     needed: dict[str, str] = {}
@@ -7283,6 +7670,51 @@ def _success_records(
     disturbance = _disturbance_records(
         mujoco, reloaded, disturbance_entries, tree, schedule, context=what
     )
+    # Resolved against the spec's own schedule, like the shoves: how many
+    # segments a resampled goal has is a fact about the horizon it runs for.
+    judged_goal = _goal_records(
+        mujoco, reloaded, goal_entries, tree, schedule,
+        actions=actions, taken=(), context=what,
+    )
+    shape = [(row["name"], row["kind"], row["channels"]) for row in judged_goal]
+    declared = [(row["name"], row["kind"], row["channels"]) for row in goal]
+    if shape != declared:
+        raise DynamicsError(
+            f"{what} states goals the task does not: "
+            f"{[name for name, _kind, _channels in shape]} against the "
+            f"task's {[name for name, _kind, _channels in declared]}.",
+            reason="success_goal_mismatch",
+            correction=(
+                "The policy reads the task's goal channels by position, so a "
+                "spec judges it on the same goals: the same names and kinds, "
+                "in the same order. What a spec may change is what each is "
+                "drawn from -- its range, its separation, its period. Omit "
+                "goals= to be judged on the task's own."
+            ),
+            observed={"spec": [list(row[:2]) for row in shape],
+                      "task": [list(row[:2]) for row in declared]},
+        )
+    for row in judged_goal:
+        if (
+            row["kind"] == "speed"
+            and "command" in needed
+            and float(row["low"]) <= 0.0 <= float(row["high"])
+        ):
+            raise DynamicsError(
+                f"Predicate {needed['command']!r} in {what} reads a speed as "
+                f"a ratio of the commanded one, and goal {row['name']!r} "
+                f"may command {row['low']:g} to {row['high']:g} mm/s, which "
+                "includes standing still.",
+                reason="success_command_spans_zero",
+                correction=(
+                    "A ratio of a zero command is not a number. Judge the "
+                    "policy on commands that are all forward or all "
+                    "backward -- assembly.success(goals=[...]) may narrow "
+                    "the task's range -- or bound mean_forward_speed_mm_s."
+                ),
+                observed={"predicate": needed["command"], "goal": row["name"],
+                          "low": row["low"], "high": row["high"]},
+            )
 
     # The rig is read here for its refusals -- a foot with no collision
     # shape, a tip nothing drives -- and for the scale a threshold in hip
@@ -7326,6 +7758,9 @@ def _success_records(
         "randomisation": randomisation,
         "reset_variation": reset_variation,
         "disturbance": disturbance,
+        # Absent when the task states no goal, so a spec on such a task is
+        # the block it always was.
+        **({"goal": judged_goal} if judged_goal else {}),
         "scale": {
             "mass_kg": float(rig["mass_kg"]),
             "weight_n": float(rig["weight_n"]),
@@ -7372,6 +7807,10 @@ def evaluation_task(task: Mapping[str, Any]) -> dict[str, Any]:
         played["randomisation"] = [dict(entry) for entry in spec["randomisation"]]
     played["reset_variation"] = [dict(entry) for entry in spec["reset_variation"]]
     played["disturbance"] = [dict(entry) for entry in spec["disturbance"]]
+    if spec.get("goal"):
+        # The same channels -- the builder refused anything else -- drawn as
+        # the spec says and over the spec's horizon (ADR-462).
+        played["goal"] = [dict(entry) for entry in spec["goal"]]
     return played
 
 
@@ -7553,6 +7992,33 @@ def task_records(
             observed={"task": context},
         )
 
+    # -- the schedule, and the goals a reward may name ----------------------
+    #
+    # Before the reward, because a goal is named in an expression exactly as
+    # a channel is and an expression is compiled against every name it may
+    # use. The schedule comes with it: a goal that is drawn again during an
+    # episode changes on a control step, and only the rounded schedule says
+    # where those are.
+    schedule = _episode_schedule(
+        reloaded,
+        control_hz=int(task.get("control_hz") or 0),
+        episode_seconds=float(task.get("episode_seconds") or 0.0),
+        context=context,
+    )
+    goal = _goal_records(
+        mujoco,
+        reloaded,
+        task.get("goal") or (),
+        tree,
+        schedule,
+        actions=action_rows,
+        taken=channels,
+        context=context,
+    )
+    channels = channels + [
+        str(channel) for record in goal for channel in record["channels"]
+    ]
+
     # -- reward and termination --------------------------------------------
     reward_rows: list[dict[str, Any]] = []
     for entry in task.get("reward") or ():
@@ -7618,12 +8084,6 @@ def task_records(
                       "maximum": MAXIMUM_TERMINATION_TERMS},
         )
 
-    schedule = _episode_schedule(
-        reloaded,
-        control_hz=int(task.get("control_hz") or 0),
-        episode_seconds=float(task.get("episode_seconds") or 0.0),
-        context=context,
-    )
     randomisation = _randomisation_records(
         mujoco,
         reloaded,
@@ -7667,6 +8127,8 @@ def task_records(
             tree,
             joint_records,
             reward_labels=[str(row["label"]) for row in reward_rows],
+            actions=action_rows,
+            goal=goal,
             context=context,
         )
     return {
@@ -7680,6 +8142,10 @@ def task_records(
         "randomisation": randomisation,
         "reset_variation": reset_variation,
         "disturbance": disturbance,
+        # Absent when the script declared none, with the algorithm that
+        # draws them: a task without a goal is byte for byte the bundle it
+        # always was, and its digest with it (ADR-462).
+        **({"goal": goal, "goal_algorithm": GOAL_ALGORITHM} if goal else {}),
         **judged,
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to
@@ -8094,6 +8560,170 @@ def draw_episode_variation(
     return {"reset_variation": variations, "disturbance": pushes}
 
 
+def draw_episode_goals(
+    mujoco: Any, model: Any, task: Mapping[str, Any], rng: Any
+) -> list[dict[str, Any]]:
+    """Every goal of one episode, in the order :data:`GOAL_ALGORITHM` states.
+
+    One row per goal entry, each ``{"label", "segments": [[...], ...]}``
+    with one list of channel values per segment. The reference runner and
+    the trainer's host side each carry a copy of this function, and a test
+    holds all three to the same numbers from the same seed.
+
+    It takes the model because a ``point`` is where a tip *is* at a drawn
+    joint configuration. That is read on a scratch ``MjData`` of its own: the
+    episode's state is not touched, and nothing here writes the model.
+    """
+
+    drawn: list[dict[str, Any]] = []
+    data = None
+    for entry in task.get("goal") or ():
+        segments: list[list[float]] = []
+        if str(entry["kind"]) != "point":
+            for _ in range(int(entry["segments"])):
+                segments.append(
+                    [rng.uniform(float(entry["low"]), float(entry["high"]))]
+                )
+            drawn.append({"label": str(entry["label"]), "segments": segments})
+            continue
+        if data is None:
+            data = mujoco.MjData(model)
+        key = int(
+            mujoco.mj_name2id(
+                model, mujoco.mjtObj.mjOBJ_KEY, str(task["episode"]["reset_keyframe"])
+            )
+        )
+        resting = {(int(first), int(second)) for first, second in entry["resting_contacts"]}
+        body = int(entry["body_id"])
+        local = [float(value) for value in entry["local_m"]]
+        floor = entry.get("min_z_m")
+        apart = float(entry["min_separation_m"])
+        previous = [float(value) for value in entry["start_m"]]
+        for segment in range(int(entry["segments"])):
+            rejected = {"below_min_z": 0, "in_contact": 0, "too_close": 0}
+            point = None
+            for _ in range(int(entry["attempts"])):
+                mujoco.mj_resetDataKeyframe(model, data, key)
+                for joint in entry["joints"]:
+                    data.qpos[int(joint["qpos_adr"])] = rng.uniform(
+                        float(joint["low"]), float(joint["high"])
+                    )
+                mujoco.mj_forward(model, data)
+                candidate = _goal_tip_m(data, body, local)
+                if floor is not None and candidate[2] < float(floor):
+                    rejected["below_min_z"] += 1
+                    continue
+                if any(
+                    (
+                        min(int(data.contact[index].geom1), int(data.contact[index].geom2)),
+                        max(int(data.contact[index].geom1), int(data.contact[index].geom2)),
+                    ) not in resting
+                    for index in range(int(data.ncon))
+                ):
+                    rejected["in_contact"] += 1
+                    continue
+                if math.dist(candidate, previous) < apart:
+                    rejected["too_close"] += 1
+                    continue
+                point = candidate
+                break
+            if point is None:
+                raise DynamicsError(
+                    f"Goal {str(entry['label'])!r} found no reachable point "
+                    f"in {int(entry['attempts'])} tries for segment {segment}: "
+                    f"{rejected['below_min_z']} were under min_z_mm, "
+                    f"{rejected['in_contact']} put the mechanism in contact "
+                    f"and {rejected['too_close']} were within "
+                    "min_separation_mm of where the tip started.",
+                    reason="goal_draw_exhausted",
+                    correction=(
+                        "A target is the tip's position at a joint "
+                        "configuration drawn in the middle of every driven "
+                        "joint's range. Lower min_z_mm or min_separation_mm, "
+                        "or narrow joint_fraction, until the poses the "
+                        "mechanism can really take pass."
+                    ),
+                    observed={"goal": str(entry["label"]), "segment": segment,
+                              "attempts": int(entry["attempts"]), **rejected},
+                )
+            segments.append([value * float(entry["scale"]) for value in point])
+            previous = point
+        drawn.append({"label": str(entry["label"]), "segments": segments})
+    return drawn
+
+
+def goal_schedule(
+    task: Mapping[str, Any], drawn: Sequence[Mapping[str, Any]] | None = None
+) -> list[dict[str, Any]]:
+    """One episode's goals as what holds when: the form an episode reports.
+
+    ``drawn`` is what :func:`draw_episode_goals` returned; without it this
+    is the unseeded episode, which holds each goal's ``nominal`` -- the
+    middle of a range, or the point the tip already occupies -- for the
+    same reason an unseeded episode starts at the solved pose.
+
+    Each row carries the goal's channels and unit and its segments as
+    ``{"start_step", "start_s", "end_s", "values"}``, so a reader of a
+    trace needs no bundle to say which target was up at which frame.
+    """
+
+    interval = float(task["episode"]["control_interval_s"])
+    horizon = int(task["episode"]["max_steps"])
+    entries = list(task.get("goal") or ())
+    draws = (
+        [{"segments": [list(entry["nominal"])]} for entry in entries]
+        if drawn is None else list(drawn)
+    )
+    schedule: list[dict[str, Any]] = []
+    for entry, draw in zip(entries, draws, strict=True):
+        period = int(entry["resample_steps"])
+        starts = [index * period for index in range(len(draw["segments"]))]
+        schedule.append(
+            {
+                "label": str(entry["label"]),
+                "name": str(entry["name"]),
+                "kind": str(entry["kind"]),
+                "channels": [str(channel) for channel in entry["channels"]],
+                "unit": str(entry["unit"]),
+                "segments": [
+                    {
+                        "start_step": start,
+                        "start_s": start * interval,
+                        "end_s": (
+                            starts[index + 1] if index + 1 < len(starts) else horizon
+                        ) * interval,
+                        "values": [float(value) for value in values],
+                    }
+                    for index, (start, values) in enumerate(
+                        zip(starts, draw["segments"])
+                    )
+                ],
+            }
+        )
+    return schedule
+
+
+def goal_values(
+    schedule: Sequence[Mapping[str, Any]], step: int
+) -> dict[str, float]:
+    """The goal channels in force at one control step, by name.
+
+    The last segment that has started. Past the final segment's start it is
+    still that segment, which is what an endless episode and the frame after
+    the last step both read.
+    """
+
+    values: dict[str, float] = {}
+    for entry in schedule:
+        held = entry["segments"][0]
+        for segment in entry["segments"]:
+            if int(segment["start_step"]) <= int(step):
+                held = segment
+        for channel, value in zip(entry["channels"], held["values"], strict=True):
+            values[str(channel)] = float(value)
+    return values
+
+
 def apply_reset_variation(
     mujoco: Any,
     model: Any,
@@ -8378,6 +9008,14 @@ def evaluate_episode(
             reason="task_keyframe_missing",
             observed={"keyframe": str(episode["reset_keyframe"])},
         )
+    # The goals continue the stream after the disturbance draws (ADR-462),
+    # and an unseeded episode holds each one's nominal value. Drawn after
+    # the keyframe is known to exist, because a point goal is drawn from it.
+    goals = goal_schedule(
+        task,
+        draw_episode_goals(mujoco, model, task, rng)
+        if rng is not None and task.get("goal") else None,
+    )
     mujoco.mj_resetDataKeyframe(model, data, key)
     mujoco.mj_forward(model, data)
     # Before the reset-pose sample below, because the first frame a rollout
@@ -8428,6 +9066,13 @@ def evaluate_episode(
                 data.xfrc_applied[:] = 0.0
             forces(step, data, time_s)
         observation = observation_values(task, data.sensordata)
+        # What the episode is asking for at this step, beside what the
+        # sensors read. The same values join the landed observation below:
+        # a reward is a property of where the action landed, judged against
+        # the goal the action was taken under, so a step on which the goal
+        # changes is scored against the goal its policy saw.
+        told = goal_values(goals, step) if goals else {}
+        observation.update(told)
         if actions is None:
             commanded = [
                 evaluate_control(code, time_s, context=f"action {index}")
@@ -8453,6 +9098,7 @@ def evaluate_episode(
             mujoco.mj_step(model, data)
 
         landed = observation_values(task, data.sensordata)
+        landed.update(told)
         contributions = []
         reward = 0.0
         for label, weight, code in reward_terms:
@@ -8518,18 +9164,22 @@ def evaluate_episode(
         # at from the seed.
         "reset_variation": variation["reset_variation"],
         "disturbance": variation["disturbance"],
+        # What the episode asked for and when: empty for a task with no
+        # goal, the nominal values for an unseeded one.
+        "goal": goals,
         "seed": None if seed is None else int(seed),
     }
 
 
 def _task_channels(task: Mapping[str, Any]) -> list[str]:
-    """Every scalar channel name the bundle declares, in slice order."""
+    """Every scalar name an expression may use: the sensor channels in
+    slice order, then the goal channels in bundle order (ADR-462)."""
 
     return [
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
-    ]
+    ] + goal_channels(task)
 
 
 # ---------------------------------------------------------------------------
@@ -9589,6 +10239,9 @@ def rollout_policy(
     # counters are read at every control step, and the largest is kept,
     # because the reset clears them too.
     warned = [0] * int(mujoco.mjtWarning.mjNWARNING)
+    # The control step each sampled frame was taken after, so a frame can be
+    # given the goal that was up when it was taken.
+    sampled_steps: list[int] = []
 
     def _sample(
         step: int, data: Any, final: bool, action: list[float] | None
@@ -9600,6 +10253,7 @@ def rollout_policy(
         # mechanism that had not yet fallen over.
         if step % steps_per_frame and not final:
             return None
+        sampled_steps.append(int(step))
         record = {
             "frame_kind": "solver_output",
             "nominal_time_s": step * control_interval,
@@ -9625,6 +10279,17 @@ def rollout_policy(
             reason="rollout_produced_no_frames",
             observed={"steps": int(episode["step_count"])},
         )
+    goals = list(episode["goal"])
+    if goals:
+        # Each frame carries the goal in force at its own time, in
+        # ``goal_channels`` order: the target a reach frame is drawn against
+        # and the command a gait frame is read against. The frame after the
+        # last step has no step of its own and keeps the last one's. Absent
+        # from a trace whose task states no goal, so that trace is the
+        # document it always was.
+        last = max(int(episode["step_count"]) - 1, 0)
+        for record, step in zip(sampled, sampled_steps, strict=True):
+            record["goal"] = list(goal_values(goals, min(step, last)).values())
 
     # The input frame is the reset pose, untimed, in front of the solved
     # frame at t=0 -- ``simulate``'s first contract detail, and the one M1
@@ -9669,6 +10334,18 @@ def rollout_policy(
             }
             for action in task["actions"]
         ],
+        # What each frame's ``goal`` row means, declared once: the channel,
+        # the goal it belongs to, that goal's kind and its unit.
+        **(
+            {
+                "goal_channels": [
+                    {"channel": str(channel), "goal": str(entry["name"]),
+                     "kind": str(entry["kind"]), "unit": str(entry["unit"])}
+                    for entry in goals for channel in entry["channels"]
+                ]
+            }
+            if goals else {}
+        ),
         # Read off the reloaded model rather than off the bundle: these are
         # facts about the file that ran, and the file is the claim.
         "solver_step_s": float(model.opt.timestep),
@@ -9692,6 +10369,8 @@ def rollout_policy(
             # drawn value, and reads a recovery from when the shove ended.
             "reset_variation": list(episode["reset_variation"]),
             "disturbance": list(episode["disturbance"]),
+            # ...and what it was asked to do, segment by segment.
+            **({"goal": goals} if goals else {}),
             # Empty for a simulation that stayed sound. Anything here says
             # the solver gave up somewhere in the episode, and what the
             # frames show after that is not the mechanism.
@@ -9818,7 +10497,33 @@ def evaluate_success(
             "truncated": bool(episode["truncated"]),
             "solver_warnings": list(episode["solver_warnings"]),
         }
-        measured = CadexEvaluation.measure(samples, ended, rig, shoves=shoves)
+        # The goal is read from what the episode drew, by kind: the one
+        # speed goal is the command a gait is tracked against, the one point
+        # goal the target a reach is measured to. Neither is told to the
+        # evaluation from outside.
+        command = None
+        segments: list[dict[str, Any]] = []
+        for entry in episode.get("goal") or ():
+            if entry["kind"] == "speed":
+                place = [row["channel"] for row in run["goal_channels"]].index(
+                    entry["channels"][0]
+                )
+                command = CadexEvaluation.settled_command(
+                    [(float(frame["nominal_time_s"]), float(frame["goal"][place]))
+                     for frame in run["frames"]
+                     if frame["frame_kind"] == "solver_output"]
+                )
+            elif entry["kind"] == "point":
+                segments = [
+                    {"start_s": float(segment["start_s"]),
+                     "end_s": float(segment["end_s"]),
+                     "target_mm": list(segment["values"])}
+                    for segment in entry["segments"]
+                ]
+        measured = CadexEvaluation.measure(
+            samples, ended, rig, shoves=shoves,
+            command_mm_s=command, segments=segments,
+        )
         held = CadexEvaluation.check(spec["predicates"], measured["metrics"])
         steps = max(1, ended["steps"])
         # A simulation the solver gave up on is not a measurement of the
@@ -9851,6 +10556,7 @@ def evaluate_success(
                 "randomisation": list(episode["randomisation"]),
                 "reset_variation": list(episode["reset_variation"]),
                 "disturbance": list(episode["disturbance"]),
+                **({"goal": list(episode["goal"])} if episode.get("goal") else {}),
             },
             "frames": len(samples),
         }
@@ -9870,6 +10576,10 @@ def evaluate_success(
                 },
                 "frames": run["frames"],
                 "actuator_channels": list(run["actuator_channels"]),
+                **(
+                    {"goal_channels": list(run["goal_channels"])}
+                    if "goal_channels" in run else {}
+                ),
                 "dynamics": {
                     "solver": "mujoco",
                     "solver_step_s": float(run["solver_step_s"]),
@@ -9905,6 +10615,8 @@ def evaluate_success(
                 "predicates", "seeds", "feet", "tip", "episode",
                 "reset_variation", "disturbance", "scale")},
             "randomisation": [dict(entry) for entry in played["randomisation"]],
+            **({"goal": [dict(entry) for entry in played["goal"]]}
+               if played.get("goal") else {}),
         },
         "rig": {key: value for key, value in rig.items() if key != "feet"},
         "seeds": rows,

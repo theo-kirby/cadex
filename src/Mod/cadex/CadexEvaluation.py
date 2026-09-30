@@ -83,8 +83,8 @@ REACH_FINAL_WINDOW_S = 1.0
 #: The needs are facts about the spec and the model, never about a
 #: behaviour: ``base`` is a floating base, ``floor`` the one plane it stands
 #: on, ``feet`` and ``tip`` what the spec names, ``shove`` a timed
-#: disturbance in the spec's conditions, ``goal`` a commanded speed or a
-#: target the task states.
+#: disturbance in the spec's conditions, ``command`` a speed goal the task
+#: states and ``target`` a point goal it states (ADR-462).
 METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "completed": ("episode", ()),
     "duration_s": ("episode", ()),
@@ -106,12 +106,12 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "duty_factor_min": ("gait", ("feet",)),
     "duty_factor_max": ("gait", ("feet",)),
     "foot_lowest_hip_heights_min": ("gait", ("feet",)),
-    "speed_ratio": ("gait", ("feet", "goal")),
-    "lateral_ratio": ("gait", ("feet", "goal")),
-    "final_error_mm_max": ("reach", ("tip", "goal")),
-    "final_error_arm_lengths_max": ("reach", ("tip", "goal")),
-    "time_to_target_s_max": ("reach", ("tip", "goal")),
-    "overshoot_ratio_max": ("reach", ("tip", "goal")),
+    "speed_ratio": ("gait", ("feet", "command")),
+    "lateral_ratio": ("gait", ("feet", "command")),
+    "final_error_mm_max": ("reach", ("tip", "target")),
+    "final_error_arm_lengths_max": ("reach", ("tip", "target")),
+    "time_to_target_s_max": ("reach", ("tip", "target")),
+    "overshoot_ratio_max": ("reach", ("tip", "target")),
 }
 
 _EPS = 1.0e-9
@@ -503,6 +503,23 @@ def gait_metrics(samples, rig: Mapping[str, Any], command_mm_s: float | None = N
         "foot_lowest_hip_heights_min": worst("lowest_height_hip_heights", min),
         "feet": feet,
     }
+
+
+def settled_command(commands, *, settle_s: float = SETTLE_S) -> float | None:
+    """The commanded speed a gait is read against: its mean over the settled frames.
+
+    ``commands`` is ``[(time_s, command_mm_s)]``, one per frame, as a
+    rollout's frames carry the goal. A command held for the episode is that
+    command exactly. One that changes is averaged over the same frames the
+    measured speed is, so ``speed_ratio`` compares a mean with a mean; it
+    does not say how quickly a change was followed. ``None`` when the
+    episode ended inside the settle.
+    """
+
+    held = [float(command) for moment, command in commands if float(moment) >= settle_s]
+    if not held:
+        return None
+    return held[0] if min(held) == max(held) else sum(held) / len(held)
 
 
 # -- a tip and its targets --------------------------------------------------

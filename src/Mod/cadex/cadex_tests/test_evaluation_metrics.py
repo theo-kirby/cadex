@@ -452,12 +452,15 @@ def test_the_vocabulary_is_exactly_what_the_families_measure() -> None:
     for name, (family, needs) in evaluation.METRICS.items():
         value = measured[family][name]
         assert isinstance(value, (int, float)) and not isinstance(value, bool), name
-        assert set(needs) <= {"base", "floor", "feet", "tip", "shove", "goal"}, name
+        assert set(needs) <= {"base", "floor", "feet", "tip", "shove", "command", "target"}, name
     for spec in (WALK_SPEC, REACH_SPEC, BALANCE_SPEC):
         assert {row["metric"] for row in spec} <= set(evaluation.METRICS)
-    # What needs a goal is what is a ratio of, or a distance from, one.
-    assert {name for name, (_, needs) in evaluation.METRICS.items() if "goal" in needs} == {
-        "speed_ratio", "lateral_ratio", "final_error_mm_max", "final_error_arm_lengths_max",
+    # What needs a goal is what is a ratio of, or a distance from, one: a
+    # commanded speed for the two ratios, a target point for the reach.
+    assert {name for name, (_, needs) in evaluation.METRICS.items() if "command" in needs} == {
+        "speed_ratio", "lateral_ratio"}
+    assert {name for name, (_, needs) in evaluation.METRICS.items() if "target" in needs} == {
+        "final_error_mm_max", "final_error_arm_lengths_max",
         "time_to_target_s_max", "overshoot_ratio_max"}
     assert not [name for name in evaluation.METRICS if "reward" in name]
 

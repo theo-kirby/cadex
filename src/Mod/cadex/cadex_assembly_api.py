@@ -1043,6 +1043,10 @@ _MAX_SUCCESS_PREDICATES = 32
 _MAX_SUCCESS_SEEDS = 64
 _MAX_SUCCESS_FEET = 16
 
+#: What a goal may be (ADR-462). ``CadexDynamics.GOAL_KINDS`` is the same
+#: tuple, and ``test_goal_api`` holds the two equal.
+_GOAL_KINDS = ("value", "speed", "point")
+
 #: An observation's name, which becomes a name a reward formula writes. The
 #: same shape as a Python identifier because that is what it turns into,
 #: and short enough that the suffixed forms stay readable.
@@ -1116,6 +1120,9 @@ class AssemblyDomainAPI:
         # What a policy is judged by, which is not what it was paid for: an
         # argument to a task, like the reward it is kept apart from (ADR-456).
         "success",
+        # What an episode asks the policy to do: an argument to a task and
+        # to its success spec (ADR-462).
+        "goal",
         "exploded_view",
     )
 
@@ -3481,6 +3488,146 @@ class AssemblyDomainAPI:
             **properties,
         )
 
+    def goal(
+        self,
+        name: str,
+        *,
+        kind: str = "value",
+        between: Sequence[float] | None = None,
+        tip: DomainValue | None = None,
+        tip_offset_mm: Sequence[float] | None = None,
+        joint_fraction: float = 0.8,
+        min_z_mm: float | None = None,
+        min_separation_mm: float = 0.0,
+        resample_seconds: float | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Tell the policy where to go: a number or a place drawn per episode.
+
+        A task without a goal asks one question -- stand, hold this pose --
+        and a policy answers it once. A goal is what makes the question
+        change: a speed to walk at, a point to reach, a width to close to.
+        It is drawn afresh every episode, **the policy observes it**, the
+        reward and the terminations name it exactly as they name an
+        observation channel, and a rollout's trace records it frame by
+        frame.
+
+        ``kind`` says what it is:
+
+        * ``"value"`` -- one number between ``between=[low, high]``, in
+          whatever unit the reward reads it in. Its channel is ``name``.
+        * ``"speed"`` -- the **commanded forward speed**, in millimetres per
+          second, between ``between=[low, high]``. Its channel is ``name``.
+          It is a ``value`` with a meaning the engine knows: a success spec
+          reads ``speed_ratio`` and ``lateral_ratio`` against it. The reward
+          still has to pay for it -- naming the goal is what ties the two.
+        * ``"point"`` -- a place in the world, in millimetres, that ``tip``
+          can reach. Its channels are ``name_x``, ``name_y`` and ``name_z``.
+          The engine draws a joint configuration with every joint the task
+          drives in the middle ``joint_fraction`` of its own range, and the
+          target is where the point ``tip_offset_mm`` on ``tip`` is there.
+          A draw is taken again, up to a hundred times, when the point is
+          under ``min_z_mm`` (world Z), when the configuration puts the
+          mechanism in a contact it is not in at rest, or when the point is
+          within ``min_separation_mm`` of where the tip starts the segment.
+          A success spec reads the reach metrics against it.
+
+        A task states at most one ``speed`` and one ``point``; ``value``
+        goals are free.
+
+        ``resample_seconds`` draws the goal again that often during the
+        episode, which is what makes a policy learn to *change* what it is
+        doing. It must be a whole number of control steps. Omitted, the goal
+        is held for the episode.
+
+        An episode played without a seed holds the middle of a range, or
+        the point the tip already occupies.
+
+        A goal is an intermediate value: pass it to ``api.task(goals=[...])``.
+        """
+
+        operation = "goal"
+        clean_name = str(name or "").strip()
+        if not _CHANNEL_NAME.fullmatch(clean_name):
+            raise _error(
+                operation,
+                "name",
+                "must be a short identifier: a letter followed by up to 47 "
+                "letters, digits or underscores. It becomes a name reward "
+                "formulas write, so it has to be one they can",
+                name,
+            )
+        clean_kind = str(kind or "").strip().lower()
+        if clean_kind not in _GOAL_KINDS:
+            raise _error(
+                operation, "kind", f"must be one of {list(_GOAL_KINDS)}", kind
+            )
+        properties: dict[str, Any] = {"name": clean_name, "kind": clean_kind}
+        if clean_kind == "point":
+            if between is not None:
+                raise _error(
+                    operation, "between",
+                    "is the range of a value or a speed; a point is drawn "
+                    "from the poses its tip can reach", between,
+                )
+            if tip is None:
+                raise _error(
+                    operation, "tip",
+                    "a point goal needs the component whose point is to "
+                    "reach it: tip=component",
+                )
+            properties["tip"] = _domain_value(
+                operation, "tip", tip, output_type="component_link"
+            )
+            properties["tip_offset_mm"] = (
+                [0.0, 0.0, 0.0] if tip_offset_mm is None
+                else _vector(operation, "tip_offset_mm", tip_offset_mm, size=3)
+            )
+            properties["joint_fraction"] = _number(
+                operation, "joint_fraction", joint_fraction,
+                minimum=0.0, maximum=1.0, strict_minimum=True,
+            )
+            if min_z_mm is not None:
+                properties["min_z_mm"] = _number(operation, "min_z_mm", min_z_mm)
+            properties["min_separation_mm"] = _number(
+                operation, "min_separation_mm", min_separation_mm, minimum=0.0
+            )
+        else:
+            for parameter, source, default in (
+                ("tip", tip, None),
+                ("tip_offset_mm", tip_offset_mm, None),
+                ("min_z_mm", min_z_mm, None),
+                ("joint_fraction", joint_fraction, 0.8),
+                ("min_separation_mm", min_separation_mm, 0.0),
+            ):
+                if source is not None and source != default:
+                    raise _error(
+                        operation, parameter,
+                        "describes how a point goal is drawn, and this is "
+                        f"a {clean_kind}", source,
+                    )
+            if between is None:
+                raise _error(
+                    operation, "between",
+                    f"a {clean_kind} goal is drawn between two numbers: "
+                    "between=[low, high]",
+                )
+            low, high = _vector(operation, "between", between, size=2)
+            if high < low:
+                raise _error(
+                    operation, "between", "must be ordered [low, high]", between
+                )
+            properties["low"] = low
+            properties["high"] = high
+        if resample_seconds is not None:
+            properties["resample_seconds"] = _number(
+                operation, "resample_seconds", resample_seconds,
+                minimum=0.0, maximum=3600.0, strict_minimum=True,
+            )
+        return self._value(
+            operation, "goal", label=_label(operation, label), **properties
+        )
+
     def success(
         self,
         predicates: Sequence[Mapping[str, Any]],
@@ -3493,6 +3640,7 @@ class AssemblyDomainAPI:
         randomisation: Sequence[DomainValue] | None = None,
         reset_variation: Sequence[DomainValue] | None = None,
         disturbance: Sequence[DomainValue] | None = None,
+        goals: Sequence[DomainValue] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Say what a policy must *do* to have succeeded, apart from its reward.
@@ -3526,13 +3674,15 @@ class AssemblyDomainAPI:
           ``duty_factor_min``, ``duty_factor_max``,
           ``foot_lowest_hip_heights_min``, ``mean_forward_speed_mm_s`` and
           ``mean_lateral_speed_mm_s``. "Every foot" is the worst foot;
-        * a goal -- a commanded speed or a target: ``speed_ratio`` and
-          ``lateral_ratio`` (with ``feet``), and with ``tip`` the reach
+        * a goal the task states (``api.goal``): against its ``speed``
+          goal, ``speed_ratio`` and ``lateral_ratio`` (with ``feet``) --
+          the mean forward and lateral speed as a ratio of the commanded
+          one; against its ``point`` goal and with ``tip``, the reach
           metrics ``final_error_mm_max``, ``final_error_arm_lengths_max``,
-          ``time_to_target_s_max`` and ``overshoot_ratio_max``. **A task
-          states no goal, so a spec that bounds one of these is refused**:
-          nothing a rollout did can be measured against a command it was
-          never given.
+          ``time_to_target_s_max`` and ``overshoot_ratio_max``, each the
+          worst over the targets the episode held. **A spec that bounds one
+          of these on a task with no such goal is refused**: nothing a
+          rollout did can be measured against a command it was never given.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its
@@ -3554,6 +3704,14 @@ class AssemblyDomainAPI:
         a seed's stream, so stating it also fixes which start and which
         shove that seed draws. ``episode_seconds`` likewise defaults to the
         task's.
+
+        ``goals`` is the same kind of condition: omitted, the evaluation
+        draws the task's own goals. Given, it must name **the task's goals
+        again** -- the same names and kinds, in the same order, because the
+        policy reads them by position -- and may change what each is drawn
+        from: a wider range of speeds, a target further from the start,
+        another ``resample_seconds``. A goal's draws come last in a seed's
+        stream, so stating one moves no reset and no shove.
 
         A success spec is an intermediate value: pass it to ``api.task``.
         """
@@ -3699,6 +3857,10 @@ class AssemblyDomainAPI:
             properties["disturbance"] = _values(
                 operation, "disturbance", disturbance,
                 output_type="disturbance", minimum=0,
+            )
+        if goals is not None:
+            properties["goals"] = _values(
+                operation, "goals", goals, output_type="goal", minimum=0
             )
         return self._value(
             operation, "success", label=_label(operation, label), **properties
@@ -3863,6 +4025,7 @@ class AssemblyDomainAPI:
         randomisation: Sequence[DomainValue] = (),
         reset_variation: Sequence[DomainValue] = (),
         disturbance: Sequence[DomainValue] = (),
+        goals: Sequence[DomainValue] = (),
         success: DomainValue | None = None,
         label: str = "",
     ) -> DomainValue:
@@ -3916,6 +4079,13 @@ class AssemblyDomainAPI:
         disturbed is a posture that was never tested. A task with neither of
         the last two asks a policy exactly one question and accepts one
         answer, which is what makes bracing a winning strategy.
+
+        ``goals`` takes ``api.goal`` values: what each episode asks the
+        policy to do -- a speed, a point to reach, a number -- drawn afresh
+        every episode and optionally again during it. The policy observes
+        every goal, after its sensor channels, and ``reward`` and
+        ``termination`` expressions name a goal's channels as they name an
+        observation's. A task with none asks the same thing every episode.
 
         ``success`` takes one ``api.success`` value: what the behaviour
         must measurably be, on which seeds and under which conditions. It is
@@ -3996,6 +4166,22 @@ class AssemblyDomainAPI:
                         "names a component that is not listed in this "
                         "assembly",
                     )
+        # What each episode asks for (ADR-462). Whether a name collides with
+        # an observation channel, whether a period lands on control steps
+        # and whether a point can be reached at all are the engine's, for
+        # the reason the shove checks are: each needs the compiled model or
+        # the rounded schedule.
+        goal_values = _values(
+            operation, "goals", goals, output_type="goal", minimum=0
+        )
+        for index, entry in enumerate(goal_values):
+            tip = entry.properties.get("tip")
+            if tip is not None and id(tip) not in component_ids:
+                raise _error(
+                    operation,
+                    f"goals[{index}]",
+                    "names a tip that is not listed in this assembly",
+                )
         # Absent rather than ``None`` when no spec is declared, so a task
         # that has none is the value it always was.
         judged: dict[str, Any] = {}
@@ -4016,6 +4202,11 @@ class AssemblyDomainAPI:
                         spec.properties.get(parameter) or ()
                     )
                 )
+            named.extend(
+                (f"success.goals[{index}]", entry.properties["tip"])
+                for index, entry in enumerate(spec.properties.get("goals") or ())
+                if entry.properties.get("tip") is not None
+            )
             for where, component in named:
                 if id(component) not in component_ids:
                     raise _error(
@@ -4056,6 +4247,9 @@ class AssemblyDomainAPI:
             episode_seconds=seconds,
             control_hz=control_hz,
             label=label,
+            # Absent when the task states none, like the spec below, so a
+            # task without a goal is the value it always was.
+            **({"goals": goal_values} if goal_values else {}),
             **judged,
         )
 

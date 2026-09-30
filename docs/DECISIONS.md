@@ -30277,3 +30277,178 @@ as the runner wrote them, the marked sheet
 `cli/tests/test_ot11_judge.py`, which holds the four receipts to what the
 runner computes from their own calls and asserts that the film, the
 instructions and the contract are as they were.
+
+## ADR-462 — A task says where to go: goals drawn per episode, by one algorithm the engine and the trainer both run (2026-09-30)
+
+**Context.** Charter criterion P3. A task could state a reward, a
+termination, a randomisation, a reset variation and a disturbance, and
+nothing about what each episode asks for. So a walk reward paid for
+"forward" with no commanded speed, a reach had no target, and the ot11
+contract's W3, the lateral half of W4 and every reach predicate had nothing
+to be read against: `speed_ratio` and the reach metrics were refused on
+every task, and the probe reader took the command and the targets on its
+command line.
+
+**Decision.**
+
+1. **`assembly.goal(name, kind=...)` is a tenth task intermediate**, passed
+   as `assembly.task(goals=[...])`. Three kinds. `value` is one number in
+   `between=[low, high]`, whose meaning is the reward's. `speed` is the same
+   with a meaning the engine knows: the commanded forward speed in mm/s.
+   `point` is a place in the world, in mm, that a named `tip` can reach. A
+   task states at most one `speed` and one `point`, and four goals in all.
+2. **A goal is a channel.** It expands to named scalars (`name`, or
+   `name_x/_y/_z`), the policy reads every goal after its sensor channels,
+   and reward and termination expressions name a goal exactly as they name
+   an observation. Nothing else was needed to let "the reward and the spec
+   name it": the expression compiler, the policy container and
+   `verify_policy` all work on channel names already. A goal is never
+   privileged and is not counted among ungrounded sensor inputs (ADR-408):
+   it is what the robot is told, not something it measures.
+3. **`resample_seconds` redraws a goal during the episode**, on a whole
+   number of control steps or it is refused. The observation at control
+   step *s* and the reward of the state that step lands on both read segment
+   `min(s // resample_steps, segments - 1)`: a step on which the goal
+   changes is scored against the goal its policy saw.
+4. **A `point` is drawn from the poses the mechanism can take.** Every
+   joint the task drives is drawn uniformly in the middle `joint_fraction`
+   (default 0.8) of its own range, over the reset keyframe; the target is
+   the tip's position there. A draw is taken again, up to 100 times, when
+   the point is under `min_z_mm`, when the pose adds a contact the reset
+   pose does not have, or when the point is within `min_separation_mm` of
+   where the tip starts that segment (the reset pose, then the previous
+   target). That is the ot11 contract's reach sampling, stated once in the
+   product. A declaration no draw can meet is refused when the task is
+   built, by drawing sixteen episodes from a fixed stream.
+5. **The draws have their own stated algorithm, `goal_algorithm`, and
+   continue a seed's stream after the disturbance draws.** The text of
+   `variation_algorithm` was not extended: it is a semantic field of every
+   bundle ever written, and changing it would change the digest of tasks
+   that declare no goal and orphan every policy trained on one. `goal` and
+   `goal_algorithm` are new semantic fields, **absent from a bundle that
+   declares no goal**, so such a bundle is byte for byte what it was. And
+   because the goal draws come last, a seed draws the reset and the shoves
+   it always drew: the ten frozen evaluation seeds mean what they meant.
+6. **The trainer draws goals by the bundle's algorithm, on the host.** This
+   is the opposite of ADR-097, which lets the trainer redraw resets and
+   shoves on device by a different stream, because nobody replays a
+   training episode. A target is different in kind: whether a pose touches
+   something is forward kinematics and a contact check, and a second rule
+   that only resembled the bundle's would train a policy on targets the
+   evaluation never asks for. So `training/cadex_train.py` carries
+   `draw_goals`, a copy of `CadexDynamics.draw_episode_goals` run with stock
+   `mujoco`, draws a pool of `--goal-pool` (4096) episodes from
+   `random.Random(base_seed)` before training, and on device only chooses
+   which pooled episode an environment holds (`jax.random.randint`, on
+   every reset). Every `goaled` branch is taken at trace time, so a task
+   with no goal takes no extra key split and carries no extra scan member.
+7. **The success spec reads the goal by kind.** `METRICS`' one `goal` need
+   became two: `command` (the `speed` goal) for `speed_ratio` and
+   `lateral_ratio`, `target` (the `point` goal) for the reach metrics.
+   `evaluate_success` takes the command and the targets from what each
+   episode drew and is given neither from outside. A changing command is
+   averaged over the same settled frames the measured speed is. A ratio of a
+   command that may be zero is refused when the task is declared.
+8. **A spec may restate the goals it judges on**
+   (`assembly.success(goals=[...])`), like its other conditions (ADR-458):
+   omitted, the task's own, re-resolved over the spec's horizon. Given, it
+   must be the task's goals by name, kind and channel, in order, because the
+   policy reads them by position.
+9. **The trace records it.** A rollout of a task with a goal carries
+   `goal_channels` at the top level, a `goal` row on each `solver_output`
+   frame (the goal in force at that frame's time) and the drawn schedule
+   under `policy.goal`. A task with no goal writes none of the three.
+10. **A training seed may not be an evaluation seed, and the trainer now
+    refuses one itself**, before importing anything. With a goal the rule
+    has teeth: the pool's first episode is the first draws of
+    `random.Random(seed)`, which on a task with nothing drawn before its
+    goals are exactly the targets that evaluation seed is judged on. A test
+    shows the coincidence and the refusal.
+
+**Rejected.**
+
+- *Drawing goals on device in JAX, as resets are.* It would need the
+  rejection rule re-implemented over `mjx` contacts, and "agree exactly"
+  would become "agree in distribution", which no test can hold.
+- *Extending `EPISODE_VARIATION_ALGORITHM`'s text.* See 5.
+- *A `goal` argument on the evaluation.* The command and the targets would
+  then be the evaluator's to choose, and a rollout would be measured against
+  something its policy was never shown.
+- *Drawing a servo's narrower `command_limits` instead of the joint's
+  range.* The contract says the joint's range. A task that narrows a
+  command can therefore be given a target it cannot reach; that is the
+  task's own statement and is documented.
+
+**Agreement, measured.** `test_dynamics_goal_trainer.py`:
+
+- the trainer's `draw_goals` equals the engine's `draw_episode_goals` with
+  `==` on doubles, for five seeds, twenty episodes each, on a bundle with a
+  point, a value and a resampled speed, and leaves the stream in the same
+  place;
+- the pool is the engine's consecutive episodes from the training seed;
+- `goal_segment` (numpy standing in for `jax.numpy`) picks the engine's
+  segment at every step of an episode and forty steps past it;
+- the channel order and the policy's share of it are the engine's;
+- **from the training venv**, a real run with a pool of one, a reward that
+  is the goal and no termination reports, for five iterations of fifteen
+  steps against a twenty-step episode, the curve the engine's draw from the
+  same seed fixes, to 2e-6 relative (float32); the policy it writes is
+  verified by the engine and played with a goal.
+
+Each half was mutated once to see it fail, and the trainer restored:
+`(steps + 1) // period` in `goal_segment` failed the segment test and the
+device curve; dropping the separation rule from `draw_goals` failed seven
+host tests. The stock reference runner (`dynamics_task_episode.py`) is the
+third copy of the draw, and agrees with the engine as text on every goal,
+observation and reward, seeded and unseeded.
+
+**Removed.** The agent's assembly page of `describe_api` is held under a
+measured size budget by a live-engine test (ADR-360: 21,500 characters; it
+stood at 21,411). The `goal` export and one sentence of notes about it took
+it past it, so two rationale sentences were cut from the notes and three
+shortened to make room, and the page is now 21,446. Cut: why bracing beats
+balancing without a reset variation, and why to aim a shove's arc at the
+actuated plane. Shortened: why a reset variation never touches joint
+angles, where a stumble's velocity is written, and how to find a
+mechanism's forward axis from its feet. Each is still in the docstring of
+the function it is about, one `inspect scope=api` away. The long notes passage on goals first written
+for this ADR was cut to that one sentence for the same reason; the full
+text is `assembly.goal`'s docstring.
+
+**Fixed in passing.** `test_dynamics_command_slew.py::
+test_a_limited_policy_still_verifies_against_the_engine` runs only from the
+training venv and called `verify_policy` with a key its fixture never had
+(`KeyError: 'task'`), independent of this change. It now passes the decoded
+container, the bundle and its digest, and asserts the witness.
+
+**Not changed.** No cadexd op and nothing in `OP_ARG_SPECS`; no `shell/`
+file; no new dependency; `requirements.txt` and `pixi.toml` untouched; no
+JAX or MJX import under `src/Mod/cadex` (`test_engine_purity_guardrails`
+still asserts the closure). No frozen item of the ot11 contract: the seeds,
+the predicates, the rubric and the bar are as they were, and the two known
+negatives' tasks declare no goal, so their bundles, digests and retained
+receipts do not move.
+
+**Not done here, and owed before a reach film is judged.** The film does
+not yet draw the target marker the frozen filmstrip text asks for. The
+trace now carries the target in every frame. `cadex train` does not expose
+`--goal-pool`; the trainer's default applies. A warm start across a changed
+goal is refused: `goal` is not among the keys a curriculum step may move
+(ADR-161).
+
+**Evidence.** `cadex_tests/test_dynamics_goal_model.py` (34),
+`test_dynamics_goal_api.py` (19), `test_dynamics_goal_trainer.py` (13 in
+the engine environment with 4 skipped, 17 from the training venv),
+`test_dynamics_goal_live.py` (2, through a live `cadexd`: script to bundle
+to verified policy to a trace whose frames carry the goal).
+`pixi run test-engine`: 2507 passed, 57 skipped (2439 and 53 before).
+`pixi run python -m pytest cli/tests`: 1212 passed, 1 skipped. Packaged
+gate, after `build-engine` and `stage-engine`, with
+`CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-linux-x64`:
+`test_cadexd_lifecycle.py` and `test_dynamics_goal_live.py`, 25 passed.
+From the training venv on CPU (a scratch venv layered over
+`~/cadex-train-venv` with pytest added; the user's venv was not modified):
+`test_dynamics_goal_trainer.py` 17 passed, and `test_dynamics_policy_trainer`,
+`_action_filter`, `_command_slew`, `_mjx_agreement`, `_mjx_geom_pairs`,
+`_sensor_grounding`, `_policy_live` and `training/test_curriculum_warm_start.py`
+123 passed, none skipped.

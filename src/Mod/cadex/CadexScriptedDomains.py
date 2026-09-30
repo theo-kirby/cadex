@@ -327,6 +327,9 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             # ...and a ninth: a success spec is an argument to a task too
             # (ADR-456).
             "success",
+            # ...and a tenth: a goal is an argument to a task and to its
+            # success spec (ADR-462).
+            "goal",
             "exploded_view",
         ),
         production_ready=True,

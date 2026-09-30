@@ -432,7 +432,7 @@ def test_the_metric_families_follow_from_the_rig_not_from_a_behaviour() -> None:
     posture = {name for name, (family, _needs) in evaluation.METRICS.items()
                if family == "posture"}
     gait = {name for name, (family, _needs) in evaluation.METRICS.items()
-            if family == "gait" and "goal" not in _needs}
+            if family == "gait" and "command" not in _needs}
 
     flat = evaluate(prepared(spec(BALANCE, episode_seconds=4.0)))["seeds"][0]
     assert posture <= set(flat["metrics"]) and not gait & set(flat["metrics"])

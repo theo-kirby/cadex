@@ -325,6 +325,54 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   at a knee is a foot through it, and the engine measures whether the
   declared tilt clears at the declared lift and refuses the pairing that
   does not.
+  **`assembly.goal(name, kind=...)` says where to go** (ADR-462), and goes
+  to `assembly.task(..., goals=[...])`. A task without one asks the same
+  thing every episode. A goal is drawn afresh per episode, **the policy
+  observes it** after its sensor channels, a reward or a termination names
+  its channels exactly as it names an observation's, and a rollout's trace
+  records it frame by frame.
+
+  ```python
+  command = assembly.goal("command", kind="speed", between=[60, 96])
+  target = assembly.goal("target", kind="point", tip=hand,
+                         tip_offset_mm=[0, 0, 40], min_z_mm=25,
+                         min_separation_mm=60, resample_seconds=4.0)
+  task = assembly.task(model, actions=[...], goals=[target],
+                       reward=[assembly.reward(
+                           "-sqrt((tip_x - target_x)^2 + (tip_y - target_y)^2"
+                           " + (tip_z - target_z)^2)", weight=0.01)], ...)
+  ```
+
+  | kind | channels | drawn from | a success spec reads |
+  |---|---|---|---|
+  | `value` | `name` | `between=[low, high]`, in the reward's own unit | nothing; it is the reward's to give a meaning |
+  | `speed` | `name`, mm/s | `between=[low, high]`: the commanded forward speed | `speed_ratio`, `lateral_ratio` |
+  | `point` | `name_x`, `name_y`, `name_z`, mm, world | a pose `tip` can reach | the reach metrics |
+
+  A `point` is a place the tip **can be**: the engine draws a pose with
+  every joint the task drives in the middle `joint_fraction` (0.8) of its
+  own range, and the target is where the point `tip_offset_mm` on `tip` is
+  at that pose. It draws again, up to a hundred times, when the point is
+  under `min_z_mm` (world Z), when the pose puts the mechanism in a contact
+  it is not in at rest, or when the point is within `min_separation_mm` of
+  where the tip starts that segment. A point no pose can reach is refused
+  when the task is declared, with what rejected the tries. Every driven
+  joint needs both limits. The range drawn is the joint's, not a servo's
+  narrower `command_limits_degrees`.
+  `resample_seconds=...` draws the goal again that often during the
+  episode, on a whole number of control steps; omitted, it is held. The
+  step a goal changes on is scored against the goal its action was taken
+  under. A task states at most one `speed` and one `point`, up to four
+  goals in all, and a goal may not share a channel name with an
+  observation. An episode played without a seed holds the middle of a
+  range, or the point the tip already occupies.
+  The goals are written into the bundle as `goal`, resolved to addresses
+  and SI, beside `goal_algorithm`, which states the draw. **They continue a
+  seed's stream after its shoves**, so a goal moves no reset and no shove a
+  seed drew before. A task with no goal writes neither key and keeps the
+  digest it had. **The trainer draws its goals by the same algorithm**, on
+  the host, as a pool of episodes from its own seed (`training/README.md`);
+  a test holds the two to the same numbers.
   **`assembly.success(predicates, seeds=...)` says what the behaviour must
   measurably be, apart from the reward** (ADR-456), and goes to
   `assembly.task(..., success=spec)`. A reward is what a policy is paid for;
@@ -362,8 +410,8 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `step_clearance_hip_heights_min`, `foot_lowest_hip_heights_min` | median peak height of a foot's steps; how far below the floor a foot went | `feet` |
   | `slip_share_max`, `duty_factor_min`, `duty_factor_max` | the share of a foot's travel made while on the floor; the share of frames in stance | `feet` |
   | `mean_forward_speed_mm_s`, `mean_lateral_speed_mm_s` | speed along and across the base's heading, after 1 s | `feet` |
-  | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one | `feet` and a goal |
-  | `final_error_mm_max`, `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` | a tip's worst error, arrival time and overshoot over its targets | `tip` and a goal |
+  | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one: the mean of the `speed` goal over the same settled frames | `feet` and a `speed` goal |
+  | `final_error_mm_max`, `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` | a tip's worst error, arrival time and overshoot over the targets the episode held | `tip` and a `point` goal |
 
   "Every foot" is the worst foot, which is what the `_min` and `_max`
   suffixes say. **That table is the whole vocabulary.** A predicate that
@@ -373,8 +421,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   mechanism did. A metric the spec or the mechanism cannot measure is
   refused when the task is declared rather than found as a failed seed —
   gait with no `feet`, recovery with no shove, tilt on an arm bolted to the
-  bench. **A task states no goal, so the last two rows are refused today**;
-  bound `mean_forward_speed_mm_s` for a speed.
+  bench. **The last two rows are read against the task's goal** (ADR-462)
+  and are refused on a task that states none of that kind; bound
+  `mean_forward_speed_mm_s` for a speed nobody commanded. A ratio is also
+  refused when the speed it divides by may be zero.
   `feet=[component, ...]` names the feet, each of which needs a primitive
   collision shape, because a foot's height is its lowest collision point
   above the floor. `tip=component, tip_offset_mm=[x, y, z]` names the point
@@ -390,6 +440,13 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   may be judged on the mechanism as built with `randomisation=[]`
   (ADR-458). The randomisation draws come first in a seed's stream, so
   stating it also fixes which start and which shove each seed draws.
+  `goals=[...]` is the same kind of condition (ADR-462): omitted, an
+  evaluation draws the task's own goals over the spec's horizon. Given, it
+  must restate **the task's goals by name and kind, in order** — the policy
+  reads them by position — and may change what each is drawn from: a wider
+  range of speeds, a target further from the start, another period. The
+  goal draws come last in a seed's stream, so stating them moves nothing
+  else.
   The spec is written into the task bundle as a `success` block
   (`cadex-success-spec-v1`) with its conditions resolved and a `scale` —
   mass, weight, COM height, hip height, arm length — so a threshold in hip

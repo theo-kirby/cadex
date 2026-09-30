@@ -370,8 +370,12 @@ pixi run python docs/probes/ot11/runner/measure.py reach \
   --target 0:4:120,0,180 --target 4:8:60,90,140 TRACE.json
 ```
 
-Until a task can state a goal (P3), the commanded speed and the reach
-targets are given to the reader on the command line.
+A task can now state a goal (P3, ADR-462): `assembly.goal` declares a
+commanded speed or a reach target, each seed draws it after its shoves,
+and `cadex evaluate` reads `speed_ratio`, `lateral_ratio` and the reach
+metrics against what the episode drew. Nothing is given on a command line
+there. This reader still takes the commanded speed and the reach targets
+as arguments, because the traces it exists for predate a goal.
 
 `--off-contract` is for a trace that predates the contract and ran under its
 own task's conditions. Its predicates are reported, a predicate whose
@@ -578,8 +582,11 @@ the legs on both sides of the base. On Robin it changed by under 1 mm.
 part left behind.
 
 One place where the product's filmstrip is not yet the frozen text: **a
-reach frame's target marker is not drawn.** No trace carries a goal until
-P3, and the marker arrives with it. It does not apply to these two.
+reach frame's target marker is not drawn.** Since P3 (ADR-462) an
+evaluation's trace carries the target in every frame (`goal`, named by
+`goal_channels`), so the film has what it needs; drawing it is the film's
+own change and has to land before any reach film is judged. It does not
+apply to these two.
 
 ### The judge's scores on both negatives (ADR-460)
 

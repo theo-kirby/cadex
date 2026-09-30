@@ -326,21 +326,27 @@ def test_recovery_needs_a_shove_that_ends() -> None:
 
 
 @pytest.mark.parametrize(
-    "metric, arguments",
+    "metric, arguments, need",
     [
-        ("speed_ratio", {"feet": ["front", "rear"]}),
-        ("lateral_ratio", {"feet": ["front", "rear"]}),
-        ("final_error_arm_lengths_max", {"tip": {"body": "front", "local_mm": [0, 0, 0]}}),
-        ("time_to_target_s_max", {"tip": {"body": "front", "local_mm": [0, 0, 0]}}),
-        ("overshoot_ratio_max", {"tip": {"body": "front", "local_mm": [0, 0, 0]}}),
+        ("speed_ratio", {"feet": ["front", "rear"]}, "command"),
+        ("lateral_ratio", {"feet": ["front", "rear"]}, "command"),
+        ("final_error_arm_lengths_max", {"tip": {"body": "front", "local_mm": [0, 0, 0]}}, "target"),
+        ("time_to_target_s_max", {"tip": {"body": "front", "local_mm": [0, 0, 0]}}, "target"),
+        ("overshoot_ratio_max", {"tip": {"body": "front", "local_mm": [0, 0, 0]}}, "target"),
     ],
 )
 def test_a_metric_measured_against_a_goal_is_refused_on_a_task_that_states_none(
-    metric, arguments
+    metric, arguments, need
 ) -> None:
+    """The goal is read by kind (ADR-462): a speed goal is the command and
+    a point goal the target, and each refusal says which the task lacks.
+    ``test_dynamics_goal_model`` holds the other half, that a task which
+    states one is accepted and measured."""
+
     error = refusal(spec([{"id": "tracks", "metric": metric, "max": 1.0}], **arguments))
-    assert error.reason == "success_metric_needs_goal"
-    assert "states no goal" in error.correction
+    assert error.reason == f"success_metric_needs_{need}"
+    assert "this task states none" in error.correction
+    assert "assembly.goal(" in error.correction
 
 
 def test_a_reach_metric_needs_a_tip() -> None:

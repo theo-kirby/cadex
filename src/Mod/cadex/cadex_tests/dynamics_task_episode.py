@@ -101,9 +101,15 @@ def compile_expression(formula: str, names: Sequence[str]) -> Any:
 
 
 def channels(task: dict) -> list[str]:
+    """Every name an expression may use: sensor channels, then goal channels."""
+
     return [
         str(channel)
         for record in task["observations"]
+        for channel in record["channels"]
+    ] + [
+        str(channel)
+        for record in task.get("goal") or []
         for channel in record["channels"]
     ]
 
@@ -192,6 +198,93 @@ def draw_variation(task: dict, rng: Any) -> dict[str, list]:
                        "azimuth_rad": azimuth, "start_s": start,
                        "force_n": force})
     return {"reset_variation": variations, "disturbance": pushes}
+
+
+def goal_tip_m(data: Any, body: int, local_m: Sequence[float]) -> list[float]:
+    """One point fixed on one body, in the world, in metres."""
+
+    origin = data.xpos[body]
+    rotation = data.xmat[body]
+    return [
+        float(origin[axis])
+        + sum(float(rotation[3 * axis + other]) * float(local_m[other])
+              for other in range(3))
+        for axis in range(3)
+    ]
+
+
+def draw_goals(mujoco: Any, model: Any, task: dict, rng: Any) -> list[dict]:
+    """The bundle's ``goal_algorithm``, reproduced from its own text.
+
+    The draws continue the episode's stream after the disturbance draws. A
+    value or a speed is one uniform draw per segment. A point is a joint
+    configuration drawn over the reset keyframe, forwarded, and read at the
+    tip; it is drawn again when the point is under ``min_z_m``, when the
+    configuration adds a contact the reset pose does not have, or when it
+    is within ``min_separation_m`` of the previous segment's point.
+    """
+
+    drawn = []
+    data = None
+    for entry in task.get("goal") or []:
+        segments = []
+        if str(entry["kind"]) != "point":
+            for _ in range(int(entry["segments"])):
+                segments.append([rng.uniform(float(entry["low"]), float(entry["high"]))])
+            drawn.append({"label": str(entry["label"]), "segments": segments})
+            continue
+        if data is None:
+            data = mujoco.MjData(model)
+        key = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_KEY, str(task["episode"]["reset_keyframe"])
+        )
+        resting = {(int(a), int(b)) for a, b in entry["resting_contacts"]}
+        previous = [float(value) for value in entry["start_m"]]
+        for segment in range(int(entry["segments"])):
+            point = None
+            for _ in range(int(entry["attempts"])):
+                mujoco.mj_resetDataKeyframe(model, data, key)
+                for joint in entry["joints"]:
+                    data.qpos[int(joint["qpos_adr"])] = rng.uniform(
+                        float(joint["low"]), float(joint["high"])
+                    )
+                mujoco.mj_forward(model, data)
+                candidate = goal_tip_m(data, int(entry["body_id"]), entry["local_m"])
+                if entry.get("min_z_m") is not None and candidate[2] < float(entry["min_z_m"]):
+                    continue
+                touching = {
+                    (min(int(data.contact[i].geom1), int(data.contact[i].geom2)),
+                     max(int(data.contact[i].geom1), int(data.contact[i].geom2)))
+                    for i in range(int(data.ncon))
+                }
+                if touching - resting:
+                    continue
+                if math.dist(candidate, previous) < float(entry["min_separation_m"]):
+                    continue
+                point = candidate
+                break
+            if point is None:
+                raise SystemExit(
+                    f"goal {entry['label']!r} found no reachable point for "
+                    f"segment {segment}"
+                )
+            segments.append([value * float(entry["scale"]) for value in point])
+            previous = point
+        drawn.append({"label": str(entry["label"]), "segments": segments})
+    return drawn
+
+
+def goals_at(task: dict, goals: list[dict], step: int) -> dict[str, float]:
+    """The goal channels at one control step: segment ``step // resample_steps``,
+    clamped to the last one; a goal with ``resample_steps`` 0 is held."""
+
+    values: dict[str, float] = {}
+    for entry, draw in zip(task.get("goal") or [], goals):
+        period = int(entry["resample_steps"])
+        index = 0 if not period else min(step // period, len(draw["segments"]) - 1)
+        for channel, value in zip(entry["channels"], draw["segments"][index]):
+            values[str(channel)] = float(value)
+    return values
 
 
 def write_variation(data: Any, entry: dict, draw: dict) -> None:
@@ -340,6 +433,13 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
         raise SystemExit(
             f"the model carries no {episode['reset_keyframe']!r} keyframe"
         )
+    # After the disturbance draws, in the same stream; an unseeded episode
+    # holds each goal's nominal value.
+    goals = (
+        draw_goals(mujoco, model, task, rng) if seed is not None
+        else [{"label": str(entry["label"]), "segments": [list(entry["nominal"])]}
+              for entry in task.get("goal") or []]
+    )
     mujoco.mj_resetDataKeyframe(model, data, key)
     mujoco.mj_forward(model, data)
     if variation["reset_variation"]:
@@ -366,6 +466,8 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
             mujoco.mj_step(model, data)
 
         landed = observation_values(task, data.sensordata)
+        # The goal the action was taken under, beside what the sensors read.
+        landed.update(goals_at(task, goals, step))
         reward = 0.0
         contributions = []
         for label, weight, code in reward_terms:
@@ -438,6 +540,16 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
                 "force_n": [repr(value) for value in draw["force_n"]],
             }
             for draw in variation["disturbance"]
+        ],
+        "goal": [
+            {
+                "label": str(draw["label"]),
+                "segments": [
+                    [repr(value) for value in segment]
+                    for segment in draw["segments"]
+                ],
+            }
+            for draw in goals
         ],
         "seed": None if seed is None else int(seed),
     }

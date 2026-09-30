@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-09-27. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-09-30. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -268,6 +268,45 @@ the bundle's own numbers exactly — so a single-environment run at
 on. What this does *not* do is resample the *mechanism* per episode; that
 would need the batched model rebuilt inside the training loop, and the
 limitation is stated here rather than discovered.
+
+## Goals, and the one draw this trainer takes from the bundle (ADR-462)
+
+A task may declare goals (`assembly.goal`): a number, a commanded speed or a
+reachable point, drawn per episode and optionally again during it. The
+policy observes every goal after its sensor channels, the reward and the
+terminations name goal channels, and the bundle states how they are drawn
+in `goal_algorithm`.
+
+Unlike the reset variation below, **the trainer draws goals by the bundle's
+own algorithm, number for number**:
+
+> **`random.Random(base_seed)` drawing `--goal-pool` consecutive episodes by
+> the bundle's `goal_algorithm` on the host; on device each environment is
+> given one pooled episode, chosen by `jax.random.randint` on every reset.**
+
+The reason is what a `point` is: where a tip is at a drawn joint
+configuration that touches nothing it does not already touch and clears a
+stated height. That takes forward kinematics and a contact check, and a
+second rule that only resembled the bundle's would train a policy on
+targets the evaluation never asks for. So `draw_goals` here is a copy of
+`CadexDynamics.draw_episode_goals`, run with stock `mujoco` before training
+starts, and `test_dynamics_goal_trainer` holds the two to the same doubles
+from the same seed. It also holds the segment rule (`goal_segment`:
+`steps // resample_steps`, clamped) to the engine's, and, from the training
+venv, the reward curve of a real run to the goals the engine draws.
+
+- `--goal-pool N` (default 4096) is how many episodes are drawn. It is
+  ignored, and left out of the policy header, for a task with no goal.
+- The header records the stream under `training.goal`.
+- **`--seed` may not be one of the bundle's evaluation seeds**, and the
+  trainer refuses one before importing anything. The pool's first episode
+  is the first draws of `random.Random(seed)`; for a task with no
+  randomisation, reset variation or disturbance those are exactly the goals
+  that evaluation seed is judged on.
+- A task with no goal takes no extra key split and carries no extra member
+  in the scan, so it trains as it did.
+- A warm start across a changed goal is refused: `goal` is not among the
+  keys `--init-from-task-change` may move.
 
 ## Reset variation and disturbance, and a second algorithm (ADR-097)
 
