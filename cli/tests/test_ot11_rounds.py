@@ -13,6 +13,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import math
 import re
 from pathlib import Path
 
@@ -128,3 +129,47 @@ def test_the_retained_rounds_receipts_name_the_prompts_on_disk() -> None:
             prompt = PROBE / "prompts" / receipt[key]["file"]
             assert hashlib.sha256(prompt.read_bytes()).hexdigest() == receipt[key]["sha256"]
         assert "/home/" not in path.read_text(encoding="utf-8")
+
+
+def test_the_goal_drawer_names_no_behaviour() -> None:
+    source = (RUNNER / "goals.py").read_text(encoding="utf-8")
+    for word in ("walk", "gait", "foot", "reach", "balanc", "shove", "heron", "robin", "arm"):
+        assert not re.search(rf"\b{word}", source, re.IGNORECASE), word
+
+
+def test_the_reach_prompt_hands_over_the_frozen_reach_contract() -> None:
+    contract = json.loads((PROBE / "contract.json").read_text(encoding="utf-8"))
+    reach = contract["behaviours"]["reach"]
+    prompt = (PROBE / "prompts" / "reach.loop.prompt.txt").read_text(encoding="utf-8")
+    bounds = {p["id"]: p.get("max", p.get("max_s")) for p in reach["predicates"] if "id" in p}
+    for identifier, metric in (("Q2", "final_error_arm_lengths_max"),
+                               ("Q3", "time_to_target_s_max"), ("Q4", "overshoot_ratio_max")):
+        assert f'{{"id": "{identifier}", "metric": "{metric}", "max": ' in prompt
+        written = re.search(rf'"id": "{identifier}", "metric": "{metric}", "max": ([0-9.]+)',
+                            prompt).group(1)
+        assert float(written) == bounds[identifier], identifier
+    assert '{"id": "Q1", "metric": "completed", "min": 1}' in prompt
+    assert f"seeds={contract['evaluation_seeds']}" in prompt
+    assert f"episode_seconds={reach['episode_seconds']}" in prompt
+    assert f"resample_seconds={reach['conditions']['goal']['switch_at_s']}" in prompt
+    assert "joint_fraction=0.8, min_z_mm=0.10 * ARM_MM" in prompt
+    assert "min_separation_mm=0.25 * ARM_MM" in prompt
+    assert "randomisation=[], reset_variation=[], disturbance=[]" in prompt
+
+
+def test_the_held_out_reach_targets_were_drawn_by_the_contract_rules() -> None:
+    receipt = json.loads((RETAINED / "r2-heron-1-targets.json").read_text(encoding="utf-8"))
+    prompt = (PROBE / "prompts" / "reach.loop.prompt.txt").read_text(encoding="utf-8")
+    end = 'label="ot11 reach contract",\n)'
+    block = prompt[prompt.index("ARM_MM = "):prompt.index(end) + len(end)]
+    assert hashlib.sha256(block.encode()).hexdigest() == receipt["spec_block"]["sha256"]
+    assert f"ARM_MM = {receipt['arm_length_mm']}" in block
+    contract = json.loads((PROBE / "contract.json").read_text(encoding="utf-8"))
+    assert [row["seed"] for row in receipt["targets"]] == contract["evaluation_seeds"]
+    arm = receipt["arm_length_mm"]
+    for row in receipt["targets"]:
+        a, b = row["target_a_mm"], row["target_b_mm"]
+        assert min(a[2], b[2]) >= 0.10 * arm
+        assert math.dist(a, receipt["tip_start_mm"]) >= 0.25 * arm
+        assert math.dist(a, b) >= 0.25 * arm
+    assert "/home/" not in json.dumps(receipt)
