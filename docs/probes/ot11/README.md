@@ -1398,7 +1398,7 @@ torque is clamped at its limit, and these 9 g servos are clamped at 0.18 N m
 most of the time. Remove the force limit, or kv, or use Euler, and the two
 agree to 1e-5.
 
-**The fix is in the trainer** (commit below; `test_dynamics_mjx_forcelimit`
+**The fix is in the trainer** (commit `b81dd2e1`; `test_dynamics_mjx_forcelimit`
 fails before it). The engine is the evaluator, and its physics is the
 reference. After it, the trainer's rollout goes backwards on all four seeds
 too, at −1.18 to −1.87 per step beside the engine's −1.57 to −1.95. The
