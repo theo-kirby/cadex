@@ -93,15 +93,21 @@ def _pose(x: float, y: float, z: float = 0.0) -> dict:
     return {"position_mm": [x, y, z], "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}
 
 
-def _trace(out: Path, seed: int, *, seconds: float = 4.0, velocity=(100.0, 0.0), hz: int = 50) -> dict:
-    """One seed's trace: the design translating at ``velocity`` mm/s over its floor."""
+def _trace(out: Path, seed: int, *, seconds: float = 4.0, velocity=(100.0, 0.0), hz: int = 50,
+           trailing: float = 1.0) -> dict:
+    """One seed's trace: the design translating at ``velocity`` mm/s over its floor.
+
+    ``trailing`` is the share of that velocity the rear post keeps: at 0 it
+    stays where it started while the body and the front post leave it.
+    """
 
     frames = [{"frame_kind": "input", "nominal_time_s": None, "component_placements": {}}]
     for step in range(int(round(seconds * hz)) + 1):
         t = step / hz
         x, y = velocity[0] * t, velocity[1] * t
         frames.append({"frame_kind": "solver_output", "nominal_time_s": t, "component_placements": {
-            "c_body": _pose(x, y), "c_post_a": _pose(x - 30, y), "c_post_b": _pose(x + 30, y),
+            "c_body": _pose(x, y), "c_post_a": _pose(trailing * x - 30, trailing * y),
+            "c_post_b": _pose(x + 30, y),
             "c_floor": _pose(0, 0)}})
     data = json.dumps({"schema": film.TRACE_SCHEMA, "frames": frames}).encode()
     out.mkdir(parents=True, exist_ok=True)
@@ -109,12 +115,13 @@ def _trace(out: Path, seed: int, *, seconds: float = 4.0, velocity=(100.0, 0.0),
     return {"file": f"seed-{seed}-trace.json", "sha256": _sha(data), "bytes": len(data)}
 
 
-def _report(out: Path, seeds=(1101, 1102), *, passing=(), floor=0.0, onset=1.0, **trace) -> dict:
+def _report(out: Path, seeds=(1101, 1102), *, passing=(), floor=0.0, onset=1.0, base="c_body",
+            **trace) -> dict:
     rows = [{"seed": seed, "pass": seed in passing, "trace": _trace(out, seed, **trace),
              "drawn": {"disturbance": [] if onset is None else [{"label": "shove", "start_s": onset}]}}
             for seed in seeds]
     return {"schema": "cadex-evaluation-v1", "accepted_revision": REVISION, "policy_sha256": "p" * 64,
-            "model_output": "model", "rig": {"floor_mm": floor}, "seeds": rows,
+            "model_output": "model", "rig": {"floor_mm": floor, "base": base}, "seeds": rows,
             "summary": {"seeds": len(rows), "passed": list(passing), "predicates": []},
             "verdict": "pass" if set(passing) == set(seeds) else "fail"}
 
@@ -318,6 +325,75 @@ def test_the_detail_starts_at_the_first_disturbance_and_follows_side_on(tmp_path
     centres = [_bright_centre(_frame(pixels, index, small), small)[0] for index in range(12)]
     assert max(centres) - min(centres) < 0.06 * small
     assert sheet["half_extent_mm"] < 80
+
+
+@pytest.fixture
+def windows(monkeypatch):
+    """Every frame's window as it was drawn: ``(poses, basis, (lo, hi))``."""
+
+    seen = []
+    draw = film._Stage.draw
+
+    def recording(self, poses, basis, bounds, floor, clock):
+        seen.append((poses, basis, bounds))
+        return draw(self, poses, basis, bounds, floor, clock)
+
+    monkeypatch.setattr(film._Stage, "draw", recording)
+    return seen
+
+
+def _along(basis, position) -> float:
+    return sum(a * b for a, b in zip(basis[0], position))
+
+
+def test_the_detail_follows_the_evaluations_base_not_the_middle_of_the_design(tmp_path, small, windows) -> None:
+    """The body is the base and walks off along +Y; one post stays behind.
+
+    The middle of the design goes half as far as the base does. The window
+    is centred on the base in every frame, the side-on direction and the
+    travel are the base's, and the post left behind is still in the window.
+    """
+
+    _project(tmp_path)
+    out = tmp_path / "evaluations" / "one"
+    block = film.film_evaluation(tmp_path, out, _report(out, velocity=(0.0, 100.0), trailing=0.0),
+                                 seeds=[1101], video=False)
+    sheet = block["seeds"][0]["detail"]
+
+    assert sheet["follows"] == "c_body" and "follows the base" in sheet["view"]
+    assert sheet["azimuth_degrees"] == pytest.approx(90.0) and sheet["travel_mm"] == pytest.approx(400.0)
+    shown = windows[film.STRIP:]            # the overview's twelve come first
+    assert len(shown) == 12
+    for poses, basis, (lo, hi) in shown:
+        base = poses["c_body"]["position_mm"]
+        # The body's bounds are symmetric about its own origin, so its middle is its position.
+        assert (lo[0] + hi[0]) / 2 == pytest.approx(_along(basis, base), abs=1e-6)
+        assert lo[0] < _along(basis, poses["c_post_a"]["position_mm"]) - 5
+    assert shown[0][2][0][1] == shown[-1][2][0][1], "the window moved up or down"
+    # 320 mm back to the post by the last moment, and the margin round it.
+    assert sheet["half_extent_mm"] == pytest.approx((320 + 5) * (1 + 2 * film.PAD), rel=0.02)
+
+
+def test_a_mechanism_with_no_floating_base_is_detailed_in_one_fixed_window(tmp_path, small, windows) -> None:
+    _project(tmp_path)
+    out = tmp_path / "evaluations" / "one"
+    block = film.film_evaluation(tmp_path, out, _report(out, base=None), seeds=[1101], video=False)
+    sheet = block["seeds"][0]["detail"]
+
+    assert sheet["follows"] is None and "the window is fixed" in sheet["view"]
+    shown = windows[film.STRIP:]
+    assert len({(tuple(lo), tuple(hi)) for _poses, _basis, (lo, hi) in shown}) == 1
+    # 220 mm of travel over the twelve moments and the 80 mm body, all in it.
+    assert sheet["half_extent_mm"] == pytest.approx((220 + 80) / 2 * (1 + 2 * film.PAD))
+
+
+def test_a_base_that_is_not_drawn_is_a_reason(tmp_path, small) -> None:
+    _project(tmp_path)
+    out = tmp_path / "evaluations" / "one"
+    with pytest.raises(film.FilmError, match="c_torso, is not one of the solids drawn"):
+        film.film_evaluation(tmp_path, out, _report(out, base="c_torso"), seeds=[1101], video=False)
+    with pytest.raises(film.FilmError, match="c_floor, is not one of the solids drawn"):
+        film.film_evaluation(tmp_path, out, _report(out, base="c_floor"), seeds=[1101], video=False)
 
 
 def test_the_detail_takes_a_given_start_and_step(tmp_path, small) -> None:

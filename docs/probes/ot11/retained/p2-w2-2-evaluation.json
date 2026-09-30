@@ -5,314 +5,294 @@
   "source": "dev-tree"
  },
  "film": {
-  "appearance": {
-   "c_battery": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_caps_fl": {
-    "color": "#FF6A1A",
-    "role": "accent"
-   },
-   "c_caps_fr": {
-    "color": "#FF6A1A",
-    "role": "accent"
-   },
-   "c_caps_rl": {
-    "color": "#FF6A1A",
-    "role": "accent"
-   },
-   "c_caps_rr": {
-    "color": "#FF6A1A",
-    "role": "accent"
-   },
-   "c_deck": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_esp32": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_foot_fl": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_foot_fr": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_foot_rl": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_foot_rr": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_bolt_fl_0": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_bolt_fl_1": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_bolt_fr_0": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_bolt_fr_1": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_bolt_rl_0": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_bolt_rl_1": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_bolt_rr_0": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_bolt_rr_1": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_horn_fl": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_horn_fr": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_horn_rl": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_horn_rr": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_servo_fl": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_servo_fr": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_servo_rl": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hip_servo_rr": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_hood": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_imu": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_bolt_fl_0": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_bolt_fl_1": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_bolt_fr_0": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_bolt_fr_1": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_bolt_rl_0": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_bolt_rl_1": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_bolt_rr_0": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_bolt_rr_1": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_horn_fl": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_horn_fr": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_horn_rl": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_horn_rr": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_servo_fl": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_servo_fr": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_servo_rl": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_knee_servo_rr": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_lid_fl": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_lid_fr": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_lid_rl": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_lid_rr": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_pca9685": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_regulator": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   },
-   "c_shin_fl": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_shin_fr": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_shin_rl": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_shin_rr": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_thigh_fl": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_thigh_fr": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_thigh_rl": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_thigh_rr": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_tray": {
-    "color": "#ECE8DF",
-    "role": "shell"
-   },
-   "c_visor": {
-    "color": "#2A2C31",
-    "role": "mechanism"
-   }
-  },
+  "schema": "cadex-evaluation-film-v1",
+  "state": "ready",
   "error": null,
+  "style": "studio",
+  "style_sha256": "ec44312c216e3f1ce31ea9fe52e8bb8b2b2defc005f60dd8f7b70def52582a7a",
+  "renderer": "CadexStudio studio (engine), CPU, no browser or display",
   "floor": "the review viewport's dark prototype mat (ADR-444)",
   "frame_px": 256,
-  "geometry": {
-   "budget_triangles": 120000,
-   "cell_mm": null,
-   "drawn_triangles": 78303,
-   "input_bound_triangles": 4000000,
-   "input_triangles": 78303
+  "sheet": {
+   "columns": 4,
+   "rows": 3,
+   "gutter_px": 4
   },
+  "overlay": "simulation seconds, bottom left of every frame",
+  "showing": "tessellated solids of the accepted revision at each recorded pose; collision proxies and world geometry not drawn",
   "materials": {
+   "source": "the accepted assembly's inventory",
    "declared": true,
    "environment_omitted": [
     "c_floor"
-   ],
-   "source": "the accepted assembly's inventory"
+   ]
   },
-  "overlay": "simulation seconds, bottom left of every frame",
-  "render_seconds": 243.243,
-  "renderer": "CadexStudio studio (engine), CPU, no browser or display",
-  "schema": "cadex-evaluation-film-v1",
+  "appearance": {
+   "c_battery": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_caps_fl": {
+    "role": "accent",
+    "color": "#FF6A1A"
+   },
+   "c_caps_fr": {
+    "role": "accent",
+    "color": "#FF6A1A"
+   },
+   "c_caps_rl": {
+    "role": "accent",
+    "color": "#FF6A1A"
+   },
+   "c_caps_rr": {
+    "role": "accent",
+    "color": "#FF6A1A"
+   },
+   "c_deck": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_esp32": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_foot_fl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_foot_fr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_foot_rl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_foot_rr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_fl_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_fl_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_fr_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_fr_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_rl_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_rl_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_rr_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_rr_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_horn_fl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_horn_fr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_horn_rl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_horn_rr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_servo_fl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_servo_fr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_servo_rl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_servo_rr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hood": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_imu": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_fl_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_fl_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_fr_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_fr_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_rl_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_rl_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_rr_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_rr_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_horn_fl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_horn_fr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_horn_rl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_horn_rr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_servo_fl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_servo_fr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_servo_rl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_servo_rr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_lid_fl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_lid_fr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_lid_rl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_lid_rr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_pca9685": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_regulator": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_shin_fl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_shin_fr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_shin_rl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_shin_rr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_thigh_fl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_thigh_fr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_thigh_rl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_thigh_rr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_tray": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_visor": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   }
+  },
+  "geometry": {
+   "input_triangles": 78303,
+   "drawn_triangles": 78303,
+   "cell_mm": null,
+   "budget_triangles": 120000,
+   "input_bound_triangles": 4000000
+  },
   "seeds": [
    {
-    "detail": {
-     "azimuth_degrees": 19.767993684479677,
-     "bytes": 258086,
-     "file": "seed-1101-detail.png",
-     "frames": 12,
-     "half_extent_mm": 140.7509560419716,
-     "height": 776,
-     "requested_start_s": 5.0,
-     "sha256": "51587382701fee42d045edc76b1edf832049e5e10751195ffd295bd7df7384c0",
-     "start_s": 5.0,
-     "start_source": "given",
-     "step_s": 0.04,
-     "times_s": [
-      5.0,
-      5.04,
-      5.08,
-      5.12,
-      5.16,
-      5.2,
-      5.24,
-      5.28,
-      5.32,
-      5.36,
-      5.4,
-      5.44
-     ],
-     "travel_mm": 898.3764984742412,
-     "view": "side-on to the direction of travel, 12 degrees above the floor; the window follows the design",
-     "width": 1036
-    },
-    "floor_source": "the model's collision plane",
+    "seed": 1101,
+    "trace_sha256": "183ccfad5c69910ee4602ee3d5fff70ba2f619f482f2dbbb1d1dcdeca4c2131e",
     "floor_z_mm": 0.0,
+    "floor_source": "the model's collision plane",
     "overview": {
-     "bytes": 149056,
      "file": "seed-1101-overview.png",
-     "frames": 12,
-     "half_extent_mm": 660.5608500078068,
-     "height": 776,
      "sha256": "1db0f6532bded122aa23f3f328122aa85dc66e6f7d6786274f73dd3acd7f25e8",
+     "bytes": 149056,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
      "times_s": [
       0.0,
       0.9,
@@ -328,65 +308,66 @@
       10.0
      ],
      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
-     "width": 1036
+     "half_extent_mm": 660.5608500078068
     },
-    "seed": 1101,
-    "trace_sha256": "183ccfad5c69910ee4602ee3d5fff70ba2f619f482f2dbbb1d1dcdeca4c2131e",
+    "detail": {
+     "file": "seed-1101-detail.png",
+     "sha256": "a5f9da8b02a25b421d5241b70ed0f8a7247ee6968f82540f01a9a2193a021f8c",
+     "bytes": 239285,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      5.0,
+      5.04,
+      5.08,
+      5.12,
+      5.16,
+      5.2,
+      5.24,
+      5.28,
+      5.32,
+      5.36,
+      5.4,
+      5.44
+     ],
+     "requested_start_s": 5.0,
+     "start_s": 5.0,
+     "step_s": 0.04,
+     "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+     "follows": "c_tray",
+     "azimuth_degrees": 19.409402653656933,
+     "travel_mm": 920.83225724177,
+     "half_extent_mm": 161.3805844621758,
+     "start_source": "given"
+    },
     "video": {
-     "bytes": 386403,
      "file": "seed-1101-rollout.webm",
-     "floor_z_mm": 0.0,
-     "fps": 10,
+     "sha256": "3e3ed9dd17db3e0b9ad5bafef4c6aeaa9f3688176af08cfdb2dd64d19231f3b8",
+     "bytes": 386403,
      "frames": 101,
+     "fps": 10,
+     "sim_seconds": 10.0,
+     "width": 512,
      "height": 512,
      "projection": "orthographic hero view (35 degrees round from the front, 20 above the floor)",
-     "render_bound_seconds": 300,
-     "render_seconds": 179.405,
-     "sha256": "a5049b035ae637af0868478cd0593eff7e2050a8a0ed163ea219d002e4d33688",
-     "sim_seconds": 10.0,
-     "width": 512
+     "floor_z_mm": 0.0,
+     "render_seconds": 178.959,
+     "render_bound_seconds": 300
     }
    },
    {
-    "detail": {
-     "azimuth_degrees": 12.786947202403727,
-     "bytes": 243425,
-     "file": "seed-1105-detail.png",
-     "frames": 12,
-     "half_extent_mm": 147.72071761477727,
-     "height": 776,
-     "requested_start_s": 5.0,
-     "sha256": "94df911d90b7b332e0303aca7e14e118886b4333eaa4ac06124c2f4f3ee4c3ba",
-     "start_s": 5.0,
-     "start_source": "given",
-     "step_s": 0.04,
-     "times_s": [
-      5.0,
-      5.04,
-      5.08,
-      5.12,
-      5.16,
-      5.2,
-      5.24,
-      5.28,
-      5.32,
-      5.36,
-      5.4,
-      5.44
-     ],
-     "travel_mm": 584.2745007096412,
-     "view": "side-on to the direction of travel, 12 degrees above the floor; the window follows the design",
-     "width": 1036
-    },
-    "floor_source": "the model's collision plane",
+    "seed": 1105,
+    "trace_sha256": "a1af7785fc2ccf970bdac08c5e25ff1a84ae6bbf636f2c059b7296aadd78b0c2",
     "floor_z_mm": 0.0,
+    "floor_source": "the model's collision plane",
     "overview": {
-     "bytes": 149276,
      "file": "seed-1105-overview.png",
-     "frames": 12,
-     "half_extent_mm": 467.72569204672334,
-     "height": 776,
      "sha256": "c0ccdc38773739ae5df60928a0589e449d7af0e565b0c59932ed54d81c3bd537",
+     "bytes": 149276,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
      "times_s": [
       0.0,
       0.9,
@@ -402,25 +383,15 @@
       10.0
      ],
      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
-     "width": 1036
+     "half_extent_mm": 467.72569204672334
     },
-    "seed": 1105,
-    "trace_sha256": "a1af7785fc2ccf970bdac08c5e25ff1a84ae6bbf636f2c059b7296aadd78b0c2",
-    "video": null
-   },
-   {
     "detail": {
-     "azimuth_degrees": 3.845095681378059,
-     "bytes": 244806,
-     "file": "seed-1110-detail.png",
-     "frames": 12,
-     "half_extent_mm": 139.95511035448686,
+     "file": "seed-1105-detail.png",
+     "sha256": "70f1932bd623aef29362a6059b0e1209dcdf19954e6cf615b3f55f10caba07e6",
+     "bytes": 225358,
+     "width": 1036,
      "height": 776,
-     "requested_start_s": 5.0,
-     "sha256": "3ea10552082be7236547e57b2aa61536882710f125fb675c6e63cd738f3fe1cb",
-     "start_s": 5.0,
-     "start_source": "given",
-     "step_s": 0.04,
+     "frames": 12,
      "times_s": [
       5.0,
       5.04,
@@ -435,19 +406,30 @@
       5.4,
       5.44
      ],
-     "travel_mm": 548.5811163897557,
-     "view": "side-on to the direction of travel, 12 degrees above the floor; the window follows the design",
-     "width": 1036
+     "requested_start_s": 5.0,
+     "start_s": 5.0,
+     "step_s": 0.04,
+     "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+     "follows": "c_tray",
+     "azimuth_degrees": 12.954412766344106,
+     "travel_mm": 607.0850249468737,
+     "half_extent_mm": 174.20473495291026,
+     "start_source": "given"
     },
-    "floor_source": "the model's collision plane",
+    "video": null
+   },
+   {
+    "seed": 1110,
+    "trace_sha256": "36b2dbd3cc3505b5350a3af78ff1281120ccac69196124a43d06469d7df11662",
     "floor_z_mm": 0.0,
+    "floor_source": "the model's collision plane",
     "overview": {
-     "bytes": 205660,
      "file": "seed-1110-overview.png",
-     "frames": 12,
-     "half_extent_mm": 422.0614814175353,
-     "height": 776,
      "sha256": "090b83d0beb7acbd7aee3b0b7da84e5907c132833d31ab270e85d815ed873b83",
+     "bytes": 205660,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
      "times_s": [
       0.0,
       0.56,
@@ -463,22 +445,43 @@
       6.32
      ],
      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
-     "width": 1036
+     "half_extent_mm": 422.0614814175353
     },
-    "seed": 1110,
-    "trace_sha256": "36b2dbd3cc3505b5350a3af78ff1281120ccac69196124a43d06469d7df11662",
+    "detail": {
+     "file": "seed-1110-detail.png",
+     "sha256": "c4b22ce480c50b59682af8017000c9567b7bd33d1c46fe5619ca8972cee3aed9",
+     "bytes": 217419,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      5.0,
+      5.04,
+      5.08,
+      5.12,
+      5.16,
+      5.2,
+      5.24,
+      5.28,
+      5.32,
+      5.36,
+      5.4,
+      5.44
+     ],
+     "requested_start_s": 5.0,
+     "start_s": 5.0,
+     "step_s": 0.04,
+     "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+     "follows": "c_tray",
+     "azimuth_degrees": 5.763664564852717,
+     "travel_mm": 553.8562359474872,
+     "half_extent_mm": 172.81108148141755,
+     "start_source": "given"
+    },
     "video": null
    }
   ],
-  "sheet": {
-   "columns": 4,
-   "gutter_px": 4,
-   "rows": 3
-  },
-  "showing": "tessellated solids of the accepted revision at each recorded pose; collision proxies and world geometry not drawn",
-  "state": "ready",
-  "style": "studio",
-  "style_sha256": "c17ee1c4885d378deaf61b0f758ee4f4e5accdf6cbebd9972d139d236cae8b14"
+  "render_seconds": 241.558
  },
  "label": "ot11 walk contract, without the goal predicates",
  "model_output": "model",

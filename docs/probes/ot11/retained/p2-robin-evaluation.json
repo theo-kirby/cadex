@@ -5,180 +5,160 @@
   "source": "dev-tree"
  },
  "film": {
-  "appearance": {
-   "comp_board": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_chassis": {
-    "color": "#E9E6DF",
-    "role": "shell"
-   },
-   "comp_clamp_l": {
-    "color": "#E9E6DF",
-    "role": "shell"
-   },
-   "comp_clamp_r": {
-    "color": "#E9E6DF",
-    "role": "shell"
-   },
-   "comp_insert_board_0": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_insert_board_1": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_insert_board_2": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_insert_board_3": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_insert_clamp_l_0": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_insert_clamp_l_1": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_insert_clamp_r_0": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_insert_clamp_r_1": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_insert_hub_l": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_insert_hub_r": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_motor_l": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_motor_r": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_screw_board_0": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_screw_board_1": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_screw_board_2": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_screw_board_3": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_screw_clamp_l_0": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_screw_clamp_l_1": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_screw_clamp_r_0": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_screw_clamp_r_1": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_screw_hub_l": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_screw_hub_r": {
-    "color": "#2F3237",
-    "role": "mechanism"
-   },
-   "comp_wheel_l": {
-    "color": "#E9E6DF",
-    "role": "shell"
-   },
-   "comp_wheel_r": {
-    "color": "#E9E6DF",
-    "role": "shell"
-   }
-  },
+  "schema": "cadex-evaluation-film-v1",
+  "state": "ready",
   "error": null,
+  "style": "studio",
+  "style_sha256": "ec44312c216e3f1ce31ea9fe52e8bb8b2b2defc005f60dd8f7b70def52582a7a",
+  "renderer": "CadexStudio studio (engine), CPU, no browser or display",
   "floor": "the review viewport's dark prototype mat (ADR-444)",
   "frame_px": 256,
-  "geometry": {
-   "budget_triangles": 120000,
-   "cell_mm": null,
-   "drawn_triangles": 62948,
-   "input_bound_triangles": 4000000,
-   "input_triangles": 62948
-  },
-  "materials": {
-   "declared": true,
-   "environment_omitted": [],
-   "source": "the accepted assembly's inventory"
+  "sheet": {
+   "columns": 4,
+   "rows": 3,
+   "gutter_px": 4
   },
   "overlay": "simulation seconds, bottom left of every frame",
-  "render_seconds": 208.92,
-  "renderer": "CadexStudio studio (engine), CPU, no browser or display",
-  "schema": "cadex-evaluation-film-v1",
+  "showing": "tessellated solids of the accepted revision at each recorded pose; collision proxies and world geometry not drawn",
+  "materials": {
+   "source": "the accepted assembly's inventory",
+   "declared": true,
+   "environment_omitted": []
+  },
+  "appearance": {
+   "comp_board": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_chassis": {
+    "role": "shell",
+    "color": "#E9E6DF"
+   },
+   "comp_clamp_l": {
+    "role": "shell",
+    "color": "#E9E6DF"
+   },
+   "comp_clamp_r": {
+    "role": "shell",
+    "color": "#E9E6DF"
+   },
+   "comp_insert_board_0": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_insert_board_1": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_insert_board_2": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_insert_board_3": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_insert_clamp_l_0": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_insert_clamp_l_1": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_insert_clamp_r_0": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_insert_clamp_r_1": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_insert_hub_l": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_insert_hub_r": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_motor_l": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_motor_r": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_screw_board_0": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_screw_board_1": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_screw_board_2": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_screw_board_3": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_screw_clamp_l_0": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_screw_clamp_l_1": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_screw_clamp_r_0": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_screw_clamp_r_1": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_screw_hub_l": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_screw_hub_r": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "comp_wheel_l": {
+    "role": "shell",
+    "color": "#E9E6DF"
+   },
+   "comp_wheel_r": {
+    "role": "shell",
+    "color": "#E9E6DF"
+   }
+  },
+  "geometry": {
+   "input_triangles": 62948,
+   "drawn_triangles": 62948,
+   "cell_mm": null,
+   "budget_triangles": 120000,
+   "input_bound_triangles": 4000000
+  },
   "seeds": [
    {
-    "detail": {
-     "azimuth_degrees": -54.22556662009613,
-     "bytes": 166523,
-     "file": "seed-1101-detail.png",
-     "frames": 12,
-     "half_extent_mm": 88.38082178954033,
-     "height": 776,
-     "requested_start_s": 2.2196595020295566,
-     "sha256": "3ba405164140fb208480640092196a7a0cc9fa7c570d73b5ad683037494b005d",
-     "start_s": 2.2196595020295566,
-     "start_source": "the seed's first disturbance",
-     "step_s": 0.2,
-     "times_s": [
-      2.2,
-      2.4,
-      2.6,
-      2.8000000000000003,
-      3.0,
-      3.2,
-      3.4,
-      3.6,
-      3.8000000000000003,
-      4.0,
-      4.2,
-      4.4
-     ],
-     "travel_mm": 978.5900028522584,
-     "view": "side-on to the direction of travel, 12 degrees above the floor; the window follows the design",
-     "width": 1036
-    },
-    "floor_source": "the model's collision plane",
+    "seed": 1101,
+    "trace_sha256": "82a1834892ae88b172a440e99eea61c496fcbb0c8741660d644e3987e1b1ee13",
     "floor_z_mm": 0.0,
+    "floor_source": "the model's collision plane",
     "overview": {
-     "bytes": 107345,
      "file": "seed-1101-overview.png",
-     "frames": 12,
-     "half_extent_mm": 303.73629631989115,
-     "height": 776,
      "sha256": "cde0c227c11a7f734660a6e40c5312ee9ee98a878fb9c0d0cf501980dada54c7",
+     "bytes": 107345,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
      "times_s": [
       0.0,
       0.8200000000000001,
@@ -194,65 +174,66 @@
       9.08
      ],
      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
-     "width": 1036
+     "half_extent_mm": 303.73629631989115
     },
-    "seed": 1101,
-    "trace_sha256": "82a1834892ae88b172a440e99eea61c496fcbb0c8741660d644e3987e1b1ee13",
+    "detail": {
+     "file": "seed-1101-detail.png",
+     "sha256": "0ce71e0e9d5f1ea479204968f499ff9fe4d50d7dfc8abee7f5fa7af08821e2c8",
+     "bytes": 166382,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      2.2,
+      2.4,
+      2.6,
+      2.8000000000000003,
+      3.0,
+      3.2,
+      3.4,
+      3.6,
+      3.8000000000000003,
+      4.0,
+      4.2,
+      4.4
+     ],
+     "requested_start_s": 2.2196595020295566,
+     "start_s": 2.2196595020295566,
+     "step_s": 0.2,
+     "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+     "follows": "comp_chassis",
+     "azimuth_degrees": -55.492011471038936,
+     "travel_mm": 982.0167430794099,
+     "half_extent_mm": 88.00902975483034,
+     "start_source": "the seed's first disturbance"
+    },
     "video": {
-     "bytes": 231436,
      "file": "seed-1101-rollout.webm",
-     "floor_z_mm": 0.0,
-     "fps": 10,
+     "sha256": "1cc66589c0a3b1cdc5a3c470f41aaf234a2678f4283ab4d6b55717f8067d4717",
+     "bytes": 231436,
      "frames": 92,
+     "fps": 10,
+     "sim_seconds": 9.08,
+     "width": 512,
      "height": 512,
      "projection": "orthographic hero view (35 degrees round from the front, 20 above the floor)",
-     "render_bound_seconds": 300,
-     "render_seconds": 154.825,
-     "sha256": "4183fc5172ae5b5f8d1841bc7b85ae948a041153ff4b498566be8f1d53fd5d85",
-     "sim_seconds": 9.08,
-     "width": 512
+     "floor_z_mm": 0.0,
+     "render_seconds": 154.449,
+     "render_bound_seconds": 300
     }
    },
    {
-    "detail": {
-     "azimuth_degrees": 120.58468391303931,
-     "bytes": 163192,
-     "file": "seed-1105-detail.png",
-     "frames": 12,
-     "half_extent_mm": 88.19283621366377,
-     "height": 776,
-     "requested_start_s": 2.3962655006361495,
-     "sha256": "ffc55f1a88c4423fd106c73a54531d7744cf79ba19c9d0cad0204a2e575d3675",
-     "start_s": 2.3962655006361495,
-     "start_source": "the seed's first disturbance",
-     "step_s": 0.2,
-     "times_s": [
-      2.38,
-      2.58,
-      2.7800000000000002,
-      2.98,
-      3.18,
-      3.38,
-      3.58,
-      3.7800000000000002,
-      3.98,
-      4.18,
-      4.38,
-      4.58
-     ],
-     "travel_mm": 733.850777740438,
-     "view": "side-on to the direction of travel, 12 degrees above the floor; the window follows the design",
-     "width": 1036
-    },
-    "floor_source": "the model's collision plane",
+    "seed": 1105,
+    "trace_sha256": "0f80d108b5df1be71991b800325d10971cb61669a92e50b6cc21faf056b9c0ef",
     "floor_z_mm": 0.0,
+    "floor_source": "the model's collision plane",
     "overview": {
-     "bytes": 126590,
      "file": "seed-1105-overview.png",
-     "frames": 12,
-     "half_extent_mm": 239.937885635518,
-     "height": 776,
      "sha256": "0efca8482dbc484f3f86621eacb832279d54b7fe920948c690dcd04e1bc37cb4",
+     "bytes": 126590,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
      "times_s": [
       0.0,
       0.9,
@@ -268,52 +249,53 @@
       10.0
      ],
      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
-     "width": 1036
+     "half_extent_mm": 239.937885635518
     },
-    "seed": 1105,
-    "trace_sha256": "0f80d108b5df1be71991b800325d10971cb61669a92e50b6cc21faf056b9c0ef",
+    "detail": {
+     "file": "seed-1105-detail.png",
+     "sha256": "0d8651e098396d3b61f971b38a025cede4e857ee27e07d1ec0ee9e7a4b34db6b",
+     "bytes": 162686,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      2.38,
+      2.58,
+      2.7800000000000002,
+      2.98,
+      3.18,
+      3.38,
+      3.58,
+      3.7800000000000002,
+      3.98,
+      4.18,
+      4.38,
+      4.58
+     ],
+     "requested_start_s": 2.3962655006361495,
+     "start_s": 2.3962655006361495,
+     "step_s": 0.2,
+     "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+     "follows": "comp_chassis",
+     "azimuth_degrees": 120.66928395541694,
+     "travel_mm": 733.1257224734901,
+     "half_extent_mm": 88.18432733062436,
+     "start_source": "the seed's first disturbance"
+    },
     "video": null
    },
    {
-    "detail": {
-     "azimuth_degrees": 147.18992420576774,
-     "bytes": 182321,
-     "file": "seed-1110-detail.png",
-     "frames": 12,
-     "half_extent_mm": 92.61962917052449,
-     "height": 776,
-     "requested_start_s": 2.8823767909100715,
-     "sha256": "7f3d5bf740276c1df91a48e3dbeef116c971c584fd1067bf4d57174462e2871a",
-     "start_s": 2.0599999999999996,
-     "start_source": "the seed's first disturbance",
-     "step_s": 0.2,
-     "times_s": [
-      2.06,
-      2.2600000000000002,
-      2.46,
-      2.66,
-      2.86,
-      3.06,
-      3.2600000000000002,
-      3.46,
-      3.66,
-      3.86,
-      4.0600000000000005,
-      4.26
-     ],
-     "travel_mm": 748.5768834213069,
-     "view": "side-on to the direction of travel, 12 degrees above the floor; the window follows the design",
-     "width": 1036
-    },
-    "floor_source": "the model's collision plane",
+    "seed": 1110,
+    "trace_sha256": "ce4dcde37d58f9f78e82a753313c59e1e17b88481285568f6c7d7cc7ac0b3b4a",
     "floor_z_mm": 0.0,
+    "floor_source": "the model's collision plane",
     "overview": {
-     "bytes": 108875,
      "file": "seed-1110-overview.png",
-     "frames": 12,
-     "half_extent_mm": 253.4379063410275,
-     "height": 776,
      "sha256": "cde0fbb4b232709ee2d28a5efd8723cf030856d5521ed14bc07625463b4bee88",
+     "bytes": 108875,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
      "times_s": [
       0.0,
       0.38,
@@ -329,22 +311,43 @@
       4.26
      ],
      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
-     "width": 1036
+     "half_extent_mm": 253.4379063410275
     },
-    "seed": 1110,
-    "trace_sha256": "ce4dcde37d58f9f78e82a753313c59e1e17b88481285568f6c7d7cc7ac0b3b4a",
+    "detail": {
+     "file": "seed-1110-detail.png",
+     "sha256": "fa71dc56a219fb95920ca8bd667aa0460b607c9860540075890e4cf881f6b951",
+     "bytes": 182989,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      2.06,
+      2.2600000000000002,
+      2.46,
+      2.66,
+      2.86,
+      3.06,
+      3.2600000000000002,
+      3.46,
+      3.66,
+      3.86,
+      4.0600000000000005,
+      4.26
+     ],
+     "requested_start_s": 2.8823767909100715,
+     "start_s": 2.0599999999999996,
+     "step_s": 0.2,
+     "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+     "follows": "comp_chassis",
+     "azimuth_degrees": 147.13776172474138,
+     "travel_mm": 755.0133809116707,
+     "half_extent_mm": 92.59863453499413,
+     "start_source": "the seed's first disturbance"
+    },
     "video": null
    }
   ],
-  "sheet": {
-   "columns": 4,
-   "gutter_px": 4,
-   "rows": 3
-  },
-  "showing": "tessellated solids of the accepted revision at each recorded pose; collision proxies and world geometry not drawn",
-  "state": "ready",
-  "style": "studio",
-  "style_sha256": "c17ee1c4885d378deaf61b0f758ee4f4e5accdf6cbebd9972d139d236cae8b14"
+  "render_seconds": 208.443
  },
  "label": "ot11 balance contract",
  "model_output": "robin_model",

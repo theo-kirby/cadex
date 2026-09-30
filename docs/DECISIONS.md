@@ -30123,3 +30123,93 @@ Nothing prunes old evaluation directories.
 fixture), `cli/tests/test_review_design.py` (heading and reading order),
 `cli/tests/test_ot11_contract.py` (the receipts' film blocks and the
 committed sheets).
+
+## ADR-460 — The film follows the evaluation's base, and the blind video judge is run on both negatives (2026-09-30)
+
+**Context.** The frozen ot11 contract says its judge sees a detail sheet
+"side-on, following the base". ADR-459's film followed the centre of the
+whole design and said so as a stated departure. The contract also froze a
+blind video judge (who, what it sees, which seeds, how many calls, the bar)
+with no runner. P1 stays open until the judge has been run on the two known
+negatives.
+
+**Decision.**
+
+1. **The product changes, not the contract.** `film.detail` takes the base
+   the evaluation measured (`rig.base`, the mechanism's single free-joint
+   body, already in every report). The window is centred on the middle of
+   that component's bounds in every frame and is wide enough to hold the
+   whole design in each. Side-on is still measured from the trace, now on
+   the base: from where it started to where it was farthest away. The
+   window never moves up or down. The block's `follows` names the base.
+2. **A mechanism with no floating base has a fixed window.** Its base is
+   fixed to the world, so following it means not moving: the window is
+   fixed on everything the shown moments cover. Before, the window followed
+   the design's centre, which would have held a moving arm still in frame.
+3. **A base that is not one of the drawn solids is refused** with its name.
+4. **The judge runner is `docs/probes/ot11/runner/judge.py`**, modelled on
+   ot10's. Each call is a fresh `claude -p --model claude-opus-5-5` process
+   with no fallback model, effort `high`, in a new empty directory outside
+   the repository, with one tool (`Read`), no MCP servers, no skills, no
+   user settings and no session kept. Its system prompt is a five-sentence
+   instruction followed by the rubric byte for byte. Its message is the
+   intent paragraph and the paths of the two sheets, copied as
+   `overview.png` and `detail.png`.
+5. **The instructions are pinned.** They say what a sheet is and what to
+   reply with, and name no behaviour. Their SHA-256 is in `contract.json`
+   under a new `judge_procedure` key and in `test_ot11_judge.py`. The frozen
+   `judge` block is untouched, and no frozen item changed, so the
+   contract's `decisions` list still has one entry (ADR-454).
+6. **The sheets are read through the evaluation.** The runner takes an
+   evaluation directory and a seed. It refuses a seed the contract does not
+   judge, a film that is not ready, a sheet with other than twelve frames
+   and a sheet whose digest is not the one the report recorded.
+7. **A refusal is not a verdict.** A reply without four integer scores is
+   retried once. A second failure, a harness error, a `refusal` stop
+   reason, or an answer whose `modelUsage` names any model but the pinned
+   one writes no score, keeps the attempts as `<out>.failed.json` and exits
+   2.
+
+**Measured.** Both negatives were filmed again with `--film-only`, no new
+rollout. Every overview sheet came out byte for byte as before. The detail
+half-width on `ot11-w2-negative` went from 140–148 mm to 161–174 mm; on
+`ot11-robin-negative` it changed by under 1 mm. Then eighteen judge calls,
+three a seed, 162 s of model time and $0.73 at list price. Every call
+scored. None was refused, retried or answered by another model.
+
+| policy | seed | V1 | V2 | V3 | V4 | total | bar |
+|---|---|---|---|---|---|---|---|
+| `w2-2` | 1101 | 1 | 2 | 0 | 1 | 4 | not met |
+| `w2-2` | 1105 | 1 | 1 | 0 | 1 | 3 | not met |
+| `w2-2` | 1110 | 1 | 2 | 0 | 1 | 4 | not met |
+| Robin | 1101 | 0 | 1 | 0 | 1 | 2 | not met |
+| Robin | 1105 | 1 | 1 | 2 | 1 | 5 | not met |
+| Robin | 1110 | 0 | 1 | 0 | 1 | 2 | not met |
+
+Neither negative meets the bar on any judged seed. Two findings, both in
+`docs/probes/ot11/README.md`:
+
+- **The judge fails `w2-2` for falling, not for shuffling.** It scored
+  manner 2 ("real steps") on seeds 1101 and 1110, where W5 measures 8.5 %
+  and 3.6 % of a foot's path made in steps and W7 measures 60 % and 81 %
+  made sliding. Twelve frames 0.04 s apart in a window that follows the
+  base do not show a planted foot moving across the floor. The predicates
+  are the reading of stepping and slip; the judge is the reading of what a
+  person sees. A behaviour needs both, which the frozen pass rule already
+  says. The rubric, the filmstrip and the bar are not changed.
+- **The judge saw two falls no termination reported.** On `w2-2` seeds
+  1101 and 1105 the base goes to 42° and stops moving at about 8 s and
+  6.4 s. The w2 task's `tipped` termination did not fire, so W1 passes;
+  W2 fails on both at 43.6° and 43.7°.
+
+**Not changed.** The frozen contract: its rubric, judge block, seeds,
+predicates and bar. No engine file, protocol op, `OP_ARG_SPECS` or shell
+file, so no payload moves. No new dependency: the judge is the Claude Code
+CLI the product already drives. Nothing removed.
+
+**Evidence.** `cli/tests/test_film.py` (35 tests; the three new ones fail on
+the old module), `cli/tests/test_ot11_judge.py` (16 tests, none calls a
+model: the runner is run end to end against a stand-in executable, and the
+six committed receipts are held to what the runner computes from their own
+calls), `cli/tests/test_ot11_contract.py` (the receipts' film blocks now
+follow the base).

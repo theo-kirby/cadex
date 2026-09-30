@@ -368,6 +368,18 @@
       "scope": "each judged seed"
     }
   },
+  "judge_procedure": {
+    "adr": "ADR-460",
+    "runner": "runner/judge.py",
+    "effort": "high",
+    "instructions_sha256": "dfeab7c7624b2a7472baaaf1e6b9d20ebaba0c80f96953ea203d5725ef02b706",
+    "system_prompt": "the instructions, then the rubric block byte for byte",
+    "message": "the behaviour's intent paragraph and the paths of the two sheets, copied as overview.png and detail.png",
+    "isolation": "each call is a fresh Claude Code process in a new empty directory outside the repository: one tool (Read), no MCP servers, no skills, no user settings, hooks, memory or CLAUDE.md, no session kept, one readable directory holding the two sheets",
+    "sheets": "read through the evaluation's report; a sheet whose sha256 is not the one the report records is refused",
+    "not_a_score": "a reply without four integer scores is retried once; a second failure, a refusal, a harness error or an answer from any model but the pinned one writes no score and exits 2",
+    "rule": "Pinned before any ot11 policy was judged. It adds to the frozen judge block and changes nothing in it; changing the instructions or the isolation later is a recorded decision that re-judges every earlier ot11 policy."
+  },
   "confirmation": "A behaviour is met only when its pre-registered confirmation evaluation passes every predicate on all ten seeds and every judged seed meets the judge's bar. When the predicates and the judge disagree, both are recorded and the disagreement is diagnosed before anything is trained again.",
   "known_negatives": {
     "measured_at": "2026-09-30, before any ot11 training run",
@@ -615,7 +627,88 @@
         112.5
       ]
     },
-    "judge": "not run: the filmstrip renderer and the judge runner are later units"
+    "judge": "not run: the filmstrip renderer and the judge runner are later units",
+    "judged": {
+      "measured_at": "2026-09-30, before any ot11 training run; every call scored, none refused or retried",
+      "w2-2": {
+        "behaviour": "walk",
+        "seeds": {
+          "1101": {
+            "receipt": "retained/judge-w2-2-seed-1101.json",
+            "medians": {
+              "V1": 1,
+              "V2": 2,
+              "V3": 0,
+              "V4": 1
+            },
+            "total": 4,
+            "meets_bar": false
+          },
+          "1105": {
+            "receipt": "retained/judge-w2-2-seed-1105.json",
+            "medians": {
+              "V1": 1,
+              "V2": 1,
+              "V3": 0,
+              "V4": 1
+            },
+            "total": 3,
+            "meets_bar": false
+          },
+          "1110": {
+            "receipt": "retained/judge-w2-2-seed-1110.json",
+            "medians": {
+              "V1": 1,
+              "V2": 2,
+              "V3": 0,
+              "V4": 1
+            },
+            "total": 4,
+            "meets_bar": false
+          }
+        },
+        "meets_bar": false
+      },
+      "robin": {
+        "behaviour": "balance",
+        "seeds": {
+          "1101": {
+            "receipt": "retained/judge-robin-seed-1101.json",
+            "medians": {
+              "V1": 0,
+              "V2": 1,
+              "V3": 0,
+              "V4": 1
+            },
+            "total": 2,
+            "meets_bar": false
+          },
+          "1105": {
+            "receipt": "retained/judge-robin-seed-1105.json",
+            "medians": {
+              "V1": 1,
+              "V2": 1,
+              "V3": 2,
+              "V4": 1
+            },
+            "total": 5,
+            "meets_bar": false
+          },
+          "1110": {
+            "receipt": "retained/judge-robin-seed-1110.json",
+            "medians": {
+              "V1": 0,
+              "V2": 1,
+              "V3": 0,
+              "V4": 1
+            },
+            "total": 2,
+            "meets_bar": false
+          }
+        },
+        "meets_bar": false
+      }
+    }
   },
   "decisions": [
     {

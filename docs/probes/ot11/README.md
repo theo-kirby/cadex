@@ -278,8 +278,47 @@ V4 Consistency. Does the same quality hold across the whole filmstrip?
 **The judge's bar.** On **each** judged seed: a total of **at least 9 of 12**,
 and **no trait below 2**.
 
-The judge runner and the filmstrip renderer are later units. The rubric, the
-inputs, the judged seeds and the bar are frozen here, before either exists.
+The rubric, the inputs, the judged seeds and the bar were frozen here before
+the judge runner or the filmstrip renderer existed.
+
+### The procedure (ADR-460)
+
+[`runner/judge.py`](runner/judge.py) is the judge. It was pinned before any
+ot11 policy was judged, and it adds to the frozen items above without
+changing one. Changing it later is a recorded decision that re-judges every
+earlier ot11 policy.
+
+```bash
+pixi run python docs/probes/ot11/runner/judge.py walk \
+  --evaluation PROJECT/evaluations/<revision>-<policy> --seed 1101 \
+  --label NAME --out retained/judge-NAME-seed-1101.json
+```
+
+- **Each call is a fresh Claude Code process** in a new, empty directory
+  outside the repository: `--model claude-opus-5-5`, no fallback model,
+  effort `high`, one tool (`Read`), no MCP servers, no skills, no user
+  settings, hooks, memory or `CLAUDE.md`, and no session kept.
+- **Its system prompt** is five sentences of instructions followed by the
+  rubric block, byte for byte. The instructions say what a sheet is (twelve
+  frames, read left to right, each carrying its time) and what to reply
+  with (one JSON object of four scores, each with a one-sentence reason).
+  They name no behaviour. Their SHA-256 is pinned in `contract.json`
+  (`judge_procedure`) and in `cli/tests/test_ot11_judge.py`.
+- **Its one message** is the behaviour's intent paragraph and the paths of
+  the seed's two sheets, copied into the one directory it can read as
+  `overview.png` and `detail.png`. The seed number and `--label` go into
+  the receipt and never to the judge.
+- **The sheets are the evaluation's.** They are read through
+  `evaluation.json`. A sheet whose digest is not the one the report
+  recorded is refused, and so is a seed the contract does not judge.
+- **What is not a score.** A reply without four integer scores is retried
+  once. A second failure, a refusal, an error from the harness, or an
+  answer from any model but `claude-opus-5-5` writes no score: the attempts
+  are kept as `<out>.failed.json` and the runner exits 2.
+- **The receipt** (`ot11-judge-v1`) carries every call's scores, reasons
+  and reply, the medians, the total, whether the bar is met, the digests of
+  the rubric, the instructions, the intent and both sheets, and the policy,
+  task and model the evaluation measured.
 
 ## Reading a trace against the contract
 
@@ -345,7 +384,8 @@ Measured on 2026-09-30, before any ot11 training run. Both projects are
 read-only and nothing was written to either. Both readings are
 **off-contract**: the policies predate the contract, so they ran under their
 own tasks' conditions, not the ones above. They can fail and cannot pass.
-The video judge was not run; its runner is a later unit.
+The video judge was run afterwards, on the contract's conditions
+([below](#the-judges-scores-on-both-negatives-adr-460)).
 
 ### ot10's `w2-2` shuffle fails the walk spec, on stepping and slip
 
@@ -486,7 +526,9 @@ ten**. ot9 never shoved it.
 `cadex evaluate` now draws the filmstrip this contract describes, from the
 traces an evaluation keeps (`docs/CLI.md`, *The film*). Both negatives were
 filmed with `--film-only` from the traces of the two evaluations above, with
-no new rollout, on the three judged seeds:
+no new rollout, on the three judged seeds. The sheets below are the second
+draw: the detail now follows the base (ADR-460), and the overview sheets
+came out byte for byte as they were.
 
 ```
 cadex evaluate --project ot11-w2-negative    --film-only --film 1101,1105,1110 \
@@ -505,10 +547,11 @@ rollout.
 
 | | `w2-2` | Robin |
 |---|---|---|
-| sheets, three seeds | 63.8 s | 54.1 s |
-| video, seed 1101 | 101 frames, 179.4 s, 386 KB | 92 frames (it fell at 9.08 s), 154.8 s, 231 KB |
-| sheet size, 1036×776 | 149 KB to 258 KB | 107 KB to 182 KB |
+| sheets, three seeds | 62.6 s | 54.0 s |
+| video, seed 1101 | 101 frames, 179.0 s, 386 KB | 92 frames (it fell at 9.08 s), 154.4 s, 231 KB |
+| sheet size, 1036×776 | 149 KB to 239 KB | 107 KB to 183 KB |
 | detail window | 5.00 s to 5.44 s on all three | 1101 from 2.22 s, 1105 from 2.40 s, 1110 from 2.06 s |
+| detail follows | the base, `c_tray` | the base, `comp_chassis` |
 | solids drawn | 78,303 triangles, in the design's materials, floor slab left out | 62,948 triangles, in the design's materials |
 
 Robin's seed 1110 fell at 4.26 s, before the last of twelve moments from its
@@ -523,18 +566,69 @@ stay in the projects):
 | `w2-2` | [`film-w2-2-seed-1101-overview.png`](film-w2-2-seed-1101-overview.png) | [`film-w2-2-seed-1101-detail.png`](film-w2-2-seed-1101-detail.png) |
 | Robin | [`film-robin-seed-1101-overview.png`](film-robin-seed-1101-overview.png) | [`film-robin-seed-1101-detail.png`](film-robin-seed-1101-detail.png) |
 
-Two places where the product's filmstrip is not yet, or not literally, the
-frozen text:
+**The detail is side-on, following the base** (ADR-460). The first draw
+followed the centre of the whole design, which is not what the frozen text
+says. The product was changed, not the contract: the window is now centred
+on the base the evaluation measured (`rig.base`, the mechanism's single
+free-joint body) in every frame, and side-on is measured on that body, from
+where it started to where it was farthest away. On the quadruped the window
+grew from 141 mm to 161 mm of half-width on seed 1101, because it must hold
+the legs on both sides of the base. On Robin it changed by under 1 mm.
+`cli/tests/test_film.py` holds it on a design whose base walks away from a
+part left behind.
 
-- **A reach frame's target marker is not drawn.** No trace carries a goal
-  until P3; the marker arrives with it. It does not apply to these two.
-- **"Side-on, following the base."** The product names no base. Its window
-  follows the centre of the whole design, and side-on is measured from the
-  trace: the camera's right is the direction from the design's centre at
-  the start to where it was farthest away (the front view when it moved
-  under 5 % of its own size). On a rigid-bodied walker or balancer that is
-  the base to within the legs' swing. It is stated here so the judge unit
-  can decide whether it needs a recorded contract decision.
+One place where the product's filmstrip is not yet the frozen text: **a
+reach frame's target marker is not drawn.** No trace carries a goal until
+P3, and the marker arrives with it. It does not apply to these two.
 
-**The video judge has still not run.** Nothing above is a score. Its runner
-is the next unit, and these sheets are what it will be shown.
+### The judge's scores on both negatives (ADR-460)
+
+Judged on 2026-09-30, before any ot11 training run, from the sheets above:
+three calls a seed, eighteen calls in all. Every call returned a score. None
+was refused, retried or answered by another model. Receipts:
+`retained/judge-w2-2-seed-*.json` and `retained/judge-robin-seed-*.json`.
+
+| policy | seed | V1 task | V2 manner | V3 control | V4 consistency | total | bar (≥ 9, none under 2) |
+|---|---|---|---|---|---|---|---|
+| `w2-2` | 1101 | 1 | 2 | 0 | 1 | 4 | **not met** |
+| `w2-2` | 1105 | 1 | 1 | 0 | 1 | 3 | **not met** |
+| `w2-2` | 1110 | 1 | 2 | 0 | 1 | 4 | **not met** |
+| Robin | 1101 | 0 | 1 | 0 | 1 | 2 | **not met** |
+| Robin | 1105 | 1 | 1 | 2 | 1 | 5 | **not met** |
+| Robin | 1110 | 0 | 1 | 0 | 1 | 2 | **not met** |
+
+Each cell is the median of three calls. The three calls agreed on every
+trait of every seed but one (Robin 1105, V2: 1, 2, 1).
+
+**Neither negative meets the bar on any judged seed**, so the judge and the
+predicates agree on both verdicts. Where they differ is recorded here.
+
+- **Robin: the judge says what the numbers say.** On all three seeds it
+  reports a quarter turn in the first second and a steady drift away, which
+  is B4 and B3. It reports the falls on 1101 (9.08 s) and 1110 (4.26 s),
+  which are B1 and B2. On 1105, the seed that stays upright (4.2° of tilt at
+  most), it scores control 2 and still fails the task.
+- **`w2-2`: the judge sees a fall on two seeds where no termination
+  fired.** On 1101 and 1105 it reports the robot down and still from about
+  8 s and 6.4 s. The traces agree: the base goes to 42° of tilt and its
+  position does not change again. The w2 task's own `tipped` termination
+  did not fire, so W1 passes on both seeds. **W2 fails on both** (43.6° and
+  43.7° against 30°), so the contract does read the fall. It is the task's
+  termination that missed it.
+- **`w2-2`: the judge does not see the shuffle.** This is a disagreement on
+  one trait, and the predicates are the ones to trust. On 1101 and 1110
+  every call scored manner 2, "real steps" seen in the detail frames. The
+  same seeds measure 3 and 1 steps by the foot that stepped least, 8.5 %
+  and 3.6 % of its path made in steps (W5, limit 70 %), and 60 % and 81 %
+  of a foot's path made sliding (W7, limit 15 %). Twelve frames 0.04 s
+  apart show legs in different positions. They cannot show that a foot on
+  the floor is moving across it, least of all in a window that follows the
+  base. The rear feet's typical swing lasts 0.04 s (measured off-contract
+  above), which is the gap between two detail frames.
+- **So `w2-2` fails the judge for falling, not for shuffling.** The
+  judge's bar is a second reading that catches what a person would see in
+  twenty-four frames. It is not a reading of stepping or slip. A policy
+  that shuffled without falling could score manner 2 here. That is why a
+  behaviour is met only when the predicates pass **and** the bar is met,
+  and why this finding changes no frozen item: the rubric, the filmstrip
+  and the bar stand as frozen.

@@ -2665,7 +2665,7 @@ Fast, and honest about what it did not run.
 | `test_review_lifecycle.py` | The dashboard across restart and copy (D6/D7): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. Whole-directory copy coverage checks independent accepted fixtures and historical model/curves/video access with the original path unavailable. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
 | `test_review_history_scale.py` | Bounded operation over a long run history (ADR-321): sixty-three runs with 512-sample histories and three verified checkpoints each. Over HTTP, the run list carries a telemetry summary under 1.5 KB per run with no histories and no checkpoint hashing, the per-run detail carries both, and missing/invalid/mismatched states survive the summary. In the browser, a deliberately selected historical run keeps its selection, histories and playing video while twenty runs are added and the newest run's telemetry grows; an idle poll adds no more DOM nodes after the growth than before; a fresh visit selects the training run and the current-run button reaches it with its growing history within five seconds. **Skips** the browser half without a Chromium or FFmpeg. |
 | `test_evaluate.py` | `cadex evaluate` (ADR-457) in three layers: what it reads from a hand-built retained attempt (no engine); the child run for real on the engine suite's own fixtures, which needs `mujoco` here and **skips** without it; and the command against a script a live engine accepted with a policy it verified — **skips** without a built engine. |
-| `test_film.py` | The evaluation's film (ADR-459) on a hand-built retained attempt and hand-written traces, with no engine: which seeds `--film` picks; the solids read from the attempt's own tessellation and refused outside it; materials from the inventory; both sheets' frame times, views, floor and dark backdrop read back from the PNGs; the early-ending and no-disturbance windows; the trace digest check; the report rewritten with its film; `--film-only`'s refusals. The video tests need FFmpeg and **skip** without it. |
+| `test_film.py` | The evaluation's film (ADR-459) on a hand-built retained attempt and hand-written traces, with no engine: which seeds `--film` picks; the solids read from the attempt's own tessellation and refused outside it; materials from the inventory; both sheets' frame times, views, floor and dark backdrop read back from the PNGs; the detail window centred on the evaluation's base while a part is left behind, fixed for a mechanism with no floating base, and refused for a base that is not drawn (ADR-460); the early-ending and no-disturbance windows; the trace digest check; the report rewritten with its film; `--film-only`'s refusals. The video tests need FFmpeg and **skip** without it. |
 | `test_review_evaluation.py` | The dashboard's view of an evaluation (ADR-459, REVIEW-DESIGN.md §17). The failing fixture is ot10's `w2-2` shuffle, from the receipt under `docs/probes/ot11/retained/`; a passing one is written in the test. Over HTTP: the bounded summary list, the whole report, the file allowlist and its refusals, one parse per file identity. In headless Chromium at 1400×900 and 400×850: every predicate's tally, every seed's verdict, ending and per-predicate values, the metrics and reward tables, the film, the reader's pick. The page half **skips** without a Chromium. |
 | `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** rendering/playback without both Chromium and FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
@@ -3018,9 +3018,18 @@ no browser. Every image stands on the dark prototype floor (ADR-444).
     in the hero three-quarter view, in one fixed window that frames the
     whole path.
   - `seed-<n>-detail.png`: consecutive moments `--detail-step` apart from
-    `--detail-start`, side-on to the direction the design travelled (the
-    front view when it stayed put), 12° above the floor, the window
-    following it. With no start given, the detail begins at the seed's
+    `--detail-start`, 12° above the floor, **side-on, following the base**
+    (ADR-460). The base is the one the evaluation measured tilt, heading
+    and drift on (`rig.base`, the mechanism's single floating body). The
+    window is centred on the middle of that component's bounds in every
+    frame, and is wide enough to hold the whole design in each. Side-on is
+    measured from the trace: the camera's right is the plan direction from
+    where the base started to where it was farthest away (the front view
+    when it stayed within 5 % of the design's size). The window never moves
+    up or down. A mechanism with no floating base has a fixed one, so its
+    window is fixed on everything the shown moments cover. The block's
+    `follows` names the base, or is `null`. With no start given, the detail
+    begins at the seed's
     first drawn disturbance, or at the middle of an episode that has none.
     An episode that ended before the last moment is shown to its end: the
     window slides back, and the block records both `requested_start_s` and

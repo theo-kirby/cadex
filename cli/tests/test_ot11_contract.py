@@ -293,6 +293,9 @@ def test_both_negatives_are_filmed_on_the_contracts_filmstrip() -> None:
             gaps = [b - a for a, b in zip(detail["times_s"], detail["times_s"][1:])]
             assert gaps == pytest.approx([step] * 11, abs=0.021)
             assert detail["times_s"][-1] <= end
+            # "Side-on, following the base" (ADR-460): the base the evaluation measured.
+            assert detail["follows"] == report["rig"]["base"] is not None
+            assert detail["view"].startswith("side-on") and detail["view"].endswith("the window follows the base")
             for sheet in (overview, detail):
                 assert (sheet["width"], sheet["height"]) == (1036, 776)
                 assert sheet["bytes"] <= 300 * 1024
@@ -318,6 +321,12 @@ def test_both_negatives_are_filmed_on_the_contracts_filmstrip() -> None:
             assert len(data) <= 300 * 1024 and path.name in README
     committed = {path.suffix for path in OT11.rglob("*") if path.is_file()}
     assert not committed & {".webm", ".mp4"} and not list(OT11.rglob("*-trace.json"))
+
+
+def test_the_films_one_departure_from_the_frozen_text_is_stated() -> None:
+    assert "**The detail is side-on, following the base** (ADR-460)." in README
+    assert "reach frame's target marker is not drawn.**" in FLAT
+    assert "follows the centre of the whole design, and side-on" not in FLAT
 
 
 def test_the_one_change_since_the_freeze_is_recorded() -> None:

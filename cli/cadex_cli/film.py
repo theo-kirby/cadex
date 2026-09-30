@@ -12,8 +12,9 @@ to look at:
   *overview* is evenly spaced from the first solved pose to the last, in the
   fixed three-quarter hero view, framed on the whole path. The *detail* is
   consecutive moments a declared step apart, side-on to the direction the
-  design travelled, the window following it. Every frame carries its
-  simulation time and nothing else;
+  evaluation rig's base travelled, the window following that base. A
+  mechanism with no floating base has a fixed one, and its window is fixed.
+  Every frame carries its simulation time and nothing else;
 - a **video** of the first filmed seed, drawn as a run's studio video is
   (:mod:`video`), ten frames a second.
 
@@ -259,6 +260,17 @@ class _Stage:
                                   for z in (lo[2], hi[2])]
         self.world = dict(world_flats)
 
+    def centre(self, poses: Mapping[str, Any], base: str | None) -> tuple[float, float, float]:
+        """Where ``base`` is at ``poses``: the middle of its own bounds. With
+        no base, the middle of the whole design's."""
+
+        if base is None:
+            box = self.box(poses)
+            return tuple((min(p[j] for p in box) + max(p[j] for p in box)) / 2 for j in range(3))
+        ((a, b, c), (d, e, f), (g, h, i)), (px, py, pz) = studio_video._rows(poses[base])
+        x, y, z = (sum(p[j] for p in self.corners[base]) / 8 for j in range(3))
+        return a*x+b*y+c*z+px, d*x+e*y+f*z+py, g*x+h*y+i*z+pz
+
     def box(self, poses: Mapping[str, Any]) -> list[tuple[float, float, float]]:
         """Every component's bounding-box corner at ``poses``: a conservative hull."""
 
@@ -321,23 +333,20 @@ def _sheet(frames: Sequence[bytes]) -> bytes:
     return studio_render.png(bytes(canvas.pixels), width, height)
 
 
-def travel_azimuth(stage: _Stage, frames: Sequence[Mapping[str, Any]]) -> tuple[float, float]:
-    """``(azimuth_degrees, travel_mm)``: the plan direction the design went.
+def travel_azimuth(stage: _Stage, frames: Sequence[Mapping[str, Any]],
+                   base: str | None = None) -> tuple[float, float]:
+    """``(azimuth_degrees, travel_mm)``: the plan direction ``base`` went.
 
-    From its centre in the first solved frame to its centre where that was
-    farthest from the start. A side-on camera puts its right along it, so
-    the design travels left to right. One that stays put is seen from the
-    front.
+    From where it was in the first solved frame to where it was farthest
+    from there. A side-on camera puts its right along it, so the base
+    travels left to right. One that stays within a twentieth of the
+    design's size is seen from the front. With no base the design's own
+    centre is what is tracked.
     """
 
-    centres, size = [], 0.0
-    for at, frame in enumerate(frames):
-        box = stage.box(frame["component_placements"])
-        lo = [min(p[j] for p in box) for j in range(3)]
-        hi = [max(p[j] for p in box) for j in range(3)]
-        if at == 0:
-            size = max(hi[j] - lo[j] for j in range(3))
-        centres.append(((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2))
+    box = stage.box(frames[0]["component_placements"])
+    size = max(max(p[j] for p in box) - min(p[j] for p in box) for j in range(3))
+    centres = [stage.centre(frame["component_placements"], base)[:2] for frame in frames]
     x0, y0 = centres[0]
     far = max(centres, key=lambda c: math.hypot(c[0] - x0, c[1] - y0))
     travel = math.hypot(far[0] - x0, far[1] - y0)
@@ -372,8 +381,14 @@ def overview(stage: _Stage, frames, times, floor: float, deadline: float) -> tup
 
 
 def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
-           start: float, step: float) -> tuple[bytes, dict[str, Any]]:
-    """Up to twelve consecutive moments ``step`` apart from ``start``, side-on, followed.
+           start: float, step: float, base: str | None = None) -> tuple[bytes, dict[str, Any]]:
+    """Up to twelve consecutive moments ``step`` apart from ``start``, side-on, following ``base``.
+
+    ``base`` is the evaluation rig's floating base: the window is centred on
+    it in every frame and wide enough that the whole design is inside it in
+    each. A mechanism with none (``None``) has a base fixed to the world, and
+    the window is fixed on everything the shown moments cover. The window
+    never moves up or down, so the floor stays where it is.
 
     An episode that ended before the last of them is shown to its end: the
     window of moments slides back until its last one is the final frame.
@@ -389,24 +404,34 @@ def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
         at = _index(times, moment)
         if not picked or at != picked[-1]:
             picked.append(at)
-    azimuth, travel = travel_azimuth(stage, frames)
+    azimuth, travel = travel_azimuth(stage, frames, base)
     basis = studio_render.camera(azimuth, DETAIL_ELEVATION_DEGREES)
+    right = basis[0]
     boxes = [_projected(stage.box(frames[at]["component_placements"]), basis) for at in picked]
     low, high = min(b[1] for b in boxes), max(b[3] for b in boxes)
     cy = (low + high) / 2
-    half = max(max(b[2] - b[0] for b in boxes), high - low) / 2 * (1 + 2 * PAD)
+    if base is None:
+        middle = (min(b[0] for b in boxes) + max(b[2] for b in boxes)) / 2
+        centres = [middle] * len(picked)
+    else:
+        centres = [sum(c * r for c, r in zip(stage.centre(frames[at]["component_placements"], base), right))
+                   for at in picked]
+    across = max(max(cx - b[0], b[2] - cx) for cx, b in zip(centres, boxes))
+    half = max(across, (high - low) / 2) * (1 + 2 * PAD)
     drawn = []
-    for at, box in zip(picked, boxes):
+    for at, cx in zip(picked, centres):
         _require(time.monotonic() < deadline, f"the filmstrip ran past {STRIP_SECONDS} seconds")
-        cx = (box[0] + box[2]) / 2
         drawn.append(stage.draw(frames[at]["component_placements"], basis,
                                 ([cx - half, cy - half], [cx + half, cy + half]), floor,
                                 f"T {times[at]:.2f} S"))
+    view = ("side-on to the direction the base travelled, {:g} degrees above the floor; "
+            "the window follows the base".format(DETAIL_ELEVATION_DEGREES) if base is not None else
+            "side-on to the direction the design travelled, {:g} degrees above the floor; "
+            "no floating base, so the window is fixed".format(DETAIL_ELEVATION_DEGREES))
     return _sheet(drawn), {
         "frames": len(drawn), "times_s": [times[at] for at in picked],
         "requested_start_s": start, "start_s": began, "step_s": step,
-        "view": "side-on to the direction of travel, {:g} degrees above the floor; "
-                "the window follows the design".format(DETAIL_ELEVATION_DEGREES),
+        "view": view, "follows": base,
         "azimuth_degrees": azimuth, "travel_mm": travel, "half_extent_mm": half,
     }
 
@@ -503,6 +528,11 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
     looks, source = materials(sources, list(meshes), revision, inventory)
     source["environment_omitted"] = sorted(world)
     stage = _Stage(meshes, looks, world_flats)
+    # The body the evaluation measured tilt, heading and drift on, or None
+    # for a mechanism fixed to the world.
+    base = (report.get("rig") or {}).get("base")
+    _require(base is None or base in stage.names,
+             f"the evaluation's base, {base}, is not one of the solids drawn")
     # The video's renderer finds its floor the same way, from the world's own triangles.
     world_meshes = {name: [tuple(tuple(flat[k + 3*c:k + 3*c + 3]) for c in range(3))
                            for k in range(0, len(flat), 9)] for name, flat in world_flats.items()}
@@ -520,7 +550,7 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
         image, facts = overview(stage, frames, times, floor, deadline)
         entry["overview"] = _keep(out / OVERVIEW_NAME.format(seed=seed), image, facts)
         begin, why = detail_start(row, times, start)
-        image, facts = detail(stage, frames, times, floor, deadline, start=begin, step=step)
+        image, facts = detail(stage, frames, times, floor, deadline, start=begin, step=step, base=base)
         entry["detail"] = _keep(out / DETAIL_NAME.format(seed=seed), image, {**facts, "start_source": why})
         entry["video"] = None
         filmed.append(entry)
