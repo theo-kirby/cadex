@@ -1,94 +1,44 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The ot11 contract reader, on gaits and balances whose answers are stated.
+"""The ot11 contract reader, on gaits, reaches and balances whose answers are stated.
 
 ``docs/probes/ot11/runner/measure.py`` is what measured the known negatives
-(ot10's ``w2-2`` shuffle, ot9's Robin) against the frozen walk and balance
-specs. A reader that fails everything proves nothing about a shuffle, so
-each predicate is pinned here on a synthetic trace that passes it and one
-that fails it for the stated reason.
+(ot10's ``w2-2`` shuffle, ot9's Robin) against the frozen specs. The reading
+itself is the product's (``CadexEvaluation``, ADR-455, pinned metric by metric
+in ``cadex_tests/test_evaluation_metrics.py``); what is pinned here is the
+**binding**: that each frozen predicate, W1-W10, Q1-Q4 and B1-B5, passes on a
+motion that meets it and fails on one that does not, for the stated reason.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
-import math
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 OT11 = REPO / "docs/probes/ot11"
 
-_spec = importlib.util.spec_from_file_location("ot11_measure", OT11 / "runner/measure.py")
-measure = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(measure)
 
-IDENTITY = [0.0, 0.0, 0.0, 1.0]
-HIP = 100.0
-FEET = {"fl": (60.0, 40.0), "fr": (60.0, -40.0), "rl": (-60.0, 40.0), "rr": (-60.0, -40.0)}
-RADIUS = 7.5
-DT = 0.02
-DONE = {"duration_s": 10.0, "termination": "", "truncated": True, "seed": 1101}
+def _load(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def walk_rig():
-    sphere = {"kind": "sphere", "size_mm": [RADIUS, 0.0, 0.0], "pos_mm": [0.0, 0.0, 0.0], "quat_xyzw": IDENTITY}
-    return {"base": "base", "reference_xyzw": IDENTITY, "base_com_local_mm": [0.0, 0.0, 0.0],
-            "floor_mm": 0.0, "hip_height_mm": HIP, "com_height_mm": 80.0,
-            "feet": {name: [sphere] for name in FEET}}
+measure = _load("ot11_measure", OT11 / "runner/measure.py")
+# The stated motions are the engine suite's, so the contract is read on the
+# same fixtures the product's metrics are pinned on.
+fixtures = _load("evaluation_fixtures", REPO / "src/Mod/cadex/cadex_tests/evaluation_fixtures.py")
 
-
-def yaw(degrees: float) -> list[float]:
-    half = math.radians(degrees) / 2.0
-    return [0.0, 0.0, math.sin(half), math.cos(half)]
-
-
-def pitch(degrees: float) -> list[float]:
-    half = math.radians(degrees) / 2.0
-    return [0.0, math.sin(half), 0.0, math.cos(half)]
-
-
-def trot(*, speed=80.0, lift=15.0, period_frames=24, seconds=10.0, swing_frames=None,
-         heading=0.0, sideways=0.0, sink=0.0):
-    """A trot: diagonal pairs swing in turn, stance feet stay where they landed."""
-
-    swing_frames = period_frames // 2 if swing_frames is None else swing_frames
-    samples = []
-    for k in range(int(round(seconds / DT)) + 1):
-        t = k * DT
-        placements = {"base": {"position_mm": [speed * t, sideways * t, 90.0], "rotation_xyzw": yaw(heading * t)}}
-        for name, (x, y) in FEET.items():
-            shift = 0 if name in ("fl", "rr") else period_frames // 2
-            cycle, phase = divmod(k + shift, period_frames)
-            stride = speed * period_frames * DT
-            if phase < swing_frames:
-                fraction = (phase + 0.5) / swing_frames
-                along = (cycle - 1) * stride + stride * fraction
-                height = lift * math.sin(math.pi * fraction)
-            else:
-                along, height = cycle * stride, -sink
-            placements[name] = {"position_mm": [x + along, y, RADIUS + height], "rotation_xyzw": IDENTITY}
-        samples.append((t, placements))
-    return samples
-
-
-def shuffle(*, speed=140.0, hop=2.5, seconds=10.0):
-    """The w2-2 shape: feet chatter forward in 40 ms hops a few millimetres high."""
-
-    samples = []
-    for k in range(int(round(seconds / DT)) + 1):
-        t = k * DT
-        placements = {"base": {"position_mm": [speed * t, 0.0, 90.0], "rotation_xyzw": IDENTITY}}
-        for name, (x, y) in FEET.items():
-            airborne = (k + (0 if name in ("fl", "rr") else 2)) % 4 < 2
-            placements[name] = {"position_mm": [x + speed * t, y, RADIUS + (hop if airborne else 0.0)],
-                                "rotation_xyzw": IDENTITY}
-        samples.append((t, placements))
-    return samples
+DONE, REACH_DONE, SHOVES = fixtures.DONE, fixtures.REACH_DONE, fixtures.SHOVES
+walk_rig, balance_rig, reach_rig = fixtures.walk_rig, fixtures.balance_rig, fixtures.reach_rig
+trot, shuffle, standing, reaching, pitch = (fixtures.trot, fixtures.shuffle, fixtures.standing,
+                                            fixtures.reaching, fixtures.pitch)
 
 
 def verdict(result):
@@ -183,66 +133,66 @@ def test_an_off_contract_horizon_is_not_measured_rather_than_passed_or_failed() 
     assert measure.walk(trot(seconds=8.0), walk_rig(), 80.0, eight)["predicates"][0]["pass"] is False
 
 
-def test_a_round_foot_rolling_through_its_stance_is_not_charged_as_slip() -> None:
-    # A 7.5 mm ball rolling without slipping: its centre moves r * angle while
-    # the material point on the floor does not move at all.
-    geoms = {"name": "foot", "geoms": walk_rig()["feet"]["fl"]}
-    samples = []
-    for k in range(20):
-        angle = 0.03 * k
-        samples.append((k * DT, {"foot": {"position_mm": [RADIUS * angle, 0.0, RADIUS],
-                                           "rotation_xyzw": pitch(math.degrees(angle))}}))
-    rolling = measure.foot_series(samples, geoms, 0.0)
-    assert rolling["contact_travel"].sum() == pytest.approx(0.0, abs=0.02)
-    assert np.linalg.norm(rolling["point"][-1] - rolling["point"][0]) == pytest.approx(RADIUS * 0.57)
-    sliding = [(t, {"foot": {**p["foot"], "rotation_xyzw": IDENTITY}}) for t, p in samples]
-    assert measure.foot_series(sliding, geoms, 0.0)["contact_travel"].sum() == pytest.approx(RADIUS * 0.57)
+def test_the_w2_2_shuffle_fails_the_walk_spec_for_the_reasons_the_contract_records() -> None:
+    # The known negative, as a fixture: the base and feet of ot10's stored
+    # w2-2 rollout. It must fail, and on stepping and slip -- not by accident.
+    samples, rig, command, episode = fixtures.w2_2()
+    result = measure.walk(samples, rig, command, episode, off_contract=True)
+    recorded = measure.contract()["known_negatives"]["walk_w2_2"]
+    assert failing(result) == sorted(recorded["failing"]) == ["W10", "W3", "W5", "W7", "W9"]
+    assert sorted(row["id"] for row in result["predicates"] if row["pass"]) == sorted(recorded["passing"])
+    feet = result["metrics"]["feet"]
+    for key in ("steps", "swings"):
+        assert [feet[name][key] for name in recorded["feet"]] == recorded[key]
+    for key, places in (("step_share", 2), ("slip_share", 2), ("duty_factor", 2), ("lowest_height_mm", 1),
+                        ("median_step_clearance_mm", 1), ("median_swing_peak_mm", 1)):
+        assert [round(feet[name][key], places) for name in recorded["feet"]] == recorded[key], key
+    rows = {row["id"]: row for row in result["predicates"]}
+    assert "step_share_min is 0.1396, under 0.7" in rows["W5"]["why"]
+    assert "slip_share_max is 0.6659, over 0.15" in rows["W7"]["why"]
 
 
-def test_a_box_foot_is_read_at_its_lowest_corner() -> None:
-    box = {"kind": "box", "size_mm": [20.0, 10.0, 5.0], "pos_mm": [0.0, 0.0, 0.0], "quat_xyzw": IDENTITY}
-    capsule = {"kind": "capsule", "size_mm": [4.0, 10.0, 0.0], "pos_mm": [0.0, 0.0, 0.0], "quat_xyzw": IDENTITY}
-    flat = [(0.0, {"foot": {"position_mm": [0.0, 0.0, 30.0], "rotation_xyzw": IDENTITY}})]
-    tipped = [(0.0, {"foot": {"position_mm": [0.0, 0.0, 30.0], "rotation_xyzw": pitch(30.0)}})]
-    assert measure.foot_series(flat, {"name": "foot", "geoms": [box]}, 0.0)["height"][0] == pytest.approx(25.0)
-    expected = 30.0 - (20.0 * math.sin(math.radians(30.0)) + 5.0 * math.cos(math.radians(30.0)))
-    assert measure.foot_series(tipped, {"name": "foot", "geoms": [box]}, 0.0)["height"][0] == pytest.approx(expected)
-    assert measure.foot_series(flat, {"name": "foot", "geoms": [capsule]}, 0.0)["height"][0] == pytest.approx(16.0)
+# -- reach ------------------------------------------------------------------
+
+def reach(samples, episode=REACH_DONE, **kwargs):
+    return measure.reach(samples, reach_rig(), fixtures.segments(), episode, **kwargs)
+
+
+def test_a_direct_reach_to_both_targets_passes_every_reach_predicate() -> None:
+    result = reach(reaching())
+    assert verdict(result) == {f"Q{i}": True for i in range(1, 5)}
+    rows = {row["id"]: row for row in result["predicates"]}
+    assert rows["Q3"]["value"] == pytest.approx([0.96, 0.92]) and rows["Q3"]["limit"] == {"max_s": 2.0}
+    assert rows["Q2"]["limit"] == {"max": 0.05} and rows["Q4"]["limit"] == {"max": 0.2}
+
+
+def test_a_swing_past_the_target_fails_overshoot_alone() -> None:
+    result = reach(reaching(over=0.3))
+    assert failing(result) == ["Q4"]
+    assert result["metrics"]["overshoot_ratio_max"] == pytest.approx(0.3)
+    assert failing(reach(reaching(over=0.15))) == []  # inside the 0.20 the contract allows
+
+
+def test_a_slow_reach_fails_time_alone_and_one_that_stops_short_fails_error_and_time() -> None:
+    assert failing(reach(reaching(move_s=3.0))) == ["Q3"]
+    short = reach(reaching(miss_mm=20.0))  # 0.10 arm lengths short, limit 0.05
+    assert failing(short) == ["Q2", "Q3"]
+    assert {row["id"]: row for row in short["predicates"]}["Q3"]["value"] == [None, None]
+    assert failing(reach(reaching(miss_mm=8.0))) == []  # 0.04 arm lengths
+
+
+def test_a_reach_that_holds_one_target_and_not_the_other_fails() -> None:
+    assert failing(reach(reaching(leaves_at=7.0))) == ["Q2", "Q3"]
+
+
+def test_a_reach_episode_that_ends_early_fails_completes() -> None:
+    ended = {**REACH_DONE, "termination": "collided", "truncated": False, "duration_s": 2.0}
+    assert "Q1" in failing(reach(reaching(), ended))
+    ten = {**REACH_DONE, "duration_s": 10.0}
+    assert reach(reaching(), ten, off_contract=True)["predicates"][0]["pass"] is None
 
 
 # -- balance ----------------------------------------------------------------
-
-def balance_rig():
-    return {"base": "base", "reference_xyzw": IDENTITY, "base_com_local_mm": [0.0, 0.0, 0.0],
-            "floor_mm": 0.0, "com_height_mm": 50.0, "hip_height_mm": None, "feet": {}}
-
-
-def standing(*, drift=0.0, turn=0.0, shoves=((2.5, 0.1), (6.0, 0.1)), bump=20.0, lean=8.0, settle=0.6,
-             seconds=10.0):
-    """A balancer that is knocked ``bump`` mm and ``lean`` degrees by each
-    shove and settles back with time constant ``settle``; plus a steady
-    ``drift`` (mm/s) and ``turn`` (deg/s)."""
-
-    samples = []
-    for k in range(int(round(seconds / DT)) + 1):
-        t = k * DT
-        x, tilt = drift * t, 0.0
-        for onset, duration in shoves:
-            since = t - onset
-            if since >= 0.0:
-                pulse = (since / settle) * math.exp(1.0 - since / settle)
-                x += bump * pulse
-                tilt += lean * pulse
-        half_yaw, half_tilt = math.radians(turn * t) / 2.0, math.radians(tilt) / 2.0
-        # yaw about world Z after a pitch: q = q_yaw * q_pitch
-        rotation = [-math.sin(half_yaw) * math.sin(half_tilt), math.cos(half_yaw) * math.sin(half_tilt),
-                    math.sin(half_yaw) * math.cos(half_tilt), math.cos(half_yaw) * math.cos(half_tilt)]
-        samples.append((t, {"base": {"position_mm": [x, 0.0, 50.0], "rotation_xyzw": rotation}}))
-    return samples
-
-
-SHOVES = [(2.5, 0.1), (6.0, 0.1)]
-
 
 def test_a_balancer_that_stays_put_and_recovers_passes_every_balance_predicate() -> None:
     result = measure.balance(standing(), balance_rig(), SHOVES, DONE)
@@ -277,46 +227,59 @@ def test_a_fall_fails_upright() -> None:
     assert "B2" in failing(measure.balance(standing(lean=45.0), balance_rig(), SHOVES, DONE))
 
 
-def test_recovery_is_timed_from_the_shoves_end_to_the_start_of_a_full_second_of_rest() -> None:
-    time = np.arange(0.0, 10.0 + 1e-9, DT)
-    tilt = np.where((time >= 3.0) & (time < 3.8), 15.0, 1.0)
-    speed = np.zeros_like(time)
-    rest = measure.predicate("balance", "B5")["rest"]
-    assert measure.recovery(time, tilt, speed, 3.1, rest, 50.0) == pytest.approx(0.7, abs=0.021)
-    assert measure.recovery(time, tilt, speed, 9.5, rest, 50.0) is None  # no full second left to rest in
+# -- the binding ------------------------------------------------------------
+
+def test_every_frozen_predicate_is_bound_to_a_metric_the_product_measures() -> None:
+    measured = {
+        "walk": measure.walk(trot(), walk_rig(), 80.0, DONE)["metrics"],
+        "reach": reach(reaching())["metrics"],
+        "balance": measure.balance(standing(), balance_rig(), SHOVES, DONE)["metrics"],
+    }
+    for behaviour, block in measure.contract()["behaviours"].items():
+        ids = [row["id"] for row in block["predicates"]]
+        # The first predicate of each behaviour is "completes", read from the
+        # episode; every other one is a bound on a product metric.
+        assert sorted(measure.BINDING[behaviour]) == sorted(ids[1:]), behaviour
+        for identifier in ids[1:]:
+            for row in measure.spec(behaviour, identifier):
+                assert row["metric"] in measured[behaviour], (identifier, row["metric"])
+                assert row["min"] is not None or row["max"] is not None, identifier
+    assert measure.spec("walk", "W5") == [
+        {"id": "W5", "metric": "steps_min", "min": 4, "max": None},
+        {"id": "W5", "metric": "step_share_min", "min": 0.7, "max": None}]
+    assert measure.spec("walk", "W8") == [
+        {"id": "W8", "metric": "duty_factor_min", "min": 0.4, "max": 0.85},
+        {"id": "W8", "metric": "duty_factor_max", "min": 0.4, "max": 0.85}]
+    assert measure.spec("reach", "Q3") == [{"id": "Q3", "metric": "time_to_target_s_max", "min": None, "max": 2.0}]
+    assert measure.spec("balance", "B5") == [{"id": "B5", "metric": "recovery_s_max", "min": None, "max": 2.0}]
+
+
+def test_the_contracts_definitions_are_the_numbers_the_reader_is_given() -> None:
+    definitions = measure.contract()["definitions"]
+    assert "at most 1.0 mm" in definitions["stance"] and measure.DEFINITIONS["stance_mm"] == 1.0
+    assert "preceding 0.20 s" in definitions["speed"] and measure.DEFINITIONS["speed_window_s"] == 0.20
+    assert "at least 0.10 s" in definitions["step"] and measure.DEFINITIONS["swing_min_s"] == 0.10
+    assert "0.15 hip heights" in definitions["step"] and measure.DEFINITIONS["step_advance_hip_heights"] == 0.15
+    reach_rows = {row["id"]: row for row in measure.contract()["behaviours"]["reach"]["predicates"]}
+    assert "last 1.0 s" in reach_rows["Q2"]["metric"] and measure.REACH["final_window_s"] == 1.0
+    assert "within 0.05 arm lengths" in reach_rows["Q3"]["metric"] and measure.REACH["tolerance_arm_lengths"] == 0.05
+
+
+def test_the_reader_keeps_no_arithmetic_of_its_own() -> None:
+    # One reader: the contract's runner binds predicates to the product's
+    # metrics and measures nothing itself.
+    source = (OT11 / "runner/measure.py").read_text(encoding="utf-8")
+    for gone in ("import numpy", "import math", "import mujoco", "def gait(", "def foot_series(", "def base_series("):
+        assert gone not in source, gone
+    assert measure.evaluation.__name__.endswith("CadexEvaluation")
 
 
 # -- the model and the report ----------------------------------------------
 
-MODEL = """<mujoco>
-  <worldbody>
-    <geom name="floor" type="plane" size="0 0 0.05"/>
-    <body name="base" pos="0 0 0.1">
-      <freejoint/>
-      <geom type="box" size="0.05 0.03 0.01" mass="0.4" contype="0" conaffinity="0"/>
-      <body name="servo" pos="0.04 0 0.02">
-        <body name="leg" pos="0 0 -0.02">
-          <joint name="hip" type="hinge" axis="0 1 0"/>
-          <geom type="capsule" fromto="0 0 0 0 0 -0.08" size="0.004" mass="0.05" contype="0" conaffinity="0"/>
-          <body name="shin" pos="0 0 -0.04">
-            <joint name="knee" type="hinge" axis="0 1 0"/>
-            <body name="foot" pos="0 0 -0.04">
-              <geom name="pad" type="sphere" size="0.01" pos="0 0 -0.01" mass="0.05"/>
-            </body>
-          </body>
-        </body>
-      </body>
-    </body>
-  </worldbody>
-  <keyframe><key name="solved"/></keyframe>
-</mujoco>
-"""
-
-
 def test_the_rig_is_read_from_the_model_in_millimetres(tmp_path) -> None:
     pytest.importorskip("mujoco")
     path = tmp_path / "model.xml"
-    path.write_text(MODEL, encoding="utf-8")
+    path.write_text(fixtures.LEGGED_MODEL, encoding="utf-8")
     rig = measure.rig(path, ["foot"])
     assert rig["base"] == "base"
     # The hip, not the knee below it, and through the welded servo above it.
@@ -327,6 +290,16 @@ def test_the_rig_is_read_from_the_model_in_millimetres(tmp_path) -> None:
     (pad,) = rig["feet"]["foot"]
     assert pad["kind"] == "sphere" and pad["size_mm"][0] == pytest.approx(10.0)
     assert pad["pos_mm"] == pytest.approx([0.0, 0.0, -10.0])
+
+
+def test_the_rig_of_an_arm_is_read_with_its_tip(tmp_path) -> None:
+    pytest.importorskip("mujoco")
+    path = tmp_path / "arm.xml"
+    path.write_text(fixtures.ARM_MODEL, encoding="utf-8")
+    rig = measure.rig(path, tip={"body": "hand", "local_mm": [0.0, 0.0, 10.0]})
+    assert rig["base"] is None and rig["arm_length_mm"] == pytest.approx(220.0)
+    with pytest.raises(SystemExit, match="no body of that name"):
+        measure.rig(path, ["paw"])
 
 
 def test_a_report_is_void_for_another_model_and_never_a_pass_off_contract(tmp_path) -> None:

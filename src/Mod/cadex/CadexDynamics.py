@@ -7398,6 +7398,210 @@ def load_model(xml: bytes) -> Any:
     return mujoco.MjModel.from_xml_string(bytes(xml).decode("utf-8"))
 
 
+#: The collision geoms whose lowest point ``CadexEvaluation`` can find from a
+#: pose alone. A mesh foot would need its vertices, and a foot that is a mesh
+#: is refused by name rather than measured at its centre.
+_EVALUATION_FOOT_GEOMS = {"sphere", "capsule", "box"}
+
+
+def evaluation_rig(
+    model: Any,
+    *,
+    feet: Sequence[str] = (),
+    tip: Mapping[str, Any] | None = None,
+    keyframe: str = MJCF_KEYFRAME_NAME,
+) -> dict[str, Any]:
+    """The facts about one model that a rollout's metrics are scaled by.
+
+    ``CadexEvaluation`` reads a trace as plain numbers and imports nothing,
+    so everything it needs from the compiled model is read here, once, in
+    millimetres: which body is the floating base and its reference attitude,
+    where the floor is, the mechanism's mass and centre-of-mass height, each
+    named foot's collision geoms and the average hip height, and a tip's
+    point and the arm length behind it. Those last three are what let a spec
+    state a threshold in the mechanism's own scale -- a step is a share of a
+    hip height, an error a share of an arm length -- so one spec holds for a
+    robot of any size.
+
+    ``feet`` names the bodies that are feet. The hip of each is the joint
+    nearest the base on the chain down to it, which a welded servo or horn
+    may sit above. ``tip`` is ``{"body": name, "local_mm": [x, y, z]}``; the
+    arm length is the straight distance from the first actuated joint's
+    anchor through each later joint anchor on the chain to that point.
+
+    A grounded mechanism has no floating base, and ``base`` is then ``None``:
+    an arm is still measured for reach. Two floating bases is a refusal,
+    because tilt and drift would have to choose one.
+    """
+
+    mujoco = _mujoco_module()
+    data = mujoco.MjData(model)
+    key = int(mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, keyframe))
+    if key < 0:
+        raise DynamicsError(
+            f"This model carries no {keyframe!r} keyframe, so it has no "
+            "reference pose to measure a rollout against.",
+            reason="evaluation_keyframe_missing",
+            correction="Evaluate the model api.mjcf exported; it writes the keyframe.",
+            observed={"keyframe": keyframe},
+        )
+    mujoco.mj_resetDataKeyframe(model, data, key)
+    mujoco.mj_forward(model, data)
+
+    def _body(name: str, role: str) -> int:
+        found = int(mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, str(name)))
+        if found < 0:
+            raise DynamicsError(
+                f"The evaluation names {name!r} as {role}, and the model "
+                "carries no body of that name.",
+                reason="evaluation_body_missing",
+                correction="Name a component of the assembly the model was exported from.",
+                observed={"body": str(name), "role": role},
+            )
+        return found
+
+    free = [
+        joint for joint in range(model.njnt)
+        if model.jnt_type[joint] == mujoco.mjtJoint.mjJNT_FREE
+    ]
+    if len(free) > 1:
+        raise DynamicsError(
+            f"This model has {len(free)} floating bodies; tilt, heading and "
+            "drift are read on exactly one base.",
+            reason="evaluation_base_ambiguous",
+            correction="Evaluate a mechanism with one floating base, or a grounded one.",
+            observed={"free_joints": len(free)},
+        )
+    base = int(model.jnt_bodyid[free[0]]) if free else None
+    root = 0 if base is None else base
+    planes = [
+        geom for geom in range(model.ngeom)
+        if model.geom_type[geom] == mujoco.mjtGeom.mjGEOM_PLANE
+    ]
+    floor = length_mm(data.geom_xpos[planes[0]][2]) if len(planes) == 1 else None
+    mass = float(model.body_subtreemass[root])
+    rig: dict[str, Any] = {
+        "base": None if base is None else str(
+            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, base)
+        ),
+        "reference_xyzw": quaternion_xyzw_from_wxyz(data.xquat[root]),
+        "base_com_local_mm": vector_mm(model.body_ipos[root]),
+        "floor_mm": floor,
+        "mass_kg": mass,
+        "weight_n": mass * 9.81,
+        "com_height_mm": (
+            None if floor is None else length_mm(data.subtree_com[root][2]) - floor
+        ),
+        "hip_height_mm": None,
+        "feet": {},
+    }
+
+    def _chain(body: int, stop: int) -> list[list[int]]:
+        """The joints of each jointed link from ``stop`` down to ``body``."""
+
+        links: list[list[int]] = []
+        link = body
+        while link != stop:
+            if link == 0:
+                raise DynamicsError(
+                    "A body the evaluation names does not hang from the base.",
+                    reason="evaluation_chain_detached",
+                    observed={"body": str(mujoco.mj_id2name(
+                        model, mujoco.mjtObj.mjOBJ_BODY, body))},
+                )
+            joints = [
+                joint for joint in range(model.njnt)
+                if int(model.jnt_bodyid[joint]) == link
+            ]
+            if joints:
+                links.insert(0, joints)
+            link = int(model.body_parentid[link])
+        return links
+
+    hips: list[float] = []
+    for name in feet:
+        body = _body(name, "a foot")
+        if base is None or floor is None:
+            raise DynamicsError(
+                f"The evaluation names {name!r} as a foot, and this model has "
+                "no floating base over exactly one floor plane for a foot to "
+                "step on.",
+                reason="evaluation_feet_need_a_floor",
+                observed={"floating_bases": len(free), "floor_planes": len(planes)},
+            )
+        geoms = []
+        for geom in range(model.ngeom):
+            if int(model.geom_bodyid[geom]) != body or not (
+                model.geom_contype[geom] or model.geom_conaffinity[geom]
+            ):
+                continue
+            kind = _geom_kind_name(mujoco, int(model.geom_type[geom]))
+            if kind not in _EVALUATION_FOOT_GEOMS:
+                raise DynamicsError(
+                    f"Foot {name!r} collides as a {kind}, and a foot's height "
+                    "is read from a sphere, a capsule or a box.",
+                    reason="evaluation_foot_geom_unsupported",
+                    correction=(
+                        "Give the foot a primitive collision shape "
+                        "(api.collision), which is also what MJX trains on."
+                    ),
+                    observed={"foot": str(name), "geom": kind},
+                )
+            geoms.append({
+                "kind": kind,
+                "size_mm": vector_mm(model.geom_size[geom]),
+                "pos_mm": vector_mm(model.geom_pos[geom]),
+                "quat_xyzw": quaternion_xyzw_from_wxyz(model.geom_quat[geom]),
+            })
+        if not geoms:
+            raise DynamicsError(
+                f"Foot {name!r} has no collision geom, so it never touches the floor.",
+                reason="evaluation_foot_has_no_geom",
+                observed={"foot": str(name)},
+            )
+        links = _chain(body, base)
+        if not links:
+            raise DynamicsError(
+                f"There is no joint between the base and foot {name!r}.",
+                reason="evaluation_foot_is_rigid",
+                observed={"foot": str(name)},
+            )
+        rig["feet"][str(name)] = geoms
+        hips.append(length_mm(data.xanchor[links[0][0]][2]) - floor)
+    if hips:
+        rig["hip_height_mm"] = sum(hips) / len(hips)
+
+    if tip is not None:
+        body = _body(tip.get("body"), "the tip")
+        local = _floats(
+            tip.get("local_mm", (0.0, 0.0, 0.0)), count=3, context="the tip's local_mm"
+        )
+        actuated = {
+            int(model.actuator_trnid[actuator][0])
+            for actuator in range(model.nu)
+            if model.actuator_trntype[actuator] == mujoco.mjtTrn.mjTRN_JOINT
+        }
+        joints = [joint for link in _chain(body, root) for joint in link]
+        driven = [index for index, joint in enumerate(joints) if joint in actuated]
+        if not driven:
+            raise DynamicsError(
+                f"No actuated joint moves the tip {tip.get('body')!r}, so there "
+                "is no arm to measure a reach on.",
+                reason="evaluation_tip_is_not_driven",
+                observed={"tip": str(tip.get("body"))},
+            )
+        offset = quaternion_rotate_wxyz(quaternion_normalised(data.xquat[body]), local)
+        point = [
+            origin + along for origin, along in zip(vector_mm(data.xpos[body]), offset)
+        ]
+        path = [vector_mm(data.xanchor[joint]) for joint in joints[driven[0]:]] + [point]
+        rig["tip"] = {"body": str(tip.get("body")), "local_mm": local, "solved_mm": point}
+        rig["arm_length_mm"] = sum(
+            math.dist(first, second) for first, second in zip(path, path[1:])
+        )
+    return rig
+
+
 def observation_values(
     task: Mapping[str, Any], sensordata: Sequence[float]
 ) -> dict[str, float]:

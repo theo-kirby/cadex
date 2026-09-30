@@ -23,6 +23,7 @@ set(Cadex_Scripts
     CadexBlueprints.py
     CadexStudio.py
     CadexFitReport.py
+    CadexEvaluation.py
     CadexAgentGuidance.md
     CadexLinkedPart.py
     CadexProject.py

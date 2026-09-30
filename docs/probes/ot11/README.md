@@ -283,14 +283,35 @@ inputs, the judged seeds and the bar are frozen here, before either exists.
 
 ## Reading a trace against the contract
 
-[`runner/measure.py`](runner/measure.py) reads the walk and balance
-predicates from a trace and the model it ran. It changes nothing: no
-rebuild, no rollout, no training. `cli/tests/test_ot11_measure.py` pins every
-walk and balance predicate on a synthetic trace that passes it and one that
-fails it for the stated reason — a trot with real steps passes all ten walk
-predicates, and a chattering shuffle fails W5, W6, W7 and W9 while passing
-W1, W2 and W3. The product's own evaluation command is P2's, and it takes
-over from this reader.
+The reading is the product's (ADR-455). `src/Mod/cadex/CadexEvaluation.py`
+turns a trace into behaviour metrics — gait, reach and posture — and holds
+predicates against them; `CadexDynamics.evaluation_rig` reads the model.
+[`runner/measure.py`](runner/measure.py) is the contract's binding and
+nothing else: which product metric each frozen predicate bounds, and the
+numbers the definitions above fix. It changes nothing: no rebuild, no
+rollout, no training.
+
+| predicates | product metrics |
+|---|---|
+| W2, W3, W4 | `max_tilt_deg`, `speed_ratio`, `lateral_ratio` and `max_heading_deg` |
+| W5, W6, W7 | `steps_min` and `step_share_min`, `step_clearance_hip_heights_min`, `slip_share_max` |
+| W8, W9, W10 | `duty_factor_min` and `duty_factor_max`, `step_count_ratio`, `foot_lowest_hip_heights_min` |
+| Q2, Q3, Q4 | `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` |
+| B2, B3, B4, B5 | `max_tilt_deg`, `max_drift_com_heights`, `max_heading_deg`, `recovery_s_max` |
+
+W1, Q1 and B1 are read from the episode. "Every foot", "both segments" and
+"every shove" are the worst one. A metric that could not be measured fails.
+
+`src/Mod/cadex/cadex_tests/test_evaluation_metrics.py` pins every metric on
+a motion that passes it and one that fails it, and
+`cli/tests/test_ot11_measure.py` pins every frozen predicate the same way: a
+trot with real steps passes all ten walk predicates and a chattering shuffle
+fails W5, W6, W7 and W9 while passing W1, W2 and W3; a direct reach passes
+Q1–Q4 and a swing past the target fails Q4 alone. **The `w2-2` shuffle is a
+failing fixture**: the base and feet of its stored rollout
+(`cadex_tests/fixtures/ot10_w2_2_feet.json`) fail W3, W5, W7, W9 and W10 in
+both suites. The product's evaluation command, which rolls a policy on the
+ten seeds under the conditions above, is a later P2 unit.
 
 ```bash
 pixi run python docs/probes/ot11/runner/measure.py walk \
@@ -298,7 +319,13 @@ pixi run python docs/probes/ot11/runner/measure.py walk \
   --foot c_foot_rl --foot c_foot_rr --command-mm-s 80 --off-contract TRACE.json
 pixi run python docs/probes/ot11/runner/measure.py balance \
   --model robin_model-model.xml --off-contract TRACE.json [TRACE.json ...]
+pixi run python docs/probes/ot11/runner/measure.py reach \
+  --model arm-model.xml --tip c_hand:0,0,40 \
+  --target 0:4:120,0,180 --target 4:8:60,90,140 TRACE.json
 ```
+
+Until a task can state a goal (P3), the commanded speed and the reach
+targets are given to the reader on the command line.
 
 `--off-contract` is for a trace that predates the contract and ran under its
 own task's conditions. Its predicates are reported, a predicate whose

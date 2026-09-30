@@ -1,47 +1,77 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""Did it walk with real steps? Did it balance in place? One trace, read
-against the frozen ot11 contract.
+"""Did it walk with real steps? Did it reach? Did it balance in place? One
+trace, read against the frozen ot11 contract.
 
 The ot11 contract (``docs/probes/ot11/README.md``, ``contract.json``) states a
 success spec for each behaviour as predicates on a rollout trace, none of
-which reads the reward. This reads the walk and balance predicates from the
-trace the engine exported and the model it ran, and changes nothing: no
-rebuild, no rollout, no training. It exists so the known negatives could be
-measured before anything was built; the product's own evaluation command is
-P2's.
-
-What the ot10 gait check could not see is what this reads. A foot's height is
-the lowest point of its collision geoms above the floor, so stance is a fact
-about geometry and not a lift line on a part's centre; a *step* is an airborne
-run that lasts and lands somewhere else, so chatter is not counted; and slip is
-the travel of the material point that was on the floor, so a round foot that
-rolls through its stance is not charged for it.
+which reads the reward. **The reading is the product's** (ADR-455):
+``CadexEvaluation`` turns a trace into behaviour metrics and holds predicates
+against them, and ``CadexDynamics.evaluation_rig`` reads the model. What is
+left here is the contract itself -- which metric each frozen predicate
+bounds, and the numbers its definitions fix -- so there is one reader, and
+the contract cannot drift from what the product measures. It changes
+nothing: no rebuild, no rollout, no training.
 
     pixi run python docs/probes/ot11/runner/measure.py walk \\
         --model model-model.xml --foot c_foot_fl --foot c_foot_fr ... \\
         --command-mm-s 80 [--off-contract] TRACE.json [TRACE.json ...]
     pixi run python docs/probes/ot11/runner/measure.py balance \\
         --model robin_model-model.xml [--off-contract] TRACE.json [...]
+    pixi run python docs/probes/ot11/runner/measure.py reach \\
+        --model arm-model.xml --tip c_hand:0,0,40 \\
+        --target 0:4:120,0,180 --target 4:8:60,90,140 TRACE.json
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
-import math
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 SCHEMA = "ot11-measure-v1"
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.json"
-STANCE_MM = 1.0
-SPEED_WINDOW_S = 0.20
-SWING_MIN_S = 0.10
-STEP_ADVANCE_HIP_HEIGHTS = 0.15
+ENGINE = Path(__file__).resolve().parents[4] / "src/Mod/cadex"
+
+
+def engine(name: str):
+    """One engine module, loaded by path: no built engine is needed to read."""
+
+    spec = importlib.util.spec_from_file_location(f"ot11_{name}", ENGINE / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+evaluation = engine("CadexEvaluation")
+load_trace = evaluation.load_trace
+
+# The numbers the contract's definitions fix. They are passed to the product
+# reader explicitly, so a product default that moves does not move the
+# contract with it.
+DEFINITIONS = {"stance_mm": 1.0, "speed_window_s": 0.20, "swing_min_s": 0.10,
+               "step_advance_hip_heights": 0.15}
+REACH = {"tolerance_arm_lengths": 0.05, "final_window_s": 1.0}
+
+# Which product metric each frozen predicate bounds. Where a predicate states
+# two measures its ``min``/``max`` is a pair, in this order. "Every foot",
+# "both segments" and "every shove" are the worst one, which the product
+# names flat.
+BINDING = {
+    "walk": {
+        "W2": ["max_tilt_deg"], "W3": ["speed_ratio"], "W4": ["lateral_ratio", "max_heading_deg"],
+        "W5": ["steps_min", "step_share_min"], "W6": ["step_clearance_hip_heights_min"],
+        "W7": ["slip_share_max"], "W8": ["duty_factor_min", "duty_factor_max"],
+        "W9": ["step_count_ratio"], "W10": ["foot_lowest_hip_heights_min"],
+    },
+    "reach": {"Q2": ["final_error_arm_lengths_max"], "Q3": ["time_to_target_s_max"],
+              "Q4": ["overshoot_ratio_max"]},
+    "balance": {"B2": ["max_tilt_deg"], "B3": ["max_drift_com_heights"], "B4": ["max_heading_deg"],
+                "B5": ["recovery_s_max"]},
+}
 
 
 def contract() -> dict[str, Any]:
@@ -57,257 +87,49 @@ def digest(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-# -- rotations (trace quaternions are [x, y, z, w]) -------------------------
-
-def matrix(quat_xyzw) -> np.ndarray:
-    x, y, z, w = (float(v) for v in quat_xyzw)
-    n = math.sqrt(x * x + y * y + z * z + w * w)
-    x, y, z, w = x / n, y / n, z / n, w / n
-    return np.array([
-        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-    ])
-
-
-def tilt_degrees(rotation: np.ndarray, reference: np.ndarray) -> float:
-    dot = float(rotation[:, 2] @ reference[:, 2])
-    return math.degrees(math.acos(max(-1.0, min(1.0, dot))))
-
-
-def forward(rotation: np.ndarray, reference: np.ndarray) -> np.ndarray:
-    """World +X of the solved pose, carried with the base, flattened to plan."""
-
-    axis = (rotation @ reference.T)[:, 0]
-    plan = np.array([axis[0], axis[1]])
-    return plan / np.linalg.norm(plan)
-
-
-# -- the model's facts ------------------------------------------------------
-
-def rig(model_path: Path, feet=(), keyframe: str = "solved") -> dict[str, Any]:
+def rig(model_path: Path, feet=(), tip=None) -> dict[str, Any]:
     """Everything the predicates need from the model, as plain numbers in mm."""
 
-    import mujoco  # noqa: PLC0415 - deferred so the arithmetic tests need none
-
-    model = mujoco.MjModel.from_xml_path(str(model_path))
-    data = mujoco.MjData(model)
-    key = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, keyframe)
-    if key < 0:
-        raise SystemExit(f"{model_path} carries no {keyframe!r} keyframe")
-    mujoco.mj_resetDataKeyframe(model, data, key)
-    mujoco.mj_forward(model, data)
-    free = [j for j in range(model.njnt) if model.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE]
-    if len(free) != 1:
-        raise SystemExit(f"{model_path} has {len(free)} free joints; the spec reads exactly one base")
-    base = int(model.jnt_bodyid[free[0]])
-    planes = [g for g in range(model.ngeom) if model.geom_type[g] == mujoco.mjtGeom.mjGEOM_PLANE]
-    if len(planes) != 1:
-        raise SystemExit(f"{model_path} has {len(planes)} floor planes; the spec reads exactly one")
-    floor = float(data.geom_xpos[planes[0]][2]) * 1000.0
-    w, x, y, z = (float(v) for v in data.xquat[base])
-    kinds = {int(mujoco.mjtGeom.mjGEOM_SPHERE): "sphere", int(mujoco.mjtGeom.mjGEOM_CAPSULE): "capsule",
-             int(mujoco.mjtGeom.mjGEOM_BOX): "box"}
-    out_feet: dict[str, Any] = {}
-    hips: list[float] = []
-    for name in feet:
-        body = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
-        if body < 0:
-            raise SystemExit(f"{model_path} carries no body {name!r}")
-        geoms = []
-        for g in range(model.ngeom):
-            if int(model.geom_bodyid[g]) != body or not (model.geom_contype[g] or model.geom_conaffinity[g]):
-                continue
-            kind = kinds.get(int(model.geom_type[g]))
-            if kind is None:
-                raise SystemExit(f"foot {name!r} has a collision geom that is not a sphere, capsule or box")
-            gw, gx, gy, gz = (float(v) for v in model.geom_quat[g])
-            geoms.append({"kind": kind, "size_mm": [float(v) * 1000.0 for v in model.geom_size[g]],
-                          "pos_mm": [float(v) * 1000.0 for v in model.geom_pos[g]],
-                          "quat_xyzw": [gx, gy, gz, gw]})
-        if not geoms:
-            raise SystemExit(f"foot {name!r} has no collision geom")
-        out_feet[name] = geoms
-        # The chain from the foot up to the base; the hip is the joint
-        # nearest the base, which a welded servo or horn may sit above.
-        link, joints = body, []
-        while link != base:
-            if link == 0:
-                raise SystemExit(f"foot {name!r} does not hang from the base")
-            joints = [j for j in range(model.njnt) if int(model.jnt_bodyid[j]) == link] or joints
-            link = int(model.body_parentid[link])
-        if not joints:
-            raise SystemExit(f"no joint between the base and foot {name!r}")
-        hips.append(float(data.xanchor[joints[0]][2]) * 1000.0 - floor)
-    mass = float(model.body_subtreemass[base])
-    return {
-        "base": str(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, base)),
-        "reference_xyzw": [x, y, z, w],
-        "base_com_local_mm": [float(v) * 1000.0 for v in model.body_ipos[base]],
-        "floor_mm": floor,
-        "mass_kg": mass,
-        "weight_n": mass * 9.81,
-        "com_height_mm": float(data.subtree_com[base][2]) * 1000.0 - floor,
-        "hip_height_mm": (sum(hips) / len(hips)) if hips else None,
-        "feet": out_feet,
-    }
+    dynamics = engine("CadexDynamics")
+    try:
+        return dynamics.evaluation_rig(dynamics.load_model(Path(model_path).read_bytes()),
+                                       feet=list(feet), tip=tip)
+    except dynamics.DynamicsError as error:
+        raise SystemExit(f"{model_path}: {error}") from error
 
 
-# -- traces -----------------------------------------------------------------
+def spec(behaviour: str, identifier: str) -> list[dict[str, Any]]:
+    """One frozen predicate, as the product predicates that state it."""
 
-def load_trace(path: Path) -> dict[str, Any]:
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    policy, dynamics = raw.get("policy") or {}, raw.get("dynamics") or {}
-    samples = [(float(f["nominal_time_s"]), f["component_placements"])
-               for f in raw["frames"] if f.get("frame_kind") == "solver_output"]
-    hz, steps = dynamics.get("control_hz"), policy.get("step_count")
-    return {
-        "samples": samples,
-        "episode": {
-            "seed": policy.get("seed"), "steps": steps, "control_hz": hz,
-            "steps_per_frame": dynamics.get("steps_per_frame"),
-            "duration_s": (steps / hz) if steps is not None and hz else None,
-            "termination": str(policy.get("termination") or ""),
-            "truncated": bool(policy.get("truncated")),
-        },
-        "digests": {"policy_sha256": policy.get("policy_sha256"),
-                    "mjcf_sha256": policy.get("model_sha256"),
-                    "task_sha256": policy.get("task_sha256")},
-    }
+    frozen = predicate(behaviour, identifier)
+    names = BINDING[behaviour][identifier]
 
+    def bound(key: str, index: int):
+        value = frozen.get(key, frozen.get(f"{key}_s"))
+        return value[index] if isinstance(value, list) else value
 
-def base_series(samples, the_rig) -> dict[str, np.ndarray]:
-    """Time, base point (plan), tilt, heading and windowed speed per frame."""
-
-    reference = matrix(the_rig["reference_xyzw"])
-    local = np.array(the_rig["base_com_local_mm"])
-    times, points, tilts, headings, forwards = [], [], [], [], []
-    for time_s, placements in samples:
-        pose = placements[the_rig["base"]]
-        rotation = matrix(pose["rotation_xyzw"])
-        times.append(time_s)
-        points.append((rotation @ local + np.array(pose["position_mm"], dtype=float))[:2])
-        tilts.append(tilt_degrees(rotation, reference))
-        ahead = forward(rotation, reference)
-        forwards.append(ahead)
-        headings.append(math.degrees(math.atan2(ahead[1], ahead[0])))
-    times, points = np.array(times), np.array(points)
-    headings = np.degrees(np.unwrap(np.radians(headings)))
-    headings = headings - headings[0]
-    dt = float(np.median(np.diff(times)))
-    lag = max(1, int(round(SPEED_WINDOW_S / dt)))
-    velocity = np.full_like(points, np.nan)
-    velocity[lag:] = (points[lag:] - points[:-lag]) / (lag * dt)
-    return {"time": times, "point": points, "tilt": np.array(tilts), "heading": headings,
-            "forward": np.array(forwards), "velocity": velocity, "dt": dt}
-
-
-def _lowest(geom: dict[str, Any], rotation: np.ndarray, origin: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """One geom's centre and lowest point in the world, from its body's pose."""
-
-    centre = rotation @ np.array(geom["pos_mm"]) + origin
-    turn = rotation @ matrix(geom["quat_xyzw"])
-    size = geom["size_mm"]
-    down = np.array([0.0, 0.0, -1.0])
-    if geom["kind"] == "sphere":
-        return centre, centre + size[0] * down
-    if geom["kind"] == "capsule":
-        axis = turn[:, 2]
-        end = centre - math.copysign(size[1], axis[2]) * axis
-        return centre, end + size[0] * down
-    corner = centre.copy()
-    for i in range(3):
-        corner -= math.copysign(size[i], turn[2, i]) * turn[:, i]
-    return centre, corner
-
-
-def foot_series(samples, geoms, floor_mm: float) -> dict[str, np.ndarray]:
-    """Height, plan point and frame-to-frame contact-point travel of one foot."""
-
-    def pose(placements, name):
-        p = placements[name]
-        return matrix(p["rotation_xyzw"]), np.array(p["position_mm"], dtype=float)
-
-    raise_name = geoms["name"]
-    heights, points, travel = [], [], []
-    previous = None
-    for _, placements in samples:
-        rotation, origin = pose(placements, raise_name)
-        lows = [_lowest(g, rotation, origin) for g in geoms["geoms"]]
-        centre = lows[0][0]
-        low = min((pair[1] for pair in lows), key=lambda point: point[2])
-        heights.append(float(low[2]) - floor_mm)
-        points.append(centre[:2])
-        if previous is not None:
-            # Where the material point that was lowest a frame ago is now.
-            moved = rotation @ previous["local"] + origin
-            travel.append(float(np.linalg.norm((moved - previous["low"])[:2])))
-        previous = {"low": low, "local": rotation.T @ (low - origin)}
-    return {"height": np.array(heights), "point": np.array(points), "contact_travel": np.array(travel)}
-
-
-def gait(time, foot, hip_height_mm: float, settle_s: float) -> dict[str, Any]:
-    """Steps, clearance, slip and duty factor of one foot."""
-
-    height, point = foot["height"], foot["point"]
-    dt = float(np.median(np.diff(time)))
-    stance = height <= STANCE_MM
-    segment = np.linalg.norm(np.diff(point, axis=0), axis=1)
-    total = float(segment.sum())
-    both = stance[:-1] & stance[1:]
-    slip = float(foot["contact_travel"][both].sum())
-    swings, steps = [], []
-    i, n = 0, len(stance)
-    while i < n:
-        if stance[i]:
-            i += 1
-            continue
-        start = i
-        while i < n and not stance[i]:
-            i += 1
-        if start == 0 or i == n:
-            continue  # touches an end of the episode: not a whole swing
-        end = i - 1
-        swing = {
-            "lift_s": float(time[start]), "airborne_s": (end - start + 1) * dt,
-            "peak_mm": float(height[start:end + 1].max()),
-            "advance_mm": float(np.linalg.norm(point[end + 1] - point[start - 1])),
-            "path_mm": float(segment[start - 1:end + 1].sum()),
-        }
-        swings.append(swing)
-        if (swing["airborne_s"] >= SWING_MIN_S - 1e-9
-                and swing["advance_mm"] >= STEP_ADVANCE_HIP_HEIGHTS * hip_height_mm):
-            steps.append(swing)
-    settled = time >= settle_s
-    peaks = [s["peak_mm"] for s in steps]
-    return {
-        "swings": len(swings),
-        "steps": len(steps),
-        "path_mm": total,
-        "step_share": (sum(s["path_mm"] for s in steps) / total) if total > 1e-9 else 0.0,
-        "slip_mm": slip,
-        "slip_share": (slip / total) if total > 1e-9 else 0.0,
-        "median_step_clearance_mm": float(np.median(peaks)) if peaks else None,
-        "median_step_clearance_hip_heights": (float(np.median(peaks)) / hip_height_mm) if peaks else None,
-        "median_swing_peak_mm": float(np.median([s["peak_mm"] for s in swings])) if swings else None,
-        "median_swing_airborne_s": float(np.median([s["airborne_s"] for s in swings])) if swings else None,
-        "median_step_advance_mm": float(np.median([s["advance_mm"] for s in steps])) if steps else None,
-        "peak_height_mm": float(height.max()),
-        "lowest_height_mm": float(height.min()),
-        "lowest_height_hip_heights": float(height.min()) / hip_height_mm,
-        "duty_factor": float(stance[settled].mean()) if settled.any() else None,
-    }
+    return [{"id": identifier, "metric": name, "min": bound("min", i), "max": bound("max", i)}
+            for i, name in enumerate(names)]
 
 
 def _row(behaviour: str, identifier: str, passed: bool | None, value: Any, why: str = "") -> dict[str, Any]:
-    spec = predicate(behaviour, identifier)
-    limit = {k: spec[k] for k in ("min", "max", "max_s", "rest") if k in spec}
-    return {"id": identifier, "name": spec["name"], "pass": passed, "value": value, "limit": limit, "why": why}
+    frozen = predicate(behaviour, identifier)
+    limit = {k: frozen[k] for k in ("min", "max", "max_s", "rest") if k in frozen}
+    return {"id": identifier, "name": frozen["name"], "pass": passed, "value": value, "limit": limit, "why": why}
+
+
+def _held(behaviour: str, identifier: str, metrics, value: Any, why: str = "") -> dict[str, Any]:
+    """One frozen predicate held against the product's metrics."""
+
+    rows = evaluation.check(spec(behaviour, identifier), metrics)
+    passed = all(row["pass"] for row in rows)
+    return _row(behaviour, identifier, passed, value,
+                why or "; ".join(row["why"] for row in rows if row["why"]))
 
 
 def _completes(behaviour: str, identifier: str, episode, off_contract: bool) -> dict[str, Any]:
     wanted = contract()["behaviours"][behaviour]["episode_seconds"]
-    ended = episode["truncated"] and not episode["termination"]
+    ended = evaluation.episode_metrics(episode)["completed"] == 1.0
     value = {"duration_s": episode["duration_s"], "termination": episode["termination"],
              "truncated": episode["truncated"]}
     if not ended:
@@ -321,127 +143,93 @@ def _completes(behaviour: str, identifier: str, episode, off_contract: bool) -> 
 
 
 def walk(samples, the_rig, command_mm_s: float, episode, *, off_contract: bool = False) -> dict[str, Any]:
-    spec = contract()["behaviours"]["walk"]
-    settle = float(spec["settle_s"])
-    hip = float(the_rig["hip_height_mm"])
-    base = base_series(samples, the_rig)
-    settled = (base["time"] >= settle) & ~np.isnan(base["velocity"][:, 0])
-    ahead = base["forward"]
-    along = (base["velocity"] * ahead).sum(axis=1)
-    across = base["velocity"][:, 1] * ahead[:, 0] - base["velocity"][:, 0] * ahead[:, 1]
+    settle = float(contract()["behaviours"]["walk"]["settle_s"])
+    metrics = evaluation.gait_metrics(samples, the_rig, command_mm_s, settle_s=settle, **DEFINITIONS)
+    feet, hip = metrics["feet"], metrics["hip_height_mm"]
     # An episode that ends inside the settle has no speed to read; that is a
     # failed predicate with nothing measured, never a number.
-    mean_along = float(along[settled].mean()) if settled.any() else None
-    mean_across = float(across[settled].mean()) if settled.any() else None
-    speed_ratio = None if mean_along is None else mean_along / command_mm_s
-    lateral_ratio = None if mean_across is None else abs(mean_across) / command_mm_s
-    early = "" if settled.any() else f"the episode ended inside the {settle:g} s settle"
-    feet = {name: gait(base["time"], foot_series(samples, {"name": name, "geoms": geoms}, the_rig["floor_mm"]),
-                       hip, settle)
-            for name, geoms in the_rig["feet"].items()}
-    counts = [f["steps"] for f in feet.values()]
+    early = "" if metrics["speed_ratio"] is not None else f"the episode ended inside the {settle:g} s settle"
 
     def per_foot(key):
-        return {name: f[key] for name, f in feet.items()}
+        return {name: foot[key] for name, foot in feet.items()}
 
-    def limits(identifier):
-        return predicate("walk", identifier)
+    def held(identifier, value, why=""):
+        return _held("walk", identifier, metrics, value, why)
 
-    max_tilt, max_heading = float(base["tilt"].max()), float(np.abs(base["heading"]).max())
-    w5, w6, w7, w8, w10 = limits("W5"), limits("W6"), limits("W7"), limits("W8"), limits("W10")
     clear = per_foot("median_step_clearance_hip_heights")
     rows = [
         _completes("walk", "W1", episode, off_contract),
-        _row("walk", "W2", max_tilt <= limits("W2")["max"], max_tilt),
-        _row("walk", "W3", speed_ratio is not None and limits("W3")["min"] <= speed_ratio <= limits("W3")["max"],
-             speed_ratio, early),
-        _row("walk", "W4", lateral_ratio is not None and lateral_ratio <= limits("W4")["max"][0]
-             and max_heading <= limits("W4")["max"][1],
-             {"lateral_ratio": lateral_ratio, "max_heading_deg": max_heading}, early),
-        _row("walk", "W5", all(f["steps"] >= w5["min"][0] and f["step_share"] >= w5["min"][1] for f in feet.values()),
-             {"steps": per_foot("steps"), "step_share": per_foot("step_share")}),
-        _row("walk", "W6", all(v is not None and v >= w6["min"] for v in clear.values()), clear,
-             "" if all(v is not None for v in clear.values()) else "a foot took no step, so it has no step clearance"),
-        _row("walk", "W7", all(f["slip_share"] <= w7["max"] for f in feet.values()), per_foot("slip_share")),
-        _row("walk", "W8", all(f["duty_factor"] is not None and w8["min"] <= f["duty_factor"] <= w8["max"]
-                               for f in feet.values()),
-             per_foot("duty_factor"), early),
-        _row("walk", "W9", min(counts) > 0 and max(counts) / min(counts) <= limits("W9")["max"],
-             (max(counts) / min(counts)) if min(counts) else None,
-             "" if min(counts) else "a foot took no step"),
-        _row("walk", "W10", all(f["lowest_height_hip_heights"] >= w10["min"] for f in feet.values()),
-             per_foot("lowest_height_hip_heights")),
+        held("W2", metrics["max_tilt_deg"]),
+        held("W3", metrics["speed_ratio"], early),
+        held("W4", {"lateral_ratio": metrics["lateral_ratio"], "max_heading_deg": metrics["max_heading_deg"]}, early),
+        held("W5", {"steps": per_foot("steps"), "step_share": per_foot("step_share")}),
+        held("W6", clear, "" if all(v is not None for v in clear.values())
+             else "a foot took no step, so it has no step clearance"),
+        held("W7", per_foot("slip_share")),
+        held("W8", per_foot("duty_factor"), early),
+        held("W9", metrics["step_count_ratio"], "" if metrics["steps_min"] else "a foot took no step"),
+        held("W10", per_foot("lowest_height_hip_heights")),
     ]
-    travel = base["point"][-1] - base["point"][0]
     return {
         "predicates": rows,
         "metrics": {
-            "command_mm_s": command_mm_s, "hip_height_mm": hip,
-            "mean_forward_speed_mm_s": mean_along,
-            "mean_lateral_speed_mm_s": mean_across,
-            "travel_mm": [float(travel[0]), float(travel[1])],
-            "max_tilt_deg": max_tilt, "max_heading_deg": max_heading,
-            "step_min_advance_mm": STEP_ADVANCE_HIP_HEIGHTS * hip,
-            "clearance_min_mm": w6["min"] * hip,
-            "sink_limit_mm": w10["min"] * hip,
-            "feet": feet,
+            **metrics,
+            "step_min_advance_mm": DEFINITIONS["step_advance_hip_heights"] * hip,
+            "clearance_min_mm": predicate("walk", "W6")["min"] * hip,
+            "sink_limit_mm": predicate("walk", "W10")["min"] * hip,
         },
     }
-
-
-def recovery(time, tilt, speed, shove_end_s: float, rest: dict[str, Any], com_height_mm: float) -> float | None:
-    """Seconds from a shove's end to the first frame that starts a full rest."""
-
-    quiet = (tilt <= rest["tilt_deg_max"]) & (np.nan_to_num(speed, nan=np.inf)
-                                              <= rest["speed_com_heights_per_s_max"] * com_height_mm)
-    dt = float(np.median(np.diff(time)))
-    hold = int(round(rest["hold_s"] / dt))
-    for i in np.flatnonzero(time >= shove_end_s - 1e-9):
-        if i + hold >= len(time):
-            return None
-        if quiet[i:i + hold + 1].all():
-            return float(time[i] - shove_end_s)
-    return None
 
 
 def balance(samples, the_rig, shoves, episode, *, off_contract: bool = False) -> dict[str, Any]:
     """``shoves`` is ``[(onset_s, duration_s)]``: what the episode applied."""
 
-    base = base_series(samples, the_rig)
-    com = float(the_rig["com_height_mm"])
-    drift = np.linalg.norm(base["point"] - base["point"][0], axis=1)
-    speed = np.linalg.norm(base["velocity"], axis=1)
-    max_tilt, max_heading = float(base["tilt"].max()), float(np.abs(base["heading"]).max())
-    max_drift = float(drift.max())
-    b5 = predicate("balance", "B5")
-    times = [recovery(base["time"], base["tilt"], speed, onset + duration, b5["rest"], com)
-             for onset, duration in shoves]
+    rest = predicate("balance", "B5")["rest"]
+    metrics = evaluation.balance_metrics(
+        samples, the_rig, shoves, speed_window_s=DEFINITIONS["speed_window_s"],
+        rest_tilt_deg=rest["tilt_deg_max"], rest_speed_com_heights_per_s=rest["speed_com_heights_per_s_max"],
+        rest_hold_s=rest["hold_s"])
+
+    def held(identifier, value, why=""):
+        return _held("balance", identifier, metrics, value, why)
+
     if shoves:
-        recovered = _row("balance", "B5", all(t is not None and t <= b5["max_s"] for t in times), times)
+        recovered = held("B5", metrics["recovery_s"], "" if metrics["recovery_s_max"] is not None
+                         else "it did not come to rest after a shove")
     else:
         recovered = _row("balance", "B5", None, [], "the episode applied no shove")
     rows = [
         _completes("balance", "B1", episode, off_contract),
-        _row("balance", "B2", max_tilt <= predicate("balance", "B2")["max"], max_tilt),
-        _row("balance", "B3", max_drift / com <= predicate("balance", "B3")["max"], max_drift / com),
-        _row("balance", "B4", max_heading <= predicate("balance", "B4")["max"], max_heading),
+        held("B2", metrics["max_tilt_deg"]),
+        held("B3", metrics["max_drift_com_heights"]),
+        held("B4", metrics["max_heading_deg"]),
         recovered,
     ]
     return {
         "predicates": rows,
-        "metrics": {
-            "com_height_mm": com, "max_tilt_deg": max_tilt, "max_heading_deg": max_heading,
-            "final_heading_deg": float(base["heading"][-1]),
-            "max_drift_mm": max_drift, "final_drift_mm": float(drift[-1]),
-            "drift_limit_mm": predicate("balance", "B3")["max"] * com,
-            "mean_speed_mm_s": float(np.nanmean(speed)),
-            "recovery_s": times,
-        },
+        "metrics": {**metrics, "drift_limit_mm": predicate("balance", "B3")["max"] * metrics["com_height_mm"]},
     }
 
 
+def reach(samples, the_rig, segments, episode, *, off_contract: bool = False) -> dict[str, Any]:
+    """``segments`` is ``[{"start_s", "end_s", "target_mm"}]``: the targets the episode held."""
+
+    metrics = evaluation.reach_metrics(samples, the_rig, segments, **REACH)
+
+    def held(identifier, key):
+        return _held("reach", identifier, metrics, [segment[key] for segment in metrics["segments"]])
+
+    rows = [
+        _completes("reach", "Q1", episode, off_contract),
+        held("Q2", "final_error_arm_lengths"),
+        held("Q3", "time_to_target_s"),
+        held("Q4", "overshoot_ratio"),
+    ]
+    return {"predicates": rows, "metrics": metrics}
+
+
 def report(behaviour: str, trace_path: Path, model_path: Path, the_rig, *, off_contract: bool,
-           command_mm_s: float | None = None, shoves=()) -> dict[str, Any]:
+           command_mm_s: float | None = None, shoves=(), segments=()) -> dict[str, Any]:
     """One trace's verdict: every predicate, the numbers behind it, and why."""
 
     trace = load_trace(trace_path)
@@ -459,6 +247,8 @@ def report(behaviour: str, trace_path: Path, model_path: Path, the_rig, *, off_c
         void.append(f"seed {episode['seed']} is not a contract seed")
     if behaviour == "walk":
         measured = walk(trace["samples"], the_rig, float(command_mm_s), episode, off_contract=off_contract)
+    elif behaviour == "reach":
+        measured = reach(trace["samples"], the_rig, list(segments), episode, off_contract=off_contract)
     else:
         measured = balance(trace["samples"], the_rig, list(shoves), episode, off_contract=off_contract)
     rows = measured["predicates"]
@@ -476,23 +266,39 @@ def report(behaviour: str, trace_path: Path, model_path: Path, the_rig, *, off_c
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("behaviour", choices=("walk", "balance"))
+    parser.add_argument("behaviour", choices=("walk", "reach", "balance"))
     parser.add_argument("traces", nargs="+", type=Path)
     parser.add_argument("--model", type=Path, required=True, help="the MJCF the traces ran")
     parser.add_argument("--foot", action="append", default=[], help="a foot body (walk); repeat per foot")
     parser.add_argument("--command-mm-s", type=float, help="the commanded forward speed (walk)")
     parser.add_argument("--shove", action="append", default=[], metavar="ONSET:DURATION",
                         help="a shove the episode applied, in seconds (balance); repeat per shove")
+    parser.add_argument("--tip", metavar="BODY[:X,Y,Z]", help="the tip: a body and a point on it, in mm (reach)")
+    parser.add_argument("--target", action="append", default=[], metavar="START:END:X,Y,Z",
+                        help="a target the episode held, in seconds and world mm (reach); repeat per target")
     parser.add_argument("--off-contract", action="store_true",
                         help="the trace predates the contract; report the predicates, never a pass")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     if args.behaviour == "walk" and (not args.foot or args.command_mm_s is None):
         parser.error("walk needs --foot for every foot and --command-mm-s")
-    the_rig = rig(args.model, args.foot)
+    if args.behaviour == "reach" and (not args.tip or not args.target):
+        parser.error("reach needs --tip and a --target for every target")
+    tip = None
+    if args.tip:
+        body, _, point = args.tip.partition(":")
+        tip = {"body": body, "local_mm": [float(v) for v in point.split(",")] if point else [0.0, 0.0, 0.0]}
+    the_rig = rig(args.model, args.foot, tip)
+    if args.behaviour != "reach" and the_rig["base"] is None:
+        raise SystemExit(f"{args.model} has no floating base; the {args.behaviour} spec reads exactly one")
     shoves = [tuple(float(v) for v in text.split(":")) for text in args.shove]
+    segments = []
+    for text in args.target:
+        start, end, point = text.split(":")
+        segments.append({"start_s": float(start), "end_s": float(end),
+                         "target_mm": [float(v) for v in point.split(",")]})
     reports = [report(args.behaviour, t, args.model, the_rig, off_contract=args.off_contract,
-                      command_mm_s=args.command_mm_s, shoves=shoves) for t in args.traces]
+                      command_mm_s=args.command_mm_s, shoves=shoves, segments=segments) for t in args.traces]
     facts = {k: v for k, v in the_rig.items() if k != "feet"}
     result = {"schema": SCHEMA, "behaviour": args.behaviour, "rig": facts, "traces": reports,
               "pass": bool(reports) and all(r["pass"] for r in reports)}

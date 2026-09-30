@@ -29680,3 +29680,61 @@ goal must be settable per episode and changeable during it (P3); and the
 cause of the floor penetration needs measuring before a walk is trained,
 because a policy can exploit it. Any later change to a frozen item is a new
 entry here and re-evaluates every earlier ot11 policy.
+
+## ADR-455 — The behaviour metrics are engine code, and a success predicate is data (2026-09-30)
+
+**Context.** P1's known negatives were measured by a probe script,
+`docs/probes/ot11/runner/measure.py`, which carried its own numpy reader for
+gait and balance and had none for reach. P2 asks the product to evaluate any
+policy against its task's spec. A second reader in the product beside the
+probe's would be two definitions of a step.
+
+**Decision.** The reading moves into the engine, and the probe keeps only the
+contract.
+
+- **`CadexEvaluation.py`** reads a rollout trace into behaviour metrics, in
+  three families asked for by what the caller names rather than by a task
+  kind: **posture** (tilt, heading, drift, recovery time from a shove),
+  **gait** (steps, step share, foot clearance, stance slip, duty factor,
+  foot depth, commanded-speed tracking) and **reach** (final error, time to
+  target, overshoot, per target). It is pure standard library, in millimetres
+  and degrees, and outside the service's closure: a client loads it by path,
+  which is `CadexStudio`'s standing (ADR-445).
+- **`CadexEvaluation.check`** holds a flat metric table against predicates of
+  the form `{id, metric, min, max}`. A success spec is therefore a list, and
+  a spec for a fourth behaviour is a different list, not a code path. "Every
+  foot", "both targets" and "every shove" are the worst one, which the
+  metrics name flat (`steps_min`, `slip_share_max`, `recovery_s_max`). A
+  metric that was not measured is `None`, and `None` fails.
+- **`CadexDynamics.evaluation_rig`** reads the model's half once, in
+  millimetres: the floating base and its reference attitude, the floor, mass
+  and COM height, each foot's collision geoms and the hip height, and a tip
+  with the arm length behind it. It is in `CadexDynamics` because that module
+  is the only one that imports `mujoco` and the only one that converts a
+  unit. A grounded arm has no base and is still measured for reach.
+- `measure.py` is now the contract's binding and nothing else: which product
+  metric each frozen predicate bounds (`BINDING`), and the numbers the
+  contract's definitions fix. It gained the reach predicates Q1–Q4.
+
+**Removed.** `measure.py`'s own `rig`, `base_series`, `foot_series`, `gait`,
+`recovery` arithmetic and its numpy and mujoco imports (about 330 lines), in
+favour of the engine module.
+
+**Evidence.** The move is a port from numpy to plain Python, so its gate is
+agreement: `measure.py` re-run on the stored `w2-2` trace and on Robin's ten
+ot9 traces reproduces both retained P1 receipts to 1.3e-15 relative, on every
+number in them. `cadex_tests/test_evaluation_metrics.py` pins each metric on
+a motion that passes it and one that fails it, and a foot's height from a
+trace against MuJoCo's own geom position.
+
+**The w2-2 fixture.** `cadex_tests/fixtures/ot10_w2_2_feet.json` holds the
+base and the four feet of `w2-2`'s stored rollout, 5 of 62 components, with
+no commands, at 0.001 mm (153 KB). It is an extract and not the trace, which
+stays in the read-only project. It fails a walk spec on speed, step share,
+slip, leg balance and floor depth, and passes on tilt, heading, clearance and
+duty factor — the split the contract records.
+
+**Not yet.** No spec is declared in xscript, no command rolls a policy on the
+evaluation seeds, and no report is written; those are P2's next units and
+this is what they call. The commanded speed and the reach targets are passed
+to the reader by the caller until a task can state a goal (P3).
