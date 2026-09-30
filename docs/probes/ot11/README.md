@@ -873,7 +873,15 @@ not include the transcript.
   matches a run's *final* policy only, and a budget-exhausted run has
   none. The agent evaluated a checkpoint, so the ledger cannot link the
   evaluation to `bal-1`. This receipt makes the link by digest instead.
+  *Fixed afterwards (ADR-464 follow-up):* `loop.runs_that_trained` now
+  names `bal-1` for `8919a22d…`. The row above stays as written.
 - **Robin's model has not been confirmed.** The policy reads an IMU the
   mechanism declares on its board component, but no IMU part is modelled.
   The agent said so itself. R3 needs a confirmation evaluation and the
   judge's bar.
+  *Measured afterwards:* the trainer (MJX) and the rollout (MuJoCo)
+  read the same numbers on every channel to float32 rounding over 200
+  states (`runner/obs_parity.py`, `retained/r3-robin-1-obs-parity.json`).
+  The gyro channel reads in the world frame, not the board's. The sensor
+  parts stay declared rather than modelled (ADR-408); only the product
+  agent may change the mechanism.

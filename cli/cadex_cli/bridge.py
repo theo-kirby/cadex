@@ -466,8 +466,7 @@ class Bridge:
         measured = evaluation.add_film(
             root, out, measured, choice=str(arguments.get("film") or "auto"),
             inventory=inventory)
-        trained_by = [run["run"] for run in loop.list_runs(root)
-                      if (run["status"].get("policy") or {}).get("sha256") == inputs["policy_sha256"]]
+        trained_by = loop.runs_that_trained(root, inputs["policy_sha256"])
         view = {"ok": True, **evaluation.agent_view(measured, out), "trained_by_run": trained_by}
         failing = evaluation.failing_predicates(measured)
         loop.append_ledger(

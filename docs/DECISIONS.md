@@ -30646,6 +30646,35 @@ call block has not been measured; `train_status` caps its wait at 900 s and
 - **A defect this exposed.** The ledger's `trained_by_run` matches a run's
   final policy only. A checkpoint of a budget-exhausted run is evaluated
   unlinked.
+- **Fixed (2026-09-30).** The cause was two-fold: `trained_by_run`
+  matched only the final policy, and the evaluated checkpoint
+  (`balance_task.000400.cxpolicy`, `8919a22d…`) was written after the
+  trainer's last `progress.json` rewrite, so the progress never listed it
+  either. `loop.run_checkpoints` now reads the checkpoint files on disk,
+  each with its own digest, and keeps what the progress knows only where
+  the digests match. `loop.runs_that_trained` matches the final policy, every
+  digest the progress ever named and every file on disk. `train_status`
+  lists checkpoints the same way, so a `best` rewritten in place no longer
+  shows an earlier digest. The historical `bal-1` ledger row stays as
+  written (the ledger is append-only); the same code now names `bal-1` for
+  `8919a22d…`. Test:
+  `test_a_checkpoint_the_progress_never_listed_is_still_the_runs`, which
+  fails on the old code.
+- **The trainer and the rollout observe the same numbers (measured
+  2026-09-30).** Over 200 states of `ot11-robin-1`'s model, MJX's
+  `sensordata` (the trainer) and MuJoCo's (the rollout) agree to float32
+  rounding on every channel: worst 1.3e-7 on the orientation quaternion,
+  0.0003 deg/s on a gyro reaching 826 deg/s, 1.7e-6 deg on the encoders
+  (`docs/probes/ot11/runner/obs_parity.py`,
+  `retained/r3-robin-1-obs-parity.json`). The sensors the policy reads are
+  declared (an IMU on the board component, encoders on the wheel joints)
+  with no IMU or encoder part modelled. ADR-408 grounds a channel by a
+  declaration, and the charter lets only the product agent change a
+  mechanism, so R3 does not require those parts to be modelled. One
+  sim-to-real fact for the long-term rung: `component_angular_velocity`
+  compiles to `frameangvel`, which reads in the **world** frame, while a
+  real gyro reads in its own. That is the same in both evaluators, so it
+  does not change any evaluation.
 
 Receipts: `docs/probes/ot11/README.md`, "The loop, run by the product
 agent".

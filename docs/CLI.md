@@ -2322,8 +2322,12 @@ still `cadex train` and `cadex walk`. The shell's agent has no loop tools.
 for Robin's ten seeds and its film. A tool call is allowed to block that
 long. One `claude -p` tool call held for 900 s, `train_status`'s ceiling
 (`docs/probes/ot11/runner/block_probe.py`, 2026-09-30).
-`trained_by_run` in the ledger matches a run's final policy only, so an
-evaluated checkpoint of a run that ended without one is left unlinked.
+`trained_by_run` in the ledger names every run whose final policy or any
+checkpoint has the evaluated digest. Checkpoints are read from the files in
+`runs/<run>/train/`, each with its own digest, because the trainer writes a
+checkpoint before it rewrites `progress.json` and a run stopped between the
+two leaves its last checkpoint unlisted there; `train_status` lists them the
+same way. A ledger row written before this fix (2026-09-30) is not rewritten.
 
 ### Every build reply carries the measured fit (ADR-346)
 

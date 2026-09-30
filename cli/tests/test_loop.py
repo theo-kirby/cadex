@@ -312,6 +312,39 @@ def test_a_running_run_is_read_stopped_and_leaves_its_checkpoint(project, monkey
     assert [row["kind"] for row in loop.read_ledger(project)].count("train_stop_requested") == 1
 
 
+def test_a_checkpoint_the_progress_never_listed_is_still_the_runs(project) -> None:
+    """ot11 ``bal-1``: the budget ended the run after the trainer wrote its
+    iteration-400 checkpoint and before it rewrote its progress, and the
+    agent evaluated that checkpoint. The ledger said ``trained_by_run: []``.
+    The files on disk are the authority, with their own digests -- including
+    a ``best`` rewritten under a digest the progress names for an earlier
+    iteration."""
+
+    run_dir = _register(project)
+    train = run_dir / "train"
+    train.mkdir(parents=True, exist_ok=True)
+    (train / "job.000050.cxpolicy").write_bytes(b"CXPOLICY-50")
+    (train / "job.000100.cxpolicy").write_bytes(b"CXPOLICY-100")
+    (train / "job.best.cxpolicy").write_bytes(b"CXPOLICY-best-now")
+    (train / "progress.json").write_text(json.dumps({"iteration": 98, "checkpoints": [
+        {"tag": "000050", "iteration": 49, "path": "job.000050.cxpolicy",
+         "sha256": _sha(b"CXPOLICY-50"), "reward_per_step": 0.4},
+        {"tag": "best", "iteration": 40, "path": "job.best.cxpolicy",
+         "sha256": _sha(b"CXPOLICY-best-then"), "reward_per_step": 0.5}]}))
+    view = loop.run_view(loop.read_run(run_dir))
+    assert [(row["tag"], row["iteration"], row["sha256"], row["reward_per_step"])
+            for row in view["checkpoints"]] == [
+        ("000050", 49, _sha(b"CXPOLICY-50"), 0.4),
+        ("000100", 99, _sha(b"CXPOLICY-100"), None),
+        ("best", None, _sha(b"CXPOLICY-best-now"), None)]
+    assert loop.runs_that_trained(project, _sha(b"CXPOLICY-100")) == ["r1"]
+    assert loop.runs_that_trained(project, _sha(b"CXPOLICY-best-now")) == ["r1"]
+    # A digest the run once wrote still names it; one it never wrote does not.
+    assert loop.runs_that_trained(project, _sha(b"CXPOLICY-best-then")) == ["r1"]
+    assert loop.runs_that_trained(project, _sha(b"someone else's")) == []
+    assert loop.runs_that_trained(project, "") == []
+
+
 def test_the_machine_trains_one_run_at_a_time(tmp_path, project, monkeypatch) -> None:
     monkeypatch.setenv("FAKE_TRAIN_MODE", "slow")
     assert loop.launch(_register(project))["state"] == "running"

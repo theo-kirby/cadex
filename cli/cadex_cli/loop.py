@@ -35,6 +35,7 @@ Nothing here knows what behaviour is being trained. A task is a task.
 from __future__ import annotations
 
 import fcntl
+import glob
 import hashlib
 import json
 import os
@@ -537,6 +538,60 @@ def list_runs(root: Path) -> list[dict[str, Any]]:
     return runs
 
 
+def run_checkpoints(run: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every checkpoint the run left on disk, each with its file's own digest.
+
+    The files are the authority, not ``progress.json``: the trainer writes a
+    checkpoint before it rewrites its progress, so a run stopped between the
+    two (ot11 ``bal-1``, ended by its budget) leaves its last checkpoint
+    unlisted, and ``best`` is rewritten in place under a digest the progress
+    names only for an earlier iteration. A checkpoint is a file the progress
+    lists or one named the trainer's way, ``<task>.<tag>.cxpolicy``; what the
+    progress knows of it -- the iteration and the reward per step -- is kept
+    only where its digest is the file's.
+    """
+
+    train_dir = Path(str(run["dir"])) / TRAIN_DIRNAME
+    listed = list((run.get("progress") or {}).get("checkpoints") or [])
+    output = str(run["registration"].get("task_output") or "")
+    names = {str(item.get("path")) for item in listed}
+    if output and train_dir.is_dir():
+        names.update(path.name for path in train_dir.glob(f"{glob.escape(output)}.*.cxpolicy"))
+    rows = []
+    for name in sorted(names):
+        path = train_dir / name
+        if Path(name).name != name or not path.is_file():
+            continue
+        sha = _sha256(path)
+        item = next((item for item in reversed(listed)
+                     if str(item.get("path")) == name and item.get("sha256") == sha), {})
+        tag = str(item.get("tag") or "")
+        if not tag:
+            tag = name[len(output) + 1:-len(".cxpolicy")] if name.startswith(f"{output}.") else name
+        iteration = item.get("iteration")
+        if iteration is None and tag.isdigit():
+            iteration = int(tag) - 1
+        rows.append({"path": str(path), "tag": tag, "iteration": iteration, "sha256": sha,
+                     "reward_per_step": item.get("reward_per_step")})
+    return rows
+
+
+def runs_that_trained(root: Path, policy_sha256: str) -> list[str]:
+    """The registered runs that produced a policy: its final policy, or any
+    checkpoint it wrote. An evaluated checkpoint of a run that never got to
+    its last iteration is still that run's policy (ot11 ``bal-1``)."""
+
+    names = []
+    for run in list_runs(root):
+        digests = {str((run["status"].get("policy") or {}).get("sha256") or "")}
+        digests.update(str(item.get("sha256") or "")
+                       for item in (run.get("progress") or {}).get("checkpoints") or [])
+        digests.update(row["sha256"] for row in run_checkpoints(run))
+        if policy_sha256 and policy_sha256 in digests:
+            names.append(run["run"])
+    return names
+
+
 #: How many points of the reward curve a view carries.
 VIEW_CURVE_POINTS = 16
 VIEW_LOG_LINES = 8
@@ -585,12 +640,7 @@ def run_view(run: Mapping[str, Any]) -> dict[str, Any]:
             "reward_curve": _thinned(progress.get("curve")),
             "episode_steps_curve": _thinned(progress.get("episode_steps_curve")),
         }
-        checkpoints = [
-            {"path": str(run_dir / TRAIN_DIRNAME / str(item.get("path"))),
-             **{key: item.get(key) for key in ("tag", "iteration", "sha256", "reward_per_step")}}
-            for item in progress.get("checkpoints") or []
-            if (run_dir / TRAIN_DIRNAME / str(item.get("path"))).is_file()
-        ]
+        checkpoints = run_checkpoints(run)
         if checkpoints:
             view["checkpoints"] = checkpoints[-6:]
     policy = status.get("policy")
