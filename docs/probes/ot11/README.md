@@ -643,6 +643,11 @@ scored manner 2.** No frozen item, and nothing in the product, was changed.
 
 **The rule, written before the first call.**
 
+The rule was fixed in the actor's working notes before the first call. It
+was not committed beforehand: it first reached the repository in the same
+commit as the results. From ADR-462 on, a probe's or a run's rule is
+committed before its first call.
+
 - **One change to the film.** The floor of each detail frame keeps a light
   mark wherever a drawn solid has touched it since the episode began:
   within 1.0 mm of the floor plane, or under it, on a 2 mm grid. The marks

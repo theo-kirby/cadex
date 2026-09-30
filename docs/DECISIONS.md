@@ -30235,6 +30235,11 @@ No third arm. A floor-fixed window was the other candidate and was not
 drawn: a slide of about 5 pixels between separate tiles is weaker evidence
 than a mark that holds the whole slide inside one frame.
 
+That rule was fixed in the actor's working notes before the first call and
+was **not committed beforehand**: it first reached the repository in the
+same commit as the results, so the order rests on the actor's word. From
+here on, a probe's or a run's rule is committed before its first call.
+
 **Measured.** Twelve calls, 109 s of model time, $0.48 at list price, every
 one scored by `claude-opus-5-5` alone. **All twelve scored manner 2.** Both
 arms' medians on both seeds are 1, 2, 0, 1 (total 4), the scores ADR-460
