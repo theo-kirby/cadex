@@ -1,0 +1,123 @@
+{
+  "schema": "ot11-contract-v1",
+  "run": "ot11",
+  "frozen_at": "2026-09-30",
+  "rule": "Frozen before any ot11 training run. Changing a seed, a condition range, a predicate, a threshold, the rubric, the judge's inputs or its bar is a recorded decision that re-evaluates every earlier ot11 policy; cli/tests/test_ot11_contract.py is the freeze.",
+  "evaluation_seeds": [1101, 1102, 1103, 1104, 1105, 1106, 1107, 1108, 1109, 1110],
+  "seed_rule": "Each seed is the engine's rollout seed: random.Random(seed) draws every condition below in the order the engine's EPISODE_VARIATION_ALGORITHM states. A trainer --seed may never be one of these ten values, and the trainer draws its resets, pushes and goals from its own on-device stream, so no evaluation episode is a training episode. The report echoes every drawn value; a change to the draw algorithm is a change to this contract.",
+  "pass_rule": "A policy passes a behaviour only if every one of the ten seeds passes every predicate. No per-seed rate is granted to any behaviour. One failed seed fails the policy; results are never averaged across seeds, and all ten are reported.",
+  "reward_independence": "No predicate reads the task's reward, a reward term or the trainer's progress. Every predicate is computed from the rollout trace's component poses, its episode block and the accepted model.",
+  "trace": {
+    "schema": "cadex-assembly-simulation-trace-v1",
+    "frames": "one solver_output frame per control step",
+    "min_frame_rate_hz": 50,
+    "void_if": [
+      "the trace's model digest is not the digest of the model read",
+      "the trace carries no policy digest",
+      "the drawn conditions are not the ones this contract states for that seed",
+      "frames are not one per control step, or the rate is under 50 Hz"
+    ]
+  },
+  "definitions": {
+    "base": "the mechanism's single free-joint body",
+    "tilt_deg": "angle between the base's local +Z and its local +Z in the model's solved keyframe",
+    "heading_deg": "yaw about world Z of the rotation from the solved attitude to the current one, read on the world +X axis, relative to the first timed frame, unwrapped",
+    "forward": "world +X of the solved pose, carried with the base and flattened to the floor plane",
+    "base_point": "the base body's own centre of mass, from the model's inertial frame and the trace pose",
+    "speed": "planar displacement of the base point over the preceding 0.20 s, divided by 0.20 s",
+    "foot_height_mm": "lowest point of the foot body's collision geoms above the floor plane, from the trace pose and the model's geoms",
+    "foot_point": "world position of the centre of the foot body's first collision geom",
+    "stance": "a frame whose foot height is at most 1.0 mm",
+    "swing": "a maximal run of consecutive non-stance frames with a stance frame on both sides; its path runs from the stance frame before it to the stance frame after it",
+    "step": "a swing airborne for at least 0.10 s whose foot point lands at least 0.15 hip heights, in plan, from where it lifted",
+    "stance_slip": "between two consecutive stance frames, the plan travel of the point of the foot that was lowest in the first; a round foot that rolls is not charged",
+    "hip_height_mm": "height above the floor, in the solved keyframe, of the anchor of the first joint between the base and each foot, averaged over the feet",
+    "arm_length_mm": "sum of the straight distances, in the solved keyframe, from the first actuated joint's anchor through each later joint anchor to the tip point",
+    "com_height_mm": "height of the whole mechanism's centre of mass above the floor in the solved keyframe",
+    "weight_n": "the mechanism's total mass (the base's subtree) times 9.81"
+  },
+  "behaviours": {
+    "walk": {
+      "intent": "A four-legged robot walks forward across a flat floor at a steady commanded speed. It walks with real steps: each foot lifts clear of the floor, swings forward, lands and carries weight in turn, and the feet on the ground do not slide. The body stays level, keeps its heading and keeps walking after a sideways shove.",
+      "episode_seconds": 10.0,
+      "conditions": {
+        "reset_variation": {"tilt_deg": [0.0, 3.0], "lift_above_clearing_mm": [0.0, 5.0]},
+        "goal": {"kind": "planar velocity in the base's heading frame, held for the episode", "forward_hip_heights_per_s": [0.6, 1.0], "lateral": 0.0, "yaw_rate": 0.0},
+        "disturbance": [{"body": "base", "direction": "horizontal", "azimuth_deg": [0.0, 360.0], "force_weights": [0.05, 0.20], "duration_s": 0.15, "at_s": [3.0, 7.0]}]
+      },
+      "settle_s": 1.0,
+      "predicates": [
+        {"id": "W1", "name": "completes", "rule": "runs the full 10.0 s and ends by truncation; no termination fires"},
+        {"id": "W2", "name": "upright", "metric": "max tilt_deg over every frame", "max": 30.0},
+        {"id": "W3", "name": "tracks_speed", "metric": "mean forward speed after settle_s, as a ratio of the commanded speed", "min": 0.75, "max": 1.25},
+        {"id": "W4", "name": "goes_straight", "metric": ["abs mean lateral speed after settle_s, as a ratio of the commanded speed", "max abs heading_deg over every frame"], "max": [0.25, 45.0]},
+        {"id": "W5", "name": "steps", "metric": ["steps taken by each foot", "share of each foot's plan path length made during steps"], "min": [4, 0.70], "scope": "every foot"},
+        {"id": "W6", "name": "foot_clearance", "metric": "median peak foot_height_mm over each foot's steps, in hip heights", "min": 0.08, "scope": "every foot"},
+        {"id": "W7", "name": "foot_slip", "metric": "each foot's stance_slip as a share of its plan path length", "max": 0.15, "scope": "every foot"},
+        {"id": "W8", "name": "duty_factor", "metric": "share of frames after settle_s in which each foot is in stance", "min": 0.40, "max": 0.85, "scope": "every foot"},
+        {"id": "W9", "name": "every_leg_works", "metric": "largest per-foot step count divided by the smallest", "max": 1.5}
+      ]
+    },
+    "reach": {
+      "intent": "A robot arm fixed to a bench moves its tip to a target marker placed at random in its workspace, stops there and holds still. Halfway through, the marker jumps to a second place and the arm moves to it. Each move is direct and settles without swinging past the marker.",
+      "episode_seconds": 8.0,
+      "conditions": {
+        "reset_variation": "none: the base is grounded, and the engine's reset variation moves only a floating base. The variation is the targets.",
+        "goal": {
+          "kind": "tip target position, target A from 0.0 s and target B from 4.0 s",
+          "switch_at_s": 4.0,
+          "sampling": "each target is the tip position, by forward kinematics on the accepted model, of a joint configuration with every actuated joint drawn uniformly in the central 80 % of its joint range",
+          "redraw_if": ["the tip is under 0.10 arm lengths above the floor", "the model is in contact at that configuration", "the target is under 0.25 arm lengths from where the tip starts that segment (the solved pose for A, target A for B)"],
+          "max_redraws": 100,
+          "held_out": "the targets are fixed points computed from the accepted model before its first training run; no training configuration may list them"
+        },
+        "disturbance": "none"
+      },
+      "predicates": [
+        {"id": "Q1", "name": "completes", "rule": "runs the full 8.0 s and ends by truncation; no termination fires"},
+        {"id": "Q2", "name": "final_error", "metric": "largest tip-to-target distance over the last 1.0 s of each segment, in arm lengths", "max": 0.05, "scope": "both segments"},
+        {"id": "Q3", "name": "time_to_target", "metric": "time from the segment's start until the tip-to-target distance is within 0.05 arm lengths and stays there to the segment's end", "max_s": 2.0, "scope": "both segments"},
+        {"id": "Q4", "name": "overshoot", "metric": "furthest the tip travels past the target along the line from its segment-start position to the target, as a ratio of that line's length", "max": 0.20, "scope": "both segments"}
+      ]
+    },
+    "balance": {
+      "intent": "A two-wheeled robot balances upright on the spot. It stays where it started and keeps facing the same way; it does not roll away or turn. When it is shoved it catches itself, comes back to rest and stays upright.",
+      "episode_seconds": 10.0,
+      "conditions": {
+        "reset_variation": {"tilt_deg": [0.0, 3.0], "lift_above_clearing_mm": [0.0, 5.0]},
+        "goal": "none: hold the position and heading of the first timed frame",
+        "disturbance": [
+          {"body": "base", "direction": "horizontal", "azimuth_deg": [0.0, 360.0], "force_weights": [0.10, 0.25], "duration_s": 0.10, "at_s": [2.0, 3.0]},
+          {"body": "base", "direction": "horizontal", "azimuth_deg": [0.0, 360.0], "force_weights": [0.10, 0.25], "duration_s": 0.10, "at_s": [5.5, 6.5]}
+        ]
+      },
+      "predicates": [
+        {"id": "B1", "name": "completes", "rule": "runs the full 10.0 s and ends by truncation; no termination fires"},
+        {"id": "B2", "name": "upright", "metric": "max tilt_deg over every frame", "max": 30.0},
+        {"id": "B3", "name": "stays_in_place", "metric": "largest plan distance of the base point from its position in the first timed frame, in COM heights", "max": 2.0},
+        {"id": "B4", "name": "keeps_heading", "metric": "max abs heading_deg over every frame", "max": 20.0},
+        {"id": "B5", "name": "recovers", "metric": "time from the end of each shove to the first frame that starts 1.0 s of rest", "rest": {"tilt_deg_max": 10.0, "speed_com_heights_per_s_max": 1.0, "hold_s": 1.0}, "max_s": 2.0, "scope": "every shove"}
+      ]
+    }
+  },
+  "judge": {
+    "model": "claude-opus-5-5",
+    "fallback": null,
+    "calls": 3,
+    "aggregation": "each trait scores the median of the three calls",
+    "traits": ["V1", "V2", "V3", "V4"],
+    "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+    "sees": ["the frozen rubric", "the behaviour's intent paragraph", "the filmstrip frames of one seed"],
+    "sees_nothing_else": "no reward, no metric, no seed, no project, no report, no prompt, no other seed's frames",
+    "judged_seeds": [1101, 1105, 1110],
+    "filmstrip": {
+      "floor": "the dark prototype floor (ADR-444)",
+      "overview": {"frames": 12, "spacing": "evenly from 0.0 s to the episode's end", "view": "fixed three-quarter view framing the whole path"},
+      "detail": {"frames": 12, "view": "side-on, following the base", "walk": {"from_s": 5.0, "spacing_s": 0.04}, "reach": {"from_s": 4.0, "spacing_s": 0.2}, "balance": {"from": "the first shove's onset", "spacing_s": 0.2}},
+      "labels": "each frame carries its time in seconds; a reach frame shows the target as a marker"
+    },
+    "bar": {"total_min": 9, "total_max": 12, "trait_min": 2, "scope": "each judged seed"}
+  },
+  "confirmation": "A behaviour is met only when its pre-registered confirmation evaluation passes every predicate on all ten seeds and every judged seed meets the judge's bar. When the predicates and the judge disagree, both are recorded and the disagreement is diagnosed before anything is trained again.",
+  "known_negatives": "KNOWN_NEGATIVES"
+}
