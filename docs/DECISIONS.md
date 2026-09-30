@@ -30719,3 +30719,70 @@ the three settings; the listing gives each run's bundle path; and a missing
 Regression: `test_a_run_names_its_task_bundle_so_a_warm_start_can_be_registered`,
 which fails on the old source with `KeyError: 'task_bundle'`. No engine,
 protocol, payload, trainer or shell file changed; nothing removed.
+
+## ADR-465 — The trainer integrates a saturated servo the way the engine does (2026-09-30)
+
+**Context.** Walk rounds 1 and 2 on `ot11-quad-1` trained at one reward and
+evaluated at another: r2's policy `1a0f0d28…` reported +2.48 per step in
+training and scored −1.69 to −1.21 on the evaluation seeds, walking
+backwards, and round 1 showed the same gap. `runner/obs_parity.py` compares
+sensors at forced states, so it could not say why. A rollout-level parity
+measurement did. The evaluated policy was driven in the trainer's own
+physics (MJX, `cadex_train.py`'s step, reward and observation code) and in
+the engine's (`CadexDynamics.evaluate_episode`, stock MuJoCo), from the
+same seeded reset, command and shoves, under the training task. On seeds
+1101 to 1104, MJX walked it **forwards**, at +2.70 to +2.82 per step and
+709 to 921 mm of travel in 10 s. The engine walked the same weights
+**backwards**, at −1.57 to −1.95 per step and −833 to −1271 mm. Replaying
+the engine's own actions open-loop, the two parted within one 2 ms substep,
+6.9 rad/s apart with **no contact at all**. float64 gave the same answer as
+float32, so precision was ruled out. Each of three changes to the model
+brought the two to within 1e-5 of each other: the Euler integrator, no
+`forcelimited`, or kv = 0. The cause was in MJX 3.10's `deriv_smooth_vel`.
+Under `implicitfast` it always folds an affine actuator's `-kv` into the
+implicit step. Stock MuJoCo 3.10 leaves the term out for an actuator whose
+force sits at its `forcerange`. Every Cadex servo is exported as exactly
+that actuator (`CadexDynamics` writes `biasprm = [0, -kp, -kv]`,
+`forcelimited`, under `implicitfast`), and a 9 g servo saturates at
+0.18 N m most of the time. So training integrated a saturated servo as
+extra-damped, while the engine integrated it as torque-limited.
+`test_dynamics_mjx_agreement` never saw this: it drives at a quarter of the
+range and never saturates.
+
+**Decision.** `cadex_train.match_engine_actuator_derivative` replaces
+MJX's `deriv_smooth_vel` with a version that subtracts the velocity term
+back out for exactly the actuators clamped at their limit. `train()`
+installs it before it puts a model on the device. It lives in the trainer,
+because the engine is the evaluator and its physics is the reference. The
+exporter keeps `implicitfast`, force limits and kv, which are the servo as
+measured (ADR-085). The shim touches a private MJX module, and the pinned
+`mujoco-mjx==3.10.0` is what makes that tolerable.
+`test_dynamics_mjx_forcelimit` pins both halves in float64 on a
+contact-free, two-servo fixture:
+- raw MJX still differs (measured 10.2 rad/s), and the day it doesn't, that
+  test fails with a message saying to delete this;
+- with the rule installed, the trainer matches stock MuJoCo (measured
+  6.2e-15), and an unlimited servo matches with or without it.
+
+The test fails on the old trainer. After the fix, the same four seeds put
+the r2 policy at −1.18 to −1.87 per step in MJX, backwards, beside the
+engine's −1.57 to −1.95. The open-loop replay now agrees to 1e-6 for the
+first 10 control steps and then parts only as a contacting mechanism does
+under float32.
+
+**Consequences.**
+- Every ot11 training run before this commit, walk rounds 1 and 2 and
+  r3-nochatter (started at 19:01Z on the old trainer), trained on physics
+  the engine does not run. Their **evaluations stand**: `cadex evaluate`
+  runs the engine and was never on the drifted path. What they do not give
+  is honest feedback to the loop. A reward revision chosen against those
+  curves was chosen against a different machine.
+- A policy's header records `trainer_sha256`, so runs from before and after
+  are told apart by their bytes.
+- Earlier runs' passes, including R2's reach, stand as the engine measured
+  them.
+- One function and one call are added to the trainer. No
+  engine, protocol, payload or shell file changed, and nothing enters
+  `pixi.toml` or `requirements.txt`. `test_dynamics_policy_trainer`'s
+  deferred-import list names `mujoco.mjx._src`, which is inside the pinned
+  wheel. Nothing removed.

@@ -1355,7 +1355,8 @@ cause. The next measurement is that rollout: the trainer's own
 environment, driving the evaluated policy with mean actions, from an
 evaluation seed's reset and command, compared step by step with the
 engine's trace. Until it is run, a walk round's evaluation is published but
-the train/evaluate agreement for walk is an open question.
+the train/evaluate agreement for walk is an open question. *(Answered below:
+the trainer's physics was wrong, ADR-465.)*
 
 **Round 3 cites round 2.** The agent registered `r3-nochatter` at 23:01Z:
 seed 23, 800 it × 2048 envs, 2,380 s, `--stop-on-collapse`. Its reason
@@ -1366,3 +1367,49 @@ is 364°/s), and names the training/evaluation gap itself. It charges
 bounded hip and knee chatter and landing speed, and strengthens the
 per-foot clearance, slip and trot-sync terms. The spec block is still
 equal to the retained one.
+
+### Why training and evaluation disagreed: the trainer's physics, not the evaluation (ADR-465)
+
+The rollout-parity measurement round 2 asked for. `r2-bounded`'s evaluated
+policy `1a0f0d28…` was driven with mean actions in the trainer's own
+environment (MJX, `cadex_train.py`'s step, observation and reward code) and in
+the engine's (`CadexDynamics.evaluate_episode`, stock MuJoCo). Both started
+from the same seeded reset, command and shoves, under the training task, on
+CPU, while `r3-nochatter` held the GPU. Receipt:
+[`retained/p3-quad-1-mjx-parity.json`](retained/p3-quad-1-mjx-parity.json).
+
+| seed | engine | trainer, before ADR-465 | trainer, after ADR-465 |
+|---|---|---|---|
+| 1101 | −1.95 /step, −1271 mm | **+2.80 /step, +728 mm** | −1.25 /step, −1173 mm |
+| 1102 | −1.58, −1049 | **+2.70, +882** | −1.82, −1379 |
+| 1103 | −1.75, −833 | **+2.73, +921** | −1.18, −1185 |
+| 1104 | −1.57, −1101 | **+2.82, +709** | −1.87, −57 |
+
+(Tray travel along x over the 10 s episode; the command is forwards.)
+
+**The two diverged.** In MJX the policy walked forwards and earned what
+training reported (+2.48 per step with sampled actions). In the engine the
+same weights walked backwards. Replaying the engine's own actions open-loop, the
+two parted within one 2 ms substep, 6.9 rad/s apart **before any foot touched
+the floor**. float64 gave the same answer as float32. The cause is one line
+of MJX. Under `implicitfast` it always folds a servo's velocity gain `-kv`
+into the implicit step. Stock MuJoCo leaves the term out while the servo's
+torque is clamped at its limit, and these 9 g servos are clamped at 0.18 N m
+most of the time. Remove the force limit, or kv, or use Euler, and the two
+agree to 1e-5.
+
+**The fix is in the trainer** (commit below; `test_dynamics_mjx_forcelimit`
+fails before it). The engine is the evaluator, and its physics is the
+reference. After it, the trainer's rollout goes backwards on all four seeds
+too, at −1.18 to −1.87 per step beside the engine's −1.57 to −1.95. The
+open-loop replay agrees to 1e-6 for 10 control steps and then drifts only
+the way a contacting mechanism does under float32.
+
+**What this flags.** Walk rounds 1 and 2, and `r3-nochatter`, which started
+at 19:01Z on the old trainer, **trained on physics the engine does not run**.
+Their evaluations stand as measured, because `cadex evaluate` runs the
+engine. But the reward curves the agent revised against came from a
+different machine, so rounds 1–3 are not evidence about their reward
+designs. Every earlier ot11 run trained the same way. R2's and R3's
+confirmation passes stand as the engine measured them.
+

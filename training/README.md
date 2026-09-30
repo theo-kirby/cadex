@@ -380,6 +380,20 @@ The same discipline covers the container: `encode_policy` here and
 test compares their bytes. This file cannot import the engine, so the second
 copy is written down and pinned.
 
+## A saturated servo is the engine's machine (ADR-465)
+
+MJX and stock MuJoCo are the same physics only where they agree, and a
+Cadex servo is where they did not. Under `implicitfast` MJX 3.10 folds an
+affine actuator's `-kv` into the implicit step always; the engine drops it
+for an actuator clamped at its `forcerange`. Every exported servo is exactly
+that actuator, and a small one saturates most of the time, so ot11's walk
+policies trained forwards here and walked backwards in the engine.
+`match_engine_actuator_derivative` applies the engine's rule inside MJX, and
+`train()` installs it before it builds a model. It replaces a function in a
+private MJX module, which is tolerable only because `mujoco-mjx` is pinned;
+`test_dynamics_mjx_forcelimit` fails the day raw MJX agrees, and then it
+goes.
+
 ## What the CI gate does, and does not, prove
 
 `test_dynamics_policy_live` trains a *tiny* task — one hinge, swing-up, a

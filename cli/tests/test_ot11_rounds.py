@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
 """ot11 P4: the runner that drives the product agent through the loop.
 
 ``docs/probes/ot11/runner/rounds.py`` runs one frozen first prompt and then

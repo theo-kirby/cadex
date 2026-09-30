@@ -959,6 +959,65 @@ def flat_parameters(np: Any, parameters) -> list[float]:
 
 
 # ---------------------------------------------------------------------------
+# The physics. MJX is the engine's machine only where the two agree.
+# ---------------------------------------------------------------------------
+
+
+def match_engine_actuator_derivative(mujoco: Any, jax: Any, jnp: Any) -> None:
+    """Make MJX's ``implicitfast`` drop a clamped actuator's damping, as MuJoCo does.
+
+    ADR-465. Every Cadex servo is a force-limited affine PD actuator, and
+    under ``implicitfast`` both engines fold its ``-kv`` into the implicit
+    step. Stock MuJoCo 3.10 -- the engine, which is what evaluates a policy
+    -- leaves the term out for an actuator whose force sits at its
+    ``forcerange``; MJX 3.10's ``deriv_smooth_vel`` keeps it always. A
+    saturated servo was therefore extra-damped here and torque-limited
+    there: ot11's r2 walk policy went forwards at +2.80 reward per step in
+    this file's physics and backwards at -1.95 in the engine's, from the
+    same reset. This subtracts the term back out for exactly the clamped
+    actuators, which ``test_dynamics_mjx_forcelimit`` holds to stock MuJoCo
+    at float64 round-off.
+
+    It replaces a function in a private MJX module, which the pinned
+    ``mujoco-mjx`` in ``requirements.txt`` is what makes tolerable; the same
+    test fails loudly the day raw MJX agrees, and then this goes. Installing
+    it twice is harmless.
+    """
+
+    from mujoco.mjx._src import derivative
+
+    original = derivative.deriv_smooth_vel
+    if getattr(original, "cadex_engine_rule", False):
+        return
+    affine = int(mujoco.mjtBias.mjBIAS_AFFINE)
+    affine_gain = int(mujoco.mjtGain.mjGAIN_AFFINE)
+    no_dynamics = int(mujoco.mjtDyn.mjDYN_NONE)
+    no_actuation = int(mujoco.mjtDisableBit.mjDSBL_ACTUATION)
+
+    def deriv_smooth_vel(m, d):
+        qderiv = original(m, d)
+        if qderiv is None or m.opt.disableflags & no_actuation:
+            return qderiv
+        # The same per-actuator velocity gain MJX just added...
+        ctrl = d.ctrl.at[m.actuator_dyntype != no_dynamics].set(d.act)
+        vel = (m.actuator_biasprm[:, 2] * (m.actuator_biastype == affine)
+               + m.actuator_gainprm[:, 2] * (m.actuator_gaintype == affine_gain) * ctrl)
+        # ...taken back out wherever the force is pinned at its limit.
+        force = d.actuator_force
+        clamped = jnp.logical_and(
+            m.actuator_forcelimited,
+            jnp.logical_or(force <= m.actuator_forcerange[:, 0],
+                           force >= m.actuator_forcerange[:, 1]),
+        )
+        moment = d._impl.actuator_moment
+        return qderiv - moment.T @ jax.vmap(jnp.multiply)(
+            moment, jnp.where(clamped, vel, 0.0))
+
+    deriv_smooth_vel.cadex_engine_rule = True
+    derivative.deriv_smooth_vel = deriv_smooth_vel
+
+
+# ---------------------------------------------------------------------------
 # PPO.
 # ---------------------------------------------------------------------------
 
@@ -1056,6 +1115,7 @@ def train(
     import mujoco
     import mujoco.mjx as mjx
 
+    match_engine_actuator_derivative(mujoco, jax, jnp)
     emit = emit or (lambda tag, iteration, reward, trained: None)
     progress = progress or (lambda **fields: None)
 

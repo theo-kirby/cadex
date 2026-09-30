@@ -137,6 +137,9 @@ _ALLOWED_TOP_LEVEL = {
 _ALLOWED_DEFERRED = _ALLOWED_TOP_LEVEL | {
     "jax", "jax.numpy", "numpy", "mujoco", "mujoco.mjx", "struct",
     "CadexDynamics",
+    # Inside the pinned mujoco-mjx wheel, not a dependency of its own: the
+    # one private module ADR-465's derivative rule replaces a function in.
+    "mujoco.mjx._src",
 }
 
 
