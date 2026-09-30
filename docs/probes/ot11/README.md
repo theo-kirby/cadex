@@ -886,6 +886,107 @@ not include the transcript.
   parts stay declared rather than modelled (ADR-408); only the product
   agent may change the mechanism.
 
+### Reach, on `ot11-heron-1`: four rounds, and 9 of 10 seeds at the last
+
+`ot11-heron-1` is a copy of `ot8-heron-b`, the arm ot8 accepted (G2).
+`ot8-heron-b` itself was not touched. The accepted script had a reach task
+with one fixed target and no goal, and no policy had been trained on it.
+
+**The held-out targets were drawn before any training.** The contract says
+the twenty reach targets are fixed points computed from the accepted
+model before its first training run. `runner/goals.py` draws them the way
+an evaluation does: the spec's conditions, one `random.Random(seed)`
+stream, and the engine's own `draw_episode_goals`. It drew them from a
+scratch copy carrying only the frozen spec block. The receipt is
+`retained/r2-heron-1-targets.json`: model `183fabff…`, arm length 144.0 mm,
+the tip starting at (64, 0, 120) mm, and every target at least 29.4 mm
+above the bench (limit 14.4 mm) and at least 37.9 mm from where its
+segment starts (limit 36 mm). Each of the four evaluations below held
+these twenty targets to within 5.3 × 10⁻⁵ mm, which is the receipt's
+rounding. No seed was void.
+
+**Pre-registered first.** `retained/p4-heron-1-preregistration.json` was
+committed (`02603727`) before the session started. It fixes the prompts,
+the targets, four runs and four turns at most, 900 s at most per run, and
+`--stop-on-collapse`. The driver is `runner/rounds.py`, unchanged; only
+the prompt, `prompts/reach.loop.prompt.txt`, names the behaviour. The
+prompt hands over the frozen reach spec in xscript, and the agent wrote
+it into the script byte for byte (checked after each run). The prompt
+fixes the mechanism for the session, because a changed mechanism would
+move the targets. The model digest stayed `183fabff…` through all four
+runs. Registration: `retained/p4-heron-1-registration.json`.
+
+| run | seed | settings | budget | ended | evaluated policy | seeds passed | Q2 worst final error (≤ 0.05 arm lengths) |
+|---|---|---|---|---|---|---|---|
+| `reach-r1` | 7 | 700 it × 1024 envs | 880 s | budget, iteration 685 | `c5a01908…` | 0 of 10 | 0.43–1.28 |
+| `reach-r2` | 11 | 800 it × 1024 envs | 890 s | budget, iteration 649 | `e1b0277d…` | 1 of 10 | 0.04–0.26 |
+| `reach-r3` | 23 | 800 it × 1024 envs, entropy 0 | 890 s | budget, iteration 649 | `2036f471…` | 0 of 10 | 0.07–0.31 |
+| `reach-r4` | 31 | 800 it × 1024 envs, entropy 0, joint rates privileged | 895 s | budget, iteration 474 | `3270ce26…` (checkpoint 475) | **9 of 10** | 0.008–0.055 |
+
+GPU wall time: 880.5 + 890.5 + 890.5 + 895.5 = **3,557 s**. No run
+finished its iterations, and none collapsed.
+
+**Each revision cited the previous evaluation, and the next evaluation
+shows whether it helped.** The quotes are the runs' registered reasons,
+shortened.
+
+- **r1.** A random-target task was designed with the goal redrawn every
+  2 s. The policy reads the joint encoders and the goal; the tip's
+  position and velocity and the forces are privileged. Result: Q2 and
+  Q3 failed on 10 of 10 seeds and Q4 on 7. Some segments were reached,
+  some moved away, and some never moved (seed 1101, segment B: closest
+  119.8 mm, which was also its final error).
+- **r2** cited "Q2 on 10/10 seeds (… median 0.82, min 0.43, limit
+  0.05)". Its diagnosis was that an `exp(−d/40)` reward is flat at
+  60–180 mm, so the arm held one pose. It added a linear distance cost.
+  **It helped**: worst Q2 fell to 0.04–0.26, one seed passed, and Q4
+  failed on one seed instead of seven.
+- **r3** cited "Q2 on 9/10 seeds (… median 0.099, max 0.26 on 1106)".
+  Its diagnosis was that a distance-gated speed cost paid the tip to
+  stand off the target. It made the cost ungated and saturating.
+  **It did not help**: 0 of 10 passed, and Q2 rose to 0.07–0.31.
+- **r4** cited "Q2 on 10/10 seeds (… median 0.139, max 0.307 on 1106)"
+  and "settle_cost sat at its 0.3/step ceiling". Its diagnosis was
+  chatter: actuator force was about 3× the gravity hold. It made the
+  speed cost linear, raised the force cost ×10 and moved the joint rates
+  to privileged. **It helped**: 9 of 10 seeds passed.
+
+This is P4's requirement of three or more motivated rounds, met on
+reach. The owner ticks P4; this page does not.
+
+**r4's evaluation.** `evaluations/6418a337500a-3270ce260233/` in the
+project. Q1 passed on all ten seeds, and every episode ran 8.0 s. The
+nine passing seeds have a worst final error of 1.2–5.0 mm, reach the
+target in 0.08–0.24 s, and overshoot at most 0.13 (limit 0.20). **Seed
+1106 fails Q2 and Q3.** Its segment B target sits low beside the
+pedestal with the elbow folded back. The tip settles 7.92 mm from it,
+against the 7.2 mm limit, and never gets closer. 1106 was the worst seed
+in r2, r3 and r4. Film of seed 1106:
+[overview](p4-heron-1-reach-r4-seed-1106-overview.png) and
+[detail](p4-heron-1-reach-r4-seed-1106-detail.png).
+
+**The turn.** One turn of 74.5 minutes, with 50 tool calls. It cost
+$3.20 as the harness reported it. The longest blocking calls were
+`train_status` at 892.8 s and `evaluate` at 111.3 s. Receipt:
+`retained/p4-heron-1-rounds.json`. It holds the ledger, every run's
+registration and ending, every evaluation's per-seed rows and segments,
+and the target check. It does not include the transcript.
+
+**What this session does not show.**
+
+- **R2 is not met.** These are training rounds, and the last one fails a
+  seed. R2 is judged on a later pre-registered confirmation evaluation.
+- **Warm start is not reachable through the tools.** For r3 the agent
+  tried to warm-start from r2. It guessed five paths for
+  `init_from_parent_task`, and `train_start` refused each one. The file
+  exists, as `runs/reach-r2/train/heron_reach_task-task.json`, but
+  neither `train_status` (`loop.run_view`) nor the refusal names it. The
+  agent trained r3 from scratch and said so in its reason. Its closing
+  report names the same gap as the blocker for its next step.
+- **The film may not show chatter.** The agent's diagnosis for r3 was
+  50 Hz chatter, which the 0.2 s filmstrip frames cannot resolve. It
+  read it from the force and speed reward terms instead.
+
 ## R3's confirmation evaluation: balance on `ot11-robin-1`
 
 This is the evaluation R3 is judged on. It is not a loop round.
