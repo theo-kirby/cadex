@@ -8,7 +8,9 @@ judges, how many calls are made and the bar; ``runner/judge.py`` is the
 procedure. The literals below pin the procedure: the instructions the judge
 is given around the rubric, the isolation of each call, and the rule that a
 refusal, an error or another model's answer is never a score. The committed
-receipts are held to what the runner would compute from their own calls.
+receipts are held to what the runner would compute from their own calls, and
+so are the four receipts of the floor-marks probe that changed nothing
+(ADR-461).
 
 No test here calls a model. The end-to-end ones run the runner against a
 stand-in executable that answers as the harness does.
@@ -42,6 +44,11 @@ JUDGED = [1101, 1105, 1110]
 #: label -> (behaviour, the evaluation receipt its sheets were drawn from)
 NEGATIVES = {"w2-2": ("walk", "p2-w2-2-evaluation.json"),
              "robin": ("balance", "p2-robin-evaluation.json")}
+#: The one sentence the floor-marks probe's second arm added to the instructions (ADR-461).
+MARKS_SENTENCE = ("In the detail sheet the floor keeps a light mark wherever a part of the robot has "
+                  "touched it since the episode began; the marks are fixed to the floor, so a part set "
+                  "down and lifted leaves a separate print and a part dragged across the floor leaves a "
+                  "streak or a smear.")
 
 
 def _sha(data: bytes) -> str:
@@ -378,3 +385,65 @@ def test_both_negatives_were_judged_on_the_three_seeds_and_neither_meets_the_bar
     assert manner == [2, 1, 2] and control == [0, 0, 0]
     assert "**`w2-2`: the judge does not see the shuffle.**" in flat
     assert "**Neither negative meets the bar on any judged seed**" in flat
+
+
+def test_the_floor_marks_probe_left_the_manner_score_where_it_was_and_changed_nothing() -> None:
+    """ADR-461: a detail sheet whose floor keeps a mark wherever the robot
+    touched it, judged on the two ``w2-2`` seeds whose manner scored 2, as
+    drawn (arm a) and with one sentence saying what a mark is (arm b). Every
+    call of both arms still scored manner 2, so the film, the instructions
+    and the contract are as they were."""
+
+    flat = " ".join(README.split())
+    report = json.loads((OT11 / "retained" / "p2-w2-2-evaluation.json").read_text(encoding="utf-8"))
+    filmed = {row["seed"]: row for row in report["film"]["seeds"]}
+    told = judge.INSTRUCTIONS.replace("bottom left. Read both", f"bottom left. {MARKS_SENTENCE} Read both")
+    assert told != judge.INSTRUCTIONS and f"> {MARKS_SENTENCE}" in flat
+    instructions = {"a": INSTRUCTIONS_SHA256, "b": _sha(told.encode())}
+    styles = set()
+    for arm in ("a", "b"):
+        for seed in (1101, 1110):
+            name = f"probe-marks-{arm}-w2-2-seed-{seed}.json"
+            text = (OT11 / "retained" / name).read_text(encoding="utf-8")
+            assert "/home/" not in text and "/tmp/" not in text, name
+            receipt = json.loads(text)
+            assert (receipt["schema"], receipt["behaviour"], receipt["seed"]) == ("ot11-judge-v1", "walk", seed)
+            assert (receipt["model"], receipt["fallback"], receipt["effort"], receipt["calls"]) == (
+                "claude-opus-5-5", None, "high", 3)
+            assert receipt["rubric_sha256"] == RUBRIC_SHA256
+            assert receipt["instructions_sha256"] == instructions[arm], name
+            assert receipt["evaluation"]["policy_sha256"] == report["policy_sha256"]
+            assert receipt["trace_sha256"] == filmed[seed]["trace_sha256"]
+            # The same overview and the same moments; only the detail's floor differs.
+            overview, detail = receipt["sheets"]
+            assert overview["sha256"] == filmed[seed]["overview"]["sha256"]
+            assert detail["sha256"] != filmed[seed]["detail"]["sha256"]
+            assert detail["times_s"] == filmed[seed]["detail"]["times_s"]
+            assert detail["follows"] == report["rig"]["base"]
+            styles.add(receipt["film_style_sha256"])
+            scored = [row for row in receipt["raw"] if "scores" in row]
+            assert len(scored) == len(receipt["raw"]) == 3
+            assert all(list(row["modelUsage"]) == ["claude-opus-5-5"] for row in scored)
+            assert all(judge.parse(row["reply"]) == row["scores"] for row in scored)
+            computed = judge.aggregate([row["scores"] for row in scored], BAR)
+            assert {key: receipt[key] for key in computed} == computed
+            # The finding: no call of either arm scored manner below 2.
+            assert [row["scores"]["V2"]["score"] for row in scored] == [2, 2, 2], name
+            assert computed["medians"] == {"V1": 1, "V2": 2, "V3": 0, "V4": 1} and not computed["meets_bar"]
+            row = "| {} | {} | {} | {} |".format(
+                {"a": "A: marks", "b": "B: marks and the sentence"}[arm], seed,
+                " | ".join(str(computed["medians"][trait]) for trait in TRAITS), computed["total"])
+            assert row in flat, row
+            if seed == 1101:
+                sheet = OT11 / "probe-marks-w2-2-seed-1101-detail.png"
+                assert _sha(sheet.read_bytes()) == detail["sha256"] and sheet.stat().st_size <= 300 * 1024
+    # One film drew all four, and it is not the film the contract's receipts were judged on.
+    assert len(styles) == 1 and styles != {report["film"]["style_sha256"]}
+    assert (OT11 / "retained" / "probe-marks.patch").is_file() and "probe-marks.patch" in flat
+    # Not adopted: the film draws no marks, the judge is told of none, and no decision was added.
+    film_source = (REPO / "cli/cadex_cli/film.py").read_text(encoding="utf-8")
+    assert "marks" not in film_source and "mark" not in judge.INSTRUCTIONS
+    assert CONTRACT["judge_procedure"]["instructions_sha256"] == INSTRUCTIONS_SHA256
+    assert [row["adr"] for row in CONTRACT["decisions"]] == ["ADR-454"]
+    assert "### A probe: floor marks in the detail sheet, measured and not adopted (ADR-461)" in README
+    assert "## ADR-461 — " in (REPO / "docs/DECISIONS.md").read_text(encoding="utf-8")

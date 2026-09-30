@@ -632,3 +632,99 @@ predicates agree on both verdicts. Where they differ is recorded here.
   behaviour is met only when the predicates pass **and** the bar is met,
   and why this finding changes no frozen item: the rubric, the filmstrip
   and the bar stand as frozen.
+
+### A probe: floor marks in the detail sheet, measured and not adopted (ADR-461)
+
+Measured on 2026-09-30, before any ot11 training run. The finding above
+leaves a judge that scores a shuffle's manner as "real steps". This probe
+asked whether the detail sheet can be made to show slip, so that the judge's
+manner score (V2) reads it. **It cannot, by this means: every call still
+scored manner 2.** No frozen item, and nothing in the product, was changed.
+
+**The rule, written before the first call.**
+
+- **One change to the film.** The floor of each detail frame keeps a light
+  mark wherever a drawn solid has touched it since the episode began:
+  within 1.0 mm of the floor plane, or under it, on a 2 mm grid. The marks
+  are fixed to the floor while the window follows the base, so a part set
+  down and lifted leaves separate prints and a part dragged leaves a
+  streak. The overview, the frame times, the view and the window are
+  untouched. A floor-fixed window was the other candidate and was not
+  drawn: between two frames 0.04 s apart a sliding foot moves about 5
+  pixels, in separate tiles, where a mark shows the whole slide inside one
+  frame.
+- **Two arms, in order.** *A*: the marked sheet, the judge procedure
+  untouched. *B*, only if A does not move the score: the same sheet, and
+  one sentence added to the judge's instructions saying what a mark is:
+
+  > In the detail sheet the floor keeps a light mark wherever a part of the
+  robot has touched it since the episode began; the marks are fixed to the
+  floor, so a part set down and lifted leaves a separate print and a part
+  dragged across the floor leaves a streak or a smear.
+
+- **Which seeds.** `w2-2` seeds 1101 and 1110, the two whose manner scored
+  2. Three calls a seed, as the contract judges.
+- **What would adopt it.** A manner median under 2 on both seeds. Then the
+  change is a recorded contract decision and all six judged seeds of both
+  negatives are judged again. Otherwise nothing frozen changes, the film
+  stays as it is, and there is no third arm.
+
+**Measured.** `ot11-w2-negative` was filmed again from its stored traces, no
+new rollout, with the change applied. Both overview sheets came out byte for
+byte as before. By 5.0 s the floor carried 8,074 marked cells on seed 1101
+and 5,686 on seed 1110. Twelve calls, 109 s of model time, $0.48 at list
+price. Every call scored; none was refused, retried or answered by another
+model.
+
+| arm | seed | V1 task | V2 manner | V3 control | V4 consistency | total |
+|---|---|---|---|---|---|---|
+| as judged (above) | 1101 | 1 | 2 | 0 | 1 | 4 |
+| A: marks | 1101 | 1 | 2 | 0 | 1 | 4 |
+| B: marks and the sentence | 1101 | 1 | 2 | 0 | 1 | 4 |
+| as judged (above) | 1110 | 1 | 2 | 0 | 1 | 4 |
+| A: marks | 1110 | 1 | 2 | 0 | 1 | 4 |
+| B: marks and the sentence | 1110 | 1 | 2 | 0 | 1 | 4 |
+
+Each cell is the median of three calls. All twelve calls scored manner 2.
+Eleven of the twelve scored 1, 2, 0, 1; one call of arm A on seed 1110
+scored 2, 2, 1, 2.
+
+- **Arm A: the judge did not mention the marks.** Its reasons are the ones
+  it gave before ("real steps with feet lifting and swinging forward"). On
+  1110 two of three calls said the feet shuffle in places and still scored
+  2, exactly as two of three had before the marks.
+- **Arm B: the judge read the marks, and read them as prints.** All six
+  calls called the prints "mostly separate": "clumped and smeared in
+  places" on 1101, "elongated into short streaks that suggest some foot
+  sliding" on 1110. That is rubric level 2 in its own words: the manner
+  dominates and a shortcut shows in places.
+- **The reading is a fair one of what was drawn.** `w2-2` does not drag a
+  planted foot in one long line. Each foot leaves the floor four to seven
+  times a second (37 to 52 times on seed 1101, 24 to 42 on seed 1110, for
+  a median 0.04 s to 0.07 s each) and slides between lift-offs, so the
+  floor shows a run of short dashes, not a streak. The marks say "lifts
+  often, slides a little each time". What makes it a shuffle is how short
+  and how brief each lift is, and how much of the path the slides add up
+  to. Those are W5 (3 and 1 steps by the foot that stepped least) and W7
+  (60 % and 81 % of a foot's path made sliding). Both are totals over the
+  whole episode, which twelve frames do not hold.
+
+**So nothing is adopted.** The film draws no marks, the judge's instructions
+are the pinned ones, and the contract's `decisions` list still has one
+entry. The judge's manner score is not a reading of stepping or slip and is
+not to be treated as one: **W5 and W7 are**, and the pass rule requires the
+predicates and the bar together. A shuffle that stays upright can still meet
+the judge's bar. It cannot pass the contract.
+
+**What this does not show.** No policy that really steps has been filmed,
+so the judge's manner score has been seen on a shuffle and never on a walk.
+The first ot11 policy that passes W5 and W7 is the first chance to see
+whether the judge tells the two apart at all.
+
+Receipts: `retained/probe-marks-a-w2-2-seed-*.json` and
+`retained/probe-marks-b-w2-2-seed-*.json`, as the runner wrote them.
+[`probe-marks-w2-2-seed-1101-detail.png`](probe-marks-w2-2-seed-1101-detail.png)
+is the marked sheet of seed 1101. `retained/probe-marks.patch` is the change
+to `cli/cadex_cli/film.py` and the sentence in `runner/judge.py`, against
+commit `81873196`; it was reverted before this was committed. Afterwards the
+project's film was drawn again by the unchanged product.

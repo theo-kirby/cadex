@@ -30213,3 +30213,62 @@ model: the runner is run end to end against a stand-in executable, and the
 six committed receipts are held to what the runner computes from their own
 calls), `cli/tests/test_ot11_contract.py` (the receipts' film blocks now
 follow the base).
+
+## ADR-461 — Floor marks in the judge's detail sheet: measured, not adopted (2026-09-30)
+
+**Context.** ADR-460 found that the blind video judge fails ot10's `w2-2`
+for falling and not for shuffling: on seeds 1101 and 1110 every call scored
+manner (V2) 2 and saw "real steps", where W5 and W7 measure a shuffle. The
+evaluation outranks the loop, so before any ot11 policy is judged this
+asked whether the detail sheet can show slip.
+
+**The probe, stated before the first call.** One change to the film: the
+floor of each detail frame keeps a light mark wherever a drawn solid has
+touched it since the episode began (within 1.0 mm of the floor plane or
+under it, on a 2 mm grid), fixed to the floor while the window follows the
+base. Two arms on `w2-2` seeds 1101 and 1110, three calls a seed: **A**, the
+marked sheet with the judge procedure untouched; **B**, the same sheet and
+one sentence added to the judge's instructions saying what a mark is.
+Adoption needed a manner median under 2 on both seeds, and would have been
+a contract decision that re-judges all six judged seeds of both negatives.
+No third arm. A floor-fixed window was the other candidate and was not
+drawn: a slide of about 5 pixels between separate tiles is weaker evidence
+than a mark that holds the whole slide inside one frame.
+
+**Measured.** Twelve calls, 109 s of model time, $0.48 at list price, every
+one scored by `claude-opus-5-5` alone. **All twelve scored manner 2.** Both
+arms' medians on both seeds are 1, 2, 0, 1 (total 4), the scores ADR-460
+recorded. Arm A's reasons do not mention the marks. Arm B's read them as
+"mostly separate prints" with some smearing or short streaks, which is
+rubric level 2. That is a fair reading of what was drawn: each foot leaves
+the floor four to seven times a second and slides between lift-offs, so the
+floor shows short dashes and no long streak.
+
+**Decision.** Nothing is adopted and nothing frozen changes.
+
+1. The film draws no marks. The change to `cli/cadex_cli/film.py` was
+   reverted before commit and is kept only as
+   `docs/probes/ot11/retained/probe-marks.patch`.
+2. The judge's instructions are the pinned ones (`judge_procedure`), and
+   the contract's `decisions` list still has one entry (ADR-454).
+3. **The judge's manner score is not a reading of stepping or slip.** W5
+   and W7 are. The frozen pass rule already requires the predicates and the
+   judge's bar together, so a shuffle that stays upright may meet the bar
+   and still cannot pass the contract.
+4. The rubric and the bar were not touched, in the probe or after it.
+
+**Not shown.** No policy that really steps has been filmed. The judge's
+manner score has been seen on a shuffle and never on a walk, so whether it
+separates the two at all is unmeasured until an ot11 policy passes W5 and
+W7.
+
+**Not changed.** No engine file, protocol op, `OP_ARG_SPECS`, shell file or
+CLI module, so no payload moves. No new dependency. Nothing removed.
+
+**Evidence.** `docs/probes/ot11/README.md` (*A probe: floor marks in the
+detail sheet*), the four receipts `retained/probe-marks-{a,b}-w2-2-seed-*.json`
+as the runner wrote them, the marked sheet
+`probe-marks-w2-2-seed-1101-detail.png`, and
+`cli/tests/test_ot11_judge.py`, which holds the four receipts to what the
+runner computes from their own calls and asserts that the film, the
+instructions and the contract are as they were.
