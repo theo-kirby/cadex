@@ -11,14 +11,37 @@ Status: open
 
 ## Current
 
-Open charter criterion for run ot11: **P2. The product evaluates any policy against its task's spec.** - The success spec is declared in xscript alongside the task, and is documented in `docs/XSCRIPT.md`. - One command evaluates an accepted policy on its frozen seeds. It writes a report into the project with: - pass or fail per seed and per predicate; - the reward decomposed term by term; - termination causes; - behaviour metrics; - the video and a filmstrip, on the dark floor. - The behaviour metrics include at least: - **gait:** step count, foot clearance, foot slip, duty factor and commanded-velocity tracking; - **reach:** final error, time to target and overshoot; - **balance:** tilt, drift from the start position, heading and the time to recover from a shove. - The review dashboard shows the report. Tests pin every metric on fixtures that pass and fail, and the w2-2 shuffle is one of the failing fixtures. [rec: kind-spire-3578]
+Open charter criterion for run ot11: **P2. The product evaluates any policy against its task's spec.** The charter asks for: the success spec declared in xscript alongside the task and documented in `docs/XSCRIPT.md`; one command that evaluates an accepted policy on its frozen seeds and writes a report into the project (pass or fail per seed and per predicate, the reward term by term, termination causes, behaviour metrics, the video and a filmstrip on the dark floor); behaviour metrics for gait (step count, foot clearance, foot slip, duty factor, commanded-velocity tracking), reach (final error, time to target, overshoot) and balance (tilt, drift, heading, time to recover from a shove); the review dashboard showing the report; and tests pinning every metric on passing and failing fixtures, the `w2-2` shuffle among the failing ones. The human owns the charter checkbox; roles report results and do not tick it. Declared target: `gap-p2-product-evaluates-any-policy` [rec: kind-spire-3578].
 
-Declared target: `gap-p2-product-evaluates-any-policy`. This node tracks the criterion as a gap; it becomes working only with causally parented, measured evidence that the criterion is met. The human owns the charter checkbox; roles report results and do not tick it. The directive's impact line is truncated; its wording is resolved from the full charter carried verbatim in the same record [rec: kind-spire-3578].
+**Done so far** [rec: ready-field-7940] [rec: first-mist-2505]:
+
+- **The behaviour metrics are engine code** (ADR-455, commit `3014ee62`). `src/Mod/cadex/CadexEvaluation.py` (pure standard library, outside the service's closure) reads a rollout trace into posture, gait and reach metrics, and `check()` holds them against `{id, metric, min, max}` predicates. `CadexDynamics.evaluation_rig` reads the model's half (base, floor, mass, COM height, feet and hip height, tip and arm length); it refuses a foot whose collision geom is a mesh or cylinder. There is no second reader: the probe's `measure.py` is only the contract binding [rec: ready-field-7940].
+- **Every metric is pinned on a passing and a failing motion** (`cadex_tests/test_evaluation_metrics.py`), and `w2-2` is a failing fixture (`cadex_tests/fixtures/ot10_w2_2_feet.json`, a base-and-four-feet pose extract, 153 KB): it fails on speed (1.907×), step share (0.140), slip (0.666), leg balance (4.2×) and floor depth, and passes on tilt, heading, clearance and duty factor. Reach metrics are pinned on synthetic reaches only; no real arm has been measured [rec: ready-field-7940].
+- **The success spec is declared in xscript** (ADR-456, commit `3ab0c538`). `assembly.success(predicates, seeds, feet, tip, tip_offset_mm, episode_seconds, reset_variation, disturbance)` is passed to `assembly.task(success=...)` and lands resolved in the task bundle's `success` block (`cadex-success-spec-v1`), documented in `docs/XSCRIPT.md`. `CadexDynamics.evaluation_task(bundle)` returns the task under the spec's horizon and conditions. No protocol change [rec: first-mist-2505].
+- **The reward cannot judge itself.** A predicate names one of the 26 metrics in `CadexEvaluation.METRICS`; the task's reward, a reward term or a channel is refused (`success_reads_the_reward`, `unknown_success_metric`), and a metric the model cannot measure is refused at declaration (`success_metric_needs_{feet,tip,shove,goal,base,floor}`) [rec: first-mist-2505].
+- **The spec is outside the task's identity.** Two bundles differing only in their spec share one semantic digest, so a revised spec can be held against an earlier policy; a task with no spec writes the same bundle byte for byte [rec: first-mist-2505].
+
+Evidence at `3ab0c538`: `pixi run test-engine` 2414 passed, 53 skipped; `cli/tests` 1125 passed, 1 skipped; packaged gate (lifecycle plus live success spec) 27 passed [rec: first-mist-2505].
+
+**Missing, so it stays open** [rec: first-mist-2505]:
+
+- The one evaluation command and its report: per seed and per predicate, reward by term, termination causes, video and filmstrip [rec: ready-field-7940] [rec: first-mist-2505].
+- The review dashboard view of that report [rec: ready-field-7940] [rec: first-mist-2505].
+
+**Constraints for whoever builds the rest** [rec: first-mist-2505]:
+
+- Goal metrics (`speed_ratio`, `lateral_ratio`, the four reach metrics) are refused until a task can state a goal (P3). Reach cannot be specified through the product until then; walk can, using `mean_forward_speed_mm_s` [rec: first-mist-2505].
+- The CLI's assembly API page is at 21,478 of 21,500 characters (ADR-360). P3's goal surface will not fit until the notes are trimmed or the page is split [rec: first-mist-2505].
+- The trainer was not changed or run against a bundle with a `success` block. It does not refuse a `--seed` that is one of `success.seeds`, and `CURRICULUM_TASK_KEYS` does not list `success`, so a warm start across a spec revision is a whole-file digest mismatch there [rec: first-mist-2505].
+- Rest thresholds, stance height and the step definition are engine constants a spec cannot override; the P1 contract uses the same values [rec: first-mist-2505].
+- The `w2-2` fixture rests on a reading of the charter: a five-body pose extract is a test fixture, not a committed rollout trace. If that reading is rejected, the fixture goes and the `w2-2` tests must skip without the read-only project [rec: ready-field-7940].
 
 ## Negative knowledge
 
-None yet.
+- [scope: the `cli/` assembly API page under ADR-360's 21,500-character ceiling, as of `3ab0c538` | confidence: high | evidence: first-mist-2505] Describing the success spec in the assembly domain's notes does not fit the page. It reached 23,344 characters and failed `test_every_page_of_the_live_contract_fits_one_tool_result`; the paragraph was removed, so the product agent sees `success`'s signature and one sentence.
 
 ## Provenance
 
 - kind-spire-3578 — ot11 operator-declared charter gap
+- ready-field-7940 — behaviour metrics moved into the engine (ADR-455), w2-2 failing fixture, reach metrics
+- first-mist-2505 — assembly.success declares the spec in xscript (ADR-456); reward refused as a predicate
