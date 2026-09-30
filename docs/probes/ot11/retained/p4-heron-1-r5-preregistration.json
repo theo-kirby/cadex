@@ -1,0 +1,50 @@
+{
+  "schema": "ot11-rounds-preregistration-v1",
+  "behaviour": "reach",
+  "round": 5,
+  "criteria": [
+    "P4",
+    "R2"
+  ],
+  "counts_for": "a P4 round only; R2 is judged on a separately pre-registered confirmation evaluation, registered only if this round passes on all ten seeds",
+  "project": "ot11-heron-1",
+  "project_head": "312c54ded725789b8b388a37dd1b84aac01ad061",
+  "accepted_revision_before": "6418a337500a9a2aed8a0dc3593839164e7aeb63dbee519defa43f2ff5cd4a86",
+  "model_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8",
+  "spec_sha256": "61b25b0223b8b7d55654af171cebceda16ac31d61a104815b8c197aec69fb6e3",
+  "spec_sha256_rule": "sha256 of reach-r4's evaluation report spec block as canonical JSON (sorted keys, no spaces); this round's evaluation must hold the same spec or it is void",
+  "motivation": "reach-r4 (checkpoint 475, policy 3270ce26...) passed 9 of 10 seeds; seed 1106 failed Q2 and Q3 on segment B, final error 7.92 mm against 7.2 mm (0.055 against 0.05 arm lengths)",
+  "warm_start": "the prompt asks for one run warm-started from reach-r4's evaluated policy, through init_from / init_from_parent_task (reach-r4's task_bundle as train_status names it) / init_from_task_change; the task revision is the product agent's",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "driver": {
+    "file": "runner/rounds.py",
+    "sha256": "a6a2a5b1794a79f1e74b712fc7749ed703c3ed85a2542862dcb53c128d822234"
+  },
+  "first_prompt": {
+    "file": "reach.r5.loop.prompt.txt",
+    "sha256": "fc99f2fc40669b71cb0d9927de88a7166b4cd4ac063998136e2525f621ed7201"
+  },
+  "continue_prompt": {
+    "file": "continue.loop.prompt.txt",
+    "sha256": "970d16e7cb055cd481ba3c814f4c33bc4cf5854ef2b8adb755ec42b9799f6e3a"
+  },
+  "held_out_targets": {
+    "file": "retained/r2-heron-1-targets.json",
+    "sha256": "8bb702afe9720c813afe9caaf3a96f15a1bd65c35d5943af8886ecf289290f9f"
+  },
+  "max_runs_total": 5,
+  "max_runs_this_session": 1,
+  "max_turns": 2,
+  "per_run": {
+    "budget_s_max": 900,
+    "stop_on_collapse": true,
+    "seed_rule": "the product agent chooses it at train_start; train_start refuses any of 1101-1110",
+    "registered_by": "train_start writes runs/<run>/registration.json before launch"
+  },
+  "wall_clock_bound": "2 turns; one run of at most 900 s; one GPU job at a time (machine training lock)",
+  "stop_rule": "this session's one run has been trained and evaluated (the ledger reaches 5 evaluations), or an evaluation passes on every seed, or 2 turns have ended",
+  "supervision": "rounds.py --max-runs 5 --max-turns 2 under setsid; the training run under its own cadex_cli.loop supervisor",
+  "after": "the evaluation's drawn targets are compared with the held-out receipt and its spec with spec_sha256; a mismatch voids the evaluation",
+  "registered_at": "2026-09-30T20:36:09Z"
+}
