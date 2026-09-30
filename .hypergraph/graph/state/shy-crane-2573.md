@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**The app reached parity with the CLI and the review dashboard (GUI parity slices 3b–8, ADR-448 to ADR-453).** Its agent has look (the engine's studio render, via a child process), fit and inventory blocks on every accepted build reply, `inspect_model` clearance/inventory scopes, and the engine's design guidance in its prompt; measurement runs on a worker thread and slider latency is unmoved (ADR-448) [rec: crimson-trail-6068]. The viewport paints each part in its appearance role and palette (shell/mechanism/accent) from `CadexStudio.role_colours`, with object-linked materials, user materials kept and settled accepts only (ADR-449) [rec: rough-water-0848]. The Training editor has a Runs panel over `runs/*/run.json` (or legacy `review.json`), `train/progress.json` and `video.json`, as the dashboard reads them but without digest checks (ADR-450) [rec: restless-fjord-9059]; its numbers and reward curve follow the selected run, else the live mirror (ADR-451) [rec: staid-nest-0170]; and it has a Renders panel with Render Now through the engine studio into `review/render/`, plus Play Video on runs that have one (ADR-452) [rec: peaceful-sail-5197]. The chat shows the running turn's clock and tool count, and each turn's and the session's tokens and cost as the harness reports them, normalised across Claude Code, Codex and pi (ADR-453) [rec: eager-basin-6116]. Every slice's gate showed only the 8 restore-lockout failures clean `main` already has [rec: rough-water-0848] [rec: eager-basin-6116].
+
 The shell is a Blender fork under `shell/` carrying `mesh_agent` as application code under `shell/scripts/startup/` [rec: curious-sail-8332]. It is the application a user launches, and it ships the engine inside its own bundle, discovered through a `cadex-engine.json` manifest so a built application needs no configuration [rec: simple-hollow-8675] [rec: merry-eagle-4093].
 
 - It is a **protocol client and nothing else**. It may not import anything from `src/`; `cadexd_client.py` is deliberately a plain GPL NDJSON client with no cadex imports. Being in one repository does not relax this [rec: simple-hollow-8675] [rec: merry-eagle-4093].
@@ -140,3 +142,9 @@ The shell is a Blender fork under `shell/` carrying `mesh_agent` as application 
 - simple-bramble-8616 — runtime discovery, accepted hydration and native recipe gate
 - sunny-canyon-1138 — headless camera leakage audit, baseline gate and viewport restoration limitation
 - civic-moss-7263 — independent source/edge render ownership, regression and latest source-shell/bundled-engine gate
+- crimson-trail-6068 — ADR-448: app agent has look, fit/inventory blocks, inspect scopes and engine guidance; slider latency unmoved
+- rough-water-0848 — ADR-449: viewport paints parts in their appearance roles from CadexStudio.role_colours
+- restless-fjord-9059 — ADR-450: Training editor Runs panel over the run directories
+- staid-nest-0170 — ADR-451: selected run's curve drawn in the Training editor
+- peaceful-sail-5197 — ADR-452: Renders panel with Render Now; Play Video on runs
+- eager-basin-6116 — ADR-453: chat shows running turn and session tokens/cost

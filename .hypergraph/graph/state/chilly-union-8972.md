@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**The CLI now uses the engine's shared code for look, guidance and fit (GUI parity slices 1–3a).** It draws with the engine's `CadexStudio` loaded by path (`cli/cadex_cli/studio.py`); `sheet.py` and `scene.py` are deleted, and the dashboard's palette files are test-held equal to the engine's table [rec: fond-dawn-4115]. Its overlay is built from the engine's guidance file; only the headless situation, the parametric rule, assets/policies, project docs and revision guards stay CLI text [rec: strong-sail-2579]. Its fit/inventory blocks and their model views are the engine's `CadexFitReport`, bound by name; the CLI keeps the paged reads and markdown reports [rec: upright-glacier-1185].
+
 *The overlay teaches bays from the part (ADR-442, ADR-443) [rec: clever-path-5078] [rec: brave-rain-8039].* The ENCLOSE rule and the complete-machine paragraph tell the agent to cut a board's, battery's or servo's bay with its `.bay()`, never to its `.body`. For servos it adds: a limb wraps the servo's `.bay()` with a 1.6–2.4 mm wall on every side but the spline's and then cuts it — "never a case hanging beside the limb it drives" — split where the servo drops in, tabs screwed down at `spec["mount_holes"]`; pinned by `test_the_overlay_grows_a_limb_around_the_servo_bay`. `cli/tests` 1077 passed, 1 skipped at `a382b520` [rec: brave-rain-8039]. No A5 turn has used either yet.
 
 **The CLI agent's overlay changed three ways after hex2 [rec: polished-path-3774].** It no longer says the agent cannot see, and adds a six-rule design language for printed parts and a look-critique-fix loop before done (ADR-406) [rec: light-hill-1224]; it requires a self-moving design to carry controller, servo driver, IMU and battery-through-regulator or say why not (ADR-407) [rec: smooth-heron-8904]; and it tells the agent to ground what the policy reads with `api.sensor` and `role=` (ADR-408) [rec: nimble-meadow-6874]. `BRIDGE_TOOLS` (`look`) is a second tool list beside `CLI_TOOL_OPS`, outside the protocol surface; `cadex train`/`walk` gain `--allow-ungrounded`.
@@ -318,3 +320,6 @@ Walk sections share the named-view snapshot, retain explicit outcomes and rollou
 - sharp-tide-2612 — ADR-435: the model's build reply bounded — outputs summarised, fit/inventory worst first at 12 rows, unswept joints only; ~86 KB → ~12 KB on ot10-biped-3
 - clever-path-5078 — ADR-442: overlay's ENCLOSE rule cuts bays with `.bay()`, not `.body`; unmeasured on a turn
 - brave-rain-8039 — ADR-443: ENCLOSE rule teaches wrapping a servo's `.bay()` in a 1.6–2.4 mm limb wall and cutting it; unmeasured on a turn
+- fond-dawn-4115 — ADR-445: CLI draws with the engine's CadexStudio; sheet.py and scene.py deleted
+- strong-sail-2579 — ADR-446: CLI overlay built from the engine's guidance file
+- upright-glacier-1185 — ADR-447: CLI fit/inventory blocks are the engine's CadexFitReport
