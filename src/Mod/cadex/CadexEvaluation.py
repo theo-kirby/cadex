@@ -75,6 +75,45 @@ REST_HOLD_S = 1.0
 REACH_TOLERANCE_ARM_LENGTHS = 0.05
 REACH_FINAL_WINDOW_S = 1.0
 
+#: Every metric a success predicate may bound, and what measuring it needs
+#: (ADR-456). This is the whole vocabulary of a success spec: a name that is
+#: not here is not a behaviour metric, and the task's reward, its reward
+#: terms and its observation channels are deliberately not here.
+#:
+#: The needs are facts about the spec and the model, never about a
+#: behaviour: ``base`` is a floating base, ``floor`` the one plane it stands
+#: on, ``feet`` and ``tip`` what the spec names, ``shove`` a timed
+#: disturbance in the spec's conditions, ``goal`` a commanded speed or a
+#: target the task states.
+METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "completed": ("episode", ()),
+    "duration_s": ("episode", ()),
+    "max_tilt_deg": ("posture", ("base",)),
+    "max_heading_deg": ("posture", ("base",)),
+    "final_heading_deg": ("posture", ("base",)),
+    "max_drift_mm": ("posture", ("base",)),
+    "final_drift_mm": ("posture", ("base",)),
+    "mean_speed_mm_s": ("posture", ("base",)),
+    "max_drift_com_heights": ("posture", ("base", "floor")),
+    "recovery_s_max": ("posture", ("base", "floor", "shove")),
+    "mean_forward_speed_mm_s": ("gait", ("feet",)),
+    "mean_lateral_speed_mm_s": ("gait", ("feet",)),
+    "steps_min": ("gait", ("feet",)),
+    "step_count_ratio": ("gait", ("feet",)),
+    "step_share_min": ("gait", ("feet",)),
+    "step_clearance_hip_heights_min": ("gait", ("feet",)),
+    "slip_share_max": ("gait", ("feet",)),
+    "duty_factor_min": ("gait", ("feet",)),
+    "duty_factor_max": ("gait", ("feet",)),
+    "foot_lowest_hip_heights_min": ("gait", ("feet",)),
+    "speed_ratio": ("gait", ("feet", "goal")),
+    "lateral_ratio": ("gait", ("feet", "goal")),
+    "final_error_mm_max": ("reach", ("tip", "goal")),
+    "final_error_arm_lengths_max": ("reach", ("tip", "goal")),
+    "time_to_target_s_max": ("reach", ("tip", "goal")),
+    "overshoot_ratio_max": ("reach", ("tip", "goal")),
+}
+
 _EPS = 1.0e-9
 
 Vector = tuple[float, float, float]
@@ -395,14 +434,16 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
     }
 
 
-def gait_metrics(samples, rig: Mapping[str, Any], command_mm_s: float, *,
+def gait_metrics(samples, rig: Mapping[str, Any], command_mm_s: float | None = None, *,
                  settle_s: float = SETTLE_S, speed_window_s: float = SPEED_WINDOW_S,
                  stance_mm: float = STANCE_MM, swing_min_s: float = SWING_MIN_S,
                  step_advance_hip_heights: float = STEP_ADVANCE_HIP_HEIGHTS) -> dict[str, Any]:
     """Posture, speed tracking and every foot's gait, with the worst foot named flat.
 
     ``command_mm_s`` is the forward speed the episode asked for, in the
-    base's heading frame. A spec bounds the flat keys -- ``steps_min`` is the
+    base's heading frame. An episode that asked for none has no speed to
+    track: ``speed_ratio`` and ``lateral_ratio`` are then ``None`` and the
+    speeds themselves are still measured. A spec bounds the flat keys -- ``steps_min`` is the
     foot that stepped least, ``slip_share_max`` the foot that slid most -- so
     "every foot" is one number; ``feet`` keeps each foot's own figures for
     the report. A flat key is ``None`` when it could not be measured (no foot
@@ -436,12 +477,17 @@ def gait_metrics(samples, rig: Mapping[str, Any], command_mm_s: float, *,
     travel = (base["point"][-1][0] - base["point"][0][0], base["point"][-1][1] - base["point"][0][1])
     return {
         **posture(base, float(rig["com_height_mm"])),
-        "command_mm_s": float(command_mm_s),
+        "command_mm_s": None if command_mm_s is None else float(command_mm_s),
         "hip_height_mm": hip,
         "mean_forward_speed_mm_s": mean_along,
         "mean_lateral_speed_mm_s": mean_across,
-        "speed_ratio": None if mean_along is None else mean_along / command_mm_s,
-        "lateral_ratio": None if mean_across is None else abs(mean_across) / command_mm_s,
+        "speed_ratio": (
+            None if mean_along is None or command_mm_s is None else mean_along / command_mm_s
+        ),
+        "lateral_ratio": (
+            None if mean_across is None or command_mm_s is None
+            else abs(mean_across) / command_mm_s
+        ),
         "travel_mm": [travel[0], travel[1]],
         "steps_min": min(counts),
         "step_count_ratio": (max(counts) / min(counts)) if min(counts) else None,

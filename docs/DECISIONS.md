@@ -29738,3 +29738,91 @@ duty factor — the split the contract records.
 evaluation seeds, and no report is written; those are P2's next units and
 this is what they call. The commanded speed and the reach targets are passed
 to the reader by the caller until a task can state a goal (P3).
+
+## ADR-456 — A success spec is declared in xscript beside the task, and is not part of what the task is (2026-09-30)
+
+**Context.** ADR-455 made a success predicate data: `{id, metric, min, max}`
+held against behaviour metrics read from a rollout. Nothing could declare
+one. P2 asks for the spec to be declared in xscript alongside the task, and
+the charter asks that the reward never judge itself and that evaluation
+seeds never be training seeds.
+
+**Decision.** One new intermediate, `assembly.success`, passed to
+`assembly.task(..., success=spec)`.
+
+- **What it carries.** Predicates in `check()`'s shape; the evaluation
+  `seeds`; `feet` and a `tip` (with `tip_offset_mm`), which are what the gait
+  and reach families are measured on; and the conditions an evaluation
+  episode runs under — `reset_variation`, `disturbance` and
+  `episode_seconds`, as the values `assembly.task` already takes. An omitted
+  condition is the task's own; `[]` is none.
+- **A closed vocabulary.** `CadexEvaluation.METRICS` lists every metric a
+  predicate may name and what measuring it needs (a floating base, the floor
+  plane, feet, a tip, a timed shove, a goal). The reward, its terms and the
+  observation channels are not in it. A predicate that names the task's
+  reward or a reward term's label is refused as `success_reads_the_reward`;
+  any other unknown name as `unknown_success_metric`, with the list.
+- **Unmeasurable is a refusal at declaration**, not a failed seed: gait
+  metrics with no `feet`, recovery with no timed shove, posture on a
+  mechanism with no floating base, a COM-height ratio with no floor plane.
+- **Goal metrics are refused today.** `speed_ratio`, `lateral_ratio` and the
+  four reach metrics are measured against a commanded speed or a target, and
+  a task states no goal. P3 is what gives a task one; this unit does not
+  invent a second way to state it. `gait_metrics` now reads a gait with no
+  commanded speed: the speeds are measured and the two ratios are `None`.
+- **Where each check lives.** The authoring surface checks shape: a metric is
+  a name and never an expression, bounds, ids, seeds, component membership.
+  The engine checks the vocabulary and the model. The split is forced:
+  `cadex_assembly_api` is in the service's closure and `CadexEvaluation` is
+  not (ADR-455), so the API cannot import the list. `CadexDynamics` imports
+  it inside the worker, and `CadexEvaluation.py` is staged there by filename.
+- **In the bundle, outside the task's identity.** The resolved spec is the
+  bundle's `success` block (`cadex-success-spec-v1`): predicates, seeds,
+  feet, tip, its own `episode` schedule, its conditions resolved to the same
+  records the task's are, and a `scale` (mass, weight, COM height, hip
+  height, arm length). `success` is in the new `TASK_JUDGEMENT_FIELDS` and
+  not in `TASK_SEMANTIC_FIELDS`: two bundles that differ only in their spec
+  have one semantic digest and no `task_differences`, so a spec can be
+  revised and held against every earlier policy through
+  `assembly.policy(trained_task=...)` (ADR-134). A task with no spec writes
+  no `success` key and is byte for byte the bundle it was.
+- **`CadexDynamics.evaluation_task(bundle)`** returns the bundle as an
+  evaluation episode plays it: the same model, channels, actions, reward and
+  terminations under the spec's horizon, reset variation and disturbances.
+  The reward stays in it because a report decomposes it; no predicate can
+  read it.
+
+**Alternatives not taken.** A separate `assembly.evaluation` output with its
+own artifact would have kept the task bundle untouched, at the cost of a new
+publishable type through the worker, the publication table and every reader
+of outputs, and the trainer could never have seen the evaluation seeds to
+refuse them. Putting the spec in the task's identity would have orphaned
+every policy each time a threshold moved.
+
+**No protocol change.** `assembly.*` is the xscript authoring surface, not
+the cadexd op table: `OP_ARG_SPECS`, `docs/INTEGRATION.md` and the shell's
+client are unmoved. The task summary gains a `success` entry only when a
+spec is declared.
+
+**The assembly page of the API view is now at its budget.** The CLI shows
+the agent each domain's `describe_api` section under a 21,500-character cap
+(ADR-360). `assembly.success` brought that section to 21,478. So the
+vocabulary is in the export's documentation (one `inspect scope=api` read
+away) and in the refusals, which list it, and **not** in the domain's notes:
+a paragraph there measured 23,344. The next export on this surface will not
+fit until the notes are trimmed or the section is paged.
+
+**Evidence.** `cadex_tests/test_success_spec_api.py` (shape and refusals a
+reader could see), `test_success_spec_model.py` (the vocabulary, the reward
+refusal on both of a task's reward labels, every need, conditions against the
+spec's own horizon, identity, and a seeded episode played under
+`evaluation_task`), `test_success_spec_live.py` (a script through a live
+`cadexd`: the staged module, the retained bundle, and the reward refusal
+failing the script), and `test_evaluation_metrics.py` (every name in
+`METRICS` is a number its family returns).
+
+**Not in this unit.** No command evaluates a policy on the seeds and no
+report is written. The trainer does not read `success`: it does not yet
+refuse a `--seed` that is an evaluation seed, and `CURRICULUM_TASK_KEYS` does
+not list `success`, so a warm start across a spec revision is still a
+whole-file digest mismatch there.

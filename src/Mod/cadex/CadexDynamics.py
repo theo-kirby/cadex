@@ -5275,6 +5275,51 @@ MAXIMUM_TASK_BYTES = 1024 * 1024
 #: The schema the bundle declares, and the version a reader checks first.
 TASK_SCHEMA = "cadex-training-task-v1"
 
+#: The schema of a bundle's ``success`` block (ADR-456), which has a version
+#: of its own because it is read by an evaluator and never by a trainer.
+SUCCESS_SCHEMA = "cadex-success-spec-v1"
+
+#: Names a success predicate is refused for with the reason spelled out,
+#: beside the task's own reward labels: each is a way of asking the reward
+#: whether the reward was met.
+_REWARD_METRIC_NAMES = frozenset(
+    {"reward", "total_reward", "mean_reward", "episode_reward", "return"}
+)
+
+#: What to do about a metric the spec or the model cannot measure, by the
+#: need ``CadexEvaluation.METRICS`` states for it.
+_SUCCESS_NEED_CORRECTIONS = {
+    "base": (
+        "Tilt, heading, drift and rest are read on a floating base, and "
+        "this mechanism is fixed to the world. Bound what a fixed mechanism "
+        "does instead."
+    ),
+    "floor": (
+        "It is measured in centre-of-mass heights above the floor, and this "
+        "model has no single floor plane. A mechanism with no grounded "
+        "component stands on the environment's floor."
+    ),
+    "feet": (
+        "Name the components that are feet: assembly.success(..., "
+        "feet=[...])."
+    ),
+    "tip": (
+        "Name the component that carries the point being measured: "
+        "assembly.success(..., tip=component, tip_offset_mm=[x, y, z])."
+    ),
+    "shove": (
+        "Recovery is timed from the end of a shove, and the spec's "
+        "conditions apply none. Give assembly.success (or the task it "
+        "inherits from) an assembly.disturbance with at_seconds and "
+        "duration_s; a sustained force has no end to recover from."
+    ),
+    "goal": (
+        "It is measured against a commanded speed or a target, and this "
+        "task states no goal. Bound a metric that needs none -- "
+        "mean_forward_speed_mm_s is a speed in millimetres per second."
+    ),
+}
+
 
 # ---------------------------------------------------------------------------
 # Task identity: what decides behaviour, and what merely records where a
@@ -5319,6 +5364,15 @@ TASK_SEMANTIC_FIELDS = (
 #: agreeing on every number while pointing at different mechanisms is exactly
 #: the hole a digest-free comparison would open.
 TASK_PROVENANCE_FIELDS = ("label", "model")
+
+#: ...and the one left out because it **judges** the task rather than being
+#: part of it (ADR-456). A success spec says what a rollout must measurably
+#: be, on which seeds and under which conditions; nothing in it reaches a
+#: gradient. Leaving it out is what lets a spec be revised -- made stricter,
+#: given another seed -- and held against every policy trained before the
+#: revision: ``assembly.policy(trained_task=...)`` proves the two bundles the
+#: same task, because on every field that decides behaviour they are.
+TASK_JUDGEMENT_FIELDS = ("success",)
 
 #: Per-action fields left out, for the reason ``_POLICY_ACTION_FIELDS`` already
 #: leaves them out of ``verify_policy``: they describe how the bundle *derived*
@@ -7084,6 +7138,222 @@ def _measure_reset_clearance(
     )
 
 
+def _success_records(
+    mujoco: Any,
+    reloaded: Any,
+    spec: Mapping[str, Any],
+    task: Mapping[str, Any],
+    tree: Mapping[str, Any],
+    *,
+    reward_labels: Sequence[str],
+    context: str,
+) -> dict[str, Any]:
+    """One success spec, resolved against the vocabulary and the model.
+
+    The authoring surface has already checked the shape -- ids, bounds,
+    seeds. What is checked here is what only this side knows: that every
+    predicate names a **behaviour metric** and not the reward, that the spec
+    and the model can measure it, and that the conditions it evaluates under
+    fit the episode it evaluates over.
+
+    The conditions are resolved exactly as the task's own are, by the same
+    two functions, against the spec's own schedule: a shove that fits a ten
+    second evaluation and not a four second training episode is a legal
+    spec. An omitted list is the task's entries, re-resolved here rather
+    than copied, so they too are checked against the horizon they will
+    actually run under.
+    """
+
+    import CadexEvaluation
+
+    what = f"the success spec of {context}"
+    predicates = [dict(entry) for entry in spec.get("predicates") or ()]
+    if not predicates:
+        raise DynamicsError(
+            f"{what} states no predicate, so every rollout would pass it.",
+            reason="success_has_no_predicates",
+            correction="Give assembly.success at least one predicate.",
+            observed={"task": context},
+        )
+    variation_entries = spec.get("reset_variation")
+    if variation_entries is None:
+        variation_entries = task.get("reset_variation") or ()
+    disturbance_entries = spec.get("disturbance")
+    if disturbance_entries is None:
+        disturbance_entries = task.get("disturbance") or ()
+    feet = [str(name) for name in spec.get("feet") or ()]
+    tip = spec.get("tip")
+
+    have = {
+        "feet": bool(feet),
+        "tip": tip is not None,
+        "shove": any(not entry.get("sustained") for entry in disturbance_entries),
+        # A task states no goal, so nothing a rollout did can be measured
+        # against one.
+        "goal": False,
+    }
+    rows: list[dict[str, Any]] = []
+    needed: dict[str, str] = {}
+    for entry in predicates:
+        metric = str(entry.get("metric") or "")
+        identifier = str(entry.get("id") or metric)
+        if metric not in CadexEvaluation.METRICS:
+            if metric in _REWARD_METRIC_NAMES or metric in set(reward_labels):
+                raise DynamicsError(
+                    f"Predicate {identifier!r} in {what} reads {metric!r}, "
+                    "which is the task's own reward.",
+                    reason="success_reads_the_reward",
+                    correction=(
+                        "The reward never judges itself: a policy that "
+                        "maximised a reward has met any threshold on it by "
+                        "construction, whatever the mechanism did. Bound "
+                        "what the rollout measurably did instead -- one of "
+                        + ", ".join(sorted(CadexEvaluation.METRICS)) + "."
+                    ),
+                    observed={"predicate": identifier, "metric": metric,
+                              "reward_terms": sorted(reward_labels)},
+                )
+            raise DynamicsError(
+                f"Predicate {identifier!r} in {what} names {metric!r}, which "
+                "is not a behaviour metric.",
+                reason="unknown_success_metric",
+                correction=(
+                    "A predicate bounds one of: "
+                    + ", ".join(sorted(CadexEvaluation.METRICS))
+                    + ". An observation channel is not one of them; a spec "
+                    "is read from the rollout's poses, not from what the "
+                    "policy was shown."
+                ),
+                observed={"predicate": identifier, "metric": metric,
+                          "available": sorted(CadexEvaluation.METRICS)},
+            )
+        for need in CadexEvaluation.METRICS[metric][1]:
+            needed.setdefault(need, identifier)
+            if need in have and not have[need]:
+                raise DynamicsError(
+                    f"Predicate {identifier!r} in {what} bounds {metric!r}, "
+                    f"which cannot be measured here: it needs "
+                    f"{'a ' if need != 'feet' else ''}{need}.",
+                    reason=f"success_metric_needs_{need}",
+                    correction=_SUCCESS_NEED_CORRECTIONS[need],
+                    observed={"predicate": identifier, "metric": metric,
+                              "needs": need},
+                )
+        low, high = entry.get("min"), entry.get("max")
+        rows.append(
+            {
+                "id": identifier,
+                "metric": metric,
+                "min": None if low is None else float(low),
+                "max": None if high is None else float(high),
+            }
+        )
+
+    seconds = spec.get("episode_seconds")
+    schedule = (
+        dict(task["episode"])
+        if seconds is None
+        else _episode_schedule(
+            reloaded,
+            control_hz=int(task["episode"]["control_hz"]),
+            episode_seconds=float(seconds),
+            context=what,
+        )
+    )
+    reset_variation = _reset_variation_records(
+        mujoco, reloaded, variation_entries, tree, context=what
+    )
+    _measure_reset_clearance(
+        mujoco, reloaded, reset_variation, schedule, context=what
+    )
+    disturbance = _disturbance_records(
+        mujoco, reloaded, disturbance_entries, tree, schedule, context=what
+    )
+
+    # The rig is read here for its refusals -- a foot with no collision
+    # shape, a tip nothing drives -- and for the scale a threshold in hip
+    # heights or centre-of-mass heights turns out to be on this mechanism.
+    rig = evaluation_rig(
+        reloaded,
+        feet=feet,
+        tip=(
+            None if tip is None
+            else {"body": str(tip.get("body")), "local_mm": tip.get("local_mm")}
+        ),
+    )
+    for need, present in (
+        ("base", rig["base"] is not None),
+        ("floor", rig["com_height_mm"] is not None),
+    ):
+        if need in needed and not present:
+            metric = next(
+                row["metric"] for row in rows if row["id"] == needed[need]
+            )
+            raise DynamicsError(
+                f"Predicate {needed[need]!r} in {what} bounds {metric!r}, "
+                f"which cannot be measured here: it needs a {need}.",
+                reason=f"success_metric_needs_{need}",
+                correction=_SUCCESS_NEED_CORRECTIONS[need],
+                observed={"predicate": needed[need], "metric": metric,
+                          "needs": need},
+            )
+    return {
+        "schema": SUCCESS_SCHEMA,
+        "label": str(spec.get("label") or ""),
+        "predicates": rows,
+        "seeds": [int(seed) for seed in spec.get("seeds") or ()],
+        "feet": feet,
+        "tip": (
+            None if tip is None
+            else {"body": str(rig["tip"]["body"]),
+                  "local_mm": [float(v) for v in rig["tip"]["local_mm"]]}
+        ),
+        "episode": schedule,
+        "reset_variation": reset_variation,
+        "disturbance": disturbance,
+        "scale": {
+            "mass_kg": float(rig["mass_kg"]),
+            "weight_n": float(rig["weight_n"]),
+            "com_height_mm": rig["com_height_mm"],
+            "hip_height_mm": rig["hip_height_mm"],
+            "arm_length_mm": rig.get("arm_length_mm"),
+        },
+    }
+
+
+def evaluation_task(task: Mapping[str, Any]) -> dict[str, Any]:
+    """The bundle as an evaluation episode plays it.
+
+    A success spec states its own horizon, reset variation and disturbances
+    (ADR-456), and an episode loop reads those three from the bundle it is
+    handed. This hands it the spec's: the same task -- same model, channels,
+    actions, reward and terminations -- under the conditions the spec
+    declared, with the spec itself dropped so that what comes back is an
+    ordinary bundle any evaluator of one already plays.
+
+    The reward is still in it, because an evaluation report decomposes the
+    reward term by term. It is reported; no predicate can read it.
+    """
+
+    spec = task.get("success")
+    if not isinstance(spec, Mapping):
+        raise DynamicsError(
+            "This task declares no success spec, so there are no seeds and "
+            "no conditions to evaluate it under.",
+            reason="task_has_no_success_spec",
+            correction=(
+                "Give the task one: assembly.task(..., "
+                "success=assembly.success(predicates=[...], seeds=[...]))."
+            ),
+            observed={"task": str(task.get("label") or "")},
+        )
+    played = {key: value for key, value in task.items() if key != "success"}
+    played["episode"] = dict(spec["episode"])
+    played["reset_variation"] = [dict(entry) for entry in spec["reset_variation"]]
+    played["disturbance"] = [dict(entry) for entry in spec["disturbance"]]
+    return played
+
+
 def task_records(
     built: Mapping[str, Any],
     reloaded: Any,
@@ -7363,6 +7633,20 @@ def task_records(
         schedule,
         context=context,
     )
+    # Absent when the script declared none, so a task without a spec is
+    # byte for byte the bundle it always was -- and a policy trained on one
+    # still names its digest.
+    judged: dict[str, Any] = {}
+    if task.get("success") is not None:
+        judged["success"] = _success_records(
+            mujoco,
+            reloaded,
+            task["success"],
+            {**task, "episode": schedule},
+            tree,
+            reward_labels=[str(row["label"]) for row in reward_rows],
+            context=context,
+        )
     return {
         "schema": TASK_SCHEMA,
         "label": str(task.get("label") or ""),
@@ -7374,6 +7658,7 @@ def task_records(
         "randomisation": randomisation,
         "reset_variation": reset_variation,
         "disturbance": disturbance,
+        **judged,
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to
         # tell which numbers came from where (M9, ADR-097).

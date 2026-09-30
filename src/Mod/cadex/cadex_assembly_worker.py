@@ -4157,6 +4157,10 @@ def _execute_task_bundle(
             for entry in list(properties.get("disturbance") or [])
         ],
     }
+    if properties.get("success") is not None:
+        declaration["success"] = _success_input(
+            properties["success"], component_outputs
+        )
 
     try:
         reloaded = CadexDynamics.load_model(xml)
@@ -4219,6 +4223,26 @@ def _execute_task_bundle(
             ],
             "episode": dict(bundle["episode"]),
             "mujoco_version": str(bundle["mujoco_version"]),
+            # What the task is judged by, when it declares it (ADR-456): the
+            # predicates by id, the seeds, and the scale a threshold in hip
+            # heights or centre-of-mass heights has on this mechanism.
+            **(
+                {
+                    "success": {
+                        "predicates": [
+                            str(row["id"])
+                            for row in bundle["success"]["predicates"]
+                        ],
+                        "seeds": list(bundle["success"]["seeds"]),
+                        "episode_seconds": float(
+                            bundle["success"]["episode"]["episode_seconds"]
+                        ),
+                        "scale": dict(bundle["success"]["scale"]),
+                    }
+                }
+                if "success" in bundle
+                else {}
+            ),
         },
         # One episode, run here from the file that was just written. It is
         # not the training run -- it is the receipt that the bundle
@@ -4914,6 +4938,48 @@ def _disturbance_input(
         "at_seconds_high": float(properties.get("at_seconds_high")),
         "duration_s": float(properties.get("duration_s")),
     }
+
+
+def _success_input(
+    entry: DomainValue,
+    component_outputs: Mapping[int, str],
+) -> dict[str, Any]:
+    """One ``api.success`` value, as the spec CadexDynamics resolves.
+
+    Components become the names the model knows them by. The two condition
+    lists stay ``None`` when the script omitted them, which is how the
+    engine tells "the task's own" from "none" (ADR-456).
+    """
+
+    properties = dict(_properties(entry, "success"))
+    resolved: dict[str, Any] = {
+        "label": str(properties.get("label") or ""),
+        "predicates": [dict(row) for row in properties.get("predicates") or ()],
+        "seeds": [int(seed) for seed in properties.get("seeds") or ()],
+        "feet": [
+            component_outputs[id(foot)] for foot in properties.get("feet") or ()
+        ],
+        "tip": None,
+        "episode_seconds": properties.get("episode_seconds"),
+        "reset_variation": None,
+        "disturbance": None,
+    }
+    if properties.get("tip") is not None:
+        resolved["tip"] = {
+            "body": component_outputs[id(properties["tip"])],
+            "local_mm": [float(v) for v in properties.get("tip_offset_mm") or ()],
+        }
+    if properties.get("reset_variation") is not None:
+        resolved["reset_variation"] = [
+            _reset_variation_input(item, component_outputs)
+            for item in properties["reset_variation"]
+        ]
+    if properties.get("disturbance") is not None:
+        resolved["disturbance"] = [
+            _disturbance_input(item, component_outputs)
+            for item in properties["disturbance"]
+        ]
+    return resolved
 
 
 def _dynamics_failure(

@@ -116,6 +116,11 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # asserted to equal DECLARED_ENGINE_MODULES exactly. Reachable from
         # the sandboxed worker, never from cadexd.
         "CadexDynamics.py",
+        # The behaviour metrics and the vocabulary a success spec may name
+        # (ADR-455, ADR-456). Staged beside CadexDynamics because that is
+        # what imports it, when a task declares a spec; pure standard
+        # library, and like CadexDynamics never imported by cadexd.
+        "CadexEvaluation.py",
         "cadex_tessellation.py",
         # The resident preview worker's entry (ADR-055). In the bundle rather
         # than beside cadexd because it runs inside the same --safe-mode

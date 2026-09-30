@@ -289,6 +289,9 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         # for the same reason again -- and, uniquely, the only module in the
         # tree allowed to import mujoco (ADR-077).
         "CadexDynamics.py",
+        # The behaviour metrics and the vocabulary a success spec names
+        # (ADR-456): CadexDynamics imports it when a task declares one.
+        "CadexEvaluation.py",
         "cadex_tessellation.py",
         # The resident preview worker's entry: a second entry point into the
         # same bundle, sandboxed the same way, never importable by the

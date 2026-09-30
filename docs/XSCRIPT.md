@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-29
+Verified against source: 2026-09-30
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -325,6 +325,76 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   at a knee is a foot through it, and the engine measures whether the
   declared tilt clears at the declared lift and refuses the pairing that
   does not.
+  **`assembly.success(predicates, seeds=...)` says what the behaviour must
+  measurably be, apart from the reward** (ADR-456), and goes to
+  `assembly.task(..., success=spec)`. A reward is what a policy is paid for;
+  a policy that was paid and shuffled is the failure this catches. A
+  predicate is `{"id": ..., "metric": ..., "min": ..., "max": ...}` with at
+  least one bound, where `metric` names one **behaviour metric** measured
+  from the rollout's poses (`CadexEvaluation`, ADR-455) — never an
+  expression. A seed passes when every predicate holds, and a metric that
+  could not be measured fails rather than passing on nothing.
+
+  ```python
+  spec = assembly.success(
+      [
+          {"id": "completes", "metric": "completed", "min": 1},
+          {"id": "upright", "metric": "max_tilt_deg", "max": 30},
+          {"id": "in_place", "metric": "max_drift_com_heights", "max": 2.0},
+          {"id": "recovers", "metric": "recovery_s_max", "max": 2.0},
+      ],
+      seeds=[1101, 1102, 1103, 1104, 1105, 1106, 1107, 1108, 1109, 1110],
+      episode_seconds=10.0,
+      disturbance=[assembly.disturbance(base, newtons=[1.0, 2.5],
+                                        at_seconds=[2.0, 3.0], duration_s=0.1)],
+  )
+  task = assembly.task(model, actions=[...], reward=[...], success=spec, ...)
+  ```
+
+  | metric | what it is | needs |
+  |---|---|---|
+  | `completed`, `duration_s` | 1 when the episode ran to its horizon with no termination; how long it ran | — |
+  | `max_tilt_deg`, `max_heading_deg`, `final_heading_deg` | tilt and yaw of the base from its solved attitude and first frame | a floating base |
+  | `max_drift_mm`, `final_drift_mm`, `mean_speed_mm_s` | plan travel of the base's centre of mass from the first frame; its mean speed | a floating base |
+  | `max_drift_com_heights` | the same drift, in centre-of-mass heights | a floating base on the floor plane |
+  | `recovery_s_max` | the longest time from a shove's end to the start of 1 s of rest (tilt ≤ 10°, speed ≤ 1 COM height/s) | a timed `disturbance` in the spec's conditions |
+  | `steps_min`, `step_share_min`, `step_count_ratio` | real steps by the foot that took fewest (airborne ≥ 0.10 s, landing ≥ 0.15 hip heights away); the share of a foot's travel made in steps; most steps over fewest | `feet` |
+  | `step_clearance_hip_heights_min`, `foot_lowest_hip_heights_min` | median peak height of a foot's steps; how far below the floor a foot went | `feet` |
+  | `slip_share_max`, `duty_factor_min`, `duty_factor_max` | the share of a foot's travel made while on the floor; the share of frames in stance | `feet` |
+  | `mean_forward_speed_mm_s`, `mean_lateral_speed_mm_s` | speed along and across the base's heading, after 1 s | `feet` |
+  | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one | `feet` and a goal |
+  | `final_error_mm_max`, `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` | a tip's worst error, arrival time and overshoot over its targets | `tip` and a goal |
+
+  "Every foot" is the worst foot, which is what the `_min` and `_max`
+  suffixes say. **That table is the whole vocabulary.** A predicate that
+  names the task's reward, one of its reward terms (by label) or an
+  observation channel is refused: *the reward never judges itself*, because
+  a policy that maximised a reward has met any threshold on it whatever the
+  mechanism did. A metric the spec or the mechanism cannot measure is
+  refused when the task is declared rather than found as a failed seed —
+  gait with no `feet`, recovery with no shove, tilt on an arm bolted to the
+  bench. **A task states no goal, so the last two rows are refused today**;
+  bound `mean_forward_speed_mm_s` for a speed.
+  `feet=[component, ...]` names the feet, each of which needs a primitive
+  collision shape, because a foot's height is its lowest collision point
+  above the floor. `tip=component, tip_offset_mm=[x, y, z]` names the point
+  a reach is measured at. `seeds` are the evaluation seeds, 1 through 64
+  distinct integers fixed in the script so two evaluations of one policy are
+  the same episodes; **they are never training seeds**.
+  `reset_variation=[...]`, `disturbance=[...]` and `episode_seconds=...` are
+  the conditions an evaluation episode runs under — the same values
+  `assembly.task` takes, checked the same way against the spec's own
+  horizon. Omitted, each is the task's own; `[]` is none. They are separate
+  because a test is not a lesson: a policy trained against 1 N shoves may be
+  asked to survive 2 N.
+  The spec is written into the task bundle as a `success` block
+  (`cadex-success-spec-v1`) with its conditions resolved and a `scale` —
+  mass, weight, COM height, hip height, arm length — so a threshold in hip
+  heights can be read in millimetres. **It is not part of what the task
+  is**: a task with no spec writes the bundle it always did, and a spec can
+  be revised without orphaning a policy, because
+  `assembly.policy(trained_task=...)` proves two bundles that differ only in
+  their spec to be the same task (ADR-134).
   **Action ranges are derived from the mechanism or refused, never
   defaulted.** A `motor` is bounded by its `torque_limit_nmm`/`force_limit_n`
   and a `position` servo by its joint's own limits with *both* endpoints

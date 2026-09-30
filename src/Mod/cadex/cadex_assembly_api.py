@@ -988,6 +988,15 @@ _RANDOMISATION_TARGETS: dict[str, str] = {
 #: length whichever a script picks.
 _DISTURBANCE_DIRECTIONS = frozenset({"horizontal", "vertical"})
 
+#: A success predicate names one behaviour metric. The shape is checked here
+#: and the name against the engine's vocabulary, because the vocabulary is
+#: ``CadexEvaluation``'s and that module stays outside the service (ADR-455).
+_SUCCESS_METRIC_NAME = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_SUCCESS_PREDICATE_KEYS = frozenset({"id", "metric", "min", "max"})
+_MAX_SUCCESS_PREDICATES = 32
+_MAX_SUCCESS_SEEDS = 64
+_MAX_SUCCESS_FEET = 16
+
 #: An observation's name, which becomes a name a reward formula writes. The
 #: same shape as a Python identifier because that is what it turns into,
 #: and short enough that the suffixed forms stay readable.
@@ -1058,6 +1067,9 @@ class AssemblyDomainAPI:
         # runs (M9, ADR-097).
         "reset_variation",
         "disturbance",
+        # What a policy is judged by, which is not what it was paid for: an
+        # argument to a task, like the reward it is kept apart from (ADR-456).
+        "success",
         "exploded_view",
     )
 
@@ -3423,6 +3435,218 @@ class AssemblyDomainAPI:
             **properties,
         )
 
+    def success(
+        self,
+        predicates: Sequence[Mapping[str, Any]],
+        *,
+        seeds: Sequence[int],
+        feet: Sequence[DomainValue] = (),
+        tip: DomainValue | None = None,
+        tip_offset_mm: Sequence[float] | None = None,
+        episode_seconds: float | None = None,
+        reset_variation: Sequence[DomainValue] | None = None,
+        disturbance: Sequence[DomainValue] | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Say what a policy must *do* to have succeeded, apart from its reward.
+
+        A reward is what a policy is paid for, and a policy that was paid
+        and shuffled is the failure this exists to catch. A success spec is
+        the other reading: bounds on **behaviour metrics** measured from a
+        rollout's poses -- how far it tilted, how many real steps each foot
+        took, how long it took to come to rest after a shove -- on seeds and
+        under conditions the spec states itself. **It can never read the
+        reward**: a predicate names a metric from the engine's fixed list,
+        none of which is the reward, a reward term or an observation
+        channel, and anything else is refused by name.
+
+        ``predicates`` is a list of ``{"id": ..., "metric": ..., "min": ...,
+        "max": ...}`` with at least one bound each; ``id`` defaults to the
+        metric's name. A seed passes when **every** predicate holds, and a
+        metric that could not be measured -- a foot that never stepped has
+        no step clearance -- fails rather than passing on nothing.
+
+        The metrics, by what they need:
+
+        * always: ``completed`` (1 when the episode ran to its horizon with
+          no termination) and ``duration_s``;
+        * a floating base: ``max_tilt_deg``, ``max_heading_deg``,
+          ``final_heading_deg``, ``max_drift_mm``, ``final_drift_mm``,
+          ``mean_speed_mm_s``, and on a floor ``max_drift_com_heights``;
+        * a shove in the spec's conditions: ``recovery_s_max``;
+        * ``feet``: ``steps_min``, ``step_share_min``, ``step_count_ratio``,
+          ``step_clearance_hip_heights_min``, ``slip_share_max``,
+          ``duty_factor_min``, ``duty_factor_max``,
+          ``foot_lowest_hip_heights_min``, ``mean_forward_speed_mm_s`` and
+          ``mean_lateral_speed_mm_s``. "Every foot" is the worst foot;
+        * a goal -- a commanded speed or a target: ``speed_ratio`` and
+          ``lateral_ratio`` (with ``feet``), and with ``tip`` the reach
+          metrics ``final_error_mm_max``, ``final_error_arm_lengths_max``,
+          ``time_to_target_s_max`` and ``overshoot_ratio_max``. **A task
+          states no goal, so a spec that bounds one of these is refused**:
+          nothing a rollout did can be measured against a command it was
+          never given.
+
+        ``feet`` names the ``api.component`` values that are feet; each
+        needs a primitive collision shape, because a foot's height is its
+        lowest collision point above the floor. ``tip`` names the component
+        carrying the point a reach is measured at, ``tip_offset_mm`` where
+        on it, in its own frame.
+
+        ``seeds`` are the evaluation seeds, fixed in the script so that two
+        evaluations of one policy are the same episodes. **They are never
+        training seeds.**
+
+        ``reset_variation`` and ``disturbance`` are the conditions an
+        evaluation episode runs under, as the same values ``api.task``
+        takes. Omitted, each is the task's own; ``[]`` is none. They are
+        separate from the task's because a test is not a lesson: a policy
+        trained against 1 N shoves may be asked to survive 2 N.
+        ``episode_seconds`` likewise defaults to the task's.
+
+        A success spec is an intermediate value: pass it to ``api.task``.
+        """
+
+        operation = "success"
+        if not isinstance(predicates, (list, tuple)) or not (
+            1 <= len(predicates) <= _MAX_SUCCESS_PREDICATES
+        ):
+            raise _error(
+                operation,
+                "predicates",
+                f"expected an array of 1 through {_MAX_SUCCESS_PREDICATES} "
+                "predicate objects: a spec with none passes everything",
+                predicates,
+            )
+        rows: list[dict[str, Any]] = []
+        taken: set[str] = set()
+        for index, raw in enumerate(predicates):
+            where = f"predicates[{index}]"
+            if not isinstance(raw, Mapping):
+                raise _error(operation, where, "expected an object", raw)
+            extra = set(raw) - _SUCCESS_PREDICATE_KEYS
+            if extra:
+                raise _error(
+                    operation, where,
+                    f"unknown keys {sorted(str(key) for key in extra)}; a "
+                    "predicate is id, metric, min and max", dict(raw),
+                )
+            metric = raw.get("metric")
+            if not isinstance(metric, str) or not _SUCCESS_METRIC_NAME.fullmatch(metric):
+                raise _error(
+                    operation, f"{where}.metric",
+                    "must be the name of one behaviour metric. A predicate "
+                    "is a name and a bound, never an expression: what it "
+                    "bounds is measured from the rollout, not computed from "
+                    "the task's channels or its reward", metric,
+                )
+            identifier = str(raw.get("id") or metric).strip()
+            if not identifier or len(identifier) > 64:
+                raise _error(
+                    operation, f"{where}.id", "must contain 1-64 characters",
+                    raw.get("id"),
+                )
+            if identifier in taken:
+                raise _error(
+                    operation, f"{where}.id",
+                    "is used by an earlier predicate; a report names each "
+                    "predicate by its id", identifier,
+                )
+            taken.add(identifier)
+            low = (
+                None if raw.get("min") is None
+                else _number(operation, f"{where}.min", raw.get("min"))
+            )
+            high = (
+                None if raw.get("max") is None
+                else _number(operation, f"{where}.max", raw.get("max"))
+            )
+            if low is None and high is None:
+                raise _error(
+                    operation, where,
+                    "states no bound: give min, max or both", dict(raw),
+                )
+            if low is not None and high is not None and high < low:
+                raise _error(
+                    operation, where,
+                    "has max below min, which nothing can satisfy", dict(raw),
+                )
+            rows.append({"id": identifier, "metric": metric, "min": low, "max": high})
+
+        if not isinstance(seeds, (list, tuple)) or not (
+            1 <= len(seeds) <= _MAX_SUCCESS_SEEDS
+        ):
+            raise _error(
+                operation, "seeds",
+                f"expected an array of 1 through {_MAX_SUCCESS_SEEDS} "
+                "evaluation seeds", seeds,
+            )
+        clean_seeds: list[int] = []
+        for index, seed in enumerate(seeds):
+            if isinstance(seed, bool) or not isinstance(seed, int) or not (
+                0 <= seed <= 2**31 - 1
+            ):
+                raise _error(
+                    operation, f"seeds[{index}]",
+                    "expected an integer from 0 through 2147483647", seed,
+                )
+            clean_seeds.append(seed)
+        if len(set(clean_seeds)) != len(clean_seeds):
+            raise _error(
+                operation, "seeds",
+                "repeats a seed: the same episode twice is one result "
+                "counted twice", list(seeds),
+            )
+
+        foot_values = _values(
+            operation, "feet", feet, output_type="component_link", minimum=0
+        )
+        if len(foot_values) > _MAX_SUCCESS_FEET:
+            raise _error(
+                operation, "feet",
+                f"may name at most {_MAX_SUCCESS_FEET} components",
+            )
+        properties: dict[str, Any] = {
+            "predicates": rows,
+            "seeds": clean_seeds,
+            "feet": foot_values,
+        }
+        if tip is None:
+            if tip_offset_mm is not None:
+                raise _error(
+                    operation, "tip_offset_mm",
+                    "is a point on the tip component, and no tip is named",
+                    tip_offset_mm,
+                )
+        else:
+            properties["tip"] = _domain_value(
+                operation, "tip", tip, output_type="component_link"
+            )
+            properties["tip_offset_mm"] = (
+                [0.0, 0.0, 0.0] if tip_offset_mm is None
+                else _vector(operation, "tip_offset_mm", tip_offset_mm, size=3)
+            )
+        if episode_seconds is not None:
+            properties["episode_seconds"] = _number(
+                operation, "episode_seconds", episode_seconds,
+                minimum=0.0, maximum=3600.0, strict_minimum=True,
+            )
+        # ``None`` is "the task's own" and is simply absent; an empty list
+        # is a statement -- evaluate with no variation, or with no shove.
+        if reset_variation is not None:
+            properties["reset_variation"] = _values(
+                operation, "reset_variation", reset_variation,
+                output_type="reset_variation", minimum=0,
+            )
+        if disturbance is not None:
+            properties["disturbance"] = _values(
+                operation, "disturbance", disturbance,
+                output_type="disturbance", minimum=0,
+            )
+        return self._value(
+            operation, "success", label=_label(operation, label), **properties
+        )
+
     def mjcf(
         self,
         assembly: DomainValue,
@@ -3582,6 +3806,7 @@ class AssemblyDomainAPI:
         randomisation: Sequence[DomainValue] = (),
         reset_variation: Sequence[DomainValue] = (),
         disturbance: Sequence[DomainValue] = (),
+        success: DomainValue | None = None,
         label: str = "",
     ) -> DomainValue:
         """Turn one exported model into a trainable task.
@@ -3634,6 +3859,13 @@ class AssemblyDomainAPI:
         disturbed is a posture that was never tested. A task with neither of
         the last two asks a policy exactly one question and accepts one
         answer, which is what makes bracing a winning strategy.
+
+        ``success`` takes one ``api.success`` value: what the behaviour
+        must measurably be, on which seeds and under which conditions. It is
+        written into the bundle beside the reward and is **not part of what
+        the task is** -- a policy trained on this task stays a policy for it
+        when the spec is revised, which is what lets a stricter spec be held
+        against every earlier policy.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
@@ -3733,6 +3965,35 @@ class AssemblyDomainAPI:
                         "names a component that is not listed in this "
                         "assembly",
                     )
+        # Absent rather than ``None`` when no spec is declared, so a task
+        # that has none is the value it always was.
+        judged: dict[str, Any] = {}
+        if success is not None:
+            spec = _domain_value(
+                operation, "success", success, output_type="success"
+            )
+            named = [
+                (f"success.feet[{index}]", entry)
+                for index, entry in enumerate(spec.properties.get("feet", ()))
+            ]
+            if spec.properties.get("tip") is not None:
+                named.append(("success.tip", spec.properties["tip"]))
+            for parameter in ("reset_variation", "disturbance"):
+                named.extend(
+                    (f"success.{parameter}[{index}]", entry.arguments[0])
+                    for index, entry in enumerate(
+                        spec.properties.get(parameter) or ()
+                    )
+                )
+            for where, component in named:
+                if id(component) not in component_ids:
+                    raise _error(
+                        operation,
+                        where,
+                        "names a component that is not listed in this "
+                        "assembly",
+                    )
+            judged["success"] = spec
         seconds = _number(
             operation, "episode_seconds", episode_seconds,
             minimum=0.0, maximum=3600.0, strict_minimum=True,
@@ -3759,6 +4020,7 @@ class AssemblyDomainAPI:
             episode_seconds=seconds,
             control_hz=control_hz,
             label=label,
+            **judged,
         )
 
     def policy(

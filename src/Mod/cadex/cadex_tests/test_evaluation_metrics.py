@@ -437,6 +437,41 @@ def test_a_metric_nobody_measured_fails_and_says_so() -> None:
         evaluation.check([{"id": "a", "metric": "x"}], {"x": 1.0})
 
 
+def test_the_vocabulary_is_exactly_what_the_families_measure() -> None:
+    """A success spec names a metric from ``METRICS`` (ADR-456), so every
+    name there is one a family really returns as a number -- and the three
+    spec fixtures above are written in it."""
+
+    measured = {
+        "episode": evaluation.episode_metrics(DONE),
+        "posture": balanced(standing()),
+        "gait": walked(trot()),
+        "reach": reached(reaching()),
+    }
+    for name, (family, needs) in evaluation.METRICS.items():
+        value = measured[family][name]
+        assert isinstance(value, (int, float)) and not isinstance(value, bool), name
+        assert set(needs) <= {"base", "floor", "feet", "tip", "shove", "goal"}, name
+    for spec in (WALK_SPEC, REACH_SPEC, BALANCE_SPEC):
+        assert {row["metric"] for row in spec} <= set(evaluation.METRICS)
+    # What needs a goal is what is a ratio of, or a distance from, one.
+    assert {name for name, (_, needs) in evaluation.METRICS.items() if "goal" in needs} == {
+        "speed_ratio", "lateral_ratio", "final_error_mm_max", "final_error_arm_lengths_max",
+        "time_to_target_s_max", "overshoot_ratio_max"}
+    assert not [name for name in evaluation.METRICS if "reward" in name]
+
+
+def test_a_gait_with_no_commanded_speed_is_still_measured_and_tracks_nothing() -> None:
+    commanded, free = walked(trot()), evaluation.gait_metrics(trot(), walk_rig())
+    assert free["command_mm_s"] is None
+    assert free["speed_ratio"] is None and free["lateral_ratio"] is None
+    assert failing([{"id": "tracks", "metric": "speed_ratio", "min": 0.75}], free) == ["tracks"]
+    for name, value in commanded.items():
+        if name not in ("command_mm_s", "speed_ratio", "lateral_ratio"):
+            assert free[name] == value, name
+    assert free["mean_forward_speed_mm_s"] == pytest.approx(80.0, rel=0.02)
+
+
 def test_a_trace_is_read_as_its_timed_frames_its_episode_and_its_digests(tmp_path) -> None:
     frames = [{"frame_kind": "input", "nominal_time_s": None, "component_placements": {}}]
     frames += [{"frame_kind": "solver_output", "nominal_time_s": t, "component_placements": p} for t, p in trot()]
