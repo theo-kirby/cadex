@@ -281,6 +281,49 @@ and **no trait below 2**.
 The rubric, the inputs, the judged seeds and the bar were frozen here before
 the judge runner or the filmstrip renderer existed.
 
+### What the judge is for, and what it does not see (ADR-463, 2026-09-30)
+
+The predicates and the judge each have a job. The owner set them out in the
+charter on 2026-09-30, after the judge was measured on both known negatives
+([below](#the-judges-scores-on-both-negatives-adr-460)):
+
+- **Where a predicate measures a property, the predicate is authoritative
+  for it.** That covers slip, stepping, foot clearance, drift, heading and
+  reach error.
+- **The judge's job is what no predicate measures**: whether the behaviour
+  reads as the intended one at all, and gross failures such as falling,
+  flailing or the wrong motion.
+- **The judge's bar still applies** to every judged seed of R1, R2 and R3.
+  It is the bar as frozen.
+- **Where the judge contradicts a measured predicate, the predicate wins**,
+  and the disagreement is recorded.
+
+**Known limit: the judge's manner score (V2) is not a reading of stepping
+or of foot slip.** W5 and W7 are.
+
+- *Measured.* On `w2-2` seeds 1101 and 1110, **all eighteen calls scored
+  manner 2**, "real steps": the six calls the contract judges with
+  (ADR-460) and the twelve of the floor-marks probe (ADR-461). On those
+  seeds the foot that stepped least made 8.5 % and 3.6 % of its path in
+  steps (W5, limit 70 %), and the foot that slid most slid for 60 % and
+  81 % of its path (W7, limit 15 %).
+- *Why.* Twelve still frames 0.04 s apart, in a window that follows the
+  base, show legs in different positions. They do not show that a foot on
+  the floor is moving across it, or how short and how brief each lift is.
+  W5 and W7 are totals over the whole episode, which twelve frames do not
+  hold.
+- *What follows.* A shuffle that stays upright can meet the judge's bar. It
+  cannot pass the contract: W5 and W7 are read on all ten seeds, and a
+  behaviour is met only when the predicates pass **and** the bar is met.
+- *Status.* This is a recorded limit. It does not block P1, and it calls
+  for no further judge probe.
+
+**Nothing frozen changed, so nothing is re-evaluated.** No seed, condition,
+predicate, threshold, rubric line, judge input, judge instruction or bar
+moved. Every earlier reading and score stands as measured. The limit and
+the jobs are in `contract.json` as `judge_scope`, beside the frozen `judge`
+block and not in it, and the decision is its second `decisions` entry.
+
 ### The procedure (ADR-460)
 
 [`runner/judge.py`](runner/judge.py) is the judge. It was pinned before any
@@ -581,12 +624,19 @@ the legs on both sides of the base. On Robin it changed by under 1 mm.
 `cli/tests/test_film.py` holds it on a design whose base walks away from a
 part left behind.
 
-One place where the product's filmstrip is not yet the frozen text: **a
-reach frame's target marker is not drawn.** Since P3 (ADR-462) an
-evaluation's trace carries the target in every frame (`goal`, named by
-`goal_channels`), so the film has what it needs; drawing it is the film's
-own change and has to land before any reach film is judged. It does not
-apply to these two.
+**A frame of an episode with a target shows it as a marker** (ADR-463).
+This was the one place where the product's filmstrip was not yet the frozen
+text. Since P3 (ADR-462) an evaluation's trace carries the target in every
+frame (`goal`, named by `goal_channels`). The film now draws a ring centred
+on the target in force at each frame's own time, in both sheets and in the
+video (`docs/CLI.md`, *The film*). The ring is drawn over the solids and is
+hollow, so a tip that arrives neither hides it nor is hidden by it. The
+product was changed, not the contract, and it landed before any reach film
+was drawn or judged.
+
+It does not apply to these two: neither task states a target. Seed 1101 of
+`ot11-w2-negative` was drawn from its stored trace by the film before and
+after the change, and both sheets came out byte for byte the same.
 
 ### The judge's scores on both negatives (ADR-460)
 
@@ -722,8 +772,9 @@ scored 2, 2, 1, 2.
   whole episode, which twelve frames do not hold.
 
 **So nothing is adopted.** The film draws no marks, the judge's instructions
-are the pinned ones, and the contract's `decisions` list still has one
-entry. The judge's manner score is not a reading of stepping or slip and is
+are the pinned ones, and the probe entered no decision in the contract's
+`decisions` list. (The limit it measured was recorded there afterwards, as
+a known limit, by ADR-463.) The judge's manner score is not a reading of stepping or slip and is
 not to be treated as one: **W5 and W7 are**, and the pass rule requires the
 predicates and the bar together. A shuffle that stays upright can still meet
 the judge's bar. It cannot pass the contract.

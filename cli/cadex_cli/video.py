@@ -490,7 +490,7 @@ def _hann(track, half):
 
 
 def _studio_frames(looks, materials, names, meshes, frames, times, count, sample, work, started,
-                   floor=None):
+                   floor=None, held=None, overlay=None):
     """The design's studio look (CadexStudio.studio) drawn on the CPU at every sampled pose.
 
     The hero view, followed: each component is prepared once in its own frame
@@ -501,7 +501,11 @@ def _studio_frames(looks, materials, names, meshes, frames, times, count, sample
     its centre is a Hann-smoothed track of the robot's projected centre.
     ``looks`` is what each drawn component is made of (:func:`studio_materials`);
     a name it leaves out is environment geometry. ``floor`` names the floor's
-    height outright, for a caller that measured against one.
+    height outright, for a caller that measured against one. ``held`` is one
+    world point per entry of ``frames`` that the window keeps inside it beside
+    the solids, and ``overlay(index, pixels, size, bounds)`` draws over the
+    frame rendered from ``frames[index]`` before its clock: how an
+    evaluation's film marks where the episode was asked to go.
     """
     given = floor
     environment = [name for name in names if name not in looks]
@@ -526,6 +530,11 @@ def _studio_frames(looks, materials, names, meshes, frames, times, count, sample
                 sx = w[0]*right[0] + w[1]*right[1] + w[2]*right[2]
                 sy = w[0]*up[0] + w[1]*up[1] + w[2]*up[2]
                 box = [min(box[0], sx), min(box[1], sy), max(box[2], sx), max(box[3], sy)]
+        if held is not None:
+            w = held[index]
+            sx = w[0]*right[0] + w[1]*right[1] + w[2]*right[2]
+            sy = w[0]*up[0] + w[1]*up[1] + w[2]*up[2]
+            box = [min(box[0], sx), min(box[1], sy), max(box[2], sx), max(box[3], sy)]
         boxes[index] = box
     # The floor is the environment's top face where the design declares one: the
     # rollout collides on proxies (ADR-281), so a tipping solid can pass below it,
@@ -556,6 +565,8 @@ def _studio_frames(looks, materials, names, meshes, frames, times, count, sample
                                          size=size, shadow=shadow)
         canvas = studio_render.Canvas(size, size, (0, 0, 0))
         canvas.pixels = pixels
+        if overlay is not None:
+            overlay(k, canvas.pixels, size, ([cx-reach, cy-reach], [cx+reach, cy+reach]))
         clock = times[-1] if i == count-1 else i/FPS
         canvas.text(14, size-28, f'T {clock:4.1f} S', 2, clock_colour)
         (work / f'{i:04d}.png').write_bytes(studio_render.png(bytes(canvas.pixels), size))

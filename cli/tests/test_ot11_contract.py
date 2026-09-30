@@ -323,15 +323,87 @@ def test_both_negatives_are_filmed_on_the_contracts_filmstrip() -> None:
     assert not committed & {".webm", ".mp4"} and not list(OT11.rglob("*-trace.json"))
 
 
-def test_the_films_one_departure_from_the_frozen_text_is_stated() -> None:
+def test_the_film_is_the_frozen_filmstrip() -> None:
+    """The two places the product's film once departed from the frozen text
+    are both closed in the product, not in the contract: the detail follows
+    the base (ADR-460) and a frame shows its target as a marker (ADR-463)."""
+
+    strip = CONTRACT["judge"]["filmstrip"]
+    assert strip["detail"]["view"] == "side-on, following the base"
+    assert strip["labels"].endswith("a reach frame shows the target as a marker")
+    assert "A reach frame shows the target as a marker." in FLAT
     assert "**The detail is side-on, following the base** (ADR-460)." in README
-    assert "reach frame's target marker is not drawn.**" in FLAT
+    assert "**A frame of an episode with a target shows it as a marker** (ADR-463)." in README
+    assert "target marker is not drawn" not in FLAT
     assert "follows the centre of the whole design, and side-on" not in FLAT
+    # The product's half is pinned where the film is: cli/tests/test_film.py.
+    from cadex_cli import film
+
+    assert film.MARKER_RADIUS * film.FRAME == 9 and film.MARKER_COLOUR == (111, 240, 240)
 
 
-def test_the_one_change_since_the_freeze_is_recorded() -> None:
-    (decision,) = CONTRACT["decisions"]
-    assert decision["adr"] == "ADR-454" and "W10" in decision["change"]
+def test_every_decision_since_the_freeze_is_recorded() -> None:
+    added, limit = CONTRACT["decisions"]
+    assert added["adr"] == "ADR-454" and "W10" in added["change"]
     assert "### Decision: W10 was added after the freeze (ADR-454, 2026-09-30)" in README
+    # The second changes no frozen item, and says that nothing is re-evaluated.
+    assert limit["adr"] == "ADR-463" and "known limit" in limit["change"]
+    assert limit["re_evaluated"].startswith("nothing: no seed, condition, predicate, threshold, rubric line")
+    assert "### What the judge is for, and what it does not see (ADR-463, 2026-09-30)" in README
+    assert "**Nothing frozen changed, so nothing is re-evaluated.**" in README
     decisions = (REPO / "docs/DECISIONS.md").read_text(encoding="utf-8")
     assert "## ADR-454 — The ot11 evaluation contract" in decisions
+    assert "## ADR-463 — " in decisions
+
+
+def test_the_judges_blind_spot_on_stepping_and_slip_is_a_known_limit_and_the_predicates_are_the_authority() -> None:
+    """The owner's ruling of 2026-09-30, held against the receipts it rests
+    on: the judge scored a shuffle's manner 2 on every call, the predicates
+    failed the same seeds on stepping and slip, and the predicates win."""
+
+    judge, scope = CONTRACT["judge"], CONTRACT["judge_scope"]
+    assert scope["adr"] == "ADR-463" and "changing nothing in it" in scope["rule"]
+    jobs = scope["jobs"]
+    assert jobs["predicates"].startswith("Where a predicate measures a property")
+    assert "the predicate is authoritative for it" in jobs["predicates"]
+    assert "falling, flailing or the wrong motion" in jobs["judge"]
+    assert jobs["bar"].startswith("The judge's bar still applies to every judged seed")
+    assert jobs["contradiction"] == ("Where the judge contradicts a measured predicate, the predicate wins, "
+                                     "and the disagreement is recorded.")
+    (limit,) = scope["known_limits"]
+    assert (limit["adr"], limit["trait"], limit["authoritative"]) == ("ADR-463", "V2", ["W5", "W7"])
+    assert "does not block P1" in limit["status"] and "no further judge probe" in limit["status"]
+    measured = limit["measured_on"]
+    assert measured["seeds"] == [1101, 1110] and set(measured["seeds"]) <= set(judge["judged_seeds"])
+    # Every call on those seeds, as judged and with floor marks, scored manner 2...
+    scores = []
+    for name in measured["as_judged"] + measured["with_floor_marks"]:
+        receipt = json.loads((OT11 / name).read_text(encoding="utf-8"))
+        assert receipt["label"].startswith("w2-2") and receipt["seed"] in measured["seeds"], name
+        assert receipt["medians"]["V2"] == 2 >= judge["bar"]["trait_min"], name
+        scores += [call["scores"]["V2"]["score"] for call in receipt["raw"]]
+    assert len(scores) == measured["calls"] == 18
+    assert scores.count(2) == measured["calls_scoring_manner_2"] == 18
+    # ...while the predicates the contract trusts failed the same seeds on stepping and slip.
+    report = json.loads((OT11 / measured["evaluation"]).read_text(encoding="utf-8"))
+    rows = {row["seed"]: row["metrics"] for row in report["seeds"]}
+    shares = [(round(100 * rows[seed]["step_share_min"], 1), round(100 * rows[seed]["slip_share_max"]))
+              for seed in measured["seeds"]]
+    assert shares == [(8.5, 60), (3.6, 81)]
+    for seed in measured["seeds"]:
+        assert rows[seed]["step_share_min"] < WALK["W5"][1]["min"][1]
+        assert rows[seed]["slip_share_max"] > WALK["W7"][1]["max"]
+    for phrase in ("**Where a predicate measures a property, the predicate is authoritative for it.**",
+                   "**The judge's job is what no predicate measures**",
+                   "**The judge's bar still applies** to every judged seed of R1, R2 and R3.",
+                   "**Where the judge contradicts a measured predicate, the predicate wins**",
+                   "**Known limit: the judge's manner score (V2) is not a reading of stepping or of foot slip.**",
+                   "**all eighteen calls scored manner 2**", "8.5 % and 3.6 %", "60 % and 81 %",
+                   "It does not block P1, and it calls for no further judge probe."):
+        assert phrase in FLAT, phrase
+    # Recording it moved nothing the freeze holds.
+    assert judge["rubric_sha256"] == RUBRIC_SHA256
+    assert judge["bar"] == {"total_min": 9, "total_max": 12, "trait_min": 2, "scope": "each judged seed"}
+    assert CONTRACT["confirmation"].startswith(
+        "A behaviour is met only when its pre-registered confirmation evaluation passes every predicate "
+        "on all ten seeds and every judged seed meets the judge's bar.")

@@ -30452,3 +30452,90 @@ From the training venv on CPU (a scratch venv layered over
 `_action_filter`, `_command_slew`, `_mjx_agreement`, `_mjx_geom_pairs`,
 `_sensor_grounding`, `_policy_live` and `training/test_curriculum_warm_start.py`
 123 passed, none skipped.
+
+## ADR-463 — The judge's blind spot on stepping and slip is a recorded limit, and the film draws the target marker (2026-09-30)
+
+**Context.** Two items stood between the ot11 contract and its first
+criterion (P1). ADR-460 and ADR-461 measured that the blind video judge
+scores a shuffle's manner as "real steps", and left that as a finding with
+no place in the contract. ADR-462 put the target in every frame of a trace
+and left the film not drawing it, though the frozen filmstrip text says "a
+reach frame shows the target as a marker".
+
+On 2026-09-30 the owner ruled on the first in the charter. Where the
+success spec measures a property, the spec is authoritative for it. A judge
+blind spot on a measured property is recorded in the contract as a known
+limit, does not block P1 and calls for no more judge probes. The judge's
+job is what the spec cannot measure. The bar still applies to R1–R3, and
+where the judge contradicts a measured predicate the predicate wins and the
+disagreement is recorded.
+
+**Decision.**
+
+1. **The limit is in the contract.** `contract.json` gains
+   `judge_scope`, beside the frozen `judge` block and not in it:
+   `known_limits` (one entry: the manner score, V2, is not a reading of
+   stepping or of foot slip; W5 and W7 are) and `jobs` (the owner's four
+   sentences). `docs/probes/ot11/README.md` gains *What the
+   judge is for, and what it does not see*. The contract's `decisions` list
+   gets its second entry.
+2. **Nothing frozen changed, so nothing is re-evaluated.** No seed,
+   condition, predicate, threshold, rubric line, judge input, judge
+   instruction or bar moved. The rubric's and the instructions' digests are
+   the pinned ones. Every earlier reading and score stands.
+3. **How a contradiction is handled is the owner's sentence and no more.**
+   A judged seed under the bar is reported as under the bar, with the
+   predicate it contradicts beside it. The contract does not lower the bar
+   for that case. The owner holds the checkboxes and reads both.
+4. **The film marks the target** (`cli/cadex_cli/film.py`). A trace whose
+   `goal_channels` name a point goal is drawn with a ring centred on the
+   target in force at each frame's own time, in the overview, the detail
+   and the video. The ring is cyan `#6FF0F0` (the dashboard's `--info`,
+   which no appearance role uses) inside a rim of the scene's background,
+   9 px in radius on a 256 px frame.
+5. **The ring is an overlay, not a solid.** A depth-tested ball was the
+   other candidate. It would vanish inside the hand exactly when a reach
+   succeeds, and would read as a part of the robot. A hollow ring drawn
+   over the solids stays visible and leaves the tip visible through it.
+6. **Windows.** The overview's fixed window and the video's hold every
+   target beside the path. The detail holds them when there is no floating
+   base. A detail that follows a base stays the design's size (ADR-460) and
+   marks a target only while it is inside; `marked_frames` says how many.
+7. **No silent unmarked film.** The film asks for no behaviour's name and
+   reads the target from the trace alone. If the evaluation's row says the
+   seed drew a point goal and the trace names none, the film is refused
+   with that reason.
+8. `video._studio_frames` takes two optional arguments, `held` and
+   `overlay`. A run's studio video passes neither and is drawn as before.
+
+**Measured.** Seed 1101 of `ot11-w2-negative` (no goal) was drawn from its
+stored trace by the film at `339b8bf1` and by this one, into scratch
+directories, with nothing written to the project. Both sheets came out byte
+for byte the same: overview `0a31b81b…`, detail `911e522d…` (drawn with no
+inventory, so every part as shell). The known limit's numbers are read from
+the receipts by the test: eighteen calls on `w2-2` seeds 1101 and 1110, all
+scoring manner 2, against step shares of 8.5 % and 3.6 % and slip shares of
+60 % and 81 %.
+
+**Not shown.** No arm with a point goal has been evaluated through the
+product yet, so the marker has been drawn on hand-written traces and on no
+real reach. The first ot11 reach evaluation is the first real one. The
+judge has not been shown a marked sheet.
+
+**Not changed.** No engine file, protocol op, `OP_ARG_SPECS` or shell file,
+so no payload moves. No new dependency. Nothing removed. The film's
+identity (`style_sha256`) changes with its source, as it does on any edit;
+the retained receipts keep the digest they were drawn under.
+
+**Evidence.** `cli/tests/test_film.py`, six new tests: the ring read back
+from both sheets' pixels at the projected target of each frame's own time,
+hollow, jumping once where the target does; absent from a trace with no
+point goal; whole when the target is inside a solid; held by a fixed window
+and not by a following one; marked in every video frame; refused for a
+point goal that is not three millimetre channels, for a frame with no goal
+row, and for a seed the report says drew one. Against the film at
+`339b8bf1` all six fail. `cli/tests/test_ot11_contract.py` holds the limit,
+the jobs and both decisions against the receipts and the page.
+`pixi run python -m pytest cli/tests`: 1219 passed, 1 skipped (1212 and 1
+before). `pixi run test-engine`: 2507 passed, 57 skipped, as before. No
+packaged gate: no engine, protocol or payload file changed.

@@ -93,12 +93,20 @@ def _pose(x: float, y: float, z: float = 0.0) -> dict:
     return {"position_mm": [x, y, z], "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}
 
 
+#: What a trace whose task states a commanded speed and a target declares
+#: once (ADR-462): each frame's ``goal`` row is read in this order.
+GOAL_CHANNELS = [{"channel": "pace", "goal": "pace", "kind": "speed", "unit": "mm/s"}] + [
+    {"channel": f"target_{axis}", "goal": "target", "kind": "point", "unit": "mm"} for axis in "xyz"]
+
+
 def _trace(out: Path, seed: int, *, seconds: float = 4.0, velocity=(100.0, 0.0), hz: int = 50,
-           trailing: float = 1.0) -> dict:
+           trailing: float = 1.0, target=None, channels=GOAL_CHANNELS) -> dict:
     """One seed's trace: the design translating at ``velocity`` mm/s over its floor.
 
     ``trailing`` is the share of that velocity the rear post keeps: at 0 it
     stays where it started while the body and the front post leave it.
+    ``target`` maps a time to the point the episode asks for at that time;
+    with one, the trace carries its goal as the engine's does.
     """
 
     frames = [{"frame_kind": "input", "nominal_time_s": None, "component_placements": {}}]
@@ -108,8 +116,10 @@ def _trace(out: Path, seed: int, *, seconds: float = 4.0, velocity=(100.0, 0.0),
         frames.append({"frame_kind": "solver_output", "nominal_time_s": t, "component_placements": {
             "c_body": _pose(x, y), "c_post_a": _pose(trailing * x - 30, trailing * y),
             "c_post_b": _pose(x + 30, y),
-            "c_floor": _pose(0, 0)}})
-    data = json.dumps({"schema": film.TRACE_SCHEMA, "frames": frames}).encode()
+            "c_floor": _pose(0, 0)},
+            **({"goal": [80.0, *target(t)]} if target else {})})
+    data = json.dumps({"schema": film.TRACE_SCHEMA, "frames": frames,
+                       **({"goal_channels": channels} if target else {})}).encode()
     out.mkdir(parents=True, exist_ok=True)
     (out / f"seed-{seed}-trace.json").write_bytes(data)
     return {"file": f"seed-{seed}-trace.json", "sha256": _sha(data), "bytes": len(data)}
@@ -334,9 +344,9 @@ def windows(monkeypatch):
     seen = []
     draw = film._Stage.draw
 
-    def recording(self, poses, basis, bounds, floor, clock):
+    def recording(self, poses, basis, bounds, floor, clock, target=None):
         seen.append((poses, basis, bounds))
-        return draw(self, poses, basis, bounds, floor, clock)
+        return draw(self, poses, basis, bounds, floor, clock, target=target)
 
     monkeypatch.setattr(film._Stage, "draw", recording)
     return seen
@@ -385,6 +395,149 @@ def test_a_mechanism_with_no_floating_base_is_detailed_in_one_fixed_window(tmp_p
     assert len({(tuple(lo), tuple(hi)) for _poses, _basis, (lo, hi) in shown}) == 1
     # 220 mm of travel over the twelve moments and the 80 mm body, all in it.
     assert sheet["half_extent_mm"] == pytest.approx((220 + 80) / 2 * (1 + 2 * film.PAD))
+
+
+# -- the target marker (ADR-463) ---------------------------------------------------
+
+A, B = (60.0, 40.0, 120.0), (-80.0, -30.0, 25.0)
+
+
+def _two_targets(t: float) -> tuple[float, float, float]:
+    """Target A, then target B from 2.0 s."""
+
+    return A if t < 2.0 else B
+
+
+def _ring(frame, size: int) -> list[tuple[int, int]]:
+    """The pixels of a frame that are the marker's colour and nothing the scene draws."""
+
+    return [(i % size, i // size) for i, (r, g, b) in enumerate(frame) if g > 150 and b > 150 and g - r > 60]
+
+
+def _middle(hits) -> tuple[float, float]:
+    return sum(x for x, _ in hits) / len(hits) + .5, sum(y for _, y in hits) / len(hits) + .5
+
+
+def test_a_trace_that_says_where_to_go_is_marked_there_in_every_frame(tmp_path, small, windows) -> None:
+    """The frozen filmstrip's "a frame shows the target as a marker": a ring
+    centred where the target in force at the frame's own time projects, in
+    both sheets, that jumps when the target does."""
+
+    _project(tmp_path)
+    out = tmp_path / "evaluations" / "one"
+    report = _report(out, base=None, velocity=(0.0, 0.0), onset=None, target=_two_targets)
+    block = film.film_evaluation(tmp_path, out, report, seeds=[1101], video=False)
+    (seed,) = block["seeds"]
+
+    assert seed["target"] == {"goal": "target", "channels": ["target_x", "target_y", "target_z"],
+                              "unit": "mm", "positions": [{"from_s": 0.0, "point_mm": list(A)},
+                                                          {"from_s": 2.0, "point_mm": list(B)}]}
+    assert block["marker"]["color"] == "#6FF0F0" and block["marker"]["radius_px"] == film.MARKER_RADIUS * small
+    for key, shown in (("overview", windows[:film.STRIP]), ("detail", windows[film.STRIP:])):
+        sheet = seed[key]
+        assert sheet["marked_frames"] == 12
+        pixels = _pixels(out / sheet["file"])
+        middles = []
+        for index, (when, (_poses, basis, bounds)) in enumerate(zip(sheet["times_s"], shown)):
+            frame = _frame(pixels, index, small)
+            hits = _ring(frame, small)
+            assert len(hits) >= 8, (key, index)
+            expected = film._pixel(small, basis, bounds, _two_targets(when))
+            middles.append(_middle(hits))
+            assert middles[-1] == pytest.approx(expected, abs=0.75), (key, index)
+            # A ring, not a disc: what is at the target stays visible through it.
+            cx, cy = (int(value) for value in expected)
+            assert (cx, cy) not in hits, (key, index)
+            assert all(abs(math.hypot(x + .5 - expected[0], y + .5 - expected[1])
+                           - film.MARKER_RADIUS * small) < 2 for x, y in hits), (key, index)
+        moved = [at for at in range(1, 12) if math.dist(middles[at], middles[at - 1]) > 1]
+        # One jump, at the first frame from 2.0 s on.
+        assert moved == [next(at for at, when in enumerate(sheet["times_s"]) if when >= 2.0)], key
+
+
+def test_a_trace_that_says_nothing_about_where_to_go_is_not_marked(tmp_path, small) -> None:
+    _project(tmp_path)
+    out = tmp_path / "evaluations" / "one"
+    block = film.film_evaluation(tmp_path, out, _report(out), seeds=[1101], video=False)
+    (seed,) = block["seeds"]
+    assert seed["target"] is None
+    for key in ("overview", "detail"):
+        assert seed[key]["marked_frames"] == 0
+        pixels = _pixels(out / seed[key]["file"])
+        assert not any(_ring(_frame(pixels, index, small), small) for index in range(12)), key
+
+
+def test_the_marker_is_drawn_over_the_solids(tmp_path, small) -> None:
+    """A tip that arrives at its target does not hide it: the ring is whole
+    when the target is in the middle of the body."""
+
+    _project(tmp_path)
+    out = tmp_path / "evaluations" / "one"
+    inside = film.film_evaluation(
+        tmp_path, out, _report(out, base=None, velocity=(0.0, 0.0), target=lambda t: (0.0, 0.0, 40.0)),
+        seeds=[1101], video=False)["seeds"][0]
+    covered = [len(_ring(_frame(_pixels(out / inside[key]["file"]), 0, small), small))
+               for key in ("overview", "detail")]
+    clear = film.film_evaluation(
+        tmp_path, out, _report(out, base=None, velocity=(0.0, 0.0), target=lambda t: (0.0, 60.0, 100.0)),
+        seeds=[1101], video=False)["seeds"][0]
+    free = [len(_ring(_frame(_pixels(out / clear[key]["file"]), 0, small), small))
+            for key in ("overview", "detail")]
+    assert min(covered) >= 8 and covered == pytest.approx(free, abs=4)
+
+
+def test_a_fixed_window_holds_the_target_and_a_following_one_stays_the_designs_size(tmp_path, small) -> None:
+    far = lambda t: (0.0, 400.0, 300.0)                                     # noqa: E731
+    _project(tmp_path)
+    out = tmp_path / "evaluations" / "one"
+    plain = film.film_evaluation(tmp_path, out, _report(out, base=None, velocity=(0.0, 0.0)),
+                                 seeds=[1101], video=False)["seeds"][0]
+    fixed = film.film_evaluation(tmp_path, out, _report(out, base=None, velocity=(0.0, 0.0), target=far),
+                                 seeds=[1101], video=False)["seeds"][0]
+    # No floating base: both windows grow to hold a target far outside the design.
+    assert fixed["overview"]["half_extent_mm"] > 2 * plain["overview"]["half_extent_mm"]
+    assert fixed["detail"]["half_extent_mm"] > 2 * plain["detail"]["half_extent_mm"]
+    assert fixed["overview"]["marked_frames"] == fixed["detail"]["marked_frames"] == 12
+
+    followed = film.film_evaluation(tmp_path, out, _report(out, velocity=(0.0, 0.0), target=far),
+                                    seeds=[1101], video=False)["seeds"][0]
+    # A base is followed at the design's size: the overview holds the target, the detail does not.
+    assert followed["overview"]["marked_frames"] == 12
+    assert followed["detail"]["half_extent_mm"] == plain["detail"]["half_extent_mm"]
+    assert followed["detail"]["marked_frames"] == 0
+    pixels = _pixels(out / followed["detail"]["file"])
+    assert not any(_ring(_frame(pixels, index, small), small) for index in range(12))
+
+
+def test_a_point_goal_the_film_cannot_place_is_a_reason(tmp_path, small) -> None:
+    _project(tmp_path)
+    out = tmp_path / "evaluations" / "one"
+    metres = [{**row, "unit": "m"} for row in GOAL_CHANNELS]
+    with pytest.raises(film.FilmError, match="'target' is not three channels in millimetres"):
+        film.film_evaluation(tmp_path, out, _report(out, target=_two_targets, channels=metres),
+                             seeds=[1101], video=False)
+    with pytest.raises(film.FilmError, match="'target' is not three channels in millimetres"):
+        film.film_evaluation(tmp_path, out, _report(out, target=_two_targets, channels=GOAL_CHANNELS[:3]),
+                             seeds=[1101], video=False)
+    # A frame without its goal row: the declaration and the frames disagree.
+    report = _report(out, target=_two_targets)
+    path = out / report["seeds"][0]["trace"]["file"]
+    trace = json.loads(path.read_text())
+    del trace["frames"][7]["goal"]
+    path.write_bytes(json.dumps(trace).encode())
+    report["seeds"][0]["trace"]["sha256"] = _sha(path.read_bytes())
+    with pytest.raises(film.FilmError, match="a frame carries no target"):
+        film.film_evaluation(tmp_path, out, report, seeds=[1101], video=False)
+    # A goal that is not a point is nobody's target.
+    block = film.film_evaluation(
+        tmp_path, out, _report(out, target=_two_targets, channels=GOAL_CHANNELS[:1]), seeds=[1101],
+        video=False)
+    assert block["seeds"][0]["target"] is None
+    # ...unless the evaluation says this seed drew one: then an unmarked film would mislead.
+    report = _report(out, target=_two_targets, channels=GOAL_CHANNELS[:1])
+    report["seeds"][0]["drawn"]["goal"] = [{"name": "target", "kind": "point", "segments": []}]
+    with pytest.raises(film.FilmError, match="seed 1101 drew a point goal and its trace carries none"):
+        film.film_evaluation(tmp_path, out, report, seeds=[1101], video=False)
 
 
 def test_a_base_that_is_not_drawn_is_a_reason(tmp_path, small) -> None:
@@ -552,6 +705,38 @@ def test_the_first_filmed_seed_is_also_a_video_that_decodes_whole(tmp_path, smal
     assert not list(out.glob(".film-*")), "the scratch frames were left behind"
     assert [line.split()[2:5] for line in lines] == [
         ["seed", "1102", "sheets"], ["seed", "1101", "sheets"], ["seed", "1102", "video"]]
+
+
+@needs_ffmpeg
+def test_the_video_marks_the_target_and_keeps_it_in_its_window(tmp_path, small, monkeypatch) -> None:
+    monkeypatch.setitem(studio_video.STUDIO, "size", 96)
+    drawn = []
+    encode = studio_video.encode
+
+    def keeping(work, count):
+        drawn.extend(_pixels(work / f"{index:04d}.png") for index in range(count))
+        return encode(work, count)
+
+    monkeypatch.setattr(studio_video, "encode", keeping)
+    _project(tmp_path)
+    out = tmp_path / "evaluations" / "one"
+    # The target stays 300 mm up the floor from a design that walks away along +X.
+    report = _report(out, seconds=1.0, target=lambda t: (0.0, 300.0, 40.0))
+    block = film.film_evaluation(tmp_path, out, report, seeds=[1101])
+
+    clip = block["seeds"][0]["video"]
+    assert block["state"] == "ready" and (clip["frames"], clip["marked_frames"]) == (11, 11)
+    assert len(drawn) == 11
+    for width, _height, data in drawn:
+        frame = [tuple(data[3 * i:3 * i + 3]) for i in range(width * width)]
+        assert len(_ring(frame, width)) >= 8
+
+    # The same rollout with nowhere to go: no ring, and a window the design's own size.
+    drawn.clear()
+    block = film.film_evaluation(tmp_path, out, _report(out, seconds=1.0), seeds=[1101])
+    assert block["seeds"][0]["video"]["marked_frames"] == 0
+    for width, _height, data in drawn:
+        assert not _ring([tuple(data[3 * i:3 * i + 3]) for i in range(width * width)], width)
 
 
 def test_a_video_that_cannot_be_encoded_leaves_the_sheets_and_says_why(tmp_path, small, monkeypatch) -> None:

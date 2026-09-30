@@ -440,10 +440,16 @@ def test_the_floor_marks_probe_left_the_manner_score_where_it_was_and_changed_no
     # One film drew all four, and it is not the film the contract's receipts were judged on.
     assert len(styles) == 1 and styles != {report["film"]["style_sha256"]}
     assert (OT11 / "retained" / "probe-marks.patch").is_file() and "probe-marks.patch" in flat
-    # Not adopted: the film draws no marks, the judge is told of none, and no decision was added.
+    # Not adopted: the film draws no floor marks (the patch's ``touched`` and
+    # ``_marks`` are not in it; the target marker of ADR-463 is another
+    # thing), the judge is told of none, and the probe added no decision.
+    # The one added since records the limit the probe measured and changes
+    # no frozen item.
     film_source = (REPO / "cli/cadex_cli/film.py").read_text(encoding="utf-8")
-    assert "marks" not in film_source and "mark" not in judge.INSTRUCTIONS
+    assert "_marks(" not in film_source and "def touched" not in film_source
+    assert "floor mark" not in film_source and "mark" not in judge.INSTRUCTIONS
     assert CONTRACT["judge_procedure"]["instructions_sha256"] == INSTRUCTIONS_SHA256
-    assert [row["adr"] for row in CONTRACT["decisions"]] == ["ADR-454"]
+    assert [row["adr"] for row in CONTRACT["decisions"]] == ["ADR-454", "ADR-463"]
+    assert CONTRACT["decisions"][1]["re_evaluated"].startswith("nothing:")
     assert "### A probe: floor marks in the detail sheet, measured and not adopted (ADR-461)" in README
     assert "## ADR-461 — " in (REPO / "docs/DECISIONS.md").read_text(encoding="utf-8")

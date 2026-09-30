@@ -380,6 +380,52 @@
     "not_a_score": "a reply without four integer scores is retried once; a second failure, a refusal, a harness error or an answer from any model but the pinned one writes no score and exits 2",
     "rule": "Pinned before any ot11 policy was judged. It adds to the frozen judge block and changes nothing in it; changing the instructions or the isolation later is a recorded decision that re-judges every earlier ot11 policy."
   },
+  "judge_scope": {
+    "adr": "ADR-463",
+    "rule": "Recorded beside the frozen judge block and changing nothing in it: what the judge is for, and what it has been measured not to see.",
+    "jobs": {
+      "source": "the owner, in the ot11 charter, 2026-09-30 (ADR-463)",
+      "predicates": "Where a predicate measures a property (slip, stepping, foot clearance, drift, heading, reach error), the predicate is authoritative for it.",
+      "judge": "What no predicate measures: whether the behaviour reads as the intended one at all, and gross failures such as falling, flailing or the wrong motion.",
+      "bar": "The judge's bar still applies to every judged seed of R1, R2 and R3. It is the bar as frozen.",
+      "contradiction": "Where the judge contradicts a measured predicate, the predicate wins, and the disagreement is recorded."
+    },
+    "known_limits": [
+      {
+        "adr": "ADR-463",
+        "date": "2026-09-30",
+        "limit": "The judge's manner score is not a reading of stepping or of foot slip.",
+        "trait": "V2",
+        "authoritative": [
+          "W5",
+          "W7"
+        ],
+        "why": "Twelve still frames 0.04 s apart, in a window that follows the base, show legs in different positions. They do not show that a foot on the floor is moving across it, or how short and how brief each lift is. W5 and W7 are totals over the whole episode, which twelve frames do not hold.",
+        "measured_on": {
+          "policy": "w2-2",
+          "evaluation": "retained/p2-w2-2-evaluation.json",
+          "seeds": [
+            1101,
+            1110
+          ],
+          "as_judged": [
+            "retained/judge-w2-2-seed-1101.json",
+            "retained/judge-w2-2-seed-1110.json"
+          ],
+          "with_floor_marks": [
+            "retained/probe-marks-a-w2-2-seed-1101.json",
+            "retained/probe-marks-a-w2-2-seed-1110.json",
+            "retained/probe-marks-b-w2-2-seed-1101.json",
+            "retained/probe-marks-b-w2-2-seed-1110.json"
+          ],
+          "calls": 18,
+          "calls_scoring_manner_2": 18
+        },
+        "consequence": "A shuffle that stays upright can meet the judge's bar. It cannot pass the contract: W5 and W7 are read on all ten seeds, and a behaviour is met only when the predicates pass and the bar is met.",
+        "status": "A known limit, recorded on the owner's direction. It does not block P1 and calls for no further judge probe."
+      }
+    ]
+  },
   "confirmation": "A behaviour is met only when its pre-registered confirmation evaluation passes every predicate on all ten seeds and every judged seed meets the judge's bar. When the predicates and the judge disagree, both are recorded and the disagreement is diagnosed before anything is trained again.",
   "known_negatives": {
     "measured_at": "2026-09-30, before any ot11 training run",
@@ -717,6 +763,13 @@
       "change": "W10 added to the walk spec after the freeze commit ff066f1b and before any training",
       "why": "measuring w2-2 showed its feet up to 21 mm below the floor plane, which no predicate read",
       "re_evaluated": "both known negatives; no other ot11 policy existed"
+    },
+    {
+      "adr": "ADR-463",
+      "date": "2026-09-30",
+      "change": "the judge's blind spot on stepping and slip recorded as a known limit (judge_scope.known_limits), with the owner's division of jobs between the predicates and the judge (judge_scope.jobs)",
+      "why": "on w2-2 seeds 1101 and 1110 all eighteen calls scored manner 2 for a gait that fails W5 and W7 on every seed (ADR-460, ADR-461); the owner ruled on 2026-09-30 that the predicate is the authority for a property it measures and that such a blind spot is a recorded limit",
+      "re_evaluated": "nothing: no seed, condition, predicate, threshold, rubric line, judge input, judge instruction or bar changed, so no earlier reading or score moves"
     }
   ]
 }

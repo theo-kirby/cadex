@@ -14,7 +14,8 @@ to look at:
   consecutive moments a declared step apart, side-on to the direction the
   evaluation rig's base travelled, the window following that base. A
   mechanism with no floating base has a fixed one, and its window is fixed.
-  Every frame carries its simulation time and nothing else;
+  Every frame carries its simulation time and, where the trace says where
+  the episode was asked to go, a ring at that point (ADR-463). Nothing else;
 - a **video** of the first filmed seed, drawn as a run's studio video is
   (:mod:`video`), ten frames a second.
 
@@ -22,7 +23,8 @@ The solids are the accepted attempt's own retained tessellation, moved
 rigidly to each frame's recorded pose. Nothing is rebuilt and no engine is
 opened. Nothing here knows what the behaviour is: the detail starts where
 the seed's first drawn disturbance begins, or at the middle of an episode
-that has none, unless the caller says otherwise.
+that has none, unless the caller says otherwise, and the ring is drawn for
+any trace whose frames carry a point goal (ADR-462), whatever the task.
 """
 
 from __future__ import annotations
@@ -58,6 +60,16 @@ PAD = 0.10
 #: A design that ends up nearer its start than this fraction of its own size
 #: has no direction of travel, and its detail is the front view.
 TRAVEL_FRACTION = 0.05
+#: The target marker (ADR-463): a ring centred on the point a trace's point
+#: goal names, its radius and its band as shares of the frame's edge. It is
+#: drawn over the solids, so a tip that arrives does not hide it, and it is
+#: hollow, so it does not hide the tip. The colour is the dashboard's
+#: ``--info``, which no appearance role uses; the rim round the band is the
+#: scene's background, so the ring reads against a light part as well.
+MARKER_RADIUS = 9 / 256
+MARKER_BAND = 2.5 / 256
+MARKER_RIM_PX = 1.0
+MARKER_COLOUR = (111, 240, 240)
 #: Declared bound on drawing one seed's two sheets.
 STRIP_SECONDS = 300
 OVERVIEW_NAME = "seed-{seed}-overview.png"
@@ -211,11 +223,13 @@ def materials(sources: Mapping[str, str], drawn: Sequence[str], revision: str,
 
 # -- one seed's trace ---------------------------------------------------------
 
-def read_trace(path: Path, expected_sha256: str, names: Sequence[str]) -> tuple[list[dict], list[float]]:
-    """The solved frames of one seed's trace and their times, checked.
+def read_trace(path: Path, expected_sha256: str, names: Sequence[str]
+               ) -> tuple[list[dict], list[float], dict[str, Any] | None]:
+    """The solved frames of one seed's trace, their times and its target, checked.
 
     The file filmed is the file measured: its digest is the one the
-    evaluation recorded for the seed.
+    evaluation recorded for the seed. The target is ``None`` for a trace
+    that carries no point goal (:func:`target_track`).
     """
 
     _require(path.is_file() and not path.is_symlink(), f"{path.name} is not in the evaluation")
@@ -238,7 +252,40 @@ def read_trace(path: Path, expected_sha256: str, names: Sequence[str]) -> tuple[
                 studio_video.placed((), poses[name])
             except (ValueError, KeyError, TypeError) as exc:
                 raise FilmError(f"{path.name}: {exc}") from exc
-    return frames, [float(t) for t in times]
+    times = [float(t) for t in times]
+    return frames, times, target_track(trace, frames, times, path.name)
+
+
+def target_track(trace: Mapping[str, Any], frames: Sequence[Mapping[str, Any]],
+                 times: Sequence[float], name: str) -> dict[str, Any] | None:
+    """Where each solved frame was asked to go, or ``None`` for a trace that says nothing.
+
+    A trace whose task states a point goal names its three channels once
+    (``goal_channels``) and carries the point in force in every frame's
+    ``goal`` row, in millimetres in the world (ADR-462). ``points`` is that
+    point per solved frame; ``positions`` is each place it held, from when.
+    """
+
+    rows = trace.get("goal_channels")
+    rows = rows if isinstance(rows, list) else []
+    places = [at for at, row in enumerate(rows) if isinstance(row, Mapping) and row.get("kind") == "point"]
+    if not places:
+        return None
+    goal = str(rows[places[0]].get("goal") or "")
+    places = [at for at in places if rows[at].get("goal") == goal]
+    _require(len(places) == 3 and all(rows[at].get("unit") == "mm" for at in places),
+             f"{name}: the point goal {goal!r} is not three channels in millimetres")
+    points = []
+    for frame in frames:
+        row = frame.get("goal")
+        _require(isinstance(row, list) and len(row) == len(rows)
+                 and all(type(row[at]) in (int, float) and math.isfinite(row[at]) for at in places),
+                 f"{name}: a frame carries no {goal}")
+        points.append(tuple(float(row[at]) for at in places))
+    positions = [{"from_s": times[at], "point_mm": list(point)} for at, point in enumerate(points)
+                 if at == 0 or point != points[at - 1]]
+    return {"goal": goal, "channels": [str(rows[at].get("channel") or "") for at in places],
+            "unit": "mm", "points": points, "positions": positions}
 
 
 class _Stage:
@@ -299,15 +346,55 @@ class _Stage:
         lowest = min(p[2] for frame in frames for p in self.box(frame["component_placements"]))
         return lowest, "lowest point of the drawn solids' bounds"
 
-    def draw(self, poses: Mapping[str, Any], basis, bounds, floor: float, clock: str) -> bytes:
+    def draw(self, poses: Mapping[str, Any], basis, bounds, floor: float, clock: str,
+             target: Sequence[float] | None = None) -> bytes:
         posed = [tri for name in self.names
                  for tri in studio_video._posed(self.local[name], poses[name])]
         shadow = studio_render._contact_shadow(posed, floor=floor)
         pixels, _ = studio_render.studio(posed, basis, bounds=bounds, size=FRAME, shadow=shadow)
         canvas = studio_render.Canvas(FRAME, FRAME, (0, 0, 0))
         canvas.pixels = bytearray(pixels)
+        if target is not None:
+            mark(canvas.pixels, FRAME, basis, bounds, target)
         canvas.text(10, FRAME - 24, clock, 2, studio_render.PALETTE["ink_2"])
         return bytes(canvas.pixels)
+
+
+def _pixel(size: int, basis, bounds, point: Sequence[float]) -> tuple[float, float]:
+    """Where ``point`` falls in a ``size`` px frame drawn on ``bounds``: the renderer's own mapping."""
+
+    right, up = basis[0], basis[1]
+    lo, hi = bounds
+    scale = size / max(hi[0] - lo[0], hi[1] - lo[1])
+    across = sum(p * r for p, r in zip(point, right)) - (lo[0] + hi[0]) / 2
+    above = sum(p * u for p, u in zip(point, up)) - (lo[1] + hi[1]) / 2
+    return size / 2 + across * scale, size / 2 - above * scale
+
+
+def mark(pixels: bytearray, size: int, basis, bounds, point: Sequence[float]) -> bool:
+    """Draw the target marker for ``point`` over a rendered frame; say whether its centre is in it.
+
+    A ring of :data:`MARKER_COLOUR` inside a rim of the scene's background,
+    antialiased by how much of each pixel the band covers. A ring partly
+    outside the frame is drawn as far as the frame goes.
+    """
+
+    cx, cy = _pixel(size, basis, bounds, point)
+    radius, band = MARKER_RADIUS * size, max(1.5, MARKER_BAND * size) / 2
+    rim = studio_render.PALETTE["bg"]
+    outer = radius + band + MARKER_RIM_PX + 1
+    for oy in range(max(0, math.floor(cy - outer)), min(size, math.ceil(cy + outer))):
+        for ox in range(max(0, math.floor(cx - outer)), min(size, math.ceil(cx + outer))):
+            off = abs(math.hypot(ox + .5 - cx, oy + .5 - cy) - radius)
+            ring = min(1.0, max(0.0, band + .5 - off))
+            edge = min(1.0, max(0.0, band + MARKER_RIM_PX + .5 - off))
+            if edge <= 0.0:
+                continue
+            at = 3 * (oy * size + ox)
+            for j in range(3):
+                under = pixels[at + j] + (rim[j] - pixels[at + j]) * edge
+                pixels[at + j] = round(under + (MARKER_COLOUR[j] - under) * ring)
+    return 0 <= cx < size and 0 <= cy < size
 
 
 def _projected(points, basis) -> tuple[float, float, float, float]:
@@ -355,11 +442,18 @@ def travel_azimuth(stage: _Stage, frames: Sequence[Mapping[str, Any]],
     return math.degrees(math.atan2(far[1] - y0, far[0] - x0)), travel
 
 
-def overview(stage: _Stage, frames, times, floor: float, deadline: float) -> tuple[bytes, dict[str, Any]]:
-    """Twelve frames evenly spaced over the episode, in one window on the whole path."""
+def overview(stage: _Stage, frames, times, floor: float, deadline: float,
+             points: Sequence[Sequence[float]] | None = None) -> tuple[bytes, dict[str, Any]]:
+    """Twelve frames evenly spaced over the episode, in one window on the whole path.
+
+    ``points`` is the target of each solved frame, where the trace states
+    one: the window holds every one of them beside the path, and each frame
+    is marked with its own.
+    """
 
     basis = studio_render.HERO
-    boxes = [_projected(stage.box(frame["component_placements"]), basis) for frame in frames]
+    boxes = [_projected(stage.box(frame["component_placements"]) + ([points[at]] if points else []), basis)
+             for at, frame in enumerate(frames)]
     lo = [min(b[0] for b in boxes), min(b[1] for b in boxes)]
     hi = [max(b[2] for b in boxes), max(b[3] for b in boxes)]
     half = max(hi[0] - lo[0], hi[1] - lo[1]) / 2 * (1 + 2 * PAD)
@@ -372,16 +466,27 @@ def overview(stage: _Stage, frames, times, floor: float, deadline: float) -> tup
     for at in picked:
         _require(time.monotonic() < deadline, f"the filmstrip ran past {STRIP_SECONDS} seconds")
         drawn.append(stage.draw(frames[at]["component_placements"], basis, bounds, floor,
-                                f"T {times[at]:.2f} S"))
+                                f"T {times[at]:.2f} S", target=points[at] if points else None))
     return _sheet(drawn), {
         "frames": len(drawn), "times_s": [times[at] for at in picked],
         "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
         "half_extent_mm": half,
+        "marked_frames": _marked(basis, [bounds] * len(picked), picked, points),
     }
 
 
+def _marked(basis, windows, picked: Sequence[int], points) -> int:
+    """How many of a sheet's frames have their target's centre inside them."""
+
+    if not points:
+        return 0
+    return sum(1 for at, bounds in zip(picked, windows)
+               if all(0 <= value < FRAME for value in _pixel(FRAME, basis, bounds, points[at])))
+
+
 def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
-           start: float, step: float, base: str | None = None) -> tuple[bytes, dict[str, Any]]:
+           start: float, step: float, base: str | None = None,
+           points: Sequence[Sequence[float]] | None = None) -> tuple[bytes, dict[str, Any]]:
     """Up to twelve consecutive moments ``step`` apart from ``start``, side-on, following ``base``.
 
     ``base`` is the evaluation rig's floating base: the window is centred on
@@ -389,6 +494,11 @@ def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
     each. A mechanism with none (``None``) has a base fixed to the world, and
     the window is fixed on everything the shown moments cover. The window
     never moves up or down, so the floor stays where it is.
+
+    ``points`` is the target of each solved frame, where the trace states
+    one, and each frame is marked with its own. A fixed window holds the
+    shown moments' targets. A window that follows the base stays the
+    design's size and marks a target only while it is inside.
 
     An episode that ended before the last of them is shown to its end: the
     window of moments slides back until its last one is the final frame.
@@ -407,7 +517,9 @@ def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
     azimuth, travel = travel_azimuth(stage, frames, base)
     basis = studio_render.camera(azimuth, DETAIL_ELEVATION_DEGREES)
     right = basis[0]
-    boxes = [_projected(stage.box(frames[at]["component_placements"]), basis) for at in picked]
+    held = bool(points) and base is None
+    boxes = [_projected(stage.box(frames[at]["component_placements"]) + ([points[at]] if held else []),
+                        basis) for at in picked]
     low, high = min(b[1] for b in boxes), max(b[3] for b in boxes)
     cy = (low + high) / 2
     if base is None:
@@ -418,12 +530,12 @@ def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
                    for at in picked]
     across = max(max(cx - b[0], b[2] - cx) for cx, b in zip(centres, boxes))
     half = max(across, (high - low) / 2) * (1 + 2 * PAD)
+    windows = [([cx - half, cy - half], [cx + half, cy + half]) for cx in centres]
     drawn = []
-    for at, cx in zip(picked, centres):
+    for at, bounds in zip(picked, windows):
         _require(time.monotonic() < deadline, f"the filmstrip ran past {STRIP_SECONDS} seconds")
-        drawn.append(stage.draw(frames[at]["component_placements"], basis,
-                                ([cx - half, cy - half], [cx + half, cy + half]), floor,
-                                f"T {times[at]:.2f} S"))
+        drawn.append(stage.draw(frames[at]["component_placements"], basis, bounds, floor,
+                                f"T {times[at]:.2f} S", target=points[at] if points else None))
     view = ("side-on to the direction the base travelled, {:g} degrees above the floor; "
             "the window follows the base".format(DETAIL_ELEVATION_DEGREES) if base is not None else
             "side-on to the direction the design travelled, {:g} degrees above the floor; "
@@ -433,6 +545,7 @@ def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
         "requested_start_s": start, "start_s": began, "step_s": step,
         "view": view, "follows": base,
         "azimuth_degrees": azimuth, "travel_mm": travel, "half_extent_mm": half,
+        "marked_frames": _marked(basis, windows, picked, points),
     }
 
 
@@ -449,11 +562,19 @@ def detail_start(row: Mapping[str, Any], times: Sequence[float], given: float | 
 
 
 def _video(stage_names, looks, source, meshes, frames, times, out: Path, seed: int,
-           floor: float) -> dict[str, Any]:
-    """The seed's rollout as a studio video, encoded and decoded back before it is kept."""
+           floor: float, points: Sequence[Sequence[float]] | None = None) -> dict[str, Any]:
+    """The seed's rollout as a studio video, encoded and decoded back before it is kept.
+
+    With ``points``, each frame's target is kept inside the window and
+    marked as the sheets mark it.
+    """
 
     started = time.monotonic()
     count = math.ceil(times[-1] * studio_video.FPS) + 1
+    marked = []
+
+    def overlay(at: int, pixels: bytearray, size: int, bounds) -> None:
+        marked.append(mark(pixels, size, studio_render.HERO, bounds, points[at]))
 
     def sample(i: int) -> int:
         return len(frames) - 1 if i == count - 1 else max(
@@ -463,7 +584,8 @@ def _video(stage_names, looks, source, meshes, frames, times, out: Path, seed: i
         work = Path(temporary)
         try:
             drawn = studio_video._studio_frames(looks, source, list(stage_names), meshes, frames,
-                                                times, count, sample, work, started, floor=floor)
+                                                times, count, sample, work, started, floor=floor,
+                                                held=points, overlay=overlay if points else None)
             studio_video.encode(work, count)
         except ValueError as exc:
             raise FilmError(f"video: {exc}") from exc
@@ -473,6 +595,7 @@ def _video(stage_names, looks, source, meshes, frames, times, out: Path, seed: i
             "frames": count, "fps": studio_video.FPS, "sim_seconds": times[-1],
             "width": drawn["width"], "height": drawn["height"],
             "projection": drawn["projection"], "floor_z_mm": drawn["floor_z_mm"],
+            "marked_frames": sum(marked),
             "render_seconds": round(time.monotonic() - started, 3),
             "render_bound_seconds": studio_video.RENDER_SECONDS}
 
@@ -541,27 +664,37 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
         row = rows.get(int(seed))
         _require(row is not None and isinstance(row.get("trace"), Mapping),
                  f"seed {seed} is not in this evaluation")
-        frames, times = read_trace(out / str(row["trace"]["file"]), str(row["trace"]["sha256"]),
-                                   list(flats))
+        frames, times, target = read_trace(out / str(row["trace"]["file"]), str(row["trace"]["sha256"]),
+                                           list(flats))
+        # A seed the report says was given a point and a trace that names
+        # none would be filmed unmarked, and look like an episode with
+        # nowhere to go.
+        _require(target is not None or not any(
+            isinstance(item, Mapping) and item.get("kind") == "point"
+            for item in (row.get("drawn") or {}).get("goal") or []),
+            f"seed {seed} drew a point goal and its trace carries none to mark")
+        points = target["points"] if target else None
         floor, floor_source = stage.floor(frames, (report.get("rig") or {}).get("floor_mm"))
         deadline = time.monotonic() + STRIP_SECONDS
         entry: dict[str, Any] = {"seed": int(seed), "trace_sha256": str(row["trace"]["sha256"]),
                                  "floor_z_mm": floor, "floor_source": floor_source}
-        image, facts = overview(stage, frames, times, floor, deadline)
+        image, facts = overview(stage, frames, times, floor, deadline, points)
         entry["overview"] = _keep(out / OVERVIEW_NAME.format(seed=seed), image, facts)
         begin, why = detail_start(row, times, start)
-        image, facts = detail(stage, frames, times, floor, deadline, start=begin, step=step, base=base)
+        image, facts = detail(stage, frames, times, floor, deadline, start=begin, step=step, base=base,
+                              points=points)
         entry["detail"] = _keep(out / DETAIL_NAME.format(seed=seed), image, {**facts, "start_source": why})
         entry["video"] = None
+        entry["target"] = target and {key: target[key] for key in ("goal", "channels", "unit", "positions")}
         filmed.append(entry)
         if position == 0:
-            first = (frames, times, floor)
+            first = (frames, times, floor, points)
         if progress is not None:
             progress(" · film  seed {:d}  sheets  {:.1f} s".format(int(seed), time.monotonic() - started))
     # The video last: it is the long half, and the sheets stand without it.
     error = None
     if video and filmed:
-        frames, times, floor = first
+        frames, times, floor, points = first
         try:
             try:
                 studio_video.ffmpeg()
@@ -569,7 +702,7 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
                 raise FilmError(f"video: {exc}; the sheets were drawn") from exc
             filmed[0]["video"] = _video(stage.names + sorted(world), looks, source,
                                         {**meshes, **world_meshes}, frames, times, out,
-                                        filmed[0]["seed"], floor)
+                                        filmed[0]["seed"], floor, points)
         except FilmError as exc:
             error = str(exc)
         if progress is not None:
@@ -582,6 +715,10 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
         "floor": "the review viewport's dark prototype mat (ADR-444)",
         "frame_px": FRAME, "sheet": {"columns": COLUMNS, "rows": ROWS, "gutter_px": GUTTER},
         "overlay": "simulation seconds, bottom left of every frame",
+        "marker": {"what": "a ring centred on the target point in force at the frame's time, drawn over "
+                           "the solids, in a seed whose trace carries a point goal",
+                   "color": "#%02X%02X%02X" % MARKER_COLOUR,
+                   "radius_px": MARKER_RADIUS * FRAME, "radius_of_frame": MARKER_RADIUS},
         "showing": "tessellated solids of the accepted revision at each recorded pose; "
                    "collision proxies and world geometry not drawn",
         "materials": source,

@@ -2665,7 +2665,7 @@ Fast, and honest about what it did not run.
 | `test_review_lifecycle.py` | The dashboard across restart and copy (D6/D7): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. Whole-directory copy coverage checks independent accepted fixtures and historical model/curves/video access with the original path unavailable. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
 | `test_review_history_scale.py` | Bounded operation over a long run history (ADR-321): sixty-three runs with 512-sample histories and three verified checkpoints each. Over HTTP, the run list carries a telemetry summary under 1.5 KB per run with no histories and no checkpoint hashing, the per-run detail carries both, and missing/invalid/mismatched states survive the summary. In the browser, a deliberately selected historical run keeps its selection, histories and playing video while twenty runs are added and the newest run's telemetry grows; an idle poll adds no more DOM nodes after the growth than before; a fresh visit selects the training run and the current-run button reaches it with its growing history within five seconds. **Skips** the browser half without a Chromium or FFmpeg. |
 | `test_evaluate.py` | `cadex evaluate` (ADR-457) in three layers: what it reads from a hand-built retained attempt (no engine); the child run for real on the engine suite's own fixtures, which needs `mujoco` here and **skips** without it; and the command against a script a live engine accepted with a policy it verified — **skips** without a built engine. |
-| `test_film.py` | The evaluation's film (ADR-459) on a hand-built retained attempt and hand-written traces, with no engine: which seeds `--film` picks; the solids read from the attempt's own tessellation and refused outside it; materials from the inventory; both sheets' frame times, views, floor and dark backdrop read back from the PNGs; the detail window centred on the evaluation's base while a part is left behind, fixed for a mechanism with no floating base, and refused for a base that is not drawn (ADR-460); the early-ending and no-disturbance windows; the trace digest check; the report rewritten with its film; `--film-only`'s refusals. The video tests need FFmpeg and **skip** without it. |
+| `test_film.py` | The evaluation's film (ADR-459) on a hand-built retained attempt and hand-written traces, with no engine: which seeds `--film` picks; the solids read from the attempt's own tessellation and refused outside it; materials from the inventory; both sheets' frame times, views, floor and dark backdrop read back from the PNGs; the detail window centred on the evaluation's base while a part is left behind, fixed for a mechanism with no floating base, and refused for a base that is not drawn (ADR-460); the early-ending and no-disturbance windows; the target marker (ADR-463): a ring read back from both sheets' pixels at the projected target of each frame's own time, hollow, drawn over the solids, jumping where the target does, held in a fixed window and in the video's, absent from a trace with no point goal, and refused for a point goal the trace cannot place; the trace digest check; the report rewritten with its film; `--film-only`'s refusals. The video tests need FFmpeg and **skip** without it. |
 | `test_review_evaluation.py` | The dashboard's view of an evaluation (ADR-459, REVIEW-DESIGN.md §17). The failing fixture is ot10's `w2-2` shuffle, from the receipt under `docs/probes/ot11/retained/`; a passing one is written in the test. Over HTTP: the bounded summary list, the whole report, the file allowlist and its refusals, one parse per file identity. In headless Chromium at 1400×900 and 400×850: every predicate's tally, every seed's verdict, ending and per-predicate values, the metrics and reward tables, the film, the reader's pick. The page half **skips** without a Chromium. |
 | `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** rendering/playback without both Chromium and FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
@@ -3016,7 +3016,8 @@ no browser. Every image stands on the dark prototype floor (ADR-444).
 
 - **The filmstrip**, two PNG sheets of twelve 256 px frames (1036×776) for
   each filmed seed. Every frame carries its simulation time, bottom left,
-  and nothing else: no seed number, no metric.
+  and, in an episode that was given one, its target marker (below). Nothing
+  else: no seed number, no metric.
   - `seed-<n>-overview.png`: evenly spaced from 0 s to the episode's end,
     in the hero three-quarter view, in one fixed window that frames the
     whole path.
@@ -3041,6 +3042,19 @@ no browser. Every image stands on the dark prototype floor (ADR-444).
   studio video a run gets (ADR-431), ten frames a second with a timer, and
   decoded back frame for frame before it is kept. FFmpeg is found on `PATH`
   or beside the interpreter, which is where the pixi environment has it.
+- **The target marker** (ADR-463). A task that states a point goal
+  (`assembly.goal(kind='point')`, ADR-462) leaves the target in every frame
+  of the trace. The film draws a ring centred on the target in force at
+  each frame's own time: cyan `#6FF0F0` inside a dark rim, 9 px in radius
+  on a 256 px frame. It is drawn over the solids and is hollow, so a tip
+  that arrives neither hides it nor is hidden by it, and it jumps in the
+  frame where the target changes. The overview's window and the video's
+  hold every target beside the path. So does the detail's when there is no
+  floating base. A detail that follows a base stays the design's size and
+  marks the target only while it is inside. The film asks for no
+  behaviour's name: a trace with a point goal is marked and any other
+  trace is drawn exactly as before. A seed whose report says it drew a
+  point goal and whose trace carries none is refused, not drawn unmarked.
 - **Which seeds.** `--film auto` films the first seed that failed (the one
   a diagnosis starts from), or the first seed of an evaluation that passed.
   `--film none` draws nothing and records `skipped`.
@@ -3059,7 +3073,10 @@ The report's `film` block (`cadex-evaluation-film-v1`) carries `state`
 materials and geometry drawn, and one row per filmed seed: the trace's
 sha256, the floor and where it came from, and for `overview`, `detail` and
 `video` the file, its sha256 and size, the times of its frames and the
-view. The trace filmed is the trace measured: a trace whose digest is not
+view. A row's `target` is `null`, or the goal's name, its channels and each
+place it held with the time it began (`positions`); each of the three
+carries `marked_frames`, the frames whose target is inside them; and the
+block's `marker` says what the ring is. The trace filmed is the trace measured: a trace whose digest is not
 the one the seed's row recorded is refused.
 
 `evaluation.json` is written complete before anything is drawn and again
