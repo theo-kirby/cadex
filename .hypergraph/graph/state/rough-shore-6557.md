@@ -7,7 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
@@ -15,11 +15,13 @@ Open charter criterion for run ot11: **P1. Each behaviour has a frozen evaluatio
 
 **The owner amended the criterion on 2026-09-30: the spec and the judge each have a job** [rec: frosty-crane-8494]. Where the success spec measures a property (slip, stepping, foot clearance, drift, heading, reach error), the spec is authoritative for it. A judge blind spot on a measured property, such as the still-frame judge not seeing `w2-2`'s slip, is recorded in the contract as a known limit; it does not block P1 and does not call for more judge probes. The judge's job is what the spec cannot measure: whether the behaviour reads as the intended one at all, and gross failures (falling, flailing, the wrong motion). The judge's bar still applies to R1–R3; where the judge contradicts a measured predicate, the predicate wins and the disagreement is recorded.
 
-**Every listed part now exists; the actor believes the criterion is met and has not ticked it** [rec: old-cove-1967] [rec: rough-cloud-5656]. Reconcile judgement: the status stays `open` because no record declares a flip, acceptance belongs to the owner and the critic, and the known-limit entry the amended charter asks for is not yet in the contract [rec: vast-moss-6116].
+**Declared met; the owner's checkbox is untouched** (ADR-463, commit `181a2b02`) [rec: rich-lantern-3026]. The record declared `open -> met`; the protocol's status vocabulary has no `met`, so this reconcile folds it as `working` — the gap is closed on measured evidence, and ticking the charter box remains the owner's. The critic named this unit and accepted P1–P3 on the folded evidence [rec: rich-lantern-3026].
 
 **Done so far**:
 
-- **The contract is frozen.** `docs/probes/ot11/README.md` and `contract.json` freeze walk (W1–W10), reach (Q1–Q4) and balance (B1–B5) predicates, none reading the reward; seeds 1101–1110 with reset variation, goals and shoves; the pass rule (every seed, every predicate); and the blind judge's rubric (SHA-256 pinned), inputs, judged seeds 1101/1105/1110 and bar (9 of 12, no trait below 2). Committed at `ff066f1b` before either negative was read. One change since: W10 (no foot below −0.05 hip heights), ADR-454 at `34ac3ab2`, made before any training, with both negatives re-measured under it. `cli/tests/test_ot11_contract.py` holds the README and the JSON equal. The contract's `decisions` list still has that one entry [rec: proud-lantern-5203] [rec: glad-fjord-0764] [rec: rough-cloud-5656].
+- **The contract is frozen.** `docs/probes/ot11/README.md` and `contract.json` freeze walk (W1–W10), reach (Q1–Q4) and balance (B1–B5) predicates, none reading the reward; seeds 1101–1110 with reset variation, goals and shoves; the pass rule (every seed, every predicate); and the blind judge's rubric (SHA-256 pinned), inputs, judged seeds 1101/1105/1110 and bar (9 of 12, no trait below 2). Committed at `ff066f1b` before either negative was read. One change since: W10 (no foot below −0.05 hip heights), ADR-454 at `34ac3ab2`, made before any training, with both negatives re-measured under it. `cli/tests/test_ot11_contract.py` holds the README and the JSON equal. The contract's `decisions` list now has two entries, ADR-454 and ADR-463 [rec: proud-lantern-5203] [rec: glad-fjord-0764] [rec: rough-cloud-5656] [rec: rich-lantern-3026].
+- **The judge's blind spot on stepping and slip is a recorded known limit** (ADR-463). `contract.json` gains a top-level `judge_scope` beside the frozen `judge` block (whose key set `test_ot11_judge.py` pins, so the block is byte-for-byte unchanged): `jobs` (the owner's four sentences) and `known_limits` (the manner score V2 is not a reading of stepping or slip; W5 and W7 are authoritative). The README gains *What the judge is for, and what it does not see*. A test holds the JSON, the page and the eighteen V2 = 2 judge receipts against W5/W7's receipts, and asserts the rubric digest, bar and confirmation rule unmoved. **No frozen item changed, so nothing was re-evaluated**; a judged seed under the bar is reported under the bar with the predicate beside it, and the bar is not lowered [rec: rich-lantern-3026].
+- **The film draws the reach target marker** the frozen filmstrip text states (detail on `chilly-union-8972`); drawn on hand-written traces only so far [rec: rich-lantern-3026].
 - **The predicates are read through the product's metrics.** `docs/probes/ot11/runner/measure.py` is only the contract's binding onto `CadexEvaluation`, and reproduces the off-contract receipts to 1.3e-15. Q1–Q4 have a reader, pinned on synthetic reaches only [rec: ready-field-7940].
 - **Both negatives are measured through the product on the contract's seeds, shoves and horizon**, with `cadex evaluate`, on two copies (`ot11-w2-negative`, `ot11-robin-negative`) whose specs declare `randomisation=[]` because the contract lists none. Receipts: `docs/probes/ot11/retained/p2-w2-2-evaluation.json` and `p2-robin-evaluation.json`, pinned by `cli/tests/test_ot11_contract.py`. No seed was void on either [rec: misty-timber-4175] [rec: glad-fjord-0764].
 - **`w2-2` fails the walk spec for the right reason: 0 of 10 seeds pass.** W5 (fewest steps 0 to 3 against ≥ 4; step share 0.00 to 0.08 against ≥ 0.70) and W7 (slip 0.49 to 0.81 against ≤ 0.15) fail on all ten, as do W9 and W10. W2 fails on eight, `tipped` fires on 1107 and 1110, and W6 passes on six. The slowest seed moves at 47 mm/s. The seed the reward paid most is 1109 (836.0), whose least-stepping foot took one step. The walk spec on that copy is W1, W2, W4's heading and W5–W10, because its task declares no goal [rec: glad-fjord-0764] [rec: misty-timber-4175] [rec: vast-moss-6116].
@@ -33,11 +35,10 @@ Open charter criterion for run ot11: **P1. Each behaviour has a frozen evaluatio
 
 Earlier readings, kept for the record: the stored-rollout and own-conditions receipts (`retained/p1-w2-2.json`, `p1-w2-2-seeds.json`, `p1-robin.json`) were off-contract, where `w2-2` also failed W3 at 1.91× a commanded speed taken as 80 mm/s from its reward [rec: proud-lantern-5203]. ADR-457's first on-contract reading of `w2-2` kept the task's mass randomisation and is superseded: those were different episodes, since the mass draw came first in each seed's stream [rec: glad-fjord-0764].
 
-**Missing or unmeasured**:
+**Missing or unmeasured** (none blocks P1 as declared):
 
-- The judge's blind spot on slip and stepping is not yet recorded in the contract as a known limit, as the amended charter asks [rec: vast-moss-6116] [rec: frosty-crane-8494].
 - The judge has no positive control. No policy that really steps has been filmed, so whether its manner score separates a walk from a shuffle at all is unmeasured. The first ot11 walk policy that passes W5 and W7 is the first one; its judge reasons should be read against the negatives' [rec: rough-cloud-5656].
-- The film does not draw the reach target marker the frozen filmstrip text asks for. The trace now carries the target in every frame, so the film has what it needs; this has to land before any reach film is judged [rec: vast-moss-6116].
+- The target marker has never been drawn on a real reach, and the judge has never seen a marked sheet; the first ot11 reach evaluation is the first [rec: rich-lantern-3026].
 - W3, W4's lateral half and Q1–Q4 can now be stated in a product spec, since a task can state a goal (P3, ADR-462), but no policy has been measured against them through the product: the two negatives' tasks declare no goal and their receipts did not move [rec: vast-moss-6116].
 - The cause of `w2-2`'s feet going 21.3 mm below the floor is unmeasured. The heights equal MuJoCo's geom positions, so it is in the rollout; soft contact, 1.5 g feet and strong servos are a guess. A walk policy can exploit it, so it needs measuring before R1 trains [rec: proud-lantern-5203].
 - The reach spec has no known negative [rec: proud-lantern-5203].
@@ -61,3 +62,4 @@ Earlier readings, kept for the record: the stored-rollout and own-conditions rec
 - rough-cloud-5656 — floor marks in the detail sheet measured in two arms and not adopted (ADR-461); the judge has no positive control
 - vast-moss-6116 — the probe's rule was not committed before its first call (commit 3e380f88); the README's "until P3" statements updated; the known-limit entry not yet in the contract
 - frosty-crane-8494 — the charter as amended by the owner on 2026-09-30: the spec and the judge each have a job
+- rich-lantern-3026 — the judge's blind spot recorded as a known limit in `judge_scope` (ADR-463), nothing re-evaluated; the film draws the target marker; P1 declared met

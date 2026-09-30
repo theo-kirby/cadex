@@ -7,13 +7,13 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
 Open charter criterion for run ot11: **P2. The product evaluates any policy against its task's spec.** The charter asks for: the success spec declared in xscript alongside the task and documented in `docs/XSCRIPT.md`; one command that evaluates an accepted policy on its frozen seeds and writes a report into the project (pass or fail per seed and per predicate, the reward term by term, termination causes, behaviour metrics, the video and a filmstrip on the dark floor); behaviour metrics for gait (step count, foot clearance, foot slip, duty factor, commanded-velocity tracking), reach (final error, time to target, overshoot) and balance (tilt, drift, heading, time to recover from a shove); the review dashboard showing the report; and tests pinning every metric on passing and failing fixtures, the `w2-2` shuffle among the failing ones. The human owns the charter checkbox; roles report results and do not tick it. Declared target: `gap-p2-product-evaluates-any-policy` [rec: kind-spire-3578].
 
-**Every listed part now exists; the actor believes the criterion is met and has not ticked it** [rec: mild-horizon-5182]. Reconcile judgement: the status stays `open` because no record declares a flip and acceptance belongs to the owner and the critic. The one thing the actor held P2 open on afterwards, a product spec stating a goal, landed with P3 [rec: old-cove-1967] [rec: vast-moss-6116].
+**Declared met on the critic's acceptance of the folded evidence (ADR-455 to ADR-459); the owner's checkbox is untouched** [rec: rich-lantern-3026]. The record declared `open -> met`; with no `met` in the status vocabulary this reconcile folds it as `working`. The goal-stating spec the actor had held P2 open on landed with P3 [rec: vast-moss-6116].
 
 **What exists**:
 
@@ -33,7 +33,7 @@ Evidence at `f4d55ef7`: `pixi run test-engine` 2507 passed, 57 skipped; `cli/tes
 
 **Limits and constraints for what follows**:
 
-- A reach frame still shows no target marker. The trace now carries the target in every frame, so the film has what it needs; this has to land before a reach film is judged. Goal metrics are no longer refused on a task that declares the goal they need [rec: vast-moss-6116].
+- The film now marks a point goal's target with a hollow cyan ring in the overview, detail and video, and refuses a seed whose report drew a point goal when its trace names none (ADR-463). Drawn on hand-written traces only; no real reach has been filmed [rec: rich-lantern-3026].
 - The `assembly` page of the model's `describe_api` view is at 21,446 of 21,500 characters (ADR-360). P3's goal export fitted only after two rationale sentences were cut and three shortened; the notes do not mention `assembly.success` [rec: glad-fjord-0764]. With 54 characters of headroom, the next assembly export and P4's guidance will not fit without another cut or a redesign of the page [rec: vast-moss-6116].
 - Default `cadex evaluate` takes about 3.5 minutes longer on a sixty-part robot for one seed's sheets and video; about 21 s with `--no-video` [rec: mild-horizon-5182].
 - A spec that inherits its task's randomisation changes its evaluation conditions whenever the training randomisation is revised. Nothing enforces stating it [rec: glad-fjord-0764].
@@ -41,7 +41,7 @@ Evidence at `f4d55ef7`: `pixi run test-engine` 2507 passed, 57 skipped; `cli/tes
 - The trainer's randomisation draws from `random.Random(base_seed + environment_index)`, so with seed 0 and more than 1101 environments, environment 1101 draws the mass factors evaluation seed 1101 would draw if a spec inherited the task's randomisation. Observed, not changed; the ot11 specs state `randomisation=[]`, so it does not bite there [rec: vast-moss-6116].
 - A rollout is bounded by `MAXIMUM_TRACE_POSES` (100,000); the evaluation does not trim the trace to the bodies it reads. Each seed leaves about 6 MB of trace in the project (ignored by its git), and nothing prunes traces or old evaluation directories. Evaluations written with `--out` outside `evaluations/` are not on the dashboard [rec: misty-timber-4175] [rec: mild-horizon-5182].
 - Rest thresholds, stance height and the step definition are engine constants a spec cannot override; the P1 contract uses the same values [rec: first-mist-2505].
-- The product agent does not have the command as a tool, and nothing in its guidance mentions it (P4) [rec: misty-timber-4175].
+- The CLI's product agent now has `evaluate` as a bridge tool beside `train_start`/`train_status`/`train_stop` (ADR-464, detail on `wild-harvest-4848`); the shell's agent has none [rec: chilly-arrow-2197].
 - The `w2-2` fixture rests on a reading of the charter: a five-body pose extract is a test fixture, not a committed rollout trace. If that reading is rejected, the fixture goes and the `w2-2` tests must skip without the read-only project [rec: ready-field-7940].
 
 ## Negative knowledge
@@ -60,3 +60,5 @@ Evidence at `f4d55ef7`: `pixi run test-engine` 2507 passed, 57 skipped; `cli/tes
 - mild-horizon-5182 — film sheets and video on the dark floor, dashboard Evaluation tab (ADR-459); actor believes P2 met
 - old-cove-1967 — the film's detail sheet follows the evaluation's base (ADR-460); both negatives filmed again, overviews byte-identical
 - vast-moss-6116 — the evaluation reads command and targets from each episode's drawn goal (ADR-462); the goal need split into command and target; assembly page at 21,446 of 21,500
+- rich-lantern-3026 — the film marks a point goal's target (ADR-463); P2 declared met on the critic's acceptance
+- chilly-arrow-2197 — evaluate is a CLI agent tool (ADR-464)

@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**`cadex walk` is kept as one scripted single pass and is not the ot11 loop (ADR-464).** Its `review.json` carries `behaviour`: a task with a success spec is judged by the spec through `cadex evaluate`, and the gait reading (ADR-409) is advisory. Retiring it would have broken five runs' receipts and tests for a command the loop does not depend on [rec: chilly-arrow-2197].
+
 **The walk now completes end to end on a 12-servo mechanism from one prompt, and cannot yet tell a gait from a tumble (hex2, 2026-09-25) [rec: polished-path-3774].** hex1 stalled in design at effort `high` (four consecutive 32k-token thinking passes, no tool call, walk exit 1 at 2007.68 s, invisible on every product surface). hex2 at `CADEX_EFFORT=medium` designed an accepted 38-component hexapod in 4638.7 s, trained 2000 × 2048 on the GPU in 13,303 s, declared and rolled out the policy, and died in the review leg on the 100k render triangle cap (since raised, ADR-406 [rec: light-hill-1224]). Its seed-0 rollout ran all 500 steps and tumbled 5.1 m along +X with ±170° yaw swings, which the task rewarded at 3,492. Summary and open gaps: `docs/probes/hex/README.md`.
 
 **The gait check reads training survival as a trailing-window median (ADR-433, 2026-09-28) [rec: mild-lily-4405].** `cli/cadex_cli/walk.py::_training_survival` now takes the median of the stored `episode_steps_curve` over the last 50 iterations, each sample capped at the horizon. It used to read only the last iteration, and that iteration can close on a horizon boundary, where time-limit truncations count as endings. The 0.90 bar and every other gait threshold are unchanged. Two regressions in `cli/tests/test_walk.py` fail on the old source: a w2-2-shaped curve now passes, and a run that really ends early still fails. The median was chosen over a harmonic mean because the stored curve keeps only 512 of 1000 iterations. Detail on `golden-garden-8501`.
@@ -187,3 +189,4 @@ Reconcile judgement: retain `working`. This is the first evidence of the contrac
 - polished-path-3774 — hex1/hex2 unassisted hexapod walk: design stall, tumbling policy, review-leg render failure
 - light-hill-1224 — ADR-406 raised the render caps that killed hex2's review leg
 - mild-lily-4405 — ADR-433: the gait check reads training survival as a trailing 50-iteration median, not off a horizon-boundary last iteration
+- chilly-arrow-2197 — cadex walk kept as one use, not the loop; its review defers to a success spec (ADR-464)

@@ -7,7 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
@@ -15,7 +15,7 @@ Open charter criterion for run ot11: **P3. A task can say where to go.** - A tas
 
 Declared target: `gap-p3-task-can-say-where`. The human owns the charter checkbox; roles report results and do not tick it [rec: kind-spire-3578].
 
-**Every listed part now exists with measured evidence; the actor believes the criterion is met and has not ticked it** (ADR-462, commit `f4d55ef7`) [rec: vast-moss-6116]. Reconcile judgement: the status stays `open` because no record declares a flip and acceptance belongs to the owner and the critic, as on P2.
+**Every listed part exists with measured evidence** (ADR-462, commit `f4d55ef7`) [rec: vast-moss-6116], **and P3 is declared met on the critic's acceptance of it; the owner's checkbox is untouched** [rec: rich-lantern-3026]. The record declared `open -> met`; with no `met` in the status vocabulary this reconcile folds it as `working`.
 
 **What exists** [rec: vast-moss-6116]:
 
@@ -29,7 +29,7 @@ Evidence at `f4d55ef7`: `pixi run test-engine` 2507 passed, 57 skipped; `cli/tes
 
 **Open, and assumptions the actor took** [rec: vast-moss-6116]:
 
-- The film does not yet draw the reach target marker, though the trace now carries the target. It has to land before any reach film is judged. [rec: vast-moss-6116]
+- The film draws the target marker since ADR-463, on hand-written traces only; no real reach has been filmed [rec: rich-lantern-3026].
 - `cadex train` does not expose `--goal-pool`; the trainer's default of 4096 applies. A warm start across a changed goal is refused. [rec: vast-moss-6116]
 - A point is drawn over each driven joint's own range, not a servo's narrower `command_limits`, as the contract says. A task that narrows a command can be given a target it cannot reach. [rec: vast-moss-6116]
 - "In contact" is read as a contact pair the reset pose does not have, wider than the contract's "if the model is in contact at that configuration", so that a mechanism resting on a floor can have a point goal at all. The two agree for a bench arm. [rec: vast-moss-6116]
@@ -43,3 +43,4 @@ None yet.
 
 - kind-spire-3578 — ot11 operator-declared charter gap
 - vast-moss-6116 — assembly.goal in the task, the rollout, the trace, the success spec and the trainer, with engine–trainer agreement test-pinned and mutation-checked (ADR-462); actor believes P3 met
+- rich-lantern-3026 — P3 declared met on the critic's acceptance of the ADR-462 evidence; the film's target marker landed
