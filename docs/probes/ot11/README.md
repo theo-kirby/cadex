@@ -987,6 +987,78 @@ and the target check. It does not include the transcript.
   50 Hz chatter, which the 0.2 s filmstrip frames cannot resolve. It
   read it from the force and speed reward terms instead.
 
+### Reach round 5: a warm start, and 10 of 10 seeds
+
+*The warm-start gap is fixed:* `train_status` now names each run's task
+bundle (DECISIONS, the amendment "a run names its task bundle").
+**Pre-registered first.** `retained/p4-heron-1-r5-preregistration.json`
+was committed (`c758ffeb`) before the session. It fixes the prompt,
+`prompts/reach.r5.loop.prompt.txt`, the same model, spec digest and held-out
+targets, one run of at most 900 s, and two turns. The prompt names seed
+1106's Q2 miss and says warm start now works. How the task changes is left
+to the agent. `runner/rounds.py` was unchanged (`a6a2a5b1…`) and ran under
+`setsid` from 20:36:18Z.
+
+| run | seed | settings | budget | ended | evaluated policy | seeds passed | Q2 worst final error |
+|---|---|---|---|---|---|---|---|
+| `reach-r5` | 41 | 800 it × 1024 envs, entropy 0, warm start from `reach-r4` checkpoint 475 | 890 s | budget, iteration 422 | `6bb5a403…` (checkpoint 400) | **10 of 10** | 0.014–0.032 |
+
+GPU wall time: 890.5 s, which brings the reach total to **4,447 s**. The run
+did not collapse, and `--stop-on-collapse` was in its command. `train_start`
+took the warm start at the first call, with no refusals. The earlier session
+had seven.
+
+**The revision cited the measurement.** The registered reason, shortened:
+"reach-r4 ckpt 475 failed Q2 on seed 1106 (… 0.0550, limit 0.05; 7.92 mm
+vs 7.2 mm) … the tip holding still about 8 mm above and short of a
+reachable low target … the reward pulled only about 0.12/mm/step". The
+change touched the reward only. The coarse reach length went from 20 to
+10 mm and the fine reach weight from 2 to 3. The run was declared with
+`init_from_task_change`, and observations, actions, goals and terminations
+were unchanged. **It helped.**
+
+| seed | r4 final error mm | r5 final error mm | r4 → r5 time to target s | r4 → r5 overshoot |
+|---|---|---|---|---|
+| 1101 | 1.36 | 4.54 | 0.24 → 0.22 | 0.008 → 0.053 |
+| 1102 | 3.16 | 3.67 | 0.22 → 0.22 | 0.017 → 0.021 |
+| 1103 | 2.21 | 4.52 | 0.20 → 0.20 | 0.015 → 0.053 |
+| 1104 | 1.09 | 3.92 | 0.24 → 0.22 | 0.070 → 0.044 |
+| 1105 | 4.55 | 1.99 | 0.12 → 0.12 | 0.116 → 0.153 |
+| **1106** | **7.92** | **3.33** | never → 0.46 | 0.052 → 0.142 |
+| 1107 | 3.32 | 4.03 | 0.08 → 0.08 | 0.131 → 0.140 |
+| 1108 | 1.25 | 3.04 | 0.08 → 0.10 | 0.019 → 0.123 |
+| 1109 | 4.98 | 4.23 | 0.12 → 0.12 | 0.010 → 0.054 |
+| 1110 | 4.56 | 4.46 | 0.12 → 0.12 | 0.049 → 0.110 |
+
+The limits are 7.2 mm (0.05 arm lengths), 2.0 s and 0.20. **Seed 1106
+passes**, and none of r4's nine passing seeds failed. The cost is
+precision on the easy seeds: the median error rose from 3.24 to 3.98 mm,
+and the median overshoot from 0.034 to 0.082. The worst overshoot is
+0.153, on seed 1105. Two cost terms more than doubled at unchanged weights:
+`control_cost` went from −26.1 to −68.3 and `settle_cost` from −21.1 to
+−55.3, both medians. The arm pushes harder to hold. (The agent's closing
+report calls the second one the "tip-speed cost". The report's own
+`tip_speed_cost` term reads 0 in both evaluations.)
+
+**The checks held.** The evaluation's spec hashes to the registered
+`61b25b02…`, and the model is `183fabff…`. The twenty drawn targets equal
+the receipt to within 4.9 × 10⁻⁵ mm, and no seed was void. The declared
+policy's digest is that of `runs/reach-r5/train/heron_reach_task.000400.cxpolicy`.
+The film of seed 1106 is the
+[overview](p4-heron-1-reach-r5-seed-1106-overview.png) and the
+[detail](p4-heron-1-reach-r5-seed-1106-detail.png).
+
+**The turn.** One turn of 22.4 minutes. The harness reported 17 turns and
+$1.27. There were 16 tool calls, and none errored. `evaluate` was called
+twice: once to re-read r4 on seed 1106 before the change, and once on r5.
+The receipt is `retained/p4-heron-1-r5-rounds.json`. The ledger now holds
+five runs and six evaluations; r4 appears twice.
+
+**This is still a loop round and not R2.** Its pre-registration says R2 is
+judged on a separately pre-registered confirmation evaluation, registered
+only because this round passed on all ten seeds. The judge has not seen
+reach yet.
+
 ## R3's confirmation evaluation: balance on `ot11-robin-1`
 
 This is the evaluation R3 is judged on. It is not a loop round.
