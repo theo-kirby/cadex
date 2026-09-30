@@ -55,7 +55,7 @@ from .bridge import Bridge, BridgeState, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportedOutput, ExportError, export_blueprints, export_outputs, parse_formats
-from .inventory import InventoryError, write_inventory
+from .inventory import InventoryError, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
 from .clearance import (
@@ -116,10 +116,12 @@ from .evaluate import (
     REPORT_NAME as EVALUATION_NAME,
     EvaluateError,
     EvaluateRefused,
+    add_film,
     check_out,
     default_out,
     evaluation_cell,
     failing_predicates,
+    read_report,
     retained_inputs,
     run_evaluation,
 )
@@ -518,8 +520,9 @@ def build_parser() -> argparse.ArgumentParser:
         "(assembly.success): one rollout per frozen seed under the spec's "
         "conditions, then pass or fail per seed and per predicate, the "
         "behaviour metrics, the reward by term and how each episode ended, "
-        "written to evaluation.json in the project. Reads the accepted "
-        "artifacts; never rebuilds. No AI, no tokens, no trainer.",
+        "written to evaluation.json in the project, with a filmstrip and a "
+        "video of what the seeds did on the dark prototype floor. Reads the "
+        "accepted artifacts; never rebuilds. No AI, no tokens, no trainer.",
     )
     _common(evaluate_parser, inherit=True)
     evaluate_parser.add_argument(
@@ -534,6 +537,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout", type=float, default=EVALUATE_TIMEOUT_S, metavar="SECONDS",
         help="Kill the evaluation after this much wall time and fail; at most "
         f"{EVALUATE_MAXIMUM_TIMEOUT_S:g} (default %(default)g).",
+    )
+    evaluate_parser.add_argument(
+        "--film", default="auto", metavar="SEEDS",
+        help="Which seeds to draw as a filmstrip on the dark prototype floor: "
+        "auto (the first failing seed, or the first seed of a pass), all, none, "
+        "or seed numbers separated by commas. The first one is also drawn as "
+        "a video (default %(default)s).",
+    )
+    evaluate_parser.add_argument(
+        "--no-video", action="store_true", default=False,
+        help="Draw the filmstrips and no video.",
+    )
+    evaluate_parser.add_argument(
+        "--detail-start", type=float, default=None, metavar="SECONDS",
+        help="Where each filmstrip's detail sheet begins (default: the seed's "
+        "first disturbance, or the middle of an episode that has none).",
+    )
+    evaluate_parser.add_argument(
+        "--detail-step", type=float, default=None, metavar="SECONDS",
+        help="The time between the detail sheet's frames (default 0.2).",
+    )
+    evaluate_parser.add_argument(
+        "--film-only", action="store_true", default=False,
+        help="Measure nothing: draw the film of the evaluation already in "
+        "--out (or the default directory) from the traces it kept.",
     )
     walk_parser = subparsers.add_parser(
         "walk",
@@ -1747,12 +1775,19 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
     verdict for its result. Like ``smoke`` it reads what the accepted
     revision retained and never restores, rebuilds or accepts a script, so
     the policy evaluated is the one the engine verified. ``--out`` defaults
-    to ``evaluations/<revision>-<policy>`` in the project.
+    to ``evaluations/<revision>-<policy>`` in the project. The film of the
+    chosen seeds is drawn after the measurement is on disk (ADR-459); a film
+    that could not be drawn is a failure that leaves the measurement.
     """
 
     if not (0.0 < float(args.timeout) <= EVALUATE_MAXIMUM_TIMEOUT_S):
         report.error = f"--timeout must be within (0, {EVALUATE_MAXIMUM_TIMEOUT_S:g}] seconds."
         return EXIT_USAGE
+    for flag, value, least in (("--detail-start", args.detail_start, 0.0),
+                               ("--detail-step", args.detail_step, None)):
+        if value is not None and not (math.isfinite(value) and (value > 0 or value == least)):
+            report.error = f"{flag} must be a {'time' if least == 0.0 else 'positive step'} in seconds."
+            return EXIT_USAGE
     with _engine_session(args, report, restore=False) as (engine, _client):
         root = Path(report.project_root)
         try:
@@ -1769,10 +1804,22 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
                 inputs["policy_output"], inputs["task_output"], len(inputs["seeds"]))
         )
         try:
-            measured = run_evaluation(engine, inputs, out, timeout=float(args.timeout))
+            measured = (read_report(out, inputs) if args.film_only else
+                        run_evaluation(engine, inputs, out, timeout=float(args.timeout)))
         except EvaluateRefused as exc:
             report.error = str(exc)
             return EXIT_REJECTED
+        # What each part is made of, for the film: read from the pinned
+        # accepted attempt, no rebuild. Without it the film is drawn in one
+        # material and says so.
+        try:
+            inventory = read_inventory(_client)
+        except (InventoryError, CadexdError, ValueError, OSError):
+            inventory = None
+        measured = add_film(
+            root, out, measured, choice=args.film, inventory=inventory,
+            start=args.detail_start, step=args.detail_step, video=not args.no_video,
+            progress=_progress)
         path = out / EVALUATION_NAME
         report.evaluation = {
             key: measured[key] for key in (
@@ -1780,6 +1827,12 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
                 "policy_sha256", "task_sha256", "model_sha256", "label", "summary")
         }
         report.evaluation["report"] = str(path)
+        film = measured["film"]
+        report.evaluation["film"] = {
+            "state": film["state"], "error": film["error"],
+            "seeds": [{"seed": row["seed"],
+                       **{key: str(out / row[key]["file"]) for key in ("overview", "detail", "video")
+                          if row.get(key)}} for row in film["seeds"]]}
         failing = failing_predicates(measured)
         report.notes.append(
             "evaluation {:s}: {:d} of {:d} seeds pass{:s}; {:s}.".format(
@@ -1787,6 +1840,12 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
                 measured["summary"]["seeds"],
                 (", failing " + ", ".join(failing)) if failing else "", str(path))
         )
+        if film["state"] == "failed":
+            # The measurement is complete and on disk; what was asked for
+            # beside it was not made.
+            report.error = "the evaluation was measured, and its film could not be drawn: " + str(
+                film["error"])
+            return EXIT_FAILURE
         report.ok = True
         return EXIT_OK
 

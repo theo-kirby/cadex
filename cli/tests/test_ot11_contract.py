@@ -263,6 +263,63 @@ def test_the_known_negatives_fail_on_the_contracts_conditions_through_the_produc
     assert sum(1 for row in robin["seeds"] if row["metrics"]["completed"] == 1.0) == 4
 
 
+def test_both_negatives_are_filmed_on_the_contracts_filmstrip() -> None:
+    """ADR-459: each receipt's film is the contract's filmstrip -- twelve
+    overview frames over the episode and twelve detail frames on the
+    behaviour's window, of the three judged seeds -- and the committed
+    sheets are the ones it names, inside the charter's cap."""
+
+    judged = CONTRACT["judge"]["judged_seeds"]
+    assert judged == [1101, 1105, 1110]
+    strip = CONTRACT["judge"]["filmstrip"]
+    assert strip["overview"]["frames"] == strip["detail"]["frames"] == 12
+    for name, stem, step in (("p2-w2-2-evaluation.json", "w2-2", strip["detail"]["walk"]["spacing_s"]),
+                             ("p2-robin-evaluation.json", "robin", strip["detail"]["balance"]["spacing_s"])):
+        report = json.loads((OT11 / "retained" / name).read_text(encoding="utf-8"))
+        film = report["film"]
+        assert film["schema"] == "cadex-evaluation-film-v1" and film["state"] == "ready"
+        assert "dark prototype mat (ADR-444)" in film["floor"] and film["materials"]["declared"]
+        assert [row["seed"] for row in film["seeds"]] == judged
+        rows = {row["seed"]: row for row in report["seeds"]}
+        for row in film["seeds"]:
+            measured = rows[row["seed"]]
+            assert row["trace_sha256"] == measured["trace"]["sha256"]
+            assert row["floor_source"] == "the model's collision plane" and row["floor_z_mm"] == 0.0
+            end = measured["episode"]["duration_s"]
+            overview, detail = row["overview"], row["detail"]
+            assert overview["frames"] == 12 and overview["times_s"][0] == 0.0
+            assert overview["times_s"][-1] == end
+            assert detail["frames"] == 12 and detail["step_s"] == step
+            gaps = [b - a for a, b in zip(detail["times_s"], detail["times_s"][1:])]
+            assert gaps == pytest.approx([step] * 11, abs=0.021)
+            assert detail["times_s"][-1] <= end
+            for sheet in (overview, detail):
+                assert (sheet["width"], sheet["height"]) == (1036, 776)
+                assert sheet["bytes"] <= 300 * 1024
+        first = film["seeds"][0]
+        assert first["video"]["fps"] == 10 and all(row["video"] is None for row in film["seeds"][1:])
+        if stem == "w2-2":
+            # The walk's window: every 0.04 s from 5.0 s.
+            assert all(row["detail"]["start_source"] == "given"
+                       and row["detail"]["start_s"] == strip["detail"]["walk"]["from_s"] == 5.0
+                       for row in film["seeds"])
+        else:
+            # The balance's: from the first shove's onset, or to the fall when that came first.
+            for row in film["seeds"]:
+                shove = min(item["start_s"] for item in rows[row["seed"]]["drawn"]["disturbance"])
+                assert row["detail"]["start_source"] == "the seed's first disturbance"
+                assert row["detail"]["requested_start_s"] == shove
+                assert row["detail"]["start_s"] <= shove
+            assert film["seeds"][2]["detail"]["times_s"][-1] == rows[1110]["episode"]["duration_s"] == 4.26
+        for key in ("overview", "detail"):
+            path = OT11 / f"film-{stem}-seed-1101-{key}.png"
+            data = path.read_bytes()
+            assert hashlib.sha256(data).hexdigest() == first[key]["sha256"], path.name
+            assert len(data) <= 300 * 1024 and path.name in README
+    committed = {path.suffix for path in OT11.rglob("*") if path.is_file()}
+    assert not committed & {".webm", ".mp4"} and not list(OT11.rglob("*-trace.json"))
+
+
 def test_the_one_change_since_the_freeze_is_recorded() -> None:
     (decision,) = CONTRACT["decisions"]
     assert decision["adr"] == "ADR-454" and "W10" in decision["change"]

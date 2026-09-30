@@ -4,7 +4,8 @@
 // The review page. Polls /api/project for the run list (each run's telemetry
 // as a bounded summary) and /api/run/<selected> for the one run whose
 // histories and verified checkpoints are on screen (ADR-321); lets the reader
-// pick the accepted project or one recorded run, and shows exactly what the
+// pick the accepted project or one recorded run (and, on the Evaluation tab,
+// one evaluation of a policy against its success spec), and shows exactly what the
 // record says: a historical run is labelled as such and drawn from its own
 // retained mesh, never from today's script. Nothing here writes anything
 // anywhere. Poll work is bounded: the run list is rebuilt only when it
@@ -636,12 +637,171 @@
     if (!conceptLed && window.cadexFrame) { conceptLed = true; window.cadexFrame.show('concept'); }
   }
 
+  // The evaluation (REVIEW-DESIGN.md §17, ADR-459): a policy held to its
+  // task's success spec on every frozen seed, as `cadex evaluate` wrote it.
+  // /api/project lists each evaluation as a summary; the one on screen is
+  // fetched whole from /api/evaluation/<name>, once per file identity. The
+  // one shown is the reader's pick, else the newest of the selected run's
+  // policy, else the newest at the accepted revision, else the newest.
+  var evaluationKey = null, evaluationRequest = 0, evaluationPicked = null, evaluationShown = null;
+  function evaluationRows() { return (state.review && state.review.evaluations) || []; }
+  function shownEvaluation() {
+    var rows = evaluationRows();
+    if (!rows.length) return null;
+    var picked = rows.filter(function (row) { return row.name === evaluationPicked; })[0];
+    if (picked) return picked;
+    var run = selectedRun(), sha = run && run.policy && run.policy.sha256;
+    var ofRun = sha ? rows.filter(function (row) { return row.policy_sha256 === sha; }) : [];
+    var current = rows.filter(function (row) { return row.relation === 'current'; });
+    var pool = ofRun.length ? ofRun : current.length ? current : rows;
+    return pool[pool.length - 1];
+  }
+  // Five significant figures with no trailing zeros: 0.15, 6.26, 835.98.
+  function num(value) { return value == null ? '—' : typeof value === 'number' ? String(Number(value.toPrecision(5))) : String(value); }
+  function bound(row) {
+    var parts = [];
+    if (row.min != null) parts.push('≥ ' + num(row.min));
+    if (row.max != null) parts.push('≤ ' + num(row.max));
+    return parts.join(' and ') || '—';
+  }
+  function cell(value, attrs) {
+    var node = el('td', attrs || {});
+    node.textContent = num(value);
+    return node;
+  }
+  function fillTable(id, head, rows) {
+    var table = $(id), thead = table.querySelector('thead'), body = table.querySelector('tbody');
+    if (head) { clearChildren(thead); thead.appendChild(el('tr', {}, head.map(function (name) { return el('th', { text: String(name) }); }))); }
+    clearChildren(body);
+    rows.forEach(function (row) { body.appendChild(row); });
+  }
+  function ended(episode) {
+    return (episode.termination || (episode.truncated ? 'horizon' : 'ended')) + ' at ' + num(episode.duration_s) + ' s';
+  }
+  function drawEvaluation(shown, detail) {
+    var report = detail.report, summary = report.summary || {}, seeds = report.seeds || [];
+    var film = report.film || { state: 'none', seeds: [] };
+    var filmed = {};
+    (film.seeds || []).forEach(function (row) { filmed[row.seed] = row; });
+    var base = '/evaluation/' + encodeURIComponent(detail.name) + '/';
+    fillTable('evaluation-predicates', null, (summary.predicates || []).map(function (row) {
+      var value = row.value || {}, passing = !(row.failed_seeds || []).length;
+      return el('tr', { 'data-predicate': row.id }, [cell(row.id), cell(row.metric), cell(bound(row)),
+        cell(row.passed + ' of ' + summary.seeds, { 'data-pass': String(passing) }),
+        cell(row.value ? value.min : 'not measured'), cell(row.value ? value.median : null), cell(row.value ? value.max : null)]);
+    }));
+    var ids = (summary.predicates || []).map(function (row) { return row.id; });
+    fillTable('evaluation-seeds', ['seed', 'verdict', 'ended'].concat(ids), seeds.map(function (row) {
+      var byId = {};
+      (row.predicates || []).forEach(function (item) { byId[item.id] = item; });
+      var first = cell(row.seed);
+      if (filmed[row.seed]) first.addEventListener('click', function () {
+        var target = $('evaluation-film').querySelector('[data-film-seed="' + row.seed + '"]');
+        if (target) target.scrollIntoView({ block: 'start' });
+      });
+      return el('tr', { 'data-seed': String(row.seed), 'data-filmed': String(!!filmed[row.seed]) }, [first,
+        cell(row.void ? 'void: ' + row.void : row.pass ? 'pass' : 'fail', { 'data-pass': String(!!row.pass) }),
+        cell(ended(row.episode || {}))].concat(ids.map(function (id) {
+          var item = byId[id];
+          if (!item) return cell(null);
+          return cell(item.value == null ? 'not measured' : item.value, { 'data-pass': String(!!item.pass), title: item.why || '' });
+        })));
+    }));
+    var head = ['seed'].concat(seeds.map(function (row) { return row.seed; }));
+    var names = [];
+    seeds.forEach(function (row) { Object.keys(row.metrics || {}).forEach(function (name) { if (names.indexOf(name) < 0) names.push(name); }); });
+    fillTable('evaluation-metrics', head, names.map(function (name) {
+      return el('tr', { 'data-metric-row': name }, [cell(name)].concat(seeds.map(function (row) { return cell((row.metrics || {})[name]); })));
+    }));
+    var terms = [];
+    seeds.forEach(function (row) { ((row.reward || {}).terms || []).forEach(function (term) { if (terms.indexOf(term.label) < 0) terms.push(term.label); }); });
+    fillTable('evaluation-reward', head, terms.map(function (label) {
+      return el('tr', { 'data-term': label }, [cell(label)].concat(seeds.map(function (row) {
+        var term = ((row.reward || {}).terms || []).filter(function (item) { return item.label === label; })[0];
+        return cell(term ? term.total : null);
+      })));
+    }).concat([el('tr', { 'data-term': 'total' }, [cell('total')].concat(seeds.map(function (row) { return cell((row.reward || {}).total); })))]));
+    var note = film.state === 'ready' ? 'Drawn from the traces this evaluation kept, on the dark prototype floor; every frame carries its simulation time. Materials: ' + ((film.materials || {}).source || 'not recorded') + '.'
+      : film.state === 'failed' ? 'The film was not completed: ' + film.error
+      : film.state === 'skipped' ? 'No seed was filmed (cadex evaluate --film none).'
+      : 'This evaluation has no film: it was written before evaluations were filmed. Run cadex evaluate --film-only.';
+    text('evaluation-film-note', note);
+    var list = $('evaluation-film');
+    clearChildren(list);
+    (film.seeds || []).forEach(function (row) {
+      var line = el('li', { 'data-film-seed': String(row.seed) }, [el('h3', { text: 'Seed ' + row.seed })]);
+      [['overview', 'Overview'], ['detail', 'Detail']].forEach(function (pair) {
+        var item = row[pair[0]], file = item && (detail.files || {})[item.file];
+        if (!item) return;
+        var times = item.times_s || [], caption = pair[1] + ' · ' + item.frames + ' frames, ' + num(times[0]) + ' to ' + num(times[times.length - 1]) + ' s · ' + item.view;
+        if (file && file.exists) {
+          var url = base + item.file + '?v=' + item.sha256.slice(0, 12);
+          line.appendChild(el('a', { href: url, target: '_blank', rel: 'noopener' }, [el('img', { src: url, alt: pair[1] + ' filmstrip of seed ' + row.seed, 'data-film': pair[0], loading: 'lazy' })]));
+          line.appendChild(el('div', { className: 'caption', text: caption + ' · ' + bytes(file.bytes) }));
+        } else line.appendChild(el('div', { className: 'caption status-missing', text: caption + ' — missing' }));
+      });
+      if (row.video) {
+        var clip = (detail.files || {})[row.video.file], label = 'Video · ' + num(row.video.sim_seconds) + ' s at ' + row.video.fps + ' frames a second';
+        if (clip && clip.exists) {
+          var src = base + row.video.file;
+          line.appendChild(el('video', { controls: true, preload: 'metadata', src: src + '?v=' + row.video.sha256.slice(0, 12), 'data-film': 'video' }));
+          line.appendChild(el('div', { className: 'caption' }, [el('span', { text: label + ' · ' + bytes(clip.bytes) + ' · ' }), el('a', { href: src + '?download=1', text: 'download' })]));
+        } else line.appendChild(el('div', { className: 'caption status-missing', text: label + ' — missing' }));
+      }
+      list.appendChild(line);
+    });
+    $('evaluation-download').href = base + 'evaluation.json?download=1';
+    $('evaluation-body').hidden = false;
+    evaluationShown = { name: detail.name, verdict: report.verdict, seeds: seeds.length, film: film.state, filmed: (film.seeds || []).map(function (row) { return row.seed; }) };
+  }
+  function renderEvaluation() {
+    var rows = evaluationRows(), shown = shownEvaluation();
+    var key = JSON.stringify([rows.map(function (row) { return [row.name, row.stamp, row.relation]; }), shown && shown.name]);
+    if (key === evaluationKey) return;
+    evaluationKey = key;
+    var status = $('evaluation-status'), dot = $('evaluation-dot'), list = $('evaluation-list');
+    clearChildren(list);
+    if (rows.length > 1) rows.slice().reverse().forEach(function (row) {
+      var button = el('button', { type: 'button', 'data-evaluation': row.name,
+        text: short(row.accepted_revision) + ' · ' + (row.policy_output || 'policy') + ' · ' + row.verdict + ' ' + row.passed + '/' + row.seeds + ' · ' + row.relation,
+        onclick: function () { evaluationPicked = row.name; renderEvaluation(); } });
+      button.setAttribute('aria-pressed', String(!!shown && row.name === shown.name));
+      list.appendChild(el('li', {}, [button]));
+    });
+    if (!shown) {
+      status.dataset.state = 'empty';
+      status.textContent = 'no evaluation: cadex evaluate holds the accepted policy to its task\'s success spec and writes one here';
+      $('evaluation-body').hidden = true;
+      delete dot.dataset.state; dot.title = '';
+      evaluationShown = null; evaluationRequest++;
+      return;
+    }
+    var verdict = shown.verdict === 'pass' ? 'pass' : 'fail';
+    status.dataset.state = dot.dataset.state = verdict;
+    dot.title = 'evaluation: ' + verdict;
+    status.textContent = [verdict + ': ' + shown.passed + ' of ' + shown.seeds + ' seeds pass',
+      'policy ' + (shown.policy_output || '?') + ' (' + short(shown.policy_sha256) + ') on task ' + (shown.task_output || '?'),
+      'revision ' + short(shown.accepted_revision) + (shown.relation === 'current' ? ', the accepted design' : ', ' + shown.relation + ': not the accepted design'),
+      'evaluated ' + shown.evaluated_at].concat(shown.failing.length ? ['failing ' + shown.failing.join(', ')] : []).join(' · ');
+    var request = ++evaluationRequest;
+    fetchJson('/api/evaluation/' + encodeURIComponent(shown.name)).then(function (detail) {
+      if (request === evaluationRequest) drawEvaluation(shown, detail);
+    }).catch(function (error) {
+      if (request !== evaluationRequest) return;
+      // A report that vanished between polls: say so, and let the next poll try again.
+      $('evaluation-body').hidden = true;
+      status.textContent += ' — ' + error.message;
+      evaluationKey = null; evaluationShown = null;
+    });
+  }
+
   function render() {
     renderFreshness();
     if (!state.review) return;
     if (state.selected !== 'accepted' && !selectedRun()) state.selected = 'accepted';
     renderHeader(); renderSidebar(); renderIdentity(); renderPolicyOrigin(); renderParams(); renderTraining(); renderArtifacts(); renderDocs();
     renderPresentation();
+    renderEvaluation();
   }
 
   function loadDetail() {
@@ -733,6 +893,7 @@
                disk: state.detail && state.detail.disk ? { state: state.detail.disk.state, bytes: state.detail.disk.bytes, files: state.detail.disk.files, shared_bytes: state.detail.disk.shared_bytes } : null,
                revision: run ? (run.model || {}).accepted_revision : (state.review && state.review.accepted.revision),
                concept: state.review && state.review.presentation ? { available: state.review.presentation.available, revision: state.review.presentation.revision, relation: state.review.presentation.relation } : null,
+               evaluation: evaluationShown,
                relation: run ? run.relation : 'accepted', model: state.model && { available: state.model.available, reason: state.model.reason, revision: state.model.revision },
                runs: state.review ? state.review.runs.map(function (r) { return r.run; }) : [] };
     }

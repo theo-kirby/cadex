@@ -88,6 +88,8 @@ class RunReport:
     #: ``cadex evaluate`` (ADR-457): the verdict, the summary over the
     #: frozen seeds and ``report``, where the full ``evaluation.json`` with
     #: every seed's rows landed. The per-seed rows stay in that file.
+    #: ``film`` (ADR-459) is the film's state and where each sheet and
+    #: video drawn from the seeds landed.
     evaluation: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     #: Free-form notes worth printing but not worth a field of their own.

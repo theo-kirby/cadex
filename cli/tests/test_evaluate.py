@@ -45,7 +45,7 @@ from cadex_cli.evaluate import (
     retained_inputs,
     run_evaluation,
 )
-from cadex_cli.report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE, RunReport
+from cadex_cli.report import EXIT_FAILURE, EXIT_OK, EXIT_REJECTED, EXIT_USAGE, RunReport
 from cadex_cli.report import human_lines as report_lines
 from cadex_cli.smoke import retained_attempt
 
@@ -519,6 +519,10 @@ def test_a_usage_error_comes_before_any_engine(tmp_path, capsys) -> None:
     for timeout in ("0", "7201"):
         code, envelope = _run(capsys, "evaluate", "--project", str(project), "--timeout", timeout)
         assert code == EXIT_USAGE and "--timeout" in envelope["error"], envelope
+    for flag, value in (("--detail-step", "0"), ("--detail-step", "-0.2"), ("--detail-start", "-1"),
+                        ("--detail-start", "nan")):
+        code, envelope = _run(capsys, "evaluate", "--project", str(project), flag, value)
+        assert code == EXIT_USAGE and flag in envelope["error"], envelope
     assert not project.exists()
 
 
@@ -557,8 +561,62 @@ def test_an_accepted_policy_is_evaluated_as_one_command(engine, tmp_path, capsys
     assert "evaluate pol on job → pass" in progress and "evaluation pass 3/3 seeds" in progress
     tracked = subprocess.run(["git", "-C", str(project), "ls-files", "evaluations"],
                              capture_output=True, text=True, check=True).stdout.split()
-    assert tracked == [str(path.relative_to(project))]
+    # ...and neither is the film drawn from them (ADR-459): the sheets and
+    # the video are on disk beside the report, and out of the history.
+    assert tracked == [str(path.parent.relative_to(project) / ".gitignore"),
+                       str(path.relative_to(project))]
+    film = report_film = json.loads(path.read_text(encoding="utf-8"))["film"]
+    assert film["state"] == "ready" and evaluation["film"]["state"] == "ready", report_film
+    (filmed,) = film["seeds"]
+    assert filmed["seed"] == 1101                    # a pass films its first seed
+    for key in ("overview", "detail", "video"):
+        assert (path.parent / filmed[key]["file"]).is_file(), key
+        assert evaluation["film"]["seeds"][0][key] == str(path.parent / filmed[key]["file"])
+    assert filmed["detail"]["start_source"] == "the seed's first disturbance"
     assert any(note.startswith("evaluation pass: 3 of 3 seeds pass") for note in envelope["notes"])
+
+
+@needs_mujoco
+def test_the_film_is_chosen_skipped_and_drawn_again_without_measuring(engine, tmp_path, capsys) -> None:
+    """ADR-459: ``--film none`` measures and draws nothing; ``--film-only``
+    draws another seed from the traces on disk and measures nothing; a film
+    that cannot be drawn is a failure that leaves the measurement."""
+
+    project = _project(tmp_path, capsys, "filmed", _source())
+    code, envelope = _run(capsys, "evaluate", "--project", str(project), "--film-only")
+    assert code == EXIT_REJECTED and "no evaluation in" in envelope["error"], envelope
+
+    code, envelope = _run(capsys, "evaluate", "--project", str(project), "--film", "none")
+    assert code == EXIT_OK and envelope["evaluation"]["film"] == {
+        "state": "skipped", "error": None, "seeds": []}, envelope
+    path = Path(envelope["evaluation"]["report"])
+    measured = json.loads(path.read_text(encoding="utf-8"))
+    assert measured["film"]["state"] == "skipped" and not list(path.parent.glob("*.png"))
+    traces = {p.name: p.stat().st_mtime_ns for p in path.parent.glob("seed-*-trace.json")}
+    assert len(traces) == 3
+
+    code, envelope = _run(capsys, "evaluate", "--project", str(project), "--film-only",
+                          "--film", "1102", "--no-video", "--detail-start", "0.5", "--detail-step", "0.1")
+    assert code == EXIT_OK, envelope
+    again = json.loads(path.read_text(encoding="utf-8"))
+    assert {key: again[key] for key in measured if key != "film"} == {
+        key: measured[key] for key in measured if key != "film"}
+    assert {p.name: p.stat().st_mtime_ns for p in path.parent.glob("seed-*-trace.json")} == traces
+    (filmed,) = again["film"]["seeds"]
+    assert filmed["seed"] == 1102 and filmed["video"] is None
+    assert (filmed["detail"]["start_s"], filmed["detail"]["step_s"]) == (0.5, 0.1)
+    assert sorted(p.name for p in path.parent.glob("seed-1102-*.png")) == [
+        "seed-1102-detail.png", "seed-1102-overview.png"]
+    assert envelope["evaluation"]["film"]["seeds"] == [{
+        "seed": 1102, "overview": str(path.parent / "seed-1102-overview.png"),
+        "detail": str(path.parent / "seed-1102-detail.png")}]
+
+    code, envelope = _run(capsys, "evaluate", "--project", str(project), "--film-only", "--film", "4242")
+    assert code == EXIT_FAILURE, envelope
+    assert envelope["error"].startswith("the evaluation was measured, and its film could not be drawn")
+    assert "4242" in envelope["error"] and envelope["evaluation"]["verdict"] == "pass"
+    failed = json.loads(path.read_text(encoding="utf-8"))
+    assert failed["film"]["state"] == "failed" and failed["seeds"] == measured["seeds"]
 
 
 @needs_mujoco

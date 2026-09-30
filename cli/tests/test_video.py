@@ -105,7 +105,12 @@ def test_render_refuses_invalid_inputs_without_touching_training(video_project, 
         mesh.unlink()
         mesh.symlink_to(outside)
     path.write_text(json.dumps(trace))
-    if fault == 'encoder': monkeypatch.setenv('PATH', '')
+    if fault == 'encoder':
+        # Neither on PATH nor beside the interpreter (video.ffmpeg).
+        import types
+        from cadex_cli import video as video_module
+        monkeypatch.setenv('PATH', '')
+        monkeypatch.setattr(video_module, 'sys', types.SimpleNamespace(executable=str(root / 'no-bin' / 'python')))
     # A real independent process stands in for the trainer: rendering must
     # neither terminate it nor change its telemetry file. No GPU claim.
     heartbeat = run / 'train/heartbeat'

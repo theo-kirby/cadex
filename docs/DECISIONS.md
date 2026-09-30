@@ -30011,3 +30011,115 @@ notes cut properly or the section split, as a unit of its own.
 **Not in this unit.** The rollout video, the filmstrip and the dashboard's
 view of `evaluation.json`, which finish P2 and are next; then the blind
 judge on the two negatives.
+
+## ADR-459 — An evaluation is filmed from its own traces, and the dashboard shows the report (2026-09-30)
+
+**Context.** ADR-457 left P2 two things short: "the video and a filmstrip,
+on the dark floor", and "the review dashboard shows the report". The frozen
+P1 contract also fixes what its blind judge sees — twelve overview frames
+and twelve detail frames of one seed, each carrying its time, on the dark
+prototype floor — and nothing drew them. A run's studio video (ADR-431)
+could not be reused as it stood: it reads a run record, a rollout leg's
+exported STLs and a render summary, and an evaluation has none of the three.
+
+**Decision.**
+
+1. **`cadex evaluate` films what it measured.** `cli/cadex_cli/film.py`
+   draws from the per-seed traces the evaluation kept and the tessellation
+   the accepted attempt retained (`display/*.tess.bin`, read through
+   `CadexStudio.snapshot`, the reader `cadex render` draws from), with the
+   engine's studio renderer on the CPU. No engine op, no rebuild, no
+   browser. For each filmed seed it writes two 4×3 sheets of 256 px frames:
+   an **overview**, evenly spaced over the episode in the hero view in one
+   window on the whole path, and a **detail**, consecutive moments a step
+   apart, side-on to the direction the design travelled, the window
+   following it. Every frame carries its simulation time and nothing else.
+   The first filmed seed also gets the studio **video**, by the code a
+   run's video uses (`video._studio_frames`, `video.encode`, split out of
+   `video._render` unchanged in what they draw).
+2. **Nothing in it names a behaviour.** The detail starts at the seed's
+   first drawn disturbance, or the middle of an episode that has none, 0.2 s
+   apart; `--detail-start` and `--detail-step` say otherwise. The contract's
+   walk window (5.0 s, 0.04 s) is two flags, not a branch. The side-on
+   direction is measured from the trace: from the design's centre at the
+   start to its centre where that was farthest away; under 5 % of its own
+   size it is the front view. `test_film.py` refuses the behaviour words in
+   the module, as `test_evaluate.py` does for the command.
+3. **The floor is the one the evaluation measured against**: the model's
+   collision plane (`rig.floor_mm`), then the top of the world geometry the
+   assembly declares, then the lowest reach. `_studio_frames` takes that
+   height as an argument; a run's video is unchanged.
+4. **The materials are read, not rebuilt.** `inspect scope=inventory` reads
+   the pinned accepted attempt with no restore (0.1 s on `ot11-w2-negative`)
+   and carries each component's declared role, the palette and which
+   sources are printed. Without it the film is drawn all in shell and says
+   so. `evaluate` still never restores, rebuilds or accepts.
+5. **`--film auto` films one seed**: the first that failed, or the first of
+   a pass. `--film` takes seed numbers, `all` or `none`; `--no-video` skips
+   the long half; `--film-only` draws from an evaluation already on disk,
+   and refuses one of another revision or policy.
+6. **The measurement never waits on the film.** `evaluation.json` is
+   written complete, then again with its `film` block
+   (`cadex-evaluation-film-v1`). A film that cannot be drawn records
+   `failed` with the reason and the command exits 1 saying the evaluation
+   was measured; a video that cannot be encoded leaves the sheets. The
+   trace filmed must hash to what the seed's row recorded.
+7. **FFmpeg is found beside the interpreter** when it is not on `PATH`
+   (`video.ffmpeg`). `./cadex` runs the pixi environment's Python without
+   the environment on `PATH`, so the first real `cadex evaluate` drew 150 s
+   of frames and then failed to find the encoder. It now checks before
+   drawing.
+8. **The dashboard shows the report** on a fifth stage tab, **Evaluation**
+   (`docs/REVIEW-DESIGN.md` §17): the verdict line, each predicate's tally
+   and spread, each seed's verdict, ending and per-predicate values, the
+   behaviour metrics, the reward by term, and the film. `/api/project`
+   lists evaluations as bounded summaries parsed once per file identity;
+   `/api/evaluation/<name>` carries one whole; `/evaluation/<name>/<file>`
+   serves the report and the film files it names and nothing else.
+
+**Measured.** Both known negatives were filmed with `--film-only` from the
+traces ADR-458 left, on seeds 1101, 1105 and 1110 (the contract's judged
+seeds), with no new rollout:
+
+| project | detail window | sheets, 3 seeds | video, seed 1101 | largest sheet |
+|---|---|---|---|---|
+| `ot11-w2-negative` (`064d8d7cd34c-7a4e8c233214`) | 5.0 s, 0.04 s (the contract's walk window) | 63.8 s | 101 frames, 179.4 s | 258,086 bytes |
+| `ot11-robin-negative` (`3a42fdec8b94-ef71f370a2f1`) | the first shove's onset, 0.2 s | 54.1 s | 92 frames, 154.8 s | 182,321 bytes |
+
+The two were drawn at the same time on one machine, so each time is an
+upper reading. Two separate draws gave byte-identical sheets and videos of
+the same size with different digests: the sheets are repeatable, the
+encoder's container is not. The film's `style_sha256` is its own identity
+(`film.film_digest`: `CadexStudio.py`, `video.py` and `film.py`), not the
+video's. Both receipts (`docs/probes/ot11/retained/p2-*.json`) gained
+their `film` block and nothing else: every other key is byte for byte
+ADR-458's. Seed 1101's two sheets of each are committed under
+`docs/probes/ot11/`; no video and no trace is.
+
+The frame was 320 px, then 288, then 256: at 288 `ot11-w2-negative`'s
+seed-1101 detail sheet was 304,531 bytes against the charter's 300 KB cap
+on committed images. At 256 every sheet of both projects is under it.
+
+**Not changed.** The frozen contract and its rubric. No protocol op,
+`OP_ARG_SPECS`, `docs/INTEGRATION.md` or shell change: the engine files are
+untouched and no payload moves. No new dependency: FFmpeg is the encoder
+`video.py` already used. Nothing removed.
+
+9. **The film stays out of the project's history.** A project's
+   `.gitignore` (ADR-194) ignores `*.png` and not `*.webm`, and a copied
+   project carries the one it was copied with, so the first filmed
+   evaluation committed its video to the project's repository. `film.py`
+   now writes a `.gitignore` into the evaluation's directory naming the
+   three film patterns: the report is the record, and `--film-only` draws
+   the film again from the traces.
+
+**Limits, stated.** A reach frame does not show its target: no trace
+carries a goal until P3, and the marker arrives with it. Evaluations
+written with `--out` outside `evaluations/` are not on the dashboard.
+Nothing prunes old evaluation directories.
+
+**Evidence.** `cli/tests/test_film.py` (32 tests, no engine),
+`cli/tests/test_review_evaluation.py` (10, with `w2-2` as the failing
+fixture), `cli/tests/test_review_design.py` (heading and reading order),
+`cli/tests/test_ot11_contract.py` (the receipts' film blocks and the
+committed sheets).

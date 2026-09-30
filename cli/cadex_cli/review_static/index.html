@@ -57,6 +57,7 @@
       <button type="button" role="tab" data-stage="model" aria-selected="true">Model</button>
       <button type="button" role="tab" data-stage="curves" aria-selected="false">Curves <span class="tab-dot" id="curves-dot"></span></button>
       <button type="button" role="tab" data-stage="videos" aria-selected="false">Videos <span class="tab-count" id="videos-count"></span></button>
+      <button type="button" role="tab" data-stage="evaluation" aria-selected="false">Evaluation <span class="tab-dot" id="evaluation-dot"></span></button>
       <span id="doc-tab" class="tab-group" hidden><button type="button" role="tab" data-stage="doc" aria-selected="false">Document</button><button type="button" id="doc-close" class="tab-close" aria-label="Close document" title="Close document">×</button></span>
     </div>
     <div class="stage-panels">
@@ -81,6 +82,26 @@
       <section id="videos-region" class="card region stage-panel" data-stage="videos" role="tabpanel">
         <h2>Videos</h2>
         <ul id="videos"></ul>
+      </section>
+      <section id="evaluation" class="card region stage-panel" data-stage="evaluation" role="tabpanel">
+        <h2>Evaluation</h2>
+        <div id="evaluation-status" data-state="empty">no evaluation</div>
+        <ul id="evaluation-list"></ul>
+        <div id="evaluation-body" hidden>
+          <h3>Predicates</h3>
+          <div class="scroll"><table id="evaluation-predicates" class="grid"><thead><tr><th>predicate</th><th>metric</th><th>bound</th><th>seeds passing</th><th>lowest</th><th>median</th><th>highest</th></tr></thead><tbody></tbody></table></div>
+          <h3>Seeds</h3>
+          <div class="scroll"><table id="evaluation-seeds" class="grid"><thead></thead><tbody></tbody></table></div>
+          <h3>Behaviour metrics</h3>
+          <div class="scroll"><table id="evaluation-metrics" class="grid"><thead></thead><tbody></tbody></table></div>
+          <h3>Reward by term</h3>
+          <p class="muted small">What the policy was paid, not what it is judged by: no predicate reads the reward.</p>
+          <div class="scroll"><table id="evaluation-reward" class="grid"><thead></thead><tbody></tbody></table></div>
+          <h3>Film</h3>
+          <div id="evaluation-film-note" class="muted small"></div>
+          <ul id="evaluation-film"></ul>
+          <p class="small"><a id="evaluation-download" href="#">download evaluation.json</a></p>
+        </div>
       </section>
       <section id="doc-panel" class="card region stage-panel" data-stage="doc" role="tabpanel">
         <pre id="doc-view" class="hidden"></pre>

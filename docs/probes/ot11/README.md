@@ -481,5 +481,60 @@ Robin wanders and turns on every seed, as the off-contract reading said.
 Under shoves of 0.10 to 0.25 × its weight it also **falls on six seeds of
 ten**. ot9 never shoved it.
 
-The video judge has still not run. Its runner and the filmstrip are the
-next unit.
+### The filmstrips of both negatives (ADR-459)
+
+`cadex evaluate` now draws the filmstrip this contract describes, from the
+traces an evaluation keeps (`docs/CLI.md`, *The film*). Both negatives were
+filmed with `--film-only` from the traces of the two evaluations above, with
+no new rollout, on the three judged seeds:
+
+```
+cadex evaluate --project ot11-w2-negative    --film-only --film 1101,1105,1110 \
+               --detail-start 5.0 --detail-step 0.04
+cadex evaluate --project ot11-robin-negative --film-only --film 1101,1105,1110
+```
+
+The walk's detail window (every 0.04 s from 5.0 s) is the two flags. The
+balance's (every 0.2 s from the first shove's onset) is the command's
+default: the detail starts at the seed's first drawn disturbance. Each film
+block is in its receipt under `film`, with every sheet's sha256 and frame
+times. Drawing is repeatable: the six sheets of each project came out byte
+for byte the same on two separate draws. The encoded video did not (same
+size, different digest), so a video's sha256 identifies a file, not a
+rollout.
+
+| | `w2-2` | Robin |
+|---|---|---|
+| sheets, three seeds | 63.8 s | 54.1 s |
+| video, seed 1101 | 101 frames, 179.4 s, 386 KB | 92 frames (it fell at 9.08 s), 154.8 s, 231 KB |
+| sheet size, 1036×776 | 149 KB to 258 KB | 107 KB to 182 KB |
+| detail window | 5.00 s to 5.44 s on all three | 1101 from 2.22 s, 1105 from 2.40 s, 1110 from 2.06 s |
+| solids drawn | 78,303 triangles, in the design's materials, floor slab left out | 62,948 triangles, in the design's materials |
+
+Robin's seed 1110 fell at 4.26 s, before the last of twelve moments from its
+2.88 s shove. The window slides back so its last frame is the fall; the
+block records both the requested start and the one shown.
+
+Seed 1101 of each, as committed (the other two seeds' sheets and both videos
+stay in the projects):
+
+| | overview | detail |
+|---|---|---|
+| `w2-2` | [`film-w2-2-seed-1101-overview.png`](film-w2-2-seed-1101-overview.png) | [`film-w2-2-seed-1101-detail.png`](film-w2-2-seed-1101-detail.png) |
+| Robin | [`film-robin-seed-1101-overview.png`](film-robin-seed-1101-overview.png) | [`film-robin-seed-1101-detail.png`](film-robin-seed-1101-detail.png) |
+
+Two places where the product's filmstrip is not yet, or not literally, the
+frozen text:
+
+- **A reach frame's target marker is not drawn.** No trace carries a goal
+  until P3; the marker arrives with it. It does not apply to these two.
+- **"Side-on, following the base."** The product names no base. Its window
+  follows the centre of the whole design, and side-on is measured from the
+  trace: the camera's right is the direction from the design's centre at
+  the start to where it was farthest away (the front view when it moved
+  under 5 % of its own size). On a rigid-bodied walker or balancer that is
+  the base to within the legs' swing. It is stated here so the judge unit
+  can decide whether it needs a recorded contract decision.
+
+**The video judge has still not run.** Nothing above is a score. Its runner
+is the next unit, and these sheets are what it will be shown.

@@ -22,6 +22,12 @@ term by term, how each episode ended, and every value each seed drew. A
 failed evaluation is a verdict, not a command failure: the exit code is
 zero and the verdict is in the report. No spec, no policy or a child that
 could not run is a failure with the reason.
+
+The report's ``film`` block names what was drawn from the seeds' traces
+(:mod:`film`, ADR-459): a filmstrip per filmed seed and a video of the first,
+on the dark prototype floor, beside ``evaluation.json``. The measurement is
+written before anything is drawn, so a film that could not be made leaves a
+complete report that says so.
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ import subprocess
 import tempfile
 from typing import Any, Mapping
 
+from . import film as film_module
 from .engine import Engine
 from .smoke import SmokeError, retained_attempt, smoke_interpreter
 from .train import TASK_KIND
@@ -186,6 +193,7 @@ def run_evaluation(engine: Engine, inputs: Mapping[str, Any], out: Path, *,
     report_path.unlink(missing_ok=True)
     for stale in out.glob("seed-*-trace.json"):
         stale.unlink()
+    film_module.clear(out)
     measured_name = "evaluation-measured.json"
     plan = {
         "module_dir": str(engine.module_dir),
@@ -245,10 +253,68 @@ def run_evaluation(engine: Engine, inputs: Mapping[str, Any], out: Path, *,
         "engine": engine.describe(),
         **measured,
     }
+    write_report(out, report)
+    return report
+
+
+def write_report(out: Path, report: Mapping[str, Any]) -> Path:
+    """``evaluation.json`` in ``out``, whole or not at all."""
+
+    report_path = out / REPORT_NAME
     scratch_path = report_path.with_suffix(".json.tmp")
     scratch_path.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     scratch_path.replace(report_path)
+    return report_path
+
+
+def read_report(out: Path, inputs: Mapping[str, Any]) -> dict[str, Any]:
+    """The evaluation already in ``out``, when it is this revision's and this policy's.
+
+    What ``--film-only`` draws from: the measurement is not repeated, so it
+    must be the one the accepted revision and its policy would produce.
+    """
+
+    try:
+        report = json.loads((out / REPORT_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise EvaluateRefused(
+            f"there is no evaluation in {out} to film; run cadex evaluate without --film-only."
+        ) from exc
+    if not isinstance(report, dict) or report.get("schema") != REPORT_SCHEMA:
+        raise EvaluateRefused(f"{out / REPORT_NAME} is not an evaluation report.")
+    if (report.get("accepted_revision") != inputs["accepted_revision"]
+            or report.get("policy_sha256") != inputs["policy_sha256"]):
+        raise EvaluateRefused(
+            f"the evaluation in {out} is of another revision or policy than the accepted one; "
+            "run cadex evaluate without --film-only."
+        )
     return report
+
+
+def add_film(root: Path, out: Path, report: Mapping[str, Any], *, choice: str = "auto",
+             inventory: Mapping[str, Any] | None = None, start: float | None = None,
+             step: float | None = None, video: bool = True, progress=None) -> dict[str, Any]:
+    """Draw the chosen seeds and write the report again with its ``film`` block.
+
+    A film that cannot be drawn is recorded as failed with the reason; the
+    measurement in the report is untouched either way.
+    """
+
+    try:
+        seeds = film_module.choose_seeds(report, choice)
+        if seeds:
+            block = film_module.film_evaluation(
+                root, out, report, seeds=seeds, inventory=inventory, start=start, step=step,
+                video=video, progress=progress)
+        else:
+            film_module.clear(out)
+            block = {"schema": film_module.FILM_SCHEMA, "state": "skipped", "error": None, "seeds": []}
+    except film_module.FilmError as exc:
+        film_module.clear(out)
+        block = film_module.failed(exc)
+    filmed = {**report, "film": block}
+    write_report(out, filmed)
+    return filmed
 
 
 def failing_predicates(report: Mapping[str, Any]) -> list[str]:
@@ -304,5 +370,13 @@ def human_lines(report: Mapping[str, Any]) -> list[str]:
     if summary.get("void"):
         lines.append("  void: the simulation went unstable on seed(s) "
                      + ", ".join(str(seed) for seed in summary["void"]))
+    film = report.get("film") or {}
+    if film.get("state") == "ready":
+        lines.append("  film: seed(s) " + ", ".join(str(row["seed"]) for row in film.get("seeds") or [])
+                     + " as overview and detail sheets"
+                     + "".join(f"; video of seed {row['seed']}" for row in film.get("seeds") or []
+                               if row.get("video")))
+    elif film.get("state") == "failed":
+        lines.append("  film: not drawn: " + str(film.get("error")))
     return lines
 

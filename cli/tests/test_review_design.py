@@ -157,8 +157,8 @@ def test_the_spec_itself_names_no_private_address():
 # §2's reading order: what a phone reads top to bottom, and what the desk
 # frame distributes between its left sidebar, stage and right sidebar.
 READING_ORDER = ("#sidebar", "#identity", "#concept", "#model", "#model-settings", "#curves", "#videos-region",
-                 "#record", "#params-panel", "#artifacts-panel", "#docs-panel")
-HEADINGS = ["Runs", "Documents and decisions", "Concept", "Model", "Curves", "Videos", "Identity", "Model settings",
+                 "#evaluation", "#record", "#params-panel", "#artifacts-panel", "#docs-panel")
+HEADINGS = ["Runs", "Documents and decisions", "Concept", "Model", "Curves", "Videos", "Evaluation", "Identity", "Model settings",
             "Training and rollout", "Parameters and specs", "Artifacts"]
 
 MEASURE = """(function () {
