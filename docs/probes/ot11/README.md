@@ -1293,3 +1293,76 @@ alive bonus rises to 3, and the speed Gaussian widens from 0.25 to 0.4 of
 the command. The sink threshold goes from 1.5 to 2.0 mm, and the sink
 cost becomes quadratic at weight −2. The heading weight falls from −2.0 to
 −1.5, and the yaw-rate weight rises from −0.3 to −0.5.
+
+### Walk round 2: `r2-bounded` no longer collapses, and still walks backwards
+
+| run | seed | settings | budget | ended | evaluated policy | seeds passed |
+|---|---|---|---|---|---|---|
+| `r2-bounded` | 11 | 800 it × 2048 envs | 2,380 s | **finished**, all 800 iterations, 2,251 s | `1a0f0d28…` (final, iteration 799) | **0 of 10** |
+
+GPU wall time: 2,251 s. **The bounded costs fixed the collapse.** Episodes
+ran full length at the end (the trainer's mean was 506 steps), and training reward per step
+climbed from −1.5 to +2.48. **They did not fix the backwards motion.** In
+the engine the final policy backs away on every seed, at 114–144 mm/s against
+a commanded 61–93 mm/s (W3 −2.06 to −1.22). It is already backing away at
+119–132 mm/s over the first three seconds, before any seed's shove (3.4–4.6 s), so the
+disturbance is not the cause.
+
+**The evaluation is valid.** The script's spec block equals
+`retained/walk-spec-block.txt` at the evaluated revision `80ba9fb9…`. It
+still does at round 3's revision `27da0754…`. The model is `ade106a6…`, and
+the task is `ffbe1d43…`, the one trained. The report is
+`evaluations/80ba9fb9905e-1a0f0d28a2aa/evaluation.json`, and the receipt is
+[`retained/p4-quad-1-r2-evaluation.json`](retained/p4-quad-1-r2-evaluation.json).
+
+| predicate | seeds failing | range |
+|---|---|---|
+| W1, W2 | **0** | every seed completes 500 steps; tilt 15.8–30.0° (seed 1107 at 29.998°) |
+| W3 tracks speed | 10 | speed ratio −2.06 to −1.22, **backwards** |
+| W5-steps, W5-share | 10 | the rear feet take **0 steps** on nine seeds and 2 on 1107; share ≤ 0.02 |
+| W6, W9 | 10 | not measured on nine seeds (no rear step to measure); 1107 has W6 0.08 and W9 10.5 |
+| W7 slip | 10 | 0.56–0.63, all on the rear feet (front feet 0.05–0.21) |
+| W8-low duty factor | 10 | 0.16–0.26: the front feet are in the air most of the time |
+| W10 in the floor | 10 | −0.13 to −0.11 hip heights |
+| W4-heading | 5 | 47–82° on 1102, 1106, 1107, 1108, 1110 |
+| W4-lateral | 1 | 0.29 on 1109 |
+
+The gait is the same on every seed. The front feet step 8–29 times, with duty factors of
+0.16–0.47. The rear feet drag on the ground (duty 0.75–0.83, slip 0.51–0.63), about 10 mm
+into the floor. Round 1's legs were more even. This round turned that into a
+front-pulled, rear-dragged slide. The film of seed 1101 is the
+[overview](p4-quad-1-walk-r2-seed-1101-overview.png) and the
+[detail](p4-quad-1-walk-r2-seed-1101-detail.png). The robot slides steadily
+across the mat, with the shins splayed back and the feet low under a
+near-level trunk.
+
+The reward terms say where the bounded costs sit. `speed_error` costs
+0.92–0.99 per step of its 1.0 cap, so backing away at twice the command
+costs almost what standing still would (tanh 0.76). `clearance_rl`/`_rr`
+cost 0.42–0.43 of 0.5, and `sink` costs 0.82–0.90 of 2.0. `speed_track`
+earns 0.00–0.02 of 2.0.
+
+**Training and evaluation disagree, in both rounds.** The evaluated
+policy's training reward was +2.48 per step. On the evaluation seeds it
+scored −1.69 to −1.21. Round 1 shows the same gap: −1.39 at its best
+checkpoint in training, −7.51 to −4.34 on evaluation. Both rounds move
+backwards in the engine, although the reward pays forward speed. The part of
+the ~4 per step gap that sampled vs mean actions or the reset draws would
+explain is not measured. Nor is whether the trainer's rollout of this policy
+also goes backwards. The observation-parity probe (R3) compares sensor
+values at forced states, not a policy rollout. This page does not claim a
+cause. The next measurement is that rollout: the trainer's own
+environment, driving the evaluated policy with mean actions, from an
+evaluation seed's reset and command, compared step by step with the
+engine's trace. Until it is run, a walk round's evaluation is published but
+the train/evaluate agreement for walk is an open question.
+
+**Round 3 cites round 2.** The agent registered `r3-nochatter` at 23:01Z:
+seed 23, 800 it × 2048 envs, 2,380 s, `--stop-on-collapse`. Its reason
+quotes W3 −1.22 to −2.06 at 114–144 mm/s, W7 0.56–0.63, W5-steps 0–2 and
+W10 −0.11 to −0.13. It also reads the knee joint-speed term as about
+360°/s RMS of knee chatter (−0.10 per step at weight −0.03 over four knees
+is 364°/s), and names the training/evaluation gap itself. It charges
+bounded hip and knee chatter and landing speed, and strengthens the
+per-foot clearance, slip and trot-sync terms. The spec block is still
+equal to the retained one.
