@@ -1233,3 +1233,63 @@ is fixed for the session, because the spec's constants are this model's.
 The prompt tells the agent what `w2-2` measured under this spec, and that
 its policy cannot be declared on a task with a goal. It does not tell the
 agent how to reward a gait.
+
+### Walk round 1: `r1-clearance` collapsed, and its best checkpoint walks backwards
+
+The session started under `setsid` at 21:27Z and was still alive when this
+round was read. The agent registered `r1-clearance` before launch: seed 7,
+1,000 iterations × 2,048 envs, a 2,350 s budget, `--stop-on-collapse`.
+
+| run | seed | settings | budget | ended | evaluated policy | seeds passed |
+|---|---|---|---|---|---|---|
+| `r1-clearance` | 7 | 1000 it × 2048 envs | 2,350 s | **collapsed** at iteration 568, 1,542 s | `8db0cb61…` (`best`, iteration 273) | **0 of 10** |
+
+GPU wall time: 1,542 s. Episodes ran about 490 of 500 steps early in the
+run, began shortening near iteration 250 and averaged 23 steps at the stop.
+The reward per step was negative throughout, from −7.0 to −0.8: the alive
+bonus of 2.0 did not cover the costs, so ending an episode paid.
+
+**The evaluation is valid.** The script's spec block equals
+`retained/walk-spec-block.txt`. Revision `8498db6e…` differs from the
+registered `db1cfc96…` only in the declared policy digest. The model is
+`ade106a6…`. The report is
+`evaluations/8498db6e1ff5-8db0cb619fc4/evaluation.json`, and the receipt
+with every seed's predicates, feet and reward terms is
+[`retained/p4-quad-1-r1-evaluation.json`](retained/p4-quad-1-r1-evaluation.json).
+
+| predicate | seeds failing | range |
+|---|---|---|
+| W3 tracks speed | 10 | speed ratio −1.46 to −0.05; every seed with a value moves **backwards** (1102 tips at step 38 with none) |
+| W5-share steps | 10 | 0.00–0.19 of the path made in steps (≥ 0.70) |
+| W6 clearance | 10 | 0.04–0.07 hip heights where measured (≥ 0.08) |
+| W7 slip | 10 | 0.48–0.90 (≤ 0.15) |
+| W10 in the floor | 10 | −0.11 to −0.19 hip heights (≥ −0.05) |
+| W4-heading | 8 | up to 173° on seed 1103 |
+| W9 every leg | 8 | ratio up to 9.5; on seed 1105 the rear feet take 2 and 3 steps and the front feet 19 and 13 |
+| W4-lateral | 5 | up to 1.07 |
+| W5-steps | 5 | 0–3 steps on the weakest foot |
+| W1, W2 | 4 | seeds 1102, 1106, 1107, 1110 **tip** (38–315 steps, 37–39°) |
+| W8 duty factor | 3 low, 2 high | seeds 1102 and 1110, which tip early, and 1105's low of 0.26 |
+
+On the six seeds that complete the episode, the body's largest heading is 56–173°
+and backs away at 27–85 mm/s against a commanded 61–93 mm/s. The front
+feet do most of the stepping. Tilt is 17–21°, under W2's 30° but well
+off level. On seed 1101 the four foot-clearance terms together cost 1,364
+and the speed error 954, against an alive total of 1,000. The film of seed
+1101 is the [overview](p4-quad-1-walk-r1-seed-1101-overview.png) and the
+[detail](p4-quad-1-walk-r1-seed-1101-detail.png). The body swings
+side-on to the camera and back, and the legs splay under a level trunk.
+
+**This fails for the right reasons.** It is not a shuffle that the spec
+misses. W3 catches the direction, W7 and W10 the drag through the floor,
+and W5-share and W9 the rear legs that barely step.
+
+**Round 2 cites round 1.** The agent registered `r2-bounded` at 22:11Z:
+seed 11, 800 it × 2048 envs, 2,380 s, `--stop-on-collapse`. Its reason
+quotes this evaluation's W3, W7, W10 and W6 ranges and the collapse. The
+change touches the reward only, and the spec block is still equal to the
+retained one. Every cost now goes through `tanh`, so each is bounded. The
+alive bonus rises to 3, and the speed Gaussian widens from 0.25 to 0.4 of
+the command. The sink threshold goes from 1.5 to 2.0 mm, and the sink
+cost becomes quadratic at weight −2. The heading weight falls from −2.0 to
+−1.5, and the yaw-rate weight rises from −0.3 to −0.5.
