@@ -9562,9 +9562,17 @@ def rollout_policy(
             )
         return poses
 
+    # MuJoCo answers a bad acceleration by resetting the state and counting
+    # a warning, so the poses after it are finite and mean nothing. The
+    # counters are read at every control step, and the largest is kept,
+    # because the reset clears them too.
+    warned = [0] * int(mujoco.mjtWarning.mjNWARNING)
+
     def _sample(
         step: int, data: Any, final: bool, action: list[float] | None
     ) -> dict[str, Any] | None:
+        for index in range(len(warned)):
+            warned[index] = max(warned[index], int(data.warning[index].number))
         # The last state is always recorded, however the episode ended: a
         # trace that stopped at the previous frame boundary would show a
         # mechanism that had not yet fallen over.
@@ -9657,5 +9665,220 @@ def rollout_policy(
             "truncated": bool(episode["truncated"]),
             "seed": episode["seed"],
             "randomisation": list(episode["randomisation"]),
+            # What this episode drew for its reset and its shoves, beside
+            # the randomisation it drew first: an evaluation echoes every
+            # drawn value, and reads a recovery from when the shove ended.
+            "reset_variation": list(episode["reset_variation"]),
+            "disturbance": list(episode["disturbance"]),
+            # Empty for a simulation that stayed sound. Anything here says
+            # the solver gave up somewhere in the episode, and what the
+            # frames show after that is not the mechanism.
+            "solver_warnings": [
+                {"warning": str(mujoco.mjtWarning(index).name), "count": count}
+                for index, count in enumerate(warned) if count > 0
+            ],
         },
+    }
+
+
+#: The report an evaluation writes (ADR-457).
+EVALUATION_SCHEMA = "cadex-evaluation-v1"
+#: The trace each evaluated seed leaves: the schema a rollout already writes,
+#: so whatever plays or measures a rollout plays and measures this.
+EVALUATION_TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
+
+
+def evaluate_success(
+    xml: bytes,
+    task: Mapping[str, Any],
+    container: Mapping[str, Any],
+    *,
+    components: Sequence[str],
+    identity: Mapping[str, Any] | None = None,
+    on_trace: Any = None,
+    context: str = "this evaluation",
+) -> dict[str, Any]:
+    """One policy, held against its task's success spec on every frozen seed.
+
+    The spec is the bundle's ``success`` block (ADR-456) and it states
+    everything this needs: the seeds, the conditions an evaluation episode
+    runs under, what the feet and the tip are, and the predicates. For each
+    seed this plays :func:`rollout_policy` on :func:`evaluation_task` --
+    the task's own model, channels, actions, reward and terminations under
+    the spec's horizon, reset variation and shoves -- at one frame per
+    control step, reads the frames with ``CadexEvaluation.measure`` and
+    holds the spec's predicates against what was measured.
+
+    **It takes the model's bytes, not a compiled model, and compiles one per
+    seed.** A seeded episode multiplies its randomisation draws into the
+    model in place (:func:`apply_randomisation`), so a second seed played on
+    the same compiled model would start from the first seed's masses. Seeds
+    are independent episodes: each one's row is the row that seed gets when
+    it is evaluated alone, in any order.
+
+    **Nothing here knows what the behaviour is.** Which metric families are
+    read follows from the rig -- a floating base, named feet, a tip -- and a
+    seed passes when every predicate holds. The reward is reported, term by
+    term, and decides nothing: no predicate can name it.
+
+    ``on_trace(seed, document)`` is handed each seed's frames as a
+    ``cadex-assembly-simulation-trace-v1`` document before they are dropped,
+    so a caller can retain them and this never holds ten episodes of poses
+    at once. ``identity`` is merged into each document's ``policy`` block:
+    the digests of the files that ran, which only the caller that read them
+    knows.
+
+    Returns the rig's scale, one row per seed -- verdict, predicates,
+    metrics, per-foot and per-shove detail, how the episode ended, the
+    reward by term and every value the seed drew -- and
+    ``CadexEvaluation.summarise`` over them. **Every seed must pass**, and a
+    seed whose simulation went unstable is ``void``: MuJoCo resets the state
+    on a bad acceleration, so the frames after it are finite and are not the
+    mechanism, and no predicate read from them can pass the seed.
+    """
+
+    import CadexEvaluation
+
+    spec = task.get("success")
+    played = evaluation_task(task)
+    # Evaluation seeds are never training seeds. The two streams differ, so
+    # no episode would coincide; the rule is kept anyway, because a seed
+    # that was tuned against is no longer a held-out one.
+    trained_seed = ((container.get("header") or {}).get("training") or {}).get("seed")
+    if isinstance(trained_seed, int) and trained_seed in [int(s) for s in spec["seeds"]]:
+        raise DynamicsError(
+            f"{context} would judge a policy on seed {trained_seed}, which is "
+            "the seed it was trained with.",
+            reason="evaluation_seed_is_the_training_seed",
+            correction=(
+                "Evaluation seeds are never training seeds. Retrain with a "
+                "--seed that is not one of the spec's seeds; do not change "
+                "the spec's seeds to fit a policy."
+            ),
+            observed={"training_seed": trained_seed,
+                      "evaluation_seeds": [int(s) for s in spec["seeds"]]},
+        )
+    rig = evaluation_rig(
+        load_model(xml), feet=list(spec.get("feet") or ()), tip=spec.get("tip")
+    )
+    names = [str(name) for name in components]
+    wanted = [rig["base"], *rig["feet"], (rig.get("tip") or {}).get("body")]
+    names += [name for name in wanted if name is not None and name not in names]
+    control_hz = int(played["episode"]["control_hz"])
+    stamp = dict(identity or {})
+
+    rows: list[dict[str, Any]] = []
+    for seed in spec["seeds"]:
+        run = rollout_policy(
+            load_model(xml), played, container, components=names,
+            frames_per_second=control_hz, seed=int(seed),
+            context=f"{context}, seed {int(seed)}",
+        )
+        episode = run["episode"]
+        samples = [
+            (float(frame["nominal_time_s"]), frame["component_placements"])
+            for frame in run["frames"] if frame["frame_kind"] == "solver_output"
+        ]
+        # A shove is read from what the episode drew and what the spec
+        # declared: the draw says when it started, the entry how long it ran.
+        shoves = [
+            (float(draw["start_s"]), float(entry["duration_s"]))
+            for entry, draw in zip(played["disturbance"], episode["disturbance"], strict=True)
+            if not bool(entry["sustained"])
+        ]
+        ended = {
+            "steps": int(episode["step_count"]),
+            "duration_s": float(episode["episode_seconds"]),
+            "control_hz": control_hz,
+            "termination": str(episode["termination"]),
+            "terminated_step": episode["terminated_step"],
+            "truncated": bool(episode["truncated"]),
+            "solver_warnings": list(episode["solver_warnings"]),
+        }
+        measured = CadexEvaluation.measure(samples, ended, rig, shoves=shoves)
+        held = CadexEvaluation.check(spec["predicates"], measured["metrics"])
+        steps = max(1, ended["steps"])
+        # A simulation the solver gave up on is not a measurement of the
+        # mechanism, whatever its poses read as: the seed is void, and a
+        # void seed has not passed.
+        warnings = list(episode["solver_warnings"])
+        void = "" if not warnings else (
+            "the simulation went unstable: MuJoCo warned "
+            + ", ".join(f"{entry['warning']} x{entry['count']}" for entry in warnings)
+        )
+        row = {
+            "seed": int(seed),
+            "pass": not void and all(entry["pass"] for entry in held),
+            "void": void,
+            "failing": [entry["id"] for entry in held if not entry["pass"]],
+            "predicates": held,
+            "metrics": measured["metrics"],
+            "detail": measured["detail"],
+            "episode": ended,
+            "reward": {
+                "total": float(episode["total_reward"]),
+                "per_step": float(episode["total_reward"]) / steps,
+                "terms": [
+                    {"label": str(term["label"]), "total": float(term["total"]),
+                     "per_step": float(term["total"]) / steps}
+                    for term in episode["reward_totals"]
+                ],
+            },
+            "drawn": {
+                "randomisation": list(episode["randomisation"]),
+                "reset_variation": list(episode["reset_variation"]),
+                "disturbance": list(episode["disturbance"]),
+            },
+            "frames": len(samples),
+        }
+        rows.append(row)
+        if on_trace is not None:
+            on_trace(int(seed), {
+                "schema": EVALUATION_TRACE_SCHEMA,
+                "simulation_output": "evaluation",
+                "component_outputs": list(names),
+                "motion_outputs": [],
+                "parameters": {
+                    "start_time_s": 0.0,
+                    "end_time_s": ended["duration_s"],
+                    "time_step_s": float(run["frame_interval_s"]),
+                    "error_tolerance": float(run["solver_tolerance"]),
+                    "frames_per_second": control_hz,
+                },
+                "frames": run["frames"],
+                "actuator_channels": list(run["actuator_channels"]),
+                "dynamics": {
+                    "solver": "mujoco",
+                    "solver_step_s": float(run["solver_step_s"]),
+                    "control_hz": control_hz,
+                    "frames_per_second": control_hz,
+                    "steps_per_frame": int(run["steps_per_frame"]),
+                    "component_outputs": list(names),
+                    "mujoco_version": str(task.get("mujoco_version") or ""),
+                },
+                "policy": {
+                    **stamp,
+                    "label": str(episode["label"]),
+                    "total_reward": float(episode["total_reward"]),
+                    "reward_totals": list(episode["reward_totals"]),
+                    "step_count": ended["steps"],
+                    "terminated_step": episode["terminated_step"],
+                    "termination": ended["termination"],
+                    "truncated": ended["truncated"],
+                    "solver_warnings": ended["solver_warnings"],
+                    "seed": int(seed),
+                    **row["drawn"],
+                },
+            })
+
+    return {
+        "schema": EVALUATION_SCHEMA,
+        "label": str(spec.get("label") or ""),
+        "task_label": str(task.get("label") or ""),
+        "spec": {key: spec[key] for key in (
+            "predicates", "seeds", "feet", "tip", "episode",
+            "reset_variation", "disturbance", "scale")},
+        "rig": {key: value for key, value in rig.items() if key != "feet"},
+        "seeds": rows,
+        "summary": CadexEvaluation.summarise(rows, spec["predicates"]),
     }

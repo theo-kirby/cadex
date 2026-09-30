@@ -20,6 +20,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 OT11 = REPO / "docs/probes/ot11"
 CONTRACT = json.loads((OT11 / "contract.json").read_text(encoding="utf-8"))
@@ -193,6 +195,66 @@ def test_the_receipts_say_what_the_contract_says_and_carry_no_machine_path() -> 
     for name in ("p1-w2-2.json", "p1-w2-2-seeds.json", "p1-robin.json"):
         text = (OT11 / "retained" / name).read_text(encoding="utf-8")
         assert "/home/" not in text and "/tmp/" not in text and "NaN" not in text, name
+
+
+def test_the_known_negatives_fail_on_the_contracts_conditions_through_the_product() -> None:
+    """``cadex evaluate`` on the two ``ot11-*`` copies (ADR-457): the
+    contract's seeds, shoves and horizon, declared as a success spec."""
+
+    bounds = {"walk": {"W1": ("completed", 1, None), "W2": ("max_tilt_deg", None, 30),
+                       "W4-heading": ("max_heading_deg", None, 45),
+                       "W5-steps": ("steps_min", 4, None), "W5-share": ("step_share_min", 0.70, None),
+                       "W6": ("step_clearance_hip_heights_min", 0.08, None),
+                       "W7": ("slip_share_max", None, 0.15),
+                       "W8-low": ("duty_factor_min", 0.40, None),
+                       "W8-high": ("duty_factor_max", None, 0.85),
+                       "W9": ("step_count_ratio", None, 1.5),
+                       "W10": ("foot_lowest_hip_heights_min", -0.05, None)},
+              "balance": {"B1": ("completed", 1, None), "B2": ("max_tilt_deg", None, 30),
+                          "B3": ("max_drift_com_heights", None, 2.0),
+                          "B4": ("max_heading_deg", None, 20), "B5": ("recovery_s_max", None, 2.0)}}
+    expected = {
+        "p2-w2-2-evaluation.json": ("walk", "7a4e8c23", ["W5-share", "W6", "W7", "W9", "W10"],
+                                    {"horizon": 8, "tipped": 2}),
+        "p2-robin-evaluation.json": ("balance", "ef71f370", ["B3", "B4", "B5"],
+                                     {"fallen": 6, "horizon": 4}),
+    }
+    for name, (behaviour, policy, on_every_seed, endings) in expected.items():
+        text = (OT11 / "retained" / name).read_text(encoding="utf-8")
+        assert "/home/" not in text and "/tmp/" not in text and "NaN" not in text, name
+        report = json.loads(text)
+        assert report["schema"] == "cadex-evaluation-v1" and report["verdict"] == "fail"
+        assert report["policy_sha256"].startswith(policy) and report["project"].startswith("ot11-")
+        # The spec the copy declares is the contract's: its seeds, its
+        # horizon, and its bounds on the metrics the binding names.
+        assert report["spec"]["seeds"] == SEEDS == [row["seed"] for row in report["seeds"]]
+        assert report["spec"]["episode"]["episode_seconds"] == CONTRACT["behaviours"][behaviour][
+            "episode_seconds"]
+        assert {row["id"]: (row["metric"], row["min"], row["max"])
+                for row in report["spec"]["predicates"]} == bounds[behaviour]
+        summary = report["summary"]
+        assert summary["passed"] == [] and summary["void"] == []
+        assert summary["terminations"] == endings
+        assert [row["id"] for row in summary["predicates"] if row["passed"] == 0] == on_every_seed
+        assert name in README
+    walk = json.loads((OT11 / "retained" / "p2-w2-2-evaluation.json").read_text(encoding="utf-8"))
+    (shove,) = walk["spec"]["disturbance"]
+    weight = walk["spec"]["scale"]["weight_n"]
+    assert shove["newtons_low"] == pytest.approx(0.05 * weight)
+    assert shove["newtons_high"] == pytest.approx(0.20 * weight)
+    assert (shove["at_low_s"], shove["at_high_s"], shove["duration_s"]) == (3.0, 7.0, 0.15)
+    # The seed the reward liked best took no step.
+    best = max(walk["seeds"], key=lambda row: row["reward"]["total"])
+    assert best["seed"] == 1104 and best["metrics"]["steps_min"] == 0
+    robin = json.loads((OT11 / "retained" / "p2-robin-evaluation.json").read_text(encoding="utf-8"))
+    assert [(d["at_low_s"], d["at_high_s"], d["duration_s"]) for d in robin["spec"]["disturbance"]] == [
+        (2.0, 3.0, 0.10), (5.5, 6.5, 0.10)]
+    for push in robin["spec"]["disturbance"]:
+        assert push["newtons_low"] == pytest.approx(0.10 * robin["spec"]["scale"]["weight_n"])
+        assert push["newtons_high"] == pytest.approx(0.25 * robin["spec"]["scale"]["weight_n"])
+    # B1 and B5 are measured now: every seed was shoved twice.
+    assert all(len(row["drawn"]["disturbance"]) == 2 for row in robin["seeds"])
+    assert sum(1 for row in robin["seeds"] if row["metrics"]["completed"] == 1.0) == 4
 
 
 def test_the_one_change_since_the_freeze_is_recorded() -> None:

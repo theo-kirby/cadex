@@ -395,6 +395,11 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   be revised without orphaning a policy, because
   `assembly.policy(trained_task=...)` proves two bundles that differ only in
   their spec to be the same task (ADR-134).
+  **`cadex evaluate` holds the accepted policy to the spec** (ADR-457,
+  `docs/CLI.md`): one rollout per seed under these conditions, every
+  predicate per seed, and a report in the project. Every seed must pass. An
+  evaluation episode keeps the task's `randomisation`; the spec cannot
+  switch it off.
   **Action ranges are derived from the mechanism or refused, never
   defaulted.** A `motor` is bounded by its `torque_limit_nmm`/`force_limit_n`
   and a `position` servo by its joint's own limits with *both* endpoints

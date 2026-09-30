@@ -1,0 +1,1978 @@
+{
+ "accepted_digest": "a42cc45f20b7292180d216d540a714ed89174b2f1f889541f291391957ab439e",
+ "accepted_revision": "b2302f600801a03a17687199617a42c74ef4c1ff82350db50907380492a7460b",
+ "engine": {
+  "source": "dev-tree"
+ },
+ "label": "ot11 balance contract",
+ "model_output": "robin_model",
+ "model_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+ "mujoco_version": "3.10.0",
+ "policy_label": "r3-ppo-1",
+ "policy_output": "policy",
+ "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+ "project": "ot11-robin-negative",
+ "rig": {
+  "base": "comp_chassis",
+  "base_com_local_mm": [
+   0.458126,
+   0.0,
+   -49.8393
+  ],
+  "com_height_mm": 52.39964209326001,
+  "floor_mm": 0.0,
+  "hip_height_mm": null,
+  "mass_kg": 0.18792635200000005,
+  "reference_xyzw": [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ],
+  "weight_n": 1.8435575131200006
+ },
+ "schema": "cadex-evaluation-v1",
+ "seeds": [
+  {
+   "detail": {
+    "recovery_s": [
+     null,
+     null
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 5.346485141052334,
+      "force_n": [
+       0.22776953409972192,
+       -0.30971890410063335,
+       0.0
+      ],
+      "label": "first_shove",
+      "newtons": 0.38445384667252547,
+      "start_s": 2.2196595020295566
+     },
+     {
+      "azimuth_rad": 5.31549727632777,
+      "force_n": [
+       0.1229575315169973,
+       -0.17853318848413377,
+       0.0
+      ],
+      "label": "second_shove",
+      "newtons": 0.2167778908169941,
+      "start_s": 5.766761802075879
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 6.278855041883476,
+      "height_m": 0.004816269875179625,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 5.94603383811165,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.018756775993868807
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 9.08,
+    "solver_warnings": [],
+    "steps": 454,
+    "terminated_step": 453,
+    "termination": "fallen",
+    "truncated": false
+   },
+   "failing": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5"
+   ],
+   "frames": 455,
+   "metrics": {
+    "completed": 0.0,
+    "duration_s": 9.08,
+    "final_drift_mm": 981.6471040218239,
+    "final_heading_deg": 46.41784891484908,
+    "max_drift_com_heights": 18.73385131666939,
+    "max_drift_mm": 981.6471040218239,
+    "max_heading_deg": 136.85540712572706,
+    "max_tilt_deg": 55.09858320355906,
+    "mean_speed_mm_s": 128.7242994239798,
+    "recovery_s_max": null
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "B1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": false,
+     "value": 0.0,
+     "why": "completed is 0, under 1"
+    },
+    {
+     "id": "B2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 55.09858320355906,
+     "why": "max_tilt_deg is 55.1, over 30"
+    },
+    {
+     "id": "B3",
+     "max": 2.0,
+     "metric": "max_drift_com_heights",
+     "min": null,
+     "pass": false,
+     "value": 18.73385131666939,
+     "why": "max_drift_com_heights is 18.73, over 2"
+    },
+    {
+     "id": "B4",
+     "max": 20.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 136.85540712572706,
+     "why": "max_heading_deg is 136.9, over 20"
+    },
+    {
+     "id": "B5",
+     "max": 2.0,
+     "metric": "recovery_s_max",
+     "min": null,
+     "pass": false,
+     "value": null,
+     "why": "recovery_s_max was not measured"
+    }
+   ],
+   "reward": {
+    "per_step": 0.9719478197419977,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 1.0,
+      "total": 454.0
+     },
+     {
+      "label": "pitch_penalty",
+      "per_step": -0.025223566862858305,
+      "total": -11.45149935573767
+     },
+     {
+      "label": "control_cost",
+      "per_step": -0.0028286133951438567,
+      "total": -1.284190481395311
+     }
+    ],
+    "total": 441.264310162867
+   },
+   "seed": 1101,
+   "trace": {
+    "bytes": 2558215,
+    "file": "seed-1101-trace.json",
+    "sha256": "e3407089c16fd823170893cf3e8beac3a83fd867d154a85cc1d8a9edd22869a4"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "recovery_s": [
+     6.388372572178443,
+     2.840446331228189
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 4.23302125602742,
+      "force_n": [
+       -0.12164076313076858,
+       -0.2340111899832484,
+       0.0
+      ],
+      "label": "first_shove",
+      "newtons": 0.26373796141703176,
+      "start_s": 2.2516274278215573
+     },
+     {
+      "azimuth_rad": 2.8943673497602975,
+      "force_n": [
+       -0.3457429963980047,
+       0.08726152209902352,
+       0.0
+      ],
+      "label": "second_shove",
+      "newtons": 0.3565849026491574,
+      "start_s": 5.799553668771812
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 0.8286710299719035,
+      "height_m": 0.0064471387267903395,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 4.95280975374482,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.0382472876139813
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "B3",
+    "B4",
+    "B5"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "final_drift_mm": 913.1324965016277,
+    "final_heading_deg": 3.2856790073814994,
+    "max_drift_com_heights": 17.45104711121659,
+    "max_drift_mm": 914.4286227803683,
+    "max_heading_deg": 131.34107868529605,
+    "max_tilt_deg": 3.5077201874159933,
+    "mean_speed_mm_s": 101.27057373331549,
+    "recovery_s_max": 6.388372572178443
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "B1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "B2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": true,
+     "value": 3.5077201874159933,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "max": 2.0,
+     "metric": "max_drift_com_heights",
+     "min": null,
+     "pass": false,
+     "value": 17.45104711121659,
+     "why": "max_drift_com_heights is 17.45, over 2"
+    },
+    {
+     "id": "B4",
+     "max": 20.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 131.34107868529605,
+     "why": "max_heading_deg is 131.3, over 20"
+    },
+    {
+     "id": "B5",
+     "max": 2.0,
+     "metric": "recovery_s_max",
+     "min": null,
+     "pass": false,
+     "value": 6.388372572178443,
+     "why": "recovery_s_max is 6.388, over 2"
+    }
+   ],
+   "reward": {
+    "per_step": 0.9801187888145573,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 1.0,
+      "total": 500.0
+     },
+     {
+      "label": "pitch_penalty",
+      "per_step": -0.0183280389197525,
+      "total": -9.16401945987625
+     },
+     {
+      "label": "control_cost",
+      "per_step": -0.0015531722656910109,
+      "total": -0.7765861328455055
+     }
+    ],
+    "total": 490.05939440727866
+   },
+   "seed": 1102,
+   "trace": {
+    "bytes": 2813947,
+    "file": "seed-1102-trace.json",
+    "sha256": "170d3bddf560c4ca53f2be808d6ec9507f311bdd82b5dc22bd9149586fb57435"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "recovery_s": [
+     0.04983919301558082,
+     null
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 5.065428961865153,
+      "force_n": [
+       0.10118262303084212,
+       -0.27459656639735197,
+       0.0
+      ],
+      "label": "first_shove",
+      "newtons": 0.292645173342423,
+      "start_s": 2.410160806984419
+     },
+     {
+      "azimuth_rad": 0.944542549577816,
+      "force_n": [
+       0.16414784222689197,
+       0.22691391279633852,
+       0.0
+      ],
+      "label": "second_shove",
+      "newtons": 0.28006148954879345,
+      "start_s": 6.0755262830459555
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 2.981407369237047,
+      "height_m": 0.005341675901589257,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 0.8977783589481492,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tilt_rad": 0.021010532310391617
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "B3",
+    "B4",
+    "B5"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "final_drift_mm": 778.3210024040452,
+    "final_heading_deg": 88.01239248244376,
+    "max_drift_com_heights": 14.853555698315695,
+    "max_drift_mm": 778.3210024040452,
+    "max_heading_deg": 131.73120205825603,
+    "max_tilt_deg": 4.109355044333134,
+    "mean_speed_mm_s": 86.12467789902442,
+    "recovery_s_max": null
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "B1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "B2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": true,
+     "value": 4.109355044333134,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "max": 2.0,
+     "metric": "max_drift_com_heights",
+     "min": null,
+     "pass": false,
+     "value": 14.853555698315695,
+     "why": "max_drift_com_heights is 14.85, over 2"
+    },
+    {
+     "id": "B4",
+     "max": 20.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 131.73120205825603,
+     "why": "max_heading_deg is 131.7, over 20"
+    },
+    {
+     "id": "B5",
+     "max": 2.0,
+     "metric": "recovery_s_max",
+     "min": null,
+     "pass": false,
+     "value": null,
+     "why": "recovery_s_max was not measured"
+    }
+   ],
+   "reward": {
+    "per_step": 0.9891882136009967,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 1.0,
+      "total": 500.0
+     },
+     {
+      "label": "pitch_penalty",
+      "per_step": -0.00949209713922109,
+      "total": -4.7460485696105446
+     },
+     {
+      "label": "control_cost",
+      "per_step": -0.001319689259781365,
+      "total": -0.6598446298906825
+     }
+    ],
+    "total": 494.59410680049837
+   },
+   "seed": 1103,
+   "trace": {
+    "bytes": 2816674,
+    "file": "seed-1103-trace.json",
+    "sha256": "b6a8199e1865c2848eeed6c37ef3bb4e50df6f93720a5735f581c2688b3bdfb8"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "recovery_s": [
+     null,
+     null
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 1.1630224755458347,
+      "force_n": [
+       0.10867102623334929,
+       0.2515608245456872,
+       0.0
+      ],
+      "label": "first_shove",
+      "newtons": 0.2740296341433081,
+      "start_s": 2.2113571540213526
+     },
+     {
+      "azimuth_rad": 0.6702925180152028,
+      "force_n": [
+       0.21512992909160503,
+       0.17054003623244335,
+       0.0
+      ],
+      "label": "second_shove",
+      "newtons": 0.2745264838756401,
+      "start_s": 5.586367770355737
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 5.936458055360596,
+      "height_m": 0.0035218007141243264,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 6.252361720965424,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.013293210179709273
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 5.38,
+    "solver_warnings": [],
+    "steps": 269,
+    "terminated_step": 268,
+    "termination": "fallen",
+    "truncated": false
+   },
+   "failing": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5"
+   ],
+   "frames": 270,
+   "metrics": {
+    "completed": 0.0,
+    "duration_s": 5.38,
+    "final_drift_mm": 961.9390124665729,
+    "final_heading_deg": 26.683741190012213,
+    "max_drift_com_heights": 18.442464235787313,
+    "max_drift_mm": 966.3785252730032,
+    "max_heading_deg": 136.38546021595485,
+    "max_tilt_deg": 64.22359403017863,
+    "mean_speed_mm_s": 189.8422602967721,
+    "recovery_s_max": null
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "B1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": false,
+     "value": 0.0,
+     "why": "completed is 0, under 1"
+    },
+    {
+     "id": "B2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 64.22359403017863,
+     "why": "max_tilt_deg is 64.22, over 30"
+    },
+    {
+     "id": "B3",
+     "max": 2.0,
+     "metric": "max_drift_com_heights",
+     "min": null,
+     "pass": false,
+     "value": 18.442464235787313,
+     "why": "max_drift_com_heights is 18.44, over 2"
+    },
+    {
+     "id": "B4",
+     "max": 20.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 136.38546021595485,
+     "why": "max_heading_deg is 136.4, over 20"
+    },
+    {
+     "id": "B5",
+     "max": 2.0,
+     "metric": "recovery_s_max",
+     "min": null,
+     "pass": false,
+     "value": null,
+     "why": "recovery_s_max was not measured"
+    }
+   ],
+   "reward": {
+    "per_step": 0.9578992575124945,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 1.0,
+      "total": 269.0
+     },
+     {
+      "label": "pitch_penalty",
+      "per_step": -0.03643495307235826,
+      "total": -9.801002376464371
+     },
+     {
+      "label": "control_cost",
+      "per_step": -0.005665789415146777,
+      "total": -1.524097352674483
+     }
+    ],
+    "total": 257.67490027086103
+   },
+   "seed": 1104,
+   "trace": {
+    "bytes": 1524309,
+    "file": "seed-1104-trace.json",
+    "sha256": "f2999bd87fa204bb83b7de34dc49f272abe2ba8159068119addb372e85452a08"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "recovery_s": [
+     0.04373449936385043,
+     null
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 4.716070184979174,
+      "force_n": [
+       0.001339196178468454,
+       -0.3637912794091957,
+       0.0
+      ],
+      "label": "first_shove",
+      "newtons": 0.3637937443395418,
+      "start_s": 2.3962655006361495
+     },
+     {
+      "azimuth_rad": 0.9245689114102694,
+      "force_n": [
+       0.2490094093123438,
+       0.3301336045378757,
+       0.0
+      ],
+      "label": "second_shove",
+      "newtons": 0.41351406598960194,
+      "start_s": 5.810744099399949
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 0.5507454141873873,
+      "height_m": 0.005644526918038427,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 2.433924119624305,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       -0.0,
+       0.0,
+       0.0
+      ],
+      "tilt_rad": 0.040009966835718114
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "B3",
+    "B4",
+    "B5"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "final_drift_mm": 733.7700537049515,
+    "final_heading_deg": 95.32442986729802,
+    "max_drift_com_heights": 14.003340946470583,
+    "max_drift_mm": 733.7700537049515,
+    "max_heading_deg": 131.56253607112836,
+    "max_tilt_deg": 4.226183478391691,
+    "mean_speed_mm_s": 86.28003541189865,
+    "recovery_s_max": null
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "B1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "B2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": true,
+     "value": 4.226183478391691,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "max": 2.0,
+     "metric": "max_drift_com_heights",
+     "min": null,
+     "pass": false,
+     "value": 14.003340946470583,
+     "why": "max_drift_com_heights is 14, over 2"
+    },
+    {
+     "id": "B4",
+     "max": 20.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 131.56253607112836,
+     "why": "max_heading_deg is 131.6, over 20"
+    },
+    {
+     "id": "B5",
+     "max": 2.0,
+     "metric": "recovery_s_max",
+     "min": null,
+     "pass": false,
+     "value": null,
+     "why": "recovery_s_max was not measured"
+    }
+   ],
+   "reward": {
+    "per_step": 0.9908007220813708,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 1.0,
+      "total": 500.0
+     },
+     {
+      "label": "pitch_penalty",
+      "per_step": -0.007790020167871818,
+      "total": -3.895010083935909
+     },
+     {
+      "label": "control_cost",
+      "per_step": -0.0014092577507565946,
+      "total": -0.7046288753782973
+     }
+    ],
+    "total": 495.4003610406854
+   },
+   "seed": 1105,
+   "trace": {
+    "bytes": 2817391,
+    "file": "seed-1105-trace.json",
+    "sha256": "572d3a2b2347b2a4401811e75bd4b9f8eb5d79c7c8e69846a4b3bf4d7323a459"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "recovery_s": [
+     null,
+     null
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 1.8316282547793186,
+      "force_n": [
+       -0.1116974200388722,
+       0.41847947576789435,
+       0.0
+      ],
+      "label": "first_shove",
+      "newtons": 0.4331297557110478,
+      "start_s": 2.113258080535383
+     },
+     {
+      "azimuth_rad": 3.084922742972687,
+      "force_n": [
+       -0.3357321480501449,
+       0.019046304121641933,
+       0.0
+      ],
+      "label": "second_shove",
+      "newtons": 0.336271968702505,
+      "start_s": 6.398171509793981
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 2.0908830875374567,
+      "height_m": 0.007967117449957156,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 5.353560652554696,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.02392919188063926
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 3.1,
+    "solver_warnings": [],
+    "steps": 155,
+    "terminated_step": 154,
+    "termination": "fallen",
+    "truncated": false
+   },
+   "failing": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5"
+   ],
+   "frames": 156,
+   "metrics": {
+    "completed": 0.0,
+    "duration_s": 3.1,
+    "final_drift_mm": 570.4248089630531,
+    "final_heading_deg": 167.89700466150623,
+    "max_drift_com_heights": 10.886043991442165,
+    "max_drift_mm": 570.4248089630531,
+    "max_heading_deg": 167.89700466150623,
+    "max_tilt_deg": 59.332829793304946,
+    "mean_speed_mm_s": 179.135783964439,
+    "recovery_s_max": null
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "B1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": false,
+     "value": 0.0,
+     "why": "completed is 0, under 1"
+    },
+    {
+     "id": "B2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 59.332829793304946,
+     "why": "max_tilt_deg is 59.33, over 30"
+    },
+    {
+     "id": "B3",
+     "max": 2.0,
+     "metric": "max_drift_com_heights",
+     "min": null,
+     "pass": false,
+     "value": 10.886043991442165,
+     "why": "max_drift_com_heights is 10.89, over 2"
+    },
+    {
+     "id": "B4",
+     "max": 20.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 167.89700466150623,
+     "why": "max_heading_deg is 167.9, over 20"
+    },
+    {
+     "id": "B5",
+     "max": 2.0,
+     "metric": "recovery_s_max",
+     "min": null,
+     "pass": false,
+     "value": null,
+     "why": "recovery_s_max was not measured"
+    }
+   ],
+   "reward": {
+    "per_step": 0.9747655858349705,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 1.0,
+      "total": 155.0
+     },
+     {
+      "label": "pitch_penalty",
+      "per_step": -0.0188544145325839,
+      "total": -2.9224342525505045
+     },
+     {
+      "label": "control_cost",
+      "per_step": -0.006379999632446121,
+      "total": -0.9888999430291489
+     }
+    ],
+    "total": 151.08866580442043
+   },
+   "seed": 1106,
+   "trace": {
+    "bytes": 883278,
+    "file": "seed-1106-trace.json",
+    "sha256": "fcb96eb6364d37e4a3fd87f03a6c3c029664097e388117f51bedcbefb9c131fa"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "recovery_s": [
+     null,
+     null
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 2.1732789033353637,
+      "force_n": [
+       -0.25356285435691817,
+       0.36866450385383537,
+       0.0
+      ],
+      "label": "first_shove",
+      "newtons": 0.44744568107360505,
+      "start_s": 2.5719198652695807
+     },
+     {
+      "azimuth_rad": 0.8374730689374813,
+      "force_n": [
+       0.198576434609873,
+       0.2204151247443872,
+       0.0
+      ],
+      "label": "second_shove",
+      "newtons": 0.2966739415561349,
+      "start_s": 5.792682608863174
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 4.913111646346824,
+      "height_m": 0.005107673857937015,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 5.372867089343484,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.03467230999659864
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 3.46,
+    "solver_warnings": [],
+    "steps": 173,
+    "terminated_step": 172,
+    "termination": "fallen",
+    "truncated": false
+   },
+   "failing": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5"
+   ],
+   "frames": 174,
+   "metrics": {
+    "completed": 0.0,
+    "duration_s": 3.46,
+    "final_drift_mm": 563.774178847177,
+    "final_heading_deg": 167.81292985289545,
+    "max_drift_com_heights": 10.759122702475356,
+    "max_drift_mm": 563.774178847177,
+    "max_heading_deg": 167.81292985289545,
+    "max_tilt_deg": 61.2171822708659,
+    "mean_speed_mm_s": 155.30809900978505,
+    "recovery_s_max": null
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "B1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": false,
+     "value": 0.0,
+     "why": "completed is 0, under 1"
+    },
+    {
+     "id": "B2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 61.2171822708659,
+     "why": "max_tilt_deg is 61.22, over 30"
+    },
+    {
+     "id": "B3",
+     "max": 2.0,
+     "metric": "max_drift_com_heights",
+     "min": null,
+     "pass": false,
+     "value": 10.759122702475356,
+     "why": "max_drift_com_heights is 10.76, over 2"
+    },
+    {
+     "id": "B4",
+     "max": 20.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 167.81292985289545,
+     "why": "max_heading_deg is 167.8, over 20"
+    },
+    {
+     "id": "B5",
+     "max": 2.0,
+     "metric": "recovery_s_max",
+     "min": null,
+     "pass": false,
+     "value": null,
+     "why": "recovery_s_max was not measured"
+    }
+   ],
+   "reward": {
+    "per_step": 0.9770654908701,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 1.0,
+      "total": 173.0
+     },
+     {
+      "label": "pitch_penalty",
+      "per_step": -0.017505417516156686,
+      "total": -3.028437230295107
+     },
+     {
+      "label": "control_cost",
+      "per_step": -0.005429091613743066,
+      "total": -0.9392328491775505
+     }
+    ],
+    "total": 169.0323299205273
+   },
+   "seed": 1107,
+   "trace": {
+    "bytes": 984819,
+    "file": "seed-1107-trace.json",
+    "sha256": "951005af7744d796f78b984c9973ff56a038c5e858a037298bb7d784efe97016"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "recovery_s": [
+     null,
+     null
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 3.8607479267444837,
+      "force_n": [
+       -0.19929438045981554,
+       -0.17449707246298973,
+       0.0
+      ],
+      "label": "first_shove",
+      "newtons": 0.2648914464096861,
+      "start_s": 2.0966680117819014
+     },
+     {
+      "azimuth_rad": 0.8256983413761214,
+      "force_n": [
+       0.2956821088925737,
+       0.320528978131486,
+       0.0
+      ],
+      "label": "second_shove",
+      "newtons": 0.43608111096580926,
+      "start_s": 6.28288270272314
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 3.97303854570205,
+      "height_m": 0.00576046567738975,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 2.3290139909188006,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       -0.0,
+       0.0,
+       0.0
+      ],
+      "tilt_rad": 0.012817992538860774
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 7.34,
+    "solver_warnings": [],
+    "steps": 367,
+    "terminated_step": 366,
+    "termination": "fallen",
+    "truncated": false
+   },
+   "failing": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5"
+   ],
+   "frames": 368,
+   "metrics": {
+    "completed": 0.0,
+    "duration_s": 7.34,
+    "final_drift_mm": 891.2446689852341,
+    "final_heading_deg": -3.3529714421580508,
+    "max_drift_com_heights": 17.483709382259892,
+    "max_drift_mm": 916.1401140929904,
+    "max_heading_deg": 131.79901004599284,
+    "max_tilt_deg": 59.247852381568556,
+    "mean_speed_mm_s": 144.0450243063677,
+    "recovery_s_max": null
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "B1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": false,
+     "value": 0.0,
+     "why": "completed is 0, under 1"
+    },
+    {
+     "id": "B2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 59.247852381568556,
+     "why": "max_tilt_deg is 59.25, over 30"
+    },
+    {
+     "id": "B3",
+     "max": 2.0,
+     "metric": "max_drift_com_heights",
+     "min": null,
+     "pass": false,
+     "value": 17.483709382259892,
+     "why": "max_drift_com_heights is 17.48, over 2"
+    },
+    {
+     "id": "B4",
+     "max": 20.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 131.79901004599284,
+     "why": "max_heading_deg is 131.8, over 20"
+    },
+    {
+     "id": "B5",
+     "max": 2.0,
+     "metric": "recovery_s_max",
+     "min": null,
+     "pass": false,
+     "value": null,
+     "why": "recovery_s_max was not measured"
+    }
+   ],
+   "reward": {
+    "per_step": 0.958717246951712,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 1.0,
+      "total": 367.0
+     },
+     {
+      "label": "pitch_penalty",
+      "per_step": -0.037589367715718365,
+      "total": -13.79529795166864
+     },
+     {
+      "label": "control_cost",
+      "per_step": -0.003693385332569631,
+      "total": -1.3554724170530545
+     }
+    ],
+    "total": 351.8492296312783
+   },
+   "seed": 1108,
+   "trace": {
+    "bytes": 2070370,
+    "file": "seed-1108-trace.json",
+    "sha256": "a98106c8969b52d834f04a19d3cc5f282bbdf82972e709d75a997dbb91d4763e"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "recovery_s": [
+     3.1850342884357254,
+     0.08776710212753347
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 6.21657246129442,
+      "force_n": [
+       0.20664185550113612,
+       -0.013785397958108164,
+       0.0
+      ],
+      "label": "first_shove",
+      "newtons": 0.2071011676495713,
+      "start_s": 2.814965711564275
+     },
+     {
+      "azimuth_rad": 5.725919459830535,
+      "force_n": [
+       0.17307998861891516,
+       -0.10785430840373067,
+       0.0
+      ],
+      "label": "second_shove",
+      "newtons": 0.20393438724641524,
+      "start_s": 5.912232897872467
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 6.065808764130036,
+      "height_m": 0.006135323043045602,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 4.134450280774255,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       -0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.02030664495463685
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "B3",
+    "B4",
+    "B5"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "final_drift_mm": 250.7722150883914,
+    "final_heading_deg": 114.05472752255545,
+    "max_drift_com_heights": 9.153744080676399,
+    "max_drift_mm": 479.6529136407407,
+    "max_heading_deg": 131.28136103454855,
+    "max_tilt_deg": 4.542112937801239,
+    "mean_speed_mm_s": 71.58105118449545,
+    "recovery_s_max": 3.1850342884357254
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "B1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "B2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": true,
+     "value": 4.542112937801239,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "max": 2.0,
+     "metric": "max_drift_com_heights",
+     "min": null,
+     "pass": false,
+     "value": 9.153744080676399,
+     "why": "max_drift_com_heights is 9.154, over 2"
+    },
+    {
+     "id": "B4",
+     "max": 20.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 131.28136103454855,
+     "why": "max_heading_deg is 131.3, over 20"
+    },
+    {
+     "id": "B5",
+     "max": 2.0,
+     "metric": "recovery_s_max",
+     "min": null,
+     "pass": false,
+     "value": 3.1850342884357254,
+     "why": "recovery_s_max is 3.185, over 2"
+    }
+   ],
+   "reward": {
+    "per_step": 0.9863777599970758,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 1.0,
+      "total": 500.0
+     },
+     {
+      "label": "pitch_penalty",
+      "per_step": -0.012620110481130221,
+      "total": -6.31005524056511
+     },
+     {
+      "label": "control_cost",
+      "per_step": -0.0010021295217936912,
+      "total": -0.5010647608968456
+     }
+    ],
+    "total": 493.1888799985379
+   },
+   "seed": 1109,
+   "trace": {
+    "bytes": 2814553,
+    "file": "seed-1109-trace.json",
+    "sha256": "c29d863a189fd0d0def820d488a7a304d9321052e1c6d810d8a7900b86ca6368"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "recovery_s": [
+     null,
+     null
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 2.788587323979904,
+      "force_n": [
+       -0.2819272176782412,
+       0.10387270660329036,
+       0.0
+      ],
+      "label": "first_shove",
+      "newtons": 0.3004538154939751,
+      "start_s": 2.8823767909100715
+     },
+     {
+      "azimuth_rad": 5.652321083817448,
+      "force_n": [
+       0.2816766654580969,
+       -0.20574768263144183,
+       0.0
+      ],
+      "label": "second_shove",
+      "newtons": 0.34881779308372607,
+      "start_s": 6.398954924694715
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 3.950662733205172,
+      "height_m": 0.0034298520460804838,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 2.815964468707989,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       -0.0,
+       0.0,
+       0.0
+      ],
+      "tilt_rad": 0.02496289361740924
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 4.26,
+    "solver_warnings": [],
+    "steps": 213,
+    "terminated_step": 212,
+    "termination": "fallen",
+    "truncated": false
+   },
+   "failing": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5"
+   ],
+   "frames": 214,
+   "metrics": {
+    "completed": 0.0,
+    "duration_s": 4.26,
+    "final_drift_mm": 755.3733606805205,
+    "final_heading_deg": 161.49011152222135,
+    "max_drift_com_heights": 14.415620613135477,
+    "max_drift_mm": 755.3733606805205,
+    "max_heading_deg": 161.49011152222135,
+    "max_tilt_deg": 56.89570148096026,
+    "mean_speed_mm_s": 170.1508652599426,
+    "recovery_s_max": null
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "B1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": false,
+     "value": 0.0,
+     "why": "completed is 0, under 1"
+    },
+    {
+     "id": "B2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 56.89570148096026,
+     "why": "max_tilt_deg is 56.9, over 30"
+    },
+    {
+     "id": "B3",
+     "max": 2.0,
+     "metric": "max_drift_com_heights",
+     "min": null,
+     "pass": false,
+     "value": 14.415620613135477,
+     "why": "max_drift_com_heights is 14.42, over 2"
+    },
+    {
+     "id": "B4",
+     "max": 20.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 161.49011152222135,
+     "why": "max_heading_deg is 161.5, over 20"
+    },
+    {
+     "id": "B5",
+     "max": 2.0,
+     "metric": "recovery_s_max",
+     "min": null,
+     "pass": false,
+     "value": null,
+     "why": "recovery_s_max was not measured"
+    }
+   ],
+   "reward": {
+    "per_step": 0.9760422754928099,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 1.0,
+      "total": 213.0
+     },
+     {
+      "label": "pitch_penalty",
+      "per_step": -0.01839281726388865,
+      "total": -3.917670077208282
+     },
+     {
+      "label": "control_cost",
+      "per_step": -0.005564907243301286,
+      "total": -1.185325242823174
+     }
+    ],
+    "total": 207.8970046799685
+   },
+   "seed": 1110,
+   "trace": {
+    "bytes": 1210795,
+    "file": "seed-1110-trace.json",
+    "sha256": "6fd283aae2dd86384c9c813c1ed58c2b4629fdbea9dd4c8db4574a2874416553"
+   },
+   "void": ""
+  }
+ ],
+ "spec": {
+  "disturbance": [
+   {
+    "applied_at": "centre_of_mass",
+    "at_high_s": 3.0,
+    "at_low_s": 2.0,
+    "azimuth_high_rad": 6.283185307179586,
+    "azimuth_low_rad": 0.0,
+    "body": "comp_chassis",
+    "body_id": 1,
+    "direction": "horizontal",
+    "duration_s": 0.1,
+    "frame": "world",
+    "label": "first_shove",
+    "newtons_high": 0.46088937828000015,
+    "newtons_low": 0.18435575131200008,
+    "sustained": false
+   },
+   {
+    "applied_at": "centre_of_mass",
+    "at_high_s": 6.5,
+    "at_low_s": 5.5,
+    "azimuth_high_rad": 6.283185307179586,
+    "azimuth_low_rad": 0.0,
+    "body": "comp_chassis",
+    "body_id": 1,
+    "direction": "horizontal",
+    "duration_s": 0.1,
+    "frame": "world",
+    "label": "second_shove",
+    "newtons_high": 0.46088937828000015,
+    "newtons_low": 0.18435575131200008,
+    "sustained": false
+   }
+  ],
+  "episode": {
+   "control_hz": 50,
+   "control_interval_s": 0.02,
+   "episode_seconds": 10.0,
+   "max_steps": 500,
+   "reset_keyframe": "solved",
+   "reward_stage": "after_step",
+   "solver_step_s": 0.002,
+   "solver_steps_per_action": 10
+  },
+  "feet": [],
+  "predicates": [
+   {
+    "id": "B1",
+    "max": null,
+    "metric": "completed",
+    "min": 1.0
+   },
+   {
+    "id": "B2",
+    "max": 30.0,
+    "metric": "max_tilt_deg",
+    "min": null
+   },
+   {
+    "id": "B3",
+    "max": 2.0,
+    "metric": "max_drift_com_heights",
+    "min": null
+   },
+   {
+    "id": "B4",
+    "max": 20.0,
+    "metric": "max_heading_deg",
+    "min": null
+   },
+   {
+    "id": "B5",
+    "max": 2.0,
+    "metric": "recovery_s_max",
+    "min": null
+   }
+  ],
+  "reset_variation": [
+   {
+    "angular_velocity_high_rad_s": 0.0,
+    "angular_velocity_low_rad_s": 0.0,
+    "body": "comp_chassis",
+    "body_id": 1,
+    "clearance_mm": -0.0,
+    "height_high_m": 0.008,
+    "height_low_m": 0.003,
+    "label": "reset_variation",
+    "linear_velocity_high_m_s": 0.0,
+    "linear_velocity_low_m_s": 0.0,
+    "qpos_adr": 0,
+    "qvel_adr": 0,
+    "tilt_high_rad": 0.05235987755982989,
+    "tilt_low_rad": 0.0
+   }
+  ],
+  "scale": {
+   "arm_length_mm": null,
+   "com_height_mm": 52.39964209326001,
+   "hip_height_mm": null,
+   "mass_kg": 0.18792635200000005,
+   "weight_n": 1.8435575131200006
+  },
+  "seeds": [
+   1101,
+   1102,
+   1103,
+   1104,
+   1105,
+   1106,
+   1107,
+   1108,
+   1109,
+   1110
+  ],
+  "tip": null
+ },
+ "summary": {
+  "failed": [
+   1101,
+   1102,
+   1103,
+   1104,
+   1105,
+   1106,
+   1107,
+   1108,
+   1109,
+   1110
+  ],
+  "metrics": {
+   "completed": {
+    "max": 1.0,
+    "measured": 10,
+    "median": 0.0,
+    "min": 0.0
+   },
+   "duration_s": {
+    "max": 10.0,
+    "measured": 10,
+    "median": 8.21,
+    "min": 3.1
+   },
+   "final_drift_mm": {
+    "max": 981.6471040218239,
+    "measured": 10,
+    "median": 766.8471815422829,
+    "min": 250.7722150883914
+   },
+   "final_heading_deg": {
+    "max": 167.89700466150623,
+    "measured": 10,
+    "median": 91.6684111748709,
+    "min": -3.3529714421580508
+   },
+   "max_drift_com_heights": {
+    "max": 18.73385131666939,
+    "measured": 10,
+    "median": 14.634588155725586,
+    "min": 9.153744080676399
+   },
+   "max_drift_mm": {
+    "max": 981.6471040218239,
+    "measured": 10,
+    "median": 766.8471815422829,
+    "min": 479.6529136407407
+   },
+   "max_heading_deg": {
+    "max": 167.89700466150623,
+    "measured": 10,
+    "median": 134.09223513097385,
+    "min": 131.28136103454855
+   },
+   "max_tilt_deg": {
+    "max": 64.22359403017863,
+    "measured": 10,
+    "median": 55.997142342259664,
+    "min": 3.5077201874159933
+   },
+   "mean_speed_mm_s": {
+    "max": 189.8422602967721,
+    "measured": 10,
+    "median": 136.38466186517377,
+    "min": 71.58105118449545
+   },
+   "recovery_s_max": {
+    "max": 6.388372572178443,
+    "measured": 2,
+    "median": 4.786703430307084,
+    "min": 3.1850342884357254
+   }
+  },
+  "pass": false,
+  "passed": [],
+  "predicates": [
+   {
+    "failed_seeds": [
+     1101,
+     1104,
+     1106,
+     1107,
+     1108,
+     1110
+    ],
+    "id": "B1",
+    "max": null,
+    "metric": "completed",
+    "min": 1.0,
+    "passed": 4,
+    "value": {
+     "max": 1.0,
+     "median": 0.0,
+     "min": 0.0
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1104,
+     1106,
+     1107,
+     1108,
+     1110
+    ],
+    "id": "B2",
+    "max": 30.0,
+    "metric": "max_tilt_deg",
+    "min": null,
+    "passed": 4,
+    "value": {
+     "max": 64.22359403017863,
+     "median": 55.997142342259664,
+     "min": 3.5077201874159933
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1102,
+     1103,
+     1104,
+     1105,
+     1106,
+     1107,
+     1108,
+     1109,
+     1110
+    ],
+    "id": "B3",
+    "max": 2.0,
+    "metric": "max_drift_com_heights",
+    "min": null,
+    "passed": 0,
+    "value": {
+     "max": 18.73385131666939,
+     "median": 14.634588155725586,
+     "min": 9.153744080676399
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1102,
+     1103,
+     1104,
+     1105,
+     1106,
+     1107,
+     1108,
+     1109,
+     1110
+    ],
+    "id": "B4",
+    "max": 20.0,
+    "metric": "max_heading_deg",
+    "min": null,
+    "passed": 0,
+    "value": {
+     "max": 167.89700466150623,
+     "median": 134.09223513097385,
+     "min": 131.28136103454855
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1102,
+     1103,
+     1104,
+     1105,
+     1106,
+     1107,
+     1108,
+     1109,
+     1110
+    ],
+    "id": "B5",
+    "max": 2.0,
+    "metric": "recovery_s_max",
+    "min": null,
+    "passed": 0,
+    "value": {
+     "max": 6.388372572178443,
+     "median": 4.786703430307084,
+     "min": 3.1850342884357254
+    }
+   }
+  ],
+  "reward": {
+   "terms": [
+    {
+     "label": "alive",
+     "max": 500.0,
+     "median": 410.5,
+     "min": 155.0
+    },
+    {
+     "label": "pitch_penalty",
+     "max": -2.9224342525505045,
+     "median": -5.528051905087827,
+     "min": -13.79529795166864
+    },
+    {
+     "label": "control_cost",
+     "max": -0.5010647608968456,
+     "median": -0.9640663961033497,
+     "min": -1.524097352674483
+    }
+   ],
+   "total": {
+    "max": 495.4003610406854,
+    "median": 396.5567698970726,
+    "min": 151.08866580442043
+   }
+  },
+  "seeds": 10,
+  "terminations": {
+   "fallen": 6,
+   "horizon": 4
+  },
+  "void": []
+ },
+ "task_label": "balance_task",
+ "task_output": "balance_task",
+ "task_semantic_sha256": "7942e2f5972b741934f02e2dae900186d5d087347b38c8592b809d0fa7e3eae3",
+ "task_sha256": "7a92a839b681070cc7798f6193f5bf80298ea1c0309d69bdc3f817931093ac61",
+ "trained_task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+ "verdict": "fail",
+ "weights": "r3-ppo-1.cxpolicy"
+}

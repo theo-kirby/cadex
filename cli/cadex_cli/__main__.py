@@ -110,6 +110,19 @@ from .train import (
     run_trainer,
     trainer_command,
 )
+from .evaluate import (
+    DEFAULT_TIMEOUT_S as EVALUATE_TIMEOUT_S,
+    MAXIMUM_TIMEOUT_S as EVALUATE_MAXIMUM_TIMEOUT_S,
+    REPORT_NAME as EVALUATION_NAME,
+    EvaluateError,
+    EvaluateRefused,
+    check_out,
+    default_out,
+    evaluation_cell,
+    failing_predicates,
+    retained_inputs,
+    run_evaluation,
+)
 from .review_record import manifest_identity, write_run_record
 from .review_server import serve as serve_review
 from .smoke import (
@@ -498,6 +511,29 @@ def build_parser() -> argparse.ArgumentParser:
         "--task", dest="task_name", default="", metavar="NAME",
         help="Which exported task supplies the termination rules, when the "
         "script exports more than one.",
+    )
+    evaluate_parser = subparsers.add_parser(
+        "evaluate",
+        help="Hold the accepted policy against its task's success spec "
+        "(assembly.success): one rollout per frozen seed under the spec's "
+        "conditions, then pass or fail per seed and per predicate, the "
+        "behaviour metrics, the reward by term and how each episode ended, "
+        "written to evaluation.json in the project. Reads the accepted "
+        "artifacts; never rebuilds. No AI, no tokens, no trainer.",
+    )
+    _common(evaluate_parser, inherit=True)
+    evaluate_parser.add_argument(
+        "--policy", dest="policy_name", default="", metavar="NAME",
+        help="Which declared policy output, when the script declares more than one.",
+    )
+    evaluate_parser.add_argument(
+        "--task", dest="task_name", default="", metavar="NAME",
+        help="Pick the policy declared against this task output.",
+    )
+    evaluate_parser.add_argument(
+        "--timeout", type=float, default=EVALUATE_TIMEOUT_S, metavar="SECONDS",
+        help="Kill the evaluation after this much wall time and fail; at most "
+        f"{EVALUATE_MAXIMUM_TIMEOUT_S:g} (default %(default)g).",
     )
     walk_parser = subparsers.add_parser(
         "walk",
@@ -1704,6 +1740,57 @@ def command_smoke(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
 
 
+def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
+    """Hold the accepted policy against its task's success spec (ADR-457).
+
+    Exit zero means a complete measurement on every frozen seed; read the
+    verdict for its result. Like ``smoke`` it reads what the accepted
+    revision retained and never restores, rebuilds or accepts a script, so
+    the policy evaluated is the one the engine verified. ``--out`` defaults
+    to ``evaluations/<revision>-<policy>`` in the project.
+    """
+
+    if not (0.0 < float(args.timeout) <= EVALUATE_MAXIMUM_TIMEOUT_S):
+        report.error = f"--timeout must be within (0, {EVALUATE_MAXIMUM_TIMEOUT_S:g}] seconds."
+        return EXIT_USAGE
+    with _engine_session(args, report, restore=False) as (engine, _client):
+        root = Path(report.project_root)
+        try:
+            inputs = retained_inputs(root, task_name=args.task_name, policy_name=args.policy_name)
+        except EvaluateRefused as exc:
+            report.error = str(exc)
+            return EXIT_REJECTED
+        report.accepted_revision = report.revision = inputs["accepted_revision"]
+        report.digest = inputs["accepted_digest"]
+        out = check_out(root, Path(args.out) if args.out else default_out(root, inputs))
+        report.out_dir = str(out)
+        _progress(
+            " · evaluate  {:s} on {:s}  {:d} seed(s)".format(
+                inputs["policy_output"], inputs["task_output"], len(inputs["seeds"]))
+        )
+        try:
+            measured = run_evaluation(engine, inputs, out, timeout=float(args.timeout))
+        except EvaluateRefused as exc:
+            report.error = str(exc)
+            return EXIT_REJECTED
+        path = out / EVALUATION_NAME
+        report.evaluation = {
+            key: measured[key] for key in (
+                "schema", "verdict", "policy_output", "task_output", "model_output",
+                "policy_sha256", "task_sha256", "model_sha256", "label", "summary")
+        }
+        report.evaluation["report"] = str(path)
+        failing = failing_predicates(measured)
+        report.notes.append(
+            "evaluation {:s}: {:d} of {:d} seeds pass{:s}; {:s}.".format(
+                measured["verdict"], len(measured["summary"]["passed"]),
+                measured["summary"]["seeds"],
+                (", failing " + ", ".join(failing)) if failing else "", str(path))
+        )
+        report.ok = True
+        return EXIT_OK
+
+
 def _remote_usage_error(args: argparse.Namespace) -> str:
     """What is wrong with ``--remote``'s company, or nothing (ADR-200).
 
@@ -2345,13 +2432,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_train(args, report)
         elif command == "smoke":
             code = command_smoke(args, report)
+        elif command == "evaluate":
+            code = command_evaluate(args, report)
         elif command == "walk":
             code = command_walk(args, report)
         elif command == "review":
             code = command_review(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
-    except (ValueError, ExportError, InventoryError, TrainError, SmokeError, WalkError) as exc:
+    except (ValueError, ExportError, InventoryError, TrainError, SmokeError, EvaluateError,
+            WalkError) as exc:
         report.error = str(exc)
         code = EXIT_USAGE if isinstance(exc, ValueError) else EXIT_FAILURE
     except (EngineError, ClaudeUnavailable, ProjectBusy, CadexdError) as exc:
@@ -2437,6 +2527,13 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
             float(args.seconds), str(args.mode),
             str(report.smoke.get("verdict") or "?"),
             str(Path(str(report.out_dir or args.out)).name),
+        )
+    if command == "evaluate":
+        return "evaluate {:s} on {:s} → {:s} ({:s})".format(
+            str(report.evaluation.get("policy_output") or "?"),
+            str(report.evaluation.get("task_output") or "?"),
+            str(report.evaluation.get("verdict") or "?"),
+            str(Path(str(report.out_dir)).name),
         )
     if command == "train":
         if report.training.get("state") == "pending":
@@ -2565,6 +2662,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             revision=report.accepted_revision,
             digest=report.digest,
             numbers=(smoke_cell(report.smoke) if command == "smoke" else
+                     evaluation_cell(report.evaluation) if command == "evaluate" else
                      "pending; no policy verified"
                      if report.training.get("state") == "pending" else (
                 _clearance_cell(report.walk["review"]["clearance"], previous)

@@ -430,7 +430,8 @@ def test_a_predicate_is_a_metric_and_its_bounds_and_the_bounds_are_inclusive() -
 
 def test_a_metric_nobody_measured_fails_and_says_so() -> None:
     spec = [{"id": "a", "metric": "x", "max": 2.0}]
-    for metrics in ({}, {"x": None}, {"x": float("nan")}, {"x": True}, {"x": "1.0"}, {"x": [1.0]}):
+    for metrics in ({}, {"x": None}, {"x": float("nan")}, {"x": float("-inf")}, {"x": True},
+                    {"x": "1.0"}, {"x": [1.0]}):
         (row,) = evaluation.check(spec, metrics)
         assert row["pass"] is False and row["value"] is None and row["why"] == "x was not measured"
     with pytest.raises(ValueError, match="states no bound"):
@@ -459,6 +460,104 @@ def test_the_vocabulary_is_exactly_what_the_families_measure() -> None:
         "speed_ratio", "lateral_ratio", "final_error_mm_max", "final_error_arm_lengths_max",
         "time_to_target_s_max", "overshoot_ratio_max"}
     assert not [name for name in evaluation.METRICS if "reward" in name]
+
+
+# -- one rollout as one table, and a set of seeds together (ADR-457) ----------
+
+def test_measure_reads_the_families_the_rig_has_and_no_others() -> None:
+    """The table is what a predicate may bound: ``METRICS`` names, nothing else."""
+
+    posture = {name for name, (family, _) in evaluation.METRICS.items() if family == "posture"}
+    gait = {name for name, (family, _) in evaluation.METRICS.items() if family == "gait"}
+    reach = {name for name, (family, _) in evaluation.METRICS.items() if family == "reach"}
+
+    standing_still = evaluation.measure(standing(), DONE, balance_rig(), shoves=SHOVES)
+    assert set(standing_still["metrics"]) == {"completed", "duration_s"} | posture
+    assert standing_still["metrics"] == {
+        name: value for name, value in {**evaluation.episode_metrics(DONE),
+                                        **balanced(standing())}.items()
+        if name in evaluation.METRICS}
+    assert standing_still["detail"] == {"recovery_s": balanced(standing())["recovery_s"]}
+
+    walking = evaluation.measure(trot(), DONE, walk_rig(), command_mm_s=80.0)
+    assert set(walking["metrics"]) == {"completed", "duration_s"} | posture | gait
+    assert walking["metrics"]["speed_ratio"] == walked(trot())["speed_ratio"]
+    assert sorted(walking["detail"]["feet"]) == sorted(walk_rig()["feet"])
+    # No shove was applied, so there is no recovery: measured as nothing.
+    assert walking["metrics"]["recovery_s_max"] is None and walking["detail"]["recovery_s"] == []
+
+    arm = evaluation.measure(reaching(), {**DONE, "duration_s": 8.0}, reach_rig(),
+                             segments=segments())
+    assert set(arm["metrics"]) == {"completed", "duration_s"} | reach
+    assert len(arm["detail"]["segments"]) == 2
+    # An arm with no target stated has only how its episode ended.
+    assert set(evaluation.measure(reaching(), DONE, reach_rig())["metrics"]) == {
+        "completed", "duration_s"}
+
+
+def test_a_base_with_no_floor_under_it_has_no_drift_in_com_heights() -> None:
+    rig = {**balance_rig(), "com_height_mm": None, "floor_mm": None}
+    metrics = evaluation.measure(standing(drift=105.0, shoves=()), DONE, rig)["metrics"]
+    assert metrics["max_drift_com_heights"] is None
+    assert metrics["max_drift_mm"] == pytest.approx(1050.0, rel=0.01)
+    assert "recovery_s_max" not in metrics
+
+
+def test_the_w2_2_shuffle_fails_stepping_and_slip_through_the_one_table() -> None:
+    """The known negative, read the way the evaluation command reads a seed."""
+
+    samples, rig, _command, episode = w2_2()
+    spec = [row for row in WALK_SPEC if "ratio" not in row["metric"] or row["id"] == "every_leg"]
+    measured = evaluation.measure(samples, episode, rig)
+    held = evaluation.check(spec, measured["metrics"])
+    assert [row["id"] for row in held if not row["pass"]] == [
+        "step_share", "slip", "every_leg", "on_the_floor"]
+    assert measured["metrics"]["completed"] == 1.0
+    assert measured["metrics"]["speed_ratio"] is None  # no goal was stated
+
+
+def _seed(seed, spec, metrics, *, termination="", reward=(1.0, 2.0)):
+    held = evaluation.check(spec, metrics)
+    return {"seed": seed, "pass": all(row["pass"] for row in held), "predicates": held,
+            "metrics": metrics, "episode": {"termination": termination},
+            "reward": {"total": sum(reward), "terms": [{"label": "alive", "total": reward[0]},
+                                                       {"label": "speed", "total": reward[1]}]}}
+
+
+def test_a_summary_counts_seeds_and_never_averages_a_verdict() -> None:
+    spec = [{"id": "upright", "metric": "max_tilt_deg", "max": 30.0},
+            {"id": "recovers", "metric": "recovery_s_max", "max": 2.0}]
+    seeds = [
+        _seed(1101, spec, {"max_tilt_deg": 5.0, "recovery_s_max": 0.5}),
+        _seed(1102, spec, {"max_tilt_deg": 10.0, "recovery_s_max": 1.0}, reward=(3.0, 4.0)),
+        _seed(1103, spec, {"max_tilt_deg": 90.0, "recovery_s_max": None},
+              termination="fallen", reward=(0.5, 0.0)),
+    ]
+    summary = evaluation.summarise(seeds, spec)
+
+    assert summary["seeds"] == 3 and summary["passed"] == [1101, 1102]
+    assert summary["failed"] == [1103] and summary["pass"] is False
+    upright, recovers = summary["predicates"]
+    # The mean tilt is 35 and the median 10: neither is what decided this.
+    assert upright == {"id": "upright", "metric": "max_tilt_deg", "min": None, "max": 30.0,
+                       "passed": 2, "failed_seeds": [1103],
+                       "value": {"min": 5.0, "median": 10.0, "max": 90.0}}
+    assert recovers["failed_seeds"] == [1103]
+    assert recovers["value"] == {"min": 0.5, "median": 0.75, "max": 1.0}
+    assert summary["terminations"] == {"horizon": 2, "fallen": 1}
+    assert summary["metrics"]["recovery_s_max"] == {"measured": 2, "min": 0.5, "median": 0.75,
+                                                    "max": 1.0}
+    assert summary["metrics"]["max_tilt_deg"]["measured"] == 3
+    assert summary["reward"]["total"] == {"min": 0.5, "median": 3.0, "max": 7.0}
+    assert summary["reward"]["terms"] == [
+        {"label": "alive", "min": 0.5, "median": 1.0, "max": 3.0},
+        {"label": "speed", "min": 0.0, "median": 2.0, "max": 4.0}]
+
+    assert evaluation.summarise(seeds[:2], spec)["pass"] is True
+    # No seed is no evidence, and no evidence is not a pass.
+    empty = evaluation.summarise([], spec)
+    assert empty["pass"] is False and empty["seeds"] == 0
+    assert [row["id"] for row in empty["predicates"]] == ["upright", "recovers"]
 
 
 def test_a_gait_with_no_commanded_speed_is_still_measured_and_tracks_nothing() -> None:

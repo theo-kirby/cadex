@@ -188,10 +188,12 @@ def retained_bundle(root: Path, destination: Path) -> tuple[dict, dict, dict]:
         raise SmokeError(f"cannot read retained smoke artifacts: {exc}") from exc
 
 
-def _retained_bundle(root: Path, destination: Path) -> tuple[dict, dict, dict]:
-    """Copy digest-checked accepted artifacts without restoring or accepting."""
-    import hashlib
-    import shutil
+def retained_attempt(root: Path) -> tuple[dict, Path, dict]:
+    """The accepted attempt as the store retained it: state, staging, result.
+
+    Read, never restored: the pin in ``script.json`` names the attempt, and
+    its result must carry the accepted digest.
+    """
 
     state = json.loads((root / "script.json").read_text())
     pin = state.get("accepted_attempt") or {}
@@ -202,6 +204,15 @@ def _retained_bundle(root: Path, destination: Path) -> tuple[dict, dict, dict]:
     result = json.loads((staging / "result.json").read_text())
     if not result.get("ok") or result.get("digest") != state.get("accepted_digest"):
         raise SmokeError("retained result does not match the accepted digest")
+    return state, staging, result
+
+
+def _retained_bundle(root: Path, destination: Path) -> tuple[dict, dict, dict]:
+    """Copy digest-checked accepted artifacts without restoring or accepting."""
+    import hashlib
+    import shutil
+
+    state, staging, result = retained_attempt(root)
     destination = destination.resolve()
     if destination == root or any(destination.is_relative_to(root / protected) for protected in ("script_artifacts", "assets", ".git")):
         raise SmokeError("--out must not overwrite the project root or accepted artifacts")

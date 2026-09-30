@@ -310,8 +310,15 @@ fails W5, W6, W7 and W9 while passing W1, W2 and W3; a direct reach passes
 Q1–Q4 and a swing past the target fails Q4 alone. **The `w2-2` shuffle is a
 failing fixture**: the base and feet of its stored rollout
 (`cadex_tests/fixtures/ot10_w2_2_feet.json`) fail W3, W5, W7, W9 and W10 in
-both suites. The product's evaluation command, which rolls a policy on the
-ten seeds under the conditions above, is a later P2 unit.
+both suites.
+
+**The product's evaluation command is `cadex evaluate`** (ADR-457,
+`docs/CLI.md`). A task declares its spec with `assembly.success`, and the
+command rolls the accepted policy on the spec's seeds under the spec's
+conditions and writes `evaluation.json` into the project: pass or fail per
+seed and per predicate, the behaviour metrics, the reward by term, how each
+episode ended and every value each seed drew. It takes no behaviour's name.
+The reader below remains for a trace that predates a spec.
 
 ```bash
 pixi run python docs/probes/ot11/runner/measure.py walk \
@@ -406,3 +413,65 @@ Robin is upright on every seed and fails on every seed. It drives away at
 109–113 mm/s, twice the 52.4 mm/s that counts as rest, so it would not
 satisfy B5's rest either. ot9's bar passed it 10 of 10; this spec says it
 wanders.
+
+### On the contract's conditions, through the product (ADR-457)
+
+Measured on 2026-09-30 with `cadex evaluate`, before any ot11 training run.
+Each read-only project was copied to a new `ot11-*` project, and the copy's
+task was given the contract's predicates, seeds and conditions as an
+`assembly.success` spec. The policy is unchanged: the engine verified it
+against the bundle it was trained on (`assembly.policy(trained_task=...)`)
+and proved the rebuilt task the same task. No seed was void.
+
+These are the first readings under the contract's own shoves and horizon, so
+B1 and B5 are now measured. Two things they are not:
+
+- **W3 and the lateral half of W4 are not stated**, because a task cannot
+  state a commanded speed until P3. The walk spec on the copy is W1, W2,
+  W4's heading, and W5 to W10.
+- **The w2 task randomises the tray's mass by 0.85 to 1.15**, and an
+  evaluation episode keeps the task's randomisation. The contract lists no
+  mass randomisation, and those draws come first in the seed's stream. So
+  this is the contract's reset, shove and horizon on a mass the task drew.
+  Every drawn value is in the receipt.
+
+**ot10's `w2-2`, on `ot11-w2-negative`: 0 of 10 seeds pass.** Receipt:
+[`retained/p2-w2-2-evaluation.json`](retained/p2-w2-2-evaluation.json).
+
+| predicate | bound | seeds passing | measured, over the seeds |
+|---|---|---|---|
+| W1 completes | ran to 10.0 s | 8 | `tipped` fired on 1106 (5.56 s) and 1108 (0.84 s) |
+| W2 upright | ≤ 30° | 1 | 17.5° to 49.9° |
+| W4 heading | ≤ 45° | 9 | 10.6° to 83.7° |
+| W5 steps by the foot that took fewest | ≥ 4 | 3 | 0 to 5 |
+| W5 share of path made in steps | ≥ 0.70 | **0** | 0.00 to 0.12 |
+| W6 step clearance, hip heights | ≥ 0.08 | 0 | 0.058 to 0.077 where every foot stepped |
+| W7 stance slip share | ≤ 0.15 | **0** | 0.53 to 0.76 |
+| W8 duty factor | 0.40 to 0.85 | 3 low, 6 high | 0.00 to 1.00 |
+| W9 every leg works | ≤ 1.5 | 0 | 3.4 to 12 where every foot stepped |
+| W10 lowest foot height, hip heights | ≥ −0.05 | 0 | −0.23 to −0.12 |
+
+It fails W5 and W7 on every seed, which is the reason the owner gave. It is
+also far less steady than its one unseeded rollout showed: it passes 30° of
+tilt on nine seeds, and on three (1102, 1103, 1104) it sits back at about
+43° and travels under 5 mm/s for the whole episode. One of those three,
+seed 1104, has the **highest reward of the ten** (867.0). The reward paid
+most for a seed that took no step.
+
+**ot9's Robin, on `ot11-robin-negative`: 0 of 10 seeds pass.** Receipt:
+[`retained/p2-robin-evaluation.json`](retained/p2-robin-evaluation.json).
+
+| predicate | bound | seeds passing | measured, over the seeds |
+|---|---|---|---|
+| B1 completes | ran to 10.0 s | 4 | `fallen` fired on six seeds, between 3.10 s and 9.08 s |
+| B2 upright | ≤ 30° | 4 | 3.5° to 64.2° |
+| B3 stays in place | ≤ 2.0 COM heights | **0** | 9.2 to 18.7 (480 mm to 982 mm) |
+| B4 keeps heading | ≤ 20° | **0** | 131° to 168° |
+| B5 recovers from every shove | ≤ 2.0 s | **0** | both shoves recovered from on two seeds, in 3.19 s and 6.39 s at worst; on the other eight, never |
+
+Robin wanders and turns on every seed, as the off-contract reading said.
+Under shoves of 0.10 to 0.25 × its weight it also **falls on six seeds of
+ten**. ot9 never shoved it.
+
+The video judge has still not run. Its runner and the filmstrip are the
+next unit.

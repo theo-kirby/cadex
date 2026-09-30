@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-29. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-30. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -60,6 +60,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. With `--dry-run`, report the plan — the files the leg would touch and the steps it would take, in either mode — and train nothing. | no |
 | `cadex smoke --out DIR` | Simulate retained accepted artifacts with zero action or held position actuators, check finite state, exact component overlaps and floor support, and write `smoke.json` (ADR-352; details below). No rebuild or acceptance. | no |
+| `cadex evaluate` | Hold the accepted policy against its task's success spec (`assembly.success`, ADR-456): one rollout per frozen seed under the spec's conditions, then pass or fail per seed and per predicate, the behaviour metrics, the reward by term and how each episode ended, written to `evaluations/<revision>-<policy>/evaluation.json` in the project (ADR-457; details below). No rebuild or acceptance, and no trainer. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
 | `cadex review --host ADDR --port N` | Serve **this one project's** review dashboard to a browser, read-only (ADR-286): the accepted identity now, every recorded run labelled current/historical, its parameters and specs as recorded, training and rollout figures, retained artifacts, document snapshots, and the model in an orbit/zoom WebGL view — a run's own rollout meshes at its own revision, or the accepted attempt's tessellation. Opens no engine, rebuilds nothing, writes nothing, adds no `PROGRESS.md` row. Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/REVIEW-DESIGN.md`. | no |
 
@@ -73,6 +74,7 @@ Flags, valid on either side of the subcommand:
 | `--offset-mm N` | `section`: where along the plane normal to cut. **Omit it** to derive the offset from the accepted bounds (ADR-275); the old default was the constant 0.0, which on a mechanism standing off that plane draws an empty page and calls it `empty`. |
 | `--sweep` | `clearance`: write published joint sweep coverage and measurements to `docs/clearance-sweep.md`, without rebuilding (ADR-350). |
 | `--seconds S`, `--mode hold\|zero`, `--penetration-mm N`, `--rest-speed-mm-s N`, `--max-tilt-degrees N`, `--fps N`, `--timeout S` | `smoke` (ADR-352): the simulated duration (default 2 s), the command (hold the solved pose, or zero action), the deepest floor-proxy penetration (default 0.5 mm), the speed under which a free base counts as resting at the end (default 10 mm/s), how far a free base may turn from its accepted pose before it counts as fallen over (default 30°, ADR-377), the samples per simulated second at which the checks look (default 50), and the wall-time bound (default and maximum 300 s). `--model NAME` and `--task NAME` pick among several exported models or tasks. |
+| `--policy NAME`, `--task NAME`, `--timeout S` | `evaluate` (ADR-457): which declared policy output, or the policy declared against which task output, when the script declares more than one; and the wall-time bound on the child (default 1800 s, at most 7200). `--out DIR` moves the report out of `evaluations/`. |
 | `--min-clearance-mm N` | `clearance`: flag distances strictly below N (default 0.1 mm). |
 | `--max-common-volume-mm3 N` | `clearance` and `smoke`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
 | `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output to inventory. A project publishes at most one, so this is only ever a check that you are looking at it. |
@@ -2661,6 +2663,7 @@ Fast, and honest about what it did not run.
 | `test_review_server.py` | The review dashboard (ADR-286): the API, the allowlist and its refusals, the CLI command, and the page in a headless Chromium over its DevTools pipe (`cdp_browser.py`) — **skips** the browser half without a Chromium (`CADEX_BROWSER` names one); the private-address smoke runs only with `CADEX_REVIEW_HOST` set. |
 | `test_review_lifecycle.py` | The dashboard across restart and copy (D6/D7): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. Whole-directory copy coverage checks independent accepted fixtures and historical model/curves/video access with the original path unavailable. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
 | `test_review_history_scale.py` | Bounded operation over a long run history (ADR-321): sixty-three runs with 512-sample histories and three verified checkpoints each. Over HTTP, the run list carries a telemetry summary under 1.5 KB per run with no histories and no checkpoint hashing, the per-run detail carries both, and missing/invalid/mismatched states survive the summary. In the browser, a deliberately selected historical run keeps its selection, histories and playing video while twenty runs are added and the newest run's telemetry grows; an idle poll adds no more DOM nodes after the growth than before; a fresh visit selects the training run and the current-run button reaches it with its growing history within five seconds. **Skips** the browser half without a Chromium or FFmpeg. |
+| `test_evaluate.py` | `cadex evaluate` (ADR-457) in three layers: what it reads from a hand-built retained attempt (no engine); the child run for real on the engine suite's own fixtures, which needs `mujoco` here and **skips** without it; and the command against a script a live engine accepted with a policy it verified — **skips** without a built engine. |
 | `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** rendering/playback without both Chromium and FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
@@ -2906,3 +2909,82 @@ checks. Exit zero means a complete measurement, **not a passing design**: read
 `smoke.verdict`. A measured failure never changes acceptance. Missing artifacts,
 missing geometry, model/task disagreement or timeout make the command fail.
 No STEP/STL conversion, new dependency, protocol op or shell change is involved.
+
+## Evaluating a policy against its success spec (ADR-457)
+
+```bash
+./cadex evaluate --project ./robot --json
+```
+
+A task says what its behaviour must measurably be with `assembly.success`
+(`docs/XSCRIPT.md`, ADR-456): predicates on behaviour metrics, the frozen
+evaluation seeds, and the conditions an evaluation episode runs under.
+`cadex evaluate` is the one command that holds a policy to it. It takes no
+behaviour's name and has no flag for one: the spec names the metrics, the
+engine reads the metric families the mechanism has (a floating base, named
+feet, a tip), and a walk, a reach and a balance are three specs through the
+same path.
+
+**What it reads.** The retained accepted attempt, the way `smoke` does: it
+never runs `script.py`, restores the working script or changes accepted
+state, and it holds the project lock through the measurement. The policy is
+the one the accepted script declared with `assembly.policy` and the engine
+verified; its receipt names the task and the weights. Every file is checked
+against the digest the store recorded, and the weights must hash to what
+the receipt says was verified. With several declared policies, `--policy
+NAME` or `--task NAME` picks one. No declared policy, or a task with no
+success spec, is exit 3 with what to declare.
+
+**What it runs.** `cli/cadex_cli/evaluate_runner.py`, by path, under the
+engine's own interpreter. It calls `CadexDynamics.evaluate_success`: for
+each seed in the spec, one rollout of the policy in the engine's episode
+loop under the spec's horizon, reset variation and disturbances, at one
+frame per control step, read by `CadexEvaluation` (ADR-455). The model is
+compiled afresh for every seed, because a seeded episode writes its
+randomisation draws into the compiled model; each seed's row is the row it
+gets evaluated alone. Training stays offboard: nothing here imports JAX,
+MJX or the trainer.
+
+**What it writes**, into `evaluations/<revision>-<policy>/` in the project
+(the first twelve characters of the accepted revision and of the policy's
+sha256; `--out DIR` names another place):
+
+- `evaluation.json` (`cadex-evaluation-v1`), written last and atomically:
+  - `verdict`, `pass` or `fail`. **Every seed must pass every predicate.**
+    Nothing is averaged into a verdict.
+  - the identity: accepted revision and digest, the policy, task and model
+    digests, the task's semantic digest, the engine.
+  - `spec`: the predicates, seeds, conditions and scale that were held.
+  - `seeds`, one row each: `pass`, `failing`, every predicate with its
+    value, bounds and the reason it failed; `metrics`, the flat table a
+    predicate may bound; `detail`, each foot's and each shove's own figures;
+    `episode`, with its steps, duration, termination cause and solver
+    warnings; `reward`, the total and each term, which is reported and
+    decides nothing; `drawn`, every value the seed drew for its
+    randomisation, reset and shoves; and `trace`, the file below with its
+    sha256.
+  - `summary`: the seeds that passed and failed, each predicate's tally and
+    failing seeds with the spread of its value, the termination causes, the
+    reward and every metric as min, median and max over the seeds that
+    measured it.
+- `seed-<n>-trace.json`, one per seed: the rollout's frames as a
+  `cadex-assembly-simulation-trace-v1`, the schema a rollout already
+  writes. The project's own `.gitignore` keeps `*-trace.json` out of its
+  history; the report is committed with the run's `PROGRESS.md` row.
+
+**A void seed.** MuJoCo answers a bad acceleration by resetting the state
+and counting a warning, so the frames after it are finite and are not the
+mechanism. A seed whose episode raised a solver warning is `void`, is listed
+in `summary.void`, and has not passed whatever its predicates read.
+
+**Refusals.** A spec seed that is the policy's own training seed is refused:
+evaluation seeds are never training seeds. A model that is not the one the
+task bundle recorded is refused before any rollout.
+
+Exit zero means a complete measurement on every seed, **not a passing
+policy**: read `evaluation.verdict`. The envelope's `evaluation` block
+carries the verdict, the digests, the summary and `report`, the path of the
+full file; the per-seed rows stay in the file. The `PROGRESS.md` row names
+the verdict and the failing predicates, which is how a failed evaluation
+reaches the next design turn. The rollout video, the filmstrip and the
+review dashboard's view of this report are not built yet.

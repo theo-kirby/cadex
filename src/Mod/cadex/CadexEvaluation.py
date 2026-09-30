@@ -255,8 +255,12 @@ def base_series(samples, rig: Mapping[str, Any], *,
             "forward": forwards, "velocity": velocity, "dt": dt}
 
 
-def posture(base: Mapping[str, Any], com_height_mm: float) -> dict[str, Any]:
-    """Tilt, heading and drift over a whole episode, from one base series."""
+def posture(base: Mapping[str, Any], com_height_mm: float | None) -> dict[str, Any]:
+    """Tilt, heading and drift over a whole episode, from one base series.
+
+    ``com_height_mm`` is ``None`` for a base with no floor under it; the
+    drift in COM heights is then not measured, and the rest still is.
+    """
 
     start = base["point"][0]
     drift = [math.hypot(p[0] - start[0], p[1] - start[1]) for p in base["point"]]
@@ -267,7 +271,7 @@ def posture(base: Mapping[str, Any], com_height_mm: float) -> dict[str, Any]:
         "final_heading_deg": base["heading"][-1],
         "max_drift_mm": max(drift),
         "final_drift_mm": drift[-1],
-        "max_drift_com_heights": max(drift) / com_height_mm,
+        "max_drift_com_heights": max(drift) / com_height_mm if com_height_mm else None,
         "mean_speed_mm_s": (sum(speeds) / len(speeds)) if speeds else None,
     }
 
@@ -604,6 +608,104 @@ def episode_metrics(episode: Mapping[str, Any]) -> dict[str, Any]:
             "termination": str(episode.get("termination") or "")}
 
 
+def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
+            shoves=(), command_mm_s: float | None = None,
+            segments: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+    """Every behaviour metric one rollout can be read for, as one flat table.
+
+    Which families are read is decided by what the rig and the episode
+    carry, never by what the behaviour is called: a floating base is read
+    for posture, named feet for gait, a tip with targets for reach, and a
+    shove for the recovery from it. ``metrics`` holds the names in
+    :data:`METRICS` and nothing else, so it is exactly what a predicate may
+    bound; a family that was not read is absent from it, and :func:`check`
+    fails a predicate on an absent metric. ``detail`` keeps what a report
+    shows beside the table: each foot's own figures, each shove's recovery,
+    each target's row.
+
+    ``shoves`` is ``[(onset_s, duration_s)]``, ``command_mm_s`` the forward
+    speed the episode asked for and ``segments`` the targets it held -- what
+    the episode applied, handed in by whoever ran it.
+    """
+
+    read: dict[str, Any] = dict(episode_metrics(episode))
+    detail: dict[str, Any] = {}
+    if rig.get("base") is not None:
+        if rig.get("com_height_mm") is not None:
+            read.update(balance_metrics(samples, rig, shoves))
+        else:
+            read.update(posture(base_series(samples, rig), None))
+        if rig.get("feet"):
+            read.update(gait_metrics(samples, rig, command_mm_s))
+    if rig.get("tip") is not None and segments:
+        read.update(reach_metrics(samples, rig, segments))
+    for key in ("recovery_s", "feet", "segments", "travel_mm"):
+        if key in read:
+            detail[key] = read[key]
+    return {"metrics": {name: read[name] for name in METRICS if name in read},
+            "detail": detail}
+
+
+def _spread(values: Sequence[float]) -> dict[str, Any]:
+    return {"min": min(values), "median": float(statistics.median(values)), "max": max(values)}
+
+
+def summarise(seeds: Sequence[Mapping[str, Any]],
+              predicates: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """What a set of evaluated seeds says together.
+
+    ``seeds`` are per-seed rows carrying ``seed``, ``pass``, ``predicates``
+    (from :func:`check`), ``metrics``, ``episode`` and ``reward``. **Every
+    seed must pass**: nothing here averages a verdict, and the spreads below
+    are for reading a failure, never for deciding one. A metric's spread is
+    over the seeds that measured it, and ``measured`` says how many did. A
+    row may carry ``void``, the reason its episode is not a measurement at
+    all; such a seed is listed and is never among the passed.
+    """
+
+    held = []
+    for index, predicate in enumerate(predicates):
+        rows = [seed["predicates"][index] for seed in seeds]
+        values = [row["value"] for row in rows if row["value"] is not None]
+        held.append({
+            "id": rows[0]["id"] if rows else str(predicate.get("id", predicate["metric"])),
+            "metric": str(predicate["metric"]),
+            "min": predicate.get("min"), "max": predicate.get("max"),
+            "passed": sum(1 for row in rows if row["pass"]),
+            "failed_seeds": [seed["seed"] for seed, row in zip(seeds, rows) if not row["pass"]],
+            "value": _spread(values) if values else None,
+        })
+    causes: dict[str, int] = {}
+    for seed in seeds:
+        cause = str(seed["episode"].get("termination") or "") or "horizon"
+        causes[cause] = causes.get(cause, 0) + 1
+    names = [name for name in METRICS if any(name in seed["metrics"] for seed in seeds)]
+    metrics = {}
+    for name in names:
+        values = [seed["metrics"][name] for seed in seeds
+                  if isinstance(seed["metrics"].get(name), (int, float))]
+        metrics[name] = {"measured": len(values), **(_spread(values) if values else {})}
+    labels: list[str] = []
+    for seed in seeds:
+        labels.extend(term["label"] for term in seed["reward"]["terms"] if term["label"] not in labels)
+    terms = [{"label": label, **_spread([term["total"] for seed in seeds
+                                         for term in seed["reward"]["terms"] if term["label"] == label])}
+             for label in labels]
+    passed = [seed["seed"] for seed in seeds if seed["pass"]]
+    return {
+        "seeds": len(seeds),
+        "passed": passed,
+        "failed": [seed["seed"] for seed in seeds if not seed["pass"]],
+        "void": [seed["seed"] for seed in seeds if seed.get("void")],
+        "pass": bool(seeds) and len(passed) == len(seeds),
+        "predicates": held,
+        "terminations": causes,
+        "reward": {"total": _spread([seed["reward"]["total"] for seed in seeds]) if seeds else None,
+                   "terms": terms},
+        "metrics": metrics,
+    }
+
+
 def check(predicates: Sequence[Mapping[str, Any]], metrics: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Hold named metrics against their bounds: one row per predicate.
 
@@ -622,7 +724,7 @@ def check(predicates: Sequence[Mapping[str, Any]], metrics: Mapping[str, Any]) -
             raise ValueError(f"predicate {predicate.get('id', name)!r} states no bound")
         value = metrics.get(name)
         why = ""
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or math.isnan(value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
             passed, value = False, None
             why = f"{name} was not measured"
         else:

@@ -29826,3 +29826,96 @@ report is written. The trainer does not read `success`: it does not yet
 refuse a `--seed` that is an evaluation seed, and `CURRICULUM_TASK_KEYS` does
 not list `success`, so a warm start across a spec revision is still a
 whole-file digest mismatch there.
+
+## ADR-457 — One command evaluates a policy against its task's success spec, and a seed is an independent episode (2026-09-30)
+
+**Context.** ADR-456 put a success spec in the task bundle: predicates,
+frozen seeds and the conditions an evaluation episode runs under. Nothing
+played it. P2 asks for one command that evaluates an accepted policy on its
+frozen seeds and writes a report into the project, and the charter asks that
+nothing in the pipeline be walking-specific.
+
+**Decision.** `cadex evaluate`, and one engine function behind it.
+
+- **The engine does the evaluating.** `CadexDynamics.evaluate_success(xml,
+  task, container, components=...)` plays `rollout_policy` on
+  `evaluation_task(task)` for each of the spec's seeds, at one frame per
+  control step, reads the frames with the new `CadexEvaluation.measure`,
+  holds the spec's predicates with `check`, and folds the rows with the new
+  `CadexEvaluation.summarise`. The CLI holds no metric, no episode loop and
+  no forward pass.
+- **No behaviour is named.** `measure` reads posture for a floating base,
+  gait for named feet, reach for a tip with targets and recovery for a
+  shove, by what the rig and the episode carry. The command has no flag for
+  a behaviour. Two tests strip the docstrings and assert that neither the
+  engine function nor the CLI modules contain a behaviour's name.
+- **The CLI reads retained artifacts and runs a child**, the way `cadex
+  smoke` does (ADR-352). It never rebuilds or accepts a script, so the
+  policy evaluated is the one the accepted revision verified: the receipt
+  names the task and the weights, every file is checked against its
+  recorded digest, and the staged weights must hash to the receipt's
+  `policy_sha256`. `cli/cadex_cli/evaluate_runner.py` runs by path under the
+  engine's own interpreter and imports `CadexDynamics` from the module
+  directory the plan names. `smoke.retained_attempt` is the shared reader of
+  the accepted pin.
+- **The report** is `evaluation.json` (`cadex-evaluation-v1`) in
+  `evaluations/<revision>-<policy>/`: per seed, the verdict, every predicate
+  row, the metric table, per-foot and per-shove detail, how the episode
+  ended, the reward term by term and every drawn value; and a summary.
+  Each seed also leaves its frames as a
+  `cadex-assembly-simulation-trace-v1`, which the project's `.gitignore`
+  already keeps out of its history. The `PROGRESS.md` row carries the
+  verdict and the failing predicates.
+- **Every seed must pass.** The summary gives min, median and max of each
+  metric over the seeds for reading a failure. No verdict is an average.
+- **A failed evaluation exits zero.** It is a measurement. Nothing to
+  evaluate (no declared policy, no spec) is exit 3.
+
+**A seed is an independent episode, and that was a defect first.**
+`apply_randomisation` multiplies its draws into the compiled model in place.
+The first version of `evaluate_success` took a compiled model and played
+every seed on it, so each seed started from the previous seed's masses. The
+agreement gate caught it: re-measured under the w2 task's own conditions,
+seeds 1103 to 1110 disagreed with the retained P1 receipts, which had
+compiled a model per seed. The function now takes the model's bytes and
+compiles one per seed, and it reproduces all ten P1 receipts to 2.0e-15.
+`test_a_seed_is_an_independent_episode_whatever_was_played_before_it` fails
+on a shared model. `apply_randomisation` itself is unchanged: a caller that
+plays two seeded episodes on one compiled model still compounds them.
+
+**A void seed.** MuJoCo resets the state on a bad acceleration and counts a
+warning, so the frames after it are finite and are not the mechanism.
+`rollout_policy` now returns `solver_warnings` with the episode, read at
+every control step. A seed with any is `void` and has not passed, whatever
+its predicates read. The first live fixture for this command went unstable
+and read as a calm block, which is how this was found.
+
+**The evaluation seed rule is enforced here.** A spec seed equal to the
+policy header's training seed is refused
+(`evaluation_seed_is_the_training_seed`). The trainer still does not refuse
+one on its side.
+
+**`rollout_policy`'s episode summary gained three keys**:
+`reset_variation`, `disturbance` and `solver_warnings`. The worker copies
+named keys into a trace, so no retained artifact and no golden moved. No
+protocol change: `OP_ARG_SPECS`, `docs/INTEGRATION.md` and the shell client
+are unmoved. No new dependency.
+
+**Evidence.** `cadex_tests/test_evaluate_success_model.py` (16 tests: a
+passing and a failing mechanism, the spec's conditions and echoed draws,
+seed independence, termination causes, the reward decomposed and deciding
+nothing, the trace re-measured to the same numbers, void seeds, refusals),
+`test_evaluation_metrics.py` (`measure`, `summarise`, and the `w2-2`
+fixture failing stepping and slip through the one table), and
+`cli/tests/test_evaluate.py` (21 tests, four of them against a live
+engine). On the two known negatives, as `ot11-*` copies under the
+contract's conditions: `w2-2` fails W5 and W7 on all ten seeds, and Robin
+fails B3, B4 and B5 on all ten with B1 and B5 measured
+(`docs/probes/ot11/README.md`).
+
+**Not in this unit.** The rollout video, the filmstrip, the blind judge and
+the review dashboard's view of the report. The spec cannot switch off a
+task's randomisation, so an evaluation of a task that randomises mass runs
+the contract's conditions on a drawn mass. W3, W4's lateral half and Q1–Q4
+wait on a goal (P3).
+
