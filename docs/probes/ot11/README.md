@@ -1406,10 +1406,92 @@ open-loop replay agrees to 1e-6 for 10 control steps and then drifts only
 the way a contacting mechanism does under float32.
 
 **What this flags.** Walk rounds 1 and 2, and `r3-nochatter`, which started
-at 19:01Z on the old trainer, **trained on physics the engine does not run**.
+at 23:01Z on the old trainer, **trained on physics the engine does not run**.
 Their evaluations stand as measured, because `cadex evaluate` runs the
 engine. But the reward curves the agent revised against came from a
 different machine, so rounds 1–3 are not evidence about their reward
 designs. Every earlier ot11 run trained the same way. R2's and R3's
 confirmation passes stand as the engine measured them.
 
+
+### Walk round 3: `r3-nochatter`, trained on the old trainer, and still backwards
+
+**This round trained on the pre-ADR-465 trainer.** Its process started at
+23:01:31Z and loaded `cadex_train.py` `8e06e1b0…` (`b81dd2e1~1`). The fix
+was written to the working tree at 23:11:26Z and committed at 23:52:38Z.
+Like rounds 1 and 2, its reward curve comes from MJX physics that the
+engine does not run, so it says nothing about its reward design.
+
+| run | seed | settings | budget | ended | evaluated policy | seeds passed |
+|---|---|---|---|---|---|---|
+| `r3-nochatter` | 23 | 800 it × 2048 envs | 2,380 s | **budget exhausted** at iteration 799, 2,381 s | `102133e9…` (`best`, iteration 788) | **0 of 10** |
+
+GPU wall time: 2,381 s. Training reward per step rose from −1.56 at
+iteration 99 to +1.17 at the best checkpoint. On the evaluation seeds the
+same policy scored −3.10 to −2.37.
+
+**The recorded trainer digest is wrong, and cannot tell you which physics
+trained a policy.** `cadex_train.py` hashes its own file when it *saves* a
+policy, not when it starts. `r3-nochatter`'s checkpoints at iterations 100
+and 200 record `8e06e1b0…`. Every checkpoint saved after 23:11:26Z records
+`abae5da0…`, the fixed trainer, although the process that wrote them still
+ran the old code: that is 300 to 700, and the evaluated `best`. So a
+policy's `training.trainer_sha256` is not evidence of the physics it
+trained on. That also goes for round 4 (below), whose process genuinely
+loaded the fix. Round 4's fix is established by its start time, not by that
+field. The field is a trainer defect, and it is not fixed here: changing
+`cadex_train.py` while round 4 runs would make round 4's own final save
+record the wrong digest.
+
+**The evaluation is valid.** The script's spec block equals
+`retained/walk-spec-block.txt` at the evaluated revision `9f711fca…`, which
+differs from the registered `27da0754…` only in the declared policy digest.
+The model is `ade106a6…` and the task `0e4d0826…`, the one trained. The report is
+`evaluations/9f711fcaa419-102133e9310b/evaluation.json`. The receipt, with
+every seed's predicates, feet, reward terms and each checkpoint's recorded
+trainer digest, is
+[`retained/p4-quad-1-r3-evaluation.json`](retained/p4-quad-1-r3-evaluation.json).
+
+| predicate | seeds failing | range |
+|---|---|---|
+| W3 tracks speed | 10 | speed ratio −1.89 to −1.06, **backwards** at 87–135 mm/s; over the first 3 s, before any shove (3.4–6.5 s), the tray already moves at −55 to −137 mm/s |
+| W5-share | 10 | 0.00–0.10 of the path made in steps |
+| W7 slip | 10 | 0.63–0.73, worst on the rear feet (0.61–0.73); front-left 0.11–0.21 |
+| W8-low duty factor | 10 | 0.20–0.29, always the front-left foot |
+| W9 every leg | 10 | ratio 4.4–24 |
+| W10 in the floor | 10 | −0.20 to −0.11 hip heights |
+| W6 clearance | 9 | 0.03–0.07 hip heights (1106: 0.085) |
+| W5-steps | 7 | 0–5 steps on the weakest foot |
+| W4-heading | 5 | 51–103° on 1102, 1103, 1106, 1107, 1108 |
+| W1 | 1 | 1106 collapses at step 496 |
+| W4-lateral | 1 | 0.28 on 1109 |
+
+The gait is round 2's, a little more even. The front-left foot steps 18–27
+times, the front-right 7–18. The rear feet step 0–6 times and drag
+(duty 0.65–0.80). On seed 1101 the knee joint-speed cost is still −323 over
+the episode (−0.65 per step), though this round added it. The four
+clearance terms cost 931 and the speed error 457, against an alive total
+of 1,500. The film of seed 1101 is the
+[overview](p4-quad-1-walk-r3-seed-1101-overview.png) and the
+[detail](p4-quad-1-walk-r3-seed-1101-detail.png). The robot moves steadily
+across the mat, backwards against a forward command, with its legs splayed
+under a level tray.
+
+**Round 4 cites round 3, but not ADR-465.** The agent registered
+`r4-anglesonly` at 23:51:38Z: seed 31, 780 it × 2048 envs, 2,390 s,
+`--stop-on-collapse`. Its reason quotes this round's W3, W7, W8-low and W10
+ranges and the knee chatter. It concludes that "the closed loop is unstable
+only in evaluation", so it makes the gyro and joint-velocity channels
+privileged (the reward still reads them; the policy does not). It also
+randomises every hip and knee damping over 0.7–1.4×. The spec block is
+still equal to the retained one at `fbb2237e…`. The prompt has not told the agent about
+ADR-465, so its diagnosis is made on the training/evaluation gap that
+ADR-465 explained. **Round 4 is the first walk round trained on the fixed
+trainer** (its process started 40 minutes after the fix was on disk). So
+its reward curve is the first that the engine should reproduce, and its
+evaluation is the first that says anything about a reward design. It is
+also the session's fourth and last run (`max_runs` 4). If it fails, walk
+needs a new pre-registered session. That session's prompt would tell the
+agent what ADR-465 changed, and that rounds 1–3's reward curves came from
+the wrong physics. A session cannot hand the agent that fact mid-way
+without changing its registered prompt.
