@@ -2245,7 +2245,7 @@ bridge (`BRIDGE_TOOLS`), need no protocol op, and are listed in the turn's
 | tool | what it does |
 |---|---|
 | `train_start` | Pre-registers one bounded run on the task **as accepted now** and launches it. Takes `run` (a new name), `budget_s` (wall clock, required — a run with no budget is not started), `reason` (the measurement that motivated the run) and optional `task` and `settings`. Returns at once. |
-| `train_status` | Reads a run: its state, the trainer's progress (iteration, reward per step, mean episode length, exploration sigma, a thinned curve), its checkpoints, and when it finished the policy's path and sha256. `wait_s` (at most 900) blocks until the run ends. Without `run`: every run of the project and the loop's ledger. |
+| `train_status` | Reads a run: its state, the trainer's progress (iteration, reward per step, mean episode length, exploration sigma, a thinned curve), its checkpoints, and when it finished the policy's path and sha256. It names the run's `task_bundle` (path and sha256), the file a warm start passes as `init_from_parent_task`, and says how to warm-start once there is a policy or a checkpoint. `wait_s` (at most 900) blocks until the run ends. Without `run`: every run of the project and the loop's ledger. |
 | `train_stop` | Asks a live run's supervisor to stop it, with the reason. Checkpoints already written stay, and each is a complete policy. |
 | `evaluate` | `cadex evaluate` for the agent: the accepted policy on every frozen seed, then the verdict, pass or fail per seed and per predicate, the behaviour metrics, the reward by term and how each episode ended in one bounded text block, followed by the overview and detail filmstrips of up to two filmed seeds as `image` blocks. The full report is the same `evaluation.json`, with its video, in `evaluations/`. |
 
@@ -2328,6 +2328,11 @@ checkpoint has the evaluated digest. Checkpoints are read from the files in
 checkpoint before it rewrites `progress.json` and a run stopped between the
 two leaves its last checkpoint unlisted there; `train_status` lists them the
 same way. A ledger row written before this fix (2026-09-30) is not rewritten.
+A warm start needs the parent run's task bundle, `runs/<run>/train/<task>-task.json`,
+as `init_from_parent_task`. `train_status` names it as `task_bundle` (and the
+listing without `run` gives each run's path); a path that does not exist is
+refused with every run's bundle in the refusal. Before this (ot11 `reach-r3`)
+the agent guessed five paths, was refused each time, and trained from scratch.
 
 ### Every build reply carries the measured fit (ADR-346)
 

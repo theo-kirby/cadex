@@ -421,6 +421,7 @@ class Bridge:
                           "reason": run["registration"].get("reason"),
                           "accepted_revision": run["registration"].get("accepted_revision"),
                           "elapsed_s": run["elapsed_s"],
+                          "task_bundle": loop.task_bundle(run)["path"],
                           "policy_sha256": (run["status"].get("policy") or {}).get("sha256")}
                          for run in runs],
                 "ledger": loop.read_ledger(self.project_root)[-LEDGER_VIEW_ROWS:],

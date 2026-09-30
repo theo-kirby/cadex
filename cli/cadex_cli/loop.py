@@ -359,7 +359,14 @@ def register(root: Path, *, run: str, budget_s: float, reason: str,
             path = Path(chosen[key]).expanduser()
             path = path if path.is_absolute() else root / path
             if not path.is_file():
-                raise LoopError(f"{key}: no such file: {chosen[key]}")
+                hint = ""
+                if key == "init_from_parent_task":
+                    bundles = [f"{run['run']}: {task_bundle(run)['path']}"
+                               for run in list_runs(root)]
+                    hint = (" It is the task bundle the parent run trained on; each "
+                            "run's is its train_status task_bundle"
+                            + (" -- " + "; ".join(bundles) + "." if bundles else "."))
+                raise LoopError(f"{key}: no such file: {chosen[key]}.{hint}")
             chosen[key] = str(path)
     try:
         python = resolve_trainer_python(trainer_python or None)
@@ -605,6 +612,22 @@ def _thinned(curve: Any) -> list[Any]:
     return [rows[round(index * step)] for index in range(VIEW_CURVE_POINTS)]
 
 
+#: What a view says about warm-starting from the run it shows.
+WARM_START = (
+    "To warm-start a new run from this one, pass settings init_from=<a policy or "
+    "checkpoint path of this run>, init_from_parent_task=<task_bundle.path> and "
+    "init_from_task_change=<one line on what changed in the task since>. The trainer "
+    "refuses a change to what the network reads or emits.")
+
+
+def task_bundle(run: Mapping[str, Any]) -> dict[str, Any]:
+    """The task bundle a run trained on, as a warm start from it names it."""
+
+    registration = run["registration"]
+    return {"path": str(Path(str(run["dir"])) / str(registration.get("bundle") or "")),
+            "sha256": registration.get("task_sha256")}
+
+
 def run_view(run: Mapping[str, Any]) -> dict[str, Any]:
     """A run as the agent reads it: bounded, and saying what to do next."""
 
@@ -619,6 +642,7 @@ def run_view(run: Mapping[str, Any]) -> dict[str, Any]:
         "registered_for": registration.get("reason"),
         "accepted_revision": registration.get("accepted_revision"),
         "task": registration.get("task_output"),
+        "task_bundle": task_bundle(run),
         "settings": registration.get("settings"),
         "budget_s": registration.get("budget_s"),
         "elapsed_s": run.get("elapsed_s"),
@@ -644,6 +668,8 @@ def run_view(run: Mapping[str, Any]) -> dict[str, Any]:
         if checkpoints:
             view["checkpoints"] = checkpoints[-6:]
     policy = status.get("policy")
+    if policy or view.get("checkpoints"):
+        view["warm_start"] = WARM_START
     if policy:
         view["policy"] = policy
         view["next"] = (

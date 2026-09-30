@@ -30706,3 +30706,16 @@ held for a task with a spec and one without.
 `pixi run python -m pytest cli/tests`: 1246 passed, 1 skipped (1219 and 1
 before). `pixi run test-engine`: 2507 passed, 57 skipped, as before. No
 packaged gate: no engine, protocol or payload file changed.
+
+**Amendment (2026-09-30): a run names its task bundle.** On `ot11-heron-1`
+the product agent tried to warm-start `reach-r3` from `reach-r2`, guessed
+five paths for `init_from_parent_task`, was refused each time, and trained
+from scratch: `train_status` never named the bundle and neither did the
+refusal. `loop.run_view` now carries `task_bundle` (the path under the run
+and the registration's `task_sha256`, the digest a policy header carries)
+and, once a run has a policy or a checkpoint, a `warm_start` line naming
+the three settings; the listing gives each run's bundle path; and a missing
+`init_from_parent_task` is refused with every run's bundle in the text.
+Regression: `test_a_run_names_its_task_bundle_so_a_warm_start_can_be_registered`,
+which fails on the old source with `KeyError: 'task_bundle'`. No engine,
+protocol, payload, trainer or shell file changed; nothing removed.

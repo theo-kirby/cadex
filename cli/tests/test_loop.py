@@ -727,3 +727,39 @@ def test_the_real_trainer_runs_under_the_supervisor_and_the_engine_takes_its_pol
     ]])
     assert command_prompt(_args(root, resume=True), RunReport(), turn_factory=second) == EXIT_OK
     assert second.made[0].last_payload("write_script")["ok"] is True
+
+
+def test_a_run_names_its_task_bundle_so_a_warm_start_can_be_registered(project) -> None:
+    """ot11 ``reach-r3``: the agent tried to warm-start from ``reach-r2`` and
+    guessed five paths for ``init_from_parent_task``; ``train_status`` never
+    named the parent run's bundle and neither did the refusal, so it trained
+    from scratch. The view names the bundle with its digest -- the digest a
+    policy's header carries -- and the refusal names every run's bundle."""
+
+    parent = _register(project, run="r1")
+    run = _until(Path(loop.launch(parent)["dir"]))
+    assert run["state"] == "finished", run
+    view = loop.run_view(run)
+    bundle = view["task_bundle"]
+    registration = json.loads((parent / loop.REGISTRATION_NAME).read_text())
+    assert Path(bundle["path"]) == parent / registration["bundle"]
+    assert Path(bundle["path"]).is_file()
+    assert bundle["sha256"] == registration["task_sha256"] == _sha(Path(bundle["path"]).read_bytes())
+    assert "init_from_parent_task" in view["warm_start"]
+    policy = view["policy"]["path"]
+    # A guessed path is refused with the real ones in the refusal.
+    with pytest.raises(loop.LoopError) as refused:
+        _register(project, run="r2", settings={
+            "iterations": 3, "envs": 4, "seed": 9,
+            "init_from": policy,
+            "init_from_parent_task": "runs/r1/job-task.json",
+            "init_from_task_change": "same task"})
+    assert bundle["path"] in str(refused.value) and "r1" in str(refused.value)
+    # The path read from the view is accepted as it stands, and nothing is left
+    # behind by the refusal above.
+    child = _register(project, run="r2", settings={
+        "iterations": 3, "envs": 4, "seed": 8,
+        "init_from": policy,
+        "init_from_parent_task": bundle["path"], "init_from_task_change": "same task"})
+    assert json.loads((child / loop.REGISTRATION_NAME).read_text())[
+        "settings"]["init_from_parent_task"] == bundle["path"]
