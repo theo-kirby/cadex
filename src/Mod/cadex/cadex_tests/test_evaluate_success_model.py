@@ -231,6 +231,57 @@ def test_each_seed_plays_the_specs_conditions_and_echoes_what_it_drew() -> None:
     assert len({json.dumps(row["drawn"], sort_keys=True) for row in report["seeds"]}) == len(SEEDS)
 
 
+def test_a_spec_that_states_no_randomisation_judges_the_mechanism_as_built() -> None:
+    """The task varies a mass to train; the spec says ``[]`` to judge (ADR-458).
+
+    The randomisation draws come first in a seed's stream, so dropping them
+    is not only "the built mass": each seed draws the start and the shove a
+    task that never randomised would have drawn.
+    """
+
+    judged = spec(BALANCE, episode_seconds=4.0)
+    inherits = evaluate(prepared(judged, randomisation=MASS))
+    as_built = evaluate(prepared({**judged, "randomisation": []}, randomisation=MASS))
+    plain = evaluate(prepared(judged))
+
+    # The report states the conditions it played.
+    assert [entry["label"] for entry in inherits["spec"]["randomisation"]] == ["body_mass"]
+    assert as_built["spec"]["randomisation"] == [] == plain["spec"]["randomisation"]
+    for kept, bare, never in zip(
+        inherits["seeds"], as_built["seeds"], plain["seeds"], strict=True
+    ):
+        (draw,) = kept["drawn"]["randomisation"]
+        assert draw["label"] == "body_mass" and 0.5 <= draw["factor"] <= 1.5
+        assert bare["drawn"] == never["drawn"]
+        assert bare["drawn"]["randomisation"] == []
+        assert bare["drawn"]["reset_variation"] != kept["drawn"]["reset_variation"]
+        assert bare["metrics"] == never["metrics"]
+        assert bare["reward"] == never["reward"]
+
+
+def test_a_spec_may_randomise_what_its_task_does_not() -> None:
+    made = prepared({**spec(BALANCE, episode_seconds=4.0), "randomisation": MASS})
+    assert made["bundle"]["randomisation"] == []
+    for row in evaluate(made)["seeds"]:
+        (draw,) = row["drawn"]["randomisation"]
+        assert draw["label"] == "body_mass"
+
+
+def test_a_bundle_written_before_the_condition_plays_its_tasks_randomisation() -> None:
+    """ADR-457's bundles carry no ``randomisation`` in the spec: the task's."""
+
+    made = prepared(spec(BALANCE, episode_seconds=4.0), randomisation=MASS)
+    expected = evaluate(made)
+    older = copy.deepcopy(made)
+    del older["bundle"]["success"]["randomisation"]
+    assert dyn.evaluation_task(older["bundle"])["randomisation"] == made["bundle"]["randomisation"]
+    played = evaluate(older)
+    assert [row["drawn"] for row in played["seeds"]] == [
+        row["drawn"] for row in expected["seeds"]
+    ]
+    assert played["spec"]["randomisation"] == made["bundle"]["randomisation"]
+
+
 def test_the_same_seeds_are_the_same_episodes() -> None:
     made = prepared(spec(BALANCE, episode_seconds=4.0))
     assert evaluate(made) == evaluate(made)

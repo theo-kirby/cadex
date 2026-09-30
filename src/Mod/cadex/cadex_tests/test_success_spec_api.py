@@ -146,11 +146,41 @@ def test_omitted_conditions_are_absent_and_an_empty_list_is_a_statement() -> Non
 
     api = _api()
     inherits = api.success(BALANCE, seeds=SEEDS)
-    for name in ("reset_variation", "disturbance", "episode_seconds", "tip"):
+    for name in ("randomisation", "reset_variation", "disturbance",
+                 "episode_seconds", "tip"):
         assert name not in inherits.properties
-    bare = api.success(BALANCE, seeds=SEEDS, reset_variation=[], disturbance=[])
+    bare = api.success(BALANCE, seeds=SEEDS, randomisation=[], reset_variation=[],
+                       disturbance=[])
+    assert list(bare.properties["randomisation"]) == []
     assert list(bare.properties["reset_variation"]) == []
     assert list(bare.properties["disturbance"]) == []
+
+
+def test_a_spec_states_its_own_randomisation_as_the_values_a_task_takes() -> None:
+    """The third condition (ADR-458), held to the assembly as a task's is."""
+
+    api = _api()
+    scene = _scene(api)
+    base = scene["components"][0]
+    mass = api.randomise(base, "mass", scale=[0.85, 1.15])
+    spec = api.success(BALANCE, seeds=SEEDS, randomisation=[mass])
+    assert list(spec.properties["randomisation"]) == [mass]
+    assert _task(api, scene, success=spec).properties["success"] is spec
+
+    for wrong in ([base], [api.reward("angle")], "mass"):
+        with pytest.raises(ValueError):
+            api.success(BALANCE, seeds=SEEDS, randomisation=wrong)
+
+    stranger = api.randomise(api.component(_source("solid9")), "mass", scale=[0.9, 1.1])
+    twice = api.randomise(base, "mass", scale=[0.5, 1.5])
+    for entries, why in (
+        ([stranger], "varies a component that is not listed in this assembly"),
+        ([mass, twice], "on one target twice"),
+    ):
+        with pytest.raises(ValueError) as refusal:
+            _task(api, scene, success=api.success(BALANCE, seeds=SEEDS, randomisation=entries))
+        assert "success.randomisation[" in str(refusal.value)
+        assert why in str(refusal.value)
 
 
 def test_a_task_without_a_spec_is_the_value_it_always_was() -> None:

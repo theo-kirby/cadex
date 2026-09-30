@@ -151,7 +151,7 @@ def spec(predicates=BALANCE, **overrides):
     declared = {
         "label": "", "predicates": [dict(row) for row in predicates],
         "seeds": list(SEEDS), "feet": [], "tip": None, "episode_seconds": None,
-        "reset_variation": None, "disturbance": None,
+        "randomisation": None, "reset_variation": None, "disturbance": None,
     }
     declared.update(overrides)
     return declared
@@ -222,6 +222,36 @@ def test_declared_conditions_replace_the_tasks_and_an_empty_list_is_none() -> No
     # ...and the task it trains under is untouched by what it is judged under.
     assert [entry["label"] for entry in task["disturbance"]] == ["shove"]
     assert [entry["label"] for entry in task["reset_variation"]] == ["start"]
+
+
+def test_randomisation_is_a_condition_the_spec_may_state_or_switch_off() -> None:
+    """Omitted it is the task's; ``[]`` is the mechanism as built (ADR-458)."""
+
+    mass = {"target": "mass", "label": "body_mass", "component": "body",
+            "low": 0.85, "high": 1.15}
+    _model, inherits = bundle(spec(), randomisation=[mass])
+    assert inherits["success"]["randomisation"] == inherits["randomisation"] != []
+
+    _model, as_built = bundle(spec(randomisation=[]), randomisation=[mass])
+    assert as_built["success"]["randomisation"] == []
+    # ...and the task it trains under still varies the mass.
+    assert as_built["randomisation"] == inherits["randomisation"]
+    assert dyn.evaluation_task(as_built)["randomisation"] == []
+    assert dyn.evaluation_task(inherits)["randomisation"] == inherits["randomisation"]
+
+    wider = {**mass, "label": "wider", "low": 0.5, "high": 1.5}
+    _model, harder = bundle(spec(randomisation=[wider]), randomisation=[mass])
+    (entry,) = harder["success"]["randomisation"]
+    assert (entry["label"], entry["low"], entry["high"]) == ("wider", 0.5, 1.5)
+    assert entry["fields"] == inherits["randomisation"][0]["fields"]
+
+    # What a spec is judged under does not decide what the task is.
+    assert (dyn.task_semantic_digest(as_built) == dyn.task_semantic_digest(inherits)
+            == dyn.task_semantic_digest(harder))
+
+    error = refusal(spec(randomisation=[{**mass, "component": "nobody"}]))
+    assert error.reason == "randomisation_component_missing"
+    assert "the success spec of" in str(error)
 
 
 def test_the_conditions_are_checked_against_the_specs_own_horizon() -> None:

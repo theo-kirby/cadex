@@ -7144,6 +7144,7 @@ def _success_records(
     spec: Mapping[str, Any],
     task: Mapping[str, Any],
     tree: Mapping[str, Any],
+    joint_records: Sequence[Mapping[str, Any]],
     *,
     reward_labels: Sequence[str],
     context: str,
@@ -7157,11 +7158,17 @@ def _success_records(
     fit the episode it evaluates over.
 
     The conditions are resolved exactly as the task's own are, by the same
-    two functions, against the spec's own schedule: a shove that fits a ten
+    functions, against the spec's own schedule: a shove that fits a ten
     second evaluation and not a four second training episode is a legal
     spec. An omitted list is the task's entries, re-resolved here rather
     than copied, so they too are checked against the horizon they will
     actually run under.
+
+    The randomisation is one of those conditions (ADR-458). A task that
+    varies a mass to train a policy that tolerates it is not thereby asking
+    to be judged on a mass nobody chose, and the draws come first in a
+    seed's stream, so they move every value drawn after them. A spec states
+    ``[]`` to be judged on the mechanism as built.
     """
 
     import CadexEvaluation
@@ -7175,6 +7182,9 @@ def _success_records(
             correction="Give assembly.success at least one predicate.",
             observed={"task": context},
         )
+    randomisation_entries = spec.get("randomisation")
+    if randomisation_entries is None:
+        randomisation_entries = task.get("randomisation") or ()
     variation_entries = spec.get("reset_variation")
     if variation_entries is None:
         variation_entries = task.get("reset_variation") or ()
@@ -7260,6 +7270,10 @@ def _success_records(
             context=what,
         )
     )
+    randomisation = _randomisation_records(
+        mujoco, reloaded, randomisation_entries, tree, joint_records,
+        context=what,
+    )
     reset_variation = _reset_variation_records(
         mujoco, reloaded, variation_entries, tree, context=what
     )
@@ -7309,6 +7323,7 @@ def _success_records(
                   "local_mm": [float(v) for v in rig["tip"]["local_mm"]]}
         ),
         "episode": schedule,
+        "randomisation": randomisation,
         "reset_variation": reset_variation,
         "disturbance": disturbance,
         "scale": {
@@ -7324,12 +7339,16 @@ def _success_records(
 def evaluation_task(task: Mapping[str, Any]) -> dict[str, Any]:
     """The bundle as an evaluation episode plays it.
 
-    A success spec states its own horizon, reset variation and disturbances
-    (ADR-456), and an episode loop reads those three from the bundle it is
-    handed. This hands it the spec's: the same task -- same model, channels,
-    actions, reward and terminations -- under the conditions the spec
-    declared, with the spec itself dropped so that what comes back is an
-    ordinary bundle any evaluator of one already plays.
+    A success spec states its own horizon, randomisation, reset variation
+    and disturbances (ADR-456, ADR-458), and an episode loop reads those
+    four from the bundle it is handed. This hands it the spec's: the same
+    task -- same model, channels, actions, reward and terminations -- under
+    the conditions the spec declared, with the spec itself dropped so that
+    what comes back is an ordinary bundle any evaluator of one already
+    plays.
+
+    A bundle written before ADR-458 carries no randomisation in its spec,
+    and is played as it was when it was written: on the task's own.
 
     The reward is still in it, because an evaluation report decomposes the
     reward term by term. It is reported; no predicate can read it.
@@ -7349,6 +7368,8 @@ def evaluation_task(task: Mapping[str, Any]) -> dict[str, Any]:
         )
     played = {key: value for key, value in task.items() if key != "success"}
     played["episode"] = dict(spec["episode"])
+    if spec.get("randomisation") is not None:
+        played["randomisation"] = [dict(entry) for entry in spec["randomisation"]]
     played["reset_variation"] = [dict(entry) for entry in spec["reset_variation"]]
     played["disturbance"] = [dict(entry) for entry in spec["disturbance"]]
     return played
@@ -7644,6 +7665,7 @@ def task_records(
             task["success"],
             {**task, "episode": schedule},
             tree,
+            joint_records,
             reward_labels=[str(row["label"]) for row in reward_rows],
             context=context,
         )
@@ -9705,9 +9727,10 @@ def evaluate_success(
     runs under, what the feet and the tip are, and the predicates. For each
     seed this plays :func:`rollout_policy` on :func:`evaluation_task` --
     the task's own model, channels, actions, reward and terminations under
-    the spec's horizon, reset variation and shoves -- at one frame per
-    control step, reads the frames with ``CadexEvaluation.measure`` and
-    holds the spec's predicates against what was measured.
+    the spec's horizon, randomisation, reset variation and shoves -- at one
+    frame per control step, reads the frames with
+    ``CadexEvaluation.measure`` and holds the spec's predicates against what
+    was measured.
 
     **It takes the model's bytes, not a compiled model, and compiles one per
     seed.** A seeded episode multiplies its randomisation draws into the
@@ -9875,9 +9898,14 @@ def evaluate_success(
         "schema": EVALUATION_SCHEMA,
         "label": str(spec.get("label") or ""),
         "task_label": str(task.get("label") or ""),
-        "spec": {key: spec[key] for key in (
-            "predicates", "seeds", "feet", "tip", "episode",
-            "reset_variation", "disturbance", "scale")},
+        # The conditions as they were played, so a bundle from before the
+        # spec stated its randomisation (ADR-458) still reports the one used.
+        "spec": {
+            **{key: spec[key] for key in (
+                "predicates", "seeds", "feet", "tip", "episode",
+                "reset_variation", "disturbance", "scale")},
+            "randomisation": [dict(entry) for entry in played["randomisation"]],
+        },
         "rig": {key: value for key, value in rig.items() if key != "feet"},
         "seeds": rows,
         "summary": CadexEvaluation.summarise(rows, spec["predicates"]),

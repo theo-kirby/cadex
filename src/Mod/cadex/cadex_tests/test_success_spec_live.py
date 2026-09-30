@@ -39,7 +39,8 @@ pytestmark = pytest.mark.skipif(
 #: a body with a primitive collision shape on a joint below the base.
 #:
 #: The task trains under a 1 s episode and a light shove. The spec judges
-#: over 3 s, on three seeds, under a harder shove and no reset variation.
+#: over 3 s, on three seeds, under a harder shove, no reset variation and
+#: none of the task's mass randomisation.
 SCRIPT = """
 brick = part.box(120, 60, 40)
 tab = part.box(50, 20, 6)
@@ -89,6 +90,7 @@ spec = assembly.success(
     seeds=[1101, 1102, 1103],
     feet=[paddle],
     episode_seconds=3.0,
+    randomisation=[],
     reset_variation=[],
     disturbance=[harder],
     label="stays put",
@@ -97,6 +99,9 @@ job = assembly.task(model, actions=[motor],
                     reward=[assembly.reward("base_z", weight=1.0e-3,
                                             label="height")],
                     episode_seconds=1.0, control_hz=50,
+                    randomisation=[assembly.randomise(block, "mass",
+                                                      scale=[0.8, 1.2],
+                                                      label="block_mass")],
                     reset_variation=[start], disturbance=[shove],
                     success=spec, label="stand")
 result = {"brick": brick, "tab": tab, "block": block, "paddle": paddle,
@@ -153,6 +158,9 @@ def test_a_declared_spec_reaches_the_retained_bundle_resolved() -> None:
         assert success["disturbance"][0]["body"] == "block"
         assert [entry["label"] for entry in bundle["reset_variation"]] == ["start"]
         assert success["reset_variation"] == []
+        # Trained on a varied mass; judged on the block as built (ADR-458).
+        assert [entry["label"] for entry in bundle["randomisation"]] == ["block_mass"]
+        assert success["randomisation"] == []
 
         # And the file says enough to play an evaluation episode from.
         model = dyn.load_model(
@@ -162,6 +170,7 @@ def test_a_declared_spec_reaches_the_retained_bundle_resolved() -> None:
             model, dyn.evaluation_task(bundle), seed=1101, record_steps=False
         )
         assert episode["step_count"] == 150
+        assert episode["randomisation"] == []
         (push,) = episode["disturbance"]
         assert push["label"] == "harder" and 6.0 <= push["newtons"] <= 8.0
     finally:

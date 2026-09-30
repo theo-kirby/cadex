@@ -199,7 +199,8 @@ def test_the_receipts_say_what_the_contract_says_and_carry_no_machine_path() -> 
 
 def test_the_known_negatives_fail_on_the_contracts_conditions_through_the_product() -> None:
     """``cadex evaluate`` on the two ``ot11-*`` copies (ADR-457): the
-    contract's seeds, shoves and horizon, declared as a success spec."""
+    contract's seeds, shoves and horizon, declared as a success spec that
+    states no randomisation, as the contract lists none (ADR-458)."""
 
     bounds = {"walk": {"W1": ("completed", 1, None), "W2": ("max_tilt_deg", None, 30),
                        "W4-heading": ("max_heading_deg", None, 45),
@@ -214,7 +215,8 @@ def test_the_known_negatives_fail_on_the_contracts_conditions_through_the_produc
                           "B3": ("max_drift_com_heights", None, 2.0),
                           "B4": ("max_heading_deg", None, 20), "B5": ("recovery_s_max", None, 2.0)}}
     expected = {
-        "p2-w2-2-evaluation.json": ("walk", "7a4e8c23", ["W5-share", "W6", "W7", "W9", "W10"],
+        "p2-w2-2-evaluation.json": ("walk", "7a4e8c23",
+                                    ["W5-steps", "W5-share", "W7", "W9", "W10"],
                                     {"horizon": 8, "tipped": 2}),
         "p2-robin-evaluation.json": ("balance", "ef71f370", ["B3", "B4", "B5"],
                                      {"fallen": 6, "horizon": 4}),
@@ -232,6 +234,9 @@ def test_the_known_negatives_fail_on_the_contracts_conditions_through_the_produc
             "episode_seconds"]
         assert {row["id"]: (row["metric"], row["min"], row["max"])
                 for row in report["spec"]["predicates"]} == bounds[behaviour]
+        # Contract conditions: the mechanism as built, on every seed.
+        assert report["spec"]["randomisation"] == []
+        assert all(row["drawn"]["randomisation"] == [] for row in report["seeds"])
         summary = report["summary"]
         assert summary["passed"] == [] and summary["void"] == []
         assert summary["terminations"] == endings
@@ -243,9 +248,10 @@ def test_the_known_negatives_fail_on_the_contracts_conditions_through_the_produc
     assert shove["newtons_low"] == pytest.approx(0.05 * weight)
     assert shove["newtons_high"] == pytest.approx(0.20 * weight)
     assert (shove["at_low_s"], shove["at_high_s"], shove["duration_s"]) == (3.0, 7.0, 0.15)
-    # The seed the reward liked best took no step.
+    # The seed the reward liked best barely stepped.
     best = max(walk["seeds"], key=lambda row: row["reward"]["total"])
-    assert best["seed"] == 1104 and best["metrics"]["steps_min"] == 0
+    assert best["seed"] == 1109 and best["metrics"]["steps_min"] == 1
+    assert best["metrics"]["step_share_min"] < 0.03
     robin = json.loads((OT11 / "retained" / "p2-robin-evaluation.json").read_text(encoding="utf-8"))
     assert [(d["at_low_s"], d["at_high_s"], d["duration_s"]) for d in robin["spec"]["disturbance"]] == [
         (2.0, 3.0, 0.10), (5.5, 6.5, 0.10)]

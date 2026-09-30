@@ -414,7 +414,7 @@ Robin is upright on every seed and fails on every seed. It drives away at
 satisfy B5's rest either. ot9's bar passed it 10 of 10; this spec says it
 wanders.
 
-### On the contract's conditions, through the product (ADR-457)
+### On the contract's conditions, through the product (ADR-457, ADR-458)
 
 Measured on 2026-09-30 with `cadex evaluate`, before any ot11 training run.
 Each read-only project was copied to a new `ot11-*` project, and the copy's
@@ -424,39 +424,47 @@ against the bundle it was trained on (`assembly.policy(trained_task=...)`)
 and proved the rebuilt task the same task. No seed was void.
 
 These are the first readings under the contract's own shoves and horizon, so
-B1 and B5 are now measured. Two things they are not:
+B1 and B5 are now measured.
 
+- **Both specs state `randomisation=[]`** (ADR-458). The contract lists a
+  reset variation and shoves and no randomisation, so the mechanism is
+  judged as built. The w2 task varies the tray's mass by 0.85 to 1.15 to
+  train, and the first product reading (ADR-457) kept that draw, because a
+  spec could not yet switch it off. That reading is superseded by the table
+  below and is kept in the copy's `PROGRESS.md`. The mass draw came first in
+  each seed's stream, so removing it also changed which start and which
+  shove each seed draws: these are different episodes from the first
+  reading's, and every drawn value is in the receipt. Robin's task never
+  randomised, and its ten rows are number for number the first reading's.
 - **W3 and the lateral half of W4 are not stated**, because a task cannot
   state a commanded speed until P3. The walk spec on the copy is W1, W2,
   W4's heading, and W5 to W10.
-- **The w2 task randomises the tray's mass by 0.85 to 1.15**, and an
-  evaluation episode keeps the task's randomisation. The contract lists no
-  mass randomisation, and those draws come first in the seed's stream. So
-  this is the contract's reset, shove and horizon on a mass the task drew.
-  Every drawn value is in the receipt.
 
 **ot10's `w2-2`, on `ot11-w2-negative`: 0 of 10 seeds pass.** Receipt:
 [`retained/p2-w2-2-evaluation.json`](retained/p2-w2-2-evaluation.json).
 
 | predicate | bound | seeds passing | measured, over the seeds |
 |---|---|---|---|
-| W1 completes | ran to 10.0 s | 8 | `tipped` fired on 1106 (5.56 s) and 1108 (0.84 s) |
-| W2 upright | ≤ 30° | 1 | 17.5° to 49.9° |
-| W4 heading | ≤ 45° | 9 | 10.6° to 83.7° |
-| W5 steps by the foot that took fewest | ≥ 4 | 3 | 0 to 5 |
-| W5 share of path made in steps | ≥ 0.70 | **0** | 0.00 to 0.12 |
-| W6 step clearance, hip heights | ≥ 0.08 | 0 | 0.058 to 0.077 where every foot stepped |
-| W7 stance slip share | ≤ 0.15 | **0** | 0.53 to 0.76 |
-| W8 duty factor | 0.40 to 0.85 | 3 low, 6 high | 0.00 to 1.00 |
-| W9 every leg works | ≤ 1.5 | 0 | 3.4 to 12 where every foot stepped |
-| W10 lowest foot height, hip heights | ≥ −0.05 | 0 | −0.23 to −0.12 |
+| W1 completes | ran to 10.0 s | 8 | `tipped` fired on 1107 (6.26 s) and 1110 (6.32 s) |
+| W2 upright | ≤ 30° | 2 | 13.9° to 46.3° |
+| W4 heading | ≤ 45° | 9 | 19.1° to 59.3° |
+| W5 steps by the foot that took fewest | ≥ 4 | **0** | 0 to 3 |
+| W5 share of path made in steps | ≥ 0.70 | **0** | 0.00 to 0.08 |
+| W6 step clearance, hip heights | ≥ 0.08 | 6 | 0.045 to 0.126 on the nine seeds where every foot stepped |
+| W7 stance slip share | ≤ 0.15 | **0** | 0.49 to 0.81 |
+| W8 duty factor | 0.40 to 0.85 | 9 low, 9 high | 0.12 to 0.96; seed 1108 fails both ends |
+| W9 every leg works | ≤ 1.5 | **0** | 3.7 to 11 on the nine seeds where every foot stepped |
+| W10 lowest foot height, hip heights | ≥ −0.05 | **0** | −0.26 to −0.14 |
 
-It fails W5 and W7 on every seed, which is the reason the owner gave. It is
-also far less steady than its one unseeded rollout showed: it passes 30° of
-tilt on nine seeds, and on three (1102, 1103, 1104) it sits back at about
-43° and travels under 5 mm/s for the whole episode. One of those three,
-seed 1104, has the **highest reward of the ten** (867.0). The reward paid
-most for a seed that took no step.
+It fails W5 and W7 on every seed, which is the reason the owner gave: the
+foot that stepped least took at most three steps in ten seconds and made at
+most 8 % of its path in steps, and the foot that slid most slid for 49 % to
+81 % of its path. W9 and W10 also fail on all ten. W6 passes on six: the few
+steps it does take mostly clear the floor, as the off-contract reading
+found. It is also far less steady than its one unseeded rollout showed. It
+passes 30° of tilt on eight seeds and tips over on two. On the seed
+the reward paid most, 1109 (836.0), the foot that stepped least took one
+step and made 2.7 % of its path in steps.
 
 **ot9's Robin, on `ot11-robin-negative`: 0 of 10 seeds pass.** Receipt:
 [`retained/p2-robin-evaluation.json`](retained/p2-robin-evaluation.json).

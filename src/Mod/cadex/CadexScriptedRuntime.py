@@ -2769,9 +2769,7 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "defaults to it, which is one frame per control step; the refusal "
         "lists the rates that task can be played at. seed draws the task's "
         "assembly.randomise entries for this one episode, and without it "
-        "nothing is randomised. This is what closes the loop: design a "
-        "mechanism, train a policy for it offboard, and watch the mechanism "
-        "move under it."
+        "nothing is randomised."
     )
     return listing
 

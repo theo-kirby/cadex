@@ -381,12 +381,15 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   a reach is measured at. `seeds` are the evaluation seeds, 1 through 64
   distinct integers fixed in the script so two evaluations of one policy are
   the same episodes; **they are never training seeds**.
-  `reset_variation=[...]`, `disturbance=[...]` and `episode_seconds=...` are
-  the conditions an evaluation episode runs under — the same values
-  `assembly.task` takes, checked the same way against the spec's own
-  horizon. Omitted, each is the task's own; `[]` is none. They are separate
-  because a test is not a lesson: a policy trained against 1 N shoves may be
-  asked to survive 2 N.
+  `randomisation=[...]`, `reset_variation=[...]`, `disturbance=[...]` and
+  `episode_seconds=...` are the conditions an evaluation episode runs under
+  — the same values `assembly.task` takes, checked the same way against the
+  spec's own horizon. Omitted, each is the task's own; `[]` is none. They
+  are separate because a test is not a lesson: a policy trained against 1 N
+  shoves may be asked to survive 2 N, and a policy trained on a varied mass
+  may be judged on the mechanism as built with `randomisation=[]`
+  (ADR-458). The randomisation draws come first in a seed's stream, so
+  stating it also fixes which start and which shove each seed draws.
   The spec is written into the task bundle as a `success` block
   (`cadex-success-spec-v1`) with its conditions resolved and a `scale` —
   mass, weight, COM height, hip height, arm length — so a threshold in hip
@@ -397,9 +400,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   their spec to be the same task (ADR-134).
   **`cadex evaluate` holds the accepted policy to the spec** (ADR-457,
   `docs/CLI.md`): one rollout per seed under these conditions, every
-  predicate per seed, and a report in the project. Every seed must pass. An
-  evaluation episode keeps the task's `randomisation`; the spec cannot
-  switch it off.
+  predicate per seed, and a report in the project. Every seed must pass.
   **Action ranges are derived from the mechanism or refused, never
   defaulted.** A `motor` is bounded by its `torque_limit_nmm`/`force_limit_n`
   and a `position` servo by its joint's own limits with *both* endpoints

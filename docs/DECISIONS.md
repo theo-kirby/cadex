@@ -29919,3 +29919,95 @@ task's randomisation, so an evaluation of a task that randomises mass runs
 the contract's conditions on a drawn mass. W3, W4's lateral half and Q1–Q4
 wait on a goal (P3).
 
+
+## ADR-458 — A success spec states its own randomisation, and the known negatives are judged on the mechanism as built (2026-09-30)
+
+**Context.** ADR-456 gave a success spec its own horizon, reset variation
+and disturbances, and ADR-457 played them. A task's `randomisation` was not
+among them: an evaluation episode kept whatever the task varied to train.
+ot10's w2 task varies its tray's mass by 0.85 to 1.15. The P1 contract
+(`docs/probes/ot11/README.md`) lists a reset variation and shoves and no
+randomisation, and says a trace whose drawn conditions are not the
+contract's is void. So ADR-457's reading of `w2-2` was the contract's reset,
+shove and horizon on a mass nobody chose — and since the randomisation
+draws come first in a seed's stream, on a start and a shove the contract's
+stream would not have drawn either.
+
+**Decision.** The frozen contract stays as written. The product moves:
+`assembly.success(..., randomisation=...)` is a third condition, on exactly
+the terms of the other two. Omitted, it is the task's own; `[]` is none, the
+mechanism as built; a list is `assembly.randomise` values, which may vary
+what the task does not. The bundle's `success` block carries it resolved
+(`randomisation`, the same records a task's are, by the same function),
+`evaluation_task` hands it to the episode loop, and the evaluation report's
+`spec` block states the randomisation that was played.
+
+**Still not part of what the task is.** The spec is a judgement field
+(`TASK_JUDGEMENT_FIELDS`), so stating or changing its randomisation leaves
+the task's semantic digest alone and orphans no policy. Both negative
+copies were rebuilt with `randomisation=[]` and the engine proved each the
+same task as the one its policy trained on.
+
+**`cadex-success-spec-v1` is not bumped.** The block gained a key one unit
+after it was introduced, and no bundle outside this run's two copies carries
+the schema. A bundle written before this ADR has no `randomisation` in its
+spec and is played as it was when written, on the task's own; a test pins
+that, and the report says which was played.
+
+**The shared check.** `api.task` checked a randomisation list against its
+assembly inline. That check is now `_check_randomisation`, called for the
+task's list and for the spec's, so a list that judges is refused for what a
+list that trains is. No behaviour of `api.task` changed.
+
+**What it measured.** Both copies were re-evaluated and the `p2-*` receipts
+replaced.
+
+- `ot11-robin-negative`: Robin's task never randomised. Its ten seed rows
+  are number for number ADR-457's. 0 of 10; B3, B4 and B5 fail on all ten.
+- `ot11-w2-negative`: different episodes from ADR-457's, as expected. 0 of
+  10. W5 (steps 0 to 3 against ≥ 4; step share 0.00 to 0.08 against ≥ 0.70)
+  and W7 (slip 0.49 to 0.81 against ≤ 0.15) fail on **all ten**, as do W9
+  and W10. W2 fails on eight, `tipped` fires on two (1107 at 6.26 s, 1110
+  at 6.32 s). **W6 now passes on six seeds**, where ADR-457's reading failed
+  it on all ten: the few steps it takes mostly clear the floor, which is
+  what the off-contract P1 reading found. ADR-457's "three seeds sit back
+  and travel under 5 mm/s" does not recur on these draws; the slowest seed
+  moves at 47 mm/s. The seed the reward paid most is now 1109 (836.0), whose
+  least-stepping foot took one step.
+
+The known negative still fails for the reason the owner gave, stepping and
+slip, on every seed. ADR-457's w2 numbers are superseded, not deleted: the
+rows stay in the copy's `PROGRESS.md`, with a correcting row for the one
+measured before the per-seed model fix.
+
+**Consequences.** A spec written for R1–R3 should state its randomisation
+rather than inherit it, or its evaluation conditions change whenever the
+training randomisation is revised. No protocol change: `assembly.*` is the
+xscript surface, and `OP_ARG_SPECS`, `docs/INTEGRATION.md` and the shell
+client are unmoved. No new dependency. Nothing removed.
+
+**Evidence.** `test_success_spec_api.py` (the value, its refusals, absent
+against `[]`), `test_success_spec_model.py` (inherit, switch off, replace,
+digest unmoved, refusal named as the spec's),
+`test_evaluate_success_model.py` (a spec stating `[]` over a randomising
+task draws exactly what a never-randomising task draws; a spec may
+randomise what its task does not; a pre-ADR bundle plays its task's),
+`test_success_spec_live.py` (through a live `cadexd`), and
+`cli/tests/test_ot11_contract.py` (both receipts state and drew none). Six
+of these fail on the source before this change.
+
+**One removal, forced by the API page budget (ADR-360).** The new keyword
+put the `assembly` page of the model's `describe_api` view at 21,532
+characters against `API_VIEW_CHAR_BUDGET`'s 21,500, and
+`cli/tests/test_client.py` failed on it. The budget was not raised. The
+assembly notes' closing sentence ("This is what closes the loop: design a
+mechanism, train a policy for it offboard, and watch the mechanism move
+under it.") states no rule of the surface and was deleted from
+`CadexScriptedRuntime.py`, which puts the page at 21,411. **The page has 89
+characters left**, and the notes do not yet mention `assembly.success` at
+all. P3 and P4 will both add to this surface; the next addition needs the
+notes cut properly or the section split, as a unit of its own.
+
+**Not in this unit.** The rollout video, the filmstrip and the dashboard's
+view of `evaluation.json`, which finish P2 and are next; then the blind
+judge on the two negatives.

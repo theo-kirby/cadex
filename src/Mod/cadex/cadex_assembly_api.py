@@ -982,6 +982,52 @@ _RANDOMISATION_TARGETS: dict[str, str] = {
     "friction_loss": "joint",
 }
 
+
+def _check_randomisation(
+    operation: str,
+    parameter: str,
+    entries: Sequence[DomainValue],
+    component_ids: set[int],
+    joint_ids: set[int],
+) -> None:
+    """Hold one randomisation list to the assembly the model came from.
+
+    Shared by ``api.task`` and the ``api.success`` it is handed, so a list
+    that judges a task is refused for exactly what a list that trains it is.
+    """
+
+    varied: set[tuple[int, str, str]] = set()
+    for index, entry in enumerate(entries):
+        target = entry.arguments[0]
+        property_name = str(entry.properties.get("target"))
+        wanted = _RANDOMISATION_TARGETS[property_name]
+        if wanted == "component_link" and id(target) not in component_ids:
+            raise _error(
+                operation,
+                f"{parameter}[{index}]",
+                "varies a component that is not listed in this assembly",
+            )
+        if wanted == "joint" and id(target) not in joint_ids:
+            raise _error(
+                operation,
+                f"{parameter}[{index}]",
+                "varies a joint that is not listed in this assembly",
+            )
+        key = (
+            id(target),
+            property_name,
+            str(entry.properties.get("motion_type") or ""),
+        )
+        if key in varied:
+            raise _error(
+                operation,
+                f"{parameter}[{index}]",
+                f"varies {property_name!r} on one target twice; the second "
+                "draw would silently replace the first",
+            )
+        varied.add(key)
+
+
 #: Which way a disturbance may point, and what gets drawn to decide it.
 #: ``horizontal`` draws an azimuth over the full circle; ``vertical`` draws a
 #: sign. Both are one scalar, which is what keeps the draw order the same
@@ -3444,6 +3490,7 @@ class AssemblyDomainAPI:
         tip: DomainValue | None = None,
         tip_offset_mm: Sequence[float] | None = None,
         episode_seconds: float | None = None,
+        randomisation: Sequence[DomainValue] | None = None,
         reset_variation: Sequence[DomainValue] | None = None,
         disturbance: Sequence[DomainValue] | None = None,
         label: str = "",
@@ -3497,12 +3544,16 @@ class AssemblyDomainAPI:
         evaluations of one policy are the same episodes. **They are never
         training seeds.**
 
-        ``reset_variation`` and ``disturbance`` are the conditions an
-        evaluation episode runs under, as the same values ``api.task``
-        takes. Omitted, each is the task's own; ``[]`` is none. They are
-        separate from the task's because a test is not a lesson: a policy
-        trained against 1 N shoves may be asked to survive 2 N.
-        ``episode_seconds`` likewise defaults to the task's.
+        ``randomisation``, ``reset_variation`` and ``disturbance`` are the
+        conditions an evaluation episode runs under, as the same values
+        ``api.task`` takes. Omitted, each is the task's own; ``[]`` is none.
+        They are separate from the task's because a test is not a lesson: a
+        policy trained against 1 N shoves may be asked to survive 2 N, and a
+        policy trained on a varied mass may be judged on the mechanism as
+        built -- ``randomisation=[]``. The randomisation draws come first in
+        a seed's stream, so stating it also fixes which start and which
+        shove that seed draws. ``episode_seconds`` likewise defaults to the
+        task's.
 
         A success spec is an intermediate value: pass it to ``api.task``.
         """
@@ -3632,7 +3683,13 @@ class AssemblyDomainAPI:
                 minimum=0.0, maximum=3600.0, strict_minimum=True,
             )
         # ``None`` is "the task's own" and is simply absent; an empty list
-        # is a statement -- evaluate with no variation, or with no shove.
+        # is a statement -- evaluate the mechanism as built, with no
+        # variation, or with no shove.
+        if randomisation is not None:
+            properties["randomisation"] = _values(
+                operation, "randomisation", randomisation,
+                output_type="randomise", minimum=0,
+            )
         if reset_variation is not None:
             properties["reset_variation"] = _values(
                 operation, "reset_variation", reset_variation,
@@ -3909,36 +3966,10 @@ class AssemblyDomainAPI:
             id(item) for item in assembly.properties.get("components", ())
         }
         joint_ids = {id(item) for item in assembly.properties.get("joints", ())}
-        varied: set[tuple[int, str, str]] = set()
-        for index, entry in enumerate(randomisation_values):
-            target = entry.arguments[0]
-            property_name = str(entry.properties.get("target"))
-            wanted = _RANDOMISATION_TARGETS[property_name]
-            if wanted == "component_link" and id(target) not in component_ids:
-                raise _error(
-                    operation,
-                    f"randomisation[{index}]",
-                    "varies a component that is not listed in this assembly",
-                )
-            if wanted == "joint" and id(target) not in joint_ids:
-                raise _error(
-                    operation,
-                    f"randomisation[{index}]",
-                    "varies a joint that is not listed in this assembly",
-                )
-            key = (
-                id(target),
-                property_name,
-                str(entry.properties.get("motion_type") or ""),
-            )
-            if key in varied:
-                raise _error(
-                    operation,
-                    f"randomisation[{index}]",
-                    f"varies {property_name!r} on one target twice; the second "
-                    "draw would silently replace the first",
-                )
-            varied.add(key)
+        _check_randomisation(
+            operation, "randomisation", randomisation_values,
+            component_ids, joint_ids,
+        )
         # The two M9 lists, checked against the same component list. Their
         # sizing -- whether a tilt clears the floor, whether a shove is
         # longer than a control interval and lands inside the horizon -- is
@@ -3993,6 +4024,11 @@ class AssemblyDomainAPI:
                         "names a component that is not listed in this "
                         "assembly",
                     )
+            _check_randomisation(
+                operation, "success.randomisation",
+                spec.properties.get("randomisation") or (),
+                component_ids, joint_ids,
+            )
             judged["success"] = spec
         seconds = _number(
             operation, "episode_seconds", episode_seconds,

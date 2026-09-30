@@ -4159,7 +4159,7 @@ def _execute_task_bundle(
     }
     if properties.get("success") is not None:
         declaration["success"] = _success_input(
-            properties["success"], component_outputs
+            properties["success"], component_outputs, joint_outputs
         )
 
     try:
@@ -4943,12 +4943,13 @@ def _disturbance_input(
 def _success_input(
     entry: DomainValue,
     component_outputs: Mapping[int, str],
+    joint_outputs: Mapping[int, str],
 ) -> dict[str, Any]:
     """One ``api.success`` value, as the spec CadexDynamics resolves.
 
-    Components become the names the model knows them by. The two condition
+    Components become the names the model knows them by. The three condition
     lists stay ``None`` when the script omitted them, which is how the
-    engine tells "the task's own" from "none" (ADR-456).
+    engine tells "the task's own" from "none" (ADR-456, ADR-458).
     """
 
     properties = dict(_properties(entry, "success"))
@@ -4961,6 +4962,7 @@ def _success_input(
         ],
         "tip": None,
         "episode_seconds": properties.get("episode_seconds"),
+        "randomisation": None,
         "reset_variation": None,
         "disturbance": None,
     }
@@ -4969,6 +4971,11 @@ def _success_input(
             "body": component_outputs[id(properties["tip"])],
             "local_mm": [float(v) for v in properties.get("tip_offset_mm") or ()],
         }
+    if properties.get("randomisation") is not None:
+        resolved["randomisation"] = [
+            _randomisation_input(item, component_outputs, joint_outputs)
+            for item in properties["randomisation"]
+        ]
     if properties.get("reset_variation") is not None:
         resolved["reset_variation"] = [
             _reset_variation_input(item, component_outputs)
