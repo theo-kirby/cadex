@@ -1,0 +1,2570 @@
+{
+ "schema": "cadex-evaluation-v1",
+ "verdict": "pass",
+ "accepted_revision": "13f9c63c93c9b59145001906062c618884fc31fdc72955846215c44654eb6fc4",
+ "accepted_digest": "276be12e39095deb0b26cd3be9af73eacf49a79c3551bb9feb79aa8025dd7898",
+ "policy_output": "heron_reach_policy",
+ "task_output": "heron_reach_task",
+ "model_output": "heron_model",
+ "weights": "reach_r5.cxpolicy",
+ "trained_task_sha256": "e912e0403393b489867cebf3f3be4cc62218e492aae6b89625dba18ad25d55e0",
+ "engine": {
+  "source": "dev-tree"
+ },
+ "label": "ot11 reach contract",
+ "task_label": "heron_reach_task",
+ "spec": {
+  "predicates": [
+   {
+    "id": "Q1",
+    "max": null,
+    "metric": "completed",
+    "min": 1.0
+   },
+   {
+    "id": "Q2",
+    "max": 0.05,
+    "metric": "final_error_arm_lengths_max",
+    "min": null
+   },
+   {
+    "id": "Q3",
+    "max": 2.0,
+    "metric": "time_to_target_s_max",
+    "min": null
+   },
+   {
+    "id": "Q4",
+    "max": 0.2,
+    "metric": "overshoot_ratio_max",
+    "min": null
+   }
+  ],
+  "seeds": [
+   1101,
+   1102,
+   1103,
+   1104,
+   1105,
+   1106,
+   1107,
+   1108,
+   1109,
+   1110
+  ],
+  "feet": [],
+  "tip": {
+   "body": "c_forearm",
+   "local_mm": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "episode": {
+   "control_hz": 50,
+   "control_interval_s": 0.02,
+   "episode_seconds": 8.0,
+   "max_steps": 400,
+   "reset_keyframe": "solved",
+   "reward_stage": "after_step",
+   "solver_step_s": 0.002,
+   "solver_steps_per_action": 10
+  },
+  "reset_variation": [],
+  "disturbance": [],
+  "scale": {
+   "arm_length_mm": 144.0,
+   "com_height_mm": null,
+   "hip_height_mm": null,
+   "mass_kg": 0.12390543200000001,
+   "weight_n": 1.2155122879200002
+  },
+  "randomisation": [],
+  "goal": [
+   {
+    "attempts": 100,
+    "body": "c_forearm",
+    "body_id": 3,
+    "channels": [
+     "target_x",
+     "target_y",
+     "target_z"
+    ],
+    "joint_fraction": 0.8,
+    "joints": [
+     {
+      "high": 1.25664,
+      "joint": "j_shoulder",
+      "low": -1.25664,
+      "qpos_adr": 0
+     },
+     {
+      "high": 1.3962640000000002,
+      "joint": "j_elbow",
+      "low": -1.3962640000000002,
+      "qpos_adr": 1
+     }
+    ],
+    "kind": "point",
+    "label": "target",
+    "local_m": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "min_separation_m": 0.036,
+    "min_z_m": 0.0144,
+    "name": "target",
+    "nominal": [
+     64.0,
+     0.0,
+     120.0
+    ],
+    "resample_steps": 200,
+    "resting_contacts": [],
+    "scale": 1000.0,
+    "segments": 2,
+    "start_m": [
+     0.064,
+     0.0,
+     0.12
+    ],
+    "unit": "mm"
+   }
+  ]
+ },
+ "rig": {
+  "base": null,
+  "reference_xyzw": [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ],
+  "base_com_local_mm": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "floor_mm": null,
+  "mass_kg": 0.12390543200000001,
+  "weight_n": 1.2155122879200002,
+  "com_height_mm": null,
+  "hip_height_mm": null,
+  "tip": {
+   "body": "c_forearm",
+   "local_mm": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "solved_mm": [
+    64.0,
+    0.0,
+    120.0
+   ]
+  },
+  "arm_length_mm": 144.0
+ },
+ "seeds": [
+  {
+   "seed": 1101,
+   "pass": true,
+   "void": "",
+   "failing": [],
+   "predicates": [
+    {
+     "id": "Q1",
+     "metric": "completed",
+     "value": 1.0,
+     "min": 1.0,
+     "max": null,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q2",
+     "metric": "final_error_arm_lengths_max",
+     "value": 0.03154317802605654,
+     "min": null,
+     "max": 0.05,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q3",
+     "metric": "time_to_target_s_max",
+     "value": 0.21999999999999975,
+     "min": null,
+     "max": 2.0,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q4",
+     "metric": "overshoot_ratio_max",
+     "value": 0.05257078026589111,
+     "min": null,
+     "max": 0.2,
+     "pass": true,
+     "why": ""
+    }
+   ],
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 8.0,
+    "final_error_mm_max": 4.5422176357521415,
+    "final_error_arm_lengths_max": 0.03154317802605654,
+    "time_to_target_s_max": 0.21999999999999975,
+    "overshoot_ratio_max": 0.05257078026589111
+   },
+   "detail": {
+    "segments": [
+     {
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "target_mm": [
+       4.601273286481098,
+       0.0,
+       59.84531853447987
+      ],
+      "frames": 200,
+      "start_distance_mm": 84.53871561246655,
+      "final_error_mm": 4.5422176357521415,
+      "final_error_arm_lengths": 0.03154317802605654,
+      "closest_mm": 0.286318957920202,
+      "time_to_target_s": 0.14,
+      "overshoot_ratio": 0.05257078026589111
+     },
+     {
+      "start_s": 4.0,
+      "end_s": 8.0,
+      "target_mm": [
+       -6.744853882043947,
+       0.0,
+       176.0463865399091
+      ],
+      "frames": 201,
+      "start_distance_mm": 117.41422162410944,
+      "final_error_mm": 1.8583198151450546,
+      "final_error_arm_lengths": 0.012904998716285102,
+      "closest_mm": 1.352108926289873,
+      "time_to_target_s": 0.21999999999999975,
+      "overshoot_ratio": 0.012532731943211053
+     }
+    ]
+   },
+   "episode": {
+    "steps": 400,
+    "duration_s": 8.0,
+    "control_hz": 50,
+    "termination": "",
+    "terminated_step": null,
+    "truncated": true,
+    "solver_warnings": []
+   },
+   "reward": {
+    "total": 1533.5233168956067,
+    "per_step": 3.833808292239017,
+    "terms": [
+     {
+      "label": "alive",
+      "total": 600.0,
+      "per_step": 1.5
+     },
+     {
+      "label": "distance_cost",
+      "total": -11.364818457309086,
+      "per_step": -0.028412046143272716
+     },
+     {
+      "label": "reach_coarse",
+      "total": 310.58797478912834,
+      "per_step": 0.7764699369728209
+     },
+     {
+      "label": "reach_fine",
+      "total": 754.8637515798873,
+      "per_step": 1.8871593789497183
+     },
+     {
+      "label": "settle_cost",
+      "total": -53.811351075138646,
+      "per_step": -0.13452837768784662
+     },
+     {
+      "label": "control_cost",
+      "total": -66.75223994095487,
+      "per_step": -0.16688059985238715
+     },
+     {
+      "label": "tip_speed_cost",
+      "total": 0.0,
+      "per_step": 0.0
+     }
+    ]
+   },
+   "drawn": {
+    "randomisation": [],
+    "reset_variation": [],
+    "disturbance": [],
+    "goal": [
+     {
+      "label": "target",
+      "name": "target",
+      "kind": "point",
+      "channels": [
+       "target_x",
+       "target_y",
+       "target_z"
+      ],
+      "unit": "mm",
+      "segments": [
+       {
+        "start_step": 0,
+        "start_s": 0.0,
+        "end_s": 4.0,
+        "values": [
+         4.601273286481098,
+         0.0,
+         59.84531853447987
+        ]
+       },
+       {
+        "start_step": 200,
+        "start_s": 4.0,
+        "end_s": 8.0,
+        "values": [
+         -6.744853882043947,
+         0.0,
+         176.0463865399091
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "frames": 401,
+   "trace": {
+    "file": "seed-1101-trace.json",
+    "sha256": "a1bf9b9f512dae6a702036ad051175330d601bec566a7eb41fac799fbc7c0525",
+    "bytes": 825530
+   }
+  },
+  {
+   "seed": 1102,
+   "pass": true,
+   "void": "",
+   "failing": [],
+   "predicates": [
+    {
+     "id": "Q1",
+     "metric": "completed",
+     "value": 1.0,
+     "min": 1.0,
+     "max": null,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q2",
+     "metric": "final_error_arm_lengths_max",
+     "value": 0.025520705474044073,
+     "min": null,
+     "max": 0.05,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q3",
+     "metric": "time_to_target_s_max",
+     "value": 0.21999999999999975,
+     "min": null,
+     "max": 2.0,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q4",
+     "metric": "overshoot_ratio_max",
+     "value": 0.02111435051794023,
+     "min": null,
+     "max": 0.2,
+     "pass": true,
+     "why": ""
+    }
+   ],
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 8.0,
+    "final_error_mm_max": 3.6749815882623467,
+    "final_error_arm_lengths_max": 0.025520705474044073,
+    "time_to_target_s_max": 0.21999999999999975,
+    "overshoot_ratio_max": 0.02111435051794023
+   },
+   "detail": {
+    "segments": [
+     {
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "target_mm": [
+       101.4545304455971,
+       0.0,
+       134.71524132426345
+      ],
+      "frames": 200,
+      "start_distance_mm": 40.24152305929127,
+      "final_error_mm": 2.569418577948978,
+      "final_error_arm_lengths": 0.017843184569090127,
+      "closest_mm": 1.20804159464132,
+      "time_to_target_s": 0.1,
+      "overshoot_ratio": 0.02111435051794023
+     },
+     {
+      "start_s": 4.0,
+      "end_s": 8.0,
+      "target_mm": [
+       37.170349014066616,
+       0.0,
+       47.1056813664458
+      ],
+      "frames": 201,
+      "start_distance_mm": 110.68122903992273,
+      "final_error_mm": 3.6749815882623467,
+      "final_error_arm_lengths": 0.025520705474044073,
+      "closest_mm": 2.8066868753931624,
+      "time_to_target_s": 0.21999999999999975,
+      "overshoot_ratio": 0.0
+     }
+    ]
+   },
+   "episode": {
+    "steps": 400,
+    "duration_s": 8.0,
+    "control_hz": 50,
+    "termination": "",
+    "terminated_step": null,
+    "truncated": true,
+    "solver_warnings": []
+   },
+   "reward": {
+    "total": 1380.9485523115209,
+    "per_step": 3.452371380778802,
+    "terms": [
+     {
+      "label": "alive",
+      "total": 600.0,
+      "per_step": 1.5
+     },
+     {
+      "label": "distance_cost",
+      "total": -13.33304316180536,
+      "per_step": -0.0333326079045134
+     },
+     {
+      "label": "reach_coarse",
+      "total": 284.62030136261416,
+      "per_step": 0.7115507534065354
+     },
+     {
+      "label": "reach_fine",
+      "total": 626.7803518817426,
+      "per_step": 1.5669508797043565
+     },
+     {
+      "label": "settle_cost",
+      "total": -52.128524312996205,
+      "per_step": -0.1303213107824905
+     },
+     {
+      "label": "control_cost",
+      "total": -64.9905334580379,
+      "per_step": -0.16247633364509476
+     },
+     {
+      "label": "tip_speed_cost",
+      "total": 0.0,
+      "per_step": 0.0
+     }
+    ]
+   },
+   "drawn": {
+    "randomisation": [],
+    "reset_variation": [],
+    "disturbance": [],
+    "goal": [
+     {
+      "label": "target",
+      "name": "target",
+      "kind": "point",
+      "channels": [
+       "target_x",
+       "target_y",
+       "target_z"
+      ],
+      "unit": "mm",
+      "segments": [
+       {
+        "start_step": 0,
+        "start_s": 0.0,
+        "end_s": 4.0,
+        "values": [
+         101.4545304455971,
+         0.0,
+         134.71524132426345
+        ]
+       },
+       {
+        "start_step": 200,
+        "start_s": 4.0,
+        "end_s": 8.0,
+        "values": [
+         37.170349014066616,
+         0.0,
+         47.1056813664458
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "frames": 401,
+   "trace": {
+    "file": "seed-1102-trace.json",
+    "sha256": "6a23b0e41015bfdfade49166e7a754d38e27e8ccbe6a7d621cd75c3ec1b40c74",
+    "bytes": 822531
+   }
+  },
+  {
+   "seed": 1103,
+   "pass": true,
+   "void": "",
+   "failing": [],
+   "predicates": [
+    {
+     "id": "Q1",
+     "metric": "completed",
+     "value": 1.0,
+     "min": 1.0,
+     "max": null,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q2",
+     "metric": "final_error_arm_lengths_max",
+     "value": 0.031393842137107435,
+     "min": null,
+     "max": 0.05,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q3",
+     "metric": "time_to_target_s_max",
+     "value": 0.20000000000000018,
+     "min": null,
+     "max": 2.0,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q4",
+     "metric": "overshoot_ratio_max",
+     "value": 0.05293721490244344,
+     "min": null,
+     "max": 0.2,
+     "pass": true,
+     "why": ""
+    }
+   ],
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 8.0,
+    "final_error_mm_max": 4.520713267743471,
+    "final_error_arm_lengths_max": 0.031393842137107435,
+    "time_to_target_s_max": 0.20000000000000018,
+    "overshoot_ratio_max": 0.05293721490244344
+   },
+   "detail": {
+    "segments": [
+     {
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "target_mm": [
+       16.397396218347517,
+       0.0,
+       59.92952585263863
+      ],
+      "frames": 200,
+      "start_distance_mm": 76.64508954317822,
+      "final_error_mm": 4.520713267743471,
+      "final_error_arm_lengths": 0.031393842137107435,
+      "closest_mm": 0.4680445594429454,
+      "time_to_target_s": 0.12,
+      "overshoot_ratio": 0.05293721490244344
+     },
+     {
+      "start_s": 4.0,
+      "end_s": 8.0,
+      "target_mm": [
+       83.33923239462804,
+       0.0,
+       146.10748410689953
+      ],
+      "frames": 201,
+      "start_distance_mm": 112.39599569340659,
+      "final_error_mm": 2.4294267173959345,
+      "final_error_arm_lengths": 0.0168710188708051,
+      "closest_mm": 1.937278508295862,
+      "time_to_target_s": 0.20000000000000018,
+      "overshoot_ratio": 0.010672849933689343
+     }
+    ]
+   },
+   "episode": {
+    "steps": 400,
+    "duration_s": 8.0,
+    "control_hz": 50,
+    "termination": "",
+    "terminated_step": null,
+    "truncated": true,
+    "solver_warnings": []
+   },
+   "reward": {
+    "total": 1480.3319014439226,
+    "per_step": 3.7008297536098063,
+    "terms": [
+     {
+      "label": "alive",
+      "total": 600.0,
+      "per_step": 1.5
+     },
+     {
+      "label": "distance_cost",
+      "total": -11.85257824371468,
+      "per_step": -0.0296314456092867
+     },
+     {
+      "label": "reach_coarse",
+      "total": 301.7591534453917,
+      "per_step": 0.7543978836134793
+     },
+     {
+      "label": "reach_fine",
+      "total": 710.9481752394744,
+      "per_step": 1.777370438098686
+     },
+     {
+      "label": "settle_cost",
+      "total": -53.81309455776053,
+      "per_step": -0.13453273639440133
+     },
+     {
+      "label": "control_cost",
+      "total": -66.70975443946396,
+      "per_step": -0.1667743860986599
+     },
+     {
+      "label": "tip_speed_cost",
+      "total": 0.0,
+      "per_step": 0.0
+     }
+    ]
+   },
+   "drawn": {
+    "randomisation": [],
+    "reset_variation": [],
+    "disturbance": [],
+    "goal": [
+     {
+      "label": "target",
+      "name": "target",
+      "kind": "point",
+      "channels": [
+       "target_x",
+       "target_y",
+       "target_z"
+      ],
+      "unit": "mm",
+      "segments": [
+       {
+        "start_step": 0,
+        "start_s": 0.0,
+        "end_s": 4.0,
+        "values": [
+         16.397396218347517,
+         0.0,
+         59.92952585263863
+        ]
+       },
+       {
+        "start_step": 200,
+        "start_s": 4.0,
+        "end_s": 8.0,
+        "values": [
+         83.33923239462804,
+         0.0,
+         146.10748410689953
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "frames": 401,
+   "trace": {
+    "file": "seed-1103-trace.json",
+    "sha256": "62ec8767ed6e44b771f1eac23ae384432eec0fa6474a9dc5b2a18ceda684f951",
+    "bytes": 827578
+   }
+  },
+  {
+   "seed": 1104,
+   "pass": true,
+   "void": "",
+   "failing": [],
+   "predicates": [
+    {
+     "id": "Q1",
+     "metric": "completed",
+     "value": 1.0,
+     "min": 1.0,
+     "max": null,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q2",
+     "metric": "final_error_arm_lengths_max",
+     "value": 0.027232587522020856,
+     "min": null,
+     "max": 0.05,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q3",
+     "metric": "time_to_target_s_max",
+     "value": 0.21999999999999975,
+     "min": null,
+     "max": 2.0,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q4",
+     "metric": "overshoot_ratio_max",
+     "value": 0.04448157737143525,
+     "min": null,
+     "max": 0.2,
+     "pass": true,
+     "why": ""
+    }
+   ],
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 8.0,
+    "final_error_mm_max": 3.921492603171003,
+    "final_error_arm_lengths_max": 0.027232587522020856,
+    "time_to_target_s_max": 0.21999999999999975,
+    "overshoot_ratio_max": 0.04448157737143525
+   },
+   "detail": {
+    "segments": [
+     {
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "target_mm": [
+       5.5647751058339745,
+       0.0,
+       67.80348995885352
+      ],
+      "frames": 200,
+      "start_distance_mm": 78.35273555471606,
+      "final_error_mm": 3.921492603171003,
+      "final_error_arm_lengths": 0.027232587522020856,
+      "closest_mm": 0.9549151518859377,
+      "time_to_target_s": 0.12,
+      "overshoot_ratio": 0.04448157737143525
+     },
+     {
+      "start_s": 4.0,
+      "end_s": 8.0,
+      "target_mm": [
+       -18.37256982405795,
+       0.0,
+       174.33789318526044
+      ],
+      "frames": 201,
+      "start_distance_mm": 110.68207043310149,
+      "final_error_mm": 1.3394871543893447,
+      "final_error_arm_lengths": 0.009301994127703783,
+      "closest_mm": 1.0282713578322091,
+      "time_to_target_s": 0.21999999999999975,
+      "overshoot_ratio": 0.009990374429778588
+     }
+    ]
+   },
+   "episode": {
+    "steps": 400,
+    "duration_s": 8.0,
+    "control_hz": 50,
+    "termination": "",
+    "terminated_step": null,
+    "truncated": true,
+    "solver_warnings": []
+   },
+   "reward": {
+    "total": 1613.7012747884555,
+    "per_step": 4.034253186971139,
+    "terms": [
+     {
+      "label": "alive",
+      "total": 600.0,
+      "per_step": 1.5
+     },
+     {
+      "label": "distance_cost",
+      "total": -9.41822593602433,
+      "per_step": -0.023545564840060824
+     },
+     {
+      "label": "reach_coarse",
+      "total": 324.2127652942453,
+      "per_step": 0.8105319132356132
+     },
+     {
+      "label": "reach_fine",
+      "total": 818.0409570386897,
+      "per_step": 2.0451023925967244
+     },
+     {
+      "label": "settle_cost",
+      "total": -53.64049303710089,
+      "per_step": -0.13410123259275222
+     },
+     {
+      "label": "control_cost",
+      "total": -65.49372857135307,
+      "per_step": -0.16373432142838268
+     },
+     {
+      "label": "tip_speed_cost",
+      "total": 0.0,
+      "per_step": 0.0
+     }
+    ]
+   },
+   "drawn": {
+    "randomisation": [],
+    "reset_variation": [],
+    "disturbance": [],
+    "goal": [
+     {
+      "label": "target",
+      "name": "target",
+      "kind": "point",
+      "channels": [
+       "target_x",
+       "target_y",
+       "target_z"
+      ],
+      "unit": "mm",
+      "segments": [
+       {
+        "start_step": 0,
+        "start_s": 0.0,
+        "end_s": 4.0,
+        "values": [
+         5.5647751058339745,
+         0.0,
+         67.80348995885352
+        ]
+       },
+       {
+        "start_step": 200,
+        "start_s": 4.0,
+        "end_s": 8.0,
+        "values": [
+         -18.37256982405795,
+         0.0,
+         174.33789318526044
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "frames": 401,
+   "trace": {
+    "file": "seed-1104-trace.json",
+    "sha256": "0f5d0362c8c85db3ac5fc5a619f7ab3a96959a02387d1b7e1313641374ddcd33",
+    "bytes": 824169
+   }
+  },
+  {
+   "seed": 1105,
+   "pass": true,
+   "void": "",
+   "failing": [],
+   "predicates": [
+    {
+     "id": "Q1",
+     "metric": "completed",
+     "value": 1.0,
+     "min": 1.0,
+     "max": null,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q2",
+     "metric": "final_error_arm_lengths_max",
+     "value": 0.013843221398054713,
+     "min": null,
+     "max": 0.05,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q3",
+     "metric": "time_to_target_s_max",
+     "value": 0.1200000000000001,
+     "min": null,
+     "max": 2.0,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q4",
+     "metric": "overshoot_ratio_max",
+     "value": 0.15308242193548513,
+     "min": null,
+     "max": 0.2,
+     "pass": true,
+     "why": ""
+    }
+   ],
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 8.0,
+    "final_error_mm_max": 1.9934238813198788,
+    "final_error_arm_lengths_max": 0.013843221398054713,
+    "time_to_target_s_max": 0.1200000000000001,
+    "overshoot_ratio_max": 0.15308242193548513
+   },
+   "detail": {
+    "segments": [
+     {
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "target_mm": [
+       105.83192555341864,
+       0.0,
+       132.9974233643466
+      ],
+      "frames": 200,
+      "start_distance_mm": 43.80460032483828,
+      "final_error_mm": 1.9934238813198788,
+      "final_error_arm_lengths": 0.013843221398054713,
+      "closest_mm": 1.0813709368895459,
+      "time_to_target_s": 0.1,
+      "overshoot_ratio": 0.011720933002573798
+     },
+     {
+      "start_s": 4.0,
+      "end_s": 8.0,
+      "target_mm": [
+       41.0345198406404,
+       0.0,
+       173.22117772048406
+      ],
+      "frames": 201,
+      "start_distance_mm": 75.1578203363328,
+      "final_error_mm": 1.7716037582109931,
+      "final_error_arm_lengths": 0.01230280387646523,
+      "closest_mm": 0.5260508534617684,
+      "time_to_target_s": 0.1200000000000001,
+      "overshoot_ratio": 0.15308242193548513
+     }
+    ]
+   },
+   "episode": {
+    "steps": 400,
+    "duration_s": 8.0,
+    "control_hz": 50,
+    "termination": "",
+    "terminated_step": null,
+    "truncated": true,
+    "solver_warnings": []
+   },
+   "reward": {
+    "total": 1663.5379465296746,
+    "per_step": 4.158844866324187,
+    "terms": [
+     {
+      "label": "alive",
+      "total": 600.0,
+      "per_step": 1.5
+     },
+     {
+      "label": "distance_cost",
+      "total": -6.563631444264898,
+      "per_step": -0.016409078610662244
+     },
+     {
+      "label": "reach_coarse",
+      "total": 328.7180290743333,
+      "per_step": 0.8217950726858332
+     },
+     {
+      "label": "reach_fine",
+      "total": 824.0872623391272,
+      "per_step": 2.060218155847818
+     },
+     {
+      "label": "settle_cost",
+      "total": -34.63784134094653,
+      "per_step": -0.08659460335236632
+     },
+     {
+      "label": "control_cost",
+      "total": -48.065872098578375,
+      "per_step": -0.12016468024644594
+     },
+     {
+      "label": "tip_speed_cost",
+      "total": 0.0,
+      "per_step": 0.0
+     }
+    ]
+   },
+   "drawn": {
+    "randomisation": [],
+    "reset_variation": [],
+    "disturbance": [],
+    "goal": [
+     {
+      "label": "target",
+      "name": "target",
+      "kind": "point",
+      "channels": [
+       "target_x",
+       "target_y",
+       "target_z"
+      ],
+      "unit": "mm",
+      "segments": [
+       {
+        "start_step": 0,
+        "start_s": 0.0,
+        "end_s": 4.0,
+        "values": [
+         105.83192555341864,
+         0.0,
+         132.9974233643466
+        ]
+       },
+       {
+        "start_step": 200,
+        "start_s": 4.0,
+        "end_s": 8.0,
+        "values": [
+         41.0345198406404,
+         0.0,
+         173.22117772048406
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "frames": 401,
+   "trace": {
+    "file": "seed-1105-trace.json",
+    "sha256": "0c99c7115bc4d6d8b70312a42d002b7fdace6de8c5290963cd67e62d5390979a",
+    "bytes": 827435
+   }
+  },
+  {
+   "seed": 1106,
+   "pass": true,
+   "void": "",
+   "failing": [],
+   "predicates": [
+    {
+     "id": "Q1",
+     "metric": "completed",
+     "value": 1.0,
+     "min": 1.0,
+     "max": null,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q2",
+     "metric": "final_error_arm_lengths_max",
+     "value": 0.02311107704987373,
+     "min": null,
+     "max": 0.05,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q3",
+     "metric": "time_to_target_s_max",
+     "value": 0.45999999999999996,
+     "min": null,
+     "max": 2.0,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q4",
+     "metric": "overshoot_ratio_max",
+     "value": 0.1415367535736897,
+     "min": null,
+     "max": 0.2,
+     "pass": true,
+     "why": ""
+    }
+   ],
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 8.0,
+    "final_error_mm_max": 3.327995095181817,
+    "final_error_arm_lengths_max": 0.02311107704987373,
+    "time_to_target_s_max": 0.45999999999999996,
+    "overshoot_ratio_max": 0.1415367535736897
+   },
+   "detail": {
+    "segments": [
+     {
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "target_mm": [
+       45.081584144823445,
+       0.0,
+       154.3399931855022
+      ],
+      "frames": 200,
+      "start_distance_mm": 39.20639731535829,
+      "final_error_mm": 3.327995095181817,
+      "final_error_arm_lengths": 0.02311107704987373,
+      "closest_mm": 0.571077410513719,
+      "time_to_target_s": 0.08,
+      "overshoot_ratio": 0.1415367535736897
+     },
+     {
+      "start_s": 4.0,
+      "end_s": 8.0,
+      "target_mm": [
+       23.114764544959755,
+       0.0,
+       29.44572157815088
+      ],
+      "frames": 201,
+      "start_distance_mm": 124.2077737850039,
+      "final_error_mm": 2.2670887053381916,
+      "final_error_arm_lengths": 0.015743671564848554,
+      "closest_mm": 2.267088705337558,
+      "time_to_target_s": 0.45999999999999996,
+      "overshoot_ratio": 0.02194125265958105
+     }
+    ]
+   },
+   "episode": {
+    "steps": 400,
+    "duration_s": 8.0,
+    "control_hz": 50,
+    "termination": "",
+    "terminated_step": null,
+    "truncated": true,
+    "solver_warnings": []
+   },
+   "reward": {
+    "total": 1531.3733138750715,
+    "per_step": 3.8284332846876787,
+    "terms": [
+     {
+      "label": "alive",
+      "total": 600.0,
+      "per_step": 1.5
+     },
+     {
+      "label": "distance_cost",
+      "total": -9.882663072015497,
+      "per_step": -0.02470665768003874
+     },
+     {
+      "label": "reach_coarse",
+      "total": 312.4748439275873,
+      "per_step": 0.7811871098189682
+     },
+     {
+      "label": "reach_fine",
+      "total": 755.343464581295,
+      "per_step": 1.8883586614532377
+     },
+     {
+      "label": "settle_cost",
+      "total": -56.76526224030277,
+      "per_step": -0.14191315560075693
+     },
+     {
+      "label": "control_cost",
+      "total": -69.79706932149381,
+      "per_step": -0.17449267330373452
+     },
+     {
+      "label": "tip_speed_cost",
+      "total": 0.0,
+      "per_step": 0.0
+     }
+    ]
+   },
+   "drawn": {
+    "randomisation": [],
+    "reset_variation": [],
+    "disturbance": [],
+    "goal": [
+     {
+      "label": "target",
+      "name": "target",
+      "kind": "point",
+      "channels": [
+       "target_x",
+       "target_y",
+       "target_z"
+      ],
+      "unit": "mm",
+      "segments": [
+       {
+        "start_step": 0,
+        "start_s": 0.0,
+        "end_s": 4.0,
+        "values": [
+         45.081584144823445,
+         0.0,
+         154.3399931855022
+        ]
+       },
+       {
+        "start_step": 200,
+        "start_s": 4.0,
+        "end_s": 8.0,
+        "values": [
+         23.114764544959755,
+         0.0,
+         29.44572157815088
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "frames": 401,
+   "trace": {
+    "file": "seed-1106-trace.json",
+    "sha256": "85fa4ef94c0aa9b482d31ee81619d7df91001ef267a6a5190713a3928263df7e",
+    "bytes": 825023
+   }
+  },
+  {
+   "seed": 1107,
+   "pass": true,
+   "void": "",
+   "failing": [],
+   "predicates": [
+    {
+     "id": "Q1",
+     "metric": "completed",
+     "value": 1.0,
+     "min": 1.0,
+     "max": null,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q2",
+     "metric": "final_error_arm_lengths_max",
+     "value": 0.02799405507574891,
+     "min": null,
+     "max": 0.05,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q3",
+     "metric": "time_to_target_s_max",
+     "value": 0.08000000000000007,
+     "min": null,
+     "max": 2.0,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q4",
+     "metric": "overshoot_ratio_max",
+     "value": 0.13990881143416142,
+     "min": null,
+     "max": 0.2,
+     "pass": true,
+     "why": ""
+    }
+   ],
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 8.0,
+    "final_error_mm_max": 4.031143930907843,
+    "final_error_arm_lengths_max": 0.02799405507574891,
+    "time_to_target_s_max": 0.08000000000000007,
+    "overshoot_ratio_max": 0.13990881143416142
+   },
+   "detail": {
+    "segments": [
+     {
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "target_mm": [
+       55.20535505290414,
+       0.0,
+       53.91162581572421
+      ],
+      "frames": 200,
+      "start_distance_mm": 66.67097555958162,
+      "final_error_mm": 3.673443376090686,
+      "final_error_arm_lengths": 0.025510023445074206,
+      "closest_mm": 0.4530463258345221,
+      "time_to_target_s": 0.08,
+      "overshoot_ratio": 0.015402163375105879
+     },
+     {
+      "start_s": 4.0,
+      "end_s": 8.0,
+      "target_mm": [
+       44.17360777506824,
+       0.0,
+       95.77297530283465
+      ],
+      "frames": 201,
+      "start_distance_mm": 43.54175722944074,
+      "final_error_mm": 4.031143930907843,
+      "final_error_arm_lengths": 0.02799405507574891,
+      "closest_mm": 0.0625853557138808,
+      "time_to_target_s": 0.08000000000000007,
+      "overshoot_ratio": 0.13990881143416142
+     }
+    ]
+   },
+   "episode": {
+    "steps": 400,
+    "duration_s": 8.0,
+    "control_hz": 50,
+    "termination": "",
+    "terminated_step": null,
+    "truncated": true,
+    "solver_warnings": []
+   },
+   "reward": {
+    "total": 1618.5351403711572,
+    "per_step": 4.046337850927893,
+    "terms": [
+     {
+      "label": "alive",
+      "total": 600.0,
+      "per_step": 1.5
+     },
+     {
+      "label": "distance_cost",
+      "total": -5.1423282375302986,
+      "per_step": -0.012855820593825746
+     },
+     {
+      "label": "reach_coarse",
+      "total": 343.6040216203868,
+      "per_step": 0.859010054050967
+     },
+     {
+      "label": "reach_fine",
+      "total": 904.0285653517806,
+      "per_step": 2.2600714133794515
+     },
+     {
+      "label": "settle_cost",
+      "total": -100.71538769039333,
+      "per_step": -0.2517884692259833
+     },
+     {
+      "label": "control_cost",
+      "total": -123.23973067308586,
+      "per_step": -0.30809932668271467
+     },
+     {
+      "label": "tip_speed_cost",
+      "total": 0.0,
+      "per_step": 0.0
+     }
+    ]
+   },
+   "drawn": {
+    "randomisation": [],
+    "reset_variation": [],
+    "disturbance": [],
+    "goal": [
+     {
+      "label": "target",
+      "name": "target",
+      "kind": "point",
+      "channels": [
+       "target_x",
+       "target_y",
+       "target_z"
+      ],
+      "unit": "mm",
+      "segments": [
+       {
+        "start_step": 0,
+        "start_s": 0.0,
+        "end_s": 4.0,
+        "values": [
+         55.20535505290414,
+         0.0,
+         53.91162581572421
+        ]
+       },
+       {
+        "start_step": 200,
+        "start_s": 4.0,
+        "end_s": 8.0,
+        "values": [
+         44.17360777506824,
+         0.0,
+         95.77297530283465
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "frames": 401,
+   "trace": {
+    "file": "seed-1107-trace.json",
+    "sha256": "daeddd2bf982319893f7bf060fb5aa627d2cf8356d8a2c21240b42a736667009",
+    "bytes": 823579
+   }
+  },
+  {
+   "seed": 1108,
+   "pass": true,
+   "void": "",
+   "failing": [],
+   "predicates": [
+    {
+     "id": "Q1",
+     "metric": "completed",
+     "value": 1.0,
+     "min": 1.0,
+     "max": null,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q2",
+     "metric": "final_error_arm_lengths_max",
+     "value": 0.021123028278263272,
+     "min": null,
+     "max": 0.05,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q3",
+     "metric": "time_to_target_s_max",
+     "value": 0.09999999999999964,
+     "min": null,
+     "max": 2.0,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q4",
+     "metric": "overshoot_ratio_max",
+     "value": 0.12325003793535855,
+     "min": null,
+     "max": 0.2,
+     "pass": true,
+     "why": ""
+    }
+   ],
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 8.0,
+    "final_error_mm_max": 3.041716072069911,
+    "final_error_arm_lengths_max": 0.021123028278263272,
+    "time_to_target_s_max": 0.09999999999999964,
+    "overshoot_ratio_max": 0.12325003793535855
+   },
+   "detail": {
+    "segments": [
+     {
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "target_mm": [
+       13.785951285510272,
+       0.0,
+       121.28638957212542
+      ],
+      "frames": 200,
+      "start_distance_mm": 50.23052345369716,
+      "final_error_mm": 3.041716072069911,
+      "final_error_arm_lengths": 0.021123028278263272,
+      "closest_mm": 0.26823484650005447,
+      "time_to_target_s": 0.08,
+      "overshoot_ratio": 0.12325003793535855
+     },
+     {
+      "start_s": 4.0,
+      "end_s": 8.0,
+      "target_mm": [
+       40.89709892511785,
+       0.0,
+       63.024891859652016
+      ],
+      "frames": 201,
+      "start_distance_mm": 61.67140857236505,
+      "final_error_mm": 2.9064259286136847,
+      "final_error_arm_lengths": 0.02018351339315059,
+      "closest_mm": 0.3861093565314501,
+      "time_to_target_s": 0.09999999999999964,
+      "overshoot_ratio": 0.03652250565403604
+     }
+    ]
+   },
+   "episode": {
+    "steps": 400,
+    "duration_s": 8.0,
+    "control_hz": 50,
+    "termination": "",
+    "terminated_step": null,
+    "truncated": true,
+    "solver_warnings": []
+   },
+   "reward": {
+    "total": 1634.797308045457,
+    "per_step": 4.086993270113642,
+    "terms": [
+     {
+      "label": "alive",
+      "total": 600.0,
+      "per_step": 1.5
+     },
+     {
+      "label": "distance_cost",
+      "total": -4.961772449354716,
+      "per_step": -0.012404431123386789
+     },
+     {
+      "label": "reach_coarse",
+      "total": 346.5779632167074,
+      "per_step": 0.8664449080417685
+     },
+     {
+      "label": "reach_fine",
+      "total": 918.1200852720166,
+      "per_step": 2.2953002131800413
+     },
+     {
+      "label": "settle_cost",
+      "total": -100.82898559328999,
+      "per_step": -0.25207246398322497
+     },
+     {
+      "label": "control_cost",
+      "total": -124.1099824006222,
+      "per_step": -0.3102749560015555
+     },
+     {
+      "label": "tip_speed_cost",
+      "total": 0.0,
+      "per_step": 0.0
+     }
+    ]
+   },
+   "drawn": {
+    "randomisation": [],
+    "reset_variation": [],
+    "disturbance": [],
+    "goal": [
+     {
+      "label": "target",
+      "name": "target",
+      "kind": "point",
+      "channels": [
+       "target_x",
+       "target_y",
+       "target_z"
+      ],
+      "unit": "mm",
+      "segments": [
+       {
+        "start_step": 0,
+        "start_s": 0.0,
+        "end_s": 4.0,
+        "values": [
+         13.785951285510272,
+         0.0,
+         121.28638957212542
+        ]
+       },
+       {
+        "start_step": 200,
+        "start_s": 4.0,
+        "end_s": 8.0,
+        "values": [
+         40.89709892511785,
+         0.0,
+         63.024891859652016
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "frames": 401,
+   "trace": {
+    "file": "seed-1108-trace.json",
+    "sha256": "e20fcc82ea52f91583dd8e016dad7143b86264ba0878869aba446669bdfacfb6",
+    "bytes": 825713
+   }
+  },
+  {
+   "seed": 1109,
+   "pass": true,
+   "void": "",
+   "failing": [],
+   "predicates": [
+    {
+     "id": "Q1",
+     "metric": "completed",
+     "value": 1.0,
+     "min": 1.0,
+     "max": null,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q2",
+     "metric": "final_error_arm_lengths_max",
+     "value": 0.029350725026848695,
+     "min": null,
+     "max": 0.05,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q3",
+     "metric": "time_to_target_s_max",
+     "value": 0.12,
+     "min": null,
+     "max": 2.0,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q4",
+     "metric": "overshoot_ratio_max",
+     "value": 0.05424809958730626,
+     "min": null,
+     "max": 0.2,
+     "pass": true,
+     "why": ""
+    }
+   ],
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 8.0,
+    "final_error_mm_max": 4.226504403866212,
+    "final_error_arm_lengths_max": 0.029350725026848695,
+    "time_to_target_s_max": 0.12,
+    "overshoot_ratio_max": 0.05424809958730626
+   },
+   "detail": {
+    "segments": [
+     {
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "target_mm": [
+       11.363009536792104,
+       0.0,
+       62.38302006032792
+      ],
+      "frames": 200,
+      "start_distance_mm": 78.04081715610373,
+      "final_error_mm": 4.226504403866212,
+      "final_error_arm_lengths": 0.029350725026848695,
+      "closest_mm": 0.6235812624460272,
+      "time_to_target_s": 0.12,
+      "overshoot_ratio": 0.05424809958730626
+     },
+     {
+      "start_s": 4.0,
+      "end_s": 8.0,
+      "target_mm": [
+       78.0762331769473,
+       0.0,
+       80.02191806211631
+      ],
+      "frames": 201,
+      "start_distance_mm": 69.4437276898299,
+      "final_error_mm": 2.9680811373398264,
+      "final_error_arm_lengths": 0.020611674564859905,
+      "closest_mm": 0.08274786292181632,
+      "time_to_target_s": 0.09999999999999964,
+      "overshoot_ratio": 0.031579558815012634
+     }
+    ]
+   },
+   "episode": {
+    "steps": 400,
+    "duration_s": 8.0,
+    "control_hz": 50,
+    "termination": "",
+    "terminated_step": null,
+    "truncated": true,
+    "solver_warnings": []
+   },
+   "reward": {
+    "total": 1532.5228593238342,
+    "per_step": 3.8313071483095853,
+    "terms": [
+     {
+      "label": "alive",
+      "total": 600.0,
+      "per_step": 1.5
+     },
+     {
+      "label": "distance_cost",
+      "total": -7.488185143393154,
+      "per_step": -0.018720462858482886
+     },
+     {
+      "label": "reach_coarse",
+      "total": 328.05970871774156,
+      "per_step": 0.8201492717943539
+     },
+     {
+      "label": "reach_fine",
+      "total": 835.7007065253523,
+      "per_step": 2.0892517663133807
+     },
+     {
+      "label": "settle_cost",
+      "total": -99.91086519028343,
+      "per_step": -0.24977716297570857
+     },
+     {
+      "label": "control_cost",
+      "total": -123.83850558558404,
+      "per_step": -0.3095962639639601
+     },
+     {
+      "label": "tip_speed_cost",
+      "total": 0.0,
+      "per_step": 0.0
+     }
+    ]
+   },
+   "drawn": {
+    "randomisation": [],
+    "reset_variation": [],
+    "disturbance": [],
+    "goal": [
+     {
+      "label": "target",
+      "name": "target",
+      "kind": "point",
+      "channels": [
+       "target_x",
+       "target_y",
+       "target_z"
+      ],
+      "unit": "mm",
+      "segments": [
+       {
+        "start_step": 0,
+        "start_s": 0.0,
+        "end_s": 4.0,
+        "values": [
+         11.363009536792104,
+         0.0,
+         62.38302006032792
+        ]
+       },
+       {
+        "start_step": 200,
+        "start_s": 4.0,
+        "end_s": 8.0,
+        "values": [
+         78.0762331769473,
+         0.0,
+         80.02191806211631
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "frames": 401,
+   "trace": {
+    "file": "seed-1109-trace.json",
+    "sha256": "2e85d93bfaf6d40994fbf33600acedd00a6f8f99d73d47b2987ce792ac7b8276",
+    "bytes": 824483
+   }
+  },
+  {
+   "seed": 1110,
+   "pass": true,
+   "void": "",
+   "failing": [],
+   "predicates": [
+    {
+     "id": "Q1",
+     "metric": "completed",
+     "value": 1.0,
+     "min": 1.0,
+     "max": null,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q2",
+     "metric": "final_error_arm_lengths_max",
+     "value": 0.03100280528310396,
+     "min": null,
+     "max": 0.05,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q3",
+     "metric": "time_to_target_s_max",
+     "value": 0.12,
+     "min": null,
+     "max": 2.0,
+     "pass": true,
+     "why": ""
+    },
+    {
+     "id": "Q4",
+     "metric": "overshoot_ratio_max",
+     "value": 0.10985711881172827,
+     "min": null,
+     "max": 0.2,
+     "pass": true,
+     "why": ""
+    }
+   ],
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 8.0,
+    "final_error_mm_max": 4.46440396076697,
+    "final_error_arm_lengths_max": 0.03100280528310396,
+    "time_to_target_s_max": 0.12,
+    "overshoot_ratio_max": 0.10985711881172827
+   },
+   "detail": {
+    "segments": [
+     {
+      "start_s": 0.0,
+      "end_s": 4.0,
+      "target_mm": [
+       -9.446176149248593,
+       0.0,
+       103.85674711541765
+      ],
+      "frames": 200,
+      "start_distance_mm": 75.1993710388726,
+      "final_error_mm": 4.46440396076697,
+      "final_error_arm_lengths": 0.03100280528310396,
+      "closest_mm": 0.5775582193147867,
+      "time_to_target_s": 0.12,
+      "overshoot_ratio": 0.010574283848370765
+     },
+     {
+      "start_s": 4.0,
+      "end_s": 8.0,
+      "target_mm": [
+       21.573780541403146,
+       0.0,
+       125.66245726622621
+      ],
+      "frames": 201,
+      "start_distance_mm": 39.76854368455176,
+      "final_error_mm": 3.054787026195823,
+      "final_error_arm_lengths": 0.02121379879302655,
+      "closest_mm": 0.3597148006650261,
+      "time_to_target_s": 0.08000000000000007,
+      "overshoot_ratio": 0.10985711881172827
+     }
+    ]
+   },
+   "episode": {
+    "steps": 400,
+    "duration_s": 8.0,
+    "control_hz": 50,
+    "termination": "",
+    "terminated_step": null,
+    "truncated": true,
+    "solver_warnings": []
+   },
+   "reward": {
+    "total": 1515.3713875108929,
+    "per_step": 3.7884284687772323,
+    "terms": [
+     {
+      "label": "alive",
+      "total": 600.0,
+      "per_step": 1.5
+     },
+     {
+      "label": "distance_cost",
+      "total": -7.125492617278935,
+      "per_step": -0.017813731543197337
+     },
+     {
+      "label": "reach_coarse",
+      "total": 326.0588380297287,
+      "per_step": 0.8151470950743217
+     },
+     {
+      "label": "reach_fine",
+      "total": 820.5524617807346,
+      "per_step": 2.0513811544518363
+     },
+     {
+      "label": "settle_cost",
+      "total": -100.73969466863994,
+      "per_step": -0.25184923667159986
+     },
+     {
+      "label": "control_cost",
+      "total": -123.37472501365112,
+      "per_step": -0.3084368125341278
+     },
+     {
+      "label": "tip_speed_cost",
+      "total": 0.0,
+      "per_step": 0.0
+     }
+    ]
+   },
+   "drawn": {
+    "randomisation": [],
+    "reset_variation": [],
+    "disturbance": [],
+    "goal": [
+     {
+      "label": "target",
+      "name": "target",
+      "kind": "point",
+      "channels": [
+       "target_x",
+       "target_y",
+       "target_z"
+      ],
+      "unit": "mm",
+      "segments": [
+       {
+        "start_step": 0,
+        "start_s": 0.0,
+        "end_s": 4.0,
+        "values": [
+         -9.446176149248593,
+         0.0,
+         103.85674711541765
+        ]
+       },
+       {
+        "start_step": 200,
+        "start_s": 4.0,
+        "end_s": 8.0,
+        "values": [
+         21.573780541403146,
+         0.0,
+         125.66245726622621
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "frames": 401,
+   "trace": {
+    "file": "seed-1110-trace.json",
+    "sha256": "a6409144de120c9cae4ff9208d7651f26698f2d72c6c444167f135274667aa9f",
+    "bytes": 825481
+   }
+  }
+ ],
+ "summary": {
+  "seeds": 10,
+  "passed": [
+   1101,
+   1102,
+   1103,
+   1104,
+   1105,
+   1106,
+   1107,
+   1108,
+   1109,
+   1110
+  ],
+  "failed": [],
+  "void": [],
+  "pass": true,
+  "predicates": [
+   {
+    "id": "Q1",
+    "metric": "completed",
+    "min": 1.0,
+    "max": null,
+    "passed": 10,
+    "failed_seeds": [],
+    "value": {
+     "min": 1.0,
+     "median": 1.0,
+     "max": 1.0
+    }
+   },
+   {
+    "id": "Q2",
+    "metric": "final_error_arm_lengths_max",
+    "min": null,
+    "max": 0.05,
+    "passed": 10,
+    "failed_seeds": [],
+    "value": {
+     "min": 0.013843221398054713,
+     "median": 0.027613321298884885,
+     "max": 0.03154317802605654
+    }
+   },
+   {
+    "id": "Q3",
+    "metric": "time_to_target_s_max",
+    "min": null,
+    "max": 2.0,
+    "passed": 10,
+    "failed_seeds": [],
+    "value": {
+     "min": 0.08000000000000007,
+     "median": 0.16000000000000014,
+     "max": 0.45999999999999996
+    }
+   },
+   {
+    "id": "Q4",
+    "metric": "overshoot_ratio_max",
+    "min": null,
+    "max": 0.2,
+    "passed": 10,
+    "failed_seeds": [],
+    "value": {
+     "min": 0.02111435051794023,
+     "median": 0.08205260919951726,
+     "max": 0.15308242193548513
+    }
+   }
+  ],
+  "terminations": {
+   "horizon": 10
+  },
+  "reward": {
+   "total": {
+    "min": 1380.9485523115209,
+    "median": 1533.0230881097204,
+    "max": 1663.5379465296746
+   },
+   "terms": [
+    {
+     "label": "alive",
+     "min": 600.0,
+     "median": 600.0,
+     "max": 600.0
+    },
+    {
+     "label": "distance_cost",
+     "min": -13.33304316180536,
+     "median": -8.453205539708742,
+     "max": -4.961772449354716
+    },
+    {
+     "label": "reach_coarse",
+     "min": 284.62030136261416,
+     "median": 325.135801661987,
+     "max": 346.5779632167074
+    },
+    {
+     "label": "reach_fine",
+     "min": 626.7803518817426,
+     "median": 819.2967094097121,
+     "max": 918.1200852720166
+    },
+    {
+     "label": "settle_cost",
+     "min": -100.82898559328999,
+     "median": -55.28917839903165,
+     "max": -34.63784134094653
+    },
+    {
+     "label": "control_cost",
+     "min": -124.1099824006222,
+     "median": -68.27465463122434,
+     "max": -48.065872098578375
+    },
+    {
+     "label": "tip_speed_cost",
+     "min": 0.0,
+     "median": 0.0,
+     "max": 0.0
+    }
+   ]
+  },
+  "metrics": {
+   "completed": {
+    "measured": 10,
+    "min": 1.0,
+    "median": 1.0,
+    "max": 1.0
+   },
+   "duration_s": {
+    "measured": 10,
+    "min": 8.0,
+    "median": 8.0,
+    "max": 8.0
+   },
+   "final_error_mm_max": {
+    "measured": 10,
+    "min": 1.9934238813198788,
+    "median": 3.9763182670394235,
+    "max": 4.5422176357521415
+   },
+   "final_error_arm_lengths_max": {
+    "measured": 10,
+    "min": 0.013843221398054713,
+    "median": 0.027613321298884885,
+    "max": 0.03154317802605654
+   },
+   "time_to_target_s_max": {
+    "measured": 10,
+    "min": 0.08000000000000007,
+    "median": 0.16000000000000014,
+    "max": 0.45999999999999996
+   },
+   "overshoot_ratio_max": {
+    "measured": 10,
+    "min": 0.02111435051794023,
+    "median": 0.08205260919951726,
+    "max": 0.15308242193548513
+   }
+  }
+ },
+ "policy_sha256": "6bb5a403c4afd1435dee067debc1dc371af0eabec5e5196add78c8fed9a6f6cc",
+ "task_sha256": "e912e0403393b489867cebf3f3be4cc62218e492aae6b89625dba18ad25d55e0",
+ "model_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8",
+ "task_semantic_sha256": "70576a7c54e044d92e284eac69f2c4bbd8c7e0073e66a338790e459fd620f439",
+ "policy_label": "heron_reach_task",
+ "mujoco_version": "3.10.0",
+ "wall_time_s": 2.047893680166453,
+ "film": {
+  "schema": "cadex-evaluation-film-v1",
+  "state": "ready",
+  "error": null,
+  "style": "studio",
+  "style_sha256": "1329adc73f1cdf726eb548a2f1b26debd7934641ac965c240efc5bf5ffebe29f",
+  "renderer": "CadexStudio studio (engine), CPU, no browser or display",
+  "floor": "the review viewport's dark prototype mat (ADR-444)",
+  "frame_px": 256,
+  "sheet": {
+   "columns": 4,
+   "rows": 3,
+   "gutter_px": 4
+  },
+  "overlay": "simulation seconds, bottom left of every frame",
+  "marker": {
+   "what": "a ring centred on the target point in force at the frame's time, drawn over the solids, in a seed whose trace carries a point goal",
+   "color": "#6FF0F0",
+   "radius_px": 9.0,
+   "radius_of_frame": 0.03515625
+  },
+  "showing": "tessellated solids of the accepted revision at each recorded pose; collision proxies and world geometry not drawn",
+  "materials": {
+   "source": "the accepted assembly's inventory",
+   "declared": true,
+   "environment_omitted": []
+  },
+  "appearance": {
+   "c_base": {
+    "role": "shell",
+    "color": "#E9E6DF"
+   },
+   "c_bearing_elbow": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_bearing_shoulder": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_centrescrew_elbow": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_centrescrew_shoulder": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_forearm": {
+    "role": "shell",
+    "color": "#E9E6DF"
+   },
+   "c_horn_elbow": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_horn_shoulder": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_servo_elbow": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_servo_shoulder": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_tabscrew_elbow_0": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_tabscrew_elbow_1": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_tabscrew_shoulder_0": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_tabscrew_shoulder_1": {
+    "role": "mechanism",
+    "color": "#2F3237"
+   },
+   "c_upper_arm": {
+    "role": "shell",
+    "color": "#E9E6DF"
+   }
+  },
+  "geometry": {
+   "input_triangles": 35930,
+   "drawn_triangles": 35930,
+   "cell_mm": null,
+   "budget_triangles": 120000,
+   "input_bound_triangles": 4000000
+  },
+  "seeds": [
+   {
+    "seed": 1101,
+    "trace_sha256": "a1bf9b9f512dae6a702036ad051175330d601bec566a7eb41fac799fbc7c0525",
+    "floor_z_mm": 0.0,
+    "floor_source": "lowest point of the drawn solids' bounds",
+    "overview": {
+     "file": "seed-1101-overview.png",
+     "sha256": "22675e3bd606577218ed26a03450522eec436209160a317f48b33e9dfe24b415",
+     "bytes": 128454,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      0.0,
+      0.72,
+      1.44,
+      2.18,
+      2.9,
+      3.62,
+      4.36,
+      5.08,
+      5.8,
+      6.54,
+      7.26,
+      8.0
+     ],
+     "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
+     "half_extent_mm": 112.22746165501593,
+     "marked_frames": 12
+    },
+    "detail": {
+     "file": "seed-1101-detail.png",
+     "sha256": "845db22dd1e1c24a03024f4d00c52d70e6da8f58c8306af81de8a5c884a4f24e",
+     "bytes": 57138,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      4.0,
+      4.2,
+      4.4,
+      4.6000000000000005,
+      4.8,
+      5.0,
+      5.2,
+      5.4,
+      5.6000000000000005,
+      5.8,
+      6.0,
+      6.2
+     ],
+     "requested_start_s": 4.0,
+     "start_s": 4.0,
+     "step_s": 0.2,
+     "view": "side-on to the direction the design travelled, 12 degrees above the floor; no floating base, so the window is fixed",
+     "follows": null,
+     "azimuth_degrees": 180.0,
+     "travel_mm": 38.70977997620296,
+     "half_extent_mm": 115.571563318596,
+     "marked_frames": 12,
+     "start_source": "given"
+    },
+    "video": {
+     "file": "seed-1101-rollout.webm",
+     "sha256": "ee16dd99c6a7a35fd46c16ccccb23e7cfdfefdafe85fc34c4c8fb35c1ee72665",
+     "bytes": 84486,
+     "frames": 81,
+     "fps": 10,
+     "sim_seconds": 8.0,
+     "width": 512,
+     "height": 512,
+     "projection": "orthographic hero view (35 degrees round from the front, 20 above the floor)",
+     "floor_z_mm": 0.0,
+     "marked_frames": 81,
+     "render_seconds": 95.308,
+     "render_bound_seconds": 300
+    },
+    "target": {
+     "goal": "target",
+     "channels": [
+      "target_x",
+      "target_y",
+      "target_z"
+     ],
+     "unit": "mm",
+     "positions": [
+      {
+       "from_s": 0.0,
+       "point_mm": [
+        4.601273286481098,
+        0.0,
+        59.84531853447987
+       ]
+      },
+      {
+       "from_s": 4.0,
+       "point_mm": [
+        -6.744853882043947,
+        0.0,
+        176.0463865399091
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "seed": 1105,
+    "trace_sha256": "0c99c7115bc4d6d8b70312a42d002b7fdace6de8c5290963cd67e62d5390979a",
+    "floor_z_mm": 0.0,
+    "floor_source": "lowest point of the drawn solids' bounds",
+    "overview": {
+     "file": "seed-1105-overview.png",
+     "sha256": "c4596d4e485f75ef8cfa5ff1e9b72f894031251f3d7575e0d05515be528e3556",
+     "bytes": 124813,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      0.0,
+      0.72,
+      1.44,
+      2.18,
+      2.9,
+      3.62,
+      4.36,
+      5.08,
+      5.8,
+      6.54,
+      7.26,
+      8.0
+     ],
+     "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
+     "half_extent_mm": 109.01847009734271,
+     "marked_frames": 12
+    },
+    "detail": {
+     "file": "seed-1105-detail.png",
+     "sha256": "7a6395fcffbdc0ab3113d7749b2de9a46ac9217953a82d70c21ca82d621e5b56",
+     "bytes": 73422,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      4.0,
+      4.2,
+      4.4,
+      4.6000000000000005,
+      4.8,
+      5.0,
+      5.2,
+      5.4,
+      5.6000000000000005,
+      5.8,
+      6.0,
+      6.2
+     ],
+     "requested_start_s": 4.0,
+     "start_s": 4.0,
+     "step_s": 0.2,
+     "view": "side-on to the direction the design travelled, 12 degrees above the floor; no floating base, so the window is fixed",
+     "follows": null,
+     "azimuth_degrees": 0.0,
+     "travel_mm": 23.49868506341467,
+     "half_extent_mm": 109.0956777297284,
+     "marked_frames": 12,
+     "start_source": "given"
+    },
+    "video": null,
+    "target": {
+     "goal": "target",
+     "channels": [
+      "target_x",
+      "target_y",
+      "target_z"
+     ],
+     "unit": "mm",
+     "positions": [
+      {
+       "from_s": 0.0,
+       "point_mm": [
+        105.83192555341864,
+        0.0,
+        132.9974233643466
+       ]
+      },
+      {
+       "from_s": 4.0,
+       "point_mm": [
+        41.0345198406404,
+        0.0,
+        173.22117772048406
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "seed": 1110,
+    "trace_sha256": "a6409144de120c9cae4ff9208d7651f26698f2d72c6c444167f135274667aa9f",
+    "floor_z_mm": 0.0,
+    "floor_source": "lowest point of the drawn solids' bounds",
+    "overview": {
+     "file": "seed-1110-overview.png",
+     "sha256": "a9edb45cdfcc8aa8aa91c2eabc4ea8455439df93bbee3f22214276739f617a88",
+     "bytes": 137040,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      0.0,
+      0.72,
+      1.44,
+      2.18,
+      2.9,
+      3.62,
+      4.36,
+      5.08,
+      5.8,
+      6.54,
+      7.26,
+      8.0
+     ],
+     "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
+     "half_extent_mm": 93.64359934512822,
+     "marked_frames": 12
+    },
+    "detail": {
+     "file": "seed-1110-detail.png",
+     "sha256": "09164fabf06861ccfaab1f3be1059b30b949bb37a16dc2758301ddbb4f56cd0f",
+     "bytes": 70181,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      4.0,
+      4.2,
+      4.4,
+      4.6000000000000005,
+      4.8,
+      5.0,
+      5.2,
+      5.4,
+      5.6000000000000005,
+      5.8,
+      6.0,
+      6.2
+     ],
+     "requested_start_s": 4.0,
+     "start_s": 4.0,
+     "step_s": 0.2,
+     "view": "side-on to the direction the design travelled, 12 degrees above the floor; no floating base, so the window is fixed",
+     "follows": null,
+     "azimuth_degrees": 180.0,
+     "travel_mm": 43.33454567781193,
+     "half_extent_mm": 90.21657959392148,
+     "marked_frames": 12,
+     "start_source": "given"
+    },
+    "video": null,
+    "target": {
+     "goal": "target",
+     "channels": [
+      "target_x",
+      "target_y",
+      "target_z"
+     ],
+     "unit": "mm",
+     "positions": [
+      {
+       "from_s": 0.0,
+       "point_mm": [
+        -9.446176149248593,
+        0.0,
+        103.85674711541765
+       ]
+      },
+      {
+       "from_s": 4.0,
+       "point_mm": [
+        21.573780541403146,
+        0.0,
+        125.66245726622621
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "render_seconds": 129.236
+ }
+}

@@ -1,0 +1,208 @@
+{
+  "schema": "ot11-judge-v1",
+  "label": "r2-confirm-1",
+  "behaviour": "reach",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+  "instructions_sha256": "dfeab7c7624b2a7472baaaf1e6b9d20ebaba0c80f96953ea203d5725ef02b706",
+  "intent_sha256": "f63443058494f3e3657e0acd72851d328dd413c8a700112f386defddc38c9768",
+  "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+  },
+  "evaluation": {
+    "schema": "cadex-evaluation-v1",
+    "verdict": "pass",
+    "accepted_revision": "13f9c63c93c9b59145001906062c618884fc31fdc72955846215c44654eb6fc4",
+    "policy_sha256": "6bb5a403c4afd1435dee067debc1dc371af0eabec5e5196add78c8fed9a6f6cc",
+    "task_sha256": "e912e0403393b489867cebf3f3be4cc62218e492aae6b89625dba18ad25d55e0",
+    "model_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8"
+  },
+  "seed": 1101,
+  "trace_sha256": "a1bf9b9f512dae6a702036ad051175330d601bec566a7eb41fac799fbc7c0525",
+  "film_style_sha256": "1329adc73f1cdf726eb548a2f1b26debd7934641ac965c240efc5bf5ffebe29f",
+  "sheets": [
+    {
+      "sheet": "overview",
+      "sha256": "22675e3bd606577218ed26a03450522eec436209160a317f48b33e9dfe24b415",
+      "frames": 12,
+      "times_s": [
+        0.0,
+        0.72,
+        1.44,
+        2.18,
+        2.9,
+        3.62,
+        4.36,
+        5.08,
+        5.8,
+        6.54,
+        7.26,
+        8.0
+      ],
+      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path"
+    },
+    {
+      "sheet": "detail",
+      "sha256": "845db22dd1e1c24a03024f4d00c52d70e6da8f58c8306af81de8a5c884a4f24e",
+      "frames": 12,
+      "times_s": [
+        4.0,
+        4.2,
+        4.4,
+        4.6000000000000005,
+        4.8,
+        5.0,
+        5.2,
+        5.4,
+        5.6000000000000005,
+        5.8,
+        6.0,
+        6.2
+      ],
+      "view": "side-on to the direction the design travelled, 12 degrees above the floor; no floating base, so the window is fixed",
+      "follows": null
+    }
+  ],
+  "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+  },
+  "total": 12,
+  "meets_bar": true,
+  "raw": [
+    {
+      "scores": {
+        "V1": {
+          "score": 3,
+          "reason": "The tip reaches the first, low marker by 0.72 s and stays on it until the jump, then reaches the high second marker by about 4.4 s and stays on it to 8.00 s."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "Both moves go straight to the marker and settle on it; no frame shows the tip passing the marker or drifting on it."
+        },
+        "V3": {
+          "score": 3,
+          "reason": "The arm is steady and composed in every held frame, with no visible wobble and no part going into the floor or the bench."
+        },
+        "V4": {
+          "score": 3,
+          "reason": "Both holds look unchanged from frame to frame, and the two moves look alike."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 3, \"reason\": \"The tip reaches the first, low marker by 0.72 s and stays on it until the jump, then reaches the high second marker by about 4.4 s and stays on it to 8.00 s.\"}, \"V2\": {\"score\": 3, \"reason\": \"Both moves go straight to the marker and settle on it; no frame shows the tip passing the marker or drifting on it.\"}, \"V3\": {\"score\": 3, \"reason\": \"The arm is steady and composed in every held frame, with no visible wobble and no part going into the floor or the bench.\"}, \"V4\": {\"score\": 3, \"reason\": \"Both holds look unchanged from frame to frame, and the two moves look alike.\"}}",
+      "session_id": "931e3e6c-bfb0-4601-b70a-0fe761fdcb01",
+      "duration_ms": 7406,
+      "num_turns": 3,
+      "total_cost_usd": 0.049683,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 568,
+          "cacheReadInputTokens": 2415,
+          "cacheCreationInputTokens": 4728,
+          "webSearchRequests": 0,
+          "costUSD": 0.049683,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 186,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 3,
+          "reason": "The arm brings its tip to the low first marker by 0.72 s and holds there until about 3.6 s, then reaches the high second marker by 4.40 s and stays on it until 8.00 s."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "Both moves go straight to the marker and stop: at 4.20 s the tip is still short of the second marker, and from 4.40 s on it sits exactly on it with no swing past."
+        },
+        "V3": {
+          "score": 3,
+          "reason": "The arm stays steady on its fixed base with no wobble, lurching or parts through the floor, both while holding and after the target jump."
+        },
+        "V4": {
+          "score": 3,
+          "reason": "Each hold looks the same in every frame, and the two reaches look alike: a quick direct move followed by a settled hold."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 3, \"reason\": \"The arm brings its tip to the low first marker by 0.72 s and holds there until about 3.6 s, then reaches the high second marker by 4.40 s and stays on it until 8.00 s.\"}, \"V2\": {\"score\": 3, \"reason\": \"Both moves go straight to the marker and stop: at 4.20 s the tip is still short of the second marker, and from 4.40 s on it sits exactly on it with no swing past.\"}, \"V3\": {\"score\": 3, \"reason\": \"The arm stays steady on its fixed base with no wobble, lurching or parts through the floor, both while holding and after the target jump.\"}, \"V4\": {\"score\": 3, \"reason\": \"Each hold looks the same in every frame, and the two reaches look alike: a quick direct move followed by a settled hold.\"}}",
+      "session_id": "6cc3a387-ee66-4d6f-b902-e29d60c352e0",
+      "duration_ms": 11888,
+      "num_turns": 3,
+      "total_cost_usd": 0.0390258,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 738,
+          "cacheReadInputTokens": 4209,
+          "cacheCreationInputTokens": 2926,
+          "webSearchRequests": 0,
+          "costUSD": 0.0390258,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 315,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 3,
+          "reason": "The tip reaches the first low marker by 0.72 s and holds there until the jump. It then reaches the second, high marker by about 4.4 s and holds it through 8.00 s."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "Both moves are direct, joint-driven reaches that stop at the marker. The detail frames show the approach at 4.20 s arriving at the marker by 4.40 s with no swing past it."
+        },
+        "V3": {
+          "score": 3,
+          "reason": "The base stays fixed and the arm holds steady at each target, with no visible oscillation or passing through the floor."
+        },
+        "V4": {
+          "score": 3,
+          "reason": "After each move, the held pose looks the same in every frame, and both reach-and-settle phases look alike."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 3, \"reason\": \"The tip reaches the first low marker by 0.72 s and holds there until the jump. It then reaches the second, high marker by about 4.4 s and holds it through 8.00 s.\"}, \"V2\": {\"score\": 3, \"reason\": \"Both moves are direct, joint-driven reaches that stop at the marker. The detail frames show the approach at 4.20 s arriving at the marker by 4.40 s with no swing past it.\"}, \"V3\": {\"score\": 3, \"reason\": \"The base stays fixed and the arm holds steady at each target, with no visible oscillation or passing through the floor.\"}, \"V4\": {\"score\": 3, \"reason\": \"After each move, the held pose looks the same in every frame, and both reach-and-settle phases look alike.\"}}",
+      "session_id": "747fdeea-eff0-494d-ad2a-ffe51efd0819",
+      "duration_ms": 9063,
+      "num_turns": 3,
+      "total_cost_usd": 0.0374264,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 656,
+          "cacheReadInputTokens": 4212,
+          "cacheCreationInputTokens": 2931,
+          "webSearchRequests": 0,
+          "costUSD": 0.0374264,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 244,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

@@ -1123,3 +1123,82 @@ this page does not.
 mechanism, not modelled as parts (ADR-408). The gyro channel reads in the
 world frame (`runner/obs_parity.py`). Both are sim-to-real questions for
 the long-term rung, and neither changes this evaluation.
+
+## R2's confirmation evaluation: reach on `ot11-heron-1`
+
+This is the evaluation R2 is judged on. It is not a loop round.
+
+**Pre-registered first.** `retained/r2-confirm-1-registration.json` was
+committed (`e80fd938`) before the evaluation ran. It fixes:
+
+- the policy, `6bb5a403…` (`reach-r5`'s iteration-400 checkpoint, which the
+  product agent declared as `reach_r5.cxpolicy`), and the accepted revision
+  `13f9c63c…`;
+- the task, model and spec digests (`61b25b02…`, the spec the rounds held);
+- the held-out target receipt `retained/r2-heron-1-targets.json`
+  (`8bb702af…`), which was drawn before any training on this model;
+- the ten frozen seeds 1101–1110, Q1–Q4 and the pass rule;
+- the judge's runner digest, the judged seeds 1101, 1105 and 1110, three
+  calls a seed and the bar;
+- the two commands, and that it is run once.
+
+**The spec: pass, 10 of 10 seeds.** No seed was void, and no solver
+warning was raised. Every episode ran the full 8.0 s at 50 Hz and ended by
+truncation. The spec hashed to the registered digest, and the policy, task
+and model hashed to theirs. The twenty drawn targets equal the receipt to
+within 4.9 × 10⁻⁵ mm. None of these targets was in a training configuration.
+Every seed's metrics equal those of `reach-r5`'s round evaluation exactly.
+Receipt: `retained/r2-confirm-1-evaluation.json` (no paths).
+
+| seed | Q2 worst final error (≤ 0.05 arm lengths = 7.2 mm) | Q3 worst time to target (≤ 2.0 s) | Q4 worst overshoot (≤ 0.20) |
+|---|---|---|---|
+| 1101 | 0.032 (4.54 mm) | 0.22 s | 0.053 |
+| 1102 | 0.026 (3.67 mm) | 0.22 s | 0.021 |
+| 1103 | 0.031 (4.52 mm) | 0.20 s | 0.053 |
+| 1104 | 0.027 (3.92 mm) | 0.22 s | 0.044 |
+| 1105 | 0.014 (1.99 mm) | 0.12 s | 0.153 |
+| 1106 | 0.023 (3.33 mm) | 0.46 s | 0.142 |
+| 1107 | 0.028 (4.03 mm) | 0.08 s | 0.140 |
+| 1108 | 0.021 (3.04 mm) | 0.10 s | 0.123 |
+| 1109 | 0.029 (4.23 mm) | 0.12 s | 0.054 |
+| 1110 | 0.031 (4.46 mm) | 0.12 s | 0.110 |
+
+**The judge: the bar is met on every judged seed.** There were three calls
+a seed, nine in all. Every call returned a score from `claude-opus-5-5`,
+and none was refused or retried. Receipts:
+`retained/judge-r2-confirm-1-seed-*.json`.
+
+| seed | calls (V1 V2 V3 V4) | medians | total | bar (≥ 9, none under 2) |
+|---|---|---|---|---|
+| 1101 | 3333, 3333, 3333 | 3 3 3 3 | 12 | **met** |
+| 1105 | 3333, 3223, 3333 | 3 3 3 3 | 12 | **met** |
+| 1110 | 3333, 3333, 3333 | 3 3 3 3 | 12 | **met** |
+
+**The spec and the judge agree.** Both say pass, so there is no
+contradiction to diagnose. Two readings are worth recording:
+
+- *Overshoot.* No call saw the tip swing past a marker. Seed 1105 carries
+  the worst overshoot, 0.153, which is inside Q4's 0.20. One call said the
+  gap between frames "could hide a brief overshoot". Q4 is authoritative
+  for overshoot (ADR-463).
+- *Twitching in the hold, a defect no predicate measures.* One call on
+  1105 scored manner and control 2 because the tip "keeps drifting slightly
+  in and out of the marker ring". The trace confirms this. Over target B's
+  hold (4.6–8.0 s), the tip's frame-to-frame motion on 1105 has 3 steps
+  over 1 mm, 11 mm of path in all, and its error ranges 0.53–2.78 mm.
+  **Seed 1110 is worse, and all three calls scored it 3:** 16 of 170
+  steps are over 1 mm, the largest is 4.8 mm in one 20 ms step, the path
+  totals 78 mm, and the error ranges 0.37–3.06 mm. Six of the ten seeds
+  twitch in at least one hold (over 30 mm of path in a hold). Seed 1102
+  holds dead still in both. Q2 bounds the error, and every excursion stays
+  inside its 7.2 mm, so the verdict stands. Still, no predicate reads hold
+  steadiness, and twelve frames 0.2 s apart mostly miss it. Round 4 saw the
+  same chatter (the agent read it from the force and speed terms). It is
+  listed under the remaining defects for REPORT.md. Measuring it would
+  change the frozen contract, which is a recorded decision that
+  re-evaluates every earlier policy, and this page does not take that
+  decision.
+
+**R2's measured bar is reached** by this confirmation: every seed passes
+Q1–Q4 on targets the policy never trained on, and every judged seed meets
+the judge's bar. The owner ticks R2; this page does not.

@@ -1,0 +1,208 @@
+{
+  "schema": "ot11-judge-v1",
+  "label": "r2-confirm-1",
+  "behaviour": "reach",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+  "instructions_sha256": "dfeab7c7624b2a7472baaaf1e6b9d20ebaba0c80f96953ea203d5725ef02b706",
+  "intent_sha256": "f63443058494f3e3657e0acd72851d328dd413c8a700112f386defddc38c9768",
+  "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+  },
+  "evaluation": {
+    "schema": "cadex-evaluation-v1",
+    "verdict": "pass",
+    "accepted_revision": "13f9c63c93c9b59145001906062c618884fc31fdc72955846215c44654eb6fc4",
+    "policy_sha256": "6bb5a403c4afd1435dee067debc1dc371af0eabec5e5196add78c8fed9a6f6cc",
+    "task_sha256": "e912e0403393b489867cebf3f3be4cc62218e492aae6b89625dba18ad25d55e0",
+    "model_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8"
+  },
+  "seed": 1110,
+  "trace_sha256": "a6409144de120c9cae4ff9208d7651f26698f2d72c6c444167f135274667aa9f",
+  "film_style_sha256": "1329adc73f1cdf726eb548a2f1b26debd7934641ac965c240efc5bf5ffebe29f",
+  "sheets": [
+    {
+      "sheet": "overview",
+      "sha256": "a9edb45cdfcc8aa8aa91c2eabc4ea8455439df93bbee3f22214276739f617a88",
+      "frames": 12,
+      "times_s": [
+        0.0,
+        0.72,
+        1.44,
+        2.18,
+        2.9,
+        3.62,
+        4.36,
+        5.08,
+        5.8,
+        6.54,
+        7.26,
+        8.0
+      ],
+      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path"
+    },
+    {
+      "sheet": "detail",
+      "sha256": "09164fabf06861ccfaab1f3be1059b30b949bb37a16dc2758301ddbb4f56cd0f",
+      "frames": 12,
+      "times_s": [
+        4.0,
+        4.2,
+        4.4,
+        4.6000000000000005,
+        4.8,
+        5.0,
+        5.2,
+        5.4,
+        5.6000000000000005,
+        5.8,
+        6.0,
+        6.2
+      ],
+      "view": "side-on to the direction the design travelled, 12 degrees above the floor; no floating base, so the window is fixed",
+      "follows": null
+    }
+  ],
+  "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+  },
+  "total": 12,
+  "meets_bar": true,
+  "raw": [
+    {
+      "scores": {
+        "V1": {
+          "score": 3,
+          "reason": "The tip reaches the first marker by 0.72 s and holds there. After the marker jumps at 4.0 s, the tip reaches the new spot by 4.2 s and stays on it until 8.0 s."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "Both moves reach the marker within one frame and then hold still, with no sign of swinging past the marker, sliding or vibrating."
+        },
+        "V3": {
+          "score": 3,
+          "reason": "The arm stays steady and composed at both targets, with no wobble or strained posture and nothing passing through the bench."
+        },
+        "V4": {
+          "score": 3,
+          "reason": "Both holds look the same from frame to frame, and both moves are equally quick and clean."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 3, \"reason\": \"The tip reaches the first marker by 0.72 s and holds there. After the marker jumps at 4.0 s, the tip reaches the new spot by 4.2 s and stays on it until 8.0 s.\"}, \"V2\": {\"score\": 3, \"reason\": \"Both moves reach the marker within one frame and then hold still, with no sign of swinging past the marker, sliding or vibrating.\"}, \"V3\": {\"score\": 3, \"reason\": \"The arm stays steady and composed at both targets, with no wobble or strained posture and nothing passing through the bench.\"}, \"V4\": {\"score\": 3, \"reason\": \"Both holds look the same from frame to frame, and both moves are equally quick and clean.\"}}",
+      "session_id": "630e44ae-d110-4183-9659-5be5cadb2a59",
+      "duration_ms": 6438,
+      "num_turns": 3,
+      "total_cost_usd": 0.034246399999999996,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 497,
+          "cacheReadInputTokens": 4212,
+          "cacheCreationInputTokens": 2931,
+          "webSearchRequests": 0,
+          "costUSD": 0.034246399999999996,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 100,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 3,
+          "reason": "The tip reaches the first marker by 0.72 s and stays there, then reaches the moved marker by 4.20 s and holds it until 8.00 s."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "Both moves go straight to the marker, and no frame shows the tip swinging past it, sliding or drifting."
+        },
+        "V3": {
+          "score": 3,
+          "reason": "The arm stays steady and composed, with no wobble or lurching while it holds either marker."
+        },
+        "V4": {
+          "score": 3,
+          "reason": "Both reach-and-hold stretches look the same, and each holding pose is unchanged from frame to frame."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 3, \"reason\": \"The tip reaches the first marker by 0.72 s and stays there, then reaches the moved marker by 4.20 s and holds it until 8.00 s.\"}, \"V2\": {\"score\": 3, \"reason\": \"Both moves go straight to the marker, and no frame shows the tip swinging past it, sliding or drifting.\"}, \"V3\": {\"score\": 3, \"reason\": \"The arm stays steady and composed, with no wobble or lurching while it holds either marker.\"}, \"V4\": {\"score\": 3, \"reason\": \"Both reach-and-hold stretches look the same, and each holding pose is unchanged from frame to frame.\"}}",
+      "session_id": "3f70026d-4b1a-4089-b25a-8758f7961740",
+      "duration_ms": 6084,
+      "num_turns": 3,
+      "total_cost_usd": 0.0334864,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 459,
+          "cacheReadInputTokens": 4212,
+          "cacheCreationInputTokens": 2931,
+          "webSearchRequests": 0,
+          "costUSD": 0.0334864,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 86,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 3,
+          "reason": "The tip reaches the first marker by 0.72 s and holds there until the marker jumps at about 4 s. It then reaches the second marker by 4.20 s and stays on it until 8.00 s."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "Both moves go straight to the marker and settle on it, with no overshoot, swinging, drifting or vibration visible in either sheet."
+        },
+        "V3": {
+          "score": 3,
+          "reason": "The arm stays steady and composed while holding and after the marker jumps, with no lurching and no part passing through the floor."
+        },
+        "V4": {
+          "score": 3,
+          "reason": "The pose does not change during each hold, and both moves look equally clean from start to end."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 3, \"reason\": \"The tip reaches the first marker by 0.72 s and holds there until the marker jumps at about 4 s. It then reaches the second marker by 4.20 s and stays on it until 8.00 s.\"}, \"V2\": {\"score\": 3, \"reason\": \"Both moves go straight to the marker and settle on it, with no overshoot, swinging, drifting or vibration visible in either sheet.\"}, \"V3\": {\"score\": 3, \"reason\": \"The arm stays steady and composed while holding and after the marker jumps, with no lurching and no part passing through the floor.\"}, \"V4\": {\"score\": 3, \"reason\": \"The pose does not change during each hold, and both moves look equally clean from start to end.\"}}",
+      "session_id": "2ef756ad-218f-431a-8e9f-e7fb92c87e15",
+      "duration_ms": 6425,
+      "num_turns": 3,
+      "total_cost_usd": 0.0333658,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 455,
+          "cacheReadInputTokens": 4209,
+          "cacheCreationInputTokens": 2926,
+          "webSearchRequests": 0,
+          "costUSD": 0.0333658,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 62,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}
