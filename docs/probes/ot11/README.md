@@ -791,3 +791,89 @@ is the marked sheet of seed 1101. `retained/probe-marks.patch` is the change
 to `cli/cadex_cli/film.py` and the sentence in `runner/judge.py`, against
 commit `81873196`; it was reverted before this was committed. Afterwards the
 project's film was drawn again by the unchanged product.
+
+## The loop, run by the product agent (P4, ADR-464)
+
+These are **training rounds, not confirmation evaluations**. None of them
+counts for R1–R3. Each R criterion is judged only on a later
+pre-registered confirmation evaluation, which is also where the blind
+judge scores the film.
+
+### How long one tool call may block
+
+`runner/block_probe.py` gives one `claude -p` call, with the flags
+`cadex -p` uses and `claude-opus-5-5`, a single standard-library MCP tool
+that sleeps for the time it is asked. A **900 s** call blocked for 900.1 s
+and returned its answer with no error. That is `train_status`'s longest
+`wait_s`. The 5 s control call returned in 5.1 s. Claude Code was 2.1.285.
+Receipts: `retained/p4-block-probe-900s.json` and
+`retained/p4-block-probe-5s.json`.
+
+In the real turn below, the longest blocking calls were `train_status` at
+618.6 s and `evaluate` at 189.8 s. Neither returned an error.
+
+### Balance, on `ot11-robin-1`: one round, and it passed
+
+`ot11-robin-1` is a copy of `ot9-robin`. `ot9-robin` itself was not
+touched, and its baseline policy `ef71f370…` stays in the copy's store,
+undeclared.
+
+`runner/rounds.py` drives the product agent through `cadex -p`. It runs
+the frozen first prompt, `prompts/balance.loop.prompt.txt`, and then
+continues with `prompts/continue.loop.prompt.txt` while the project's loop
+ledger shows neither a pass nor four evaluated runs. Registration:
+`retained/p4-robin-1-registration.json`. The prompt hands over the frozen
+balance spec in xscript. The agent wrote it into the script byte for byte;
+this was checked by a diff after the turn. The task, the reward, the
+observations, the terminations, the training conditions and the settings
+are all the agent's.
+
+| run | settings | budget | ended | GPU wall time | evaluated policy | verdict |
+|---|---|---|---|---|---|---|
+| `bal-1` | 650 it × 1024 envs, seed 7 | 900 s | `budget_exhausted` at iteration 400 | 900.6 s | iteration-400 checkpoint `8919a22d…` | **pass, 10 of 10 seeds** |
+
+- **The run's reason** cited the baseline's measurements: B3 drift of
+  about 16 COM heights against 2.0, B4 heading of about 131° against 20°,
+  and B5 never coming to rest.
+- **What the agent changed.**
+  - The policy now reads only declared sensors: an IMU on the board and an
+    encoder on each wheel.
+  - The chassis pose, COM and torques are privileged.
+  - The reward pays for holding position, heading and low speed. It
+    trains under shoves of 0.08–0.30 × weight, wider than the spec's.
+  - Terminations are looser than the spec's limits.
+- **The evaluation.** `evaluations/cbf14e3c6865-8919a22dae1f/` in the
+  project. Worst seed on each predicate:
+
+  | predicate | worst seed | limit |
+  |---|---|---|
+  | B1 | all ten ran 10.0 s, by truncation | the full 10.0 s |
+  | B2 | 11.5° | 30° |
+  | B3 | 0.92 COM heights (48 mm) | 2.0 |
+  | B4 | 0.97° | 20° |
+  | B5 | 0.42 s | 2.0 s |
+
+  No seed was void.
+- **The turn.** One turn of 24.5 minutes, with 28 tool calls. It cost
+  $2.80 as the harness reported it.
+- **The film.** Seed 1101:
+  [overview](p4-robin-1-bal-1-seed-1101-overview.png) and
+  [detail](p4-robin-1-bal-1-seed-1101-detail.png).
+
+Receipt: `retained/p4-robin-1-rounds.json`. It holds the ledger, the run's
+registration and ending, the per-seed rows and the tool timings. It does
+not include the transcript.
+
+**What this round does not show.**
+
+- **No revision.** The first evaluation passed, so the stop rule ended the
+  session and nothing was revised. P4's requirement of three motivated
+  rounds is **not met on balance**.
+- **The ledger's `trained_by_run` is empty for this evaluation.** It
+  matches a run's *final* policy only, and a budget-exhausted run has
+  none. The agent evaluated a checkpoint, so the ledger cannot link the
+  evaluation to `bal-1`. This receipt makes the link by digest instead.
+- **Robin's model has not been confirmed.** The policy reads an IMU the
+  mechanism declares on its board component, but no IMU part is modelled.
+  The agent said so itself. R3 needs a confirmation evaluation and the
+  judge's bar.

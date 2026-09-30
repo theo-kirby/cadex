@@ -1,0 +1,130 @@
+"""ot11 P4: the runner that drives the product agent through the loop.
+
+``docs/probes/ot11/runner/rounds.py`` runs one frozen first prompt and then
+a frozen continuation for as long as the project's loop ledger says the loop
+is not over; ``block_probe.py`` measures how long one tool call may block a
+turn. Neither may know a behaviour, and the prompts a receipt names must be
+the ones on disk.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import io
+import json
+import re
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+PROBE = REPO / "docs" / "probes" / "ot11"
+RUNNER = PROBE / "runner"
+RETAINED = PROBE / "retained"
+
+
+def _load(name: str):
+    spec = importlib.util.spec_from_file_location(name, RUNNER / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _ledger(root: Path, *rows: dict) -> None:
+    (root / "loop-ledger.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+
+def test_the_loop_is_over_on_a_pass_or_when_the_runs_are_spent(tmp_path: Path) -> None:
+    rounds = _load("rounds")
+    assert rounds.standing(tmp_path) == {
+        "runs_registered": 0, "runs_ended": 0, "evaluations": 0, "passed": False}
+    assert not rounds.over(rounds.standing(tmp_path), 4)
+
+    registered = {"kind": "train_registered", "run": "a"}
+    ended = {"kind": "train_ended", "run": "a", "state": "finished"}
+    failed = {"kind": "evaluated", "verdict": "fail"}
+    passed = {"kind": "evaluated", "verdict": "pass"}
+
+    _ledger(tmp_path, registered, ended, failed)
+    assert not rounds.over(rounds.standing(tmp_path), 4)
+    _ledger(tmp_path, registered, ended, failed, registered, ended, passed)
+    assert rounds.over(rounds.standing(tmp_path), 4)
+    # An earlier pass followed by a failure is not a pass.
+    _ledger(tmp_path, registered, ended, passed, registered, ended, failed)
+    assert not rounds.over(rounds.standing(tmp_path), 4)
+    # Spent: as many evaluations as runs allowed, and nothing still training.
+    _ledger(tmp_path, *([registered, ended, failed] * 4))
+    assert rounds.over(rounds.standing(tmp_path), 4)
+    _ledger(tmp_path, *([registered, ended, failed] * 4), registered)
+    assert not rounds.over(rounds.standing(tmp_path), 4)
+
+
+def test_a_transcript_reads_back_as_tool_calls_with_how_long_each_blocked(
+        tmp_path: Path) -> None:
+    rounds = _load("rounds")
+    frames = [
+        {"t": 10.0, "type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "a", "name": "mcp__cadex__train_status",
+             "input": {"run": "r1", "wait_s": 600}}]}},
+        {"t": 312.5, "type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "a", "content": "finished"}]}},
+        {"t": 320.0, "type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "b", "name": "mcp__cadex__evaluate", "input": {}}]}},
+        {"t": 395.0, "type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "b", "is_error": True, "content": "no"}]}},
+        {"t": 396.0, "type": "result", "result": "done"},
+    ]
+    turn = tmp_path / "out" / "turn-1"
+    turn.mkdir(parents=True)
+    (turn / "transcript.jsonl").write_text(
+        "".join(json.dumps(frame) + "\n" for frame in frames), encoding="utf-8")
+    calls = rounds.tool_calls(turn / "transcript.jsonl")
+    assert [(c["tool"], c["seconds"], c["is_error"]) for c in calls] == [
+        ("train_status", 302.5, False), ("evaluate", 75.0, True)]
+
+    project = tmp_path / "project"
+    project.mkdir()
+    summary = rounds.summarise(project, tmp_path / "out")
+    assert summary["turns"][0]["by_tool"]["train_status"] == {
+        "calls": 1, "errors": 0, "longest_s": 302.5}
+    assert summary["project"] == "project" and summary["ledger"] == []
+
+
+def test_the_runner_names_no_behaviour_and_pins_the_model() -> None:
+    source = (RUNNER / "rounds.py").read_text(encoding="utf-8")
+    assert '"claude-opus-5-5"' in source and '"fallback": None' in source
+    for word in ("walk", "gait", "foot", "reach", "balanc", "shove", "quadruped", "robin"):
+        assert not re.search(word, source, re.IGNORECASE), word
+
+
+def test_the_block_probe_serves_one_tool_that_waits(monkeypatch) -> None:
+    probe = _load("block_probe")
+    requests = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+         "params": {"name": "block", "arguments": {"seconds": 0.05}}},
+    ]
+    out = io.StringIO()
+    monkeypatch.setattr(probe.sys, "stdin",
+                        io.StringIO("".join(json.dumps(r) + "\n" for r in requests)))
+    monkeypatch.setattr(probe.sys, "stdout", out)
+    assert probe.serve() == 0
+    replies = [json.loads(line) for line in out.getvalue().splitlines()]
+    assert [reply["id"] for reply in replies] == [1, 2, 3]
+    assert [tool["name"] for tool in replies[1]["result"]["tools"]] == ["block"]
+    assert replies[2]["result"]["content"][0]["text"].startswith("blocked 0.")
+
+
+def test_the_retained_rounds_receipts_name_the_prompts_on_disk() -> None:
+    receipts = sorted(RETAINED.glob("p4-*-registration.json"))
+    assert receipts, "no P4 rounds session is retained"
+    for path in receipts:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        assert receipt["model"] == "claude-opus-5-5" and receipt["fallback"] is None
+        assert receipt["project"].startswith("ot11-")
+        for key in ("first_prompt", "continue_prompt"):
+            prompt = PROBE / "prompts" / receipt[key]["file"]
+            assert hashlib.sha256(prompt.read_bytes()).hexdigest() == receipt[key]["sha256"]
+        assert "/home/" not in path.read_text(encoding="utf-8")

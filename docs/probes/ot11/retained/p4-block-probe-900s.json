@@ -1,0 +1,14 @@
+{
+  "schema": "ot11-block-probe-v1",
+  "model": "claude-opus-5-5",
+  "claude": "2.1.285 (Claude Code)",
+  "asked_s": 900.0,
+  "tool_called_at_s": 5.758114951662719,
+  "tool_answered_at_s": 905.8430274357088,
+  "blocked_s": 900.1,
+  "tool_reply": "blocked 900.0 s",
+  "tool_reply_is_error": false,
+  "final_text": "blocked 900.0 s",
+  "exit_code": 0,
+  "held": true
+}

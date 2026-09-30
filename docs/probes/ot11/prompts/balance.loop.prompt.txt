@@ -1,0 +1,45 @@
+This project is Robin, an accepted two-wheeled balancing robot. Do not start a new design. Your job in this session is to make Robin balance in place, by running the training loop yourself: design the task, train, evaluate, revise.
+
+THE BEHAVIOUR. A two-wheeled robot balances upright on the spot. It stays where it started and keeps facing the same way; it does not roll away or turn. When it is shoved it catches itself, comes back to rest and stays upright.
+
+WHAT EXISTS. The accepted script declares a task, `balance_task`, and an earlier policy, `r3-ppo-1.cxpolicy`. That policy stays upright and drives away: measured on the success spec below it failed all ten seeds, drifting about 16 centre-of-mass heights (the limit is 2.0) and turning about 131 degrees (the limit is 20), and it never came to rest after a shove. It is the baseline, not a starting point: leave its file in the store, do not declare it on a task it was not trained on, and do not warm-start from it.
+
+THE SUCCESS SPEC. It is frozen and it is not yours to change. Write it into the script exactly as given here, pass it to the task as `success=balance_spec`, and never loosen, drop or reword a predicate, a seed or a condition in any later revision:
+
+WEIGHT_N = 1.8435575131200006
+balance_spec = assembly.success(
+    [
+        {"id": "B1", "metric": "completed", "min": 1},
+        {"id": "B2", "metric": "max_tilt_deg", "max": 30},
+        {"id": "B3", "metric": "max_drift_com_heights", "max": 2.0},
+        {"id": "B4", "metric": "max_heading_deg", "max": 20},
+        {"id": "B5", "metric": "recovery_s_max", "max": 2.0},
+    ],
+    seeds=[1101, 1102, 1103, 1104, 1105, 1106, 1107, 1108, 1109, 1110],
+    episode_seconds=10.0,
+    randomisation=[],
+    reset_variation=[assembly.reset_variation(comp_chassis, tilt_degrees=[0.0, 3.0],
+                                              height_mm=[3.0, 8.0])],
+    disturbance=[
+        assembly.disturbance(comp_chassis, newtons=[0.10 * WEIGHT_N, 0.25 * WEIGHT_N],
+                             direction="horizontal", at_seconds=[2.0, 3.0], duration_s=0.10,
+                             label="first_shove"),
+        assembly.disturbance(comp_chassis, newtons=[0.10 * WEIGHT_N, 0.25 * WEIGHT_N],
+                             direction="horizontal", at_seconds=[5.5, 6.5], duration_s=0.10,
+                             label="second_shove"),
+    ],
+    label="ot11 balance contract",
+)
+
+In words: every one of the ten seeds must run the full 10 s with no termination (B1), never tilt past 30 degrees (B2), never move more than 2.0 centre-of-mass heights from where it started (B3), never turn more than 20 degrees (B4), and after each of the two shoves be back at rest within 2.0 s (B5; rest is tilt at most 10 degrees and speed at most 1.0 centre-of-mass heights per second, held for 1.0 s). One failed seed fails the policy.
+
+EVERYTHING ELSE IS YOURS TO DESIGN: the task's observations, its reward terms and weights, its terminations, its episode length, its own reset variation and the disturbances it trains under, and the training settings. The reward must not be a copy of the spec's verdict, and the spec must never read the reward.
+
+THE RULES FOR TRAINING.
+- Every run is pre-registered by train_start with a wall-clock budget of at most 900 seconds. For scale: the earlier policy's run, 300 iterations of 1024 environments, took 309 s on this machine.
+- One run at a time. The training seed is never one of the ten evaluation seeds.
+- A run's `reason` names what it is for. From the second run on it must cite a measurement from the previous evaluation: the failing predicate, its measured value and the limit.
+- After each run: store the policy, declare it on the task it was trained on, call evaluate, and read the verdict, the per-seed rows, the metrics, the reward terms, the endings and the filmstrips before deciding anything.
+- A failed evaluation is diagnosed before the next run: say which predicate failed, by how much, on which seeds, and what in the task you believe caused it. Then change the task, train again, evaluate again, and say whether the change helped.
+
+WHEN TO STOP. Stop when an evaluation passes on all ten seeds, or when four runs have been trained and evaluated, whichever comes first. Do not stop after a failed evaluation while runs remain. End with a short report: each run, what it changed and why, its evaluation, and what you would change next.

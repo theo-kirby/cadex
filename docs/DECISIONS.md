@@ -30632,6 +30632,24 @@ two iterations has been supervised. How long a harness lets one MCP tool
 call block has not been measured; `train_status` caps its wait at 900 s and
 `evaluate` blocks for the rollouts and the film.
 
+**First real-model use (2026-09-30).**
+- **How long a tool call may block, measured.** One `claude -p` tool call
+  blocked 900 s, `train_status`'s ceiling, and returned without error
+  (`docs/probes/ot11/runner/block_probe.py`).
+- **One round on Robin.** `claude-opus-5-5` ran the loop on
+  `ot11-robin-1` in one turn. It rewrote the task, wrote the frozen
+  balance spec exactly, and trained one 900 s run. That run ended
+  `budget_exhausted` at iteration 400. The agent evaluated the run's
+  iteration-400 checkpoint, which passed 10 of 10 seeds. With nothing
+  failed, nothing was revised, so the three-round requirement is still
+  unmet.
+- **A defect this exposed.** The ledger's `trained_by_run` matches a run's
+  final policy only. A checkpoint of a budget-exhausted run is evaluated
+  unlinked.
+
+Receipts: `docs/probes/ot11/README.md`, "The loop, run by the product
+agent".
+
 **Not changed.** No engine file, protocol op, `OP_ARG_SPECS`, payload or
 shell file. No new dependency: `loop.py` is standard library. Nothing
 removed. The trainer is untouched. The loop trains on this machine only;

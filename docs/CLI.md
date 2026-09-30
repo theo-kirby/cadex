@@ -2318,7 +2318,12 @@ only one. The loop never reads either.
 
 **Limits.** The loop trains on this machine only; `--remote` dispatch is
 still `cadex train` and `cadex walk`. The shell's agent has no loop tools.
-`evaluate` blocks for as long as the rollouts and the film take.
+`evaluate` blocks for as long as the rollouts and the film take: 189.8 s
+for Robin's ten seeds and its film. A tool call is allowed to block that
+long. One `claude -p` tool call held for 900 s, `train_status`'s ceiling
+(`docs/probes/ot11/runner/block_probe.py`, 2026-09-30).
+`trained_by_run` in the ledger matches a run's final policy only, so an
+evaluated checkpoint of a run that ended without one is left unlinked.
 
 ### Every build reply carries the measured fit (ADR-346)
 
