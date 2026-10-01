@@ -538,8 +538,13 @@ A defect fixed by decision is under *Every failure*, not here.
   fixed, which it attributes to an untrained critic. ADR-471 carries the
   exploration width into a warm start; r22, at a width below r19's own,
   lost the gait the same way, so the width alone is not the fix, and the
-  critic is unmeasured. No confirmation evaluation is registered, because no
-  round has passed every seed.
+  critic is unmeasured. Walk session 8
+  ([`retained/p4-quad-1-s8-preregistration.json`](retained/p4-quad-1-s8-preregistration.json))
+  starts from the same model and r19 declared, with at most three runs of
+  at most 3,600 s each. Its prompt gives the warm-start training
+  measurements and no remedy, and the agent chooses the revision. No
+  confirmation evaluation is registered, because no round has passed every
+  seed.
 - **No walking gait has been judged.** The judge runs on a confirmation
   evaluation, and walk has none; its scores on a gait that steps are
   unmeasured (*Every judge score*).
