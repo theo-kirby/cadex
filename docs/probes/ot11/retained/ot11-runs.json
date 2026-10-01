@@ -392,9 +392,26 @@
    "trainer_s": 1910.619837124832,
    "policy_sha256": "63cbf22407c09f98f438cb59202c9dd99d040275093136bba07a582a6982e385",
    "attempt": true
+  },
+  {
+   "project": "ot11-quad-1",
+   "run": "r18-sync-slip",
+   "seed": 181,
+   "envs": 2048,
+   "iterations": 600,
+   "init_from": "runs/r17-discount-bodyrate/train/walk_task.cxpolicy",
+   "budget_s": 2350.0,
+   "task_sha256": "c2303307e5bc1c723a6071dde07e88d6007ee9e6338d8e75e976587b2f21206e",
+   "state": "finished",
+   "iterations_run": 600,
+   "started_at": 1790857724.0186172,
+   "supervised_s": 1582.47,
+   "trainer_s": 1434.5837504831143,
+   "policy_sha256": "0ef672db5077ac7da135301ca456515de10dc81e12b089e3ba6ce8dc1f68c50c",
+   "attempt": true
   }
  ],
- "attempts": 22,
+ "attempts": 23,
  "in_progress": [],
- "supervised_s_total": 38743.05
+ "supervised_s_total": 40325.52
 }

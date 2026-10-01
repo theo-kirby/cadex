@@ -829,7 +829,7 @@
   {
    "project": "ot11-quad-1",
    "key": "50b2a42caf1c-63cbf22407c0",
-   "written_at": 1790855310.2437687,
+   "written_at": 1790857495.7851431,
    "label": "ot11 walk contract",
    "weights": "walk_r17.cxpolicy",
    "policy_sha256": "63cbf22407c09f98f438cb59202c9dd99d040275093136bba07a582a6982e385",
@@ -848,6 +848,34 @@
    },
    "terminations": {
     "horizon": 10
+   },
+   "film": "ready"
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "f0851df103a5-0ef672db5077",
+   "written_at": 1790859654.4702122,
+   "label": "ot11 walk contract",
+   "weights": "walk_r18.cxpolicy",
+   "policy_sha256": "0ef672db5077ac7da135301ca456515de10dc81e12b089e3ba6ce8dc1f68c50c",
+   "trained_by": "r18-sync-slip final",
+   "run_started_at": 1790857724.0186172,
+   "accepted_revision": "f0851df103a5b0cccbb74917c4e542b853c0f465677a4f3f87d167a44b781885",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 2,
+   "failed": 8,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 1,
+    "W2": 1,
+    "W5-steps": 1,
+    "W5-share": 1,
+    "W9": 8
+   },
+   "terminations": {
+    "horizon": 9,
+    "tipped": 1
    },
    "film": "ready"
   }
