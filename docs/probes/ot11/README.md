@@ -2398,3 +2398,53 @@ eleven runs, ten of them attempts ([`REPORT.md`](REPORT.md)).
   seed. Session 4, if one is registered, starts from the agent's proposal
   above: a convex speed cost and swing pay gated on body progress, on the
   steel-foot mechanism. It is not registered here.
+
+### Walk session 4: the diagnosis it starts from, and what it changes
+
+This is the actor's diagnosis of session 3, written before session 4's
+first run. As in session 3, it does not go to the agent as advice: the
+prompt states the measurements, and the agent reads its own evaluations
+and its own closing report.
+
+1. **The mechanism change did what it was aimed at, and stays the agent's
+   to keep or undo.** W10 passed on every seed of both steel-foot rounds
+   (−0.021 to −0.043 hip heights against −0.05). Nothing in session 3
+   measured W10 under a gait, because no policy stepped.
+2. **Every session-3 reward had a stationary optimum, and the policy found
+   it.** Round 9 stood on three feet at about +2.2 per step, mostly
+   `alive`. Round 10 held the rear-right foot up on all ten seeds, moved at
+   1.4–2.1 mm/s against commands of 61–93 mm/s, and collected
+   `speed_track` +1.0 to +1.65 per step against +0.25 for a body at rest
+   by rocking: the tray's forward velocity over the command has a standard
+   deviation of 0.47–0.84 around a median near zero
+   ([receipt](retained/p4-quad-1-r11-evaluation.json), `rocking`). A
+   Gaussian of the instantaneous speed is concave near zero, so its mean
+   rises with the variance of the speed.
+3. **The agent diagnosed the same thing and named its next change.** Its
+   closing turn proposes a convex speed cost (a squared error) and swing pay
+   gated on body progress, on the steel-ball feet, started fresh or from
+   r10; its `DECISIONS.md` marks the r11 reward as farmable. None of that has
+   been trained. Whether it produces a step is what session 4 measures.
+
+**What session 4 changes: nothing in the rules.** The mechanism bounds, the
+spec block and its mechanism rule, the evaluation seeds, the trainer
+(`97bc1d9a…`) and the driver (`86a96079…`) are session 3's. The actor
+changes no reward, spec or mechanism, and the prompt does not say what to
+change. The agent's proposal reaches it as its own `DECISIONS.md`, not as
+the actor's instruction.
+
+**Pre-registered.** The registration is
+[`retained/p4-quad-1-s4-preregistration.json`](retained/p4-quad-1-s4-preregistration.json),
+committed before launch. Session 4 allows:
+- at most three runs, each with a budget of 2,400 s or less and
+  `--stop-on-collapse` on; a start the trainer refuses before its first
+  iteration is not a run;
+- seeds chosen by the agent and refused if they are evaluation seeds;
+- two turns, under `runner/rounds.py --max-runs 16 --max-turns 2` in its
+  own session (the ledger holds 13 evaluations before it).
+
+The prompts are
+[`prompts/walk.s4.loop.prompt.txt`](prompts/walk.s4.loop.prompt.txt) and
+[`prompts/walk.s4.continue.prompt.txt`](prompts/walk.s4.continue.prompt.txt).
+Session 3's "ten runs in total" cap is spent, so session 4's stop rule
+counts this session's runs instead.
