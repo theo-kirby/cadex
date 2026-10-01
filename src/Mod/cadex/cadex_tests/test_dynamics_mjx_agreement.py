@@ -70,8 +70,8 @@ NO_CONTACT_MEDIAN = 1.0e-13      # measured 2.220e-16
 NO_CONTACT_WORST = 1.0e-7        # measured 6.409e-10
 PLANE_MEDIAN = 1.0e-13           # measured 3.331e-16
 PLANE_WORST = 1.0e-11            # measured 1.332e-15
-BOX_MEDIAN = 1.0e-9              # measured 4.620e-12
-BOX_WORST = 1.0e-2               # measured 1.217e-04
+BOX_MEDIAN = 1.0e-9              # measured 4.620e-12; 3.059e-14 since ADR-469
+BOX_WORST = 1.0e-2               # measured 1.217e-04; 1.254e-05 since ADR-469
 
 #: What a sensor channel is allowed to differ by between the two engines at
 #: the *same* state, relative to the channel's own magnitude. Measured on
@@ -82,10 +82,13 @@ BOX_WORST = 1.0e-2               # measured 1.217e-04
 #: engines computing the same formula rather than about rounding.
 SENSOR_RELATIVE = 1.0e-12
 
-#: How much worse the box floor is than the plane one, as a ratio of median
-#: single-step disagreement. Measured: 4.620e-12 / 3.331e-16, about 14000x.
-#: Asserted at 100x, which is far enough below the measurement to be a claim
-#: about a fact rather than about a decimal place.
+#: How much worse the box floor is than the plane one, as a ratio of the
+#: worst single-step disagreement. It was the *median* until ADR-469: then
+#: 4.620e-12 / 3.331e-16, about 14000x. The stiffer contact spring brought
+#: the box median to 3.059e-14, 92x the plane's, while the worst box step
+#: is still 1.254e-05 against the plane's ~1e-15 -- ten orders. The worst
+#: step is where box-against-box parts company, so it is what is asserted,
+#: at 100x, far below the measurement.
 BOX_PENALTY = 100.0
 
 
@@ -338,7 +341,7 @@ def test_the_exported_box_floor_is_what_costs_the_agreement() -> None:
     box = _disagreement(_variant(xml))
     plane = _disagreement(_variant(xml, floor="plane"))
 
-    assert box["median"] > BOX_PENALTY * plane["median"], {
+    assert box["worst"] > BOX_PENALTY * plane["worst"], {
         "box": box, "plane": plane,
         "note": "MJX now matches MuJoCo on box-against-box -- see this "
                 "test's docstring, this is good news",

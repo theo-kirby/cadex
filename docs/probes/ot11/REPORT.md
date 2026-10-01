@@ -148,6 +148,13 @@ predicate that did not pass on all of them.
   (`retained/p4-quad-1-r11-evaluation.json`, `spec_block`). It keeps W10 on
   every seed and still takes no step: it rocks its body fore and aft in
   place on three feet, which the doubled speed pay rewards.
+- **Row 25 is void for R1.** Its model carries a 3 mm contact `margin` on
+  each foot, and the owner's clause of 2026-10-01 (charter R1) makes any
+  policy evaluated on a model with a margin, a gap or any other setting
+  that holds geometry off the floor void for R1, whatever it reads. The
+  engine scored it, and it fails 0 of 10 regardless. `r14-margin15-lift`,
+  training on a 1.5 mm margin, is void for R1 on the same clause, and any
+  evaluation of it will be reported as void.
 - `r9-steelfoot` has no row, because it never trained (see *Every
   failure*).
 
@@ -210,7 +217,7 @@ shows whether it helped.
 | `r10-steelfoot-fresh` | **mechanism**: steel-ball feet (foot 1.5 → 10.5 g), stance back to 30°/−60°; trot term removed, grounded slip 1.5, alive 3.5; fresh start | r8: W10 −0.095 to −0.06 HH, W8-low 0.00 from a diagonal pair held up for the trot pay | 22 | 0 | yes for W10 (−0.029 to −0.021, every seed); no for gait: stands on three feet, W3 ≈ 0.00 |
 | `r11-speedpay` | speed tracking 2 → 4 with its Gaussian widened 0.4 → 0.6 × command, speed error −1 → −2; warm start from r10 | r10: W3 ≈ 0.00, W5-steps 0, W8-high 1.0; standing nets +2.17 per step | 23 | 0 | no: W3 0.015–0.033, still no step; rocks in place, and speed pay rises from +0.03 to +1.0–1.65 per step |
 | `r12-convex-sym` | Gaussian speed pay replaced by a convex speed cost; swing pay signed, with a 0.15 cost on any lifted foot; diagonal-symmetry and hip-antiphase costs on the joint encoders; alive 5; fresh start | r11: W8-low 0.00, W5-steps 0, W3 0.015–0.033; speed pay +1.3 per step for rocking, swing pay +0.21 for jiggling a raised foot | 24 | 0 | partly: it travels (W3 0.65–0.81, passes 5 of 10) and both front feet step (6–11 steps), but the rear-left foot is held up on every seed (W8-low 0.00), the rear-right drags (slip 0.85–0.98), and W10 fails again (−0.154 to −0.074) |
-| `r13-hovercost-margin` | hover cost 0.15 → 0.6 and swing pay rescaled; tilt cost −20 → −40, alive 6; **mechanism**: a 3 mm contact margin on each foot sphere; fresh start | r12: slip 0.85–0.98 against a 0.15 hover cost, so a foot held up was cheapest (W8-low 0.00); W10 −0.154 to −0.074 | 25 | 0 | partly: all four feet now leave the floor (W5-steps passes 10 of 10), tilt falls to 3.6–6.8° and W10 passes, but the margin holds every resting foot 0.7–3.5 mm above the floor, so W10's pass is the margin and the evaluation reads most of stance as swing (W8-low 0.02–0.09); clearance 0.03–0.04 HH (W6) and W3 0.28–0.64 fail |
+| `r13-hovercost-margin` | hover cost 0.15 → 0.6 and swing pay rescaled; tilt cost −20 → −40, alive 6; **mechanism**: a 3 mm contact margin on each foot sphere; fresh start | r12: slip 0.85–0.98 against a 0.15 hover cost, so a foot held up was cheapest (W8-low 0.00); W10 −0.154 to −0.074 | 25 | 0 | partly: all four feet now leave the floor (W5-steps passes 10 of 10), tilt falls to 3.6–6.8° and W10 passes, but the margin holds every resting foot 0.7–3.5 mm above the floor, so W10's pass is the margin and the evaluation reads most of stance as swing (W8-low 0.02–0.09); clearance 0.03–0.04 HH (W6) and W3 0.28–0.64 fail. **Void for R1** (margin model, owner 2026-10-01) |
 
 The reach rows are four consecutive design–train–evaluate–revise rounds,
 each motivated by the previous evaluation and each answered by the next;
@@ -223,7 +230,8 @@ the rows suggest.
 
 Each item names its receipt.
 - **Twenty-one of 25 evaluations failed** (every row above except 5, 6, 11
-  and 12), and two of them are void.
+  and 12), and three of them are void: rows 20 and 21 on a scale digit, row
+  25 for R1 on its foot contact margin.
 - **Two runs collapsed** and were stopped by `--stop-on-collapse`:
   `r1-clearance` after 569 iterations and `r7-relswing` after 538
   ([`retained/ot11-runs.json`](retained/ot11-runs.json)). Each was
@@ -252,7 +260,7 @@ Each item names its receipt.
   row 25, [`retained/p4-quad-1-r13-evaluation.json`](retained/p4-quad-1-r13-evaluation.json)).
   All four feet stepped for the first time in ot11, on a 3 mm foot contact
   margin that held the feet above the floor; W3, W6 and W8-low failed on
-  every seed.
+  every seed. It is void for R1 on that margin (owner, 2026-10-01).
 - **Warm start was unreachable for reach r3.** The agent guessed five paths
   for `init_from_parent_task`, and `train_start` refused each; seven
   `train_start` calls errored in that session
@@ -299,11 +307,24 @@ A defect fixed by decision is under *Every failure*, not here.
   3 mm margin, 48–96 % of round 12's settled frames sat between 1 and 4 mm,
   bearing load but read as swing. So W8 and W7 under-read stance and slip,
   and W5 can count a hover that moves forward as a step. Round 12's verdict is still a
-  fail, on W3, W6 and W8-low. The spec is unchanged. Contact settings on the
-  agent's own bodies are within session 3's `mechanism_rule`, and nothing in
-  the product refuses a margin that lifts a foot out of the floor. The
-  agent's next run, `r14-margin15-lift`, cuts the margin to 1.5 mm for this
-  reason.
+  fail, on W3, W6 and W8-low. The spec is unchanged. **The owner decided
+  this on 2026-10-01** (charter R1): a margin, a gap or any setting that
+  holds geometry off the floor does not count as passing W10, whoever
+  authors it, and a policy evaluated on such a model is void for R1. Round
+  12 is void for R1, and so is the agent's next run, `r14-margin15-lift`,
+  which cuts the margin to 1.5 mm. Nothing in the product refuses a margin
+  yet; the walk session's mechanism rule still permits one, so the void is
+  applied when a round is published.
+- **The feet sank because the exported contact spring was soft, and that
+  is fixed in the product for models exported from now on** (ADR-469).
+  Every geom and the environment floor were on MuJoCo's default 0.02 s
+  spring, and a soft contact sinks in proportion to the acceleration
+  pressing on it. Round 11's policy, on its own MJCF and ten seeds, sank a
+  foot 6.18–7.62 mm on that spring and 0.66–2.50 mm at 0.004 s
+  ([`retained/p4-quad-1-contact-depth.json`](retained/p4-quad-1-contact-depth.json)).
+  Every walk round so far trained and was evaluated on the old spring,
+  because a bundle carries the MJCF it was accepted with; a revision
+  accepted after ADR-469 gets the new one.
 - **Walk rounds 1–3 trained on a trainer whose servo physics disagreed
   with the engine's** (ADR-465). Their evaluations stand, and what they
   say about their rewards is weaker than their rows suggest.
@@ -318,4 +339,6 @@ A defect fixed by decision is under *Every failure*, not here.
   now paid: the payload was rebuilt and restaged from engine source
   unchanged since ADR-468 (commit `d410b098`), and
   `test_cadexd_lifecycle.py` passed 23 of 23, none skipped, against it on
-  2026-10-01. A later engine change owes it again.
+  2026-10-01. ADR-469's contact spring is an engine change made after it,
+  so the gate is owed again until it is rerun on a payload staged from that
+  source.

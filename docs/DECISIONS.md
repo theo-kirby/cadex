@@ -30926,3 +30926,71 @@ carries the bundle's spec block, so `stated_scale` appears in it.
   refused with the measured values, an unmeasured key refused, the key
   tuple equal on both sides). All fail on the old source.
   `test_success_spec_live` covers both outcomes through the worker.
+
+## ADR-469 — Contacts that do not bounce are exported on a 0.004 s spring, and the environment floor says so (2026-10-01)
+
+**Context.** The owner's R1 clause of 2026-10-01: stepping feet that sink
+7–15 mm into the floor on 7.5 mm feet are a defect in the exported contact
+physics, and a contact `margin` or `gap` that holds a foot off the floor does
+not count as fixing it. Every geom `export_mjcf` wrote carried
+`solref = (CONTACT_TIMECONST_S, dampratio)` with `CONTACT_TIMECONST_S =
+0.02`, MuJoCo's default, and the environment floor (ADR-335) carried no
+`solref` at all, so it was on the same default. A MuJoCo contact is a soft
+constraint whose spring is k = 1/(dmax²·τ²). Its depth under load goes with
+the acceleration pressing on it, not with the weight, and a servo driving a
+10 g foot into the floor is a large acceleration. Measured on
+`ot11-quad-1`'s round-11 policy (`r12-convex-sym`) on its own MJCF,
+through the engine's episode loop on CPU MuJoCo, over the ten seeds
+1101–1110: deepest foot point after the settle **−6.18 to −7.62 mm** on the
+0.02 s spring and **−0.66 to −2.50 mm** at 0.004 s, the same file with only
+the spring changed (`docs/probes/ot11/runner/contact_depth.py`, receipt
+`docs/probes/ot11/retained/p4-quad-1-contact-depth.json`; one after-seed,
+1104, tipped inside the settle and has no reading). A scan on two seeds put
+0.01 s at −2.5 to −3.6 mm and a 0.02 s spring with `solimp` (0.99, 0.999)
+at −6.0 to −7.7 mm: the time constant is what matters.
+
+**Decision.**
+- `CONTACT_TIMECONST_S` is 0.004 s, twice `DEFAULT_TIME_STEP_S`. That is the
+  stiffest spring MuJoCo integrates: its `refsafe` clamps a shorter time
+  constant to two solver steps, so a model on a coarser step gets two of its
+  own, not an unstable spring.
+- The environment floor is written with `solref = (CONTACT_TIMECONST_S, 1)`.
+  A pair's `solref` is the average of its two geoms', so a floor left on the
+  default would have halved the stiffening of every foot standing on it.
+- **A shape with a restitution keeps the 0.02 s spring**, as the new
+  `BOUNCE_TIMECONST_S`, and the step rule for a bounce
+  (`RESTITUTION_STEPS_PER_TIMECONST`, ADR M3 phase 2) is read from it.
+  Restitution was measured on that spring. Moving it would make every bounce
+  need a 0.0002 s step, and the lifecycle, environment and determinism
+  suites, which bounce at 0.0005 s, measured that refusal.
+- Nothing about `margin` changes. The owner's clause voids a margin model
+  for R1 when its round is published (REPORT.md, row 25); the product does
+  not refuse one.
+
+**Consequences.**
+- Every model exported from now on has the stiffer spring. A bundle carries
+  the MJCF it was accepted with and `cadex evaluate` plays that file, so no
+  stored evaluation, policy or task moves. A revision rebuilt after this
+  exports a different MJCF, so its task digest moves and a policy trained on
+  the old one does not verify against it. That covers ot11-quad-1's next
+  revision, and it would cover a rebuild of `ot11-robin-1` or
+  `ot11-heron-1`, whose R3 and R2 confirmations ran on the old spring and
+  stay as published. `r14-margin15-lift`, training while this landed, is on
+  its registered (old) MJCF and is void for R1 anyway on its margin.
+- The trainer reads the same MJCF and has no contact parameters of its own,
+  so it follows the export. Checked from the training venv on CPU: the MJX
+  agreement, geom-pair and force-limit suites pass, 17 of 17, on fixtures
+  exported with the new spring.
+  `test_the_exported_box_floor_is_what_costs_the_agreement` now asserts on
+  the worst step: the stiffer spring brought the box floor's median
+  disagreement from 14,000× the plane's to 92×, while its worst step is
+  still ten orders above (1.254e-05 against ~1e-15).
+- Tests: `test_a_foot_under_a_stepping_load_stays_on_the_floor_rather_than_in_it`
+  (`test_dynamics_free_base`) presses a 10 g, 7.5 mm sphere on the
+  environment floor at thirty times its weight. It sinks 2.60 mm on the old
+  source and fails, and 0.46 mm now, against the contract's 1.0 mm stance
+  threshold. `test_dynamics_contact` pins that a bounce keeps
+  `BOUNCE_TIMECONST_S`. `test_a_simulation_that_went_unstable_voids_the_seed`
+  needed a wilder motor (500 N·m, from 200 N·m) to go unstable on the
+  stiffer contact.
+- An engine-source change, so the packaged lifecycle gate is owed again.

@@ -139,3 +139,68 @@ def test_the_manifest_names_the_floor_a_free_base_stood_on() -> None:
         dyn.build_model(grounded_components, grounded_joints), grounded_components
     )
     assert grounded["environment"] is None
+
+
+#: A foot like ot11-quad-1's: a 7.5 mm sphere, on a 10 g body.
+FOOT_RADIUS_MM = 7.5
+FOOT_MASS_KG = 0.010
+
+#: The stepping load, as a multiple of the foot's weight. A servo pressing a
+#: light foot into the floor drives it far harder than gravity does, and a
+#: soft contact sinks in proportion to that acceleration rather than to the
+#: weight: round 11's policy on the old spring sank 6.5-9.4 mm, which is
+#: about 30 g by MuJoCo's own impedance arithmetic (ADR-469).
+STEPPING_LOAD_WEIGHTS = 30.0
+
+#: The walk contract's stance threshold (``CadexEvaluation.STANCE_MM``): a
+#: foot pressed into the floor must still read as a foot on it, not in it.
+STANCE_MM = 1.0
+
+
+def test_a_foot_under_a_stepping_load_stays_on_the_floor_rather_than_in_it() -> None:
+    """The exported contact, pressed the way a stepping servo presses it.
+
+    One free 7.5 mm sphere on the environment floor, pushed down at thirty
+    times its own weight for a second. Measured: 2.6 mm into the floor on
+    MuJoCo's default 0.02 s spring, which is what ``export_mjcf`` wrote for
+    both the foot and the floor until ADR-469, and 0.46 mm at 0.004 s. The
+    floor's own spring is asserted too, because a pair averages the two and
+    a default floor would undo half of the foot's.
+    """
+
+    built = dyn.build_model(
+        *fx.build(
+            [
+                {
+                    "name": "foot",
+                    "world": fx.frame((0.0, 0.0, FOOT_RADIUS_MM)),
+                    "size": (15.0, 15.0, 15.0),
+                    "collision": {
+                        "shapes": [
+                            fx.collision_shape("sphere", radius_mm=FOOT_RADIUS_MM)
+                        ],
+                        "mesh": None,
+                    },
+                }
+            ],
+            [],
+        )[:2]
+    )
+    model = built["model"]
+    floor = _geom(model, dyn.ENVIRONMENT_FLOOR_GEOM)
+    sphere = _geom(model, "foot/collision0")
+    assert list(model.geom_solref[floor]) == pytest.approx([dyn.CONTACT_TIMECONST_S, 1.0])
+    assert list(model.geom_solref[sphere]) == pytest.approx([dyn.CONTACT_TIMECONST_S, 1.0])
+
+    body = int(mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "foot"))
+    model.body_mass[body] = FOOT_MASS_KG
+    data = mujoco.MjData(model)
+    data.qpos[:] = list(built["qpos_solved"])
+    weight_n = FOOT_MASS_KG * 9.81
+    data.xfrc_applied[body][2] = -STEPPING_LOAD_WEIGHTS * weight_n
+    deepest_mm = 0.0
+    for _ in range(int(round(1.0 / float(model.opt.timestep)))):
+        mujoco.mj_step(model, data)
+        bottom_mm = dyn.length_mm(float(data.xpos[body][2])) - FOOT_RADIUS_MM
+        deepest_mm = min(deepest_mm, bottom_mm)
+    assert -deepest_mm <= STANCE_MM, deepest_mm

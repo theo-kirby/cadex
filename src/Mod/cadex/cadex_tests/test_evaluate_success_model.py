@@ -336,11 +336,13 @@ def test_a_simulation_that_went_unstable_voids_the_seed() -> None:
     predicates say, and a void seed has not passed.
     """
 
-    wild = [{**FLAP_MOTOR[0], "torque_limit_nmm": 200000.0}]
+    # 500 N·m: 200 N·m stopped blowing up once the contact spring stiffened
+    # (ADR-469), and at this torque two of the three seeds still do.
+    wild = [{**FLAP_MOTOR[0], "torque_limit_nmm": 500000.0}]
     report = evaluate(prepared(spec(BALANCE[:3], episode_seconds=4.0), still=False, motors=wild))
 
     void = [row for row in report["seeds"] if row["void"]]
-    assert [row["seed"] for row in void] == report["summary"]["void"] == [1101, 1102]
+    assert [row["seed"] for row in void] == report["summary"]["void"] == [1102, 1103]
     for row in void:
         assert row["episode"]["solver_warnings"] == [{"warning": "mjWARN_BADQACC", "count": 1}]
         assert row["void"] == "the simulation went unstable: MuJoCo warned mjWARN_BADQACC x1"
@@ -348,8 +350,9 @@ def test_a_simulation_that_went_unstable_voids_the_seed() -> None:
         # Void is not a predicate: it is said once, beside them.
         assert row["void"] not in row["failing"]
         assert all(entry["id"] in {"completes", "upright", "in_place"} for entry in row["predicates"])
-    assert report["summary"]["passed"] == [1103] and report["summary"]["pass"] is False
-    sound = report["seeds"][2]
+    assert not set(report["summary"]["passed"]) & {1102, 1103}
+    assert report["summary"]["pass"] is False
+    sound = report["seeds"][0]
     assert sound["void"] == "" and sound["episode"]["solver_warnings"] == []
     # ...and a sound evaluation says so, seed by seed.
     calm = evaluate(prepared(spec(BALANCE, episode_seconds=4.0)))

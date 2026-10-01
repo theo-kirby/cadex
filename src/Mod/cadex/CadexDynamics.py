@@ -948,12 +948,26 @@ COLLISION_TESSELLATION_TOLERANCE = 0.05
 #: for; the correction is a coarser deflection, which the refusal names.
 MAXIMUM_COLLISION_VERTICES = 200_000
 
-#: The contact spring's time constant, in seconds. It is MuJoCo's own
-#: default written down rather than inherited, for the reason M3 phase 0
-#: gave: a default is a promise, not a decision. Softer than this and a
-#: resting part sinks visibly into what it rests on; stiffer and the
-#: integrator needs a finer step to stay stable.
-CONTACT_TIMECONST_S = 0.02
+#: The contact spring's time constant, in seconds: twice the default solver
+#: step, the stiffest MuJoCo will integrate (its ``refsafe`` clamps anything
+#: shorter to two steps, so a model on a coarser step gets two of its own).
+#: It was MuJoCo's default, 0.02, until ot11 measured what that costs under
+#: a stepping load (ADR-469): a soft contact sinks in proportion to the
+#: acceleration pressing on it, not to the weight, and a servo pushing a
+#: 10 g foot is a large acceleration. ot11-quad-1's round-11 policy sank its
+#: 7.5 mm steel feet 6.5-9.4 mm into the floor at 0.02 s and 0.7-0.9 mm at
+#: this value, the same weights on the same model. The spring is
+#: k = 1/(dmax² · τ²), so a fifth of the time constant is 25 times stiffer.
+CONTACT_TIMECONST_S = 0.004
+
+#: The spring a *bouncing* shape keeps: MuJoCo's default, the one M3 phase 2
+#: measured restitution on. A shape that asks for a bounce asks for a spring
+#: that stores energy, and the step it needs is a multiple of this time
+#: constant (``RESTITUTION_STEPS_PER_TIMECONST``), so it stays where the
+#: measurement was taken rather than costing every bounce five times the
+#: solver steps. Everything that does not bounce -- the default, and every
+#: foot and floor -- is on ``CONTACT_TIMECONST_S``.
+BOUNCE_TIMECONST_S = 0.02
 
 #: MuJoCo's own friction triple (sliding, torsional, rolling), again
 #: written down. A script that gives one number replaces the sliding term
@@ -1514,7 +1528,8 @@ def _contact_parameters(
     return {
         "friction": triple,
         "restitution": restitution,
-        "solref": [CONTACT_TIMECONST_S, dampratio],
+        "solref": [CONTACT_TIMECONST_S if restitution == 0.0 else BOUNCE_TIMECONST_S,
+                   dampratio],
         "dampratio": dampratio,
         "condim": condim_value,
         "margin_m": length_m(margin_mm),
@@ -3063,7 +3078,7 @@ def _verify_restitution_is_resolvable(
     costs an ordinary contact model nothing.
     """
 
-    limit = CONTACT_TIMECONST_S / RESTITUTION_STEPS_PER_TIMECONST
+    limit = BOUNCE_TIMECONST_S / RESTITUTION_STEPS_PER_TIMECONST
     if time_step_s <= limit:
         return
     bouncy = sorted(
@@ -3123,8 +3138,9 @@ def _environment_floor(mujoco: Any, spec: Any, tree: Mapping[str, Any]) -> dict[
     free base, and the charter that asked for one (ADR-328, ADR-335) also
     forbids a floor, wall or slab in the design -- so the world carries
     the floor. One infinite plane at z = 0 with +Z up, on the world body,
-    with MuJoCo's default contact parameters; the design's shapes decide
-    the rest through the pair rules. Returns the record the manifest
+    with MuJoCo's default friction and Cadex's contact spring
+    (:data:`CONTACT_TIMECONST_S`); the design's shapes decide the rest
+    through the pair rules. Returns the record the manifest
     carries, or ``None`` for a grounded model, which gets nothing.
     """
 
@@ -3137,6 +3153,10 @@ def _environment_floor(mujoco: Any, spec: Any, tree: Mapping[str, Any]) -> dict[
         quat=[1.0, 0.0, 0.0, 0.0],
         size=[0.0, 0.0, length_m(ENVIRONMENT_FLOOR_GRID_MM)],
         friction=list(ENVIRONMENT_FLOOR_FRICTION),
+        # Written rather than left to MuJoCo's default: a pair's solref is
+        # the average of its two geoms', so a floor on the default 0.02 s
+        # spring would halve the stiffness of every foot that stands on it.
+        solref=[CONTACT_TIMECONST_S, 1.0],
         condim=3,
         contype=1,
         conaffinity=1,
@@ -3242,8 +3262,8 @@ def build_model(
       joint and fall. A model with no grounded component at all is a
       **free base** (ADR-335): its floor is not a part of the design, so the
       world carries one -- :data:`ENVIRONMENT_FLOOR_GEOM`, a plane at z = 0
-      with MuJoCo's default contact parameters, which the design's own
-      shapes override through the pair rules in :func:`_contact_parameters`
+      with MuJoCo's default friction and Cadex's contact spring, which the
+      design's own shapes override through the pair rules in :func:`_contact_parameters`
       (friction is the maximum, so a sole's declared friction wins). A
       grounded model gets no floor: its ground is whatever it grounded.
 
