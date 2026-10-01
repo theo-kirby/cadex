@@ -341,9 +341,26 @@
    "trainer_s": 2178.255605868064,
    "policy_sha256": "5f97b60219ba3e0f49f64016551101a7beca6a368d371b8489c4d276753b64f0",
    "attempt": true
+  },
+  {
+   "project": "ot11-quad-1",
+   "run": "r15-stiffspring-clearfoot",
+   "seed": 151,
+   "envs": 2048,
+   "iterations": 760,
+   "init_from": null,
+   "budget_s": 2400.0,
+   "task_sha256": "7d31a888a7609af8e1bbbbacd2d3f0546c14bfd5155a0d808f4f1eeff1808037",
+   "state": "finished",
+   "iterations_run": 760,
+   "started_at": 1790848021.071135,
+   "supervised_s": 1926.4,
+   "trainer_s": 1777.3928039548919,
+   "policy_sha256": "d430a92243459cee275d0d4b514386be91f69d1611439a464a46ac3366b7ba11",
+   "attempt": true
   }
  ],
- "attempts": 19,
+ "attempts": 20,
  "in_progress": [],
- "supervised_s_total": 32662.12
+ "supervised_s_total": 34588.52
 }

@@ -11,7 +11,7 @@ The owner ticks the criteria; this page does not.
 
 ## Every training run
 
-Twenty runs have ended in ot11, nineteen attempts and one refused start
+Twenty-one runs have ended in ot11, twenty attempts and one refused start
 (`r9-steelfoot`, row 15: its trainer exited before its first iteration).
 All went through the product's `train_start` tool, one GPU job at a time,
 with `--stop-on-collapse` on. Every one was registered before it launched: its settings, its seed, its
@@ -45,13 +45,14 @@ is that receipt.
 | 18 | walk | `ot11-quad-1` | `r12-convex-sym` | 131 | 800 it × 2048 envs | — | 2,400 | `finished` | 800 | 2,105.98 | 1,954.1 |
 | 19 | walk | `ot11-quad-1` | `r13-hovercost-margin` | 137 | 800 it × 2048 envs | — | 2,400 | `finished` | 800 | 2,239.22 | 2,089.7 |
 | 20 | walk | `ot11-quad-1` | `r14-margin15-lift` | 139 | 800 it × 2048 envs | — | 2,400 | `finished` | 800 | 2,348.43 | 2,178.3 |
+| 21 | walk | `ot11-quad-1` | `r15-stiffspring-clearfoot` | 151 | 760 it × 2048 envs | — | 2,400 | `finished` | 760 | 1,926.40 | 1,777.4 |
 
 | behaviour | runs | GPU time, s |
 |---|---|---|
 | balance | 1 | 900.57 |
 | reach | 5 | 4,447.41 |
-| walk | 14 | 27,314.14 |
-| **all** | **20** | **32,662.12** |
+| walk | 15 | 29,240.54 |
+| **all** | **21** | **34,588.52** |
 
 **How to read the two times.** *GPU time* is the supervisor's wall time
 from launch to exit; the trainer holds the GPU for all of it, so it is the
@@ -82,7 +83,7 @@ and in no total. None was in progress when this was last regenerated.
 
 ## Every evaluation
 
-Twenty-six evaluations are stored across the five ot11 projects, every one
+Twenty-seven evaluations are stored across the five ot11 projects, every one
 written by `cadex evaluate` or the agent's `evaluate` tool (the same code)
 into the project's `evaluations/<key>/evaluation.json`.
 [`runner/eval_ledger.py`](runner/eval_ledger.py) reads those files, and the
@@ -122,6 +123,7 @@ predicate that did not pass on all of them.
 | 24 | walk | `ot11-quad-1` | `ca8310e9d841-3179aa38a75d` | `r12-convex-sym final` | fail | 0 of 10 | W3 5, W5-steps 10, W5-share 10, W6 10, W7 10, W8-low 10, W8-high 10, W9 10, W10 10 | horizon 10 | yes |
 | 25 | walk | `ot11-quad-1` | `0bbe95889512-70b9ac55c145` | `r13-hovercost-margin final` | fail | 0 of 10 | W3 10, W5-share 1, W6 10, W7 9, W8-low 10, W9 3 | horizon 10 | yes |
 | 26 | walk | `ot11-quad-1` | `6688a28a61d8-5f97b60219ba` | `r14-margin15-lift final` | fail | 0 of 10 | W5-share 7, W6 10, W7 2, W8-low 10, W10 9 | horizon 10 | yes |
+| 27 | walk | `ot11-quad-1` | `bf664d9bfc69-d430a9224345` | `r15-stiffspring-clearfoot final` | fail | 0 of 10 | W1 5, W2 5, W3 10, W4-lateral 5, W5-steps 10, W5-share 10, W6 10, W7 10, W8-low 10, W8-high 10, W9 10, W10 5 | horizon 5, tipped 5 | yes |
 
 **How to read it.**
 - **Rows 1–4 are P1's known negatives**, read before any ot11 training
@@ -164,6 +166,17 @@ predicate that did not pass on all of them.
   one. Session 4's agent could not declare this policy at all, because the
   engine moved to ADR-469 under its last turn and the task digest moved
   with it. Its spec block is valid under the session's mechanism rule.
+- **Row 27 is the first walk evaluation on a model with no contact
+  offset and the ADR-469 spring, and it is valid** (`contact_offsets` is
+  empty, nothing void;
+  [`retained/p5-quad-1-r15-evaluation.json`](retained/p5-quad-1-r15-evaluation.json)).
+  The agent's own `evaluate` call wrote it inside walk session 5's turn.
+  Its revision differs from the registered one only in the policy line,
+  its model and task hash to the trained ones, and its spec block differs
+  from the frozen one only in HIP_MM and WEIGHT_N, which equal the rig.
+  It fails 0 of 10, and badly: five seeds tip in 0.50–0.94 s (W1, W2), and
+  the other five stand for the full 10 s without one step on any foot
+  (W5-steps 0, duty 1.0, speed_ratio 0.03–0.06).
 - `r9-steelfoot` has no row, because it never trained (see *Every
   failure*).
 
@@ -228,6 +241,7 @@ shows whether it helped.
 | `r12-convex-sym` | Gaussian speed pay replaced by a convex speed cost; swing pay signed, with a 0.15 cost on any lifted foot; diagonal-symmetry and hip-antiphase costs on the joint encoders; alive 5; fresh start | r11: W8-low 0.00, W5-steps 0, W3 0.015–0.033; speed pay +1.3 per step for rocking, swing pay +0.21 for jiggling a raised foot | 24 | 0 | partly: it travels (W3 0.65–0.81, passes 5 of 10) and both front feet step (6–11 steps), but the rear-left foot is held up on every seed (W8-low 0.00), the rear-right drags (slip 0.85–0.98), and W10 fails again (−0.154 to −0.074) |
 | `r13-hovercost-margin` | hover cost 0.15 → 0.6 and swing pay rescaled; tilt cost −20 → −40, alive 6; **mechanism**: a 3 mm contact margin on each foot sphere; fresh start | r12: slip 0.85–0.98 against a 0.15 hover cost, so a foot held up was cheapest (W8-low 0.00); W10 −0.154 to −0.074 | 25 | 0 | partly: all four feet now leave the floor (W5-steps passes 10 of 10), tilt falls to 3.6–6.8° and W10 passes, but the margin holds every resting foot 0.7–3.5 mm above the floor, so W10's pass is the margin and the evaluation reads most of stance as swing (W8-low 0.02–0.09); clearance 0.03–0.04 HH (W6) and W3 0.28–0.64 fail. **Void for R1** (margin model, owner 2026-10-01) |
 | `r14-margin15-lift` | **mechanism**: foot contact margin 3 → 1.5 mm; hover cost flat past ~3 mm and swing pay growing with height (h/14 mm); a linear term in the speed cost; fresh start | r13: W8-low duty_min 0.02–0.09, W6 clearance 0.032–0.038 HH, W3 0.28–0.64, W7 0.12–0.22 | 26 | 0 | partly: W3 passes on every seed (speed_ratio 0.98–1.05) and every foot steps 19–25 times, but clearance falls to 0.020–0.026 HH (W6), duty_min stays 0.30–0.33 (W8-low), and on half the margin W10 fails 9 of 10 (−0.066 to −0.049 HH). **Void for R1** (margin model; voided by `cadex evaluate`, ADR-470) |
+| `r15-stiffspring-clearfoot` | **mechanism**: the foot margin removed and the model rebuilt on ADR-469's 0.004 s spring; the moving-foot cost fades as a 6 mm Gaussian of lift instead of exp(−h/3 mm), weight 1.5 → 2.0; fresh start | r14: W6 clearance 0.020–0.026 HH, W8-low duty_min 0.30–0.33, W7 slip 0.11–0.16, W10 −0.066 to −0.049 HH | 27 | 0 | no: no foot steps on any seed (W5-steps 0, duty 1.0), five seeds tip within 0.94 s (W1, W2) and the five that stand slide their feet (slip 0.54–0.80) at speed_ratio 0.03–0.06. W10 passes on every seed that stands (−0.015 to −0.003 HH): on the new spring a standing foot sinks under 1.5 mm |
 
 The reach rows are four consecutive design–train–evaluate–revise rounds,
 each motivated by the previous evaluation and each answered by the next;
@@ -239,7 +253,7 @@ the rows suggest.
 ## Every failure
 
 Each item names its receipt.
-- **Twenty-two of 26 evaluations failed** (every row above except 5, 6, 11
+- **Twenty-three of 27 evaluations failed** (every row above except 5, 6, 11
   and 12), and four of them are void: rows 20 and 21 on a scale digit, rows
   25 and 26 for R1 on their foot contact margins.
 - **Two runs collapsed** and were stopped by `--stop-on-collapse`:
@@ -277,6 +291,11 @@ Each item names its receipt.
   It travels at the commanded speed and every foot steps, on a 1.5 mm
   margin; W6 and W8-low fail on every seed and W10 on nine. Session 4
   closed at its three-run limit with no evaluation passing a seed.
+- **Walk session 5's first round failed 0 of 10** (`r15-stiffspring-clearfoot`,
+  row 27, [`retained/p5-quad-1-r15-evaluation.json`](retained/p5-quad-1-r15-evaluation.json)).
+  It is valid: no contact offset, the ADR-469 spring. No foot steps on any
+  seed, and five seeds roll onto their side within 0.94 s
+  ([filmstrip, seed 1101](p4-quad-1-walk-r15-seed-1101-overview.png)).
 - **Warm start was unreachable for reach r3.** The agent guessed five paths
   for `init_from_parent_task`, and `train_start` refused each; seven
   `train_start` calls errored in that session
@@ -291,7 +310,7 @@ Each item names its receipt.
 
 What is still wrong or unmeasured at this revision, each with its receipt.
 A defect fixed by decision is under *Every failure*, not here.
-- **R1 is not met.** No walk evaluation has passed a seed: rows 13–26 of
+- **R1 is not met.** No walk evaluation has passed a seed: rows 13–27 of
   *Every evaluation* all pass 0 of 10
   ([`retained/ot11-evaluations.json`](retained/ot11-evaluations.json)).
   Walk session 4
@@ -300,7 +319,7 @@ A defect fixed by decision is under *Every failure*, not here.
   Walk session 5 is pre-registered and running
   ([`retained/p4-quad-1-s5-preregistration.json`](retained/p4-quad-1-s5-preregistration.json)),
   the first on a model with the ADR-469 spring and no contact offset; its
-  rounds are not in this report yet.
+  first round is row 27, and its later rounds are not in this report yet.
 - **No walking gait has been judged.** The judge runs on a confirmation
   evaluation, and walk has none; its scores on a gait that steps are
   unmeasured (*Every judge score*).
@@ -355,8 +374,11 @@ A defect fixed by decision is under *Every failure*, not here.
   foot point after the settle is −0.89 to −1.37 mm, −0.009 to −0.014 hip
   heights against W10's −0.05
   ([`retained/p5-quad-1-rebuilt-depth.json`](retained/p5-quad-1-rebuilt-depth.json)).
-  That is the contact under a stepping load, not a W10 pass: no policy
-  trained on this model has been evaluated.
+  That is the contact under a stepping load, not a W10 pass. The first
+  policy trained on this model (row 27) holds W10 on the five seeds that
+  stand (−0.015 to −0.003 HH, a foot at most 1.45 mm under), but it takes
+  no step, so the stepping load is still measured only by r14's policy
+  driven on the rebuilt model.
 - **Walk rounds 1–3 trained on a trainer whose servo physics disagreed
   with the engine's** (ADR-465). Their evaluations stand, and what they
   say about their rewards is weaker than their rows suggest.

@@ -756,6 +756,41 @@
     "horizon": 10
    },
    "film": "ready"
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "bf664d9bfc69-d430a9224345",
+   "written_at": 1790850136.1291351,
+   "label": "ot11 walk contract",
+   "weights": "walk_r15.cxpolicy",
+   "policy_sha256": "d430a92243459cee275d0d4b514386be91f69d1611439a464a46ac3366b7ba11",
+   "trained_by": "r15-stiffspring-clearfoot final",
+   "run_started_at": 1790848021.071135,
+   "accepted_revision": "bf664d9bfc69f6bba847fa16654ae0c55d3457b99f6d9cb95a2f1e1924c8ff47",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 5,
+    "W2": 5,
+    "W3": 10,
+    "W4-lateral": 5,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 10,
+    "W8-high": 10,
+    "W9": 10,
+    "W10": 5
+   },
+   "terminations": {
+    "horizon": 5,
+    "tipped": 5
+   },
+   "film": "ready"
   }
  ],
  "judges": [
