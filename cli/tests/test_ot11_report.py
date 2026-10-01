@@ -342,3 +342,21 @@ def test_the_margin_round_reads_its_w10_pass_as_the_margin():
     section = REPORT.split("## Remaining defects", 1)[1]
     assert "**A foot contact margin moves what the gait predicates read.**" in section
     assert "The pass is not a fix." in section
+
+
+def test_every_criterion_has_a_receipt_that_exists():
+    """C1: each done criterion of the charter has a row, and each row's receipts exist."""
+
+    section = REPORT.split("## Every criterion and its receipt", 1)[1].split("\n## ", 1)[0]
+    rows = {line.split("|")[1].strip(): line for line in section.splitlines()
+            if line.startswith("| ") and not line.startswith("| criterion")}
+    assert set(rows) == {"P1", "P2", "P3", "P4", "R1", "R2", "R3", "C1"}
+    for criterion, line in rows.items():
+        links = re.findall(r"\]\(([^)]+)\)", line)
+        assert links, criterion
+        for link in links:
+            assert (PROBE / link).is_file(), (criterion, link)
+    decisions = (REPO / "docs" / "DECISIONS.md").read_text(encoding="utf-8")
+    for number in set(re.findall(r"ADR-(\d+)", section)):
+        assert f"## ADR-{number} " in decisions, number
+    assert "SUITES_PENDING" not in section

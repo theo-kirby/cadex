@@ -9,6 +9,23 @@ held to a receipt under [`retained/`](retained/) by
 contract the evaluations are read against, is in [`README.md`](README.md).
 The owner ticks the criteria; this page does not.
 
+## Every criterion and its receipt
+
+One line per done criterion of the charter, each with the evidence it
+rests on. Every link is checked by `cli/tests/test_ot11_report.py`. This
+is a claim of evidence for critic review, not a tick.
+
+| criterion | evidence | receipts |
+|---|---|---|
+| P1 | The contract for walk, reach and balance was frozen in [`README.md`](README.md) before any ot11 run (ADR-454), with ten seeds each, the pass rule, the blind judge and its bar. `w2-2` fails the walk spec on stepping and slip, and Robin fails the balance spec on drift and heading; the judge's blind spot on slip is a recorded limit (ADR-463). | [`contract.json`](contract.json), [`retained/p1-w2-2.json`](retained/p1-w2-2.json), [`retained/p1-robin.json`](retained/p1-robin.json), [`retained/judge-w2-2-seed-1101.json`](retained/judge-w2-2-seed-1101.json), [`retained/judge-robin-seed-1101.json`](retained/judge-robin-seed-1101.json) |
+| P2 | The spec is declared in xscript beside the task (ADR-456); `cadex evaluate` writes the per-seed, per-predicate report with reward terms, terminations, the three metric families and the film (ADR-457, ADR-459); the dashboard shows it. The metrics are pinned on passing and failing fixtures in `test_evaluation_metrics.py`, where `w2-2` is a failing one, and the command in `cli/tests/test_evaluate.py`. | [`retained/p2-w2-2-evaluation.json`](retained/p2-w2-2-evaluation.json), [`retained/p2-robin-evaluation.json`](retained/p2-robin-evaluation.json) |
+| P3 | `assembly.goal` draws a goal per episode by one algorithm the engine and the trainer both run, the policy observes it and the trace records it (ADR-462); `test_dynamics_goal_trainer.py` fails if they drift. R2 trained on it, over held-out targets. | [`retained/r2-heron-1-targets.json`](retained/r2-heron-1-targets.json) |
+| P4 | The product agent runs one loop for every behaviour through four bridge tools and a detached supervisor; `cadex walk` stays as one scripted use (ADR-464). Reach ran five rounds and walk twenty-four, each revision citing the previous evaluation (*Every revision*, below). | [`retained/p4-heron-1-rounds.json`](retained/p4-heron-1-rounds.json), [`retained/p4-quad-1-rounds.json`](retained/p4-quad-1-rounds.json), [`retained/p4-robin-1-rounds.json`](retained/p4-robin-1-rounds.json) |
+| R1 | Confirmation 1, registered at `5841202e`: 10 of 10 on the frozen walk spec, on a model reopened through `cadex export` with no contact margin or gap, and the judge's bar met on 1101, 1105 and 1110 (10, 11, 12). Evaluation row 36. | [`retained/r1-confirm-1-registration.json`](retained/r1-confirm-1-registration.json), [`retained/r1-confirm-1-evaluation.json`](retained/r1-confirm-1-evaluation.json), [`retained/judge-r1-confirm-1-seed-1101.json`](retained/judge-r1-confirm-1-seed-1101.json) |
+| R2 | Confirmation 1: 10 of 10 on the frozen reach spec over targets drawn before any training, and the judge's bar met on every judged seed (12, 12, 12). Evaluation row 12. | [`retained/r2-confirm-1-registration.json`](retained/r2-confirm-1-registration.json), [`retained/r2-confirm-1-evaluation.json`](retained/r2-confirm-1-evaluation.json), [`retained/judge-r2-confirm-1-seed-1101.json`](retained/judge-r2-confirm-1-seed-1101.json) |
+| R3 | Confirmation 1: 10 of 10 on the frozen balance spec, shoves included, and the judge's bar met on every judged seed (12, 12, 11). Evaluation row 6. | [`retained/r3-confirm-1-registration.json`](retained/r3-confirm-1-registration.json), [`retained/r3-confirm-1-evaluation.json`](retained/r3-confirm-1-evaluation.json), [`retained/judge-r3-confirm-1-seed-1101.json`](retained/judge-r3-confirm-1-seed-1101.json) |
+| C1 | This page. At the confirmation revision (`4d2baa7d`) on 2026-10-01: `pixi run test-engine` 2529 passed, 61 skipped; `cli/tests`, CPU-only, 1288 passed, 1 skipped (the review server's private-network check, which needs `CADEX_REVIEW_HOST`). The packaged lifecycle gate last ran after ADR-470, the last engine change, and passed 23 of 23; no engine source has changed since (*Remaining defects*). | [`retained/ot11-runs.json`](retained/ot11-runs.json), [`retained/ot11-evaluations.json`](retained/ot11-evaluations.json) |
+
 ## Every training run
 
 Thirty-one runs have ended in ot11, twenty-nine attempts and two refused starts
