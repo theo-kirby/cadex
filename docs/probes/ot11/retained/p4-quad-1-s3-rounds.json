@@ -1,0 +1,727 @@
+{
+    "schema": "ot11-rounds-v1",
+    "project": "ot11-quad-1",
+    "standing": {
+        "runs_registered": 11,
+        "runs_ended": 11,
+        "evaluations": 13,
+        "passed": false
+    },
+    "ledger": [
+        {
+            "accepted_revision": "db1cfc9676b55ce99a2b9d9899bba87a2318d426ffd0a1af70f7700b44f2fe9c",
+            "at": 1790804125.5924795,
+            "budget_s": 2350.0,
+            "kind": "train_registered",
+            "reason": "Baseline for the goal-conditioned task. The w2-2 policy shuffled (W7 stance slip 49-81 %, W5 at most 3 steps, W10 feet down to -0.26 hip heights). This task reads the commanded speed and charges foot height error times foot speed, so a foot may only travel while lifted about 14 mm; it also charges feet sinking into the floor and diagonal feet out of sync. Expected: real, clear trot steps with low slip.",
+            "run": "r1-clearance",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "iterations": 1000,
+                "seed": 7
+            },
+            "task": "walk_task"
+        },
+        {
+            "at": 1790805668.038576,
+            "kind": "train_ended",
+            "policy_sha256": null,
+            "reason": "episodes collapsed: the last 50 iterations averaged at most 24.5 of 500 steps, against 492.2 early in the run. The policy is ending its own episodes, which means a surviving step is worth less than a termination: add a positive per-step reward (an alive bonus) and size the costs so standing still nets positive.",
+            "run": "r1-clearance",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "collapsed",
+            "wall_time_s": 1542.42
+        },
+        {
+            "accepted_revision": "8498db6e1ff5b6c30b47d18d4d1d1a001ac6043a5cb56731d9280a7cbc1c942e",
+            "at": 1790806025.6310081,
+            "failing": [
+                "W3 (10 of 10)",
+                "W5-share (10 of 10)",
+                "W6 (10 of 10)",
+                "W7 (10 of 10)",
+                "W10 (10 of 10)",
+                "W4-heading (8 of 10)",
+                "W9 (8 of 10)",
+                "W4-lateral (5 of 10)",
+                "W5-steps (5 of 10)",
+                "W1 (4 of 10)",
+                "W2 (4 of 10)",
+                "W8-low (3 of 10)",
+                "W8-high (2 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "8db0cb619fc4d07abf14bfec6e3d5131fe18a029b51bfbb1f7084efb4df343e1",
+            "report": "evaluations/8498db6e1ff5-8db0cb619fc4/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r1-clearance"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "9e3a1b9b3cdbaf855bc711aeae2e0041e909de6870baf8d66d0a1dd74bd43973",
+            "at": 1790806319.34302,
+            "budget_s": 2380.0,
+            "kind": "train_registered",
+            "reason": "Run 1 collapsed at iteration 568 because every step netted negative. Its best checkpoint failed all 10 seeds: W3 speed_ratio -0.05 to -1.46 (needs 0.75-1.25), W7 slip 0.48-0.90 (max 0.15), W10 foot lowest -0.11 to -0.19 hip heights (min -0.05), W6 clearance 0.040-0.071 (min 0.08). This run bounds every cost with tanh, raises the alive bonus to 3, widens the speed Gaussian and makes sinking below 2 mm quadratic, so survival pays and the policy can learn to step forward.",
+            "run": "r2-bounded",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "iterations": 800,
+                "seed": 11
+            },
+            "task": "walk_task"
+        },
+        {
+            "at": 1790808570.8575122,
+            "kind": "train_ended",
+            "policy_sha256": "1a0f0d28a2aabfcb06d1f033b1867b479ea1d2cafaa0b11bcc99409480a2ba36",
+            "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+            "run": "r2-bounded",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "finished",
+            "wall_time_s": 2251.49
+        },
+        {
+            "accepted_revision": "80ba9fb9905e6e5527e8c5fc3bbe1bc6e82a8168215db140c089a98bd88d7028",
+            "at": 1790808928.8950727,
+            "failing": [
+                "W3 (10 of 10)",
+                "W5-steps (10 of 10)",
+                "W5-share (10 of 10)",
+                "W6 (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-low (10 of 10)",
+                "W9 (10 of 10)",
+                "W10 (10 of 10)",
+                "W4-heading (5 of 10)",
+                "W4-lateral (1 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "1a0f0d28a2aabfcb06d1f033b1867b479ea1d2cafaa0b11bcc99409480a2ba36",
+            "report": "evaluations/80ba9fb9905e-1a0f0d28a2aa/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r2-bounded"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "27da0754432687127a0e2c6382d6a3e6ee863be2d7dab4f2957114c9f802f357",
+            "at": 1790809291.1449974,
+            "budget_s": 2380.0,
+            "kind": "train_registered",
+            "reason": "Run 2 failed all 10 seeds. W3 speed_ratio -1.22 to -2.06 (needs 0.75-1.25): it moves backwards at 114-144 mm/s whatever the command. W7 slip 0.56-0.63 (max 0.15). W5-steps 0-2 (min 4). W10 -0.11 to -0.13 (min -0.05). The eval knee joint-speed term implies ~360 deg/s RMS knee chatter, so the gait is vibration-driven sliding, which also explains why training scored +2.48/step against -1.45 in evaluation. This run charges hip and knee chatter hard (bounded), adds a landing-speed cost and strengthens the per-foot clearance/slip and trot-sync terms; expected: slower, real stepping that transfers.",
+            "run": "r3-nochatter",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "iterations": 800,
+                "seed": 23
+            },
+            "task": "walk_task"
+        },
+        {
+            "at": 1790811672.2867959,
+            "kind": "train_ended",
+            "policy_sha256": null,
+            "reason": "the wall-clock budget of 2380 s ran out before the last iteration.",
+            "run": "r3-nochatter",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "budget_exhausted",
+            "wall_time_s": 2381.11
+        },
+        {
+            "accepted_revision": "9f711fcaa4192ab3ff0d02c03dfdfead04a714c95d63fd3d0c3ee9ed4ec78d11",
+            "at": 1790812055.977384,
+            "failing": [
+                "W3 (10 of 10)",
+                "W5-share (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-low (10 of 10)",
+                "W9 (10 of 10)",
+                "W10 (10 of 10)",
+                "W6 (9 of 10)",
+                "W5-steps (7 of 10)",
+                "W4-heading (5 of 10)",
+                "W1 (1 of 10)",
+                "W4-lateral (1 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "102133e9310b05c3569a5b9354007dbd540cd47a4e8d8f9aebdd96861048d302",
+            "report": "evaluations/9f711fcaa419-102133e9310b/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r3-nochatter"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "fbb2237ee04f625d6e8f239e808f28c4acbcb6aac96ad9f5ade3a87ca9c381c0",
+            "at": 1790812298.5953522,
+            "budget_s": 2390.0,
+            "kind": "train_registered",
+            "reason": "Run 3 failed all 10 seeds. W3 speed_ratio -1.06 to -1.89 (needs 0.75-1.25), W7 slip 0.63-0.73 (max 0.15), W8-low duty 0.20-0.29 (min 0.40), W10 -0.11 to -0.20 (min -0.05). The knee joint-speed term was still -0.64/step in evaluation (~350 deg/s RMS chatter) despite being charged in training, and training scored +1.17/step against -2.6 evaluated. So the closed loop is unstable only in evaluation. This run removes the rate channels (joint dq, gyro) from the policy input and randomises joint damping 0.7-1.4x, so the policy cannot rely on high-gain rate feedback; expected: no knee chatter in evaluation and a gait that transfers.",
+            "run": "r4-anglesonly",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "iterations": 780,
+                "seed": 31
+            },
+            "task": "walk_task"
+        },
+        {
+            "at": 1790814481.8666644,
+            "kind": "train_ended",
+            "policy_sha256": "d2dcaf39ba21023227801317e95766e19172179bb9d1c18522a1535918a136df",
+            "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+            "run": "r4-anglesonly",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "finished",
+            "wall_time_s": 2183.25
+        },
+        {
+            "accepted_revision": "ce8d19639f13e556e201de42ed933ff2ff11e247302b44b4c69600c7c9317300",
+            "at": 1790814739.7449076,
+            "failing": [
+                "W3 (10 of 10)",
+                "W5-steps (10 of 10)",
+                "W5-share (10 of 10)",
+                "W6 (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-high (10 of 10)",
+                "W9 (10 of 10)",
+                "W10 (10 of 10)",
+                "W1 (1 of 10)",
+                "W2 (1 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "d2dcaf39ba21023227801317e95766e19172179bb9d1c18522a1535918a136df",
+            "report": "evaluations/ce8d19639f13-d2dcaf39ba21/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r4-anglesonly"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "ce8d19639f13e556e201de42ed933ff2ff11e247302b44b4c69600c7c9317300",
+            "at": 1790815481.3880777,
+            "failing": [
+                "W3 (10 of 10)",
+                "W5-steps (10 of 10)",
+                "W5-share (10 of 10)",
+                "W6 (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-high (10 of 10)",
+                "W9 (10 of 10)",
+                "W10 (10 of 10)",
+                "W1 (1 of 10)",
+                "W2 (1 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "d2dcaf39ba21023227801317e95766e19172179bb9d1c18522a1535918a136df",
+            "report": "evaluations/ce8d19639f13-d2dcaf39ba21/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r4-anglesonly"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "b2a04e2ea7248abc028fbbc643cf9bc65cc404b2fb0959bcdadeb86cc1cd2cae",
+            "at": 1790815849.4996467,
+            "budget_s": 2400.0,
+            "kind": "train_registered",
+            "reason": "r4 failed all 10 seeds by standing still: W5-steps 0 (min 4), W8-high duty 1.0 (max 0.85), W3 speed_ratio ~0.00 (0.75-1.25), W10 -0.085 to -0.13 (min -0.05); its sink term sat in tanh saturation (-1.87/step standing, no gradient) and the clearance terms charged every low foot motion, so stepping never paid. This run replaces clearance with per-foot swing pay / ground-slip cost, rescales sink onto its slope, and returns gyro and joint rates to the policy (their eval-only chatter was the MJX damping bug); expected: feet lift and step forward.",
+            "run": "r5-swing",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "iterations": 780,
+                "seed": 41
+            },
+            "task": "walk_task"
+        },
+        {
+            "at": 1790817949.348622,
+            "kind": "train_ended",
+            "policy_sha256": "6a7c89de9ade139024ea7964306eeceaf159bea2655cd40cf4cb08a9829cf70e",
+            "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+            "run": "r5-swing",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "finished",
+            "wall_time_s": 2099.82
+        },
+        {
+            "accepted_revision": "dee2391353b7c38dc7860cc1c40b47e339e1bc5d5a0d8b05da6b948f86c1f8b0",
+            "at": 1790818314.7921188,
+            "failing": [
+                "W5-share (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-low (10 of 10)",
+                "W9 (10 of 10)",
+                "W10 (10 of 10)",
+                "W5-steps (9 of 10)",
+                "W6 (2 of 10)",
+                "W3 (1 of 10)",
+                "W4-lateral (1 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "6a7c89de9ade139024ea7964306eeceaf159bea2655cd40cf4cb08a9829cf70e",
+            "report": "evaluations/dee2391353b7-6a7c89de9ade/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r5-swing"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "5c3392404bd08e513d9abe7add5f5883b0749fae3f03ada65c29310ce2fcb92c",
+            "at": 1790818509.4765792,
+            "budget_s": 2400.0,
+            "kind": "train_registered",
+            "reason": "r5 walks at the commanded speed (W3 9/10, speed_ratio 0.82-1.25) but only the front-left foot steps: W9 step_count_ratio 5.7-33 (max 1.5), W5-steps 1-6 (min 4), W8-low duty_min 0.16-0.25 (min 0.40), W7 slip 0.46-0.53 (max 0.15), W10 -0.14 to -0.21 (min -0.05); step_fl earned +88 while fr/rl/rr were negative and trot_sync cost only -0.16/step. This run raises the grounded-foot slip cost 0.5->1.2 and trot_sync -0.3->-1.0 so diagonal partners must lift together, and steepens sink (-3, /400); warm-started from r5 to keep its speed tracking. Expected: all four feet step in a diagonal trot with lower slip.",
+            "run": "r6-trot",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "init_from": "runs/r5-swing/train/walk_task.cxpolicy",
+                "init_from_parent_task": "runs/r5-swing/train/walk_task-task.json",
+                "init_from_task_change": "reward weights only: slip cost 0.5->1.2 inside step_*, trot_sync -0.3->-1.0, sink weight -2->-3 and scale 800->400",
+                "iterations": 760,
+                "seed": 53
+            },
+            "task": "walk_task"
+        },
+        {
+            "at": 1790820666.7892232,
+            "kind": "train_ended",
+            "policy_sha256": "0eaef24f7f325f50116fcf5c59a3716c82f7545b0c07cd591cf1d08c2953dc04",
+            "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+            "run": "r6-trot",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "finished",
+            "wall_time_s": 2157.29
+        },
+        {
+            "accepted_revision": "abebe83811342fe7aa1d91f503d94d598ba24ba903877a4105765272f8341fd1",
+            "at": 1790821026.4106243,
+            "failing": [
+                "W5-share (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-low (10 of 10)",
+                "W9 (10 of 10)",
+                "W10 (10 of 10)",
+                "W5-steps (8 of 10)",
+                "W6 (2 of 10)",
+                "W3 (1 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "0eaef24f7f325f50116fcf5c59a3716c82f7545b0c07cd591cf1d08c2953dc04",
+            "report": "evaluations/abebe8381134-0eaef24f7f32/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r6-trot"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "7dc4dc1cd327a8e876f22960a422d350742fbd50140756fc0100d14a8fc0a457",
+            "at": 1790821227.9755094,
+            "budget_s": 2400.0,
+            "kind": "train_registered",
+            "reason": "r6 tracks speed (W3 9/10, W4 10/10) but still holds one front foot raised: W8-low duty_min 0.23-0.27 (min 0.40), W9 step_count_ratio 6-39 (max 1.5), W5-steps 0-6 (min 4), W7 slip 0.28-0.32 (max 0.15), with step_rl/rr at -0.37/step each. The swing pay used world-frame foot speed, so a foot carried at body speed earned it while dodging slip and sink costs. This run pays swing only for foot speed relative to the body, charges a lifted foot that is not moving relative to the body, and raises grounded slip to 2.0; warm-started from r6. Expected: every foot cycles, duty ~0.5, lower slip.",
+            "run": "r7-relswing",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "init_from": "runs/r6-trot/train/walk_task.cxpolicy",
+                "init_from_parent_task": "runs/r6-trot/train/walk_task-task.json",
+                "init_from_task_change": "step_* terms rewritten: smooth lift indicator; swing pay on foot speed relative to body; hover cost for lifted feet at body speed; grounded slip coefficient 2.0",
+                "iterations": 760,
+                "seed": 67
+            },
+            "task": "walk_task"
+        },
+        {
+            "at": 1790822948.8399804,
+            "kind": "train_ended",
+            "policy_sha256": null,
+            "reason": "episodes collapsed: the last 50 iterations averaged at most 24.2 of 500 steps, against 500.0 early in the run. The policy is ending its own episodes, which means a surviving step is worth less than a termination: add a positive per-step reward (an alive bonus) and size the costs so standing still nets positive.",
+            "run": "r7-relswing",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "collapsed",
+            "wall_time_s": 1720.84
+        },
+        {
+            "accepted_revision": "d35b9080ec77dd0c90cc297e48698dc8256e2d39496682474665331d901192f4",
+            "at": 1790823279.402547,
+            "failing": [
+                "W5-share (10 of 10)",
+                "W8-low (10 of 10)",
+                "W9 (10 of 10)",
+                "W10 (10 of 10)",
+                "W7 (9 of 10)",
+                "W1 (6 of 10)",
+                "W5-steps (4 of 10)",
+                "W3 (3 of 10)",
+                "W4-lateral (2 of 10)",
+                "W6 (2 of 10)",
+                "W8-high (2 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "71128e61c033adfea3bc031321bf5cbd3b7c25b8ab396557216f5cfe91664991",
+            "report": "evaluations/d35b9080ec77-71128e61c033/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r7-relswing"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "abebe83811342fe7aa1d91f503d94d598ba24ba903877a4105765272f8341fd1",
+            "at": 1790825417.9725463,
+            "failing": [
+                "W5-share (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-low (10 of 10)",
+                "W9 (10 of 10)",
+                "W10 (10 of 10)",
+                "W5-steps (8 of 10)",
+                "W6 (2 of 10)",
+                "W3 (1 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "0eaef24f7f325f50116fcf5c59a3716c82f7545b0c07cd591cf1d08c2953dc04",
+            "report": "evaluations/abebe8381134-0eaef24f7f32/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r6-trot"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "602c9b458e554f57b7e521efc36a6ea03f574b3cfe1b89b2d4685f7c7cbfb852",
+            "at": 1790826064.6851408,
+            "budget_s": 2400.0,
+            "kind": "train_registered",
+            "reason": "r6 (best) failed all 10 seeds on W10 foot_lowest -0.09 to -0.175 HH (min -0.05), W8-low duty_min 0.23-0.27 (min 0.40), W9 step_count_ratio 6.3-39 (max 1.5), W7 slip 0.28-0.32 (max 0.15). Standing sink was already ~4.5 mm against the 4.8 mm limit. Sink scales with load over the foot's effective mass, and the old stance put the foot 27.5 mm forward of the knee on a ~9 g lever. MECHANISM change: stance hip 18 deg / knee -30 deg puts the foot 11 mm from the knee and 3 mm from the hip, about 5x the effective mass (HIP_MM 96.70 -> 106.95, weight unchanged). TASK change: swing pay uses foot speed relative to the body, plus a diagonal-trot term that pays one diagonal pair lifted while the other stands (a single raised foot earns nothing); yaw and heading merged. Fresh start because the mechanism changed and r7's warm start collapsed; standing still nets about +2.2/step. Expected: W10 within limit, and all feet cycling in a trot.",
+            "run": "r8-stance",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "iterations": 800,
+                "seed": 71
+            },
+            "task": "walk_task"
+        },
+        {
+            "accepted_revision": "2029ad2130b698e0cfd012ee17ceacd5502c59e8d57f826d241209babe67ba05",
+            "at": 1790827256.8468177,
+            "failing": [
+                "W3 (10 of 10)",
+                "W5-steps (10 of 10)",
+                "W5-share (10 of 10)",
+                "W6 (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-low (10 of 10)",
+                "W9 (10 of 10)",
+                "W10 (10 of 10)",
+                "W4-lateral (8 of 10)",
+                "W8-high (8 of 10)",
+                "W2 (7 of 10)",
+                "W4-heading (7 of 10)",
+                "W1 (4 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "96ff3b792f7a6f7252ba491ffe8dadc9fa8458a300a640d9861b6e4f2f4bd515",
+            "report": "evaluations/2029ad2130b6-96ff3b792f7a/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r8-stance"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "at": 1790828072.8585126,
+            "kind": "train_ended",
+            "policy_sha256": "749e0bcedb8e5a0283c924c96d14c11851ea1e3228b043d394c24d890424cda2",
+            "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+            "run": "r8-stance",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "finished",
+            "wall_time_s": 2008.15
+        },
+        {
+            "accepted_revision": "a0460e13b112e69722669fbae312fd3a44655999e669c055be446723ae8d2ad4",
+            "at": 1790828355.9742932,
+            "failing": [
+                "W3 (10 of 10)",
+                "W5-steps (10 of 10)",
+                "W5-share (10 of 10)",
+                "W6 (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-low (10 of 10)",
+                "W8-high (10 of 10)",
+                "W9 (10 of 10)",
+                "W10 (10 of 10)",
+                "W4-lateral (8 of 10)",
+                "W4-heading (7 of 10)",
+                "W2 (6 of 10)",
+                "W1 (2 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "749e0bcedb8e5a0283c924c96d14c11851ea1e3228b043d394c24d890424cda2",
+            "report": "evaluations/a0460e13b112-749e0bcedb8e/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r8-stance"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "bd3296168b035cc039c85f98d3f1aef42f866b9f096ca3331b74a19b1e3cb95e",
+            "at": 1790828650.0697083,
+            "budget_s": 2400.0,
+            "kind": "train_registered",
+            "reason": "r8 failed all 10 seeds. It held the fl/rr diagonal permanently raised to collect the constant trot pay (trot +0.81/step; W8-low duty_min 0.0 against min 0.40; W3 speed_ratio about 0 against 0.75-1.25). W10 stayed at -0.06 to -0.095 (min -0.05), so the stance change did not cut sink. MuJoCo's contact softness scales with the foot body's invweight0 (inverse mass averaged over directions), and that predicts r6's 4.1 mm standing sink, close to the 4.5 mm measured. MECHANISM change: steel-ball feet (7850 vs 1150 kg/m3, +8.9 g each), predicted to cut sink about 3.7x; stance reverted to 30/-60 (HIP_MM 96.7006, WEIGHT_N 5.0507 from success.scale). TASK change: trot term removed; swing pay stays relative to the body (so r6's held-up foot no longer earns it); grounded slip 1.2->1.5; alive 3->3.5. Warm-started from r6, which tracked speed (W3 9/10) on this same stance and observation set, and is estimated at about +0.5/step under this reward, so no collapse. Expected: W10 within -0.05, rear feet stop dragging (W7, W8-low, W9).",
+            "run": "r9-steelfoot",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "init_from": "runs/r6-trot/train/walk_task.cxpolicy",
+                "init_from_parent_task": "runs/r6-trot/train/walk_task-task.json",
+                "init_from_task_change": "mechanism: steel-ball feet (foot density 1150->7850); reward: swing pay on foot speed relative to body, yaw_rate merged into heading (same weights), grounded slip 1.2->1.5, alive 3->3.5",
+                "iterations": 800,
+                "seed": 83
+            },
+            "task": "walk_task"
+        },
+        {
+            "at": 1790828702.1282756,
+            "kind": "train_ended",
+            "policy_sha256": null,
+            "reason": "the trainer exited 1: A curriculum step may change the task the network is being trained AGAINST. It may not change what the network reads or emits -- those weights would mean something else.",
+            "run": "r9-steelfoot",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "failed",
+            "wall_time_s": 52.03
+        },
+        {
+            "accepted_revision": "bd3296168b035cc039c85f98d3f1aef42f866b9f096ca3331b74a19b1e3cb95e",
+            "at": 1790828718.910626,
+            "budget_s": 2400.0,
+            "kind": "train_registered",
+            "reason": "Same task and mechanism as r9-steelfoot, which the trainer refused to warm-start because the model changed. Motivated by r8's evaluation: W10 foot_lowest -0.06 to -0.095 HH (min -0.05) despite the stance change; W8-low duty_min 0.0 (min 0.40) from a permanently raised diagonal pair that collected the constant trot pay. Steel-ball feet (+8.9 g each) cut the foot's inverse mass about 3.7x, so predicted standing sink is about 1.2 mm against the 4.8 mm limit. The trot term is removed; swing pay is on foot speed relative to the body; grounded slip 1.5; alive 3.5 (the deterministic standing rollout nets +2.7/step). Fresh start, like r5, which learned to walk on this stance in 780 iterations. Expected: W10 passes and every foot steps (W7/W8/W9 improve).",
+            "run": "r10-steelfoot-fresh",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "iterations": 800,
+                "seed": 97
+            },
+            "task": "walk_task"
+        },
+        {
+            "at": 1790830928.6033027,
+            "kind": "train_ended",
+            "policy_sha256": "34f47b0332353ca8409ffc11cfbe9ef78537722c8f3a2c98c44ab35a5cde633a",
+            "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+            "run": "r10-steelfoot-fresh",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "finished",
+            "wall_time_s": 2209.67
+        },
+        {
+            "accepted_revision": "2cb0f0e5d80e2db71226a07c72dff41571dec4ac99d9b5f79c00793e3762af4c",
+            "at": 1790831284.27433,
+            "failing": [
+                "W3 (10 of 10)",
+                "W5-steps (10 of 10)",
+                "W5-share (10 of 10)",
+                "W6 (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-low (10 of 10)",
+                "W8-high (10 of 10)",
+                "W9 (10 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "34f47b0332353ca8409ffc11cfbe9ef78537722c8f3a2c98c44ab35a5cde633a",
+            "report": "evaluations/2cb0f0e5d80e-34f47b033235/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r10-steelfoot-fresh"
+            ],
+            "verdict": "fail"
+        },
+        {
+            "accepted_revision": "9bc793710d49ab87de53b432009f6da7ef566b6b6637716fe0a313087cb23532",
+            "at": 1790831521.5320432,
+            "budget_s": 2400.0,
+            "kind": "train_registered",
+            "reason": "r10 (steel-ball feet) passes W10 on all 10 seeds (foot_lowest -0.021 to -0.029 HH, min -0.05) and W1/W2/W4, but stands still: W3 speed_ratio about 0.00 (0.75-1.25), W5-steps 0 (min 4), W8-high duty_max 1.0 (max 0.85). Its reward terms show standing nets +2.17/step (alive 3.5, speed_error -0.75), against about +1.0 for an r6-quality walk under this reward, so standing was the optimum. The speed Gaussian (width 0.4) also gave no slope at rest. TASK change, reward only: speed_track 2->4 with width 0.4->0.6, speed_error -1->-2; a walk at the command now nets about +4/step against about +1.5 standing. Warm-started from r10 on the identical model, so it keeps the stable stance that passes W10; initial_std 0.5 reopens exploration (r10 ended at 0.17). Expected: W3 passes, feet start stepping (W5/W8), and W10 holds.",
+            "run": "r11-speedpay",
+            "schema": "cadex-loop-ledger-v1",
+            "settings": {
+                "checkpoint_every": 100,
+                "envs": 2048,
+                "init_from": "runs/r10-steelfoot-fresh/train/walk_task.cxpolicy",
+                "init_from_parent_task": "runs/r10-steelfoot-fresh/train/walk_task-task.json",
+                "init_from_task_change": "reward weights only: speed_track weight 2->4 and Gaussian width 0.4->0.6 of command; speed_error weight -1->-2",
+                "initial_std": 0.5,
+                "iterations": 760,
+                "seed": 109
+            },
+            "task": "walk_task"
+        },
+        {
+            "at": 1790833535.9992573,
+            "kind": "train_ended",
+            "policy_sha256": "f35fefd6a569f98048d632a36617b526fe8ad45a4ee607471e48377bb9915e60",
+            "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+            "run": "r11-speedpay",
+            "schema": "cadex-loop-ledger-v1",
+            "state": "finished",
+            "wall_time_s": 2014.44
+        },
+        {
+            "accepted_revision": "bfb59bb5d902fccf3f25c0718e0e5aada017e2bd93753c689bae14dce85058ff",
+            "at": 1790833896.0162034,
+            "failing": [
+                "W3 (10 of 10)",
+                "W5-steps (10 of 10)",
+                "W5-share (10 of 10)",
+                "W6 (10 of 10)",
+                "W7 (10 of 10)",
+                "W8-low (10 of 10)",
+                "W8-high (10 of 10)",
+                "W9 (10 of 10)"
+            ],
+            "kind": "evaluated",
+            "passed": 0,
+            "policy_sha256": "f35fefd6a569f98048d632a36617b526fe8ad45a4ee607471e48377bb9915e60",
+            "report": "evaluations/bfb59bb5d902-f35fefd6a569/evaluation.json",
+            "schema": "cadex-loop-ledger-v1",
+            "seeds": 10,
+            "task": "walk_task",
+            "trained_by_run": [
+                "r11-speedpay"
+            ],
+            "verdict": "fail"
+        }
+    ],
+    "turns": [
+        {
+            "prompt": "walk.s3.loop.prompt.txt",
+            "resume": false,
+            "exit_code": 0,
+            "seconds": 8807.2,
+            "standing_after": {
+                "runs_registered": 11,
+                "runs_ended": 11,
+                "evaluations": 13,
+                "passed": false
+            },
+            "turn": "turn-1",
+            "tool_calls": 65,
+            "by_tool": {
+                "train_status": {
+                    "calls": 11,
+                    "errors": 0,
+                    "longest_s": 900.1
+                },
+                "inspect": {
+                    "calls": 19,
+                    "errors": 1,
+                    "longest_s": 0.1
+                },
+                "evaluate": {
+                    "calls": 5,
+                    "errors": 0,
+                    "longest_s": 211.0
+                },
+                "describe_api": {
+                    "calls": 3,
+                    "errors": 0,
+                    "longest_s": 0.1
+                },
+                "set_params": {
+                    "calls": 8,
+                    "errors": 0,
+                    "longest_s": 76.7
+                },
+                "edit_script": {
+                    "calls": 10,
+                    "errors": 1,
+                    "longest_s": 74.9
+                },
+                "look": {
+                    "calls": 1,
+                    "errors": 0,
+                    "longest_s": 12.0
+                },
+                "train_start": {
+                    "calls": 4,
+                    "errors": 0,
+                    "longest_s": 0.4
+                },
+                "put_asset": {
+                    "calls": 4,
+                    "errors": 0,
+                    "longest_s": 0.1
+                }
+            }
+        }
+    ]
+}

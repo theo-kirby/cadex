@@ -11,7 +11,7 @@ The owner ticks the criteria; this page does not.
 
 ## Every training run
 
-Sixteen runs have ended in ot11, fifteen attempts and one refused start
+Seventeen runs have ended in ot11, sixteen attempts and one refused start
 (`r9-steelfoot`, row 15: its trainer exited before its first iteration).
 All went through the product's `train_start` tool, one GPU job at a time,
 with `--stop-on-collapse` on. Every one was registered before it launched: its settings, its seed, its
@@ -41,20 +41,21 @@ is that receipt.
 | 14 | walk | `ot11-quad-1` | `r8-stance` | 71 | 800 it × 2048 envs | — | 2,400 | `finished` | 800 | 2,008.15 | 1,858.5 |
 | 15 | walk | `ot11-quad-1` | `r9-steelfoot` | 83 | 800 it × 2048 envs | `r6-trot` | 2,400 | `failed` | 0 | 52.03 | — |
 | 16 | walk | `ot11-quad-1` | `r10-steelfoot-fresh` | 97 | 800 it × 2048 envs | — | 2,400 | `finished` | 800 | 2,209.67 | 2,060.4 |
+| 17 | walk | `ot11-quad-1` | `r11-speedpay` | 109 | 760 it × 2048 envs | `r10-steelfoot-fresh` | 2,400 | `finished` | 760 | 2,014.44 | 1,862.9 |
 
 | behaviour | runs | GPU time, s |
 |---|---|---|
 | balance | 1 | 900.57 |
 | reach | 5 | 4,447.41 |
-| walk | 10 | 18,606.07 |
-| **all** | **16** | **23,954.05** |
+| walk | 11 | 20,620.51 |
+| **all** | **17** | **25,968.49** |
 
 **How to read the two times.** *GPU time* is the supervisor's wall time
 from launch to exit; the trainer holds the GPU for all of it, so it is the
 time the charter counts, and it exists for every run. *The trainer's own
 time* is the figure in the trainer's receipt, which a trainer writes only
 when it saves its final policy. A run stopped at its wall-clock budget or on
-collapse has none. The difference, 148 to 202 s on the six walk runs that
+collapse has none. The difference, 148 to 202 s on the seven walk runs that
 have both, is time the supervisor measured outside the trainer's own clock.
 
 **Earlier figures on the README.** Rounds 1–4 of the walk, and every reach
@@ -66,7 +67,7 @@ and balance round, quote the GPU time above. Round 5's section quotes
 `entropy`, which reach rounds 3–5 set to 0. A warm start names the run whose
 policy it began from; `reach-r5` began from `reach-r4`'s iteration-475
 checkpoint and `r6-trot` from `r5-swing`'s final policy, and `r7-relswing` from
-`r6-trot`'s. Robin's ot9
+`r6-trot`'s, and `r11-speedpay` from `r10-steelfoot-fresh`'s. Robin's ot9
 baseline (`r3-ppo-1`) and ot10's `w2-2` are earlier runs measured as known
 negatives (P1), not ot11 training runs, and are not in this table.
 
@@ -74,12 +75,11 @@ negatives (P1), not ot11 training runs, and are not in this table.
 and in the totals because its supervisor ran for 52.03 s, but it is not an
 attempt (`attempt: false` in the receipt): it trained nothing. A run still
 training has no end time yet, so the receipt lists it under `in_progress`
-and in no total. When this was written that was `r11-speedpay`, warm-started
-from `r10-steelfoot-fresh`.
+and in no total. No run was in progress when this was last regenerated.
 
 ## Every evaluation
 
-Twenty-two evaluations are stored across the five ot11 projects, every one
+Twenty-three evaluations are stored across the five ot11 projects, every one
 written by `cadex evaluate` or the agent's `evaluate` tool (the same code)
 into the project's `evaluations/<key>/evaluation.json`.
 [`runner/eval_ledger.py`](runner/eval_ledger.py) reads those files, and the
@@ -115,6 +115,7 @@ predicate that did not pass on all of them.
 | 20 | walk | `ot11-quad-1` | `2029ad2130b6-96ff3b792f7a` | `r8-stance it 300` | fail | 0 of 10 | W1 4, W2 7, W3 10, W4-lateral 8, W4-heading 7, W5-steps 10, W5-share 10, W6 10, W7 10, W8-low 10, W8-high 8, W9 10, W10 10 | horizon 6, tipped 4 | yes |
 | 21 | walk | `ot11-quad-1` | `a0460e13b112-749e0bcedb8e` | `r8-stance final` | fail | 0 of 10 | W1 2, W2 6, W3 10, W4-lateral 8, W4-heading 7, W5-steps 10, W5-share 10, W6 10, W7 10, W8-low 10, W8-high 10, W9 10, W10 10 | horizon 8, tipped 2 | yes |
 | 22 | walk | `ot11-quad-1` | `2cb0f0e5d80e-34f47b033235` | `r10-steelfoot-fresh final` | fail | 0 of 10 | W3 10, W5-steps 10, W5-share 10, W6 10, W7 10, W8-low 10, W8-high 10, W9 10 | horizon 10 | yes |
+| 23 | walk | `ot11-quad-1` | `bfb59bb5d902-f35fefd6a569` | `r11-speedpay final` | fail | 0 of 10 | W3 10, W5-steps 10, W5-share 10, W6 10, W7 10, W8-low 10, W8-high 10, W9 10 | horizon 10 | yes |
 
 **How to read it.**
 - **Rows 1–4 are P1's known negatives**, read before any ot11 training
@@ -138,9 +139,12 @@ predicate that did not pass on all of them.
   printed precision (`retained/p4-quad-1-r10-evaluation.json`,
   `spec_block`). It passes W10 on every seed, the first walk policy to do
   so, and it stands still on three feet.
+- **Row 23 is valid** on the same checks
+  (`retained/p4-quad-1-r11-evaluation.json`, `spec_block`). It keeps W10 on
+  every seed and still takes no step: it rocks its body fore and aft in
+  place on three feet, which the doubled speed pay rewards.
 - `r9-steelfoot` has no row, because it never trained (see *Every
-  failure*). `r11-speedpay` was training when this was written, and has
-  neither a row here nor one in the run table.
+  failure*).
 
 ## Every judge score
 
@@ -199,6 +203,7 @@ shows whether it helped.
 | `r7-relswing` | swing paid on body-relative foot speed; warm start from r6 | r6: W8-low 0.23–0.27, front feet held up | 19 | 0 | mixed: slip 0.14–0.31, collapsed |
 | `r8-stance` | **mechanism**: stance hip 18°/knee −30° (base +10.25 mm); diagonal-trot term; fresh start | r6: W10 −0.175 to −0.09 HH, W8-low 0.23–0.27, W9 6.3–39, W7 0.28–0.32 | 21 | 0 | no: stands on one diagonal pair, W8-low 0.00; void |
 | `r10-steelfoot-fresh` | **mechanism**: steel-ball feet (foot 1.5 → 10.5 g), stance back to 30°/−60°; trot term removed, grounded slip 1.5, alive 3.5; fresh start | r8: W10 −0.095 to −0.06 HH, W8-low 0.00 from a diagonal pair held up for the trot pay | 22 | 0 | yes for W10 (−0.029 to −0.021, every seed); no for gait: stands on three feet, W3 ≈ 0.00 |
+| `r11-speedpay` | speed tracking 2 → 4 with its Gaussian widened 0.4 → 0.6 × command, speed error −1 → −2; warm start from r10 | r10: W3 ≈ 0.00, W5-steps 0, W8-high 1.0; standing nets +2.17 per step | 23 | 0 | no: W3 0.015–0.033, still no step; rocks in place, and speed pay rises from +0.03 to +1.0–1.65 per step |
 
 The reach rows are four consecutive design–train–evaluate–revise rounds,
 each motivated by the previous evaluation and each answered by the next;
@@ -210,7 +215,7 @@ the rows suggest.
 ## Every failure
 
 Each item names its receipt.
-- **Eighteen of 22 evaluations failed** (every row above except 5, 6, 11
+- **Nineteen of 23 evaluations failed** (every row above except 5, 6, 11
   and 12), and two of them are void.
 - **Two runs collapsed** and were stopped by `--stop-on-collapse`:
   `r1-clearance` after 569 iterations and `r7-relswing` after 538
@@ -224,9 +229,14 @@ Each item names its receipt.
   not change what the network reads, and the steel-foot model changed it.
   Its supervisor's status is in the project's
   `runs/r9-steelfoot/training-status.json`. `run_ledger.py` carries it as
-  row 15 of the run table with `attempt: false`, so the receipt counts 15
-  attempts in 16 runs. The agent re-registered the same task fresh as
+  row 15 of the run table with `attempt: false`, so the receipt counts 16
+  attempts in 17 runs. The agent re-registered the same task fresh as
   `r10-steelfoot-fresh`.
+- **Walk session 3 ended at 0 of 10 on all three of its runs**
+  (`r8-stance`, `r10-steelfoot-fresh`, `r11-speedpay`; rows 21–23,
+  `retained/p4-quad-1-s3-rounds.json`). The steel feet fixed W10, and no
+  round produced a step. The README's *Walk session 3 closes* says what the
+  session measured as a whole.
 - **Warm start was unreachable for reach r3.** The agent guessed five paths
   for `init_from_parent_task`, and `train_start` refused each; seven
   `train_start` calls errored in that session

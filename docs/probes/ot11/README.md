@@ -2257,3 +2257,144 @@ limit, up from −0.095 to −0.061. The worst foot sinks 2.8 mm after the
 settle. This is the result the agent predicted from inverse mass. As in
 round 8, it is measured on a policy that does not step, so whether it
 holds under a gait is still open.
+
+### Walk round 10: `r11-speedpay` keeps W10 and rocks in place
+
+Receipt:
+[`retained/p4-quad-1-r11-evaluation.json`](retained/p4-quad-1-r11-evaluation.json).
+
+| run | seed | settings | budget | ended | evaluated | seeds passed |
+|---|---|---|---|---|---|---|
+| `r11-speedpay` | 109 | 760 it × 2048 envs, warm-started from `r10-steelfoot-fresh`'s final policy, initial std 0.5 | 2,400 s | **finished**, all 760 iterations, 2,014.44 s supervised (1,862.9 s in the trainer) | `f35fefd6…` (final policy) | **0 of 10** |
+
+Every checkpoint and the final policy record the unchanged trainer,
+`97bc1d9a…`. The training reward began at +0.63 per step, dipped to −0.82,
+and ended at +2.04 (best +2.08 at iteration 750). The action std ended at
+0.36, against r10's 0.17.
+
+**What the agent changed, and why.** Its registration cites r10: W3 ≈ 0.00,
+W5-steps 0, W8-high 1.0, and standing at +2.17 per step against about
++1.0 for an r6-quality walk under that reward. The change is to the reward
+only: `speed_track` 2 → 4 with its Gaussian widened from 0.4 to 0.6 ×
+command, and `speed_error` −1 → −2. It predicted a walk at the command
+would net about +4 per step against +1.5 standing.
+
+**The warm start is allowed.** The model is r10's, byte-identical
+(`5e28d393…`). The two task bundles differ in three fields, the
+`speed_track` expression and weight and the `speed_error` weight, and in
+nothing the network reads or emits. The trainer, which refused r9's warm
+start across a mechanism change, accepted this one.
+
+**The evaluation is valid**, on the same checks as round 9. The evaluated
+revision, `bfb59bb5…` (script history 0061; 0060 is the same text),
+differs from the registered `9bc79371…` (0059) only in the policy line,
+`walk_r10` → `walk_r11` and its digest. The evaluated task `26f97c63…` is
+the one trained. The spec block's `HIP_MM = 96.7006` equals the rig's
+96.7006 and `WEIGHT_N = 5.05069617762` equals the rig's
+5.050696177620001 to eleven decimals. With comments set aside, the block
+tokenizes identically to
+[`retained/walk-spec-block.txt`](retained/walk-spec-block.txt) except for
+`WEIGHT_N`'s value. The report is
+`evaluations/bfb59bb5d902-f35fefd6a569/evaluation.json`.
+
+| predicate | seeds failing | range (round 9) |
+|---|---|---|
+| W1 completes, W2 tilt | 0, 0 | all complete; 9.3–11.8° (9.5–14.4°) |
+| **W3 tracks speed** | **10** | **0.015 to 0.033** (−0.001 to 0.013) |
+| W4-lateral, W4-heading | 0, 0 | 0.006–0.011, 9.5–12.4° (0.5–2.8°) |
+| **W5-steps, W5-share** | **10, 10** | **worst foot 0 steps; share 0.00** |
+| W6 clearance | 10 | no step to measure |
+| W7 slip | 10 | 0.81–0.89 (0.59–0.87) |
+| **W8-low, W8-high** | **10, 10** | **0.00, 1.00** |
+| W9 step balance | 10 | no foot steps, so it is undefined |
+| W10 in the floor | 0 | −0.043 to −0.026 hip heights (−0.029 to −0.021) |
+
+**Per foot, over all ten seeds:**
+
+| foot | steps | duty factor | slip share | lowest after settle, mm |
+|---|---|---|---|---|
+| FL | 0–1 | 0.92–0.97 | 0.59–0.71 | −1.5 to −0.6 |
+| FR | 0 | 1.00 (≥ 0.996) | 0.77–0.83 | −4.2 to −2.5 |
+| RL | 0 | 1.00 | 0.77–0.89 | −2.1 to −1.8 |
+| RR | 0 | 0.00 | 0.00 | +6.0 to +6.2 (never lower) |
+
+**The stronger speed term did not produce steps.** No foot takes more than
+one step on any seed, and the rear-right foot is held up for the whole
+episode on all ten, as in round 9. The film of seed 1101 shows the same
+three-footed posture in every frame, in the
+[overview](p4-quad-1-walk-r11-seed-1101-overview.png) and the
+[detail](p4-quad-1-walk-r11-seed-1101-detail.png). The mean forward speed
+is 1.4–2.1 mm/s against commands of 61–93 mm/s.
+
+**It rocks instead.** `speed_track` pays +1.0 to +1.65 per step on the ten
+seeds. A body at rest would earn 4·exp(−(1/0.6)²) = +0.25, and round 9's
+earned +0.03. The difference is fore-and-aft rocking. The tray's x velocity,
+differentiated from the trace at 50 Hz and divided by the command, has a
+median of −0.04 to +0.18 and a standard deviation of 0.47 to 0.84 on the
+ten seeds. It spends 17–36 % of the episode above half the command and
+16–28 % below minus half. The Gaussian pays more on average for a speed
+that swings around zero than for a steady zero, so the policy learned to
+swing. The tray velocity reconstructs 0.81–1.39 per step of the reported
+pay; the rest is the gap between the tray and the centre of mass the
+reward reads (receipt, `rocking`). Rocking also cost heading: W4-heading
+rose from 0.5–2.8° to 9.5–12.4°, still inside its 45° limit. Per step,
+`alive` +3.5, `speed_track` +1.30, `speed_error` −1.26 and diagonal sync
+−0.41 (medians) net +1.95 to +2.68 per step in evaluation, against +2.04
+at the end of training.
+
+**The agent read the same thing.** Its closing turn says the doubled and
+widened Gaussian "let the policy rock its body to farm instantaneous
+velocity peaks: +1.3/step of speed_track at 2% of command speed", and that
+a raised foot jiggled fore and aft also earns the swing pay. It proposes a
+convex speed cost, a squared error, so that oscillation costs more on
+average, and swing pay gated on body progress, started fresh or from r10.
+It marked the r11 reward as "known to be farmable" in its decision log.
+None of that has been trained.
+
+### Walk session 3 closes at 0 of 10 over three runs
+
+Session 3 ended after one turn of 8,807 s and 65 tool calls (5 `evaluate`,
+4 `train_start`, 11 `train_status`, 10 `edit_script`, 8 `set_params`, 19
+`inspect`, one `look`; one `inspect` and one `edit_script` errored). The
+driver stopped on the prompts' rule, three runs trained and evaluated:
+`r8-stance`, `r10-steelfoot-fresh` and `r11-speedpay`. `r9-steelfoot` was
+a refused start, not a run. The summary is
+[`retained/p4-quad-1-s3-rounds.json`](retained/p4-quad-1-s3-rounds.json).
+The session's GPU time was 2,008.15 + 52.03 + 2,209.67 + 2,014.44 =
+6,284.29 s, inside its 7,200 s bound. The walk's total is 20,620.51 s over
+eleven runs, ten of them attempts ([`REPORT.md`](REPORT.md)).
+
+| round | run | what the agent changed | worst-foot steps (W5) | W3 speed | W7 slip | W8-low duty | W10, hip heights | seeds passed |
+|---|---|---|---|---|---|---|---|---|
+| 8 | `r8-stance` | stance 18°/−30°; diagonal-trot pay; fresh | 0 | −0.12 to 0.15 | 0.71–1.00 | 0.00 | −0.095 to −0.061 | 0 (void) |
+| 9 | `r10-steelfoot-fresh` | steel-ball feet, stance back to 30°/−60°; trot pay removed, alive 3.5; fresh | 0 | −0.001 to 0.013 | 0.59–0.87 | 0.00 | **−0.029 to −0.021** | 0 |
+| 10 | `r11-speedpay` | speed pay 2 → 4, wider; speed error −1 → −2; warm from r10 | 0 | 0.015 to 0.033 | 0.81–0.89 | 0.00 | **−0.043 to −0.026** | 0 |
+
+**What the session measured, as a whole.**
+- **The mechanism lever worked on the predicate it was aimed at.** The
+  session was registered to lift session 2's ban on mechanism changes,
+  because W10 (−0.175 to −0.092 in round 6) had not moved under any
+  reward. The stance change alone moved it to −0.095 to −0.061 and did not
+  pass. The steel-ball feet passed it on every seed of both rounds that
+  used them. The agent's inverse-mass account predicted that direction
+  before the run.
+- **No round of the session produced a step.** In all three the worst foot
+  took 0 steps, W8-low was 0.00 and W5-share 0.00 on every seed, and the
+  robot did not travel (W3 at most 0.15). Session 2's rounds 5–7, on the
+  light feet, had stepped (W3 0.82–1.41, W8-low 0.16–0.29).
+- **Each reward found a stationary optimum, and each was a different
+  one.** Round 8 held one diagonal pair up to collect a trot pay that did
+  not ask the pairs to alternate. Round 9 stood on three feet because
+  `alive` outweighed every gait term. Round 10 rocked in place because a
+  concave speed reward pays variance. Each diagnosis is the agent's own,
+  from the previous evaluation's reward terms, and each was confirmed by
+  the next evaluation. That is P4's loop working; it is not R1.
+- **What is not measured.** Whether the 10.5 g feet make stepping harder
+  for these MG90S legs is open: every steel-foot policy has stood still,
+  and none was trained under a reward that made standing a loss. W10
+  under a real gait on steel feet is equally unmeasured.
+- **R1 stands at 0 of 10.** No walk evaluation of an ot11 policy, rows
+  13–23 of [`REPORT.md`](REPORT.md)'s evaluation table, has passed a
+  seed. Session 4, if one is registered, starts from the agent's proposal
+  above: a convex speed cost and swing pay gated on body progress, on the
+  steel-foot mechanism. It is not registered here.

@@ -273,15 +273,26 @@
    "trainer_s": 2060.418916648254,
    "policy_sha256": "34f47b0332353ca8409ffc11cfbe9ef78537722c8f3a2c98c44ab35a5cde633a",
    "attempt": true
-  }
- ],
- "attempts": 15,
- "in_progress": [
+  },
   {
    "project": "ot11-quad-1",
    "run": "r11-speedpay",
-   "started_at": 1790831521.552196
+   "seed": 109,
+   "envs": 2048,
+   "iterations": 760,
+   "init_from": "runs/r10-steelfoot-fresh/train/walk_task.cxpolicy",
+   "budget_s": 2400.0,
+   "task_sha256": "26f97c630fc1dd7ceb608fc44e410fa9bcebfa926632191d7d1ba08fa8204f9e",
+   "state": "finished",
+   "iterations_run": 760,
+   "started_at": 1790831521.552196,
+   "supervised_s": 2014.44,
+   "trainer_s": 1862.899202782195,
+   "policy_sha256": "f35fefd6a569f98048d632a36617b526fe8ad45a4ee607471e48377bb9915e60",
+   "attempt": true
   }
  ],
- "supervised_s_total": 23954.05
+ "attempts": 16,
+ "in_progress": [],
+ "supervised_s_total": 25968.49
 }
