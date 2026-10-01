@@ -477,15 +477,26 @@
    "trainer_s": 1964.1369805331342,
    "policy_sha256": "8c94fcd21f0e28ef8a19be690e4dfbfbcd6a459834ae906cbfe4aa2b2820c2fa",
    "attempt": true
-  }
- ],
- "attempts": 26,
- "in_progress": [
+  },
   {
    "project": "ot11-quad-1",
    "run": "r22-gentle-contact25",
-   "started_at": 1790869712.7114565
+   "seed": 221,
+   "envs": 2048,
+   "iterations": 750,
+   "init_from": "runs/r19-contact-sync/train/walk_task.cxpolicy",
+   "budget_s": 2350.0,
+   "task_sha256": "ce70f3dd01bcb97c1eb54b450674324f4dcaf85801dc0e52ff04c0b1bfdb11e0",
+   "state": "finished",
+   "iterations_run": 750,
+   "started_at": 1790869712.7114565,
+   "supervised_s": 1727.12,
+   "trainer_s": 1622.5335262860171,
+   "policy_sha256": "e91a397134ac50034740cf6810351be7c29b481660330c767e8ae90ac78f59d5",
+   "attempt": true
   }
  ],
- "supervised_s_total": 46370.91
+ "attempts": 27,
+ "in_progress": [],
+ "supervised_s_total": 48098.03
 }

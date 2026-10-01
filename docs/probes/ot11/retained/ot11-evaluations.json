@@ -953,6 +953,32 @@
     "horizon": 10
    },
    "film": "ready"
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "da95bfa94936-e91a397134ac",
+   "written_at": 1790871826.194954,
+   "label": "ot11 walk contract",
+   "weights": "walk_r22.cxpolicy",
+   "policy_sha256": "e91a397134ac50034740cf6810351be7c29b481660330c767e8ae90ac78f59d5",
+   "trained_by": "r22-gentle-contact25 final",
+   "run_started_at": 1790869712.7114565,
+   "accepted_revision": "da95bfa949368c971ba9a7184e9d001e4ea296a92b69bd3e59a8b4babe8b907d",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 6,
+   "failed": 4,
+   "void": 0,
+   "failing_predicates": {
+    "W2": 1,
+    "W7": 2,
+    "W8-low": 2,
+    "W9": 1
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready"
   }
  ],
  "judges": [
