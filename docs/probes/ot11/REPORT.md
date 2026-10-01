@@ -11,7 +11,7 @@ The owner ticks the criteria; this page does not.
 
 ## Every training run
 
-Twelve runs have been trained in ot11, all through the product's
+Thirteen runs have been trained in ot11, all through the product's
 `train_start` tool, one GPU job at a time, with `--stop-on-collapse` on.
 Every one was registered before it launched: its settings, its seed, its
 wall-clock budget and its reason are in its project's
@@ -36,13 +36,14 @@ is that receipt.
 | 10 | walk | `ot11-quad-1` | `r4-anglesonly` | 31 | 780 it × 2048 envs | — | 2,390 | `finished` | 780 | 2,183.25 | 2,032.9 |
 | 11 | walk | `ot11-quad-1` | `r5-swing` | 41 | 780 it × 2048 envs | — | 2,400 | `finished` | 780 | 2,099.82 | 1,897.6 |
 | 12 | walk | `ot11-quad-1` | `r6-trot` | 53 | 760 it × 2048 envs | `r5-swing` | 2,400 | `finished` | 760 | 2,157.29 | 2,004.1 |
+| 13 | walk | `ot11-quad-1` | `r7-relswing` | 67 | 760 it × 2048 envs | `r6-trot` | 2,400 | `collapsed` | 538 | 1,720.84 | — |
 
 | behaviour | runs | GPU time, s |
 |---|---|---|
 | balance | 1 | 900.57 |
 | reach | 5 | 4,447.41 |
-| walk | 6 | 12,615.38 |
-| **all** | **12** | **17,963.36** |
+| walk | 7 | 14,336.22 |
+| **all** | **13** | **19,684.20** |
 
 **How to read the two times.** *GPU time* is the supervisor's wall time
 from launch to exit; the trainer holds the GPU for all of it, so it is the
@@ -60,6 +61,7 @@ and balance round, quote the GPU time above. Round 5's section quotes
 `checkpoint_every`, the network size where the agent set it, and
 `entropy`, which reach rounds 3–5 set to 0. A warm start names the run whose
 policy it began from; `reach-r5` began from `reach-r4`'s iteration-475
-checkpoint and `r6-trot` from `r5-swing`'s final policy. Robin's ot9
+checkpoint and `r6-trot` from `r5-swing`'s final policy, and `r7-relswing` from
+`r6-trot`'s. Robin's ot9
 baseline (`r3-ppo-1`) and ot10's `w2-2` are earlier runs measured as known
 negatives (P1), not ot11 training runs, and are not in this table.

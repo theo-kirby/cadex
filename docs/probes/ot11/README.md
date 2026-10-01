@@ -1845,3 +1845,135 @@ charges a lifted foot that is not moving relative to the body, and raises
 the grounded-slip coefficient to 2.0. It is warm-started from `r6-trot`,
 seed 67, 760 iterations, 2,400 s. It is the session's third run and the
 seventh in the ledger, the last the pre-registration allows.
+
+### Walk round 7: `r7-relswing` collapsed, and its iteration-200 checkpoint ends six of ten episodes
+
+| run | seed | settings | budget | ended | evaluated policy | seeds passed |
+|---|---|---|---|---|---|---|
+| `r7-relswing` | 67 | 760 it × 2048 envs, warm-started from `r6-trot`'s final policy | 2,400 s | **collapsed**, stopped by `--stop-on-collapse` at iteration 537, 1,721 s supervised | `71128e61…` (checkpoint, iteration 200) | **0 of 10** |
+
+GPU wall time: 1,720.84 s (supervised, as in [`REPORT.md`](REPORT.md)). The
+trainer was the same file as rounds 5 and 6, `97bc1d9a…`, and all five
+checkpoints record it. The run saved no final policy. The trainer's stop
+message: "the last 50 iterations averaged at most 24.2 of 500 steps … The
+policy is ending its own episodes, which means a surviving step is worth
+less than a termination". The training reward was negative from the first
+iteration (−2.11 per step at iteration 0, best −1.80 at iteration 438). The
+logged episode length, averaged over 25 iterations, peaked at about 214
+steps near iteration 224 and fell to 20 by iteration 499.
+
+**The evaluation is valid.** The agent installed the iteration-200
+checkpoint as `walk_r7_200.cxpolicy` and evaluated it once, on revision
+`d35b9080…`. That revision differs from round 6's `abebe838…` only in the
+`step_*` reward expression and the policy weights. Its spec block equals
+`retained/walk-spec-block.txt`, the model is `ade106a6…`, the task it
+declares is the one the run trained on (`e31fe35d…`), and W10 is read after
+the settle (ADR-467). The report is
+`evaluations/d35b9080ec77-71128e61c033/evaluation.json`; the receipt is
+[`retained/p4-quad-1-r7-evaluation.json`](retained/p4-quad-1-r7-evaluation.json).
+After the evaluation the agent put the project back on round 6's policy and
+task (revision `abebe838…` again), as the best one evaluated.
+
+| predicate | seeds failing | range (round 6) |
+|---|---|---|
+| **W1 completes** | **6** (1101, 1102, 1103, 1105, 1107, 1109) | ended at steps 4–439 by the task's `collapsed` termination (0) |
+| W2 | 0 | tilt 2.9–28.4° (16–25°) |
+| W3 tracks speed | 3 (1102, 1107, 1109) | 0.88–1.41 (0.98–1.35) |
+| W4-lateral, W4-heading | 2, 0 | 0.08–0.24, 0.1–44° (0.05–0.19, 11–21°) |
+| W5-steps | 4 | worst foot 0–12 steps (0–6) |
+| W5-share | 10 | 0.00–0.24 (0.00–0.12) |
+| W6 clearance | 2 (1107, 1109) | 0.14–0.18 (0.11–0.15) |
+| W7 slip | 9 | 0.14–0.31 (0.28–0.32) |
+| W8-low duty factor | 10 | 0.23–0.29 (0.23–0.27) |
+| W8-high | 2 (1107, 1109) | 0.55–0.64 (0.64–0.67) |
+| W9 step balance | 10 | **2.8–8.5** (6.3–39) |
+| W10 in the floor | 10 | −0.190 to −0.125 hip heights (−0.175 to −0.092) |
+
+On 1107 and 1109 the episode ends at step 4, so those two seeds' gait
+numbers describe five control steps and are not a gait. Every failure of
+W3, W4-lateral, W6 and W8-high is on one of the six shortened seeds.
+
+**Per foot, over the four seeds that complete (1104, 1106, 1108, 1110):**
+
+| foot | steps (round 6, ten seeds) | duty factor | slip share | lowest after settle, mm |
+|---|---|---|---|---|
+| FL | 34–45 (33–39) | 0.25–0.30 | 0.16–0.21 | −16.9 to −8.1 |
+| FR | 22–27 (15–28) | 0.25–0.29 | 0.14–0.22 | −16.8 to −9.7 |
+| RL | **6–17** (2–6) | 0.54–0.62 | 0.27–0.31 | −14.1 to −7.9 |
+| RR | **8–13** (0–7) | 0.55–0.63 | 0.26–0.30 | −18.4 to −10.5 |
+
+**Round 6's open question cannot be answered as it was asked.** It asked
+whether paying swing only for foot speed relative to the body stops a foot
+being carried in the air. The run collapsed, so the evaluated policy is an
+early checkpoint, not the trained one. On the four seeds that complete,
+both front feet still spend about three quarters of the episode in the air
+(duty 0.25–0.30; W8-low fails on all ten seeds), while both rear feet step
+more than in round 6 and W9 falls from 6.3–39 to 2.8–7.5. That is still
+above its 1.5 limit. Every `step_*` term is negative on every completed
+seed, from −214 (FL) to −488 (RL) per episode, against `alive`'s +1,500,
+and the evaluation reward is −2.56 to −1.09 per step. That fits the
+trainer's diagnosis: a surviving step cost more than ending the episode.
+The film of seed 1101 is the
+[overview](p4-quad-1-walk-r7-seed-1101-overview.png) and the
+[detail](p4-quad-1-walk-r7-seed-1101-detail.png). On this seed the robot
+crosses the floor and is ended by the `collapsed` termination at step 391.
+
+**The agent's diagnosis**, from its closing message: the r6 policy "scored
+−2.1/step under the new reward from the start, so the policy learned to end
+its own episodes". It calls r7's idea "still right for the held-up-foot
+problem" and says it needs "a larger alive bonus or a fresh start". It
+proposes three changes for a next session:
+1. keep every step net positive, with the alive bonus raised to about 5;
+2. give the policy a gait clock, which it does not observe now;
+3. treat W10 as mostly a contact-physics limit: "Standing still on four
+   feet already sinks the feet about 4.5 mm against the 4.8 mm limit … a
+   stiffer contact or a different foot is a mechanism change I was not
+   allowed to make."
+
+The first matches the trainer's stop message. The third matches the
+measurement recorded above under "W10 at rest". Both are diagnoses from
+measurements, but neither has been tested.
+
+### Walk session 2 closes at 0 of 10 over three runs; seven rounds in all
+
+Session 2 ended after one turn of 8,221 s and 43 tool calls (4
+`evaluate`, 3 `train_start`, 10 `train_status`, 8 `edit_script`, one of
+which errored). The driver stopped on its own rule with seven runs
+registered, seven ended and eight stored evaluations, none passing. The
+summary is [`retained/p4-quad-1-s2-rounds.json`](retained/p4-quad-1-s2-rounds.json).
+The session's GPU time was 2,100 + 2,157 + 1,721 = 5,978 s. The walk's
+total over both sessions is 14,336 s ([`REPORT.md`](REPORT.md)).
+
+Every round's evaluation is on the same ten seeds, the same spec block and
+the same model:
+
+| round | run | what the agent changed, and why | worst-foot steps (W5) | W3 speed | W7 slip | W8-low duty | W9 balance | seeds passed |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `r1-clearance` | baseline: commanded speed, foot height error × foot speed, sink and diagonal sync costs | 0–8 | −1.46 to −0.05 (backwards) | 0.48–0.90 | 0.08–0.48 | 1.3–9.5 | 0 |
+| 2 | `r2-bounded` | round 1 collapsed: every cost bounded with tanh, alive bonus raised to 3 | 0–2 | −2.06 to −1.22 | 0.56–0.63 | 0.16–0.26 | 10.5 | 0 |
+| 3 | `r3-nochatter` | knee chatter seen in evaluation: hip and knee chatter charged, landing-speed cost added | 0–5 | −1.89 to −1.06 | 0.63–0.73 | 0.20–0.29 | 4.4–24 | 0 |
+| 4 | `r4-anglesonly` | rate inputs (joint rates, gyro) removed from the policy, joint damping randomised; first run on the ADR-465 trainer | 0 (stands) | 0.00–0.09 | 0.82–1.06 | 0.89–1.00 | — | 0 |
+| 5 | `r5-swing` | inputs restored; per-foot swing pay and grounded-slip cost | 1–6 | 0.82–1.25 | 0.46–0.53 | 0.16–0.25 | 5.7–33 | 0 |
+| 6 | `r6-trot` | stronger `trot_sync`, slip and sink costs, warm start | 0–6 | 0.98–1.35 | 0.28–0.32 | 0.23–0.27 | 6.3–39 | 0 |
+| 7 | `r7-relswing` | swing paid on body-relative foot speed; collapsed | 0–12 | 0.88–1.41 | 0.14–0.31 | 0.23–0.29 | 2.8–8.5 | 0 |
+
+Ranges are over the ten seeds; the per-round sections above give the
+seeds and the exceptions. What the seven rounds measured:
+- **Speed tracking was solved in round 5 and held.** It came after the
+  trainer fix (ADR-465) and the per-foot reward, not before.
+- **Slip fell by half from round 5 to round 6**, and stayed above W7's 0.15
+  on nine of ten seeds in round 7.
+- **No round moved W8-low above 0.30 or W10 above −0.09 hip heights.**
+  Every policy that walks keeps one or both front feet in the air for about
+  three quarters of the episode, and pushes a foot 6–18 mm into the floor.
+- **Each reward revision moved the imbalance between feet, but did not
+  remove it.** Round 5 stepped on the front-left foot alone, round 6 on
+  both front feet, and round 7's early checkpoint on all four, but unevenly.
+
+The revisions each cite the previous evaluation's numbers, and each next
+evaluation shows whether they helped. Rounds 5–7 are three consecutive
+rounds of that, which is what P4 asks for. The mechanism, the spec and the
+seeds did not change. The prompt did not let the agent change the
+mechanism, and it named that limit in its own diagnosis. **R1 is not met.**
+Any next walk session must be pre-registered before its first run, as
+session 2 was.

@@ -193,7 +193,23 @@
    "supervised_s": 2157.29,
    "trainer_s": 2004.1308034337126,
    "policy_sha256": "0eaef24f7f325f50116fcf5c59a3716c82f7545b0c07cd591cf1d08c2953dc04"
+  },
+  {
+   "project": "ot11-quad-1",
+   "run": "r7-relswing",
+   "seed": 67,
+   "envs": 2048,
+   "iterations": 760,
+   "init_from": "runs/r6-trot/train/walk_task.cxpolicy",
+   "budget_s": 2400.0,
+   "task_sha256": "e31fe35d6efc6cd400e3cd2d92d98e6155e29589270040432ac5a87acc92d5c2",
+   "state": "collapsed",
+   "iterations_run": 538,
+   "started_at": 1790821227.9996092,
+   "supervised_s": 1720.84,
+   "trainer_s": null,
+   "policy_sha256": null
   }
  ],
- "supervised_s_total": 17963.36
+ "supervised_s_total": 19684.2
 }
