@@ -41,26 +41,59 @@ def _ledger(root: Path, *rows: dict) -> None:
 def test_the_loop_is_over_on_a_pass_or_when_the_runs_are_spent(tmp_path: Path) -> None:
     rounds = _load("rounds")
     assert rounds.standing(tmp_path) == {
-        "runs_registered": 0, "runs_ended": 0, "evaluations": 0, "passed": False}
+        "runs_registered": 0, "runs_ended": 0, "runs_this_session": 0,
+        "settled_this_session": 0, "evaluations": 0, "passed": False}
     assert not rounds.over(rounds.standing(tmp_path), 4)
 
-    registered = {"kind": "train_registered", "run": "a"}
-    ended = {"kind": "train_ended", "run": "a", "state": "finished"}
-    failed = {"kind": "evaluated", "verdict": "fail"}
-    passed = {"kind": "evaluated", "verdict": "pass"}
+    def run(name: str, verdict: str) -> list[dict]:
+        return [{"kind": "train_registered", "run": name},
+                {"kind": "train_ended", "run": name, "state": "finished",
+                 "policy_sha256": name},
+                {"kind": "evaluated", "verdict": verdict, "policy_sha256": name}]
 
-    _ledger(tmp_path, registered, ended, failed)
+    _ledger(tmp_path, *run("a", "fail"))
     assert not rounds.over(rounds.standing(tmp_path), 4)
-    _ledger(tmp_path, registered, ended, failed, registered, ended, passed)
+    _ledger(tmp_path, *run("a", "fail"), *run("b", "pass"))
     assert rounds.over(rounds.standing(tmp_path), 4)
     # An earlier pass followed by a failure is not a pass.
-    _ledger(tmp_path, registered, ended, passed, registered, ended, failed)
+    _ledger(tmp_path, *run("a", "pass"), *run("b", "fail"))
     assert not rounds.over(rounds.standing(tmp_path), 4)
-    # Spent: as many evaluations as runs allowed, and nothing still training.
-    _ledger(tmp_path, *([registered, ended, failed] * 4))
+    # Spent: as many runs ended and evaluated as allowed, and nothing still training.
+    spent = [row for name in "abcd" for row in run(name, "fail")]
+    _ledger(tmp_path, *spent)
     assert rounds.over(rounds.standing(tmp_path), 4)
-    _ledger(tmp_path, *([registered, ended, failed] * 4), registered)
+    _ledger(tmp_path, *spent, {"kind": "train_registered", "run": "e"})
     assert not rounds.over(rounds.standing(tmp_path), 4)
+    # A run that ended with no policy is spent without an evaluation.
+    _ledger(tmp_path, *spent[:9], {"kind": "train_registered", "run": "d"},
+            {"kind": "train_ended", "run": "d", "state": "collapsed"})
+    assert rounds.over(rounds.standing(tmp_path), 4)
+    # A run that ended with a policy is not spent until that policy is evaluated.
+    _ledger(tmp_path, *spent[:11])
+    assert not rounds.over(rounds.standing(tmp_path), 4)
+
+
+def test_a_re_evaluation_does_not_use_up_a_round(tmp_path: Path) -> None:
+    """Walk session 6: the agent re-evaluated an earlier policy, the driver
+    counted that evaluation as a run, and the session stopped one run early."""
+    rounds = _load("rounds")
+    earlier = [{"kind": "train_registered", "run": "old"},
+               {"kind": "train_ended", "run": "old", "state": "finished", "policy_sha256": "old"},
+               {"kind": "evaluated", "verdict": "fail", "policy_sha256": "old"}]
+    again = {"kind": "evaluated", "verdict": "fail", "policy_sha256": "old"}
+    new = [{"kind": "train_registered", "run": "new"},
+           {"kind": "train_ended", "run": "new", "state": "finished", "policy_sha256": "new"},
+           {"kind": "evaluated", "verdict": "fail", "policy_sha256": "new"}]
+    _ledger(tmp_path, *earlier)
+    before = rounds.standing(tmp_path)["runs_ended"]
+    assert before == 1
+    _ledger(tmp_path, *earlier, again, again, *new)
+    state = rounds.standing(tmp_path, before)
+    assert state["evaluations"] == 4 and state["settled_this_session"] == 1
+    assert not rounds.over(state, 2)
+    newer = [{**row, "policy_sha256": "newer"} for row in new]
+    _ledger(tmp_path, *earlier, again, again, *new, *newer)
+    assert rounds.over(rounds.standing(tmp_path, before), 2)
 
 
 def test_a_transcript_reads_back_as_tool_calls_with_how_long_each_blocked(

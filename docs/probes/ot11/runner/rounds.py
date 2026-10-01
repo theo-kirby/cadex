@@ -57,13 +57,26 @@ def ledger(project: Path) -> list[dict]:
     return rows
 
 
-def standing(project: Path) -> dict:
-    """Where the loop is, read from the project's own ledger."""
+def standing(project: Path, ended_before: int = 0) -> dict:
+    """Where the loop is, read from the project's own ledger.
+
+    A session's runs are the ``train_ended`` rows after the first
+    ``ended_before``; one is settled once its policy has been evaluated, or
+    at once if it ended with no policy.  Evaluations are not counted: an
+    agent that re-evaluates an earlier policy has not trained a run.
+    """
     rows = ledger(project)
     evaluations = [row for row in rows if row.get("kind") == "evaluated"]
+    ended = [row for row in rows if row.get("kind") == "train_ended"]
+    scored = {row.get("policy_sha256") for row in evaluations}
+    session = ended[ended_before:]
     return {
         "runs_registered": sum(1 for row in rows if row.get("kind") == "train_registered"),
-        "runs_ended": sum(1 for row in rows if row.get("kind") == "train_ended"),
+        "runs_ended": len(ended),
+        "runs_this_session": len(session),
+        "settled_this_session": sum(
+            1 for row in session
+            if not row.get("policy_sha256") or row["policy_sha256"] in scored),
         "evaluations": len(evaluations),
         "passed": bool(evaluations) and evaluations[-1].get("verdict") == "pass",
     }
@@ -71,7 +84,8 @@ def standing(project: Path) -> dict:
 
 def over(state: dict, max_runs: int) -> bool:
     return state["passed"] or (
-        state["evaluations"] >= max_runs and state["runs_ended"] >= state["runs_registered"])
+        state["settled_this_session"] >= max_runs
+        and state["runs_ended"] >= state["runs_registered"])
 
 
 def turn(project: Path, out: Path, prompt: Path, *, resume: bool) -> int:
@@ -152,7 +166,8 @@ def main() -> int:
     parser.add_argument("--prompt", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--continue-prompt", type=Path, default=CONTINUE)
-    parser.add_argument("--max-runs", type=int, default=4)
+    parser.add_argument("--max-runs", type=int, default=4,
+                        help="runs this session may train and evaluate")
     parser.add_argument("--max-turns", type=int, default=4)
     parser.add_argument("--summarise", action="store_true")
     args = parser.parse_args()
@@ -165,6 +180,7 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     if (out / "registration.json").exists():
         parser.error(f"{out} already holds a registered session")
+    ended_before = standing(project)["runs_ended"]
     write(out / "registration.json", {
         "schema": "ot11-rounds-registration-v1",
         "project": project.name,
@@ -174,9 +190,11 @@ def main() -> int:
         "continue_prompt": {"file": args.continue_prompt.name,
                             "sha256": sha256(args.continue_prompt)},
         "max_runs": args.max_runs,
+        "runs_ended_before": ended_before,
         "max_turns": args.max_turns,
-        "stop_rule": "an evaluation passes on every seed, or max_runs runs have been trained "
-                     "and evaluated, or max_turns turns have ended",
+        "stop_rule": "an evaluation passes on every seed, or max_runs runs of this session "
+                     "have ended and been evaluated (re-evaluations count for nothing), "
+                     "or max_turns turns have ended",
         "registered_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     })
     for index in range(1, args.max_turns + 1):
@@ -185,7 +203,7 @@ def main() -> int:
         prompt = args.prompt if index == 1 else args.continue_prompt
         started = time.time()
         code = turn(project, folder, prompt, resume=index > 1)
-        state = standing(project)
+        state = standing(project, ended_before)
         write(folder / "turn.json", {"prompt": prompt.name, "resume": index > 1,
                                      "exit_code": code, "seconds": round(time.time() - started, 1),
                                      "standing_after": state})
