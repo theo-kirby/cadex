@@ -1580,3 +1580,68 @@ The session allows at most three more runs (seven in the ledger), of
 continue prompt still says "four runs in total". A second turn is not
 expected, but if one happens and stops at once, that is the driver's limit,
 not the agent's choice.
+
+### W10 at rest: the reset drop fails it, standing does not (measured, W10 unchanged)
+
+Round 4 failed W10 on all ten seeds while standing still, so the question
+was whether any policy could pass it. Two measurements answer it, and
+neither changes W10. The script is
+[`runner/w10_trust.py`](runner/w10_trust.py), and the receipt is
+[`retained/p1-walk-w10-trust.json`](retained/p1-walk-w10-trust.json). The
+limit on this quadruped is −4.84 mm (−0.05 × 96.70 mm).
+
+**Where each foot's lowest frame falls in round 4's ten traces.** The
+heights come from W10's own reader. A frame before the 1.0 s settle counts
+as the reset drop.
+
+| foot | lowest, mm | where (of 10 seeds) | stance before shove: lowest, mm | after shove: lowest, mm |
+|---|---|---|---|---|
+| FL | −12.70 to −8.21 | reset drop 10 | **−7.08 to −6.97** | −8.02 to −6.94 |
+| FR | −7.29 to −5.08 | reset drop 10 | −3.89 to −3.45 | −5.37 to −3.45 |
+| RL | −7.14 to −3.26 | reset drop 9, after shove 1 | −2.09 to −1.64 | −4.82 to −1.81 |
+| RR | −3.58 to −2.04 | reset drop 5, after shove 5 | −2.09 to −1.74 | −3.58 to −1.79 |
+
+The deepest frame is in the reset drop on every seed, between 0.06 s and
+0.38 s. But the front-left foot also stands 7.0 mm into the floor in
+steady stance on every seed. That is past the limit even if the drop is
+left out, so **round 4's W10 verdict does not depend on the drop.**
+
+**A passive standing rollout.** This is the evaluated model on CPU MuJoCo
+3.10.0, with no policy. It starts from the `solved` keyframe, every servo
+holds the solved pose (ctrl 0), it is dropped from a given height, and it
+runs for 10 s.
+
+| dropped from | worst foot, lowest, mm | W10 | at rest (5–10 s), front / rear, mm |
+|---|---|---|---|
+| 0 mm | −4.56 | pass | −2.80 / −4.31 |
+| 0.5 mm | −4.87 | fail | same |
+| 5 mm | −7.34 | fail | same |
+| 10 mm | −10.15 | fail | same |
+| 15 mm | −10.89 | fail | same |
+
+- **At rest, the robot passes W10, by 0.53 mm on its rear feet.** The
+  passive stance loads the rear feet more (−4.31 mm against −2.80 mm in
+  front). So round 4's −7.0 mm front-left stance is the policy's posture,
+  not the contact model's.
+- **A passive drop of 0.5 mm or more fails W10.** The walk spec's reset
+  draws a lift of 0–5 mm above the lift at which the tilt clears the floor,
+  and the ten evaluation seeds start 5.41 to 9.94 mm up. A robot that holds
+  its pose through the landing fails W10 on every evaluation seed, during
+  the first 0.4 s, before any gait.
+- **W10 is therefore passable only by a policy that cushions its landing.**
+  It is reachable in principle, because the servos can yield. But it is a
+  property of the reset, not of walking on the floor, which is what W10's
+  name and its decision paragraph say it measures. W3, W4 and W8 are read
+  after the 1.0 s settle. W10 is read over every frame.
+
+**This is not a contract change.** W10 stands as frozen, and every earlier
+verdict stands. Reading W10 after the settle, like W3, W4 and W8, would be
+a recorded decision under the rule above, and it would re-evaluate every
+earlier walk policy: `w2-2` and walk rounds 1–4. Robin's balance verdict
+does not read W10. Such a decision should land between session-2 rounds,
+not during one. Read after the settle, the two policies measured here
+would still fail W10. Round 4's front-left foot stands at −7.0 mm. `w2-2`
+reaches −21.29 mm on its front-right foot at 2.10 s and −17.58 mm on its
+front-left at 5.78 s, both well after the settle. Only its rear-left low
+(−8.36 mm at 0.72 s) falls in the drop, and its post-settle low on that
+foot is −8.08 mm.
