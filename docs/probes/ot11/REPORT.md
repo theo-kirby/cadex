@@ -24,7 +24,7 @@ is a claim of evidence for critic review, not a tick.
 | R1 | Confirmation 1, registered at `5841202e`: 10 of 10 on the frozen walk spec, on a model reopened through `cadex export` with no contact margin or gap, and the judge's bar met on 1101, 1105 and 1110 (10, 11, 12). Evaluation row 36. | [`retained/r1-confirm-1-registration.json`](retained/r1-confirm-1-registration.json), [`retained/r1-confirm-1-evaluation.json`](retained/r1-confirm-1-evaluation.json), [`retained/judge-r1-confirm-1-seed-1101.json`](retained/judge-r1-confirm-1-seed-1101.json) |
 | R2 | Confirmation 1: 10 of 10 on the frozen reach spec over targets drawn before any training, and the judge's bar met on every judged seed (12, 12, 12). Evaluation row 12. | [`retained/r2-confirm-1-registration.json`](retained/r2-confirm-1-registration.json), [`retained/r2-confirm-1-evaluation.json`](retained/r2-confirm-1-evaluation.json), [`retained/judge-r2-confirm-1-seed-1101.json`](retained/judge-r2-confirm-1-seed-1101.json) |
 | R3 | Confirmation 1: 10 of 10 on the frozen balance spec, shoves included, and the judge's bar met on every judged seed (12, 12, 11). Evaluation row 6. | [`retained/r3-confirm-1-registration.json`](retained/r3-confirm-1-registration.json), [`retained/r3-confirm-1-evaluation.json`](retained/r3-confirm-1-evaluation.json), [`retained/judge-r3-confirm-1-seed-1101.json`](retained/judge-r3-confirm-1-seed-1101.json) |
-| C1 | This page. At the final revision (`d24016fc`, after the stale-claim fix) on 2026-10-01: `pixi run test-engine` 2529 passed, 61 skipped; `cli/tests`, CPU-only, 1290 passed, 1 skipped (the review server's private-network check, which needs `CADEX_REVIEW_HOST`). The packaged lifecycle gate last ran after ADR-470, the last engine change, and passed 23 of 23; no engine source has changed since (*Remaining defects*). | [`retained/ot11-runs.json`](retained/ot11-runs.json), [`retained/ot11-evaluations.json`](retained/ot11-evaluations.json) |
+| C1 | This page. At the final revision (`2a4169d1`, after ADR-475, the last engine change) on 2026-10-01: `pixi run test-engine` 2543 passed, 61 skipped; `cli/tests`, CPU-only, 1290 passed, 1 skipped (the review server's private-network check, which needs `CADEX_REVIEW_HOST`); the packaged lifecycle gate, against the payload restaged from that revision, 23 passed of 23 (*Remaining defects*). | [`retained/ot11-runs.json`](retained/ot11-runs.json), [`retained/ot11-evaluations.json`](retained/ot11-evaluations.json) |
 
 ## Every training run
 
@@ -748,3 +748,15 @@ A defect fixed by decision is under *Every failure*, not here.
   evaluation void is engine source too. The payload was restaged with it,
   and the gate passed 23 of 23 again. Suites at that revision: test-engine
   2523 passed, 60 skipped; cli/tests 1271 passed, 1 skipped.
+  ADR-473 to ADR-475 (coupled export, coupled goal placement and coupled
+  contact) are engine source as well; the payload was restaged from
+  `2a4169d1` and the gate passed 23 of 23 against it.
+- **A coupled gripper commanded closed is unstable, and MJX's handling of
+  a coupling is unmeasured** (ADR-475). On the grip probe, a full-close
+  command drives the jaws to 244° against ±20° limits, with up to 10 mm of
+  jaw penetration; with contact off it still overshoots to 63.8°, and with
+  the coupling off it holds −20° cleanly. The first cause is the soft
+  `equality/joint` row on two 17 g jaws. Whether MJX 3.10 honours
+  `equality/joint` at all is not measured. No grip task is frozen and no
+  gripper has been trained, so no ot11 criterion rests on either; both
+  stand before any gripper training (the long-term fourth behaviour).
