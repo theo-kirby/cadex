@@ -42,7 +42,7 @@ def test_the_loop_is_over_on_a_pass_or_when_the_runs_are_spent(tmp_path: Path) -
     rounds = _load("rounds")
     assert rounds.standing(tmp_path) == {
         "runs_registered": 0, "runs_ended": 0, "runs_this_session": 0,
-        "settled_this_session": 0, "evaluations": 0, "passed": False}
+        "refused_this_session": 0, "settled_this_session": 0, "evaluations": 0, "passed": False}
     assert not rounds.over(rounds.standing(tmp_path), 4)
 
     def run(name: str, verdict: str) -> list[dict]:
@@ -94,6 +94,41 @@ def test_a_re_evaluation_does_not_use_up_a_round(tmp_path: Path) -> None:
     newer = [{**row, "policy_sha256": "newer"} for row in new]
     _ledger(tmp_path, *earlier, again, again, *new, *newer)
     assert rounds.over(rounds.standing(tmp_path, before), 2)
+
+
+def test_a_refused_start_does_not_use_up_a_round(tmp_path: Path) -> None:
+    """Walk session 7: ``r21-r19-continue`` failed before iteration 0 (a
+    task-change flag on an identical bundle), ``run_ledger.py`` marked it
+    ``attempt: false``, and the driver still counted it as one of the
+    session's runs.  A run that failed after training still counts."""
+    rounds = _load("rounds")
+
+    def ended(name: str, state: str, iterations: int | None) -> dict:
+        run = tmp_path / "runs" / name
+        run.mkdir(parents=True)
+        status = {"state": state, "iterations_run": iterations}
+        (run / "training-status.json").write_text(json.dumps(status), encoding="utf-8")
+        return {"kind": "train_ended", "run": name, "state": state, "policy_sha256": None}
+
+    good = [{"kind": "train_registered", "run": "a"},
+            {"kind": "train_ended", "run": "a", "state": "finished", "policy_sha256": "a"},
+            {"kind": "evaluated", "verdict": "fail", "policy_sha256": "a"}]
+    refusal = [{"kind": "train_registered", "run": "r"}, ended("r", "failed", 0)]
+    _ledger(tmp_path, *good, *refusal)
+    state = rounds.standing(tmp_path)
+    assert state["runs_this_session"] == 2 and state["refused_this_session"] == 1
+    assert state["settled_this_session"] == 1
+    assert not rounds.over(state, 2)
+    # A failure after the first iteration trained something: it is a run.
+    crashed = [{"kind": "train_registered", "run": "c"}, ended("c", "failed", 40)]
+    _ledger(tmp_path, *good, *refusal, *crashed)
+    state = rounds.standing(tmp_path)
+    assert state["refused_this_session"] == 1 and state["settled_this_session"] == 2
+    assert rounds.over(state, 2)
+    # No status to read is never forgiven.
+    _ledger(tmp_path, *good, {"kind": "train_registered", "run": "x"},
+            {"kind": "train_ended", "run": "x", "state": "failed", "policy_sha256": None})
+    assert rounds.over(rounds.standing(tmp_path), 2)
 
 
 def test_a_transcript_reads_back_as_tool_calls_with_how_long_each_blocked(

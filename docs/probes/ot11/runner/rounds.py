@@ -57,26 +57,46 @@ def ledger(project: Path) -> list[dict]:
     return rows
 
 
+def refused(project: Path, row: dict) -> bool:
+    """A run that failed before its first iteration trained nothing.
+
+    The same rule as ``run_ledger.py``'s ``attempt: false``, read from the
+    run's own status: ``failed`` with no iteration run.  A run whose status
+    cannot be read is counted, never forgiven.
+    """
+    if row.get("state") != "failed" or row.get("policy_sha256"):
+        return False
+    try:
+        status = json.loads((project / "runs" / str(row.get("run")) /
+                             "training-status.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return status.get("state") == "failed" and not status.get("iterations_run")
+
+
 def standing(project: Path, ended_before: int = 0) -> dict:
     """Where the loop is, read from the project's own ledger.
 
     A session's runs are the ``train_ended`` rows after the first
     ``ended_before``; one is settled once its policy has been evaluated, or
     at once if it ended with no policy.  Evaluations are not counted: an
-    agent that re-evaluates an earlier policy has not trained a run.
+    agent that re-evaluates an earlier policy has not trained a run.  Nor
+    is a refused start (``refused``): it is listed, and uses up nothing.
     """
     rows = ledger(project)
     evaluations = [row for row in rows if row.get("kind") == "evaluated"]
     ended = [row for row in rows if row.get("kind") == "train_ended"]
     scored = {row.get("policy_sha256") for row in evaluations}
     session = ended[ended_before:]
+    starts = [row for row in session if refused(project, row)]
     return {
         "runs_registered": sum(1 for row in rows if row.get("kind") == "train_registered"),
         "runs_ended": len(ended),
         "runs_this_session": len(session),
+        "refused_this_session": len(starts),
         "settled_this_session": sum(
-            1 for row in session
-            if not row.get("policy_sha256") or row["policy_sha256"] in scored),
+            1 for row in session if row not in starts and (
+                not row.get("policy_sha256") or row["policy_sha256"] in scored)),
         "evaluations": len(evaluations),
         "passed": bool(evaluations) and evaluations[-1].get("verdict") == "pass",
     }
@@ -193,7 +213,8 @@ def main() -> int:
         "runs_ended_before": ended_before,
         "max_turns": args.max_turns,
         "stop_rule": "an evaluation passes on every seed, or max_runs runs of this session "
-                     "have ended and been evaluated (re-evaluations count for nothing), "
+                     "have ended and been evaluated (re-evaluations and refused starts count "
+                     "for nothing), "
                      "or max_turns turns have ended",
         "registered_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     })

@@ -426,6 +426,15 @@ Each item names its receipt.
   evaluation was the 22nd and the driver ended the session after its
   first turn
   ([`retained/p4-quad-1-s6-preregistration.json`](retained/p4-quad-1-s6-preregistration.json)).
+  Fixed for session 7: the driver counts runs, not evaluations.
+- **Walk session 7 counts its refused start as one of its three runs.**
+  `r21-r19-continue` failed before iteration 0 (run row 27,
+  `attempt: false`), and the driver still counted it as a settled run, so
+  session 7 ends after `r21b` with two runs trained. The driver session 7
+  was launched with is the one it keeps. For any later session,
+  `runner/rounds.py` reads the run's status and counts a `failed` end with
+  no iteration as a refused start that uses up nothing, the same rule as
+  `run_ledger.py` (pinned by `test_a_refused_start_does_not_use_up_a_round`).
 - **Warm start was unreachable for reach r3.** The agent guessed five paths
   for `init_from_parent_task`, and `train_start` refused each; seven
   `train_start` calls errored in that session
