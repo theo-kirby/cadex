@@ -31114,3 +31114,56 @@ an engine change.
   four rows with the report explaining them.
 - Not taken: refusing in `cadex evaluate`. The contract is a probe document,
   and the engine does not read `docs/`.
+
+## ADR-473 — A coupled mechanism's equality row starts from MuJoCo's defaults, so gears, belts and screws export (2026-10-01)
+
+**Context.** ot11's long-term rung asks for a fourth behaviour, a gripper
+closing on a target pose, through the loop with no new code path. Measuring
+before pre-registering anything (`docs/probes/ot11/runner/grip_probe.py`), the
+smallest gripper the vocabulary allows has two jaws on parallel hinges, one
+`gears` coupling between them (1:1, counter-rotating) and one position servo.
+With that, the jaw opening is one number and a `point` goal on one jaw's tip
+states it. The live engine refused the script at `assembly.mjcf`:
+`changed eq_data by 1 relative; the accepted maximum is 1e-05`
+(`mjcf_field_drift`). The same refusal reproduces on the M2 gear-train fixture
+with no engine (0.5 at r1/r2 = 2). It also hits belts and screws. **On the current
+source, no coupled mechanism can be exported, so none can reach a task, a
+policy or a rollout.** The coupling tests built and
+simulated models, but none of them exported one.
+
+**Cause.** `_build_mujoco_model` wrote each coupling's `equality.data` as
+`[0.0] * 11` with the intercept and slope set. MuJoCo's XML parser stores the
+weld's `torquescale` default (1) in `data[10]` for every equality type, so the
+file reloaded with a 1 where the model held a 0. A joint equality never reads
+`data[10]`. The drift had no effect on the dynamics, and the exactness check
+was right to refuse it anyway: the file was not the model.
+
+**Decision.** The row starts from `list(equality.data)`, MuJoCo's own defaults
+(`[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1]`), and sets the intercept and slope. This
+is the same pattern the weld branch already uses for `torquescale`. The
+coupling laws, signs and ratios are unchanged. Only `eq_data[10]` moves, from
+0 to 1, and only on models that could not be exported before. So no retained
+bundle, digest or policy changes.
+
+**Consequences.**
+- `test_dynamics_coupled.py::test_a_coupled_mechanism_exports_as_the_model_it_simulated`,
+  parametrised over gears, belt and screw, fails on the old source (all three)
+  and passes on the new.
+- With the fix, the gripper probe is accepted live, and two more facts are
+  measured (`retained/grip-probe.json`). Both block pre-registering a grip
+  contract, and neither is fixed here:
+  1. **The goal draw ignores couplings.** `draw_episode_goals` sets only the
+     driven joints' `qpos`, so a gear-coupled follower stays at rest while the
+     contact rule and the target are read. On the ten frozen seeds, 3 of 20
+     targets (1102, 1105 and 1110, segment 1) are poses where the coupled jaws
+     overlap by 0.5, 4.2 and 4.3 mm. The draw saw a 13.8–15.8 mm gap at the
+     same driven angle.
+  2. **Gear-coupled jaws never touch each other.** The builder excludes
+     contact between the two components of every joint, couplings included
+     ("we are not simulating tooth contact"). So the coupled jaws pass through
+     each other, and no contact is reported at a 4.3 mm overlap. For a gear
+     train that exclusion is right. For a gripper it removes the one contact
+     that defines closing.
+- Not taken: rewriting the draw or the exclusion in the same unit. Each is a
+  change to what a seed draws or what a model collides with, and each needs
+  its own regression and its own decision.

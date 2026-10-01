@@ -2749,3 +2749,31 @@ W1–W10 on a model with no contact offset. Every judged seed meets the
 judge's bar. The policy was installed, verified and reopened through
 `cadex`. Every earlier run and evaluation is published in REPORT.md. The
 owner ticks R1; this page does not.
+
+## A fourth behaviour, measured before it is pre-registered (ADR-473)
+
+The long-term rung asks for a gripper closing on a target pose through the
+same loop, with no new code path. **No grip contract is frozen here yet**, and
+nothing above this section changed. Before freezing one, the actor measured
+whether the existing vocabulary can state the behaviour at all
+(`runner/grip_probe.py`, `retained/grip-probe.json`).
+
+The probe gripper has a grounded palm and two 80 mm jaws on parallel hinges
+of ±20°. A 1:1 `gears` coupling closes the jaws together, and one position
+servo drives jaw A. A `point` goal on jaw A's tip then fixes the whole pose.
+The spec is the reach vocabulary in arm lengths, on the ten evaluation seeds.
+
+- The engine refused the script at `assembly.mjcf`: every gear, belt and
+  screw model failed the export's exactness check on `eq_data[10]`. That is
+  fixed in the product (ADR-473), with a regression test. The script is now
+  accepted, and the coupling is live (jaw B follows −jaw A exactly).
+- **3 of the 20 targets drawn on the frozen seeds cannot be reached.** For
+  seeds 1102, 1105 and 1110, segment 1, the jaws at the coupled pose overlap
+  by 0.5, 4.2 and 4.3 mm. The draw leaves jaw B at rest, so it saw a
+  13.8–15.8 mm gap instead.
+- **The jaws never touch.** The model excludes contact between the two
+  components of every joint, couplings included, so the jaws pass through
+  each other and report no contact at a 4.3 mm overlap.
+
+A spec frozen on these draws would hold a policy to targets that cannot
+exist. So the grip contract waits for both gaps to be decided.

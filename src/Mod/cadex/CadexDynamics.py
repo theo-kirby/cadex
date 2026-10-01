@@ -3598,7 +3598,11 @@ def build_model(
         # "joint1/joint2" says nothing about which side is which.
         equality.name1 = str(coupling["dependent_joint"])
         equality.name2 = str(coupling["independent_joint"])
-        data = [0.0] * 11
+        # From MuJoCo's own defaults, not zeros: its XML parser stores the
+        # weld's torquescale default (1) in data[10] for every equality, so a
+        # zero there reloads as 1 and the export's exactness check refused
+        # every gear, belt and screw model (ADR-473). Unused by a joint row.
+        data = list(equality.data)
         data[0] = float(coupling["intercept"])
         data[1] = float(coupling["slope"])
         equality.data = data
