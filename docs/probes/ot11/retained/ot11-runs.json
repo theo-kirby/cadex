@@ -209,7 +209,23 @@
    "supervised_s": 1720.84,
    "trainer_s": null,
    "policy_sha256": null
+  },
+  {
+   "project": "ot11-quad-1",
+   "run": "r8-stance",
+   "seed": 71,
+   "envs": 2048,
+   "iterations": 800,
+   "init_from": null,
+   "budget_s": 2400.0,
+   "task_sha256": "639bfc0641193ae26068898a22167a96c00824770a097b86ce5ef09bdd0b8db8",
+   "state": "finished",
+   "iterations_run": 800,
+   "started_at": 1790826064.7048388,
+   "supervised_s": 2008.15,
+   "trainer_s": 1858.499885506928,
+   "policy_sha256": "749e0bcedb8e5a0283c924c96d14c11851ea1e3228b043d394c24d890424cda2"
   }
  ],
- "supervised_s_total": 19684.2
+ "supervised_s_total": 21692.35
 }

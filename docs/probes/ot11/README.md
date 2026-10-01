@@ -2043,3 +2043,129 @@ driver gained `--continue-prompt`, so this session's continuation,
 states this session's limit and mechanism rule. Session 2's continuation
 said "four runs in total". The shared continuation is unchanged and stays
 the default.
+
+### Walk round 8: `r8-stance` learned to stand on one diagonal pair, and its evaluation is void by one digit
+
+| run | seed | settings | budget | ended | evaluated policy | seeds passed |
+|---|---|---|---|---|---|---|
+| `r8-stance` | 71 | 800 it × 2048 envs, fresh start | 2,400 s | **finished**, all 800 iterations, 2,008 s supervised | `749e0bce…` (final policy) | **0 of 10, void** (see below) |
+
+GPU wall time: 2,008.15 s (supervised, as in [`REPORT.md`](REPORT.md));
+the trainer's own time was 1,858.5 s. The trainer was the same file as
+rounds 5–7, `97bc1d9a…`, and every checkpoint and the final policy record
+it. The training reward started at −2.14 per step, fell to −3.06, and
+climbed to −0.28 by iteration 800. It was never positive. The receipt is
+[`retained/p4-quad-1-r8-evaluation.json`](retained/p4-quad-1-r8-evaluation.json).
+
+**What the agent changed, and why.** Its registered reason cites round 6's
+W10 (−0.09 to −0.175 hip heights), W8-low, W9 and W7. It argues that foot
+sink scales with the load over the foot's effective mass, and that the old
+stance put the foot 27.5 mm forward of the knee on a light lever. The
+changes were:
+- **Mechanism:** the standing pose moved from hip 30°/knee −60° to hip
+  18°/knee −30°, which raises the base 10.25 mm (`HIP_MM` 96.70 →
+  106.95).
+- **Task:** swing is paid on foot speed relative to the body, a new
+  `trot` term pays one diagonal pair lifted while the other stands, and
+  yaw and heading are merged into one term.
+
+It began from scratch, because the mechanism had changed and r7's warm
+start had collapsed.
+
+**The mechanism change stayed inside session 3's bounds.**
+- The model went from `ade106a6…` to `3e6933ec…`. With every position and
+  orientation stripped, the two MJCF files are byte-identical: the same
+  `option` and `compiler` lines, the same floor plane, the same joint
+  ranges and damping, the same masses and inertias, and the same eight
+  actuators (force range and gains).
+- There are still four legs, and the feet are still `c_foot_fl/fr/rl/rr`.
+- In the assembly, the four solved-pose foot–floor contacts became
+  zero-gap clearances. This is a design-time check, and it is not in the
+  MJCF.
+- `HX` did not move, so `SPEC_LIFT` has the same value. The new stance puts
+  each foot about 3 mm from its hip in x, inboard of the `HX + 20` lever
+  the formula assumes. The drawn lift is therefore a little more than the
+  lift that just clears a 3° tilt. That is conservative, and the contract
+  is unchanged.
+
+**The evaluation is void under the mechanism rule.** The evaluated revision,
+`a0460e13…`, differs from the trained one, `602c9b45…`, only in the policy
+weights. Its spec block differs from
+[`retained/walk-spec-block.txt`](retained/walk-spec-block.txt) on one line,
+`HIP_MM = 106.9488` plus a trailing comment. `WEIGHT_N` equals the rig's
+4.69988665362. The rig reads hip height from the MJCF's hip anchors, which
+are written to six significant figures (0.106949 m), so the report states
+106.949. The rule asks for equality to the block's printed precision,
+which is four decimals: 106.9490 against 106.9488. The pre-registration
+says a difference voids the evaluation, so this one is void. It is neither
+a pass nor a fail.
+
+The size of the error is easy to bound. `HIP_MM` enters only the command
+range (0.6–1.0 × `HIP_MM` mm/s), so the drawn command moves by at most
+0.0002 mm/s, two parts per million. W6 and W10 divide by the rig's own
+hip height. The measurements below describe the policy well enough to
+diagnose it, but they are not a verdict. The agent's mid-run evaluation
+(below) carries the same line and is void too.
+
+The report is `evaluations/a0460e13b112-749e0bcedb8e/evaluation.json`, and
+W10 is read after the settle (ADR-467).
+
+| predicate | seeds failing | range (round 6) |
+|---|---|---|
+| W1 completes | 2 (1109, 1110) | tipped at steps 22 and 18 |
+| W2 tilt | 6 | 26.8–38.0° (16–25°) |
+| **W3 tracks speed** | **10** | **−0.12 to 0.15** (0.98–1.35) |
+| W4-lateral, W4-heading | 8, 7 | 0.22–0.83, 14–62° (0.05–0.19, 11–21°) |
+| **W5-steps, W5-share** | **10, 10** | **worst foot 0 steps; share 0.00** (0–6) |
+| W6 clearance | 10 | no step to measure |
+| W7 slip | 10 | 0.71–1.00 (0.28–0.32) |
+| **W8-low duty factor** | **10** | **0.00** (0.23–0.27) |
+| W8-high | 10 | 0.89–1.00 (0.64–0.67) |
+| W9 step balance | 10 | no foot steps, so it is undefined |
+| W10 in the floor | 10 | **−0.095 to −0.061 hip heights** (−0.175 to −0.092) |
+
+**Per foot, over the eight seeds that complete (1101–1108):**
+
+| foot | steps | duty factor | slip share | lowest after settle, mm |
+|---|---|---|---|---|
+| FL | 0–1 | 0.80–0.87 | 0.68–0.79 | −10.2 to −6.5 |
+| FR | 0–1 | 0.00 | 0.00–0.03 | +3.1 to +10.1 (never lower) |
+| RL | 0 | 0.00 | 0.01–0.03 | +3.9 to +5.9 (never lower) |
+| RR | 0–1 | 0.88–1.00 | 0.88–1.00 | −5.9 to −3.5 |
+
+**The policy stands on one diagonal pair and holds the other in the air
+for the whole episode.** FR and RL never get lower than 3 mm above the
+floor on any complete seed. FL and RR carry the robot and slide (slip
+share 0.68–1.00), and the robot yaws and drifts sideways rather than
+walking forward (W3 −0.12 to 0.15, W4-heading up to 62°).
+
+The reward explains it. The new `trot` term pays a pair lifted while the
+other stands, and it does not ask the pairs to alternate. It is the
+largest positive term after `alive`, at a median of +405 per episode. A
+pair held up for 500 steps collects it on every step and is never charged
+for not stepping. The film of seed 1101 shows the posture in every frame,
+in the [overview](p4-quad-1-walk-r8-seed-1101-overview.png) and in the
+[detail](p4-quad-1-walk-r8-seed-1101-detail.png) around the shove.
+
+**What the stance change did measure.** W10's range rose from −0.175 to
+−0.092 hip heights (round 6) to −0.095 to −0.061 here. That is closer to
+the −0.05 limit, but it does not reach it on any seed, and it is measured
+on a policy that stands on two feet rather than four. Whether the stance
+alone fixes W10 under a real gait is therefore still open.
+
+**The mid-run evaluation.** At iteration 300, while the run was still
+training, the agent installed checkpoint `walk_task.000300` as
+`walk_r8_300.cxpolicy` and evaluated it on revision `2029ad21…`. It failed
+0 of 10 (void by the same `HIP_MM` line). Four seeds tipped, W2 failed on
+seven, W3 on all ten (median speed ratio 0.06), and the worst foot took
+0–3 steps. The receipt keeps its predicate summary.
+
+**Driver standing.** The ledger now holds 11 evaluations, which equals the
+driver's `--max-runs 11`, and every registered run has ended. `rounds.py`
+checks its stop rule only between turns. If turn 1 ends with no further
+run registered, the driver will stop the session after one of its three
+runs, because the mid-run checkpoint evaluation counted against the
+driver's limit. The pre-registration counted one evaluation per run. That
+would be a driver interruption, not an attempt. When this round was
+published (04:21Z), turn 1 was still going: the agent had reset the stance
+parameters and turned the policy off to measure something.

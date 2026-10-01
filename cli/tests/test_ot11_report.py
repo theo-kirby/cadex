@@ -55,7 +55,7 @@ def _number(cell: str) -> float:
 
 def test_run_table_is_the_receipt():
     rows = _table("## Every training run")
-    assert len(rows) == len(RUNS["runs"]) == 13
+    assert len(rows) == len(RUNS["runs"]) == 14
     for index, (row, run) in enumerate(zip(rows, RUNS["runs"]), 1):
         warm = run["init_from"].split("/")[1] if run["init_from"] else None
         assert row[0] == str(index)

@@ -11,7 +11,7 @@ The owner ticks the criteria; this page does not.
 
 ## Every training run
 
-Thirteen runs have been trained in ot11, all through the product's
+Fourteen runs have been trained in ot11, all through the product's
 `train_start` tool, one GPU job at a time, with `--stop-on-collapse` on.
 Every one was registered before it launched: its settings, its seed, its
 wall-clock budget and its reason are in its project's
@@ -37,13 +37,14 @@ is that receipt.
 | 11 | walk | `ot11-quad-1` | `r5-swing` | 41 | 780 it × 2048 envs | — | 2,400 | `finished` | 780 | 2,099.82 | 1,897.6 |
 | 12 | walk | `ot11-quad-1` | `r6-trot` | 53 | 760 it × 2048 envs | `r5-swing` | 2,400 | `finished` | 760 | 2,157.29 | 2,004.1 |
 | 13 | walk | `ot11-quad-1` | `r7-relswing` | 67 | 760 it × 2048 envs | `r6-trot` | 2,400 | `collapsed` | 538 | 1,720.84 | — |
+| 14 | walk | `ot11-quad-1` | `r8-stance` | 71 | 800 it × 2048 envs | — | 2,400 | `finished` | 800 | 2,008.15 | 1,858.5 |
 
 | behaviour | runs | GPU time, s |
 |---|---|---|
 | balance | 1 | 900.57 |
 | reach | 5 | 4,447.41 |
-| walk | 7 | 14,336.22 |
-| **all** | **13** | **19,684.20** |
+| walk | 8 | 16,344.37 |
+| **all** | **14** | **21,692.35** |
 
 **How to read the two times.** *GPU time* is the supervisor's wall time
 from launch to exit; the trainer holds the GPU for all of it, so it is the
