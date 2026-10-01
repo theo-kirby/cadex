@@ -152,6 +152,7 @@ def spec(predicates=BALANCE, **overrides):
         "label": "", "predicates": [dict(row) for row in predicates],
         "seeds": list(SEEDS), "feet": [], "tip": None, "episode_seconds": None,
         "randomisation": None, "reset_variation": None, "disturbance": None,
+        "scale": None,
     }
     declared.update(overrides)
     return declared
@@ -417,6 +418,56 @@ def test_what_the_spec_names_is_checked_against_the_model() -> None:
     assert refusal(
         spec(tip={"body": "body", "local_mm": [0.0, 0.0, 0.0]})
     ).reason == "evaluation_tip_is_not_driven"
+
+
+# -- a spec that says what it was written for ------------------------------
+
+def test_the_scale_keys_are_the_apis() -> None:
+    from cadex_assembly_api import _SUCCESS_SCALE_KEYS
+
+    assert tuple(_SUCCESS_SCALE_KEYS) == dyn.SUCCESS_SCALE_KEYS
+    _model, task = bundle(spec())
+    assert tuple(task["success"]["scale"]) == dyn.SUCCESS_SCALE_KEYS
+    # Stating nothing writes the block it always did.
+    assert "stated_scale" not in task["success"]
+
+
+def test_a_stated_scale_that_matches_the_mechanism_is_carried() -> None:
+    _model, task = bundle(spec(GAIT, feet=["front", "rear"]))
+    measured = task["success"]["scale"]
+    stated = {"hip_height_mm": measured["hip_height_mm"],
+              "weight_n": measured["weight_n"]}
+    _model, judged = bundle(spec(GAIT, feet=["front", "rear"], scale=stated))
+    assert judged["success"]["stated_scale"] == stated
+    assert judged["success"]["scale"] == measured
+
+
+def test_a_stale_scale_digit_is_refused_with_the_measured_values() -> None:
+    """ot11 round 8: a hip height off in its fourth decimal voided an evaluation.
+
+    The script said ``HIP_MM = 106.9488`` and the rig measured 106.949; the
+    commanded speeds were drawn from the stale constant. Stated, that is a
+    refusal at declaration, naming what to copy, instead of a void found by
+    a reader after a GPU run.
+    """
+
+    _model, task = bundle(spec(GAIT, feet=["front", "rear"]))
+    measured = task["success"]["scale"]
+    off = measured["hip_height_mm"] * (1.0 - 2.0e-6)
+    error = refusal(spec(GAIT, feet=["front", "rear"], scale={
+        "hip_height_mm": off, "weight_n": measured["weight_n"],
+    }))
+    assert error.reason == "success_scale_mismatch"
+    assert set(error.observed["stale"]) == {"hip_height_mm"}
+    assert error.observed["stale"]["hip_height_mm"]["measured"] == measured["hip_height_mm"]
+    assert error.observed["measured"] == measured
+    assert repr(measured["hip_height_mm"]) in str(error)
+
+
+def test_a_scale_the_mechanism_has_no_measure_of_is_refused() -> None:
+    error = refusal(spec(scale={"arm_length_mm": 120.0}))
+    assert error.reason == "success_scale_mismatch"
+    assert error.observed["stale"]["arm_length_mm"]["measured"] is None
 
 
 # -- a spec is not part of what the task is ---------------------------------

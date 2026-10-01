@@ -258,6 +258,32 @@ def test_seeds_are_distinct_non_negative_integers(seeds, says) -> None:
     assert says in str(refusal.value)
 
 
+def test_a_spec_may_state_the_scale_it_was_written_for() -> None:
+    """Checked by the engine against the model; here only its shape."""
+
+    spec = _api().success(
+        BALANCE, seeds=SEEDS, scale={"weight_n": 4.7, "hip_height_mm": 96.7006}
+    )
+    assert dict(spec.properties["scale"]) == {"weight_n": 4.7, "hip_height_mm": 96.7006}
+    assert "scale" not in _api().success(BALANCE, seeds=SEEDS).properties
+
+
+@pytest.mark.parametrize(
+    "scale, says",
+    [
+        ({}, "at least one of"),
+        ([96.7], "at least one of"),
+        ({"hip_mm": 96.7}, "unknown keys ['hip_mm']"),
+        ({"hip_height_mm": 0.0}, "scale.hip_height_mm"),
+        ({"weight_n": "heavy"}, "scale.weight_n"),
+    ],
+)
+def test_a_malformed_scale_is_refused(scale, says) -> None:
+    with pytest.raises(ValueError) as refusal:
+        _api().success(BALANCE, seeds=SEEDS, scale=scale)
+    assert says in str(refusal.value)
+
+
 def test_a_tip_offset_without_a_tip_is_refused() -> None:
     with pytest.raises(ValueError) as refusal:
         _api().success(BALANCE, seeds=SEEDS, tip_offset_mm=[0, 0, 40])

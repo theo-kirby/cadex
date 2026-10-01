@@ -30875,3 +30875,54 @@ Receipt: `docs/probes/ot11/retained/p1-walk-w10-reread.json`.
   settled depth.
 - One metric's window changes. No protocol op, payload file list, shell
   file or dependency changes. Nothing removed.
+
+## ADR-468 — A success spec may state the scale it was written for, and the engine refuses it when the mechanism measures otherwise (2026-10-01)
+
+**Context.** A spec written in a mechanism's own scale carries that scale as
+constants in the script: the ot11 walk spec draws its commanded speed from
+0.6–1.0 × `HIP_MM` mm/s and its shoves from `WEIGHT_N`. The engine already
+measures both, as the bundle's `success.scale`, but nothing compared the
+script's constants with them. In walk round 8 the product agent raised the
+base 10.25 mm, set `HIP_MM = 106.9488`, and the rig measured 106.949. The
+evaluation, and the iteration-300 one before it, were void under the
+pre-registered mechanism rule, and that was found by a reader after
+2,008 s of GPU time (record `rough-bell-4381`). The engine could have said
+so when the script was written.
+
+**Decision.** `assembly.success(..., scale={...})` names any of `mass_kg`,
+`weight_n`, `com_height_mm`, `hip_height_mm` and `arm_length_mm`, the keys
+of the `scale` block. When the task is declared, each stated value is
+compared with the measured one. If they differ by more than one part in a
+million, or the mechanism has no measure of the key (`None`), the script is
+refused with `success_scale_mismatch`. The refusal names the stated and
+measured values, so the fix is a copy. One part in a million is a mistyped
+or stale digit, never physics: the MJCF writes the hip anchors to six
+significant figures, and a value copied from the rig agrees with itself. An
+agreeing statement is carried in the spec block as `stated_scale`. With no
+statement, nothing is checked and the block is the one it always was.
+
+It is a declaration, not a derivation. The script cannot read the measured
+scale before the model is built, so the constants stay where they are, and
+the spec says which of them are scale. The check is the same for any
+behaviour: a reach spec in arm lengths or a balance spec in body weights
+states them the same way.
+
+**Where it is checked.** At declaration, not at `cadex evaluate`. An
+evaluation plays the bundle of an accepted revision, and a spec that
+disagreed with its mechanism is now never accepted. A check at evaluation
+time would find the same thing one GPU run later. The evaluation report
+carries the bundle's spec block, so `stated_scale` appears in it.
+
+**Consequences.**
+- Opt-in, so no existing script, bundle or policy changes, and ot11 walk
+  session 3, running when this landed, is unaffected unless its agent
+  states a scale. Its `cadexd` imports the engine from the source tree, so
+  the option became available to it when the source changed (the same
+  route as ADR-467).
+- No protocol op, payload file list, shell file or dependency changes. A
+  spec is not part of what a task is (ADR-134), so no task digest moves.
+- Tests: `test_success_spec_api` (shape and refusals) and
+  `test_success_spec_model` (agreement carried, a 2 ppm hip-height digit
+  refused with the measured values, an unmeasured key refused, the key
+  tuple equal on both sides). All fail on the old source.
+  `test_success_spec_live` covers both outcomes through the worker.

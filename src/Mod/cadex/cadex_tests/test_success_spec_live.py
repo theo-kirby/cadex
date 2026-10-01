@@ -204,3 +204,39 @@ def test_a_predicate_on_the_reward_or_a_channel_fails_the_script_live(
         assert "max_tilt_deg" in text
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_a_stated_scale_is_checked_against_the_mechanism_live() -> None:
+    """Through the worker: carried when it agrees, refused when it does not."""
+
+    root = Path(tempfile.mkdtemp(prefix="success-live-scale-"))
+    try:
+        written = _write(SCRIPT, root)
+        assert written["ok"] is True, json.dumps(written)[:4000]
+        measured = json.loads(
+            Path(written["display"]["job"]["artifact_path"]).read_text(encoding="utf-8")
+        )["success"]["scale"]
+        hip, weight = measured["hip_height_mm"], measured["weight_n"]
+
+        def stated(hip_mm: float) -> str:
+            return SCRIPT.replace(
+                '    label="stays put",\n',
+                f'    scale={{"hip_height_mm": {hip_mm!r}, "weight_n": {weight!r}}},\n'
+                '    label="stays put",\n',
+            )
+
+        assert stated(hip) != SCRIPT
+        agreed = _write(stated(hip), Path(tempfile.mkdtemp(dir=root)))
+        assert agreed["ok"] is True, json.dumps(agreed)[:4000]
+        success = json.loads(
+            Path(agreed["display"]["job"]["artifact_path"]).read_text(encoding="utf-8")
+        )["success"]
+        assert success["stated_scale"] == {"hip_height_mm": hip, "weight_n": weight}
+
+        stale = _write(stated(round(hip * (1.0 - 2.0e-6), 6)), Path(tempfile.mkdtemp(dir=root)))
+        assert stale["ok"] is False, json.dumps(stale)[:2000]
+        text = json.dumps(stale)
+        assert "success_scale_mismatch" in text
+        assert "hip_height_mm" in text
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

@@ -5030,6 +5030,10 @@ def _success_input(
         "reset_variation": None,
         "disturbance": None,
         "goal": None,
+        "scale": (
+            None if properties.get("scale") is None
+            else {str(k): float(v) for k, v in dict(properties["scale"]).items()}
+        ),
     }
     if properties.get("goals") is not None:
         resolved["goal"] = [

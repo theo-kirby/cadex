@@ -1042,6 +1042,12 @@ _SUCCESS_PREDICATE_KEYS = frozenset({"id", "metric", "min", "max"})
 _MAX_SUCCESS_PREDICATES = 32
 _MAX_SUCCESS_SEEDS = 64
 _MAX_SUCCESS_FEET = 16
+#: What a spec may say it was written for (``success(scale=...)``). The
+#: engine's ``CadexDynamics.SUCCESS_SCALE_KEYS`` is the same tuple, and
+#: ``test_success_spec_model`` holds the two equal.
+_SUCCESS_SCALE_KEYS = (
+    "mass_kg", "weight_n", "com_height_mm", "hip_height_mm", "arm_length_mm",
+)
 
 #: What a goal may be (ADR-462). ``CadexDynamics.GOAL_KINDS`` is the same
 #: tuple, and ``test_goal_api`` holds the two equal.
@@ -3641,6 +3647,7 @@ class AssemblyDomainAPI:
         reset_variation: Sequence[DomainValue] | None = None,
         disturbance: Sequence[DomainValue] | None = None,
         goals: Sequence[DomainValue] | None = None,
+        scale: Mapping[str, float] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Say what a policy must *do* to have succeeded, apart from its reward.
@@ -3712,6 +3719,17 @@ class AssemblyDomainAPI:
         from: a wider range of speeds, a target further from the start,
         another ``resample_seconds``. A goal's draws come last in a seed's
         stream, so stating one moves no reset and no shove.
+
+        ``scale`` states the mechanism the spec's own numbers were written
+        for: ``{"hip_height_mm": HIP_MM, "weight_n": WEIGHT_N}``, any of
+        ``mass_kg``, ``weight_n``, ``com_height_mm``, ``hip_height_mm`` and
+        ``arm_length_mm``. A spec that draws a commanded speed in hip
+        heights per second, or a shove in body weights, is only the spec it
+        claims to be on the body it was measured from. **Stated, the engine
+        refuses the spec when the mechanism measures otherwise** -- to one
+        part in a million, which is a copied digit and never physics -- and
+        names the values it measured, so a mechanism change cannot leave a
+        stale constant behind. Omitted, nothing is checked.
 
         A success spec is an intermediate value: pass it to ``api.task``.
         """
@@ -3862,6 +3880,28 @@ class AssemblyDomainAPI:
             properties["goals"] = _values(
                 operation, "goals", goals, output_type="goal", minimum=0
             )
+        if scale is not None:
+            if not isinstance(scale, Mapping) or not scale:
+                raise _error(
+                    operation, "scale",
+                    "expected an object naming at least one of "
+                    f"{list(_SUCCESS_SCALE_KEYS)}", scale,
+                )
+            unknown = set(scale) - set(_SUCCESS_SCALE_KEYS)
+            if unknown:
+                raise _error(
+                    operation, "scale",
+                    f"unknown keys {sorted(str(key) for key in unknown)}; a "
+                    f"stated scale names {list(_SUCCESS_SCALE_KEYS)}",
+                    dict(scale),
+                )
+            properties["scale"] = {
+                key: _number(
+                    operation, f"scale.{key}", scale[key],
+                    minimum=0.0, strict_minimum=True,
+                )
+                for key in _SUCCESS_SCALE_KEYS if key in scale
+            }
         return self._value(
             operation, "success", label=_label(operation, label), **properties
         )

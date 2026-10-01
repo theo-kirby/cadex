@@ -5297,6 +5297,16 @@ TASK_SCHEMA = "cadex-training-task-v1"
 #: The schema of a bundle's ``success`` block (ADR-456), which has a version
 #: of its own because it is read by an evaluator and never by a trainer.
 SUCCESS_SCHEMA = "cadex-success-spec-v1"
+#: The scale a success spec may say it was written for, and the keys of the
+#: ``scale`` block every spec carries. ``cadex_assembly_api`` keeps the same
+#: tuple, because that module may not import this one.
+SUCCESS_SCALE_KEYS = (
+    "mass_kg", "weight_n", "com_height_mm", "hip_height_mm", "arm_length_mm",
+)
+#: How closely a stated scale must agree with the measured one. One part in
+#: a million is a mistyped or stale digit, never physics: a hip height
+#: written to six significant figures by the MJCF agrees with itself copied.
+SUCCESS_SCALE_TOLERANCE = 1.0e-6
 
 #: Names a success predicate is refused for with the reason spelled out,
 #: beside the task's own reward labels: each is a way of asking the reward
@@ -7743,6 +7753,47 @@ def _success_records(
                 observed={"predicate": needed[need], "metric": metric,
                           "needs": need},
             )
+    measured_scale = {
+        "mass_kg": float(rig["mass_kg"]),
+        "weight_n": float(rig["weight_n"]),
+        "com_height_mm": rig["com_height_mm"],
+        "hip_height_mm": rig["hip_height_mm"],
+        "arm_length_mm": rig.get("arm_length_mm"),
+    }
+    stated_scale = spec.get("scale")
+    if stated_scale is not None:
+        stated_scale = {str(key): float(value) for key, value in stated_scale.items()}
+        stale = {
+            key: {"stated": value, "measured": measured_scale.get(key)}
+            for key, value in stated_scale.items()
+            if measured_scale.get(key) is None
+            or abs(value - float(measured_scale[key]))
+            > SUCCESS_SCALE_TOLERANCE * abs(float(measured_scale[key]))
+        }
+        if stale:
+            raise DynamicsError(
+                f"{what} states it was written for "
+                + ", ".join(f"{key} = {row['stated']!r}" for key, row in stale.items())
+                + ", and this mechanism measures "
+                + ", ".join(f"{key} = {row['measured']!r}" for key, row in stale.items())
+                + ".",
+                reason="success_scale_mismatch",
+                correction=(
+                    "A spec whose speeds, shoves or lifts are written in "
+                    "hip heights or body weights is the spec it claims to "
+                    "be only on the mechanism it was measured from. If the "
+                    "mechanism changed on purpose, copy the measured values "
+                    "into the constants the spec is written with and into "
+                    "scale=; if it did not, the change to the mechanism is "
+                    "the thing to look at. A value this mechanism has no "
+                    "measure of (None) cannot be stated."
+                ),
+                observed={
+                    "stale": stale,
+                    "measured": measured_scale,
+                    "tolerance_relative": SUCCESS_SCALE_TOLERANCE,
+                },
+            )
     return {
         "schema": SUCCESS_SCHEMA,
         "label": str(spec.get("label") or ""),
@@ -7761,13 +7812,10 @@ def _success_records(
         # Absent when the task states no goal, so a spec on such a task is
         # the block it always was.
         **({"goal": judged_goal} if judged_goal else {}),
-        "scale": {
-            "mass_kg": float(rig["mass_kg"]),
-            "weight_n": float(rig["weight_n"]),
-            "com_height_mm": rig["com_height_mm"],
-            "hip_height_mm": rig["hip_height_mm"],
-            "arm_length_mm": rig.get("arm_length_mm"),
-        },
+        "scale": measured_scale,
+        # Absent when the script stated none, so such a spec is the block it
+        # always was; present, it agreed with ``scale`` or was refused.
+        **({"stated_scale": stated_scale} if stated_scale is not None else {}),
     }
 
 

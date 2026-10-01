@@ -450,7 +450,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   The spec is written into the task bundle as a `success` block
   (`cadex-success-spec-v1`) with its conditions resolved and a `scale` —
   mass, weight, COM height, hip height, arm length — so a threshold in hip
-  heights can be read in millimetres. **It is not part of what the task
+  heights can be read in millimetres. `scale={"hip_height_mm": HIP_MM,
+  "weight_n": WEIGHT_N}` says which of the script's own constants are that
+  scale (ADR-468). A spec that draws a command in hip heights per second,
+  or a shove in body weights, is only itself on the body it was measured
+  from. Stated, each value must agree with the one the engine measures to
+  one part in a million, or the script is refused
+  (`success_scale_mismatch`) with the measured values to copy. An agreeing
+  statement is kept as `stated_scale`; with none, nothing is checked. **It is not part of what the task
   is**: a task with no spec writes the bundle it always did, and a spec can
   be revised without orphaning a policy, because
   `assembly.policy(trained_task=...)` proves two bundles that differ only in
