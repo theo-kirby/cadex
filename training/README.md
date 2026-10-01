@@ -293,7 +293,10 @@ targets the evaluation never asks for. So `draw_goals` here is a copy of
 starts, and `test_dynamics_goal_trainer` holds the two to the same doubles
 from the same seed. It also holds the segment rule (`goal_segment`:
 `steps // resample_steps`, clamped) to the engine's, and, from the training
-venv, the reward curve of a real run to the goals the engine draws.
+venv, the reward curve of a real run to the goals the engine draws. On a
+coupled mechanism the goal also carries `followers`, which the draw places by
+their coupling law before it forwards the pose (`place_goal_followers`,
+ADR-474), and `test_dynamics_goal_coupled` holds that copy to the engine's.
 
 - `--goal-pool N` (default 4096) is how many episodes are drawn. It is
   ignored, and left out of the policy header, for a task with no goal.

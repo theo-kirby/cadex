@@ -31167,3 +31167,41 @@ bundle, digest or policy changes.
 - Not taken: rewriting the draw or the exclusion in the same unit. Each is a
   change to what a seed draws or what a model collides with, and each needs
   its own regression and its own decision.
+
+## ADR-474 — A point goal places coupled followers by their law before it judges a pose (2026-10-01)
+
+**Context.** ADR-473 measured that `draw_episode_goals` sets only the driven
+joints and leaves every gear, belt or screw follower at the reset keyframe.
+The contact rule and the target are then read at a pose the mechanism cannot
+take. On the ot11 grip probe's ten seeds, 3 of 20 targets (1102, 1105 and
+1110, segment 1) are coupled poses with the jaws 0.5–4.3 mm into each other,
+where the draw read a 14–16 mm gap.
+
+**Decision.** A point goal's record carries `followers`: one row per active
+`equality/joint` in the model, with the follower's and driver's `qpos`
+addresses, both `qpos0` references and the five `polycoef` terms. A follower
+that drives another comes first. After the drawn joints are written and
+before `mj_forward`, each follower is written as
+`reference + c0 + c1·x + c2·x² + c3·x³ + c4·x⁴` with
+`x = qpos[driver] − driver_reference`. That is MuJoCo's own joint-equality law,
+so the constraint residual at the drawn pose is zero (tested on the 1:1
+gripper and the 2:1 M2 gear train). No random draw is added. The engine, the
+reference runner (`dynamics_task_episode.draw_goals`) and the trainer
+(`place_goal_followers`) carry the same lines.
+
+The key appears only on a coupled mechanism, and its algorithm text
+`GOAL_FOLLOWER_ALGORITHM` is appended to `goal_algorithm` only there. Every
+uncoupled bundle, its digest and every policy naming one are unchanged. No
+coupled model could be exported before ADR-473, so no retained bundle had one.
+
+**Consequences.**
+- `test_dynamics_goal_coupled.py` rebuilds the probe gripper headless. Its
+  draw test, run against all three implementations, fails on the old source
+  with exactly `{(1102, 1), (1105, 1), (1110, 1)}` and passes on the new.
+  A second test holds the three draws equal on a coupled mechanism.
+- **Not decided here: the coupled jaws still have no contact.** The joint-pair
+  exclusion covers couplings, so the three targets are still accepted. The
+  draw now reads the overlapping pose, but nothing in it reports the overlap.
+  That needs its own unit and its own ADR.
+- Not measured yet: whether MJX 3.10 in the training venv honours
+  `equality/joint`. It must be measured before any gripper training.

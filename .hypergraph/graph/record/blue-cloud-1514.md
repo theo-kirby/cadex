@@ -73,4 +73,4 @@ Dispatch closed: 1 unit — gear/belt/screw MJCF export fixed (ADR-473, regressi
 
 ## State Impact
 
-- target: salty-isle-4063 — Gear, belt and screw coupled mechanisms now export to MJCF (ADR-473, commit e66b70fc): a coupling's equality row starts from MuJoCo's defaults, because the XML parser fills data[10] with 1 and export_mjcf refused every coupled model. A gripper probe on the frozen ot11 seeds measured two open gaps for a grip behaviour: the point-goal draw leaves coupled followers at rest (3 of 20 targets interpenetrate), and coupled jaws never collide because joint-pair contact exclusion covers couplings.
+- target: salty-isle-4063 — Gear, belt and screw coupled mechanisms now export to MJCF (ADR-473, commit 47825e92): a coupling's equality row starts from MuJoCo's defaults, because the XML parser fills data[10] with 1 and export_mjcf refused every coupled model. A gripper probe on the frozen ot11 seeds measured two open gaps for a grip behaviour: the point-goal draw leaves coupled followers at rest (3 of 20 targets interpenetrate), and coupled jaws never collide because joint-pair contact exclusion covers couplings.

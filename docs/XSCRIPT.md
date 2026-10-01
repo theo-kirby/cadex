@@ -358,7 +358,11 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   where the tip starts that segment. A point no pose can reach is refused
   when the task is declared, with what rejected the tries. Every driven
   joint needs both limits. The range drawn is the joint's, not a servo's
-  narrower `command_limits_degrees`.
+  narrower `command_limits_degrees`. On a mechanism with gear, belt or
+  screw couplings, each coupled follower is placed by its coupling law
+  before the pose is read, so a target is never judged at a pose the
+  coupling forbids (ADR-474). The bundle carries these as the goal's
+  `followers`, and only on a coupled mechanism.
   `resample_seconds=...` draws the goal again that often during the
   episode, on a whole number of control steps; omitted, it is held. The
   step a goal changes on is scored against the goal its action was taken

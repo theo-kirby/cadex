@@ -2777,3 +2777,13 @@ The spec is the reach vocabulary in arm lengths, on the ten evaluation seeds.
 
 A spec frozen on these draws would hold a policy to targets that cannot
 exist. So the grip contract waits for both gaps to be decided.
+
+**The first gap is closed (ADR-474).** A point goal on a coupled mechanism now
+carries its `followers`, and the draw writes each one by its coupling law
+before it forwards the pose, in the engine, the reference runner and the
+trainer alike. `test_dynamics_goal_coupled.py` rebuilds the probe gripper
+headless and reproduces the three targets. It fails on the old draw at exactly
+1102, 1105 and 1110, segment 1, and passes on the new one. The three targets
+are still accepted, because the second gap is still open: the draw now reads
+the overlapping pose, but the coupled jaws have no contact to refuse it with.
+Nothing frozen moved.

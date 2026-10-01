@@ -6004,6 +6004,19 @@ GOAL_ALGORITHM = (
     "read segment min(s // resample_steps, segments - 1)"
 )
 
+#: What a point goal on a coupled mechanism adds to :data:`GOAL_ALGORITHM`
+#: (ADR-474). A separate text, appended only to the bundles whose goal
+#: carries ``followers``, so every bundle written before couplings could be
+#: exported keeps its algorithm and its digest. No draw is added: the
+#: stream is the one the uncoupled algorithm states.
+GOAL_FOLLOWER_ALGORITHM = (
+    "; on a point goal with followers, after its joints are written and "
+    "before mj_forward, each follower in order is written as reference + "
+    "c0 + c1*x + c2*x**2 + c3*x**3 + c4*x**4 with x = qpos[driver_qpos_adr] "
+    "- driver_reference (0 when it has no driver), its polycoef being "
+    "c0..c4"
+)
+
 #: Everything a reward or termination expression may name beyond the
 #: observation channels themselves. ``_CONTROL_GLOBALS`` plus the three a
 #: reward actually wants: ``exp`` for a shaped bell, ``sqrt`` for a distance,
@@ -7167,6 +7180,73 @@ def _goal_tip_m(data: Any, body: int, local_m: Sequence[float]) -> list[float]:
     ]
 
 
+def _goal_followers(mujoco: Any, reloaded: Any) -> list[dict[str, Any]]:
+    """Every coupled joint, as the law a goal draw places it by (ADR-474).
+
+    A gear, belt or screw follower is not a joint a draw may set freely: the
+    dynamics hold it to its driver through an ``equality/joint`` row, so a
+    target drawn with the follower left at the keyframe is a pose the
+    mechanism cannot take -- the ot11 grip probe measured three of twenty
+    frozen-seed targets with the jaws 0.5-4.3 mm into each other. Each row is
+    MuJoCo's own law, ``y - y0 = c0 + c1*x + c2*x^2 + c3*x^3 + c4*x^4`` with
+    ``x = q_driver - x0`` and both references from ``qpos0``, so applying it
+    in list order puts the follower exactly where the constraint is
+    satisfied. A follower that drives another comes before it.
+    """
+
+    rows: list[dict[str, Any]] = []
+    for index in range(int(reloaded.neq)):
+        if (
+            int(reloaded.eq_type[index]) != int(mujoco.mjtEq.mjEQ_JOINT)
+            or not bool(reloaded.eq_active0[index])
+        ):
+            continue
+        follower = int(reloaded.eq_obj1id[index])
+        driver = int(reloaded.eq_obj2id[index])
+        follower_adr = int(reloaded.jnt_qposadr[follower])
+        driver_adr = None if driver < 0 else int(reloaded.jnt_qposadr[driver])
+        rows.append(
+            {
+                "joint": str(
+                    mujoco.mj_id2name(reloaded, mujoco.mjtObj.mjOBJ_JOINT, follower)
+                ),
+                "qpos_adr": follower_adr,
+                "reference": float(reloaded.qpos0[follower_adr]),
+                "driver_qpos_adr": driver_adr,
+                "driver_reference": (
+                    0.0 if driver_adr is None else float(reloaded.qpos0[driver_adr])
+                ),
+                "polycoef": [float(value) for value in reloaded.eq_data[index][:5]],
+            }
+        )
+    ordered: list[dict[str, Any]] = []
+    while rows:
+        pending = {int(row["qpos_adr"]) for row in rows}
+        ready = [row for row in rows if row["driver_qpos_adr"] not in pending]
+        # A cycle has no first member; the dynamics would fight it anyway,
+        # and declaration order is the stable answer.
+        taken = ready or rows[:1]
+        ordered.extend(taken)
+        rows = [row for row in rows if row not in taken]
+    return ordered
+
+
+def _place_goal_followers(data: Any, followers: Sequence[Mapping[str, Any]]) -> None:
+    """Write each coupled follower where its law puts it, in list order."""
+
+    for follower in followers:
+        driver = follower["driver_qpos_adr"]
+        offset = (
+            0.0 if driver is None
+            else float(data.qpos[int(driver)]) - float(follower["driver_reference"])
+        )
+        c = [float(value) for value in follower["polycoef"]]
+        data.qpos[int(follower["qpos_adr"])] = float(follower["reference"]) + (
+            c[0] + c[1] * offset + c[2] * offset**2 + c[3] * offset**3
+            + c[4] * offset**4
+        )
+
+
 def _goal_records(
     mujoco: Any,
     reloaded: Any,
@@ -7399,6 +7479,11 @@ def _goal_records(
         )
         scale = length_mm(1.0)
         floor = entry.get("min_z_mm")
+        followers = _goal_followers(mujoco, reloaded)
+        if followers:
+            # Only on a coupled mechanism, so every other point goal is the
+            # record, and the digest, it always was.
+            record["followers"] = followers
         record.update(
             unit="mm",
             scale=scale,
@@ -8217,7 +8302,10 @@ def task_records(
         # Absent when the script declared none, with the algorithm that
         # draws them: a task without a goal is byte for byte the bundle it
         # always was, and its digest with it (ADR-462).
-        **({"goal": goal, "goal_algorithm": GOAL_ALGORITHM} if goal else {}),
+        **({"goal": goal, "goal_algorithm": GOAL_ALGORITHM + (
+            GOAL_FOLLOWER_ALGORITHM
+            if any(entry.get("followers") for entry in goal) else ""
+        )} if goal else {}),
         **judged,
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to
@@ -8680,6 +8768,7 @@ def draw_episode_goals(
                     data.qpos[int(joint["qpos_adr"])] = rng.uniform(
                         float(joint["low"]), float(joint["high"])
                     )
+                _place_goal_followers(data, entry.get("followers") or ())
                 mujoco.mj_forward(model, data)
                 candidate = _goal_tip_m(data, body, local)
                 if floor is not None and candidate[2] < float(floor):

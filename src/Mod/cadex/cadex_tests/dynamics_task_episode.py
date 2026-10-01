@@ -213,6 +213,27 @@ def goal_tip_m(data: Any, body: int, local_m: Sequence[float]) -> list[float]:
     ]
 
 
+def place_goal_followers(data: Any, followers: Any) -> None:
+    """Write each coupled follower where its law puts it, in list order.
+
+    The bundle's follower law, reproduced from its ``goal_algorithm`` text
+    rather than imported, and held to the engine's by
+    ``test_dynamics_goal_coupled`` (ADR-474).
+    """
+
+    for follower in followers:
+        driver = follower["driver_qpos_adr"]
+        offset = (
+            0.0 if driver is None
+            else float(data.qpos[int(driver)]) - float(follower["driver_reference"])
+        )
+        c = [float(value) for value in follower["polycoef"]]
+        data.qpos[int(follower["qpos_adr"])] = float(follower["reference"]) + (
+            c[0] + c[1] * offset + c[2] * offset**2 + c[3] * offset**3
+            + c[4] * offset**4
+        )
+
+
 def draw_goals(mujoco: Any, model: Any, task: dict, rng: Any) -> list[dict]:
     """The bundle's ``goal_algorithm``, reproduced from its own text.
 
@@ -248,6 +269,7 @@ def draw_goals(mujoco: Any, model: Any, task: dict, rng: Any) -> list[dict]:
                     data.qpos[int(joint["qpos_adr"])] = rng.uniform(
                         float(joint["low"]), float(joint["high"])
                     )
+                place_goal_followers(data, entry.get("followers") or ())
                 mujoco.mj_forward(model, data)
                 candidate = goal_tip_m(data, int(entry["body_id"]), entry["local_m"])
                 if entry.get("min_z_m") is not None and candidate[2] < float(entry["min_z_m"]):
