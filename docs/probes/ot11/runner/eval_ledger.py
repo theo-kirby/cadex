@@ -19,6 +19,11 @@ an evaluation's ``policy_sha256`` is looked up among them. A policy that no
 ot11 run trained -- ot10's ``w2-2`` and ot9's ``r3-ppo-1``, measured as
 known negatives -- is left unattributed rather than guessed.
 
+Each row also carries ``contract_deviations``: every way the spec the
+evaluation resolved differs from the frozen ``contract.json``, as
+``runner/conformance.py`` names them. An empty list is a row read against
+the contract and nothing else.
+
     pixi run python docs/probes/ot11/runner/eval_ledger.py \\
         --out OUT.json --judges docs/probes/ot11/retained PROJECT [...]
 """
@@ -28,7 +33,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
+
+RUNNER = Path(__file__).resolve().parent
+if str(RUNNER) not in sys.path:
+    sys.path.insert(0, str(RUNNER))
+from conformance import deviations  # noqa: E402
+
+CONTRACT = json.loads((RUNNER.parent / "contract.json").read_text(encoding="utf-8"))
 
 
 def policy_tag(name: str) -> str:
@@ -95,6 +108,8 @@ def evaluation_row(project: Path, report: Path, trained: dict[str, tuple[float, 
         },
         "terminations": dict(sorted(summary.get("terminations", {}).items())),
         "film": film.get("state"),
+        "contract_deviations": (deviations(evaluation["spec"], CONTRACT) if "spec" in evaluation
+                                else ["spec: the evaluation stores none"]),
     }
 
 

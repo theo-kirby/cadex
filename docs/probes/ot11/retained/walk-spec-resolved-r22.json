@@ -1,0 +1,177 @@
+{
+ "schema": "ot11-resolved-walk-spec-v1",
+ "source": "ot11-quad-1 evaluations/da95bfa94936-e91a397134ac/evaluation.json (run r22-gentle-contact25, row 34): the spec block cadex evaluate resolved, copied unchanged",
+ "spec": {
+  "predicates": [
+   {
+    "id": "W1",
+    "max": null,
+    "metric": "completed",
+    "min": 1.0
+   },
+   {
+    "id": "W2",
+    "max": 30.0,
+    "metric": "max_tilt_deg",
+    "min": null
+   },
+   {
+    "id": "W3",
+    "max": 1.25,
+    "metric": "speed_ratio",
+    "min": 0.75
+   },
+   {
+    "id": "W4-lateral",
+    "max": 0.25,
+    "metric": "lateral_ratio",
+    "min": null
+   },
+   {
+    "id": "W4-heading",
+    "max": 45.0,
+    "metric": "max_heading_deg",
+    "min": null
+   },
+   {
+    "id": "W5-steps",
+    "max": null,
+    "metric": "steps_min",
+    "min": 4.0
+   },
+   {
+    "id": "W5-share",
+    "max": null,
+    "metric": "step_share_min",
+    "min": 0.7
+   },
+   {
+    "id": "W6",
+    "max": null,
+    "metric": "step_clearance_hip_heights_min",
+    "min": 0.08
+   },
+   {
+    "id": "W7",
+    "max": 0.15,
+    "metric": "slip_share_max",
+    "min": null
+   },
+   {
+    "id": "W8-low",
+    "max": null,
+    "metric": "duty_factor_min",
+    "min": 0.4
+   },
+   {
+    "id": "W8-high",
+    "max": 0.85,
+    "metric": "duty_factor_max",
+    "min": null
+   },
+   {
+    "id": "W9",
+    "max": 1.5,
+    "metric": "step_count_ratio",
+    "min": null
+   },
+   {
+    "id": "W10",
+    "max": null,
+    "metric": "foot_lowest_hip_heights_min",
+    "min": -0.05
+   }
+  ],
+  "seeds": [
+   1101,
+   1102,
+   1103,
+   1104,
+   1105,
+   1106,
+   1107,
+   1108,
+   1109,
+   1110
+  ],
+  "feet": [
+   "c_foot_fl",
+   "c_foot_fr",
+   "c_foot_rl",
+   "c_foot_rr"
+  ],
+  "tip": null,
+  "episode": {
+   "control_hz": 50,
+   "control_interval_s": 0.02,
+   "episode_seconds": 10.0,
+   "max_steps": 500,
+   "reset_keyframe": "solved",
+   "reward_stage": "after_step",
+   "solver_step_s": 0.002,
+   "solver_steps_per_action": 10
+  },
+  "reset_variation": [
+   {
+    "angular_velocity_high_rad_s": 0.0,
+    "angular_velocity_low_rad_s": 0.0,
+    "body": "c_tray",
+    "body_id": 2,
+    "clearance_mm": -0.0,
+    "height_high_m": 0.00997753267446373,
+    "height_low_m": 0.004977532674463731,
+    "label": "reset_variation",
+    "linear_velocity_high_m_s": 0.0,
+    "linear_velocity_low_m_s": 0.0,
+    "qpos_adr": 0,
+    "qvel_adr": 0,
+    "tilt_high_rad": 0.05235987755982989,
+    "tilt_low_rad": 0.0
+   }
+  ],
+  "disturbance": [
+   {
+    "applied_at": "centre_of_mass",
+    "at_high_s": 7.0,
+    "at_low_s": 3.0,
+    "azimuth_high_rad": 6.283185307179586,
+    "azimuth_low_rad": 0.0,
+    "body": "c_tray",
+    "body_id": 2,
+    "direction": "horizontal",
+    "duration_s": 0.15,
+    "frame": "world",
+    "label": "disturbance",
+    "newtons_high": 1.010139235524,
+    "newtons_low": 0.252534808881,
+    "sustained": false
+   }
+  ],
+  "scale": {
+   "arm_length_mm": null,
+   "com_height_mm": 79.0432619773618,
+   "hip_height_mm": 96.7006,
+   "mass_kg": 0.514851802,
+   "weight_n": 5.050696177620001
+  },
+  "randomisation": [],
+  "goal": [
+   {
+    "channels": [
+     "command"
+    ],
+    "high": 96.7006,
+    "kind": "speed",
+    "label": "command",
+    "low": 58.02036,
+    "name": "command",
+    "nominal": [
+     77.36048
+    ],
+    "resample_steps": 0,
+    "segments": 1,
+    "unit": "mm/s"
+   }
+  ]
+ }
+}

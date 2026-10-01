@@ -107,6 +107,20 @@ run; the two known negatives were trained before ot11 and are named by
 their origin. *Predicates failed* counts the failing seeds for each
 predicate that did not pass on all of them.
 
+**Every row is checked against the frozen contract** (ADR-472). The
+receipt's `contract_deviations` is what
+[`runner/conformance.py`](runner/conformance.py) finds when it compares
+the spec each evaluation resolved (seeds, episode length, every predicate's
+id, metric and bound, the reset tilt and lift, each shove's force in body
+weights, its window, direction and duration, and the goal) with
+[`contract.json`](contract.json). Thirty of the 34 conform. Two kinds of
+deviation exist, and both were already recorded by hand. In rows 1 and 2,
+ot10's `w2-2` is read without W3 and the lateral half of W4, because its
+task has no commanded speed to track (*README*, P1). In rows 20 and 21,
+`r8-stance` drew its command from 0.599999–0.999998 hip heights, from the
+script's `HIP_MM = 106.9488` against a measured 106.949: the stale digit
+that made both void under the session's mechanism rule and led to ADR-468.
+
 | # | behaviour | project | evaluation | policy | verdict | seeds passed | predicates failed (failing seeds) | terminations | film |
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | walk | `ot11-w2-negative` | `60f655537c0b-7a4e8c233214` | ot10 `w2-2` | fail | 0 of 10 | W1 2, W2 9, W4-heading 1, W5-steps 7, W5-share 10, W6 10, W7 10, W8-low 7, W8-high 4, W9 10, W10 10 | horizon 8, tipped 2 | — |
@@ -612,13 +626,16 @@ A defect fixed by decision is under *Every failure*, not here.
 - **Walk rounds 1–3 trained on a trainer whose servo physics disagreed
   with the engine's** (ADR-465). Their evaluations stand, and what they
   say about their rewards is weaker than their rows suggest.
-- **A mechanism-changing session's spec check is the actor's, not the
-  engine's.** ADR-468 makes the engine refuse a spec whose stated scale
-  differs from the model. That the rest of the walk spec block is
-  unchanged is checked by the actor after each evaluation, against
-  [`retained/walk-spec-block.txt`](retained/walk-spec-block.txt), under the
-  session's pre-registered `mechanism_rule`; nothing in the product refuses
-  a reworded predicate.
+- **Nothing in the product refuses a reworded predicate.** ADR-468 makes
+  the engine refuse a spec whose stated scale differs from the model, and
+  the actor checks the walk spec block against
+  [`retained/walk-spec-block.txt`](retained/walk-spec-block.txt) after each
+  evaluation, under the session's pre-registered `mechanism_rule`. Since
+  ADR-472 every stored evaluation's resolved spec is also compared with the
+  contract when the evaluation ledger is built, so a drifted seed, bound,
+  metric, shove or goal is named in the receipt beside its row. That check
+  reports and does not refuse, and it runs when the ledger is rebuilt, not
+  when `cadex evaluate` runs.
 - **The packaged lifecycle gate was owed from ADR-465 to ADR-468** and is
   now paid: the payload was rebuilt and restaged from engine source
   unchanged since ADR-468 (commit `d410b098`), and

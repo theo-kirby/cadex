@@ -31079,3 +31079,38 @@ top-level `exploration.log_std` (ADR-103).
   and, from the training venv, a cold run at σ 0.7 followed by a warm start
   with no flag ends within 0.05 of the cold run's width. All six pure cases
   fail on the source before this. No engine, payload or protocol change.
+
+## ADR-472 — Every stored ot11 evaluation is compared with the frozen contract when its ledger is built (2026-10-01)
+
+**Context.** P1 freezes each behaviour's seeds, conditions, predicates and
+bounds in `docs/probes/ot11/contract.json`, and a change to any of them is a
+recorded decision. The product agent authors the spec it evaluates against,
+so a reworded bound or a dropped shove would be read as a contract
+evaluation. ADR-468 catches a stale scale constant when the task is declared;
+everything else was the actor's eye on the spec block after each round
+(REPORT.md, *Remaining defects*). `cadex evaluate` already stores the spec it
+resolved in `evaluation.json`.
+
+**Decision.** `docs/probes/ot11/runner/conformance.py` compares a resolved
+spec with the contract: seeds, episode length, every predicate's id, metric
+name and bound (the contract's prose metric mapped to the one name the engine
+computes it under), the reset tilt and lift span, each shove's force in body
+weights, window, azimuth, direction and duration, and the goal (a walk's
+command band in hip heights and that it is held; a reach target's segments,
+joint fraction, redraws and its floor and separation rules in arm lengths).
+`runner/eval_ledger.py` writes the differences into each row as
+`contract_deviations`. It reports and never refuses; it is probe tooling, not
+an engine change.
+
+**Consequences.**
+- Rebuilt over the 34 stored evaluations, 30 conform. Rows 1–2 (`w2-2`, no
+  commanded speed, so no W3 or lateral W4) and rows 20–21 (`r8-stance`, the
+  command band 0.599999–0.999998 HH from `HIP_MM = 106.9488`) are named, and
+  both were already recorded and void or explained by hand; the check found
+  nothing new. Every other ledger field is unchanged.
+- `cli/tests/test_ot11_conformance.py` pins that a contract spec conforms for
+  walk, reach and balance, that ten kinds of walk drift and two each of reach
+  and balance are named, and that the receipt's deviations are exactly those
+  four rows with the report explaining them.
+- Not taken: refusing in `cadex evaluate`. The contract is a probe document,
+  and the engine does not read `docs/`.

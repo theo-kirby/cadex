@@ -34,7 +34,12 @@
     "horizon": 8,
     "tipped": 2
    },
-   "film": null
+   "film": null,
+   "contract_deviations": [
+    "W3: missing",
+    "W4-lateral: missing",
+    "goal: 0 declared, frozen one speed command"
+   ]
   },
   {
    "project": "ot11-w2-negative",
@@ -68,7 +73,12 @@
     "horizon": 8,
     "tipped": 2
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": [
+    "W3: missing",
+    "W4-lateral: missing",
+    "goal: 0 declared, frozen one speed command"
+   ]
   },
   {
    "project": "ot11-robin-negative",
@@ -96,7 +106,8 @@
     "fallen": 6,
     "horizon": 4
    },
-   "film": null
+   "film": null,
+   "contract_deviations": []
   },
   {
    "project": "ot11-robin-negative",
@@ -124,7 +135,8 @@
     "fallen": 6,
     "horizon": 4
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-robin-1",
@@ -145,7 +157,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-robin-1",
@@ -166,7 +179,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-heron-1",
@@ -191,7 +205,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-heron-1",
@@ -216,7 +231,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-heron-1",
@@ -241,7 +257,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-heron-1",
@@ -265,7 +282,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-heron-1",
@@ -286,7 +304,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-heron-1",
@@ -307,7 +326,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -343,7 +363,8 @@
     "horizon": 6,
     "tipped": 4
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -375,7 +396,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -409,7 +431,8 @@
     "collapsed": 1,
     "horizon": 9
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -442,7 +465,8 @@
     "horizon": 9,
     "tipped": 1
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -473,7 +497,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -503,7 +528,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -537,7 +563,8 @@
     "collapsed": 6,
     "horizon": 4
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -573,7 +600,10 @@
     "horizon": 6,
     "tipped": 4
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": [
+    "goal hip_heights_per_s [0.599999, 0.999998] != frozen [0.6, 1]"
+   ]
   },
   {
    "project": "ot11-quad-1",
@@ -609,7 +639,10 @@
     "horizon": 8,
     "tipped": 2
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": [
+    "goal hip_heights_per_s [0.599999, 0.999998] != frozen [0.6, 1]"
+   ]
   },
   {
    "project": "ot11-quad-1",
@@ -639,7 +672,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -669,7 +703,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -700,7 +735,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -728,7 +764,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -755,7 +792,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -790,7 +828,8 @@
     "horizon": 5,
     "tipped": 5
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -824,7 +863,8 @@
     "horizon": 2,
     "tipped": 8
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -849,7 +889,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -877,7 +918,8 @@
     "horizon": 9,
     "tipped": 1
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -900,7 +942,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -926,7 +969,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -952,7 +996,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   },
   {
    "project": "ot11-quad-1",
@@ -978,7 +1023,8 @@
    "terminations": {
     "horizon": 10
    },
-   "film": "ready"
+   "film": "ready",
+   "contract_deviations": []
   }
  ],
  "judges": [
