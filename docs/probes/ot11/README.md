@@ -1686,3 +1686,89 @@ tree, so the new reading went live when the source changed, not at an
 install. Round 5's evaluation (`dee2391353b7-6a7c89de9ade`, 01:28Z) ran
 after the edit. On every seed its deepest frame comes after the settle, so
 it reads the same numbers and verdict under either reading.
+
+### Walk round 5: `r5-swing`, session 2's first run, walks forward on one foot
+
+| run | seed | settings | budget | ended | evaluated policy | seeds passed |
+|---|---|---|---|---|---|---|
+| `r5-swing` | 41 | 780 it × 2048 envs | 2,400 s | **finished**, all 780 iterations, 2,100 s supervised (1,898 s in the trainer) | `6a7c89de…` (final, iteration 780) | **0 of 10** |
+
+GPU wall time: 1,898 s. The process started at 00:50:49Z and loaded
+`97bc1d9a…`, the ADR-465 trainer with ADR-466's import-time digest
+(`e4500356`, committed 00:39:36Z). Every checkpoint and the final policy
+record that digest. The training reward per step was −0.04 at the start and
+1.01 at the best iteration (773). **On the evaluation seeds the same policy
+scores 0.73 to 1.36 per step**, so training and evaluation still describe
+the same machine, as they first did in round 4.
+
+**The agent's revision, in its registered reason.** Round 4 stood still.
+The agent read its `sink` term as saturated (−1.87 per step standing, with
+no gradient) and its clearance terms as charging every low foot motion, so
+stepping never paid. It replaced the clearance terms with a per-foot swing
+pay and ground-slip cost (`step_fl` … `step_rr`), rescaled `sink` onto its
+slope, and gave the policy its gyro and joint-rate inputs back. Its stated
+reason was that the evaluation-only chatter came from the MJX damping bug
+(ADR-465), not from the inputs. It expected "feet lift and step forward".
+
+**The evaluation is valid.** The script's spec block equals
+`retained/walk-spec-block.txt` at the evaluated revision `dee23913…`. The
+model is `ade106a6…`, the same as in rounds 1–4. The report is
+`evaluations/dee2391353b7-6a7c89de9ade/evaluation.json`. It was read on the
+ADR-467 code, and on every seed the deepest foot frame comes after the
+settle, so both W10 readings agree. The receipt is
+[`retained/p4-quad-1-r5-evaluation.json`](retained/p4-quad-1-r5-evaluation.json).
+
+| predicate | seeds failing | range |
+|---|---|---|
+| W1, W2 | 0 | every seed completes the 10 s; tilt 12–21° |
+| W3 tracks speed | 1 (1106) | speed ratio 0.82–1.25: **it walks forward at the commanded speed** |
+| W4-heading | 0 | 18–33° at worst, against 45° |
+| W4-lateral | 1 (1106) | 0.004–0.34 |
+| W5-steps | 9 | the worst foot takes 1–6 steps (needs 4) |
+| W5-share | 10 | 0.01–0.09 of the worst foot's travel is in steps (needs 0.7) |
+| W6 clearance | 2 (1101, 1107) | 0.05–0.12 hip heights |
+| W7 slip | 10 | 0.46–0.53 (max 0.15) |
+| W8-low duty factor | 10 | 0.16–0.26 (min 0.40) |
+| W8-high | 0 | 0.64–0.71 |
+| W9 step balance | 10 | 5.7–33 (max 1.5) |
+| W10 in the floor | 10 | −0.209 to −0.138 hip heights, after the settle |
+
+**Per foot, over the ten seeds**, the gait is one front foot paddling and
+the opposite rear foot being dragged:
+
+| foot | steps | duty factor | slip share | lowest after settle, mm |
+|---|---|---|---|---|
+| FL | 27–34 | 0.16–0.25 | 0.08–0.17 | −18.4 to −10.3 |
+| FR | 4–14 | 0.47–0.57 | 0.38–0.52 | −15.2 to −10.9 |
+| RL | **1–6** | 0.64–0.71 | 0.44–0.53 | −20.2 to −11.8 |
+| RR | 10–18 | 0.38–0.48 | 0.25–0.34 | −12.6 to −9.8 |
+
+The front-left foot alone nearly meets the stepping predicates. It is in
+the air three quarters of the time, so it is the foot that fails W8-low.
+The rear-left foot is the one that fails W5 and sets W9's ratio. FR and RR
+do step, 4 to 18 times, but each slides for a third to a half of its
+travel. In reward terms, `step_fl` earns +53 to +123 per episode and the
+other three `step_*` terms each cost −21 to −124. `trot_sync` costs only
+−66 to −88 against an `alive` of 1,500. The film of seed 1101 is the
+[overview](p4-quad-1-walk-r5-seed-1101-overview.png) and the
+[detail](p4-quad-1-walk-r5-seed-1101-detail.png). The robot crosses the
+floor upright, turning gently, and stays up through its shove at 3.9 s.
+
+**The agent's diagnosis**, from its transcript at 01:32Z, before it
+revised: "Run 5 fixed W1, W2, W8-high across all seeds, but the gait
+remains lopsided—only the front-left foot steps while the others slide,
+failing W9, W5, W7, and W8-low, and W10 worsened due to a weak sink cost."
+It registered `r6-trot` on that reading. Run 6 raises the grounded-foot
+slip cost inside `step_*` from 0.5 to 1.2, `trot_sync` from −0.3 to −1.0 "so
+diagonal partners must lift together", and the `sink` weight from −2 to −3
+with its scale halved (800 to 400). It is warm-started from r5's policy, a
+change of reward weights only.
+
+**Where the measurement and the diagnosis differ.** "Only the front-left
+foot steps" overstates it. FR and RR take 4–18 steps on every seed. The
+foot that fails W5 is the rear-left, which is FL's *lateral* partner, not
+its diagonal one (RR). A stronger `trot_sync` pairs FL with RR, which
+already steps 10–18 times, so on these numbers it does not directly reach
+the dragged rear-left foot. This is recorded here and was not given to the
+agent. Run 6's evaluation will show whether the slip cost reaches it
+anyway.

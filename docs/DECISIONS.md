@@ -30849,7 +30849,7 @@ row and in `decisions`, and every earlier walk policy was re-evaluated.
 **Re-evaluation.** `docs/probes/ot11/runner/w10_reread.py` re-reads each
 stored evaluation's traces (a rollout is deterministic in its seed). Its
 gate is agreement: every stored metric comes back exactly from the trace,
-and the stored W10 equals the every-frame minimum. All six stored walk
+and the stored W10 equals the every-frame minimum. All seven stored walk
 evaluations agree on all 70 seeds: `w2-2` twice (`ot11-w2-negative`) and
 walk rounds 1–5 on `ot11-quad-1`. **No seed's verdict moved, and W10 still
 fails on every seed of every one.**
