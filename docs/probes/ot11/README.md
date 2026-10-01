@@ -2565,3 +2565,105 @@ the foot's resting height as well as stiffen its landing, and W10 measures
 that height. Round 12's publication must report per foot how far each foot
 rests above the floor while standing, against round 11's, before reading a
 W10 pass as a fix.
+
+### Walk round 12: `r13-hovercost-margin` steps on all four feet, on a margin
+
+Receipt:
+[`retained/p4-quad-1-r13-evaluation.json`](retained/p4-quad-1-r13-evaluation.json).
+This is walk session 4's second round.
+
+| run | seed | settings | budget | ended | evaluated | seeds passed |
+|---|---|---|---|---|---|---|
+| `r13-hovercost-margin` | 137 | 800 it × 2048 envs, fresh start | 2,400 s | **finished**, all 800 iterations, 2,239.22 s supervised (2,089.7 s in the trainer) | `70b9ac55…` (final policy) | **0 of 10** |
+
+Every checkpoint, the best policy and the final policy record the unchanged
+trainer, `97bc1d9a…`. The training reward began at −0.57 per step and ended
+at +2.62, its best, at the last iteration. The action std ended at 0.13.
+The changes are the ones round 11 listed: hover cost 0.15 → 0.6, swing pay
+rescaled, tilt cost −20 → −40, `alive` 6, and a 3 mm contact margin on each
+foot sphere. The margin is the only change to the model: `ab451685…`
+differs from `5e28d393…` only by `margin="0.003"` on the four
+`c_foot_*/collision0` geoms.
+
+**The evaluation is valid**, on the same checks as rounds 9–11. The
+evaluated revision, `0bbe9588…` (script history 0069), differs from the
+registered `8563f7f5…` (0067) only in the policy line, `walk_r12` →
+`walk_r13` and its digest. The evaluated task `cb33cfe8…` is the one
+trained. `HIP_MM = 96.7006` and `WEIGHT_N = 5.05069617762` equal the rig,
+which the margin does not move. With comments set aside, the block's 379
+tokens match [`retained/walk-spec-block.txt`](retained/walk-spec-block.txt)
+except for `WEIGHT_N`'s value. The report is
+`evaluations/0bbe95889512-70b9ac55c145/evaluation.json`.
+
+| predicate | seeds failing | range (round 11) |
+|---|---|---|
+| W1 completes, W2 tilt | 0, 0 | all complete; **3.6–6.8°** (23.0–28.6°) |
+| **W3 tracks speed** | **10** | **0.28 to 0.64** (0.65 to 0.81) |
+| W4-lateral, W4-heading | 0, 0 | 0.001–0.014, 1.5–8.8° (0.05–0.13, 17.4–31.6°) |
+| **W5-steps, W5-share** | **0, 1** | **worst foot 5–13 steps; share 0.57–0.81** (0 steps, 0.00) |
+| **W6 clearance** | **10** | **0.032–0.038 hip heights** (not measured) |
+| W7 slip | 9 | 0.12–0.22 (0.85–0.98) |
+| **W8-low, W8-high** | **10, 0** | **0.02–0.09**, 0.12–0.31 (0.00, 0.91–0.96) |
+| W9 step balance | 3 | 1.15–2.29 (undefined) |
+| W10 in the floor | 0 | −0.026 to −0.011 hip heights (−0.154 to −0.074) |
+
+**Per foot, over all ten seeds:**
+
+| foot | steps | duty factor | slip share | median clearance, hip heights | lowest after settle, mm |
+|---|---|---|---|---|---|
+| FL | 7–15 | 0.02–0.12 | 0.01–0.04 | 0.05–0.08 | −0.0 to +0.5 |
+| FR | 7–16 | 0.09–0.27 | 0.06–0.12 | 0.06–0.09 | −2.4 to −1.1 |
+| RL | 6–16 | 0.10–0.31 | 0.12–0.22 | 0.04–0.05 | −2.6 to −0.7 |
+| RR | 5–13 | 0.03–0.10 | 0.01–0.05 | 0.03–0.04 | −0.7 to +0.3 |
+
+**All four feet leave the floor, and the body is level.** This is the
+first ot11 walk policy whose every foot steps on every seed. The tray
+pitches 3.6–6.8° rather than 23–28°, heading holds within 9°, and the base
+drifts 192–531 mm in 10 s, below the command (W3 0.28–0.64). The film of
+seed 1101 shows the legs alternating under a level body, with the feet
+barely off the mat.
+
+![r13 overview, seed 1101](p4-quad-1-walk-r13-seed-1101-overview.png)
+![r13 detail, seed 1101](p4-quad-1-walk-r13-seed-1101-detail.png)
+
+**Round 11 asked for each foot's resting height before a W10 pass is read
+as a fix, and the answer is that it is not one.**
+[`runner/rest_height.py`](runner/rest_height.py) recomputes each foot's
+height from the stored traces, the evaluation's own way, refusing unless
+every foot's settled lowest height equals the stored one. It then reads the
+settled frames (ranges over the ten seeds; the receipt's `rest_height`):
+
+| foot | median height, mm: round 10 → 11 → **12** | frames at ≤ 1.0 mm (stance), round 12 | frames at 1–4 mm, round 12 |
+|---|---|---|---|
+| FL | +0.2…+0.4 → −3.1…−2.8 → **+1.6…+2.8** | 0.02–0.12 | 0.72–0.84 |
+| FR | −1.9 → in swing (+31…+51) → **+2.0…+2.8** | 0.09–0.27 | 0.50–0.76 |
+| RL | −1.4 → held up (+14…+16) → **+1.8…+3.5** | 0.10–0.32 | 0.48–0.72 |
+| RR | held up (+9.3…+9.6) → −0.7…−0.6 → **+1.5…+2.6** | 0.03–0.10 | 0.88–0.96 |
+
+Every foot that bore load in rounds 10 and 11 rested at −3.1 to +0.4 mm.
+In round 12 every foot's median is 1.5–3.5 mm *above* the floor, because a
+margin makes MuJoCo push on the sphere before it touches. W10 passes
+because the feet are held off the floor, not because they land better.
+
+**That also moves what three other predicates read.** The contract's stance
+test is the sphere at or under 1.0 mm (`STANCE_MM`), and slip is counted
+only between two stance frames. Round 12's feet spend 48–96 % of the
+settled episode between 1 and 4 mm, bearing the robot on the margin, and
+the evaluation reads that as swing. So W8-low's 0.02–0.09 under-reads how
+long a foot bears load. W7 under-reads slip, since most stance is not
+counted as stance. W5 can count a hover that moves forward as a step. None
+of this turns a fail into a pass: W3, W6 and W8-low fail on every seed
+either way. The spec is unchanged, and session 3's `mechanism_rule`
+allows contact settings on the agent's own bodies. The agent read it the
+same way.
+
+**Its next run is already training.** `r14-margin15-lift`, registered at
+08:36:27Z (seed 139, 2,400 s, fresh), cites W8-low 0.02–0.09, W6
+0.032–0.038, W3 0.28–0.64 and W7 0.12–0.22. Its reading: "the 3 mm margin
+held lightly loaded feet above it, which the spec reads as swing". It cuts
+the margin to 1.5 mm, "below the 2–2.8 mm standing sink, so a stance foot
+is geometrically on the floor". The task changes too: the hover cost goes
+flat past about 3 mm, the swing pay grows with height, and a linear term
+keeps the speed cost's slope up to the command. When r14 is evaluated, its
+publication runs `rest_height.py` again: a 1.5 mm margin passes this
+reading only if a foot that bears load reads at or under 1.0 mm.

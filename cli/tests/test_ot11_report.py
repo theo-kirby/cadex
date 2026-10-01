@@ -57,7 +57,7 @@ def _number(cell: str) -> float:
 
 def test_run_table_is_the_receipt():
     rows = _table("## Every training run")
-    assert len(rows) == len(RUNS["runs"]) == 18
+    assert len(rows) == len(RUNS["runs"]) == 19
     for index, (row, run) in enumerate(zip(rows, RUNS["runs"]), 1):
         warm = run["init_from"].split("/")[1] if run["init_from"] else None
         assert row[0] == str(index)
@@ -174,7 +174,7 @@ def _load_eval_ledger():
 
 def test_evaluation_table_is_the_receipt():
     rows = _table("## Every evaluation")
-    assert len(rows) == len(EVALS["evaluations"]) == 24
+    assert len(rows) == len(EVALS["evaluations"]) == 25
     for index, (row, ev) in enumerate(zip(rows, EVALS["evaluations"]), 1):
         failing = ", ".join(f"{k} {v}" for k, v in ev["failing_predicates"].items()) or "—"
         assert row == [
@@ -220,7 +220,7 @@ def test_revisions_cite_the_evaluation_that_answered_them():
     rows = _table("## Every revision the agent made, and why")
     runs = {(run["run"]) for run in RUNS["runs"]}
     evaluations = EVALS["evaluations"]
-    assert len(rows) == 17
+    assert len(rows) == 18
     for row in rows:
         run = row[0].strip("`")
         assert run in runs
@@ -234,18 +234,18 @@ def test_failure_counts_are_the_receipts():
     evaluations = EVALS["evaluations"]
     failed = [i for i, ev in enumerate(evaluations, 1) if ev["verdict"] == "fail"]
     passed = [i for i, ev in enumerate(evaluations, 1) if ev["verdict"] == "pass"]
-    assert len(failed) == 20 and passed == [5, 6, 11, 12]
-    assert "Twenty of 24 evaluations failed" in section
+    assert len(failed) == 21 and passed == [5, 6, 11, 12]
+    assert "Twenty-one of 25 evaluations failed" in section
     assert "except 5, 6, 11\n  and 12" in section
     collapsed = [run["run"] for run in RUNS["runs"] if run["state"] == "collapsed"]
     assert collapsed == ["r1-clearance", "r7-relswing"]
     assert sum(run["state"] == "budget_exhausted" for run in RUNS["runs"]) == 7
     assert "Seven runs ended at their wall-clock budget" in section
     refused = [run["run"] for run in RUNS["runs"] if not run["attempt"]]
-    assert refused == ["r9-steelfoot"] and RUNS["attempts"] == len(RUNS["runs"]) - 1 == 17
+    assert refused == ["r9-steelfoot"] and RUNS["attempts"] == len(RUNS["runs"]) - 1 == 18
     assert "One start was refused, and is not an attempt" in section
     intro = REPORT.split("## Every training run", 1)[1].split("|", 1)[0]
-    assert "Eighteen runs" in intro and "seventeen attempts" in intro
+    assert "Nineteen runs" in intro and "eighteen attempts" in intro
 
 
 def test_evaluation_receipt_carries_no_machine_path():
@@ -318,3 +318,23 @@ def test_remaining_defects_cite_receipts_that_exist():
         if ev["project"] == "ot11-quad-1"]
     if all(ev["passed"] == 0 for ev in walk):
         assert "**R1 is not met.**" in section
+
+
+def test_the_margin_round_reads_its_w10_pass_as_the_margin():
+    """Round 12's W10 pass rests on feet held above the floor, and the report says so."""
+
+    receipt = json.loads((PROBE / "retained" / "p4-quad-1-r13-evaluation.json")
+                         .read_text(encoding="utf-8"))
+    assert receipt["evaluation"]["summary"]["pass"] is False
+    w10 = next(p for p in receipt["evaluation"]["summary"]["predicates"] if p["id"] == "W10")
+    assert w10["passed"] == 10
+    rest = receipt["rest_height"]
+    margin = rest["by_round"]["12 (r13-hovercost-margin)"]
+    # Every foot's median settled height is above the stance threshold on every seed...
+    assert all(foot["median_mm"][0] > rest["stance_mm"] for foot in margin.values())
+    # ...where every foot that bore load in round 11 rested in the floor.
+    assert max(rest["by_round"]["11 (r12-convex-sym)"][foot]["median_mm"][1]
+               for foot in ("c_foot_fl", "c_foot_rr")) < 0.0
+    section = REPORT.split("## Remaining defects", 1)[1]
+    assert "**A foot contact margin moves what the gait predicates read.**" in section
+    assert "The pass is not a fix." in section

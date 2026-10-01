@@ -307,15 +307,32 @@
    "trainer_s": 1954.087310261093,
    "policy_sha256": "3179aa38a75d3ace0d890d47ef19ee1f718c3862ad320135f859ba7f0488f9f9",
    "attempt": true
-  }
- ],
- "attempts": 17,
- "in_progress": [
+  },
   {
    "project": "ot11-quad-1",
    "run": "r13-hovercost-margin",
-   "started_at": 1790838588.6185846
+   "seed": 137,
+   "envs": 2048,
+   "iterations": 800,
+   "init_from": null,
+   "budget_s": 2400.0,
+   "task_sha256": "cb33cfe87502ea104dc6ebe10067b4442a4a2f65e1f3410e31ea7bbc8ab2f7cd",
+   "state": "finished",
+   "iterations_run": 800,
+   "started_at": 1790838588.6185846,
+   "supervised_s": 2239.22,
+   "trainer_s": 2089.691031557042,
+   "policy_sha256": "70b9ac55c145a3b1eacf812659b5b85c25416b761438f9defec307ecbf3283b7",
+   "attempt": true
   }
  ],
- "supervised_s_total": 28074.47
+ "attempts": 18,
+ "in_progress": [
+  {
+   "project": "ot11-quad-1",
+   "run": "r14-margin15-lift",
+   "started_at": 1790841387.8564334
+  }
+ ],
+ "supervised_s_total": 30313.69
 }
