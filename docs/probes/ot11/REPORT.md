@@ -11,7 +11,7 @@ The owner ticks the criteria; this page does not.
 
 ## Every training run
 
-Twenty-nine runs have ended in ot11, twenty-seven attempts and two refused starts
+Thirty runs have ended in ot11, twenty-eight attempts and two refused starts
 (`r9-steelfoot`, row 15, and `r21-r19-continue`, row 27: each trainer exited
 before its first iteration).
 All went through the product's `train_start` tool, one GPU job at a time,
@@ -55,13 +55,14 @@ is that receipt.
 | 27 | walk | `ot11-quad-1` | `r21-r19-continue` | 211 | 750 it × 2048 envs | `r19-contact-sync` | 2,350 | `failed` | 0 | 52.28 | — |
 | 28 | walk | `ot11-quad-1` | `r21b-r19-continue` | 211 | 750 it × 2048 envs | `r19-contact-sync` | 2,350 | `finished` | 750 | 2,068.98 | 1,964.1 |
 | 29 | walk | `ot11-quad-1` | `r22-gentle-contact25` | 221 | 750 it × 2048 envs | `r19-contact-sync` | 2,350 | `finished` | 750 | 1,727.12 | 1,622.5 |
+| 30 | walk | `ot11-quad-1` | `r23-r19-clip05` | 231 | 1200 it × 2048 envs | `r19-contact-sync` | 3,500 | `stopped` | 87 | 261.25 | — |
 
 | behaviour | runs | GPU time, s |
 |---|---|---|
 | balance | 1 | 900.57 |
 | reach | 5 | 4,447.41 |
-| walk | 23 | 42,750.05 |
-| **all** | **29** | **48,098.03** |
+| walk | 24 | 43,011.30 |
+| **all** | **30** | **48,359.28** |
 
 **How to read the two times.** *GPU time* is the supervisor's wall time
 from launch to exit; the trainer holds the GPU for all of it, so it is the
@@ -82,7 +83,7 @@ policy it began from; `reach-r5` began from `reach-r4`'s iteration-475
 checkpoint and `r6-trot` from `r5-swing`'s final policy, and `r7-relswing` from
 `r6-trot`'s, and `r11-speedpay` from `r10-steelfoot-fresh`'s, and `r18-sync-slip` from
 `r17-discount-bodyrate`'s, and `r19-contact-sync` from `r18-sync-slip`'s, and
-`r20-contact35`, `r21b-r19-continue` and `r22-gentle-contact25` from `r19-contact-sync`'s. Robin's ot9
+`r20-contact35`, `r21b-r19-continue`, `r22-gentle-contact25` and `r23-r19-clip05` from `r19-contact-sync`'s. `r23-r19-clip05` also set the PPO clip to 0.05. Robin's ot9
 baseline (`r3-ppo-1`) and ot10's `w2-2` are earlier runs measured as known
 negatives (P1), not ot11 training runs, and are not in this table.
 
@@ -91,7 +92,8 @@ negatives (P1), not ot11 training runs, and are not in this table.
 supervisors ran for 52.03 s and 52.28 s, but neither is an attempt
 (`attempt: false` in the receipt): each trained nothing. A run still
 training has no end time yet, so the receipt lists it under `in_progress`
-and in no total. No run was in progress when this was last regenerated.
+and in no total. When this was last regenerated, `r24-r19-vw005` (walk
+session 8's second run) was in progress.
 
 ## Every evaluation
 
@@ -425,6 +427,16 @@ Each item names its receipt.
   warm start trained on, and the trainer refuses that flag when there is
   no change (row 27, `attempt: false`). The agent re-registered it without
   the flag as `r21b-r19-continue`.
+- **One run was stopped by the agent and saved no policy, so it has no
+  evaluation** (`r23-r19-clip05`, row 30, `stopped`). It was walk session
+  8's first run: warm from r19 with the PPO clip at 0.05. After 87
+  iterations (261.25 s), the agent stopped it through `train_stop`. Its
+  reason, in the project's `loop-ledger.jsonl`, is that training reward per
+  step fell from 4.40 at iteration 5 to 0.72 at iteration 74, the same
+  warm-start loss as r20–r22. Its next registration (`r24-r19-vw005`)
+  quotes the total loss holding at +596 to +652 while reward fell, and
+  attributes the fall to the fresh critic's value loss. No policy was
+  saved, so there was nothing to evaluate.
 - **Walk session 3 ended at 0 of 10 on all three of its runs**
   (`r8-stance`, `r10-steelfoot-fresh`, `r11-speedpay`; rows 21–23,
   `retained/p4-quad-1-s3-rounds.json`). The steel feet fixed W10, and no
@@ -556,7 +568,10 @@ A defect fixed by decision is under *Every failure*, not here.
   ([`retained/p4-quad-1-s8-preregistration.json`](retained/p4-quad-1-s8-preregistration.json))
   starts from the same model and r19 declared, with at most three runs of
   at most 3,600 s each. Its prompt gives the warm-start training
-  measurements and no remedy, and the agent chooses the revision. No
+  measurements and no remedy, and the agent chooses the revision. Its
+  first run, `r23-r19-clip05` (row 30), was stopped by the agent with no
+  policy (above). Its second, `r24-r19-vw005`, is warm from r19 with the
+  value-loss weight at 0.05. No
   confirmation evaluation is registered, because no round has passed every
   seed.
 - **No walking gait has been judged.** The judge runs on a confirmation

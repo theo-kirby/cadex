@@ -57,7 +57,7 @@ def _number(cell: str) -> float:
 
 def test_run_table_is_the_receipt():
     rows = _table("## Every training run")
-    assert len(rows) == len(RUNS["runs"]) == 29
+    assert len(rows) == len(RUNS["runs"]) == 30
     for index, (row, run) in enumerate(zip(rows, RUNS["runs"]), 1):
         warm = run["init_from"].split("/")[1] if run["init_from"] else None
         assert row[0] == str(index)
@@ -243,10 +243,13 @@ def test_failure_counts_are_the_receipts():
     assert sum(run["state"] == "budget_exhausted" for run in RUNS["runs"]) == 7
     assert "Seven runs ended at their wall-clock budget" in section
     refused = [run["run"] for run in RUNS["runs"] if not run["attempt"]]
-    assert refused == ["r9-steelfoot", "r21-r19-continue"] and RUNS["attempts"] == len(RUNS["runs"]) - 2 == 27
+    assert refused == ["r9-steelfoot", "r21-r19-continue"] and RUNS["attempts"] == len(RUNS["runs"]) - 2 == 28
     assert "Two starts were refused, and are not attempts" in section
+    stopped = [run for run in RUNS["runs"] if run["state"] == "stopped"]
+    assert [run["run"] for run in stopped] == ["r23-r19-clip05"] and stopped[0]["policy_sha256"] is None
+    assert "One run was stopped by the agent and saved no policy" in section
     intro = REPORT.split("## Every training run", 1)[1].split("|", 1)[0]
-    assert "Twenty-nine runs" in intro and "twenty-seven attempts" in intro
+    assert "Thirty runs" in intro and "twenty-eight attempts" in intro
 
 
 def test_evaluation_receipt_carries_no_machine_path():
