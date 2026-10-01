@@ -1772,3 +1772,76 @@ already steps 10–18 times, so on these numbers it does not directly reach
 the dragged rear-left foot. This is recorded here and was not given to the
 agent. Run 6's evaluation will show whether the slip cost reaches it
 anyway.
+
+### Walk round 6: `r6-trot` steps with both front feet and drags both rear ones
+
+| run | seed | settings | budget | ended | evaluated policy | seeds passed |
+|---|---|---|---|---|---|---|
+| `r6-trot` | 53 | 760 it × 2048 envs, warm-started from `r5-swing`'s final policy | 2,400 s | **finished**, all 760 iterations, 2,157 s supervised (2,004 s in the trainer) | `0eaef24f…` (final, iteration 760) | **0 of 10** |
+
+GPU wall time: 2,157 s (supervised, as in [`REPORT.md`](REPORT.md)). The
+trainer was the same file as round 5's, `97bc1d9a…`; every checkpoint and
+the final policy record that digest. The training reward per step was 0.60
+at the best iteration (751) and 0.50 at the end. On the evaluation seeds
+the same policy scores 0.27 to 1.15 per step.
+
+**The evaluation is valid.** The evaluated revision `abebe838…` differs
+from round 5's only in the change the run registered: `trot_sync` −0.3 to
+−1.0, the grounded-slip coefficient inside `step_*` 0.5 to 1.2, `sink`
+−2 to −3 with its scale 800 to 400, and the policy weights. Its spec block
+equals `retained/walk-spec-block.txt`, the model is `ade106a6…` as in
+rounds 1–5, and W10 is read after the settle (ADR-467). The report is
+`evaluations/abebe8381134-0eaef24f7f32/evaluation.json`; the receipt is
+[`retained/p4-quad-1-r6-evaluation.json`](retained/p4-quad-1-r6-evaluation.json).
+
+| predicate | seeds failing | range (round 5) |
+|---|---|---|
+| W1, W2 | 0 | tilt 16–25° (12–21°) |
+| W3 tracks speed | 1 (1101, 1.35) | 0.98–1.35 (0.82–1.25) |
+| W4-heading, W4-lateral | 0 | 11–21°, 0.05–0.19 (18–33°, 0.004–0.34) |
+| W5-steps | 8 | worst foot 0–6 steps (1–6) |
+| W5-share | 10 | 0.00–0.12 (0.01–0.09) |
+| W6 clearance | 2 (1107, 1108) | 0.11–0.15 (0.05–0.12) |
+| W7 slip | 10 | **0.28–0.32** (0.46–0.53) |
+| W8-low duty factor | 10 | 0.23–0.27 (0.16–0.26) |
+| W8-high | 0 | 0.64–0.67 (0.64–0.71) |
+| W9 step balance | 10 | 6.3–39 on eight seeds; not measured on 1107 and 1108, where one foot takes no step (5.7–33) |
+| W10 in the floor | 10 | −0.175 to −0.092 hip heights (−0.209 to −0.138) |
+
+**Per foot, over the ten seeds:**
+
+| foot | steps (round 5) | duty factor | slip share | lowest after settle, mm |
+|---|---|---|---|---|
+| FL | 33–39 (27–34) | 0.23–0.27 | 0.11–0.17 | −8.3 to −6.7 |
+| FR | **15–28** (4–14) | 0.28–0.34 | 0.22–0.28 | −17.0 to −8.6 |
+| RL | **2–6** (1–6) | 0.62–0.66 | 0.24–0.28 | −15.6 to −6.4 |
+| RR | **0–7** (10–18) | 0.62–0.67 | 0.28–0.32 | −16.3 to −7.9 |
+
+**The open question from round 5 is answered: the change did not reach the
+rear-left foot.** It takes 2–6 steps, against 1–6. What moved instead is
+the pairing. Both front feet now step and both rear feet are dragged, so
+the gait is front-paddling with the hind end sliding. FR's steps rose to
+15–28, and RR's fell from 10–18 to 0–7. W9 is no better: 6.3–39 where it
+can be read, and on two seeds RR takes no step at all. The slip cost did
+what it charges for: W7 fell from about 0.5 to 0.28–0.32, still twice the
+0.15 limit. `trot_sync` cost −209 to −244 per episode at weight −1.0. The
+diagonal height mismatch it measures (the cost over the weight) is 209–244
+per episode against round 5's 219–294, so tripling the weight bought a
+mismatch about a tenth smaller. In reward terms every `step_*` term is now
+negative, from −14 (FL) to −201 (RL). The film of seed 1101 is the
+[overview](p4-quad-1-walk-r6-seed-1101-overview.png) and the
+[detail](p4-quad-1-walk-r6-seed-1101-detail.png): the robot crosses the
+floor upright, a little faster than commanded on this seed (W3 1.35).
+
+**The agent's diagnosis**, from its transcript at 02:17Z: "the policy
+still exploits swing pay by holding one front foot raised while hind feet
+slide". Its registered reason for `r7-relswing` adds that the swing pay
+used world-frame foot speed, "so a foot carried at body speed earned it
+while dodging slip and sink costs". This time the measurement agrees with
+it. FL is in the air for three quarters of every episode (duty 0.23–0.27,
+the foot that fails W8-low), and the rear feet are the ones W5 and W9
+fail on. Run 7 pays swing only for foot speed relative to the body,
+charges a lifted foot that is not moving relative to the body, and raises
+the grounded-slip coefficient to 2.0. It is warm-started from `r6-trot`,
+seed 67, 760 iterations, 2,400 s. It is the session's third run and the
+seventh in the ledger, the last the pre-registration allows.
