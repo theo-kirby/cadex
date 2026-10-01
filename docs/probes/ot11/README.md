@@ -1977,3 +1977,69 @@ seeds did not change. The prompt did not let the agent change the
 mechanism, and it named that limit in its own diagnosis. **R1 is not met.**
 Any next walk session must be pre-registered before its first run, as
 session 2 was.
+
+### Walk session 3: the diagnosis it starts from, and what it may change
+
+This is the actor's diagnosis of rounds 5–7, written before session 3's
+first run. It does not go to the agent as advice: the prompt states the
+measurements, and the agent reads its own evaluations.
+
+1. **The rear feet are dragged, and reward revisions moved the drag between
+   feet rather than removing it.** Round 5's rear-left foot takes 1–6 steps
+   with slip 0.44–0.53. Round 6's rear pair takes 2–6 (RL) and 0–7 (RR) at
+   duty 0.62–0.67. On round 7's four complete seeds they take 6–17 and 8–13,
+   and W9 is still 2.8–8.5 against 1.5. In every round, some foot fails W5
+   and W9 sits at least twice its limit.
+2. **Round 7 collapsed because its reward was net negative from the first
+   iteration.** The training reward was −2.11 per step at iteration 0, and
+   the trainer stopped the run at iteration 537 because episodes averaged
+   24.2 of 500 steps. Every `step_*` term is negative on every completed
+   seed (−214 to −488 per episode) against `alive`'s +1,500. That is a
+   property of the task, which the agent already owns.
+3. **W8-low and W10 did not move in any of the three rounds.** W8-low stays
+   at 0.16–0.29 against 0.40, and W10 after the settle at −0.209 to −0.092
+   hip heights against −0.05. Three different reward designs, one of which
+   halved W7 and another of which cut W9's worst seed from 39 to 8.5, left
+   both where they were.
+4. **W10 has the least margin of any predicate on this mechanism, before
+   any gait.** A passive stance with no policy already puts the rear feet at
+   −4.31 mm against the −4.84 mm limit (*W10 at rest*, above). The robot
+   weighs 4.70 N on four 7.5 mm-radius spheres. The agent's own session-2
+   diagnosis says the same, and names the change it was barred from: "a
+   stiffer contact or a different foot is a mechanism change I was not
+   allowed to make."
+
+Points 3 and 4 are why session 3 differs from session 2 in one respect: **the
+agent may now change the mechanism.** Nothing else changes. The actor does
+not say what to change and does not change anything itself. Whether point 4
+is the cause of W10's failures in a walking gait, rather than the policy's
+posture (round 4's front-left foot stood at −7.0 mm), is not measured here;
+the session will show it or not.
+
+**What a mechanism change does to the contract.** The contract is written in
+the mechanism's own scale, so the spec block stays byte-identical to
+[`retained/walk-spec-block.txt`](retained/walk-spec-block.txt) except for the
+values of `HIP_MM` and `WEIGHT_N`. Those must equal the evaluated model's
+hip height and weight, as the evaluation report's `rig` states them, or the
+evaluation is void. `SPEC_LIFT` keeps its formula. The bounds are:
+- it stays four legs on one free base, and the spec names the same four
+  foot bodies;
+- the floor, and every global physics setting, are not the agent's to
+  change;
+- the actuators stay catalog parts at catalog limits.
+
+**Pre-registered.** The registration is
+[`retained/p4-quad-1-s3-preregistration.json`](retained/p4-quad-1-s3-preregistration.json),
+committed before launch. Session 3 allows:
+- at most three runs (ten in the ledger), each with a budget of 2,400 s or
+  less and `--stop-on-collapse` on;
+- seeds chosen by the agent and refused if they are evaluation seeds;
+- two turns, under `runner/rounds.py` in its own session.
+
+The first prompt is
+[`prompts/walk.s3.loop.prompt.txt`](prompts/walk.s3.loop.prompt.txt). The
+driver gained `--continue-prompt`, so this session's continuation,
+[`prompts/walk.s3.continue.prompt.txt`](prompts/walk.s3.continue.prompt.txt),
+states this session's limit and mechanism rule. Session 2's continuation
+said "four runs in total". The shared continuation is unchanged and stays
+the default.

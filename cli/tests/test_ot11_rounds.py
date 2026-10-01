@@ -94,6 +94,26 @@ def test_a_transcript_reads_back_as_tool_calls_with_how_long_each_blocked(
     assert summary["project"] == "project" and summary["ledger"] == []
 
 
+def test_a_session_may_name_its_own_continuation(tmp_path: Path, monkeypatch) -> None:
+    rounds = _load("rounds")
+    first, later = tmp_path / "first.txt", tmp_path / "later.txt"
+    first.write_text("first", encoding="utf-8")
+    later.write_text("later", encoding="utf-8")
+    project, out = tmp_path / "project", tmp_path / "out"
+    project.mkdir()
+    seen: list[tuple[str, bool]] = []
+    monkeypatch.setattr(rounds, "turn", lambda project, folder, prompt, *, resume:
+                        seen.append((prompt.name, resume)) or 0)
+    monkeypatch.setattr(rounds.sys, "argv", [
+        "rounds.py", "--project", str(project), "--prompt", str(first), "--out", str(out),
+        "--continue-prompt", str(later), "--max-turns", "2"])
+    assert rounds.main() == 0
+    assert seen == [("first.txt", False), ("later.txt", True)]
+    registration = json.loads((out / "registration.json").read_text(encoding="utf-8"))
+    assert registration["continue_prompt"] == {
+        "file": "later.txt", "sha256": hashlib.sha256(b"later").hexdigest()}
+
+
 def test_the_runner_names_no_behaviour_and_pins_the_model() -> None:
     source = (RUNNER / "rounds.py").read_text(encoding="utf-8")
     assert '"claude-opus-5-5"' in source and '"fallback": None' in source

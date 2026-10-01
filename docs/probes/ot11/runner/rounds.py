@@ -17,6 +17,8 @@ caller, as the training runs already do under their supervisor.  ``OUT``
 gets ``registration.json`` before the first turn, ``turn-N/`` for each turn
 and ``rounds.json`` when it ends.  ``--summarise`` prints the rounds read
 back from the ledger and the transcripts and starts nothing.
+``--continue-prompt`` replaces the shared continuation, for a session
+whose limits the shared one does not state.
 """
 
 from __future__ import annotations
@@ -149,6 +151,7 @@ def main() -> int:
     parser.add_argument("--project", type=Path, required=True)
     parser.add_argument("--prompt", type=Path)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--continue-prompt", type=Path, default=CONTINUE)
     parser.add_argument("--max-runs", type=int, default=4)
     parser.add_argument("--max-turns", type=int, default=4)
     parser.add_argument("--summarise", action="store_true")
@@ -168,7 +171,8 @@ def main() -> int:
         "model": MODEL,
         "fallback": None,
         "first_prompt": {"file": args.prompt.name, "sha256": sha256(args.prompt)},
-        "continue_prompt": {"file": CONTINUE.name, "sha256": sha256(CONTINUE)},
+        "continue_prompt": {"file": args.continue_prompt.name,
+                            "sha256": sha256(args.continue_prompt)},
         "max_runs": args.max_runs,
         "max_turns": args.max_turns,
         "stop_rule": "an evaluation passes on every seed, or max_runs runs have been trained "
@@ -178,7 +182,7 @@ def main() -> int:
     for index in range(1, args.max_turns + 1):
         folder = out / f"turn-{index}"
         folder.mkdir()
-        prompt = args.prompt if index == 1 else CONTINUE
+        prompt = args.prompt if index == 1 else args.continue_prompt
         started = time.time()
         code = turn(project, folder, prompt, resume=index > 1)
         state = standing(project)
