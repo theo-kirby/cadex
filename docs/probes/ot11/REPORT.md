@@ -194,9 +194,15 @@ that made both void under the session's mechanism rule and led to ADR-468.
   four decimals (`retained/p4-quad-1-r8-evaluation.json`, `spec_block`).
   The engine scored them, and they fail on every seed regardless. ADR-468
   now refuses such a spec when it is declared.
-- **No walk evaluation has passed a seed.** Every walk row reads on W10's
-  ADR-467 code, after the settle; the earlier rows were re-read when that
-  decision was taken.
+- **Walk rows 1–2 and 13–28 pass no seed; rows 35 and 36 pass all ten.** Every
+  walk row reads on W10's ADR-467 code, after the settle; the earlier rows
+  were re-read when that decision was taken. The first seeds to pass came
+  in rows 29–34 (1, 2, 9, 0, 2 and 6 of 10), and none of those passed the
+  rule. Row 35 is the agent's own evaluation of `r24-r19-vw005` at
+  iteration 900, and passes 10 of 10. Row 36 is R1's pre-registered
+  confirmation of that policy, reopened through `cadex export`, and passes
+  10 of 10 with no contact offset on the model
+  ([`retained/r1-confirm-1-evaluation.json`](retained/r1-confirm-1-evaluation.json)).
 - **Row 22 is valid.** Its spec block's `HIP_MM` and `WEIGHT_N` equal the rig's to the block's
   printed precision (`retained/p4-quad-1-r10-evaluation.json`,
   `spec_block`). It passes W10 on every seed, the first walk policy to do
@@ -658,7 +664,7 @@ A defect fixed by decision is under *Every failure*, not here.
   [`retained/judge-w2-2-seed-1101.json`](retained/judge-w2-2-seed-1101.json)).
   That is a recorded limit of the contract, and W5 and W7 are
   authoritative for it.
-- **W10 under a gait on the steel-ball feet has not passed on the floor.**
+- **W10 under a gait on the steel-ball feet passed on the floor only on ADR-469's spring.**
   Round 11's stepping front feet sank to −0.154 to −0.074 hip heights
   ([`retained/p4-quad-1-r12-evaluation.json`](retained/p4-quad-1-r12-evaluation.json)).
   Round 12 passes W10 on every seed, but only because its 3 mm foot contact
@@ -667,7 +673,12 @@ A defect fixed by decision is under *Every failure*, not here.
   −3.1 to +0.4 mm in rounds 10 and 11, and +1.5 to +3.5 mm on all four
   feet in round 12
   ([`retained/p4-quad-1-r13-evaluation.json`](retained/p4-quad-1-r13-evaluation.json),
-  `rest_height`). The pass is not a fix.
+  `rest_height`). The pass is not a fix. With no contact offset, on
+  ADR-469's spring, W10 holds under a stepping gait on every seed of rows
+  29–36, where round 11's stepping feet on the old spring sank; on R1's
+  confirmation (row 36) the lowest foot reached −0.019 to −0.012 hip
+  heights over the ten seeds
+  ([`retained/r1-confirm-1-evaluation.json`](retained/r1-confirm-1-evaluation.json)).
 - **A foot contact margin moves what the gait predicates read.** The
   contract reads a foot's geometry: stance is a sphere at or under 1.0 mm
   (`STANCE_MM`), and slip is counted only between stance frames. With a

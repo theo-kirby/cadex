@@ -2393,7 +2393,7 @@ eleven runs, ten of them attempts ([`REPORT.md`](REPORT.md)).
   for these MG90S legs is open: every steel-foot policy has stood still,
   and none was trained under a reward that made standing a loss. W10
   under a real gait on steel feet is equally unmeasured.
-- **R1 stands at 0 of 10.** No walk evaluation of an ot11 policy, rows
+- **R1 stood at 0 of 10 when session 3 closed.** No walk evaluation of an ot11 policy, rows
   13–23 of [`REPORT.md`](REPORT.md)'s evaluation table, has passed a
   seed. Session 4, if one is registered, starts from the agent's proposal
   above: a convex speed cost and swing pay gated on body progress, on the

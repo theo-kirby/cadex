@@ -360,3 +360,28 @@ def test_every_criterion_has_a_receipt_that_exists():
     for number in set(re.findall(r"ADR-(\d+)", section)):
         assert f"## ADR-{number} " in decisions, number
     assert "SUITES_PENDING" not in section
+
+
+STALE_WALK_CLAIMS = re.compile(
+    r"no walk evaluation[^.]*has passed|has not passed a seed|never 10 ?(?:/|of) ?10"
+    r"|best 9 ?(?:/|of) ?10|no walking gait|R1 stands at 0 of 10|R1 is not met",
+    re.IGNORECASE)
+
+
+def test_no_stale_walk_claim_beside_a_passing_walk_row():
+    """C1: once a walk row passes, no sentence may say none has (critic, 2026-10-01).
+
+    REPORT.md once kept "No walk evaluation has passed a seed." beside rows 35
+    and 36, both 10 of 10. The rule reads the evaluation receipt, so a claim
+    written before the first pass fails here as soon as one lands.
+    """
+
+    walk = [ev for ev in EVALS["evaluations"]
+            if BEHAVIOUR_ALL[ev["project"]] == "walk"]
+    if not any(ev["passed"] for ev in walk):
+        return
+    stale = [line for line in REPORT.splitlines() if STALE_WALK_CLAIMS.search(line)]
+    assert stale == [], stale
+    # The bullet that replaced it names the rows that pass, and they do.
+    assert "rows 35 and 36 pass all ten" in REPORT
+    assert [ev["passed"] for ev in EVALS["evaluations"][34:36]] == [10, 10]
