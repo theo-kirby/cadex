@@ -30820,3 +30820,58 @@ header to carry the digest from import. It fails on the old code.
 - One constant is added, and one expression is replaced by it. No engine,
   protocol, payload or shell file changes, and no dependency is added.
   Nothing removed.
+
+## ADR-467 — W10 reads a foot's depth in the floor after the settle, as W3, W4 and W8 do (2026-10-01)
+
+**Context.** W10, "on the floor, not in it" (ADR-454), held every foot's
+lowest height over **every frame** to at least −0.05 hip heights (−4.84 mm
+on `ot11-quad-1`). The walk spec's reset lifts the robot 5.4–9.9 mm on the
+ten evaluation seeds and drops it. A passive zero-action rollout of the
+evaluated model, every servo holding the solved pose, rests inside W10
+(rear feet −4.31 mm) but fails it from any drop of 0.5 mm or more
+(`docs/probes/ot11/runner/w10_trust.py`, receipt
+`retained/p1-walk-w10-trust.json`). So over every frame, W10 failed a
+pose-holding robot on every evaluation seed in its first 0.4 s, before any
+gait. It measured the reset, not what its name and ADR-454 say it measures.
+Speed (W3), lateral drift (W4) and duty factor (W8) were already read after
+the 1.0 s settle, for the same reason.
+
+**Decision.** `foot_lowest_hip_heights_min` is the worst foot's lowest
+height over the frames at or after `SETTLE_S` (1.0 s). Each foot's report
+row keeps `lowest_height_mm` over every frame, so the landing is still
+shown, and adds `settled_lowest_height_mm`, which is what the predicate
+reads. An episode that ends inside the settle has no settled depth; the
+metric is then `None` and the predicate fails, as speed already does. The
+limit, −0.05 hip heights, is unchanged. This is a change to a frozen
+item, made under the contract's rule: `contract.json` records it in W10's
+row and in `decisions`, and every earlier walk policy was re-evaluated.
+
+**Re-evaluation.** `docs/probes/ot11/runner/w10_reread.py` re-reads each
+stored evaluation's traces (a rollout is deterministic in its seed). Its
+gate is agreement: every stored metric comes back exactly from the trace,
+and the stored W10 equals the every-frame minimum. All six stored walk
+evaluations agree on all 70 seeds: `w2-2` twice (`ot11-w2-negative`) and
+walk rounds 1–5 on `ot11-quad-1`. **No seed's verdict moved, and W10 still
+fails on every seed of every one.**
+- `w2-2` still fails W5 and W7 (stepping and slip) on every seed, the
+  reason the contract records, and W10 at −0.26 to −0.14 hip heights after
+  the settle.
+- Round 4, which stands still, moves from −0.131..−0.085 to −0.083..−0.072:
+  its front-left foot stands 7 mm in the floor.
+Receipt: `docs/probes/ot11/retained/p1-walk-w10-reread.json`.
+
+**Consequences.**
+- A policy no longer has to cushion its landing from the reset lift to
+  pass W10. It still has to stand and walk on the floor rather than in it.
+- Walk session 2's `cadexd` imports the engine from the source tree, so the
+  new reading went live when the source changed, not at an install.
+  `r5-swing`'s evaluation (`dee2391353b7-6a7c89de9ade`, 01:28Z) ran after
+  the edit and carries `settled_lowest_height_mm`. On all ten of its seeds
+  the deepest frame is after the settle, so both readings give the same
+  numbers (−0.209 to −0.138 hip heights) and the same verdict: it fails
+  W10 on every seed under either.
+- The test `test_a_landing_from_the_reset_lift_is_not_read_as_standing_in_the_floor`
+  fails on the old reading. The `w2-2` fixture test pins each foot's
+  settled depth.
+- One metric's window changes. No protocol op, payload file list, shell
+  file or dependency changes. Nothing removed.

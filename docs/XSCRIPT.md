@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-30
+Verified against source: 2026-10-01
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -407,7 +407,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `max_drift_com_heights` | the same drift, in centre-of-mass heights | a floating base on the floor plane |
   | `recovery_s_max` | the longest time from a shove's end to the start of 1 s of rest (tilt ≤ 10°, speed ≤ 1 COM height/s) | a timed `disturbance` in the spec's conditions |
   | `steps_min`, `step_share_min`, `step_count_ratio` | real steps by the foot that took fewest (airborne ≥ 0.10 s, landing ≥ 0.15 hip heights away); the share of a foot's travel made in steps; most steps over fewest | `feet` |
-  | `step_clearance_hip_heights_min`, `foot_lowest_hip_heights_min` | median peak height of a foot's steps; how far below the floor a foot went | `feet` |
+  | `step_clearance_hip_heights_min`, `foot_lowest_hip_heights_min` | median peak height of a foot's steps; how far below the floor a foot went after 1 s, so the landing from the reset lift is not read as stance (ADR-467) | `feet` |
   | `slip_share_max`, `duty_factor_min`, `duty_factor_max` | the share of a foot's travel made while on the floor; the share of frames in stance | `feet` |
   | `mean_forward_speed_mm_s`, `mean_lateral_speed_mm_s` | speed along and across the base's heading, after 1 s | `feet` |
   | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one: the mean of the `speed` goal over the same settled frames | `feet` and a `speed` goal |

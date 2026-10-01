@@ -1,0 +1,3648 @@
+{
+  "schema": "cadex-ot11-w10-reread-v1",
+  "adr": "ADR-467",
+  "settle_s": 1.0,
+  "evaluations": [
+    {
+      "evaluation": "ot11-w2-negative/evaluations/064d8d7cd34c-7a4e8c233214",
+      "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+      "w10_min": -0.05,
+      "agrees": true,
+      "verdict_was": "fail",
+      "verdict_now": "fail",
+      "w10_fails_was": 10,
+      "w10_fails_now": 10,
+      "seed_verdicts_moved": [],
+      "seeds": [
+        {
+          "seed": 1101,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.17937147052243455,
+          "w10_settled": -0.17937147052243455,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -17.35,
+              -17.35
+            ],
+            "c_foot_fr": [
+              -16.87,
+              -16.87
+            ],
+            "c_foot_rl": [
+              -13.17,
+              -13.17
+            ],
+            "c_foot_rr": [
+              -9.57,
+              -9.19
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1102,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.22188336945049883,
+          "w10_settled": -0.22188336945049883,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -18.75,
+              -18.75
+            ],
+            "c_foot_fr": [
+              -21.46,
+              -21.46
+            ],
+            "c_foot_rl": [
+              -11.52,
+              -11.52
+            ],
+            "c_foot_rr": [
+              -9.02,
+              -9.02
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1103,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.23061613807469902,
+          "w10_settled": -0.23061613807469902,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -18.87,
+              -18.87
+            ],
+            "c_foot_fr": [
+              -22.3,
+              -22.3
+            ],
+            "c_foot_rl": [
+              -8.78,
+              -8.78
+            ],
+            "c_foot_rr": [
+              -12.68,
+              -12.68
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1104,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.21663969283264678,
+          "w10_settled": -0.21663969283264678,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -20.95,
+              -20.95
+            ],
+            "c_foot_fr": [
+              -20.1,
+              -20.1
+            ],
+            "c_foot_rl": [
+              -13.34,
+              -13.34
+            ],
+            "c_foot_rr": [
+              -17.98,
+              -17.98
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1105,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.14604868746061989,
+          "w10_settled": -0.14604868746061989,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -14.12,
+              -14.12
+            ],
+            "c_foot_fr": [
+              -13.46,
+              -11.9
+            ],
+            "c_foot_rl": [
+              -9.64,
+              -9.64
+            ],
+            "c_foot_rr": [
+              -7.83,
+              -7.83
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1106,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.25937332878940167,
+          "w10_settled": -0.25937332878940167,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -25.08,
+              -25.08
+            ],
+            "c_foot_fr": [
+              -13.34,
+              -13.34
+            ],
+            "c_foot_rl": [
+              -15.01,
+              -15.01
+            ],
+            "c_foot_rr": [
+              -14.08,
+              -14.08
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1107,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.1927940749078299,
+          "w10_settled": -0.1927940749078299,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -13.07,
+              -13.07
+            ],
+            "c_foot_fr": [
+              -18.64,
+              -18.64
+            ],
+            "c_foot_rl": [
+              -9.24,
+              -9.24
+            ],
+            "c_foot_rr": [
+              -9.67,
+              -9.67
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1108,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.14186011985029096,
+          "w10_settled": -0.14186011985029096,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -13.72,
+              -13.72
+            ],
+            "c_foot_fr": [
+              -13.3,
+              -13.3
+            ],
+            "c_foot_rl": [
+              -6.48,
+              -5.22
+            ],
+            "c_foot_rr": [
+              -6.14,
+              -6.14
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1109,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.22223961913503218,
+          "w10_settled": -0.22223961913503218,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -16.2,
+              -16.2
+            ],
+            "c_foot_fr": [
+              -21.49,
+              -21.49
+            ],
+            "c_foot_rl": [
+              -10.46,
+              -10.43
+            ],
+            "c_foot_rr": [
+              -13.13,
+              -9.0
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1110,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.21255436982261372,
+          "w10_settled": -0.21255436982261372,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -17.49,
+              -17.49
+            ],
+            "c_foot_fr": [
+              -20.55,
+              -20.55
+            ],
+            "c_foot_rl": [
+              -12.16,
+              -12.16
+            ],
+            "c_foot_rr": [
+              -10.14,
+              -10.14
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "evaluation": "ot11-w2-negative/evaluations/60f655537c0b-7a4e8c233214",
+      "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+      "w10_min": -0.05,
+      "agrees": true,
+      "verdict_was": "fail",
+      "verdict_now": "fail",
+      "w10_fails_was": 10,
+      "w10_fails_now": 10,
+      "seed_verdicts_moved": [],
+      "seeds": [
+        {
+          "seed": 1101,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.18892609447560377,
+          "w10_settled": -0.18892609447560377,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -18.27,
+              -18.27
+            ],
+            "c_foot_fr": [
+              -16.7,
+              -16.7
+            ],
+            "c_foot_rl": [
+              -8.94,
+              -8.94
+            ],
+            "c_foot_rr": [
+              -8.34,
+              -8.34
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1102,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12316825143592021,
+          "w10_settled": -0.11663260718275877,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.28,
+              -11.28
+            ],
+            "c_foot_fr": [
+              -11.91,
+              -6.42
+            ],
+            "c_foot_rl": [
+              -6.74,
+              -0.33
+            ],
+            "c_foot_rr": [
+              -6.24,
+              18.5
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1103,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.156858380658268,
+          "w10_settled": -0.156858380658268,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -14.77,
+              -14.77
+            ],
+            "c_foot_fr": [
+              -15.17,
+              -15.17
+            ],
+            "c_foot_rl": [
+              -8.0,
+              -8.0
+            ],
+            "c_foot_rr": [
+              -8.68,
+              -8.68
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1104,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.16316876359608634,
+          "w10_settled": -0.11888984131444631,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -15.78,
+              -11.5
+            ],
+            "c_foot_fr": [
+              -14.18,
+              -6.28
+            ],
+            "c_foot_rl": [
+              -8.88,
+              -0.41
+            ],
+            "c_foot_rr": [
+              -7.73,
+              20.14
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1105,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.17423630449496877,
+          "w10_settled": -0.17423630449496877,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -16.06,
+              -16.06
+            ],
+            "c_foot_fr": [
+              -14.09,
+              -14.09
+            ],
+            "c_foot_rl": [
+              -16.85,
+              -16.85
+            ],
+            "c_foot_rr": [
+              -9.45,
+              -9.45
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1106,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.18263154615032062,
+          "w10_settled": -0.18263154615032062,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -13.38,
+              -13.36
+            ],
+            "c_foot_fr": [
+              -17.66,
+              -17.66
+            ],
+            "c_foot_rl": [
+              -9.7,
+              -9.7
+            ],
+            "c_foot_rr": [
+              -7.71,
+              -7.71
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1107,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.2274536611929389,
+          "w10_settled": -0.2274536611929389,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -21.99,
+              -21.99
+            ],
+            "c_foot_fr": [
+              -17.12,
+              -17.12
+            ],
+            "c_foot_rl": [
+              -12.19,
+              -12.19
+            ],
+            "c_foot_rr": [
+              -17.52,
+              -17.52
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1108,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11935511175481728,
+          "w10_settled": null,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.24,
+              null
+            ],
+            "c_foot_fr": [
+              -11.54,
+              null
+            ],
+            "c_foot_rl": [
+              -7.99,
+              null
+            ],
+            "c_foot_rr": [
+              -3.73,
+              null
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1109,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.1691375097555903,
+          "w10_settled": -0.1691375097555903,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -15.25,
+              -15.25
+            ],
+            "c_foot_fr": [
+              -13.78,
+              -13.78
+            ],
+            "c_foot_rl": [
+              -12.15,
+              -12.15
+            ],
+            "c_foot_rr": [
+              -16.36,
+              -16.36
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1110,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.19805288769036075,
+          "w10_settled": -0.19805288769036075,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -19.15,
+              -19.15
+            ],
+            "c_foot_fr": [
+              -14.75,
+              -14.75
+            ],
+            "c_foot_rl": [
+              -8.13,
+              -8.13
+            ],
+            "c_foot_rr": [
+              -7.96,
+              -7.96
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W2",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "evaluation": "ot11-quad-1/evaluations/8498db6e1ff5-8db0cb619fc4",
+      "policy_sha256": "8db0cb619fc4d07abf14bfec6e3d5131fe18a029b51bfbb1f7084efb4df343e1",
+      "w10_min": -0.05,
+      "agrees": true,
+      "verdict_was": "fail",
+      "verdict_now": "fail",
+      "w10_fails_was": 10,
+      "w10_fails_now": 10,
+      "seed_verdicts_moved": [],
+      "seeds": [
+        {
+          "seed": 1101,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.13582747929847103,
+          "w10_settled": -0.13582747929847103,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.09,
+              -11.09
+            ],
+            "c_foot_fr": [
+              -9.33,
+              -9.33
+            ],
+            "c_foot_rl": [
+              -13.13,
+              -13.13
+            ],
+            "c_foot_rr": [
+              -12.42,
+              -12.42
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1102,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12645746286491555,
+          "w10_settled": null,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -2.56,
+              null
+            ],
+            "c_foot_fr": [
+              -11.39,
+              null
+            ],
+            "c_foot_rl": [
+              -8.57,
+              null
+            ],
+            "c_foot_rr": [
+              -12.23,
+              null
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W3",
+              "W4-lateral",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W3",
+              "W4-lateral",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1103,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12419714040788746,
+          "w10_settled": -0.12419714040788746,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -8.41,
+              -8.41
+            ],
+            "c_foot_fr": [
+              -10.75,
+              -10.75
+            ],
+            "c_foot_rl": [
+              -11.66,
+              -11.66
+            ],
+            "c_foot_rr": [
+              -12.01,
+              -12.01
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-lateral",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-lateral",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1104,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.15211953235688963,
+          "w10_settled": -0.15211953235688963,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -8.91,
+              -8.91
+            ],
+            "c_foot_fr": [
+              -9.66,
+              -9.66
+            ],
+            "c_foot_rl": [
+              -14.71,
+              -14.71
+            ],
+            "c_foot_rr": [
+              -12.16,
+              -12.16
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1105,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.19400682864220803,
+          "w10_settled": -0.19400682864220803,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -8.02,
+              -8.02
+            ],
+            "c_foot_fr": [
+              -10.95,
+              -10.95
+            ],
+            "c_foot_rl": [
+              -18.76,
+              -18.76
+            ],
+            "c_foot_rr": [
+              -12.62,
+              -12.62
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1106,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.15465517386938715,
+          "w10_settled": -0.15465517386938715,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -14.05,
+              -14.05
+            ],
+            "c_foot_fr": [
+              -11.91,
+              -11.91
+            ],
+            "c_foot_rl": [
+              -14.96,
+              -14.96
+            ],
+            "c_foot_rr": [
+              -14.51,
+              -14.51
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1107,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11345819332445282,
+          "w10_settled": -0.11345819332445282,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -8.94,
+              -8.94
+            ],
+            "c_foot_fr": [
+              -9.76,
+              -9.76
+            ],
+            "c_foot_rl": [
+              -9.72,
+              -9.72
+            ],
+            "c_foot_rr": [
+              -10.97,
+              -10.97
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W3",
+              "W4-lateral",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W3",
+              "W4-lateral",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1108,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12665822213030642,
+          "w10_settled": -0.12665822213030642,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -9.12,
+              -9.12
+            ],
+            "c_foot_fr": [
+              -7.61,
+              -7.61
+            ],
+            "c_foot_rl": [
+              -12.25,
+              -12.25
+            ],
+            "c_foot_rr": [
+              -11.65,
+              -11.65
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-lateral",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-lateral",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1109,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.16852543920630783,
+          "w10_settled": -0.16852543920630783,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -10.24,
+              -10.24
+            ],
+            "c_foot_fr": [
+              -9.24,
+              -9.24
+            ],
+            "c_foot_rl": [
+              -16.3,
+              -16.3
+            ],
+            "c_foot_rr": [
+              -10.59,
+              -10.59
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1110,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.14348096613699765,
+          "w10_settled": -0.14348096613699765,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -3.55,
+              -2.49
+            ],
+            "c_foot_fr": [
+              -13.87,
+              -13.87
+            ],
+            "c_foot_rl": [
+              -11.52,
+              -3.84
+            ],
+            "c_foot_rr": [
+              -12.72,
+              -12.72
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W3",
+              "W4-lateral",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W3",
+              "W4-lateral",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "evaluation": "ot11-quad-1/evaluations/80ba9fb9905e-1a0f0d28a2aa",
+      "policy_sha256": "1a0f0d28a2aabfcb06d1f033b1867b479ea1d2cafaa0b11bcc99409480a2ba36",
+      "w10_min": -0.05,
+      "agrees": true,
+      "verdict_was": "fail",
+      "verdict_now": "fail",
+      "w10_fails_was": 10,
+      "w10_fails_now": 10,
+      "seed_verdicts_moved": [],
+      "seeds": [
+        {
+          "seed": 1101,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11039047568431967,
+          "w10_settled": -0.11039047568431967,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -8.66,
+              -8.66
+            ],
+            "c_foot_fr": [
+              -10.67,
+              -10.67
+            ],
+            "c_foot_rl": [
+              -10.51,
+              -10.51
+            ],
+            "c_foot_rr": [
+              -10.66,
+              -9.75
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1102,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.1256907498275801,
+          "w10_settled": -0.11618932693072727,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -8.32,
+              -8.32
+            ],
+            "c_foot_fr": [
+              -11.17,
+              -11.17
+            ],
+            "c_foot_rl": [
+              -12.15,
+              -11.24
+            ],
+            "c_foot_rr": [
+              -10.57,
+              -10.12
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1103,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.129374643076086,
+          "w10_settled": -0.11456232372208933,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.01,
+              -11.01
+            ],
+            "c_foot_fr": [
+              -11.08,
+              -11.08
+            ],
+            "c_foot_rl": [
+              -12.23,
+              -9.05
+            ],
+            "c_foot_rr": [
+              -12.51,
+              -9.27
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1104,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.1144124383507626,
+          "w10_settled": -0.1144124383507626,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -9.71,
+              -9.71
+            ],
+            "c_foot_fr": [
+              -9.73,
+              -9.73
+            ],
+            "c_foot_rl": [
+              -11.06,
+              -11.06
+            ],
+            "c_foot_rr": [
+              -9.88,
+              -9.88
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1105,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.1142106163508102,
+          "w10_settled": -0.1142106163508102,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -10.74,
+              -10.74
+            ],
+            "c_foot_fr": [
+              -11.04,
+              -11.04
+            ],
+            "c_foot_rl": [
+              -9.81,
+              -9.81
+            ],
+            "c_foot_rr": [
+              -10.99,
+              -10.97
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1106,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12807547532701277,
+          "w10_settled": -0.11285885362313018,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -8.72,
+              -8.72
+            ],
+            "c_foot_fr": [
+              -10.91,
+              -10.91
+            ],
+            "c_foot_rl": [
+              -11.1,
+              -9.57
+            ],
+            "c_foot_rr": [
+              -12.38,
+              -10.07
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1107,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12247145697666441,
+          "w10_settled": -0.12247145697666441,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.84,
+              -11.84
+            ],
+            "c_foot_fr": [
+              -9.2,
+              -9.2
+            ],
+            "c_foot_rl": [
+              -10.19,
+              -10.19
+            ],
+            "c_foot_rr": [
+              -10.62,
+              -10.62
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1108,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11548009888665961,
+          "w10_settled": -0.11548009888665961,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -7.21,
+              -7.21
+            ],
+            "c_foot_fr": [
+              -11.17,
+              -11.17
+            ],
+            "c_foot_rl": [
+              -10.69,
+              -10.69
+            ],
+            "c_foot_rr": [
+              -10.4,
+              -10.4
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1109,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11942238408100977,
+          "w10_settled": -0.11942238408100977,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.3,
+              -7.59
+            ],
+            "c_foot_fr": [
+              -11.55,
+              -11.55
+            ],
+            "c_foot_rl": [
+              -10.25,
+              -9.78
+            ],
+            "c_foot_rr": [
+              -9.33,
+              -9.33
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-lateral",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-lateral",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1110,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12271099621538566,
+          "w10_settled": -0.12271099621538566,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.87,
+              -11.87
+            ],
+            "c_foot_fr": [
+              -11.68,
+              -11.68
+            ],
+            "c_foot_rl": [
+              -9.22,
+              -9.04
+            ],
+            "c_foot_rr": [
+              -11.26,
+              -9.37
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "evaluation": "ot11-quad-1/evaluations/9f711fcaa419-102133e9310b",
+      "policy_sha256": "102133e9310b05c3569a5b9354007dbd540cd47a4e8d8f9aebdd96861048d302",
+      "w10_min": -0.05,
+      "agrees": true,
+      "verdict_was": "fail",
+      "verdict_now": "fail",
+      "w10_fails_was": 10,
+      "w10_fails_now": 10,
+      "seed_verdicts_moved": [],
+      "seeds": [
+        {
+          "seed": 1101,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12024618930798246,
+          "w10_settled": -0.12024618930798246,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -10.01,
+              -10.01
+            ],
+            "c_foot_fr": [
+              -11.63,
+              -11.63
+            ],
+            "c_foot_rl": [
+              -9.71,
+              -9.71
+            ],
+            "c_foot_rr": [
+              -10.08,
+              -10.08
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1102,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.18734438878778786,
+          "w10_settled": -0.18734438878778786,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.78,
+              -11.78
+            ],
+            "c_foot_fr": [
+              -18.12,
+              -18.12
+            ],
+            "c_foot_rl": [
+              -11.62,
+              -11.62
+            ],
+            "c_foot_rr": [
+              -15.74,
+              -15.74
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1103,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12098839137271454,
+          "w10_settled": -0.12098839137271454,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -10.07,
+              -10.07
+            ],
+            "c_foot_fr": [
+              -11.7,
+              -11.7
+            ],
+            "c_foot_rl": [
+              -10.98,
+              -10.98
+            ],
+            "c_foot_rr": [
+              -9.85,
+              -9.85
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1104,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.15310732383526868,
+          "w10_settled": -0.15310732383526868,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -9.27,
+              -9.27
+            ],
+            "c_foot_fr": [
+              -12.41,
+              -12.41
+            ],
+            "c_foot_rl": [
+              -11.93,
+              -11.93
+            ],
+            "c_foot_rr": [
+              -14.81,
+              -14.81
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1105,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12759860938782142,
+          "w10_settled": -0.12759860938782142,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -9.54,
+              -9.54
+            ],
+            "c_foot_fr": [
+              -7.1,
+              -7.1
+            ],
+            "c_foot_rl": [
+              -11.32,
+              -11.32
+            ],
+            "c_foot_rr": [
+              -12.34,
+              -12.34
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1106,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11421244692833832,
+          "w10_settled": -0.11421244692833832,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -10.9,
+              -10.9
+            ],
+            "c_foot_fr": [
+              -8.74,
+              -8.74
+            ],
+            "c_foot_rl": [
+              -11.04,
+              -11.04
+            ],
+            "c_foot_rr": [
+              -9.21,
+              -9.21
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1107,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11633832530329968,
+          "w10_settled": -0.11633832530329968,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -8.79,
+              -8.79
+            ],
+            "c_foot_fr": [
+              -8.77,
+              -8.77
+            ],
+            "c_foot_rl": [
+              -11.25,
+              -11.25
+            ],
+            "c_foot_rr": [
+              -9.62,
+              -9.62
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1108,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.195550259036458,
+          "w10_settled": -0.195550259036458,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -9.54,
+              -9.54
+            ],
+            "c_foot_fr": [
+              -14.64,
+              -14.64
+            ],
+            "c_foot_rl": [
+              -10.91,
+              -10.91
+            ],
+            "c_foot_rr": [
+              -18.91,
+              -18.91
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-heading",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1109,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.14059880177949993,
+          "w10_settled": -0.14059880177949993,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.04,
+              -11.04
+            ],
+            "c_foot_fr": [
+              -13.6,
+              -13.6
+            ],
+            "c_foot_rl": [
+              -10.69,
+              -10.69
+            ],
+            "c_foot_rr": [
+              -11.07,
+              -11.07
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-lateral",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-lateral",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1110,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11059306743222777,
+          "w10_settled": -0.11059306743222777,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -9.66,
+              -9.66
+            ],
+            "c_foot_fr": [
+              -9.0,
+              -9.0
+            ],
+            "c_foot_rl": [
+              -10.69,
+              -10.69
+            ],
+            "c_foot_rr": [
+              -9.21,
+              -9.21
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "evaluation": "ot11-quad-1/evaluations/ce8d19639f13-d2dcaf39ba21",
+      "policy_sha256": "d2dcaf39ba21023227801317e95766e19172179bb9d1c18522a1535918a136df",
+      "w10_min": -0.05,
+      "agrees": true,
+      "verdict_was": "fail",
+      "verdict_now": "fail",
+      "w10_fails_was": 10,
+      "w10_fails_now": 10,
+      "seed_verdicts_moved": [],
+      "seeds": [
+        {
+          "seed": 1101,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.09083084191903876,
+          "w10_settled": -0.07229839298613705,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -8.78,
+              -6.99
+            ],
+            "c_foot_fr": [
+              -5.84,
+              -5.37
+            ],
+            "c_foot_rl": [
+              -4.76,
+              -2.09
+            ],
+            "c_foot_rr": [
+              -2.53,
+              -2.53
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W1",
+              "W2",
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1102,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.13082156066408082,
+          "w10_settled": -0.07357896638990348,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -12.65,
+              -7.12
+            ],
+            "c_foot_fr": [
+              -6.15,
+              -4.38
+            ],
+            "c_foot_rl": [
+              -4.34,
+              -1.81
+            ],
+            "c_foot_rr": [
+              -3.13,
+              -3.13
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1103,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11175675107421484,
+          "w10_settled": -0.07317599063636125,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -10.81,
+              -7.08
+            ],
+            "c_foot_fr": [
+              -7.29,
+              -4.68
+            ],
+            "c_foot_rl": [
+              -7.14,
+              -1.84
+            ],
+            "c_foot_rr": [
+              -3.04,
+              -3.04
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1104,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.0848698859978559,
+          "w10_settled": -0.08292960404035135,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -8.21,
+              -8.02
+            ],
+            "c_foot_fr": [
+              -5.08,
+              -3.45
+            ],
+            "c_foot_rl": [
+              -3.28,
+              -3.25
+            ],
+            "c_foot_rr": [
+              -2.04,
+              -1.79
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1105,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11996964898706117,
+          "w10_settled": -0.07655328202249555,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.6,
+              -7.4
+            ],
+            "c_foot_fr": [
+              -5.64,
+              -5.35
+            ],
+            "c_foot_rl": [
+              -3.64,
+              -2.01
+            ],
+            "c_foot_rr": [
+              -3.58,
+              -3.58
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1106,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.13133901947897086,
+          "w10_settled": -0.08218878419353376,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -12.7,
+              -7.95
+            ],
+            "c_foot_fr": [
+              -6.36,
+              -3.65
+            ],
+            "c_foot_rl": [
+              -4.92,
+              -4.75
+            ],
+            "c_foot_rr": [
+              -2.66,
+              -2.12
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1107,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12069148496483775,
+          "w10_settled": -0.07712514384711396,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.67,
+              -7.46
+            ],
+            "c_foot_fr": [
+              -6.61,
+              -3.6
+            ],
+            "c_foot_rl": [
+              -4.82,
+              -4.82
+            ],
+            "c_foot_rr": [
+              -2.92,
+              -2.15
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1108,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.12610410736394873,
+          "w10_settled": -0.0740470360444489,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -12.19,
+              -7.16
+            ],
+            "c_foot_fr": [
+              -5.1,
+              -4.21
+            ],
+            "c_foot_rl": [
+              -3.26,
+              -1.97
+            ],
+            "c_foot_rr": [
+              -2.91,
+              -2.91
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1109,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.1061785717360378,
+          "w10_settled": -0.0789006757891253,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -10.27,
+              -7.63
+            ],
+            "c_foot_fr": [
+              -6.05,
+              -3.66
+            ],
+            "c_foot_rl": [
+              -4.68,
+              -2.09
+            ],
+            "c_foot_rr": [
+              -2.09,
+              -1.98
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1110,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.11412628859622728,
+          "w10_settled": -0.07607446785026206,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.04,
+              -7.36
+            ],
+            "c_foot_fr": [
+              -6.7,
+              -3.56
+            ],
+            "c_foot_rl": [
+              -3.76,
+              -3.28
+            ],
+            "c_foot_rr": [
+              -3.15,
+              -1.95
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-high",
+              "W9",
+              "W10"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "evaluation": "ot11-quad-1/evaluations/dee2391353b7-6a7c89de9ade",
+      "policy_sha256": "6a7c89de9ade139024ea7964306eeceaf159bea2655cd40cf4cb08a9829cf70e",
+      "w10_min": -0.05,
+      "agrees": true,
+      "verdict_was": "fail",
+      "verdict_now": "fail",
+      "w10_fails_was": 10,
+      "w10_fails_now": 10,
+      "seed_verdicts_moved": [],
+      "seeds": [
+        {
+          "seed": 1101,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.15684626747198652,
+          "w10_settled": -0.15684626747198652,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -13.08,
+              -13.08
+            ],
+            "c_foot_fr": [
+              -15.17,
+              -15.17
+            ],
+            "c_foot_rl": [
+              -14.78,
+              -14.78
+            ],
+            "c_foot_rr": [
+              -11.94,
+              -11.94
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1102,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.15103059416500436,
+          "w10_settled": -0.15103059416500436,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -13.4,
+              -12.22
+            ],
+            "c_foot_fr": [
+              -14.6,
+              -14.6
+            ],
+            "c_foot_rl": [
+              -12.76,
+              -12.76
+            ],
+            "c_foot_rr": [
+              -10.14,
+              -10.14
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1103,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.1544231668165211,
+          "w10_settled": -0.1544231668165211,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -12.32,
+              -12.32
+            ],
+            "c_foot_fr": [
+              -10.9,
+              -10.9
+            ],
+            "c_foot_rl": [
+              -14.93,
+              -14.93
+            ],
+            "c_foot_rr": [
+              -10.65,
+              -10.65
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1104,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.16946516579971535,
+          "w10_settled": -0.16946516579971535,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -16.39,
+              -16.39
+            ],
+            "c_foot_fr": [
+              -10.95,
+              -10.95
+            ],
+            "c_foot_rl": [
+              -13.29,
+              -13.29
+            ],
+            "c_foot_rr": [
+              -11.81,
+              -11.81
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1105,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.1563652437257799,
+          "w10_settled": -0.1563652437257799,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -12.26,
+              -12.26
+            ],
+            "c_foot_fr": [
+              -15.12,
+              -15.12
+            ],
+            "c_foot_rl": [
+              -15.0,
+              -15.0
+            ],
+            "c_foot_rr": [
+              -11.06,
+              -11.06
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1106,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.18013508138817738,
+          "w10_settled": -0.18013508138817738,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.72,
+              -11.27
+            ],
+            "c_foot_fr": [
+              -13.14,
+              -13.14
+            ],
+            "c_foot_rl": [
+              -17.42,
+              -17.42
+            ],
+            "c_foot_rr": [
+              -12.61,
+              -12.61
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-lateral",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W3",
+              "W4-lateral",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1107,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.14656055688436684,
+          "w10_settled": -0.14656055688436684,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -14.17,
+              -14.17
+            ],
+            "c_foot_fr": [
+              -13.55,
+              -13.55
+            ],
+            "c_foot_rl": [
+              -11.8,
+              -11.8
+            ],
+            "c_foot_rr": [
+              -10.58,
+              -10.58
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W6",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1108,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.1380536480992044,
+          "w10_settled": -0.1380536480992044,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.34,
+              -10.3
+            ],
+            "c_foot_fr": [
+              -13.35,
+              -13.35
+            ],
+            "c_foot_rl": [
+              -13.16,
+              -13.16
+            ],
+            "c_foot_rr": [
+              -9.81,
+              -9.81
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1109,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.20887777979382785,
+          "w10_settled": -0.20887777979382785,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -18.39,
+              -18.39
+            ],
+            "c_foot_fr": [
+              -14.78,
+              -14.78
+            ],
+            "c_foot_rl": [
+              -20.2,
+              -20.2
+            ],
+            "c_foot_rr": [
+              -9.89,
+              -9.89
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        },
+        {
+          "seed": 1110,
+          "agrees": true,
+          "disagrees_on": [],
+          "w10_every_frame": -0.19104315383427015,
+          "w10_settled": -0.19104315383427015,
+          "lowest_mm": {
+            "c_foot_fl": [
+              -11.75,
+              -11.75
+            ],
+            "c_foot_fr": [
+              -14.95,
+              -14.95
+            ],
+            "c_foot_rl": [
+              -18.47,
+              -18.47
+            ],
+            "c_foot_rr": [
+              -12.44,
+              -12.44
+            ]
+          },
+          "was": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          },
+          "now": {
+            "pass": false,
+            "failing": [
+              "W5-steps",
+              "W5-share",
+              "W7",
+              "W8-low",
+              "W9",
+              "W10"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

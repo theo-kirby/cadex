@@ -167,10 +167,11 @@
         {
           "id": "W10",
           "name": "on_the_floor_not_in_it",
-          "metric": "lowest foot_height_mm of each foot over every frame, in hip heights",
+          "metric": "lowest foot_height_mm of each foot after settle_s, in hip heights",
           "min": -0.05,
           "scope": "every foot",
-          "added": "2026-09-30, ADR-454, after the freeze commit and before any training"
+          "added": "2026-09-30, ADR-454, after the freeze commit and before any training",
+          "window_changed": "2026-10-01, ADR-467: read after settle_s, as W3, W4 and W8 are, instead of over every frame; the limit is unchanged"
         }
       ]
     },
@@ -770,6 +771,13 @@
       "change": "the judge's blind spot on stepping and slip recorded as a known limit (judge_scope.known_limits), with the owner's division of jobs between the predicates and the judge (judge_scope.jobs)",
       "why": "on w2-2 seeds 1101 and 1110 all eighteen calls scored manner 2 for a gait that fails W5 and W7 on every seed (ADR-460, ADR-461); the owner ruled on 2026-09-30 that the predicate is the authority for a property it measures and that such a blind spot is a recorded limit",
       "re_evaluated": "nothing: no seed, condition, predicate, threshold, rubric line, judge input, judge instruction or bar changed, so no earlier reading or score moves"
+    },
+    {
+      "adr": "ADR-467",
+      "date": "2026-10-01",
+      "change": "W10 reads each foot's lowest height after settle_s (1.0 s) instead of over every frame; its limit, -0.05 hip heights, is unchanged",
+      "why": "a passive pose-holding rollout of ot11-quad-1 rests inside W10 but fails it from any reset drop of 0.5 mm or more, and the evaluation seeds drop 5.4-9.9 mm, so over every frame W10 measured the reset rather than standing on the floor (square-crane-0130)",
+      "re_evaluated": "w2-2 (still fails W5, W7 and W10 on every seed of both its evaluations) and walk rounds 1-5 on ot11-quad-1 from their stored evaluation traces (runner/w10_reread.py, retained/p1-walk-w10-reread.json); every stored metric re-read exactly, no seed's verdict moved, and W10 still fails every seed of all seven"
     }
   ]
 }

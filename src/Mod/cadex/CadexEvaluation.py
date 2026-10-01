@@ -62,8 +62,10 @@ SPEED_WINDOW_S = 0.20
 SWING_MIN_S = 0.10
 #: ...and one that lands nearer than this to where it lifted went nowhere.
 STEP_ADVANCE_HIP_HEIGHTS = 0.15
-#: Speed, lateral drift and duty factor are read after this much settling,
-#: so the drop from the reset pose is not read as gait.
+#: Speed, lateral drift, duty factor and how deep a foot goes into the floor
+#: are read after this much settling, so the drop from the reset pose is not
+#: read as gait (ADR-467: a robot holding its pose lands from a reset lift
+#: deeper than it ever stands).
 SETTLE_S = 1.0
 #: Rest, for recovery from a shove: upright enough, slow enough, for long
 #: enough. Speed is in COM heights per second so one number fits any size.
@@ -418,6 +420,7 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
                 and swing["advance_mm"] >= step_advance_hip_heights * hip_height_mm):
             steps.append(swing)
     settled = [s for moment, s in zip(time, stance) if moment >= settle_s]
+    settled_low = min((h for moment, h in zip(time, height) if moment >= settle_s), default=None)
     clearance = _median([s["peak_mm"] for s in steps])
     return {
         "swings": len(swings),
@@ -434,6 +437,10 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
         "peak_height_mm": float(max(height)),
         "lowest_height_mm": float(min(height)),
         "lowest_height_hip_heights": float(min(height)) / hip_height_mm,
+        "settled_lowest_height_mm": None if settled_low is None else float(settled_low),
+        "settled_lowest_height_hip_heights": (
+            None if settled_low is None else float(settled_low) / hip_height_mm
+        ),
         "duty_factor": (sum(settled) / len(settled)) if settled else None,
     }
 
@@ -500,7 +507,7 @@ def gait_metrics(samples, rig: Mapping[str, Any], command_mm_s: float | None = N
         "slip_share_max": worst("slip_share", max),
         "duty_factor_min": worst("duty_factor", min),
         "duty_factor_max": worst("duty_factor", max),
-        "foot_lowest_hip_heights_min": worst("lowest_height_hip_heights", min),
+        "foot_lowest_hip_heights_min": worst("settled_lowest_height_hip_heights", min),
         "feet": feet,
     }
 

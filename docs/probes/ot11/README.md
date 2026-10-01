@@ -1,6 +1,6 @@
 # ot11 — the evaluation contract
 
-Verified against source: 2026-09-30. [Cadex-new]
+Verified against source: 2026-10-01. [Cadex-new]
 
 **This is P1**: the frozen success spec, evaluation seeds, conditions, pass
 rule and blind video judge that every ot11 policy is measured against. It was
@@ -123,7 +123,7 @@ walking after a sideways shove.
 | W7 | foot slip | each foot's stance slip, as a share of its plan path | every foot: ≤ 0.15 |
 | W8 | duty factor | the share of frames in which each foot is in stance | every foot: 0.40 to 0.85 |
 | W9 | every leg works | the largest per-foot step count divided by the smallest | ≤ 1.5 |
-| W10 | on the floor, not in it | the lowest foot height of each foot over every frame | every foot: ≥ −0.05 hip heights |
+| W10 | on the floor, not in it | the lowest foot height of each foot after the 1.0 s settle (ADR-467; over every frame until 2026-10-01) | every foot: ≥ −0.05 hip heights |
 
 W5, W6 and W7 are what the ot10 gait check could not see. A foot that
 chatters in 40 ms hops takes swings but no steps (W5). A foot that lifts but
@@ -1581,7 +1581,7 @@ continue prompt still says "four runs in total". A second turn is not
 expected, but if one happens and stops at once, that is the driver's limit,
 not the agent's choice.
 
-### W10 at rest: the reset drop fails it, standing does not (measured, W10 unchanged)
+### W10 at rest: the reset drop fails it, standing does not (measured; acted on by ADR-467 below)
 
 Round 4 failed W10 on all ten seeds while standing still, so the question
 was whether any policy could pass it. Two measurements answer it, and
@@ -1645,3 +1645,44 @@ reaches −21.29 mm on its front-right foot at 2.10 s and −17.58 mm on its
 front-left at 5.78 s, both well after the settle. Only its rear-left low
 (−8.36 mm at 0.72 s) falls in the drop, and its post-settle low on that
 foot is −8.08 mm.
+
+### Decision: W10 is read after the settle (ADR-467, 2026-10-01)
+
+The measurement above showed that over every frame, W10 failed a robot
+holding its pose because of the reset drop, on every evaluation seed. So W10
+now reads each foot's lowest height **after the 1.0 s settle**, as W3, W4
+and W8 already did. The limit, −0.05 hip heights, is unchanged. Each foot's
+report row still shows its lowest height over every frame
+(`lowest_height_mm`), beside the one the predicate reads
+(`settled_lowest_height_mm`). `contract.json` records the change in W10's
+row and in `decisions`.
+
+Under the contract's rule, every earlier walk policy was re-evaluated.
+[`runner/w10_reread.py`](runner/w10_reread.py) re-reads each stored
+evaluation's traces, since a rollout is deterministic in its seed. Its gate:
+every stored metric must come back exactly, and the stored W10 must equal
+the every-frame minimum. The receipt is
+[`retained/p1-walk-w10-reread.json`](retained/p1-walk-w10-reread.json).
+
+| evaluation | policy | W10 over every frame, hip heights | W10 after the settle | seeds failing W10 | verdicts moved |
+|---|---|---|---|---|---|
+| `w2-2`, `064d8d7cd34c` (P2) | `7a4e8c23` | −0.259 to −0.142 | −0.259 to −0.142 | 10 → 10 | none |
+| `w2-2`, `60f655537c0b` | `7a4e8c23` | −0.227 to −0.119 | −0.227 to −0.117 (one seed ends inside the settle) | 10 → 10 | none |
+| round 1, `r1-clearance` | `8db0cb61` | −0.194 to −0.113 | −0.194 to −0.113 (one seed ends inside the settle) | 10 → 10 | none |
+| round 2, `r2-bounded` | `1a0f0d28` | −0.129 to −0.110 | −0.123 to −0.110 | 10 → 10 | none |
+| round 3, `r3-nochatter` | `102133e9` | −0.196 to −0.111 | −0.196 to −0.111 | 10 → 10 | none |
+| round 4, `r4-anglesonly` | `d2dcaf39` | −0.131 to −0.085 | −0.083 to −0.072 | 10 → 10 | none |
+| round 5, `r5-swing` | `6a7c89de` | −0.209 to −0.138 | −0.209 to −0.138 | 10 → 10 | none |
+
+All 70 seeds agree with their stored reports. **No seed's verdict moved.**
+`w2-2` still fails W5 and W7 (stepping and slip) on every seed of both
+evaluations, the reason this contract records, and W10 as well. Only round
+4 moves at all: its front-left foot *stands* 7 mm in the floor. An episode
+that ends inside the settle has no settled depth, and W10 then fails as
+"not measured", the way W3 already did.
+
+**Timing.** Walk session 2's `cadexd` imports the engine from the source
+tree, so the new reading went live when the source changed, not at an
+install. Round 5's evaluation (`dee2391353b7-6a7c89de9ade`, 01:28Z) ran
+after the edit. On every seed its deepest frame comes after the settle, so
+it reads the same numbers and verdict under either reading.

@@ -449,7 +449,10 @@ def test_the_floor_marks_probe_left_the_manner_score_where_it_was_and_changed_no
     assert "_marks(" not in film_source and "def touched" not in film_source
     assert "floor mark" not in film_source and "mark" not in judge.INSTRUCTIONS
     assert CONTRACT["judge_procedure"]["instructions_sha256"] == INSTRUCTIONS_SHA256
-    assert [row["adr"] for row in CONTRACT["decisions"]] == ["ADR-454", "ADR-463"]
+    # Later decisions (ADR-467 moved W10's window) are not about the judge.
+    assert [row["adr"] for row in CONTRACT["decisions"]][:2] == ["ADR-454", "ADR-463"]
+    assert all("judge" not in row["change"] and "mark" not in row["change"]
+               for row in CONTRACT["decisions"][2:])
     assert CONTRACT["decisions"][1]["re_evaluated"].startswith("nothing:")
     assert "### A probe: floor marks in the detail sheet, measured and not adopted (ADR-461)" in README
     assert "## ADR-461 — " in (REPO / "docs/DECISIONS.md").read_text(encoding="utf-8")

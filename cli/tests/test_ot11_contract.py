@@ -343,7 +343,7 @@ def test_the_film_is_the_frozen_filmstrip() -> None:
 
 
 def test_every_decision_since_the_freeze_is_recorded() -> None:
-    added, limit = CONTRACT["decisions"]
+    added, limit, settled = CONTRACT["decisions"]
     assert added["adr"] == "ADR-454" and "W10" in added["change"]
     assert "### Decision: W10 was added after the freeze (ADR-454, 2026-09-30)" in README
     # The second changes no frozen item, and says that nothing is re-evaluated.
@@ -351,9 +351,26 @@ def test_every_decision_since_the_freeze_is_recorded() -> None:
     assert limit["re_evaluated"].startswith("nothing: no seed, condition, predicate, threshold, rubric line")
     assert "### What the judge is for, and what it does not see (ADR-463, 2026-09-30)" in README
     assert "**Nothing frozen changed, so nothing is re-evaluated.**" in README
+    # The third moves W10's window and keeps its limit, and re-evaluates
+    # every earlier walk policy from its stored traces.
+    assert settled["adr"] == "ADR-467" and "after settle_s" in settled["change"]
+    assert "unchanged" in settled["change"] and "no seed's verdict moved" in settled["re_evaluated"]
+    (w10,) = [row for row in CONTRACT["behaviours"]["walk"]["predicates"] if row["id"] == "W10"]
+    assert w10["min"] == -0.05 and w10["metric"].endswith("after settle_s, in hip heights")
+    assert "### Decision: W10 is read after the settle (ADR-467, 2026-10-01)" in README
+    reread = json.loads((OT11 / "retained/p1-walk-w10-reread.json").read_text(encoding="utf-8"))
+    rows = reread["evaluations"]
+    assert len(rows) == 7 and all(row["agrees"] for row in rows)
+    assert all(row["seed_verdicts_moved"] == [] and row["w10_fails_now"] == 10 for row in rows)
+    shuffle = [row for row in rows if row["policy_sha256"].startswith("7a4e8c23")]
+    assert len(shuffle) == 2 and all({"W5-share", "W7"} <= set(seed["now"]["failing"])
+                                     for row in shuffle for seed in row["seeds"])
+    text = json.dumps(reread)
+    assert "/home/" not in text and "/tmp/" not in text
     decisions = (REPO / "docs/DECISIONS.md").read_text(encoding="utf-8")
     assert "## ADR-454 — The ot11 evaluation contract" in decisions
     assert "## ADR-463 — " in decisions
+    assert "## ADR-467 — W10 reads a foot's depth in the floor after the settle" in decisions
 
 
 def test_the_judges_blind_spot_on_stepping_and_slip_is_a_known_limit_and_the_predicates_are_the_authority() -> None:

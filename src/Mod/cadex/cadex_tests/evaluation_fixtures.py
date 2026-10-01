@@ -50,8 +50,12 @@ def pitch(degrees: float) -> list[float]:
 
 
 def trot(*, speed=80.0, lift=15.0, period_frames=24, seconds=10.0, swing_frames=None,
-         heading=0.0, sideways=0.0, sink=0.0):
-    """A trot: diagonal pairs swing in turn, stance feet stay where they landed."""
+         heading=0.0, sideways=0.0, sink=0.0, landing=0.0, landing_s=0.4):
+    """A trot: diagonal pairs swing in turn, stance feet stay where they landed.
+
+    ``landing`` drives stance feet that far into the floor for the first
+    ``landing_s``: the impact of the reset drop, before any gait.
+    """
 
     swing_frames = period_frames // 2 if swing_frames is None else swing_frames
     samples = []
@@ -67,7 +71,7 @@ def trot(*, speed=80.0, lift=15.0, period_frames=24, seconds=10.0, swing_frames=
                 along = (cycle - 1) * stride + stride * fraction
                 height = lift * math.sin(math.pi * fraction)
             else:
-                along, height = cycle * stride, -sink
+                along, height = cycle * stride, -(landing if t < landing_s else sink)
             placements[name] = {"position_mm": [x + along, y, RADIUS + height], "rotation_xyzw": IDENTITY}
         samples.append((t, placements))
     return samples

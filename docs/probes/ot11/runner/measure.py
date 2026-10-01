@@ -168,7 +168,7 @@ def walk(samples, the_rig, command_mm_s: float, episode, *, off_contract: bool =
         held("W7", per_foot("slip_share")),
         held("W8", per_foot("duty_factor"), early),
         held("W9", metrics["step_count_ratio"], "" if metrics["steps_min"] else "a foot took no step"),
-        held("W10", per_foot("lowest_height_hip_heights")),
+        held("W10", per_foot("settled_lowest_height_hip_heights")),
     ]
     return {
         "predicates": rows,

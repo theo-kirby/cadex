@@ -142,6 +142,20 @@ def test_feet_driven_into_the_floor_fail_on_depth_alone() -> None:
     assert all(foot["lowest_height_mm"] == pytest.approx(-6.0) for foot in metrics["feet"].values())
 
 
+def test_a_landing_from_the_reset_lift_is_not_read_as_standing_in_the_floor() -> None:
+    # ADR-467: a robot that holds its pose lands from the reset lift deeper
+    # than it ever stands, so depth is read after the settle, like duty
+    # factor and speed. The landing is still in the report.
+    metrics = walked(trot(landing=10.0, sink=4.0))
+    assert failing(WALK_SPEC, metrics) == []
+    assert metrics["foot_lowest_hip_heights_min"] == pytest.approx(-0.04)
+    for foot in metrics["feet"].values():
+        assert foot["lowest_height_mm"] == pytest.approx(-10.0)
+        assert foot["settled_lowest_height_mm"] == pytest.approx(-4.0)
+    # ...and a foot that is still in the floor after the settle fails.
+    assert failing(WALK_SPEC, walked(trot(landing=10.0, sink=6.0))) == ["on_the_floor"]
+
+
 def test_the_wrong_speed_fails_tracking_alone() -> None:
     fast, slow = walked(trot(speed=80.0), 50.0), walked(trot(speed=80.0), 120.0)
     assert failing(WALK_SPEC, fast) == ["tracks_speed"] and fast["speed_ratio"] == pytest.approx(1.6, abs=0.01)
@@ -239,6 +253,9 @@ def test_the_w2_2_shuffle_fails_a_walk_spec_on_stepping_and_slip() -> None:
     assert [feet[name]["slip_share"] for name in names] == pytest.approx([0.324, 0.333, 0.666, 0.568], abs=0.001)
     assert [feet[name]["duty_factor"] for name in names] == pytest.approx([0.521, 0.508, 0.725, 0.690], abs=0.001)
     assert [feet[name]["lowest_height_mm"] for name in names] == pytest.approx([-17.58, -21.29, -8.36, -8.90], abs=0.01)
+    # Read after the settle (ADR-467), every foot is still in the floor: only
+    # the rear-left low was in the reset drop, and it stands at -8.08 later.
+    assert [feet[name]["settled_lowest_height_mm"] for name in names] == pytest.approx([-17.58, -21.29, -8.08, -8.90], abs=0.01)
     # Chatter: the typical rear swing is two control steps long and 2.7 mm high.
     assert feet["c_foot_rl"]["median_swing_airborne_s"] == pytest.approx(0.04)
     assert feet["c_foot_rl"]["median_swing_peak_mm"] == pytest.approx(2.7, abs=0.1)
