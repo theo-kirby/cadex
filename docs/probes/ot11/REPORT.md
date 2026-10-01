@@ -11,8 +11,9 @@ The owner ticks the criteria; this page does not.
 
 ## Every training run
 
-Twenty-five runs have ended in ot11, twenty-four attempts and one refused start
-(`r9-steelfoot`, row 15: its trainer exited before its first iteration).
+Twenty-seven runs have ended in ot11, twenty-five attempts and two refused starts
+(`r9-steelfoot`, row 15, and `r21-r19-continue`, row 27: each trainer exited
+before its first iteration).
 All went through the product's `train_start` tool, one GPU job at a time,
 with `--stop-on-collapse` on. Every one was registered before it launched: its settings, its seed, its
 wall-clock budget and its reason are in its project's
@@ -50,20 +51,22 @@ is that receipt.
 | 23 | walk | `ot11-quad-1` | `r17-discount-bodyrate` | 163 | 760 it × 2048 envs | — | 2,400 | `finished` | 760 | 2,061.01 | 1,910.6 |
 | 24 | walk | `ot11-quad-1` | `r18-sync-slip` | 181 | 600 it × 2048 envs | `r17-discount-bodyrate` | 2,350 | `finished` | 600 | 1,582.47 | 1,434.6 |
 | 25 | walk | `ot11-quad-1` | `r19-contact-sync` | 191 | 750 it × 2048 envs | `r18-sync-slip` | 2,350 | `finished` | 750 | 2,010.27 | 1,861.1 |
+| 26 | walk | `ot11-quad-1` | `r20-contact35` | 201 | 700 it × 2048 envs | `r19-contact-sync` | 2,350 | `finished` | 700 | 1,913.86 | 1,765.7 |
+| 27 | walk | `ot11-quad-1` | `r21-r19-continue` | 211 | 750 it × 2048 envs | `r19-contact-sync` | 2,350 | `failed` | 0 | 52.28 | — |
 
 | behaviour | runs | GPU time, s |
 |---|---|---|
 | balance | 1 | 900.57 |
 | reach | 5 | 4,447.41 |
-| walk | 19 | 36,987.81 |
-| **all** | **25** | **42,335.79** |
+| walk | 21 | 38,953.95 |
+| **all** | **27** | **44,301.93** |
 
 **How to read the two times.** *GPU time* is the supervisor's wall time
 from launch to exit; the trainer holds the GPU for all of it, so it is the
 time the charter counts, and it exists for every run. *The trainer's own
 time* is the figure in the trainer's receipt, which a trainer writes only
 when it saves its final policy. A run stopped at its wall-clock budget or on
-collapse has none. The difference, 148 to 202 s on the nine walk runs that
+collapse has none. The difference, 148 to 202 s on the sixteen walk runs that
 have both, is time the supervisor measured outside the trainer's own clock.
 
 **Earlier figures on the README.** Rounds 1–4 of the walk, and every reach
@@ -76,19 +79,22 @@ and balance round, quote the GPU time above. Round 5's section quotes
 policy it began from; `reach-r5` began from `reach-r4`'s iteration-475
 checkpoint and `r6-trot` from `r5-swing`'s final policy, and `r7-relswing` from
 `r6-trot`'s, and `r11-speedpay` from `r10-steelfoot-fresh`'s, and `r18-sync-slip` from
-`r17-discount-bodyrate`'s, and `r19-contact-sync` from `r18-sync-slip`'s. Robin's ot9
+`r17-discount-bodyrate`'s, and `r19-contact-sync` from `r18-sync-slip`'s, and
+`r20-contact35` from `r19-contact-sync`'s. Robin's ot9
 baseline (`r3-ppo-1`) and ot10's `w2-2` are earlier runs measured as known
 negatives (P1), not ot11 training runs, and are not in this table.
 
-**What the table leaves out, continued.** `r9-steelfoot` is in the table
-and in the totals because its supervisor ran for 52.03 s, but it is not an
-attempt (`attempt: false` in the receipt): it trained nothing. A run still
+**What the table leaves out, continued.** `r9-steelfoot` and
+`r21-r19-continue` are in the table and in the totals because their
+supervisors ran for 52.03 s and 52.28 s, but neither is an attempt
+(`attempt: false` in the receipt): each trained nothing. A run still
 training has no end time yet, so the receipt lists it under `in_progress`
-and in no total. None was in progress when this was last regenerated.
+and in no total. `r21b-r19-continue` was in progress when this was last
+regenerated.
 
 ## Every evaluation
 
-Thirty-one evaluations are stored across the five ot11 projects, every one
+Thirty-two evaluations are stored across the five ot11 projects, every one
 written by `cadex evaluate` or the agent's `evaluate` tool (the same code)
 into the project's `evaluations/<key>/evaluation.json`.
 [`runner/eval_ledger.py`](runner/eval_ledger.py) reads those files, and the
@@ -133,6 +139,7 @@ predicate that did not pass on all of them.
 | 29 | walk | `ot11-quad-1` | `50b2a42caf1c-63cbf22407c0` | `r17-discount-bodyrate final` | fail | 1 of 10 | W5-share 2, W7 8, W9 8 | horizon 10 | yes |
 | 30 | walk | `ot11-quad-1` | `f0851df103a5-0ef672db5077` | `r18-sync-slip final` | fail | 2 of 10 | W1 1, W2 1, W5-steps 1, W5-share 1, W9 8 | horizon 9, tipped 1 | yes |
 | 31 | walk | `ot11-quad-1` | `35122157a90f-de546ddd91e1` | `r19-contact-sync final` | fail | 9 of 10 | W9 1 | horizon 10 | yes |
+| 32 | walk | `ot11-quad-1` | `f924ce70604e-4a341e7b3047` | `r20-contact35 final` | fail | 0 of 10 | W5-share 3, W7 10, W8-low 1, W9 1 | horizon 10 | yes |
 
 **How to read it.**
 - **Rows 1–4 are P1's known negatives**, read before any ot11 training
@@ -234,7 +241,24 @@ predicate that did not pass on all of them.
   rear-left keeps its 0.36 s swing. 1109's shove is the smallest of the
   ten (0.31 N), so it does not explain the failure. On all ten: slip
   0.090–0.125, tilt 7.9–22.9°, speed_ratio 0.93–1.00, clearance 0.28–0.32
-  HH, duty 0.45–0.59, W10 −0.022 to −0.013 HH.
+  HH, duty 0.45–0.59, W10 −0.022 to −0.013 HH. Walk session 7's agent
+  re-evaluated r19 before it trained, under the same key, and the file was
+  rewritten with every number unchanged: only `written_at` moved in the
+  receipt.
+- **Row 32 is walk session 7's first round, valid on the same checks**
+  (`contact_offsets` empty, the model hashes to r17's, r18's and r19's,
+  the task to the one trained, and the spec block is byte-identical to
+  row 31's;
+  [`retained/p7-quad-1-r20-evaluation.json`](retained/p7-quad-1-r20-evaluation.json)).
+  The agent's one change was `contact_w` 2.0 → 3.5, a parameter value with
+  the script source unchanged, warm from r19. It fails every seed, on
+  slip: W7 0.156–0.270 against 0.15, from 0.090–0.125 in row 31, and on
+  every seed the foot that slips most is rear-left (the other three feet
+  0.09–0.18). Steps fall to 5–9 per foot (r19: 7–14) and tilt rises to
+  25.0–28.7° (r19: 7.9–22.9°). Seed 1109's W9 now passes (1.333, from
+  1.571), but 1101's fails (1.600). No seed tips. The warm start did not
+  carry r19's gait over: the run's first iteration reads −2.03 reward per
+  step against r19's final 4.47, and it ends at 3.56.
 - `r9-steelfoot` has no row, because it never trained (see *Every
   failure*).
 
@@ -304,6 +328,7 @@ shows whether it helped.
 | `r17-discount-bodyrate` | discount 0.97 (the trainer default) → 0.995; a bounded roll/pitch-rate cost (`body_rate`, weight −1.5, scale 90°/s); same model; fresh start | r16: W1/W2 on 8 seeds (tipped at 1.76–6.58 s, tilt 37–42°) with training episodes of 100–140 steps, so a fall sat beyond the discount horizon; W7 0.26–0.74, W5-steps 0–1, W8-low 0.0–0.39 | 29 | 1 | yes: no seed tips (W1/W2 pass 10 of 10, tilt 12.4–17.2°), every foot steps 5–14 times (W5-steps 10 of 10), W3, W6, W8 and W10 pass on every seed, and seed 1108 passes all thirteen predicates. Slip still fails on 8 (W7 0.154–0.208) and the rear feet out-step the front (W9 1.4–2.4 on 8) |
 | `r18-sync-slip` | **reward weights only**: trot_sync 1 → 2.5, diag_sym 1 → 2, slip 1.5 → 2.2, speed_error 5 → 8 so that walking still beats standing; same model; warm start from r17 | r17: W7 0.154–0.208 on 8 seeds, W9 1.75–2.4 on 8 (the rear feet stepping about twice as often as the front), with trot_sync and diag_sym costs showing the diagonal pairs out of phase | 30 | 2 | partly: slip is fixed (W7 passes 10 of 10, 0.096–0.146) and seeds 1102 and 1108 pass every predicate, but W9 still fails on 8 (1.56–2.33), and seed 1107 tips 0.61 s after the largest shove (0.97 N) |
 | `r19-contact-sync` | **reward only**: a new `contact_sync` cost (weight `contact_w` 2) on diagonal-pair contact-state mismatch, c = exp(−((z − z_stand)/8 mm)²), in the slot of the `sink` term, which it removed because a task allows at most 16 reward terms; same model; warm start from r18, 750 iterations | r18: W9 1.56–2.33 on 8 seeds while diag_sym showed the diagonal joint angles matched within about 4.5° RMS, so the extra steps were brief touchdowns of one foot that the squared-millimetre trot_sync barely charges; 1107 tipped at 5.9 s | 31 | 9 | yes: W9 falls to 1.18–1.57 and passes on 9 of 10. No seed tips, and slip, clearance, duty and W10 hold on all ten. Seed 1109, the slowest command (0.628 HH/s), fails W9 alone at 1.571 |
+| `r20-contact35` | **reward weight only**: `contact_w` 2.0 → 3.5, the script source unchanged; same model; warm start from r19, 700 iterations | r19: W9 1.571 on seed 1109, where rear-left stepped 11 times against the front feet's 7 and 8 and `contact_sync` charged about −66 per episode | 32 | 0 | no: 1109's W9 passes (1.333), but slip fails on all ten (W7 0.156–0.270, rear-left the worst foot on every seed), and 1101 fails W9 (1.600) |
 
 The reach rows are four consecutive design–train–evaluate–revise rounds,
 each motivated by the previous evaluation and each answered by the next;
@@ -315,7 +340,7 @@ the rows suggest.
 ## Every failure
 
 Each item names its receipt.
-- **Twenty-seven of 31 evaluations failed** (every row above except 5, 6, 11
+- **Twenty-eight of 32 evaluations failed** (every row above except 5, 6, 11
   and 12), and four of them are void: rows 20 and 21 on a scale digit, rows
   25 and 26 for R1 on their foot contact margins.
 - **Two runs collapsed** and were stopped by `--stop-on-collapse`:
@@ -325,14 +350,19 @@ Each item names its receipt.
 - **Seven runs ended at their wall-clock budget** before or at their last
   iteration (`budget_exhausted`, same receipt). Each was evaluated on a
   checkpoint it had written.
-- **One start was refused, and is not an attempt.** `r9-steelfoot`'s
+- **Two starts were refused, and are not attempts.** `r9-steelfoot`'s
   trainer exited 1 after 52.03 s with no iteration run: a warm start may
   not change what the network reads, and the steel-foot model changed it.
   Its supervisor's status is in the project's
   `runs/r9-steelfoot/training-status.json`. `run_ledger.py` carries it as
   row 15 of the run table with `attempt: false`, so the receipt counts 17
   attempts in 18 runs. The agent re-registered the same task fresh as
-  `r10-steelfoot-fresh`.
+  `r10-steelfoot-fresh`. `r21-r19-continue`'s trainer exited 1 after
+  52.28 s, also with no iteration run: the agent passed
+  `--init-from-task-change` for a bundle byte-identical to the one its
+  warm start trained on, and the trainer refuses that flag when there is
+  no change (row 27, `attempt: false`). The agent re-registered it without
+  the flag as `r21b-r19-continue`.
 - **Walk session 3 ended at 0 of 10 on all three of its runs**
   (`r8-stance`, `r10-steelfoot-fresh`, `r11-speedpay`; rows 21–23,
   `retained/p4-quad-1-s3-rounds.json`). The steel feet fixed W10, and no
@@ -381,6 +411,13 @@ Each item names its receipt.
   at the lowest commanded speed of the ten
   ([filmstrip, seed 1109](p4-quad-1-walk-r19-seed-1109-overview.png),
   [detail](p4-quad-1-walk-r19-seed-1109-detail.png)).
+- **Walk session 7's first round failed 0 of 10** (`r20-contact35`,
+  row 32, [`retained/p7-quad-1-r20-evaluation.json`](retained/p7-quad-1-r20-evaluation.json)).
+  Valid on the same checks. Raising `contact_w` 2.0 → 3.5 fixed seed
+  1109's W9 and broke slip on all ten, with rear-left the worst foot on
+  every seed
+  ([filmstrip, seed 1101](p4-quad-1-walk-r20-seed-1101-overview.png),
+  [detail](p4-quad-1-walk-r20-seed-1101-detail.png)).
 - **Walk session 6 trained two runs, not the three it registered.**
   `runner/rounds.py` stops when the project's ledger holds `--max-runs`
   evaluations. The agent's first act was to re-evaluate r17 (the
@@ -405,8 +442,8 @@ What is still wrong or unmeasured at this revision, each with its receipt.
 A defect fixed by decision is under *Every failure*, not here.
 - **R1 is not met.** No walk evaluation has passed on every seed. Rows
   13–28 of *Every evaluation* pass 0 of 10, row 29 passes 1 of 10
-  (seed 1108) row 30 passes 2 of 10 (seeds 1102 and 1108) and row 31
-  passes 9 of 10 (all but 1109)
+  (seed 1108), row 30 passes 2 of 10 (seeds 1102 and 1108), row 31
+  passes 9 of 10 (all but 1109) and row 32 passes 0 of 10
   ([`retained/ot11-evaluations.json`](retained/ot11-evaluations.json)).
   Walk session 4
   ([`retained/p4-quad-1-s4-preregistration.json`](retained/p4-quad-1-s4-preregistration.json))
@@ -417,7 +454,9 @@ A defect fixed by decision is under *Every failure*, not here.
   closed at its three-run limit: rows 27, 28 and 29. Walk session 6
   ([`retained/p4-quad-1-s6-preregistration.json`](retained/p4-quad-1-s6-preregistration.json))
   ran on the same model and closed after two rounds: rows 30 (2 of 10)
-  and 31 (9 of 10). No confirmation evaluation is registered, because no
+  and 31 (9 of 10). Walk session 7
+  ([`retained/p4-quad-1-s7-preregistration.json`](retained/p4-quad-1-s7-preregistration.json))
+  is running on the same model: row 32 (0 of 10) is its first round. No confirmation evaluation is registered, because no
   round has passed every seed.
 - **No walking gait has been judged.** The judge runs on a confirmation
   evaluation, and walk has none; its scores on a gait that steps are

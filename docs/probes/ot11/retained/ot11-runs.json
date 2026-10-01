@@ -426,9 +426,49 @@
    "trainer_s": 1861.0742022520863,
    "policy_sha256": "de546ddd91e184e6a2c424b143c548876f5d59cbcb8a2be2c26992b0f7afb3af",
    "attempt": true
+  },
+  {
+   "project": "ot11-quad-1",
+   "run": "r20-contact35",
+   "seed": 201,
+   "envs": 2048,
+   "iterations": 700,
+   "init_from": "runs/r19-contact-sync/train/walk_task.cxpolicy",
+   "budget_s": 2350.0,
+   "task_sha256": "fb3a3d7f6256cba81c1040f4fe4fcb62994f0a886443983cdc329cfdbbee732a",
+   "state": "finished",
+   "iterations_run": 700,
+   "started_at": 1790864695.6588075,
+   "supervised_s": 1913.86,
+   "trainer_s": 1765.6671611163765,
+   "policy_sha256": "4a341e7b3047cc855dd6de52782fcf8e52ca40d0fcf870ebc12445e218680853",
+   "attempt": true
+  },
+  {
+   "project": "ot11-quad-1",
+   "run": "r21-r19-continue",
+   "seed": 211,
+   "envs": 2048,
+   "iterations": 750,
+   "init_from": "runs/r19-contact-sync/train/walk_task.cxpolicy",
+   "budget_s": 2350.0,
+   "task_sha256": "db67070400dbeb3c0cc67b9ad990cf4c9fb745e002bf91e7004d617110595f15",
+   "state": "failed",
+   "iterations_run": 0,
+   "started_at": 1790867195.9078658,
+   "supervised_s": 52.28,
+   "trainer_s": null,
+   "policy_sha256": null,
+   "attempt": false
   }
  ],
- "attempts": 24,
- "in_progress": [],
- "supervised_s_total": 42335.79
+ "attempts": 25,
+ "in_progress": [
+  {
+   "project": "ot11-quad-1",
+   "run": "r21b-r19-continue",
+   "started_at": 1790867253.5064435
+  }
+ ],
+ "supervised_s_total": 44301.93
 }
