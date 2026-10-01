@@ -290,9 +290,32 @@
    "trainer_s": 1862.899202782195,
    "policy_sha256": "f35fefd6a569f98048d632a36617b526fe8ad45a4ee607471e48377bb9915e60",
    "attempt": true
+  },
+  {
+   "project": "ot11-quad-1",
+   "run": "r12-convex-sym",
+   "seed": 131,
+   "envs": 2048,
+   "iterations": 800,
+   "init_from": null,
+   "budget_s": 2400.0,
+   "task_sha256": "c46f65af23068b8b088c651d3b645f8d9aefcc5344607e3eac503162727fbe8b",
+   "state": "finished",
+   "iterations_run": 800,
+   "started_at": 1790835838.2779074,
+   "supervised_s": 2105.98,
+   "trainer_s": 1954.087310261093,
+   "policy_sha256": "3179aa38a75d3ace0d890d47ef19ee1f718c3862ad320135f859ba7f0488f9f9",
+   "attempt": true
   }
  ],
- "attempts": 16,
- "in_progress": [],
- "supervised_s_total": 25968.49
+ "attempts": 17,
+ "in_progress": [
+  {
+   "project": "ot11-quad-1",
+   "run": "r13-hovercost-margin",
+   "started_at": 1790838588.6185846
+  }
+ ],
+ "supervised_s_total": 28074.47
 }

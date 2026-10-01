@@ -2448,3 +2448,120 @@ The prompts are
 [`prompts/walk.s4.continue.prompt.txt`](prompts/walk.s4.continue.prompt.txt).
 Session 3's "ten runs in total" cap is spent, so session 4's stop rule
 counts this session's runs instead.
+
+### Walk round 11: `r12-convex-sym` travels on three legs
+
+Receipt:
+[`retained/p4-quad-1-r12-evaluation.json`](retained/p4-quad-1-r12-evaluation.json).
+This is walk session 4's first round.
+
+| run | seed | settings | budget | ended | evaluated | seeds passed |
+|---|---|---|---|---|---|---|
+| `r12-convex-sym` | 131 | 800 it × 2048 envs, fresh start | 2,400 s | **finished**, all 800 iterations, 2,105.98 s supervised (1,954.1 s in the trainer) | `3179aa38…` (final policy) | **0 of 10** |
+
+Every checkpoint, the best policy and the final policy record the unchanged
+trainer, `97bc1d9a…`. The training reward began at −2.53 per step, fell to
+−3.22, and ended at +0.68 (best +0.69 at iteration 789). The action std
+ended at 0.14.
+
+**What the agent changed, and why.** Its registration cites r11: W8-low
+0.00, W5-steps 0, W3 0.015–0.033, `speed_track` paying +1.3 per step for
+rocking, and the rectified swing pay paying a raised foot +0.21 per step for
+jiggling. The change is to the task only, on r10's and r11's
+byte-identical model (`5e28d393…`):
+- the Gaussian `speed_track` is gone, and `speed_error` becomes a convex
+  cost, `tanh(0.5 (v/command − 1)²)` at weight −5;
+- each foot's swing pay is signed, with a 0.15 cost on any lifted foot;
+- two new costs read the joint encoders: `diag_sym` (diagonal partners
+  hold the same angles) and `hip_antiphase` (front hips, and rear hips,
+  swing opposite);
+- the two joint-speed costs merge into one, `alive` goes 3.5 → 5, and the
+  tray's mass is randomised ×0.85–1.15 in training.
+
+It predicted all four feet cycling in a trot and W3 moving toward 1.
+
+**The evaluation is valid**, on the same checks as rounds 9 and 10. The
+evaluated revision, `ca8310e9…` (script history 0065), differs from the
+registered `9f5e8bb8…` (0063) only in the policy line, `walk_r11` →
+`walk_r12` and its digest. The evaluated task `c46f65af…` is the one
+trained. `HIP_MM = 96.7006` equals the rig's 96.7006 and
+`WEIGHT_N = 5.05069617762` equals the rig's 5.050696177620001 to eleven
+decimals. With comments set aside, the block tokenizes identically to
+[`retained/walk-spec-block.txt`](retained/walk-spec-block.txt) except for
+`WEIGHT_N`'s value. The report is
+`evaluations/ca8310e9d841-3179aa38a75d/evaluation.json`. At the start of
+the session the agent also re-ran `evaluate` on r11's policy; the stored
+result did not change, only its write time.
+
+| predicate | seeds failing | range (round 10) |
+|---|---|---|
+| W1 completes, W2 tilt | 0, 0 | all complete; **23.0–28.6°** (9.3–11.8°) |
+| **W3 tracks speed** | **5** | **0.65 to 0.81** (0.015 to 0.033) |
+| W4-lateral, W4-heading | 0, 0 | 0.05–0.13, 17.4–31.6° (0.006–0.011, 9.5–12.4°) |
+| **W5-steps, W5-share** | **10, 10** | **worst foot 0 steps; share 0.00** |
+| W6 clearance | 10 | not measured on the worst foot |
+| W7 slip | 10 | 0.85–0.98 (0.81–0.89) |
+| **W8-low, W8-high** | **10, 10** | **0.00, 0.91–0.96** (0.00, 1.00) |
+| W9 step balance | 10 | one foot takes no step, so it is undefined |
+| **W10 in the floor** | **10** | **−0.154 to −0.074 hip heights** (−0.043 to −0.026) |
+
+**Per foot, over all ten seeds:**
+
+| foot | steps | duty factor | slip share | median clearance, hip heights | lowest after settle, mm |
+|---|---|---|---|---|---|
+| FL | 6–10 | 0.79–0.85 | 0.35–0.42 | 0.09–0.18 | −10.9 to −4.7 |
+| FR | 7–11 | 0.15–0.23 | 0.08–0.12 | 0.61–0.63 | −14.9 to −6.0 |
+| RL | 0 | 0.00 | 0.00 | — | +3.4 to +9.0 (never lower) |
+| RR | 0–3 | 0.91–0.96 | 0.85–0.98 | 0.03–0.14 | −2.6 to −1.8 |
+
+**It travels, and it steps with the front feet only.** For the first time
+since session 2 the robot moves at a useful fraction of the command: W3
+passes on five seeds, and the base drifts 414–741 mm in 10 s. Both front
+feet step on every seed, FR mostly in the air (duty 0.15–0.23) and FL
+mostly on the ground. The rear-left foot is held up for the whole episode
+on all ten seeds, and the rear-right is dragged: it touches for 91–96 % of
+the episode and slides for 85–98 % of its path. The film of seed 1101
+shows a scoot on a body pitched 23–28°, one hind leg held back off the
+mat.
+
+![r12 overview, seed 1101](p4-quad-1-walk-r12-seed-1101-overview.png)
+![r12 detail, seed 1101](p4-quad-1-walk-r12-seed-1101-detail.png)
+
+**W10 under a gait on the steel feet is now measured, and it fails.** The
+worst foot on every seed is a stepping front foot (FL on seven seeds, FR
+on three), at −0.154 to −0.074 hip heights, 7–15 mm under the floor. The
+dragged rear-right stays at −0.027 to −0.018, as the standing policies of
+rounds 9–10 did. So the steel-ball feet passed W10 while standing still,
+and fail it when they land. That was the open question in REPORT.md's
+*Remaining defects*.
+
+**Why the rear-left stays up, read from the reward.** Per step, the medians
+are: `alive` +5.0, `trot_sync` −0.84, `speed_error` −0.57, `sideways`
+−0.55, `step_rr` −0.49, `tilt` −0.37, `step_fl` −0.34, `step_fr` −0.18,
+`sink` −0.15 and `step_rl` −0.14. The held-up rear-left costs 0.14 per step,
+the 0.15 hover cost and nothing else. The dragged rear-right costs 0.49 in
+slip. A grounded foot that slid would cost more than one held in the air,
+so holding a foot up stayed the cheaper answer. Evaluation pays +0.68 to
++1.09 per step, against +0.68 at the end of training.
+
+**The agent read it the same way, and its next run is already training.**
+`r13-hovercost-margin`, registered at 07:09:48Z, cites W8-low 0.00, W7
+0.85–0.98, W10 −0.074 to −0.154 and tilt 23–28°. Its reason: "slip cost
+(1.5) dwarfed the hover cost (0.15), so lifting a foot for good was the
+cheapest answer". Its changes are task changes plus one mechanism change:
+- the hover cost goes 0.15 → 0.6 and the swing pay is rescaled to /80;
+- tilt cost −20 → −40, and `alive` 5 → 6;
+- a 3 mm contact margin on each foot sphere (`foot_margin`), "to offset
+  MuJoCo's 2–4 mm soft-contact sink of the steel ball".
+
+It starts fresh, because the model changed. HIP_MM and WEIGHT_N are
+unchanged, since no geometry or mass moved. The contact margin is a
+contact setting on the agent's own bodies, which session 3's mechanism
+rule allows.
+
+**It will need a closer look when r13 is evaluated.** A contact margin makes
+MuJoCo push on the sphere before it touches the floor. It can therefore lift
+the foot's resting height as well as stiffen its landing, and W10 measures
+that height. Round 12's publication must report per foot how far each foot
+rests above the floor while standing, against round 11's, before reading a
+W10 pass as a fix.

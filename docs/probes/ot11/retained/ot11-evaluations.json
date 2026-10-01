@@ -644,7 +644,7 @@
   {
    "project": "ot11-quad-1",
    "key": "bfb59bb5d902-f35fefd6a569",
-   "written_at": 1790833896.0064604,
+   "written_at": 1790835531.6771832,
    "label": "ot11 walk contract",
    "weights": "walk_r11.cxpolicy",
    "policy_sha256": "f35fefd6a569f98048d632a36617b526fe8ad45a4ee607471e48377bb9915e60",
@@ -665,6 +665,37 @@
     "W8-low": 10,
     "W8-high": 10,
     "W9": 10
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready"
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "ca8310e9d841-3179aa38a75d",
+   "written_at": 1790838290.8173885,
+   "label": "ot11 walk contract",
+   "weights": "walk_r12.cxpolicy",
+   "policy_sha256": "3179aa38a75d3ace0d890d47ef19ee1f718c3862ad320135f859ba7f0488f9f9",
+   "trained_by": "r12-convex-sym final",
+   "run_started_at": 1790835838.2779074,
+   "accepted_revision": "ca8310e9d8411a4360e43e2f612cb91f716f720cee53cf2f6ebb957592aaf021",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W3": 5,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 10,
+    "W8-high": 10,
+    "W9": 10,
+    "W10": 10
    },
    "terminations": {
     "horizon": 10
