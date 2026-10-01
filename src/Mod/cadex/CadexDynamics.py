@@ -10457,6 +10457,52 @@ EVALUATION_SCHEMA = "cadex-evaluation-v1"
 EVALUATION_TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
 
 
+def contact_offsets(model: Any) -> list[dict[str, Any]]:
+    """Every contact geom whose surface MuJoCo does not take as its geometry.
+
+    A ``margin`` makes contact act before the surfaces meet, and a ``gap``
+    shifts where its force begins, so a foot on a margin stands on air and a
+    floor with one is a raised floor. Either moves the surface every contact
+    predicate is read against -- a foot's height, its stance, its slip --
+    while the trace still reports the geometry, which is how a 3 mm margin
+    passed a penetration check in ot11 (ADR-470). A model-wide ``o_margin``
+    under the override flag does the same to every geom at once and is
+    listed as ``option``. Geoms that collide with nothing are skipped:
+    nothing touches them.
+    """
+
+    mujoco = _mujoco_module()
+    rows: list[dict[str, Any]] = []
+    for index in range(int(model.ngeom)):
+        if not (int(model.geom_contype[index]) or int(model.geom_conaffinity[index])):
+            continue
+        margin = float(model.geom_margin[index])
+        gap = float(model.geom_gap[index])
+        if margin == 0.0 and gap == 0.0:
+            continue
+        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, index) or f"geom {index}"
+        rows.append({"geom": str(name), "margin_mm": length_mm(margin),
+                     "gap_mm": length_mm(gap)})
+    if int(model.opt.enableflags) & int(mujoco.mjtEnableBit.mjENBL_OVERRIDE) and (
+            float(model.opt.o_margin) != 0.0):
+        rows.append({"geom": "option", "margin_mm": length_mm(float(model.opt.o_margin)),
+                     "gap_mm": 0.0})
+    return rows
+
+
+def contact_offset_void(offsets: Sequence[Mapping[str, Any]]) -> str:
+    """The void reason :func:`contact_offsets` gives a seed, or ``""``."""
+
+    if not offsets:
+        return ""
+    return "the model holds contact surfaces off their geometry: " + ", ".join(
+        "{:s} ({:s})".format(str(row["geom"]), ", ".join(
+            f"{word} {float(row[key]):g} mm" for word, key in (("margin", "margin_mm"),
+                                                             ("gap", "gap_mm"))
+            if float(row[key]) != 0.0))
+        for row in offsets)
+
+
 def evaluate_success(
     xml: bytes,
     task: Mapping[str, Any],
@@ -10504,7 +10550,9 @@ def evaluate_success(
     ``CadexEvaluation.summarise`` over them. **Every seed must pass**, and a
     seed whose simulation went unstable is ``void``: MuJoCo resets the state
     on a bad acceleration, so the frames after it are finite and are not the
-    mechanism, and no predicate read from them can pass the seed.
+    mechanism, and no predicate read from them can pass the seed. A model
+    with a contact ``margin`` or ``gap`` (:func:`contact_offsets`) voids
+    every seed for the same reason, and the report lists the geoms.
     """
 
     import CadexEvaluation
@@ -10528,9 +10576,14 @@ def evaluate_success(
             observed={"training_seed": trained_seed,
                       "evaluation_seeds": [int(s) for s in spec["seeds"]]},
         )
+    compiled = load_model(xml)
     rig = evaluation_rig(
-        load_model(xml), feet=list(spec.get("feet") or ()), tip=spec.get("tip")
+        compiled, feet=list(spec.get("feet") or ()), tip=spec.get("tip")
     )
+    # A surface held off its geometry voids every seed alike: the episode
+    # is played and measured, and none of it is a measurement of contact.
+    offsets = contact_offsets(compiled)
+    held_off = contact_offset_void(offsets)
     names = [str(name) for name in components]
     wanted = [rig["base"], *rig["feet"], (rig.get("tip") or {}).get("body")]
     names += [name for name in wanted if name is not None and name not in names]
@@ -10598,10 +10651,13 @@ def evaluate_success(
         # mechanism, whatever its poses read as: the seed is void, and a
         # void seed has not passed.
         warnings = list(episode["solver_warnings"])
-        void = "" if not warnings else (
-            "the simulation went unstable: MuJoCo warned "
-            + ", ".join(f"{entry['warning']} x{entry['count']}" for entry in warnings)
-        )
+        void = "; ".join(reason for reason in (
+            "" if not warnings else (
+                "the simulation went unstable: MuJoCo warned "
+                + ", ".join(f"{entry['warning']} x{entry['count']}" for entry in warnings)
+            ),
+            held_off,
+        ) if reason)
         row = {
             "seed": int(seed),
             "pass": not void and all(entry["pass"] for entry in held),
@@ -10687,6 +10743,7 @@ def evaluate_success(
                if played.get("goal") else {}),
         },
         "rig": {key: value for key, value in rig.items() if key != "feet"},
+        "contact_offsets": offsets,
         "seeds": rows,
         "summary": CadexEvaluation.summarise(rows, spec["predicates"]),
     }

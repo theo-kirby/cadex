@@ -541,7 +541,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   in its own text that the hull was read and accepted. A mesh too coarse to
   be the part is refused separately, and that refusal is not waived by
   `hull`. Contact takes `friction`, `condim`, `margin_mm`, `restitution` and
-  a `contact_group`/`collides_with` pair. Restitution is 0 or between 0.3
+  a `contact_group`/`collides_with` pair. A `margin_mm` above 0 is exported
+  and simulated, and `cadex evaluate` voids every seed of a policy played on
+  it (ADR-470): the margin moves the surface contact acts at, so no contact
+  predicate measures the geometry. Restitution is 0 or between 0.3
   and 0.9 — MuJoCo has no restitution coefficient, bounce comes out of the
   contact spring's damping, and outside that band the translation is not
   honest — and above 0 it needs a `solver_step_s` of 0.001 or finer, which

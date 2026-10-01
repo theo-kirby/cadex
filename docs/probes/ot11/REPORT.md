@@ -312,9 +312,14 @@ A defect fixed by decision is under *Every failure*, not here.
   holds geometry off the floor does not count as passing W10, whoever
   authors it, and a policy evaluated on such a model is void for R1. Round
   12 is void for R1, and so is the agent's next run, `r14-margin15-lift`,
-  which cuts the margin to 1.5 mm. Nothing in the product refuses a margin
-  yet; the walk session's mechanism rule still permits one, so the void is
-  applied when a round is published.
+  which cuts the margin to 1.5 mm. **The product now applies that void
+  itself** (ADR-470): `cadex evaluate` voids every seed of a model with a
+  contact margin or gap and lists the geoms in the report's
+  `contact_offsets`. On the retained models it lists r13's four feet at
+  3.0 mm and r14's at 1.5 mm, and nothing on any other ot11 run, Robin or
+  Heron model. Row 25 was evaluated before that and keeps its published
+  verdict, with the void it was given by hand. The walk session's mechanism
+  rule still permits a margin in training. Only the evaluation is void.
 - **The feet sank because the exported contact spring was soft, and that
   is fixed in the product for models exported from now on** (ADR-469).
   Every geom and the environment floor were on MuJoCo's default 0.02 s
@@ -340,5 +345,9 @@ A defect fixed by decision is under *Every failure*, not here.
   unchanged since ADR-468 (commit `d410b098`), and
   `test_cadexd_lifecycle.py` passed 23 of 23, none skipped, against it on
   2026-10-01. ADR-469's contact spring is an engine change made after it,
-  so the gate is owed again until it is rerun on a payload staged from that
-  source.
+  so the gate was owed again. It is paid: the payload was rebuilt and
+  restaged from `22d30e7e` (which carries `CONTACT_TIMECONST_S = 0.004`),
+  and `test_cadexd_lifecycle.py` passed 23 of 23 against it. ADR-470's
+  evaluation void is engine source too. The payload was restaged with it,
+  and the gate passed 23 of 23 again. Suites at that revision: test-engine
+  2523 passed, 60 skipped; cli/tests 1271 passed, 1 skipped.

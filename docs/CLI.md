@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-30. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-01. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -3096,6 +3096,16 @@ sha256; `--out DIR` names another place):
 and counting a warning, so the frames after it are finite and are not the
 mechanism. A seed whose episode raised a solver warning is `void`, is listed
 in `summary.void`, and has not passed whatever its predicates read.
+
+**A model whose contact is held off its geometry** (ADR-470) voids every
+seed the same way. A contact geom with a `margin` or a `gap`, or a
+model-wide `o_margin` under the override flag, moves the surface contact
+acts at while the trace still reports the geometry, so a foot's height,
+stance and slip are read against a surface the physics did not use. The
+episodes are played and measured, the report lists the geoms with their
+margin and gap in millimetres in `contact_offsets`, every seed's `void`
+names them, and the progress cell, the prose and the agent's view lead with
+them.
 
 **Refusals.** A spec seed that is the policy's own training seed is refused:
 evaluation seeds are never training seeds. A model that is not the one the

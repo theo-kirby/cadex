@@ -359,6 +359,50 @@ def test_a_simulation_that_went_unstable_voids_the_seed() -> None:
     assert calm["summary"]["void"] == [] and all(row["void"] == "" for row in calm["seeds"])
 
 
+def held_off_sled():
+    """:func:`sled` with a 1.5 mm contact margin on its block (ADR-470)."""
+
+    components, joints, placements = sled()
+    shapes = components[0]["collision"]["shapes"]
+    shapes[0] = {**shapes[0], "margin_mm": 1.5}
+    return components, joints, placements
+
+
+def test_a_contact_margin_or_gap_voids_every_seed_and_names_the_geom() -> None:
+    """A margin holds a surface off its geometry, so contact is not measured.
+
+    ot11's r13 passed a penetration check on a 3 mm foot margin: the trace
+    reports the geometry, and the geometry was standing on air. The block
+    here passes its balance spec on every seed without one (see above); with
+    one, every seed is void whatever its predicates say. A ``gap`` written
+    straight into the file -- the product authors none -- is caught the same
+    way, on the floor.
+    """
+
+    report = evaluate(prepared(spec(BALANCE, episode_seconds=4.0), mechanism=held_off_sled))
+
+    assert report["contact_offsets"] == [
+        {"geom": "body/collision0", "margin_mm": pytest.approx(1.5), "gap_mm": 0.0}]
+    assert report["summary"]["void"] == SEEDS and report["summary"]["pass"] is False
+    assert report["summary"]["passed"] == []
+    for row in report["seeds"]:
+        assert row["void"] == (
+            "the model holds contact surfaces off their geometry: body/collision0 (margin 1.5 mm)")
+        assert row["pass"] is False and row["failing"] == []
+
+    made = prepared(spec(BALANCE[:2], episode_seconds=2.0))
+    text = made["xml"].decode("utf-8")
+    floor = re.search(r'<geom name="([^"]+)"[^>]*type="plane"', text)
+    assert floor, "the free block's model has an environment floor"
+    gapped = text.replace(floor.group(0), floor.group(0) + ' margin="0.002" gap="0.002"', 1)
+    report = evaluate({**made, "xml": gapped.encode("utf-8")})
+    assert report["contact_offsets"] == [
+        {"geom": floor.group(1), "margin_mm": pytest.approx(2.0), "gap_mm": pytest.approx(2.0)}]
+    assert all(row["void"] and not row["pass"] for row in report["seeds"])
+    # ...and a model with neither has nothing to list.
+    assert evaluate(prepared(spec(BALANCE[:1], episode_seconds=2.0)))["contact_offsets"] == []
+
+
 def test_the_reward_is_decomposed_term_by_term_and_decides_nothing() -> None:
     made = prepared(spec(BALANCE, episode_seconds=4.0))
     report = evaluate(made)

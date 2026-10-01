@@ -320,8 +320,9 @@ def add_film(root: Path, out: Path, report: Mapping[str, Any], *, choice: str = 
 def failing_predicates(report: Mapping[str, Any]) -> list[str]:
     """``id (n of m)`` for every predicate a seed failed, worst first.
 
-    Void seeds lead the list: a simulation that went unstable is why a seed
-    failed even when every predicate read as met.
+    Void seeds lead the list: a simulation that went unstable, or a model
+    whose contact surfaces a margin or gap holds off their geometry
+    (ADR-470), is why a seed failed even when every predicate read as met.
     """
 
     summary = report.get("summary") or {}
@@ -329,7 +330,13 @@ def failing_predicates(report: Mapping[str, Any]) -> list[str]:
     rows = [row for row in summary.get("predicates") or [] if row.get("failed_seeds")]
     rows.sort(key=lambda row: -len(row["failed_seeds"]))
     void = summary.get("void") or []
-    return ([f"unstable simulation ({len(void)} of {seeds})"] if void else []) + [
+    held_off = report.get("contact_offsets") or []
+    if held_off:
+        lead = ["contact held off by margin or gap ({:s})".format(
+            ", ".join(str(row.get("geom")) for row in held_off))]
+    else:
+        lead = [f"unstable simulation ({len(void)} of {seeds})"] if void else []
+    return lead + [
         f"{row['id']} ({len(row['failed_seeds'])} of {seeds})" for row in rows]
 
 
@@ -365,6 +372,7 @@ def agent_view(report: Mapping[str, Any], out: Path) -> dict[str, Any]:
         "policy_sha256": report.get("policy_sha256"),
         "label": report.get("label"),
         "failing": failing_predicates(report),
+        "contact_offsets": report.get("contact_offsets") or [],
         "summary": {key: summary.get(key) for key in (
             "seeds", "passed", "failed", "void", "predicates", "terminations", "reward",
             "metrics")},
@@ -419,7 +427,13 @@ def human_lines(report: Mapping[str, Any]) -> list[str]:
     causes = summary.get("terminations") or {}
     if causes:
         lines.append("  ended: " + ", ".join(f"{cause} ×{count}" for cause, count in causes.items()))
-    if summary.get("void"):
+    held_off = report.get("contact_offsets") or []
+    if held_off:
+        lines.append("  void: every seed: the model holds contact surfaces off their geometry: "
+                     + ", ".join("{:s} margin {:g} mm gap {:g} mm".format(
+                         str(row.get("geom")), float(row.get("margin_mm") or 0.0),
+                         float(row.get("gap_mm") or 0.0)) for row in held_off))
+    elif summary.get("void"):
         lines.append("  void: the simulation went unstable on seed(s) "
                      + ", ".join(str(seed) for seed in summary["void"]))
     film = report.get("film") or {}

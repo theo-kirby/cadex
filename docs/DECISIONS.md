@@ -30994,3 +30994,49 @@ at −6.0 to −7.7 mm: the time constant is what matters.
   needed a wilder motor (500 N·m, from 200 N·m) to go unstable on the
   stiffer contact.
 - An engine-source change, so the packaged lifecycle gate is owed again.
+
+## ADR-470 — An evaluation on a model whose contact is held off its geometry is void on every seed (2026-10-01)
+
+**Context.** The owner's R1 clause of 2026-10-01 says a contact `margin`,
+`gap` or any other setting that holds geometry off the floor does not count
+as passing W10, and that a policy evaluated on such a model is void. Until
+now that void was applied by hand when a round was published (REPORT.md,
+rows for `r13-hovercost-margin` and `r14-margin15-lift`): `cadex evaluate`
+scored r13's 3 mm foot margin as a W10 pass, and ADR-469 left the product
+silent about margins. A void that lives only in the actor's publication is
+one a later evaluation can miss.
+
+**Decision.**
+- `CadexDynamics.contact_offsets(model)` lists every contact geom (nonzero
+  `contype` or `conaffinity`) whose compiled `margin` or `gap` is not zero,
+  with both in millimetres, plus `option` when a model-wide `o_margin` is in
+  force under the override flag.
+- `evaluate_success` reads it once from the evaluated MJCF. Any entry voids
+  every seed, with a reason naming the geoms, joined to the
+  unstable-simulation reason when both apply. The report carries the list as
+  `contact_offsets`. Episodes are still played and measured, so the rest of
+  the report is still there to diagnose from.
+- `cadex evaluate`'s progress cell, prose block and agent view lead with
+  the geoms. The agent's next revision sees why its evaluation did not
+  count.
+- The check is task-agnostic. It looks at contact geoms, not "feet" or "the
+  floor", so a reach or a balance on a held-off surface is void the same
+  way. `margin_mm` stays a legal `assembly.collision` argument, because a
+  model with a margin can still be simulated and trained. Only its
+  evaluation is void. This replaces ADR-469's "the product does not refuse
+  one" for evaluation and changes nothing for export.
+
+**Consequences.**
+- Measured on the retained models: r13's four foot geoms (3.0 mm) and
+  r14's (1.5 mm) are listed. Every other ot11-quad-1 run model, the two
+  negatives and all 36 MJCF files under `ot11-robin-1` and `ot11-heron-*`
+  list nothing. No published R2 or R3 evaluation moves.
+- Tests: `test_a_contact_margin_or_gap_voids_every_seed_and_names_the_geom`
+  (`test_evaluate_success_model`) has a block that passes its balance spec
+  without a margin. With a 1.5 mm margin it is void on every seed, and so
+  is the plain block once a margin and gap are written onto its floor.
+  `test_a_contact_margin_voids_the_report_and_names_its_geoms`
+  (`cli/tests/test_evaluate`) pins the cell, the prose and the agent view.
+  Both fail on the source before this.
+- Engine source changed, so the packaged lifecycle gate is rerun on a
+  payload staged from it.

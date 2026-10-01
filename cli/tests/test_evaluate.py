@@ -37,6 +37,7 @@ from cadex_cli.evaluate import (
     REPORT_NAME,
     EvaluateError,
     EvaluateRefused,
+    agent_view,
     check_out,
     default_out,
     evaluation_cell,
@@ -205,6 +206,30 @@ def test_a_void_seed_leads_the_row_and_has_its_own_line() -> None:
         "evaluation fail 1/10 seeds: unstable simulation (2 of 10); W7 (10 of 10)")
     assert failing_predicates(void)[0] == "unstable simulation (2 of 10)"
     assert human_lines(void)[-1] == "  void: the simulation went unstable on seed(s) 1104, 1108"
+
+
+def test_a_contact_margin_voids_the_report_and_names_its_geoms() -> None:
+    """ADR-470: the engine voids every seed of a model with a margin or gap.
+
+    The report lists the geoms, and every reading of it leads with them, so
+    a held-off foot is never read past as a gait failure.
+    """
+
+    offsets = [{"geom": f"{leg}/collision0", "margin_mm": 1.5, "gap_mm": 0.0}
+               for leg in ("fl", "fr")]
+    seeds = list(range(1101, 1111))
+    held = {**REPORT, "contact_offsets": offsets,
+            "summary": {**REPORT["summary"], "passed": [], "void": seeds}}
+    assert failing_predicates(held)[0] == (
+        "contact held off by margin or gap (fl/collision0, fr/collision0)")
+    assert evaluation_cell(held).startswith(
+        "evaluation fail 0/10 seeds: contact held off by margin or gap")
+    assert human_lines(held)[-1] == (
+        "  void: every seed: the model holds contact surfaces off their geometry: "
+        "fl/collision0 margin 1.5 mm gap 0 mm, fr/collision0 margin 1.5 mm gap 0 mm")
+    assert agent_view(held, Path("/tmp/e"))["contact_offsets"] == offsets
+    # ...and a report with none says nothing about it.
+    assert agent_view(REPORT, Path("/tmp/e"))["contact_offsets"] == []
 
 
 def test_the_prose_block_tallies_every_predicate_and_every_ending() -> None:
