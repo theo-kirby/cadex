@@ -31040,3 +31040,42 @@ one a later evaluation can miss.
   Both fail on the source before this.
 - Engine source changed, so the packaged lifecycle gate is rerun on a
   payload staged from it.
+
+## ADR-471 — `--init-from` continues at the exploration width the source trained to (2026-10-01)
+
+**Context.** `--init-from` restored the actor and the observation normaliser
+and nothing else: `log_std` was rebuilt from `--initial-std` (default 0.30)
+and the critic started fresh. ot11's `r21b-r19-continue` warmed r19 on r19's
+*identical* task and lost r19's gait in its first iterations (+2.19 then
+−1.64 per step against r19's final 4.47; evaluation row 33, 2 of 10), the
+same opening r20 had. r19 ended at σ 0.177; both warm runs restarted at
+0.30. The `.cxpolicy` already carries the width, per action, as the header's
+top-level `exploration.log_std` (ADR-103).
+
+**Decision.**
+- `--initial-std` defaults to unset. Resolved by
+  `training/cadex_train.py::starting_log_std`, in order: the flag when given
+  (warm or cold); else, on `--init-from`, the source's per-action
+  `exploration.log_std`; else 0.3.
+- A warm-start source with no usable width (absent, wrong length, not finite,
+  or not in the pre-activation space) is refused with a message naming
+  `--initial-std`, rather than silently given the default.
+- The run's `init_from` provenance records `log_std_source`
+  (`flag` / `init_from`). A cold run's header still records
+  `initial_std: 0.3`; a carried run's records `null`.
+- The critic is **not** carried, because the container does not hold one;
+  adding it would change the `.cxpolicy` format the engine verifies, and
+  that is not this unit. The Adam moments stay fresh as before.
+
+**Consequences.**
+- A policy continued with no `--initial-std` now opens at the width it
+  ended at. A run that passes `--initial-std` explicitly — including the
+  in-flight `r22-gentle-contact25` (0.12) — is unchanged.
+- The loop (`cli/cadex_cli/loop.py`) only passes `--initial-std` when the
+  agent sets `initial_std`, so the agent gets the carried width by leaving
+  it out.
+- Tests (`cadex_tests/test_dynamics_policy_trainer.py`): the flag is unset
+  unless given; the three-way resolution; four unusable sources refused;
+  and, from the training venv, a cold run at σ 0.7 followed by a warm start
+  with no flag ends within 0.05 of the cold run's width. All six pure cases
+  fail on the source before this. No engine, payload or protocol change.

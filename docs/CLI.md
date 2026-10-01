@@ -2294,7 +2294,9 @@ loop offers no override).
 `action_filter_alpha`, `command_slew_deg`, `goal_pool`, `checkpoint_every`,
 and the warm start `init_from` with `init_from_parent_task` and
 `init_from_task_change`. A test reads them back out of
-`training/cadex_train.py`.
+`training/cadex_train.py`. A warm start with no `initial_std` continues at
+the exploration width its source policy ended at; setting `initial_std`
+overrides that (ADR-471).
 
 **`loop-ledger.jsonl`**, in the project root, gets one line per thing the
 loop did: a run registered (with its reason), a stop requested, a run

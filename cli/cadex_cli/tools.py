@@ -253,7 +253,9 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
                         "complete policy every N iterations plus the best so far, so "
                         "a stopped run still leaves one), and the warm start: "
                         "init_from (a .cxpolicy path), with init_from_parent_task and "
-                        "init_from_task_change when the task changed since."
+                        "init_from_task_change when the task changed since. A warm "
+                        "start continues at its source's exploration width unless "
+                        "initial_std is set."
                     ),
                 },
             },

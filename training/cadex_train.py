@@ -449,6 +449,59 @@ def check_curriculum_change(
     return changed
 
 
+#: ``--initial-std``'s value when it is not given and nothing is carried.
+DEFAULT_INITIAL_STD = 0.3
+
+
+def starting_log_std(
+    options: argparse.Namespace,
+    header: dict[str, Any] | None,
+    action_count: int,
+) -> tuple[list[float], str]:
+    """The exploration width a run starts at, and where it came from (ADR-471).
+
+    ``log_std`` is a *trained* parameter (ADR-103) and the container carries
+    it, per action, as the header's ``exploration.log_std``. A warm start that
+    restored the actor and reset σ to ``--initial-std`` was handing a trained
+    mean a fresh exploration width -- ot11's r21b warmed r19's actor, whose σ
+    had narrowed from 0.30 to 0.177, back at 0.30 and lost r19's gait. So,
+    in order:
+
+    * ``--initial-std`` given explicitly wins, warm or cold: ``"flag"``;
+    * otherwise a warm start carries the source's width: ``"init_from"``;
+    * otherwise the default: ``"default"``.
+
+    A source with no usable ``exploration`` block (written before ADR-103, or
+    the wrong length, or not finite) is refused rather than silently given
+    the default: the run was asked to continue a policy, and it would not be.
+    The critic is not carried because the container does not hold it.
+    """
+
+    explicit = getattr(options, "initial_std", None)
+    if explicit is not None:
+        std = float(explicit)
+        if not (math.isfinite(std) and std > 0.0):
+            raise SystemExit("--initial-std must be a finite positive number.")
+        return [math.log(std)] * int(action_count), "flag"
+    if header is None:
+        return [math.log(DEFAULT_INITIAL_STD)] * int(action_count), "default"
+    exploration = header.get("exploration") or {}
+    carried = exploration.get("log_std")
+    if (not isinstance(carried, list) or len(carried) != int(action_count)
+            or exploration.get("space", "pre_activation") != "pre_activation"):
+        raise SystemExit(
+            "--init-from: the policy carries no per-action exploration width "
+            f"for {int(action_count)} actions (header 'exploration.log_std'), "
+            "so it cannot be continued at the width it trained to. Pass "
+            "--initial-std to choose one explicitly."
+        )
+    values = [float(v) for v in carried]
+    if not all(math.isfinite(v) for v in values):
+        raise SystemExit("--init-from: the policy's exploration.log_std is "
+                         "not finite. Pass --initial-std to choose one.")
+    return values, "init_from"
+
+
 def check_policy_fits(
     header: dict[str, Any],
     bundle: dict[str, Any],
@@ -1620,8 +1673,8 @@ def train(
         state = state + (jnp.zeros((envs, len(actions)), dtype=jnp.float32),)
     actor = initial_parameters(jax, jnp, actor_key, shapes)
     critic = initial_parameters(jax, jnp, critic_key, critic_shapes)
-    log_std = jnp.full((len(actions),), math.log(float(options.initial_std)),
-                       dtype=jnp.float32)
+    # Resolved below, once --init-from has (or has not) supplied a header.
+    log_std = jnp.zeros((len(actions),), dtype=jnp.float32)
 
     # Adam, hand-rolled, so that requirements.txt stays four lines. The
     # trainer is a thing you copy to a box; every dependency is one more
@@ -1637,6 +1690,7 @@ def train(
     seen = jnp.float32(1.0e-4)
 
     init_from_provenance: dict[str, Any] | None = None
+    source_header: dict[str, Any] | None = None
     if not getattr(options, "init_from", "") and (
             str(getattr(options, "init_from_task_change", "") or "").strip()
             or str(getattr(options, "init_from_parent_task", "") or "").strip()
@@ -1665,6 +1719,7 @@ def train(
             raise SystemExit(f"--init-from: cannot read {source}: {exc}") from exc
         decoded = decode_policy(blob, context=str(source))
         curriculum_keys = check_policy_fits(decoded["header"], bundle, options)
+        source_header = decoded["header"]
         restored = unflatten_parameters(np, decoded["weights"], shapes)
         params["actor"] = [
             (jnp.asarray(weight), jnp.asarray(bias))
@@ -1731,6 +1786,22 @@ def train(
                     f"— {str(options.init_from_task_change).strip()}",
                     flush=True,
                 )
+
+    # ADR-471: a warm start continues at the width it trained to unless
+    # --initial-std says otherwise. Before the moments are taken again, so
+    # the optimiser stays fresh either way.
+    start_log_std, std_source = starting_log_std(
+        options, source_header, len(actions))
+    params["log_std"] = jnp.asarray(start_log_std, dtype=jnp.float32)
+    moment1, moment2 = zeros_like(params), zeros_like(params)
+    if std_source == "default":
+        # A cold run's header keeps the number it always recorded.
+        options.initial_std = DEFAULT_INITIAL_STD
+    if init_from_provenance is not None:
+        init_from_provenance["log_std_source"] = std_source
+    if not options.quiet and std_source != "default":
+        print(f"action_std  {float(np.mean(np.exp(start_log_std))):.4f}  "
+              f"(from {std_source})", flush=True)
 
     scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
@@ -2576,7 +2647,12 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--clip", type=float, default=0.2)
     parser.add_argument("--entropy", type=float, default=1.0e-3)
     parser.add_argument("--value-weight", type=float, default=0.5)
-    parser.add_argument("--initial-std", type=float, default=0.3)
+    parser.add_argument(
+        "--initial-std", type=float, default=None,
+        help="the exploration width (σ, pre-activation) the run starts at. "
+             f"Default {DEFAULT_INITIAL_STD} on a cold run; on --init-from "
+             "the source policy's own per-action width is carried instead, "
+             "unless this is given explicitly (ADR-471)")
     parser.add_argument(
         "--goal-pool", type=int, default=4096,
         help="how many episodes of goals to draw on the host before training "
@@ -2613,8 +2689,9 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
             "warm-start the actor from an existing .cxpolicy instead of a "
             "fresh network. The policy must match this bundle's task and "
             "model digests, its observation channels in order, its action "
-            "table and the network shape --hidden asks for. Only the actor "
-            "and the observation normaliser are carried: the critic and the "
+            "table and the network shape --hidden asks for. Only the actor, "
+            "its exploration width (unless --initial-std is given) and the "
+            "observation normaliser are carried: the critic and the "
             "optimiser start fresh, because the container holds neither."
         ),
     )

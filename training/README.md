@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-09-30. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-01. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -232,7 +232,7 @@ iteration ~80 and then trained for seven hours.
 
 `action_std` is the second row to watch (ADR-103): the mean of
 `exp(log_std)`, the width of the Gaussian the rollout samples its actions
-from. It **starts at `--initial-std` and nothing bounds it** — the loss
+from. It **starts at `--initial-std` (0.3) on a cold run, at the source policy's own per-action width on `--init-from` unless `--initial-std` is given (ADR-471), and nothing bounds it** — the loss
 subtracts `--entropy` times an entropy that is linear in `log_std`, so
 minimising it pushes this number up for the whole run. A σ that has walked
 well off its start is a policy whose rollouts and whose mean action are no
