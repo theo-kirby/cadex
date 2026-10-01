@@ -324,15 +324,26 @@
    "trainer_s": 2089.691031557042,
    "policy_sha256": "70b9ac55c145a3b1eacf812659b5b85c25416b761438f9defec307ecbf3283b7",
    "attempt": true
-  }
- ],
- "attempts": 18,
- "in_progress": [
+  },
   {
    "project": "ot11-quad-1",
    "run": "r14-margin15-lift",
-   "started_at": 1790841387.8564334
+   "seed": 139,
+   "envs": 2048,
+   "iterations": 800,
+   "init_from": null,
+   "budget_s": 2400.0,
+   "task_sha256": "8b96cafcfd1d9ea58d9ae7cf2f9d2257677af81fd939e9a0dc4d43b2b2452c02",
+   "state": "finished",
+   "iterations_run": 800,
+   "started_at": 1790841387.8564334,
+   "supervised_s": 2348.43,
+   "trainer_s": 2178.255605868064,
+   "policy_sha256": "5f97b60219ba3e0f49f64016551101a7beca6a368d371b8489c4d276753b64f0",
+   "attempt": true
   }
  ],
- "supervised_s_total": 30313.69
+ "attempts": 19,
+ "in_progress": [],
+ "supervised_s_total": 32662.12
 }
