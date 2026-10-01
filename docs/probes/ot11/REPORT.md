@@ -11,7 +11,7 @@ The owner ticks the criteria; this page does not.
 
 ## Every training run
 
-Twenty-two runs have ended in ot11, twenty-one attempts and one refused start
+Twenty-three runs have ended in ot11, twenty-two attempts and one refused start
 (`r9-steelfoot`, row 15: its trainer exited before its first iteration).
 All went through the product's `train_start` tool, one GPU job at a time,
 with `--stop-on-collapse` on. Every one was registered before it launched: its settings, its seed, its
@@ -47,13 +47,14 @@ is that receipt.
 | 20 | walk | `ot11-quad-1` | `r14-margin15-lift` | 139 | 800 it × 2048 envs | — | 2,400 | `finished` | 800 | 2,348.43 | 2,178.3 |
 | 21 | walk | `ot11-quad-1` | `r15-stiffspring-clearfoot` | 151 | 760 it × 2048 envs | — | 2,400 | `finished` | 760 | 1,926.40 | 1,777.4 |
 | 22 | walk | `ot11-quad-1` | `r16-alive10` | 157 | 760 it × 2048 envs | — | 2,400 | `finished` | 760 | 2,093.52 | 1,941.9 |
+| 23 | walk | `ot11-quad-1` | `r17-discount-bodyrate` | 163 | 760 it × 2048 envs | — | 2,400 | `finished` | 760 | 2,061.01 | 1,910.6 |
 
 | behaviour | runs | GPU time, s |
 |---|---|---|
 | balance | 1 | 900.57 |
 | reach | 5 | 4,447.41 |
-| walk | 16 | 31,334.06 |
-| **all** | **22** | **36,682.04** |
+| walk | 17 | 33,395.07 |
+| **all** | **23** | **38,743.05** |
 
 **How to read the two times.** *GPU time* is the supervisor's wall time
 from launch to exit; the trainer holds the GPU for all of it, so it is the
@@ -84,7 +85,7 @@ and in no total. None was in progress when this was last regenerated.
 
 ## Every evaluation
 
-Twenty-eight evaluations are stored across the five ot11 projects, every one
+Twenty-nine evaluations are stored across the five ot11 projects, every one
 written by `cadex evaluate` or the agent's `evaluate` tool (the same code)
 into the project's `evaluations/<key>/evaluation.json`.
 [`runner/eval_ledger.py`](runner/eval_ledger.py) reads those files, and the
@@ -126,6 +127,7 @@ predicate that did not pass on all of them.
 | 26 | walk | `ot11-quad-1` | `6688a28a61d8-5f97b60219ba` | `r14-margin15-lift final` | fail | 0 of 10 | W5-share 7, W6 10, W7 2, W8-low 10, W10 9 | horizon 10 | yes |
 | 27 | walk | `ot11-quad-1` | `bf664d9bfc69-d430a9224345` | `r15-stiffspring-clearfoot final` | fail | 0 of 10 | W1 5, W2 5, W3 10, W4-lateral 5, W5-steps 10, W5-share 10, W6 10, W7 10, W8-low 10, W8-high 10, W9 10, W10 5 | horizon 5, tipped 5 | yes |
 | 28 | walk | `ot11-quad-1` | `e84b045a4528-dd0f9dc053a7` | `r16-alive10 final` | fail | 0 of 10 | W1 8, W2 8, W3 6, W4-lateral 3, W5-steps 10, W5-share 10, W6 9, W7 10, W8-low 10, W8-high 10, W9 8 | horizon 2, tipped 8 | yes |
+| 29 | walk | `ot11-quad-1` | `50b2a42caf1c-63cbf22407c0` | `r17-discount-bodyrate final` | fail | 1 of 10 | W5-share 2, W7 8, W9 8 | horizon 10 | yes |
 
 **How to read it.**
 - **Rows 1–4 are P1's known negatives**, read before any ot11 training
@@ -188,6 +190,18 @@ predicate that did not pass on all of them.
   their shove (3.39–4.01 s). The other five hold the rear-left foot
   34–50 mm up (duty 0.05–0.25) at speed_ratio 0.05–0.22. Three of those
   tip 0.32–0.61 s after their shove, and two stand the 10 s.
+- **Row 29 is session 5's third and last round, and it is valid on the
+  same checks** (`contact_offsets` empty;
+  [`retained/p5-quad-1-r17-evaluation.json`](retained/p5-quad-1-r17-evaluation.json)).
+  It is the first walk evaluation to pass a seed: 1108 passes every
+  predicate, and the other nine fail. No seed tips: all ten run the 10 s
+  and stand through their shove (3.39–6.53 s), at tilt 12.4–17.2° and
+  speed_ratio 0.90–0.98. Every foot steps 5–14 times (W5-steps passes on
+  all ten), clearance is 0.15–0.22 HH and duty 0.48–0.61. What fails is
+  slip (W7 0.154–0.208 on eight seeds, against 0.15) and leg balance:
+  the rear feet take 10–14 steps to the front feet's 5–11 (W9 1.4–2.4 on
+  eight seeds, against 1.5), and on 1101 and 1109 the front feet's step
+  share falls to 0.69 and 0.57 (W5-share, against 0.70).
 - `r9-steelfoot` has no row, because it never trained (see *Every
   failure*).
 
@@ -254,6 +268,7 @@ shows whether it helped.
 | `r14-margin15-lift` | **mechanism**: foot contact margin 3 → 1.5 mm; hover cost flat past ~3 mm and swing pay growing with height (h/14 mm); a linear term in the speed cost; fresh start | r13: W8-low duty_min 0.02–0.09, W6 clearance 0.032–0.038 HH, W3 0.28–0.64, W7 0.12–0.22 | 26 | 0 | partly: W3 passes on every seed (speed_ratio 0.98–1.05) and every foot steps 19–25 times, but clearance falls to 0.020–0.026 HH (W6), duty_min stays 0.30–0.33 (W8-low), and on half the margin W10 fails 9 of 10 (−0.066 to −0.049 HH). **Void for R1** (margin model; voided by `cadex evaluate`, ADR-470) |
 | `r15-stiffspring-clearfoot` | **mechanism**: the foot margin removed and the model rebuilt on ADR-469's 0.004 s spring; the moving-foot cost fades as a 6 mm Gaussian of lift instead of exp(−h/3 mm), weight 1.5 → 2.0; fresh start | r14: W6 clearance 0.020–0.026 HH, W8-low duty_min 0.30–0.33, W7 slip 0.11–0.16, W10 −0.066 to −0.049 HH | 27 | 0 | no: no foot steps on any seed (W5-steps 0, duty 1.0), five seeds tip within 0.94 s (W1, W2) and the five that stand slide their feet (slip 0.54–0.80) at speed_ratio 0.03–0.06. W10 passes on every seed that stands (−0.015 to −0.003 HH): on the new spring a standing foot sinks under 1.5 mm |
 | `r16-alive10` | alive 6 → 10; the moving-foot cost weight 2.0 → 1.5, keeping the 6 mm Gaussian fade; same model; fresh start | r15: W1/W2 on 5 seeds (tipped at 0.50–0.94 s); a surviving step netted −1.16 to −1.21, so tipping beat staying up | 28 | 0 | partly: a surviving step now nets +4.4 to +5.4 and tips come later (1.76–6.58 s against 0.50–0.94 s), but more seeds tip (8 against 5). Five lunge at speed_ratio 0.75–0.97 and tip before their shove; five stand on three legs, rear-left held 34–50 mm up, and three tip after their shove. No foot steps four times (W5-steps max 1). W10 passes on every seed (−0.010 to −0.002 HH) |
+| `r17-discount-bodyrate` | discount 0.97 (the trainer default) → 0.995; a bounded roll/pitch-rate cost (`body_rate`, weight −1.5, scale 90°/s); same model; fresh start | r16: W1/W2 on 8 seeds (tipped at 1.76–6.58 s, tilt 37–42°) with training episodes of 100–140 steps, so a fall sat beyond the discount horizon; W7 0.26–0.74, W5-steps 0–1, W8-low 0.0–0.39 | 29 | 1 | yes: no seed tips (W1/W2 pass 10 of 10, tilt 12.4–17.2°), every foot steps 5–14 times (W5-steps 10 of 10), W3, W6, W8 and W10 pass on every seed, and seed 1108 passes all thirteen predicates. Slip still fails on 8 (W7 0.154–0.208) and the rear feet out-step the front (W9 1.4–2.4 on 8) |
 
 The reach rows are four consecutive design–train–evaluate–revise rounds,
 each motivated by the previous evaluation and each answered by the next;
@@ -265,7 +280,7 @@ the rows suggest.
 ## Every failure
 
 Each item names its receipt.
-- **Twenty-four of 28 evaluations failed** (every row above except 5, 6, 11
+- **Twenty-five of 29 evaluations failed** (every row above except 5, 6, 11
   and 12), and four of them are void: rows 20 and 21 on a scale digit, rows
   25 and 26 for R1 on their foot contact margins.
 - **Two runs collapsed** and were stopped by `--stop-on-collapse`:
@@ -313,6 +328,12 @@ Each item names its receipt.
   Valid on the same checks. Eight seeds tip, five of them in a forward
   lunge before the shove
   ([filmstrip, seed 1101](p4-quad-1-walk-r16-seed-1101-overview.png)).
+- **Walk session 5's third round failed 1 of 10** (`r17-discount-bodyrate`,
+  row 29, [`retained/p5-quad-1-r17-evaluation.json`](retained/p5-quad-1-r17-evaluation.json)).
+  Valid on the same checks. It walks all ten seeds to the horizon, and
+  nine fail on slip (W7) and on the rear feet stepping more often than
+  the front (W9, W5-share)
+  ([filmstrip, seed 1101](p4-quad-1-walk-r17-seed-1101-overview.png)).
 - **Warm start was unreachable for reach r3.** The agent guessed five paths
   for `init_from_parent_task`, and `train_start` refused each; seven
   `train_start` calls errored in that session
@@ -327,17 +348,18 @@ Each item names its receipt.
 
 What is still wrong or unmeasured at this revision, each with its receipt.
 A defect fixed by decision is under *Every failure*, not here.
-- **R1 is not met.** No walk evaluation has passed a seed: rows 13–28 of
-  *Every evaluation* all pass 0 of 10
+- **R1 is not met.** No walk evaluation has passed on every seed. Rows
+  13–28 of *Every evaluation* pass 0 of 10, and row 29 passes 1 of 10
+  (seed 1108)
   ([`retained/ot11-evaluations.json`](retained/ot11-evaluations.json)).
   Walk session 4
   ([`retained/p4-quad-1-s4-preregistration.json`](retained/p4-quad-1-s4-preregistration.json))
   closed at its three-run limit: rows 24, 25 and 26, the last two void.
-  Walk session 5 is pre-registered and running
+  Walk session 5
   ([`retained/p4-quad-1-s5-preregistration.json`](retained/p4-quad-1-s5-preregistration.json)),
-  the first on a model with the ADR-469 spring and no contact offset; its
-  rounds so far are rows 27 and 28, and any later ones are not in this
-  report yet.
+  the first on a model with the ADR-469 spring and no contact offset,
+  closed at its three-run limit: rows 27, 28 and 29. No confirmation
+  evaluation is registered, because none of its rounds passed every seed.
 - **No walking gait has been judged.** The judge runs on a confirmation
   evaluation, and walk has none; its scores on a gait that steps are
   unmeasured (*Every judge score*).
@@ -397,8 +419,11 @@ A defect fixed by decision is under *Every failure*, not here.
   stand (−0.015 to −0.003 HH, a foot at most 1.45 mm under), but it takes
   no step. The second (row 28) lifts every foot and lands most of them,
   but no more than once or twice a seed, and holds W10 on all ten
-  (−0.010 to −0.002 HH). A sustained stepping load is still measured
-  only by r14's policy driven on the rebuilt model.
+  (−0.010 to −0.002 HH). The third (row 29) is the first policy
+  trained on this model to step steadily: every foot steps 5–14 times a
+  seed over the full 10 s, and the deepest foot point is −0.0172 to
+  −0.0129 HH (1.25–1.66 mm under), so W10 holds on all ten under a
+  sustained stepping load.
 - **Walk rounds 1–3 trained on a trainer whose servo physics disagreed
   with the engine's** (ADR-465). Their evaluations stand, and what they
   say about their rewards is weaker than their rows suggest.

@@ -1,0 +1,191 @@
+{
+ "schema": "ot11-walk-round-receipt-v1",
+ "project": "ot11-quad-1",
+ "round": 16,
+ "run": "r17-discount-bodyrate",
+ "session": 5,
+ "registered": {
+  "settings": {
+   "checkpoint_every": 100,
+   "discount": 0.995,
+   "envs": 2048,
+   "iterations": 760,
+   "seed": 163
+  },
+  "init_from": null,
+  "budget_s": 2400.0,
+  "reason": "r16 failed all 10 seeds, mainly by tipping: W1/W2 on 8 seeds, falling at 1.8-6.6 s with max tilt 37-42 deg (max 30), even though a surviving step netted +4.4 to +5.4. Training episodes averaged only 100-140 steps, so a fall about 125 steps away sat beyond a ~0.99 discount horizon and survival hardly counted. It also slid instead of stepping: W7 slip 0.26-0.74 (max 0.15), W5-steps 0-1 (min 4), W8-low duty_min 0.0-0.39 (min 0.40). W10 passed 10/10 and W3 passed on 4 seeds. CHANGE: discount 0.995 (about a 4 s horizon) and a bounded roll/pitch-rate cost (body_rate, weight -1.5, scale 90 deg/s) against the lurch the film shows. Same model (HIP_MM 96.7006, WEIGHT_N 5.0507), fresh start. Expected: full-length episodes (W1/W2), with W3 kept and steadier stance feet (W7/W8).",
+  "registered_at": 1790852893.7390778,
+  "accepted_revision": "66372fc378ce2a9b947703e8587b2372513632e67bd31d50c92d5264b32df3cd"
+ },
+ "ended": {
+  "state": "finished",
+  "wall_time_s": 2061.01,
+  "trainer_wall_time_s": 1910.619837124832,
+  "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+  "policy_sha256": "63cbf22407c09f98f438cb59202c9dd99d040275093136bba07a582a6982e385",
+  "best_iteration": 751,
+  "training_reward_per_step_final": 5.1985650062561035,
+  "episode_steps_mean_final": 470.8045959472656,
+  "action_std_final": 0.16025295853614807
+ },
+ "evaluated_by": "the agent's own evaluate tool inside walk session 5's turn (the same code as cadex evaluate); the actor ran nothing",
+ "project_change": "agent: the policy line moved from walk_r16 to walk_r17 with its sha256 (script_history 0088 -> 0089; 0090 is byte-identical to 0089); nothing else moved",
+ "spec_block": {
+  "rule": "byte-identical except the values of HIP_MM and WEIGHT_N, which must equal the evaluated model's rig to the block's printed precision",
+  "frozen_sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900",
+  "HIP_MM": 96.7006,
+  "rig_hip_height_mm": 96.7006,
+  "WEIGHT_N": 5.05069617762,
+  "rig_weight_n": 5.050696177620001,
+  "other_lines_identical": true,
+  "valid": true
+ },
+ "evaluation": {
+  "report": "evaluations/50b2a42caf1c-63cbf22407c0/evaluation.json",
+  "accepted_revision": "50b2a42caf1ca278b4beed501491c4e493a8f6394d29594f08d29378fa0bcf1d",
+  "policy_sha256": "63cbf22407c09f98f438cb59202c9dd99d040275093136bba07a582a6982e385",
+  "model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+  "trained_model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+  "task_sha256": "c1a3ad338dcc5000b1c35a40de67731e52aa04842e2e343bca392313b0ee1fa6",
+  "trained_task_sha256": "c1a3ad338dcc5000b1c35a40de67731e52aa04842e2e343bca392313b0ee1fa6",
+  "engine_source": "dev-tree",
+  "verdict": "fail",
+  "contact_offsets": [],
+  "void_seeds": [],
+  "terminations": {
+   "horizon": 10
+  },
+  "episodes": {
+   "1101": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1102": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1103": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1104": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1105": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1106": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1107": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1108": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1109": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1110": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   }
+  },
+  "passed_seeds": [
+   1108
+  ],
+  "failing_predicates": {
+   "W5-share": 2,
+   "W7": 8,
+   "W9": 8
+  },
+  "metrics_min_max": {
+   "completed": [
+    1.0,
+    1.0
+   ],
+   "duration_s": [
+    10.0,
+    10.0
+   ],
+   "max_tilt_deg": [
+    12.3537,
+    17.2183
+   ],
+   "max_heading_deg": [
+    4.764,
+    12.1974
+   ],
+   "final_heading_deg": [
+    -11.464,
+    4.4654
+   ],
+   "max_drift_mm": [
+    544.0828,
+    862.0499
+   ],
+   "final_drift_mm": [
+    544.0828,
+    862.0499
+   ],
+   "mean_speed_mm_s": [
+    69.5274,
+    93.6976
+   ],
+   "max_drift_com_heights": [
+    6.8834,
+    10.9061
+   ],
+   "recovery_s_max": null,
+   "mean_forward_speed_mm_s": [
+    56.6976,
+    86.8848
+   ],
+   "mean_lateral_speed_mm_s": [
+    -3.1511,
+    1.7451
+   ],
+   "steps_min": [
+    5,
+    10
+   ],
+   "step_share_min": [
+    0.5708,
+    0.8136
+   ],
+   "slip_share_max": [
+    0.1454,
+    0.2076
+   ],
+   "duty_factor_min": [
+    0.4767,
+    0.5011
+   ],
+   "duty_factor_max": [
+    0.5477,
+    0.6098
+   ],
+   "foot_lowest_hip_heights_min": [
+    -0.0172,
+    -0.0129
+   ],
+   "speed_ratio": [
+    0.9018,
+    0.9848
+   ],
+   "lateral_ratio": [
+    0.0085,
+    0.0519
+   ]
+  }
+ },
+ "void_for_R1": false,
+ "void_check": "contact_offsets is empty: no geom in the evaluated model carries a margin or gap (ADR-470), and the model is the rebuilt af05ab62 lineage on ADR-469's 0.004 s spring"
+}

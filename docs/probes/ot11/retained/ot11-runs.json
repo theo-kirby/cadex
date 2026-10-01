@@ -375,9 +375,26 @@
    "trainer_s": 1941.935242824722,
    "policy_sha256": "dd0f9dc053a70155badf7b8022a0da13841f988ccabca7f6769a7d8cb641b7dd",
    "attempt": true
+  },
+  {
+   "project": "ot11-quad-1",
+   "run": "r17-discount-bodyrate",
+   "seed": 163,
+   "envs": 2048,
+   "iterations": 760,
+   "init_from": null,
+   "budget_s": 2400.0,
+   "task_sha256": "c1a3ad338dcc5000b1c35a40de67731e52aa04842e2e343bca392313b0ee1fa6",
+   "state": "finished",
+   "iterations_run": 760,
+   "started_at": 1790852893.7601511,
+   "supervised_s": 2061.01,
+   "trainer_s": 1910.619837124832,
+   "policy_sha256": "63cbf22407c09f98f438cb59202c9dd99d040275093136bba07a582a6982e385",
+   "attempt": true
   }
  ],
- "attempts": 21,
+ "attempts": 22,
  "in_progress": [],
- "supervised_s_total": 36682.04
+ "supervised_s_total": 38743.05
 }
