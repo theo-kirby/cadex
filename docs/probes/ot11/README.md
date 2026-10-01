@@ -2169,3 +2169,91 @@ driver's limit. The pre-registration counted one evaluation per run. That
 would be a driver interruption, not an attempt. When this round was
 published (04:21Z), turn 1 was still going: the agent had reset the stance
 parameters and turned the policy off to measure something.
+
+### Walk round 9: `r10-steelfoot-fresh` passes W10 on every seed, and stands still on three feet
+
+Receipt:
+[`retained/p4-quad-1-r10-evaluation.json`](retained/p4-quad-1-r10-evaluation.json).
+
+**The refused start before it.** The agent first registered the round as
+`r9-steelfoot`, warm-started from `r6-trot`. The trainer exited 1 after
+52.03 s, before its first iteration: a warm start may not change what the
+network reads or emits, and this one would have. No policy was trained.
+`run_ledger.py` now carries it as `attempt: false`, a refused start rather
+than an attempt. The agent re-registered the same task and model fresh as
+`r10-steelfoot-fresh` (seed 97, 800 iterations × 2048 envs, 2,400 s budget,
+`--stop-on-collapse`). It finished every iteration in 2,209.67 s of GPU
+time, 2,060.4 s on the trainer's own clock. Every checkpoint records the
+unchanged ADR-465/466 trainer, `97bc1d9a…`.
+
+**What the agent changed, and why.** Its registration cites r8: W10 at
+−0.095 to −0.06 hip heights after the stance change, and W8-low 0.00 from
+a diagonal pair held up to collect the trot pay. It attributed the sink
+to the foot body's inverse mass, which sets MuJoCo's contact softness, and
+predicted r6's 4.1 mm standing sink against the 4.5 mm measured.
+
+- **Mechanism.** Steel-ball feet: each foot body goes from 1.5345 g to
+  10.4746 g. The stance is reverted to r6's hip 30° and knee −60°. The
+  MJCF differs from r6's on four lines, the four foot `<inertial>`
+  elements, and on nothing else: geometry, joints, actuators, options and
+  the floor are byte-identical. That is inside session 3's bounds.
+- **Task.** The trot term is removed. Swing pay stays relative to the
+  body, grounded slip goes from 1.2 to 1.5, and alive from 3 to 3.5.
+
+**The evaluation is valid.** The evaluated revision, `2cb0f0e5…`, differs
+from the registered `bd329616…` only in the policy line. The evaluated
+model and task are the ones trained (`5e28d393…`, `2506f000…`). The spec
+block's `HIP_MM = 96.7006` equals the rig's 96.7006. Its `WEIGHT_N =
+5.05069617762` equals the rig's 5.050696177620001 to the block's eleven
+decimals. With Python's comments set aside, the block tokenizes identically to
+[`retained/walk-spec-block.txt`](retained/walk-spec-block.txt) except for
+`WEIGHT_N`'s value, which the rule permits. The two permitted lines also
+carry trailing comments that hold no value. ADR-468's `success.scale`
+check passed when the spec was declared. The report is
+`evaluations/2cb0f0e5d80e-34f47b033235/evaluation.json`.
+
+| predicate | seeds failing | range (round 8) |
+|---|---|---|
+| W1 completes, W2 tilt | 0, 0 | all complete; 9.5–14.4° (26.8–38.0°) |
+| **W3 tracks speed** | **10** | **−0.001 to 0.013** (−0.12 to 0.15) |
+| W4-lateral, W4-heading | 0, 0 | 0.00–0.04, 0.5–2.8° |
+| **W5-steps, W5-share** | **10, 10** | **worst foot 0 steps; share 0.00** |
+| W6 clearance | 10 | no step to measure |
+| W7 slip | 10 | 0.59–0.87 (0.71–1.00) |
+| **W8-low, W8-high** | **10, 10** | **0.00, 1.00** |
+| W9 step balance | 10 | no foot steps, so it is undefined |
+| **W10 in the floor** | **0** | **−0.029 to −0.021 hip heights** (−0.095 to −0.061) |
+
+**Per foot, over all ten seeds:**
+
+| foot | steps | duty factor | slip share | lowest after settle, mm |
+|---|---|---|---|---|
+| FL | 0–1 | 0.00–1.00 (≥ 0.98 on 7 seeds) | 0.00–0.14 | −1.5 to +12.2 |
+| FR | 0 | 1.00 | 0.37–0.87 | −2.8 to −2.0 |
+| RL | 0 | 1.00 | 0.42–0.87 | −1.7 to −1.3 |
+| RR | 0 | 0.00 | 0.00 | +9.5 to +10.4 (never lower) |
+
+**The policy stands still on three feet, with the rear-right foot held up
+for the whole episode on all ten seeds.** On seed 1103 it holds FL up
+too, and stands on FR and RL alone. It does not move: the speed ratio is
+0.00 within 0.013 on every seed, and the drift is 21–43 mm over 10 s. The
+film of seed 1101 shows the same posture in every frame, in the
+[overview](p4-quad-1-walk-r10-seed-1101-overview.png) and in the
+[detail](p4-quad-1-walk-r10-seed-1101-detail.png).
+
+**The reward explains it.** Per step, on the median seed, `alive` pays
++3.5. `speed_error` costs −0.74, the diagonal-sync cost −0.40, and every
+other term is under 0.1 in size. `speed_track` pays +0.03. Standing nets
++2.14 to +2.42 per step in evaluation (+2.02 at the end of training), so
+standing still was the optimum this reward offered. The agent read the
+same numbers. Its `r11-speedpay` registration cites W3 ≈ 0.00, W5-steps
+0, W8-high 1.0 and standing at +2.17 per step, and changes only the
+reward: speed tracking 2 → 4 with a wider Gaussian, and speed error
+−1 → −2. That run was training when this section was written.
+
+**What the steel feet did measure.** W10 passes on all ten seeds for the
+first time in the walk, at −0.021 to −0.029 hip heights against the −0.05
+limit, up from −0.095 to −0.061. The worst foot sinks 2.8 mm after the
+settle. This is the result the agent predicted from inverse mass. As in
+round 8, it is measured on a policy that does not step, so whether it
+holds under a gait is still open.

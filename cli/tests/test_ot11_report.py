@@ -57,7 +57,7 @@ def _number(cell: str) -> float:
 
 def test_run_table_is_the_receipt():
     rows = _table("## Every training run")
-    assert len(rows) == len(RUNS["runs"]) == 14
+    assert len(rows) == len(RUNS["runs"]) == 16
     for index, (row, run) in enumerate(zip(rows, RUNS["runs"]), 1):
         warm = run["init_from"].split("/")[1] if run["init_from"] else None
         assert row[0] == str(index)
@@ -131,6 +131,35 @@ def test_collector_reads_only_registration_and_status(tmp_path, monkeypatch):
     assert str(tmp_path) not in out.read_text()
 
 
+def test_a_refused_start_is_no_attempt_and_a_live_run_is_not_counted(tmp_path, monkeypatch):
+    """A trainer that exits before its first iteration was refused, not tried;
+    a run whose supervisor has not ended has no time to report yet."""
+
+    ledger = _load_ledger()
+    project = tmp_path / "ot11-demo"
+    for name, start, status in (
+        ("a-first", 10.0, {"state": "finished", "iterations_run": 4, "wall_time_s": 8.25}),
+        ("b-refused", 20.0, {"state": "failed", "iterations_run": 0, "wall_time_s": 1.5}),
+        ("c-collapsed", 30.0, {"state": "collapsed", "iterations_run": 2, "wall_time_s": 3.0}),
+        ("d-live", 40.0, {"state": "running"}),
+    ):
+        run = project / "runs" / name
+        run.mkdir(parents=True)
+        (run / "registration.json").write_text(json.dumps(
+            {"run": name, "settings": {"seed": 5, "envs": 8, "iterations": 4}, "budget_s": 12.0}))
+        (run / "training-status.json").write_text(json.dumps({"started_at": start, **status}))
+    out = tmp_path / "runs.json"
+    monkeypatch.setattr(sys, "argv", ["run_ledger.py", "--out", str(out), str(project)])
+    assert ledger.main() == 0
+    receipt = json.loads(out.read_text())
+    assert [(row["run"], row["attempt"]) for row in receipt["runs"]] == [
+        ("a-first", True), ("b-refused", False), ("c-collapsed", True)]
+    assert receipt["attempts"] == 2
+    assert receipt["in_progress"] == [{"project": "ot11-demo", "run": "d-live", "started_at": 40.0}]
+    assert receipt["supervised_s_total"] == 12.75
+    assert str(tmp_path) not in out.read_text()
+
+
 EVALS = json.loads((PROBE / "retained" / "ot11-evaluations.json").read_text(encoding="utf-8"))
 BEHAVIOUR_ALL = {**BEHAVIOUR, "ot11-w2-negative": "walk", "ot11-robin-negative": "balance"}
 ORIGIN = {"ot11-w2-negative": "ot10 `w2-2`", "ot11-robin-negative": "ot9 `r3-ppo-1`"}
@@ -145,7 +174,7 @@ def _load_eval_ledger():
 
 def test_evaluation_table_is_the_receipt():
     rows = _table("## Every evaluation")
-    assert len(rows) == len(EVALS["evaluations"]) == 21
+    assert len(rows) == len(EVALS["evaluations"]) == 22
     for index, (row, ev) in enumerate(zip(rows, EVALS["evaluations"]), 1):
         failing = ", ".join(f"{k} {v}" for k, v in ev["failing_predicates"].items()) or "—"
         assert row == [
@@ -191,7 +220,7 @@ def test_revisions_cite_the_evaluation_that_answered_them():
     rows = _table("## Every revision the agent made, and why")
     runs = {(run["run"]) for run in RUNS["runs"]}
     evaluations = EVALS["evaluations"]
-    assert len(rows) == 14
+    assert len(rows) == 15
     for row in rows:
         run = row[0].strip("`")
         assert run in runs
@@ -205,13 +234,18 @@ def test_failure_counts_are_the_receipts():
     evaluations = EVALS["evaluations"]
     failed = [i for i, ev in enumerate(evaluations, 1) if ev["verdict"] == "fail"]
     passed = [i for i, ev in enumerate(evaluations, 1) if ev["verdict"] == "pass"]
-    assert len(failed) == 17 and passed == [5, 6, 11, 12]
-    assert "Seventeen of 21 evaluations failed" in section
+    assert len(failed) == 18 and passed == [5, 6, 11, 12]
+    assert "Eighteen of 22 evaluations failed" in section
     assert "except 5, 6, 11\n  and 12" in section
     collapsed = [run["run"] for run in RUNS["runs"] if run["state"] == "collapsed"]
     assert collapsed == ["r1-clearance", "r7-relswing"]
     assert sum(run["state"] == "budget_exhausted" for run in RUNS["runs"]) == 7
     assert "Seven runs ended at their wall-clock budget" in section
+    refused = [run["run"] for run in RUNS["runs"] if not run["attempt"]]
+    assert refused == ["r9-steelfoot"] and RUNS["attempts"] == len(RUNS["runs"]) - 1 == 15
+    assert "One start was refused, and is not an attempt" in section
+    intro = REPORT.split("## Every training run", 1)[1].split("|", 1)[0]
+    assert "Sixteen runs" in intro and "fifteen attempts" in intro
 
 
 def test_evaluation_receipt_carries_no_machine_path():

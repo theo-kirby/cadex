@@ -610,6 +610,36 @@
     "tipped": 2
    },
    "film": "ready"
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "2cb0f0e5d80e-34f47b033235",
+   "written_at": 1790831284.2654414,
+   "label": "ot11 walk contract",
+   "weights": "walk_r10.cxpolicy",
+   "policy_sha256": "34f47b0332353ca8409ffc11cfbe9ef78537722c8f3a2c98c44ab35a5cde633a",
+   "trained_by": "r10-steelfoot-fresh final",
+   "run_started_at": 1790828718.9352334,
+   "accepted_revision": "2cb0f0e5d80e2db71226a07c72dff41571dec4ac99d9b5f79c00793e3762af4c",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W3": 10,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 10,
+    "W8-high": 10,
+    "W9": 10
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready"
   }
  ],
  "judges": [

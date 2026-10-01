@@ -16,6 +16,12 @@ Two times are kept, because they measure different things:
   that saved its final policy; a run stopped at its wall-clock budget, or
   stopped on collapse, ends without one.
 
+A run whose trainer exited before its first iteration -- ``failed`` with no
+iteration run, such as a warm start the trainer refused -- is kept, with the
+time its supervisor spent, and marked ``attempt: false``: it trained nothing.
+A run whose supervisor has not ended has no time to report; it is listed
+under ``in_progress`` and in no total.
+
     pixi run python docs/probes/ot11/runner/run_ledger.py --out OUT.json PROJECT [...]
 """
 
@@ -58,6 +64,7 @@ def run_row(project: Path, run_dir: Path) -> dict:
         "supervised_s": status["wall_time_s"],
         "trainer_s": receipt.get("wall_time_s"),
         "policy_sha256": policy.get("sha256"),
+        "attempt": not (status["state"] == "failed" and not status.get("iterations_run")),
     }
 
 
@@ -66,21 +73,29 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("projects", type=Path, nargs="+")
     args = parser.parse_args()
-    rows = []
+    rows, live = [], []
     for project in args.projects:
         project = project.resolve()
         for run_dir in sorted((project / "runs").iterdir()):
-            if (run_dir / "registration.json").is_file() and (run_dir / "training-status.json").is_file():
-                rows.append(run_row(project, run_dir))
+            if not ((run_dir / "registration.json").is_file() and (run_dir / "training-status.json").is_file()):
+                continue
+            status = json.loads((run_dir / "training-status.json").read_text(encoding="utf-8"))
+            if "wall_time_s" not in status:
+                live.append({"project": project.name, "run": run_dir.name, "started_at": status["started_at"]})
+                continue
+            rows.append(run_row(project, run_dir))
     rows.sort(key=lambda row: row["started_at"])
     receipt = {
         "schema": "ot11-run-ledger-v1",
         "source": "each project's runs/<run>/registration.json and training-status.json",
         "runs": rows,
+        "attempts": sum(row["attempt"] for row in rows),
+        "in_progress": live,
         "supervised_s_total": round(sum(row["supervised_s"] for row in rows), 2),
     }
     args.out.write_text(json.dumps(receipt, indent=1) + "\n", encoding="utf-8")
-    print(f"{len(rows)} runs, {receipt['supervised_s_total']} s supervised")
+    print(f"{len(rows)} runs ({receipt['attempts']} attempts, {len(live)} in progress), "
+          f"{receipt['supervised_s_total']} s supervised")
     return 0
 
 
