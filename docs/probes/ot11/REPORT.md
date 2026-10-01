@@ -11,7 +11,7 @@ The owner ticks the criteria; this page does not.
 
 ## Every training run
 
-Thirty runs have ended in ot11, twenty-eight attempts and two refused starts
+Thirty-one runs have ended in ot11, twenty-nine attempts and two refused starts
 (`r9-steelfoot`, row 15, and `r21-r19-continue`, row 27: each trainer exited
 before its first iteration).
 All went through the product's `train_start` tool, one GPU job at a time,
@@ -56,13 +56,14 @@ is that receipt.
 | 28 | walk | `ot11-quad-1` | `r21b-r19-continue` | 211 | 750 it × 2048 envs | `r19-contact-sync` | 2,350 | `finished` | 750 | 2,068.98 | 1,964.1 |
 | 29 | walk | `ot11-quad-1` | `r22-gentle-contact25` | 221 | 750 it × 2048 envs | `r19-contact-sync` | 2,350 | `finished` | 750 | 1,727.12 | 1,622.5 |
 | 30 | walk | `ot11-quad-1` | `r23-r19-clip05` | 231 | 1200 it × 2048 envs | `r19-contact-sync` | 3,500 | `stopped` | 87 | 261.25 | — |
+| 31 | walk | `ot11-quad-1` | `r24-r19-vw005` | 241 | 1200 it × 2048 envs | `r19-contact-sync` | 3,500 | `budget_exhausted` | 924 | 3,501.24 | — |
 
 | behaviour | runs | GPU time, s |
 |---|---|---|
 | balance | 1 | 900.57 |
 | reach | 5 | 4,447.41 |
-| walk | 24 | 43,011.30 |
-| **all** | **30** | **48,359.28** |
+| walk | 25 | 46,512.54 |
+| **all** | **31** | **51,860.52** |
 
 **How to read the two times.** *GPU time* is the supervisor's wall time
 from launch to exit; the trainer holds the GPU for all of it, so it is the
@@ -83,7 +84,7 @@ policy it began from; `reach-r5` began from `reach-r4`'s iteration-475
 checkpoint and `r6-trot` from `r5-swing`'s final policy, and `r7-relswing` from
 `r6-trot`'s, and `r11-speedpay` from `r10-steelfoot-fresh`'s, and `r18-sync-slip` from
 `r17-discount-bodyrate`'s, and `r19-contact-sync` from `r18-sync-slip`'s, and
-`r20-contact35`, `r21b-r19-continue`, `r22-gentle-contact25` and `r23-r19-clip05` from `r19-contact-sync`'s. `r23-r19-clip05` also set the PPO clip to 0.05. Robin's ot9
+`r20-contact35`, `r21b-r19-continue`, `r22-gentle-contact25`, `r23-r19-clip05` and `r24-r19-vw005` from `r19-contact-sync`'s. `r23-r19-clip05` also set the PPO clip to 0.05, and `r24-r19-vw005` the value-loss weight to 0.05. Robin's ot9
 baseline (`r3-ppo-1`) and ot10's `w2-2` are earlier runs measured as known
 negatives (P1), not ot11 training runs, and are not in this table.
 
@@ -92,12 +93,11 @@ negatives (P1), not ot11 training runs, and are not in this table.
 supervisors ran for 52.03 s and 52.28 s, but neither is an attempt
 (`attempt: false` in the receipt): each trained nothing. A run still
 training has no end time yet, so the receipt lists it under `in_progress`
-and in no total. When this was last regenerated, `r24-r19-vw005` (walk
-session 8's second run) was in progress.
+and in no total. No run was in progress when this was last regenerated.
 
 ## Every evaluation
 
-Thirty-four evaluations are stored across the five ot11 projects, every one
+Thirty-five evaluations are stored across the five ot11 projects, every one
 written by `cadex evaluate` or the agent's `evaluate` tool (the same code)
 into the project's `evaluations/<key>/evaluation.json`.
 [`runner/eval_ledger.py`](runner/eval_ledger.py) reads those files, and the
@@ -115,7 +115,7 @@ receipt's `contract_deviations` is what
 the spec each evaluation resolved (seeds, episode length, every predicate's
 id, metric and bound, the reset tilt and lift, each shove's force in body
 weights, its window, direction and duration, and the goal) with
-[`contract.json`](contract.json). Thirty of the 34 conform. Two kinds of
+[`contract.json`](contract.json). Thirty-one of the 35 conform. Two kinds of
 deviation exist, and both were already recorded by hand. In rows 1 and 2,
 ot10's `w2-2` is read without W3 and the lateral half of W4, because its
 task has no commanded speed to track (*README*, P1). In rows 20 and 21,
@@ -159,6 +159,7 @@ that made both void under the session's mechanism rule and led to ADR-468.
 | 32 | walk | `ot11-quad-1` | `f924ce70604e-4a341e7b3047` | `r20-contact35 final` | fail | 0 of 10 | W5-share 3, W7 10, W8-low 1, W9 1 | horizon 10 | yes |
 | 33 | walk | `ot11-quad-1` | `a11861cc1e14-8c94fcd21f0e` | `r21b-r19-continue final` | fail | 2 of 10 | W5-share 2, W7 8, W8-low 1, W9 1 | horizon 10 | yes |
 | 34 | walk | `ot11-quad-1` | `da95bfa94936-e91a397134ac` | `r22-gentle-contact25 final` | fail | 6 of 10 | W2 1, W7 2, W8-low 2, W9 1 | horizon 10 | yes |
+| 35 | walk | `ot11-quad-1` | `7df101b06548-5aaf21e70e63` | `r24-r19-vw005 it 900` | pass | 10 of 10 | — | horizon 10 | yes |
 
 **How to read it.**
 - **Rows 1–4 are P1's known negatives**, read before any ot11 training
@@ -321,6 +322,33 @@ that made both void under the session's mechanism rule and led to ADR-468.
   whether the critic is the rest of it is not measured here
   ([filmstrip, seed 1103](p4-quad-1-walk-r22-seed-1103-overview.png),
   [detail](p4-quad-1-walk-r22-seed-1103-detail.png)).
+- **Row 35 is walk session 8's second run, and the first walk evaluation
+  to pass every seed.** It is valid on the same checks: `contact_offsets`
+  is empty and the trained model has no `margin=` or `gap=`, the model
+  hashes to r17's–r22's (6cecfa2d), the task to r19's (db670704), and the
+  spec block differs from the frozen one only in `HIP_MM` and `WEIGHT_N`,
+  which equal the rig (96.7006 mm, 5.0507 N) and are byte-identical to
+  rows 31's and 34's
+  ([`retained/p8-quad-1-r24-evaluation.json`](retained/p8-quad-1-r24-evaluation.json)).
+  The agent warmed r19 on r19's identical task at r19's own width, with
+  the default clip and learning rate and the value-loss weight at 0.05.
+  The 3,500 s budget stopped the run at iteration 924 with no final
+  policy, so the agent installed its last checkpoint (iteration 900) and
+  evaluated that, once; it says it did not choose it by any seed's
+  result, and the loop ledger holds no other r24 evaluation. All ten pass
+  every predicate: W9 1.0–1.3 (1109 was 1.571 under r19), W7 slip
+  0.081–0.111, W3 0.955–1.008, swing clearance 0.275–0.297 hip heights,
+  duty 0.437–0.608, W10's lowest foot −0.019 to −0.012 hip heights, and
+  8–13 steps per foot. Tilt, 6.5–24.2° against 30, is the thinnest margin.
+  **Training did not lose r19's gait this time.** After the iteration-1
+  dip that every warm start shows, reward per step never fell below +2.96
+  (iteration 18), against about +0.3 to +1.3 for r20–r23, and the total
+  loss sat near +66 to +97 against r23's +596 to +652. That fits session
+  7's diagnosis, the untrained critic, but no ablation separates it from
+  the seed. **This is not R1.** It is the agent's own evaluation and not a
+  pre-registered confirmation, and no judge has seen it
+  ([filmstrip, seed 1101](p4-quad-1-walk-r24-seed-1101-overview.png),
+  [detail](p4-quad-1-walk-r24-seed-1101-detail.png)).
 - `r9-steelfoot` has no row, because it never trained (see *Every
   failure*).
 
@@ -393,6 +421,7 @@ shows whether it helped.
 | `r20-contact35` | **reward weight only**: `contact_w` 2.0 → 3.5, the script source unchanged; same model; warm start from r19, 700 iterations | r19: W9 1.571 on seed 1109, where rear-left stepped 11 times against the front feet's 7 and 8 and `contact_sync` charged about −66 per episode | 32 | 0 | no: 1109's W9 passes (1.333), but slip fails on all ten (W7 0.156–0.270, rear-left the worst foot on every seed), and 1101 fails W9 (1.600) |
 | `r21b-r19-continue` | **nothing in the task**: `contact_w` back to 2.0, so r19's task byte for byte, continued warm from r19 for 750 iterations | r20: W7 0.156–0.270 on all ten after `contact_w` 3.5, with training reward falling from r19's 4.47 to about 0.9 within 50 iterations, so it asked whether the weight or the warm start lost the gait | 33 | 2 | no for R1, yes as a test: slip fails 8 of 10 (W7 0.135–0.192) with the weight restored, so the warm start's reset action noise (0.30 against r19's 0.177) lost the gait, not the weight |
 | `r22-gentle-contact25` | **reward weight and trainer settings**: `contact_w` 2.0 → 2.5 (declared as a reward-weight-only change), warm from r19 at `initial_std` 0.12 and learning rate 5e−5, 750 iterations | r21b: W7 0.135–0.192 on 8 seeds and W9 1.6 on 1101 with r19's task restored, training reward 2.19 → 0.99 in 20 iterations, so it asked for a gentler fine-tune that keeps r19's gait | 34 | 6 | partly: 6 of 10, the best since r19's 9; 1109's W9 passes (1.500), slip fails 2 (W7 0.156–0.195), W8-low 2, W9 and W2 one each on 1104 (1.667, 30.03°). Training still fell from +4.36 to +0.76 by iteration 19, so a narrower start did not keep the gait |
+| `r24-r19-vw005` | **trainer settings only**: r19's task byte for byte, warm from r19 at r19's own width, default clip and learning rate, value-loss weight 0.05, checkpoints every 25, 1,200 iterations in 3,500 s | r23 (no evaluation; the agent's run before it, stopped): reward per step fell 4.40 → 0.26 by iteration 86 while the total loss sat at +596 to +652, after r22 (row 34) had already fallen at a narrower width, so it read the fresh critic's value loss as what moved the actor | 35 | 10 | yes: 10 of 10 on every predicate, W9 1.0–1.3, slip 0.081–0.111; training never fell below +2.96 after iteration 1. The agent's evaluation of its last checkpoint, not a confirmation |
 
 The reach rows are four consecutive design–train–evaluate–revise rounds,
 each motivated by the previous evaluation and each answered by the next;
@@ -404,14 +433,14 @@ the rows suggest.
 ## Every failure
 
 Each item names its receipt.
-- **Thirty of 34 evaluations failed** (every row above except 5, 6, 11
-  and 12), and four of them are void: rows 20 and 21 on a scale digit, rows
+- **Thirty of 35 evaluations failed** (every row above except 5, 6, 11,
+  12 and 35), and four of them are void: rows 20 and 21 on a scale digit, rows
   25 and 26 for R1 on their foot contact margins.
 - **Two runs collapsed** and were stopped by `--stop-on-collapse`:
   `r1-clearance` after 569 iterations and `r7-relswing` after 538
   ([`retained/ot11-runs.json`](retained/ot11-runs.json)). Each was
   evaluated on its best or an early checkpoint.
-- **Seven runs ended at their wall-clock budget** before or at their last
+- **Eight runs ended at their wall-clock budget** before or at their last
   iteration (`budget_exhausted`, same receipt). Each was evaluated on a
   checkpoint it had written.
 - **Two starts were refused, and are not attempts.** `r9-steelfoot`'s
@@ -540,11 +569,13 @@ Each item names its receipt.
 
 What is still wrong or unmeasured at this revision, each with its receipt.
 A defect fixed by decision is under *Every failure*, not here.
-- **R1 is not met.** No walk evaluation has passed on every seed. Rows
+- **R1 is not met.** No pre-registered walk confirmation exists yet. Rows
   13–28 of *Every evaluation* pass 0 of 10, row 29 passes 1 of 10
   (seed 1108), row 30 passes 2 of 10 (seeds 1102 and 1108), row 31
   passes 9 of 10 (all but 1109), row 32 passes 0 of 10, row 33 passes
-  2 of 10 (1103 and 1108) and row 34 passes 6 of 10
+  2 of 10 (1103 and 1108), row 34 passes 6 of 10 and row 35, the agent's
+  own evaluation of `r24-r19-vw005`'s iteration-900 checkpoint, passes
+  10 of 10
   ([`retained/ot11-evaluations.json`](retained/ot11-evaluations.json)).
   Walk session 4
   ([`retained/p4-quad-1-s4-preregistration.json`](retained/p4-quad-1-s4-preregistration.json))
@@ -570,12 +601,13 @@ A defect fixed by decision is under *Every failure*, not here.
   at most 3,600 s each. Its prompt gives the warm-start training
   measurements and no remedy, and the agent chooses the revision. Its
   first run, `r23-r19-clip05` (row 30), was stopped by the agent with no
-  policy (above). Its second, `r24-r19-vw005`, is warm from r19 with the
-  value-loss weight at 0.05. No
-  confirmation evaluation is registered, because no round has passed every
-  seed.
+  policy (above). Its second, `r24-r19-vw005`, warm from r19 with the
+  value-loss weight at 0.05, passes 10 of 10 (row 35), and the agent ended
+  the session on it with `walk_r24.cxpolicy` declared. No confirmation
+  evaluation is registered yet: R1 needs one, pre-registered and committed
+  with the judge's bar before it runs, on this revision.
 - **No walking gait has been judged.** The judge runs on a confirmation
-  evaluation, and walk has none; its scores on a gait that steps are
+  evaluation, and walk has none yet (row 35 is not one); its scores on a gait that steps are
   unmeasured (*Every judge score*).
 - **The judge does not see stepping or slip.** Its manner score gave
   `w2-2` "real steps" on all eighteen calls on seeds 1101 and 1110, while

@@ -57,7 +57,7 @@ def _number(cell: str) -> float:
 
 def test_run_table_is_the_receipt():
     rows = _table("## Every training run")
-    assert len(rows) == len(RUNS["runs"]) == 30
+    assert len(rows) == len(RUNS["runs"]) == 31
     for index, (row, run) in enumerate(zip(rows, RUNS["runs"]), 1):
         warm = run["init_from"].split("/")[1] if run["init_from"] else None
         assert row[0] == str(index)
@@ -174,7 +174,7 @@ def _load_eval_ledger():
 
 def test_evaluation_table_is_the_receipt():
     rows = _table("## Every evaluation")
-    assert len(rows) == len(EVALS["evaluations"]) == 34
+    assert len(rows) == len(EVALS["evaluations"]) == 35
     for index, (row, ev) in enumerate(zip(rows, EVALS["evaluations"]), 1):
         failing = ", ".join(f"{k} {v}" for k, v in ev["failing_predicates"].items()) or "—"
         assert row == [
@@ -221,7 +221,7 @@ def test_revisions_cite_the_evaluation_that_answered_them():
     rows = _table("## Every revision the agent made, and why")
     runs = {(run["run"]) for run in RUNS["runs"]}
     evaluations = EVALS["evaluations"]
-    assert len(rows) == 27
+    assert len(rows) == 28
     for row in rows:
         run = row[0].strip("`")
         assert run in runs
@@ -235,21 +235,21 @@ def test_failure_counts_are_the_receipts():
     evaluations = EVALS["evaluations"]
     failed = [i for i, ev in enumerate(evaluations, 1) if ev["verdict"] == "fail"]
     passed = [i for i, ev in enumerate(evaluations, 1) if ev["verdict"] == "pass"]
-    assert len(failed) == 30 and passed == [5, 6, 11, 12]
-    assert "Thirty of 34 evaluations failed" in section
-    assert "except 5, 6, 11\n  and 12" in section
+    assert len(failed) == 30 and passed == [5, 6, 11, 12, 35]
+    assert "Thirty of 35 evaluations failed" in section
+    assert "except 5, 6, 11,\n  12 and 35" in section
     collapsed = [run["run"] for run in RUNS["runs"] if run["state"] == "collapsed"]
     assert collapsed == ["r1-clearance", "r7-relswing"]
-    assert sum(run["state"] == "budget_exhausted" for run in RUNS["runs"]) == 7
-    assert "Seven runs ended at their wall-clock budget" in section
+    assert sum(run["state"] == "budget_exhausted" for run in RUNS["runs"]) == 8
+    assert "Eight runs ended at their wall-clock budget" in section
     refused = [run["run"] for run in RUNS["runs"] if not run["attempt"]]
-    assert refused == ["r9-steelfoot", "r21-r19-continue"] and RUNS["attempts"] == len(RUNS["runs"]) - 2 == 28
+    assert refused == ["r9-steelfoot", "r21-r19-continue"] and RUNS["attempts"] == len(RUNS["runs"]) - 2 == 29
     assert "Two starts were refused, and are not attempts" in section
     stopped = [run for run in RUNS["runs"] if run["state"] == "stopped"]
     assert [run["run"] for run in stopped] == ["r23-r19-clip05"] and stopped[0]["policy_sha256"] is None
     assert "One run was stopped by the agent and saved no policy" in section
     intro = REPORT.split("## Every training run", 1)[1].split("|", 1)[0]
-    assert "Thirty runs" in intro and "twenty-eight attempts" in intro
+    assert "Thirty-one runs" in intro and "twenty-nine attempts" in intro
 
 
 def test_evaluation_receipt_carries_no_machine_path():

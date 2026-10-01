@@ -1,0 +1,387 @@
+{
+ "schema": "ot11-walk-round-receipt-v1",
+ "project": "ot11-quad-1",
+ "round": 23,
+ "run": "r24-r19-vw005",
+ "session": 8,
+ "registered": {
+  "settings": {
+   "checkpoint_every": 25,
+   "discount": 0.995,
+   "envs": 2048,
+   "iterations": 1200,
+   "seed": 241,
+   "value_weight": 0.05
+  },
+  "init_from": "runs/r19-contact-sync/train/walk_task.cxpolicy",
+  "init_from_task_change": null,
+  "budget_s": 3500.0,
+  "reason": "r23 (r19 warm start, clip 0.05) still fell 4.40 \u2192 0.26 per step by iteration 86 while the total loss sat at +596..+652, i.e. the fresh critic's value loss dominated and clipping the policy term did not stop the actor degrading; r19's eval is 9/10, failing only W9 on 1109 (1.571 vs 1.5). CHANGE: r19's identical task, warm start at r19's own width, default clip and lr, value_weight 0.05 so the value-loss gradient cannot swamp a shared trunk or gradient-norm budget; checkpoints every 25. Expected: no fall below the opening reward through iteration 100, r19's gait held, W9 on 1109 refined to at most 1.5.",
+  "registered_at": 1790875249.361808,
+  "accepted_revision": "e3b6fb20cdc2838019e4405305fd0249ba39dacc8c64848daf7120ad51b08bed"
+ },
+ "ended": {
+  "state": "budget_exhausted",
+  "wall_time_s": 3501.24,
+  "trainer_wall_time_s": null,
+  "reason": "the wall-clock budget of 3500 s ran out before the last iteration.",
+  "iterations_run": 924,
+  "policy_sha256": null,
+  "best_iteration": 886,
+  "training_reward_per_step_best": 5.07502,
+  "training_reward_per_step_min_after_iteration_1": 2.96061,
+  "training_reward_per_step_min_iteration": 18,
+  "training_reward_per_step_final": 4.76452,
+  "action_std_final": 0.124
+ },
+ "evaluated_policy": {
+  "file": "runs/r24-r19-vw005/train/walk_task.000900.cxpolicy",
+  "installed_as": "walk_r24.cxpolicy",
+  "sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+  "chosen_by": "the agent: the run's last checkpoint (the trainer saved no final policy at the budget), stated in its closing message as chosen as the last policy and not by any evaluation-seed result; the loop ledger holds exactly one evaluation of r24"
+ },
+ "evaluated_by": "the agent's own evaluate tool inside walk session 8's only turn (the same code as cadex evaluate); the actor ran nothing",
+ "project_change": "agent: the policy line only (script_history 0111 e3b6fb20, r19's walk_r19.cxpolicy de546ddd..., to 0112 7df101b0, walk_r24.cxpolicy 5aaf21e7...). The task is r19's byte for byte (db670704...), trained with no --init-from-task-change; the model did not move",
+ "spec_block": {
+  "rule": "byte-identical except the values of HIP_MM and WEIGHT_N, which must equal the evaluated model's rig to the block's printed precision",
+  "frozen_sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900",
+  "HIP_MM": 96.7006,
+  "rig_hip_height_mm": 96.7006,
+  "WEIGHT_N": 5.05069617762,
+  "rig_weight_n": 5.050696177620001,
+  "other_lines_identical": true,
+  "valid": true,
+  "identical_to_r19_evaluated_block": true,
+  "identical_to_r22_evaluated_block": true
+ },
+ "evaluation": {
+  "report": "evaluations/7df101b06548-5aaf21e70e63/evaluation.json",
+  "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+  "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+  "model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+  "trained_model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+  "task_sha256": "db67070400dbeb3c0cc67b9ad990cf4c9fb745e002bf91e7004d617110595f15",
+  "trained_task_sha256": "db67070400dbeb3c0cc67b9ad990cf4c9fb745e002bf91e7004d617110595f15",
+  "engine_source": "dev-tree",
+  "verdict": "pass",
+  "contact_offsets": [],
+  "void_seeds": [],
+  "terminations": {
+   "horizon": 10
+  },
+  "episodes": {
+   "1101": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.88,
+    "shove_n": 0.801,
+    "failing": [],
+    "steps": {
+     "fl": 9,
+     "fr": 10,
+     "rl": 10,
+     "rr": 11
+    },
+    "step_count_ratio": 1.2222
+   },
+   "1102": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 4.01,
+    "shove_n": 0.47,
+    "failing": [],
+    "steps": {
+     "fl": 10,
+     "fr": 10,
+     "rl": 13,
+     "rr": 11
+    },
+    "step_count_ratio": 1.3
+   },
+   "1103": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 4.64,
+    "shove_n": 0.549,
+    "failing": [],
+    "steps": {
+     "fl": 11,
+     "fr": 11,
+     "rl": 12,
+     "rr": 11
+    },
+    "step_count_ratio": 1.0909
+   },
+   "1104": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.85,
+    "shove_n": 0.498,
+    "failing": [],
+    "steps": {
+     "fl": 9,
+     "fr": 9,
+     "rl": 11,
+     "rr": 9
+    },
+    "step_count_ratio": 1.2222
+   },
+   "1105": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 4.59,
+    "shove_n": 0.744,
+    "failing": [],
+    "steps": {
+     "fl": 12,
+     "fr": 12,
+     "rl": 12,
+     "rr": 11
+    },
+    "step_count_ratio": 1.0909
+   },
+   "1106": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.45,
+    "shove_n": 0.934,
+    "failing": [],
+    "steps": {
+     "fl": 11,
+     "fr": 12,
+     "rl": 13,
+     "rr": 12
+    },
+    "step_count_ratio": 1.1818
+   },
+   "1107": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 5.29,
+    "shove_n": 0.973,
+    "failing": [],
+    "steps": {
+     "fl": 11,
+     "fr": 11,
+     "rl": 11,
+     "rr": 11
+    },
+    "step_count_ratio": 1.0
+   },
+   "1108": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.39,
+    "shove_n": 0.473,
+    "failing": [],
+    "steps": {
+     "fl": 12,
+     "fr": 13,
+     "rl": 13,
+     "rr": 12
+    },
+    "step_count_ratio": 1.0833
+   },
+   "1109": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 6.26,
+    "shove_n": 0.315,
+    "failing": [],
+    "steps": {
+     "fl": 8,
+     "fr": 9,
+     "rl": 10,
+     "rr": 10
+    },
+    "step_count_ratio": 1.25
+   },
+   "1110": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 6.53,
+    "shove_n": 0.571,
+    "failing": [],
+    "steps": {
+     "fl": 11,
+     "fr": 11,
+     "rl": 11,
+     "rr": 11
+    },
+    "step_count_ratio": 1.0
+   }
+  },
+  "passed_seeds": [
+   1101,
+   1102,
+   1103,
+   1104,
+   1105,
+   1106,
+   1107,
+   1108,
+   1109,
+   1110
+  ],
+  "failing_predicates": {},
+  "metrics_min_max": {
+   "completed": [
+    1.0,
+    1.0
+   ],
+   "duration_s": [
+    10.0,
+    10.0
+   ],
+   "max_tilt_deg": [
+    6.4789,
+    24.2231
+   ],
+   "max_heading_deg": [
+    1.1953,
+    12.1964
+   ],
+   "final_heading_deg": [
+    -11.3533,
+    1.1718
+   ],
+   "max_drift_mm": [
+    595.0841,
+    924.4999
+   ],
+   "final_drift_mm": [
+    595.0841,
+    924.4999
+   ],
+   "mean_speed_mm_s": [
+    68.9632,
+    95.9032
+   ],
+   "max_drift_com_heights": [
+    7.5286,
+    11.6961
+   ],
+   "mean_forward_speed_mm_s": [
+    60.1682,
+    92.7907
+   ],
+   "mean_lateral_speed_mm_s": [
+    -3.0648,
+    1.1081
+   ],
+   "steps_min": [
+    8,
+    12
+   ],
+   "step_count_ratio": [
+    1.0,
+    1.3
+   ],
+   "step_share_min": [
+    0.7763,
+    0.9061
+   ],
+   "step_clearance_hip_heights_min": [
+    0.2752,
+    0.2974
+   ],
+   "slip_share_max": [
+    0.0811,
+    0.1114
+   ],
+   "duty_factor_min": [
+    0.4368,
+    0.5166
+   ],
+   "duty_factor_max": [
+    0.5233,
+    0.6075
+   ],
+   "foot_lowest_hip_heights_min": [
+    -0.0192,
+    -0.0118
+   ],
+   "speed_ratio": [
+    0.9549,
+    1.0084
+   ],
+   "lateral_ratio": [
+    0.0002,
+    0.0504
+   ]
+  },
+  "reward_per_step_min_max": {
+   "alive": [
+    10.0,
+    10.0
+   ],
+   "tilt": [
+    -0.2219,
+    -0.0195
+   ],
+   "speed_error": [
+    -0.6719,
+    -0.3421
+   ],
+   "sideways": [
+    -0.4478,
+    -0.2622
+   ],
+   "heading": [
+    -0.0894,
+    -0.0274
+   ],
+   "body_rate": [
+    -0.2887,
+    -0.2097
+   ],
+   "trot_sync": [
+    -0.7618,
+    -0.2161
+   ],
+   "impact": [
+    -0.1116,
+    -0.0987
+   ],
+   "step_fl": [
+    -0.3712,
+    -0.3303
+   ],
+   "step_fr": [
+    -0.4172,
+    -0.3511
+   ],
+   "step_rl": [
+    -0.4865,
+    -0.4151
+   ],
+   "step_rr": [
+    -0.4504,
+    -0.3978
+   ],
+   "contact_sync": [
+    -0.1866,
+    -0.1177
+   ],
+   "joint_speed": [
+    -0.1332,
+    -0.0912
+   ],
+   "diag_sym": [
+    -0.1142,
+    -0.0392
+   ],
+   "hip_antiphase": [
+    -0.1347,
+    -0.0555
+   ]
+  }
+ },
+ "void_for_R1": false,
+ "void_check": "contact_offsets is empty: no geom in the evaluated model carries a margin or gap (ADR-470; grep finds no margin= or gap= in the trained model-model.xml), and the model hashes to r17's to r22's (6cecfa2d...), the rebuilt af05ab62 lineage on ADR-469's 0.004 s spring",
+ "diagnosis": {
+  "measured": "10 of 10 pass every predicate, from r19's 9 (all but 1109) and r22's 6. W9 step-count ratio 1.0-1.3 against 1.5 (1109: 1.571 under r19, 1.25 here); W7 slip 0.081-0.111 against 0.15; W3 speed ratio 0.955-1.008; swing clearance 0.275-0.297 hip heights; duty 0.437-0.608; W10 lowest foot -0.019 to -0.012 hip heights; tilt 6.5-24.2 deg against 30, the thinnest margin; 8-13 steps per foot; every seed runs to the horizon",
+  "training": "warm from r19 at r19's own width (sigma 0.177), default clip and learning rate, value_weight 0.05 on r19's identical task: iteration 0 reads +3.67 per step, iteration 1 -0.56, then the run never falls below +2.96 (iteration 18), against r20-r23 falling to about +0.3 to +1.3 by iteration 30; the total loss sits near +66 to +97 against r23's +596 to +652. Best +5.08 at 886, +4.97 at 900 (the evaluated checkpoint), +4.76 at 924 when the 3,500 s budget stopped it. This is consistent with the untrained critic's value loss having driven r20-r23's collapse (session 7's closing hypothesis), but no ablation separates it from the seed or the clip/lr defaults",
+  "source": "evaluation.json seeds[].metrics, seeds[].detail.feet; runs/r24-r19-vw005/train/train.log and registration.json; ot11-notes/quad-1-s8/turn-1 (agent's closing message)"
+ }
+}
