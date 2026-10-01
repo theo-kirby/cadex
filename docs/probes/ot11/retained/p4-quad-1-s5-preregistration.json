@@ -1,0 +1,97 @@
+{
+    "schema": "ot11-rounds-preregistration-v1",
+    "behaviour": "walk",
+    "session": 5,
+    "criteria": [
+        "P4",
+        "R1"
+    ],
+    "counts_for": "R1 rounds only; R1 is judged on a later pre-registered confirmation evaluation, registered only if a round passes on all ten seeds",
+    "project": "ot11-quad-1",
+    "project_head": "eb3c742e8568cd072b60c6f4502dd6a8ca3d18b7",
+    "accepted_revision_before": "af05ab625a5ee3b9188927865baeb28f2150e5e34e84845ca275cfdfaa1c9ec9",
+    "accepted_digest_before": "56b657792521771f9100a5a57455f224fca0cd7cb43223a7cd77ba2df564247d",
+    "model_sha256_before": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+    "task_sha256_before": "a830f9959e93420dc83432e2bb45716fee404902f87ef092a3c6314f48bd0d05",
+    "rebuild": {
+        "by": "actor",
+        "what": "cadex params policy_on=0 (on r14's training engine), then foot_margin=0 on the current engine (570a49e7: ADR-469 spring, ADR-470 void); script_history 0078 -> 0079",
+        "why": "r13 and r14 trained on foot contact margins, which the owner's R1 clause voids, and every earlier model is on the 0.02 s spring ADR-469 replaced. foot_margin=0 restores the agent's pre-r13 contact (the parameter did not exist before r13); the task, reward, observations, spec and goal are the agent's from the end of session 4, unedited",
+        "model_check": "the rebuilt MJCF differs from r12-convex-sym's (5e28d393...) only in solref attributes and whitespace; every geom reads solref (0.004, 1); contact_offsets is empty",
+        "scale": {
+            "hip_height_mm": 96.7006,
+            "weight_n": 5.050696177620001,
+            "script_HIP_MM": 96.7006,
+            "script_WEIGHT_N": 5.05069617762
+        },
+        "depth_under_load": {
+            "receipt": "retained/p5-quad-1-rebuilt-depth.json",
+            "policy": "r14-margin15-lift final (5f97b602...), whose network reads what the rebuilt task emits",
+            "seeds": "1101-1110, all to horizon; every foot lifts off 8-41 times per seed",
+            "deepest_mm": [
+                -1.37,
+                -0.89
+            ],
+            "deepest_hip_heights": [
+                -0.0142,
+                -0.0092
+            ],
+            "W10_limit_hip_heights": -0.05
+        }
+    },
+    "motivation": "session 4 (rows 24-26) closed 0 of 10 on all three runs; r13 and r14 stepped on all four feet only on foot contact margins and are void for R1. r14 (void) reached speed_ratio 0.98-1.05 with 19-25 steps per foot and failed W6 (0.020-0.026 HH), W8-low (0.30-0.33) and W10 on nine seeds. The product now exports a 0.004 s contact spring (ADR-469) and voids margin models (ADR-470); this session is the first on a model that has both",
+    "model": "claude-opus-5-5",
+    "fallback": null,
+    "driver": {
+        "file": "runner/rounds.py",
+        "sha256": "86a96079cd213658f9a0f67411152b230834410594c5756282998cbcf999f48b",
+        "change": "none since session 3"
+    },
+    "first_prompt": {
+        "file": "walk.s5.loop.prompt.txt",
+        "sha256": "4abe20b44941668f1fdcfcd513bc94357c209327bf6cf2eeb338fe3442520ff1"
+    },
+    "continue_prompt": {
+        "file": "walk.s5.continue.prompt.txt",
+        "sha256": "bbe2cc6dafb87e8ec8113932b854881d2c65dc63c9fe276397cee42e9cf7f462"
+    },
+    "spec_block": {
+        "file": "retained/walk-spec-block.txt",
+        "sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900",
+        "mechanism_rule": "byte-identical except the values of HIP_MM and WEIGHT_N, which must equal the evaluated model's rig.hip_height_mm and rig.weight_n as the evaluation report states them (to the block's printed precision); SPEC_LIFT keeps its formula"
+    },
+    "mechanism": {
+        "fixed": false,
+        "agent_may_change": "geometry, bodies, collision shapes and per-body contact settings, joints and limits, actuators, and the parameters that set them, through the ordinary edit and accept path",
+        "bounds": [
+            "four legs on one free base; the spec's feet stay c_foot_fl, c_foot_fr, c_foot_rl, c_foot_rr",
+            "the floor body and its plane, and every global physics setting (timestep, gravity, solver), unchanged",
+            "actuators stay catalog parts at catalog limits",
+            "new this session: no contact margin or gap on any shape; cadex evaluate voids every seed of a model that has one (ADR-470, owner 2026-10-01)"
+        ],
+        "actor_changes": "the rebuild above; the prompt states session 4's measurements, the two product decisions and the new bound"
+    },
+    "trainer": {
+        "file": "training/cadex_train.py",
+        "sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259",
+        "rule": "ADR-465 and ADR-466, unchanged since session 2"
+    },
+    "engine": {
+        "source": "the dev tree at 570a49e7 (src/Mod/cadex, the CLI's default engine)",
+        "rule": "nothing under src/Mod/cadex or build/ changes while the session runs: session 4's last turn broke when the engine moved under it"
+    },
+    "max_runs_this_session": 3,
+    "max_turns": 2,
+    "driver_args": "--max-runs 19 --max-turns 2: the ledger holds 16 evaluated rows before this session (r14's evaluation was made by cadex evaluate, which writes no ledger row), so 19 is three more",
+    "per_run": {
+        "budget_s_max": 2400,
+        "stop_on_collapse": true,
+        "seed_rule": "the product agent chooses it at train_start; train_start refuses any of 1101-1110",
+        "registered_by": "train_start writes runs/<run>/registration.json and a train_registered ledger row before launch"
+    },
+    "wall_clock_bound": "2 turns; at most 3 runs of at most 2400 s each (7,200 s GPU at most); one GPU job at a time (machine training lock)",
+    "stop_rule": "an evaluation passes on every seed, or the session has trained and evaluated 3 runs, or 2 turns have ended",
+    "supervision": "rounds.py under setsid, outliving the actor's session; each training run under its own cadex_cli.loop supervisor",
+    "after": "after each evaluation: the spec block is compared under mechanism_rule, contact_offsets must be empty, and the model digest, hip height and weight are recorded; a difference voids that evaluation",
+    "registered_at": "2026-10-01T09:42:55Z"
+}
