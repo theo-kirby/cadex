@@ -302,3 +302,19 @@ def test_eval_collector_attributes_by_hash(tmp_path, monkeypatch):
     assert rows[2]["failing_predicates"] == {}
     assert receipt["judges"][0]["evaluations"] == ["ot11-demo/aa"]
     assert str(tmp_path) not in out.read_text()
+
+
+def test_remaining_defects_cite_receipts_that_exist():
+    section = REPORT.split("## Remaining defects", 1)[1]
+    links = re.findall(r"\]\((retained/[^)]+)\)", section)
+    assert len(links) >= 5
+    for link in links:
+        assert (PROBE / link).is_file(), link
+    decisions = (REPO / "docs" / "DECISIONS.md").read_text(encoding="utf-8")
+    for number in set(re.findall(r"ADR-(\d+)", section)):
+        assert f"## ADR-{number} " in decisions, number
+    walk = [ev for ev in json.loads(
+        (PROBE / "retained" / "ot11-evaluations.json").read_text(encoding="utf-8"))["evaluations"]
+        if ev["project"] == "ot11-quad-1"]
+    if all(ev["passed"] == 0 for ev in walk):
+        assert "**R1 is not met.**" in section

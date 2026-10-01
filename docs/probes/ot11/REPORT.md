@@ -246,3 +246,44 @@ Each item names its receipt.
   evaluations** and fixed by decision: the trainer's servo integration
   (ADR-465), W10 read during the reset drop (ADR-467, every earlier policy
   re-read), and a stale scale constant in a spec (ADR-468).
+
+## Remaining defects
+
+What is still wrong or unmeasured at this revision, each with its receipt.
+A defect fixed by decision is under *Every failure*, not here.
+- **R1 is not met.** No walk evaluation has passed a seed: rows 13–23 of
+  *Every evaluation* all pass 0 of 10
+  ([`retained/ot11-evaluations.json`](retained/ot11-evaluations.json)).
+  Walk session 4 is pre-registered and running
+  ([`retained/p4-quad-1-s4-preregistration.json`](retained/p4-quad-1-s4-preregistration.json));
+  its rounds are not in this report yet.
+- **No walking gait has been judged.** The judge runs on a confirmation
+  evaluation, and walk has none; its scores on a gait that steps are
+  unmeasured (*Every judge score*).
+- **The judge does not see stepping or slip.** Its manner score gave
+  `w2-2` "real steps" on all eighteen calls on seeds 1101 and 1110, while
+  W5 and W7 failed them (ADR-460, ADR-461, ADR-463;
+  [`retained/judge-w2-2-seed-1101.json`](retained/judge-w2-2-seed-1101.json)).
+  That is a recorded limit of the contract, and W5 and W7 are
+  authoritative for it.
+- **W10 under a gait on the steel-ball feet is unmeasured.** It passed on
+  every seed of rounds 9 and 10, on policies that took no step
+  ([`retained/p4-quad-1-r10-evaluation.json`](retained/p4-quad-1-r10-evaluation.json),
+  [`retained/p4-quad-1-r11-evaluation.json`](retained/p4-quad-1-r11-evaluation.json)).
+  Whether the 10.5 g feet make stepping harder for MG90S legs is open for
+  the same reason.
+- **Walk rounds 1–3 trained on a trainer whose servo physics disagreed
+  with the engine's** (ADR-465). Their evaluations stand, and what they
+  say about their rewards is weaker than their rows suggest.
+- **A mechanism-changing session's spec check is the actor's, not the
+  engine's.** ADR-468 makes the engine refuse a spec whose stated scale
+  differs from the model. That the rest of the walk spec block is
+  unchanged is checked by the actor after each evaluation, against
+  [`retained/walk-spec-block.txt`](retained/walk-spec-block.txt), under the
+  session's pre-registered `mechanism_rule`; nothing in the product refuses
+  a reworded predicate.
+- **The packaged lifecycle gate was owed from ADR-465 to ADR-468** and is
+  now paid: the payload was rebuilt and restaged from engine source
+  unchanged since ADR-468 (commit `d410b098`), and
+  `test_cadexd_lifecycle.py` passed 23 of 23, none skipped, against it on
+  2026-10-01. A later engine change owes it again.
