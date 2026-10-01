@@ -554,7 +554,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   honest — and above 0 it needs a `solver_step_s` of 0.001 or finer, which
   is refused rather than silently under-delivered. Components that a joint
   connects never collide with each other: they overlap at the joint by
-  construction.
+  construction. A coupling (`gears`, `belt`, `screw`) is not a pin, so its
+  two components are excluded only if their collision shapes already touch
+  at the solved pose — meshed wheels, a nut on its thread — and otherwise
+  collide, as a gripper's geared jaws must (ADR-475).
 - `assembly.exploded_view(assembly, moves)` declares one **exploded view** of
   a solved assembly (ADR-149): an ordered list of 1 through 64 moves, at
   most 256 component references across all of them. Each move names

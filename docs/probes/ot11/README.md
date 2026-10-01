@@ -2787,3 +2787,11 @@ headless and reproduces the three targets. It fails on the old draw at exactly
 are still accepted, because the second gap is still open: the draw now reads
 the overlapping pose, but the coupled jaws have no contact to refuse it with.
 Nothing frozen moved.
+
+**The second gap is closed (ADR-475).** A coupling's two components are now
+excluded from contact only if they already touch at the solved pose. The
+probe's jaws are 32 mm apart there, so they collide, and the draw refuses the
+three overlapping targets for contact and draws again, in all three
+implementations. The regression in the same file fails while couplings are
+excluded, on exactly 1102, 1105 and 1110, segment 1. Nothing frozen moved,
+and no grip contract is frozen yet.

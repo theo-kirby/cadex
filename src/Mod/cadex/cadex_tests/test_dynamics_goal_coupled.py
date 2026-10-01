@@ -16,11 +16,12 @@ segment 1 of 1102, 1105 and 1110 is a target where the coupled jaws overlap
 by 0.5 to 4.3 mm while the pose the draw read had them 14-16 mm apart.
 
 This pins the three implementations -- the engine, the reference runner and
-the trainer's host side -- to reading the coupled pose. Whether an overlap
-of two coupled jaws should then *refuse* the target is a separate question:
-the builder excludes contact between the two components of every joint,
-couplings included, so today it does not. That is ADR-474's open item, and
-this file does not decide it.
+the trainer's host side -- to reading the coupled pose. Reading it was not
+enough on its own: the builder excluded contact between the two components
+of every joint, couplings included, so the overlap was read and not seen.
+Since ADR-475 a coupling's pair is excluded only where its two components
+already touch at the solved pose, so the jaws collide and the three targets
+are refused.
 """
 
 from __future__ import annotations
@@ -201,8 +202,9 @@ def test_the_follower_law_is_the_one_the_dynamics_enforce() -> None:
 
 @pytest.mark.parametrize("which", sorted(IMPLEMENTATIONS))
 def test_every_accepted_target_was_judged_at_the_coupled_pose(which) -> None:
-    """Fails on the old draw at 1102, 1105 and 1110, segment 1: the jaws
-    overlap at the pose the target really is, and the draw read them apart."""
+    """Before ADR-474 the draw read the jaws apart at 1102, 1105 and 1110,
+    segment 1, where the coupled pose overlaps; before ADR-475 it read the
+    overlap and accepted it. Now no accepted target overlaps at all."""
 
     draw = IMPLEMENTATIONS[which]()
     prepared = grip()
@@ -232,8 +234,67 @@ def test_every_accepted_target_was_judged_at_the_coupled_pose(which) -> None:
                 seen.add((seed, index))
             if _jaw_gap_mm(compiled, coupled) < 0.0:
                 real.add((seed, index))
-    assert real == {(1102, 1), (1105, 1), (1110, 1)}
+    assert real == set()
     assert seen == real
+
+
+@pytest.mark.parametrize("which", sorted(IMPLEMENTATIONS))
+def test_the_overlapping_grip_targets_are_refused_for_contact(which) -> None:
+    """ADR-475's regression: fails while couplings are excluded, on exactly
+    the three segments whose coupled jaws overlap."""
+
+    draw = IMPLEMENTATIONS[which]()
+    prepared = grip()
+    bundle = prepared["bundle"]
+    (target,) = bundle["goal"]
+    compiled = model(prepared)
+    jaws = {
+        geom for geom in range(compiled.ngeom)
+        if mujoco.mj_id2name(compiled, mujoco.mjtObj.mjOBJ_BODY,
+                             int(compiled.geom_bodyid[geom])) in ("fa", "fb")
+    }
+
+    class _Contacts(_Spy):
+        def mj_forward(self, model, data):
+            super().mj_forward(model, data)
+            self.poses[-1] = (self.poses[-1][0], {
+                (int(data.contact[i].geom1), int(data.contact[i].geom2))
+                for i in range(int(data.ncon))
+            })
+
+    refused = set()
+    for seed in SEEDS:
+        spy = _Contacts(target)
+        drawn = draw(spy, compiled, bundle, random.Random(seed))
+        tips = [[value * float(target["scale"]) for value in tip] for tip, _ in spy.poses]
+        previous = -1
+        for index, segment in enumerate(drawn[0]["segments"]):
+            accepted = max(at for at, tip in enumerate(tips) if tip == segment)
+            # Every forward between two acceptances is a refused attempt.
+            if any(set(pair) <= jaws for _tip, contacts in spy.poses[previous + 1:accepted]
+                   for pair in contacts):
+                refused.add((seed, index))
+            previous = accepted
+    assert {(1102, 1), (1105, 1), (1110, 1)} <= refused
+
+
+def test_a_coupling_is_excluded_only_where_it_already_touches() -> None:
+    """Meshed wheels overlap by construction and stay excluded; geared jaws
+    held apart at the solved pose are left to collide."""
+
+    from test_dynamics_coupled import _gear_train
+
+    components, joints, _placements = _gear_train("gears")
+    for component, width in zip(components[1:], (44.0, 24.0)):
+        component["collision"] = {"shapes": [fx.collision_shape(
+            "box", size_mm=[width, width, 10.0])], "mesh": None}
+    meshed = dyn.build_model(components, joints)
+    assert ["pinion", "wheel"] in meshed["excluded_pairs"]
+    assert meshed["model"].nexclude == len(meshed["excluded_pairs"])
+
+    jaws = dyn.build_model(*gripper()[:2])
+    assert jaws["excluded_pairs"] == [["fa", "palm"], ["fb", "palm"]]
+    assert jaws["model"].nexclude == 2
 
 
 def test_the_three_draws_agree_on_a_coupled_mechanism() -> None:

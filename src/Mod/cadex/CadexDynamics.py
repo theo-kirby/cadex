@@ -3232,6 +3232,23 @@ def _add_collision_geoms(
         native.add_geom(**arguments)
 
 
+def _touching_body_pairs(mujoco: Any, model: Any, qpos: Sequence[float]) -> set[tuple[str, str]]:
+    """Every pair of body names MuJoCo reports in contact at ``qpos``, sorted."""
+
+    data = mujoco.MjData(model)
+    data.qpos[:] = list(qpos)
+    mujoco.mj_forward(model, data)
+    pairs: set[tuple[str, str]] = set()
+    for index in range(int(data.ncon)):
+        contact = data.contact[index]
+        first, second = sorted(
+            str(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, int(model.geom_bodyid[geom])))
+            for geom in (int(contact.geom1), int(contact.geom2))
+        )
+        pairs.add((first, second))
+    return pairs
+
+
 def build_model(
     components: Sequence[Mapping[str, Any]],
     joints: Sequence[Mapping[str, Any]],
@@ -3571,14 +3588,18 @@ def build_model(
     # geoms would have made every M2 mechanism explode the moment they
     # existed. The exclusion is authored intent: parts connected by a joint
     # interpenetrate at the joint, and simulating that is never what the
-    # script meant. Gears and belts are excluded for the same reason from
-    # the other direction -- a coupling exists precisely because we are not
-    # simulating tooth contact.
+    # script meant. A coupling (gears, belt, screw) is not a pin and is
+    # decided at the solved pose below instead (ADR-475).
     excluded_pairs: list[list[str]] = []
+    coupled_pairs: list[list[str]] = []
     for classified in tree["classified_joints"]:
         if classified["suppressed"]:
             continue
         first, second = sorted(str(item) for item in classified["components"])
+        if classified["coupling"]:
+            if [first, second] not in coupled_pairs:
+                coupled_pairs.append([first, second])
+            continue
         if [first, second] in excluded_pairs:
             continue
         excluded_pairs.append([first, second])
@@ -3629,6 +3650,24 @@ def build_model(
     qpos = _solved_qpos(
         mujoco, model, tree, placements, joint_records, solved_values
     )
+    # A coupling's two components are excluded only where they already touch
+    # at the solved pose: meshed teeth and a nut on its thread interpenetrate
+    # by construction, and a coupling exists because we are not simulating
+    # that contact. Two parts a coupling holds apart -- a gripper's geared
+    # jaws -- can still meet, and must: excluding them let 3 of 20 frozen
+    # grip targets close the jaws 4.3 mm into each other (ADR-475).
+    touching = _touching_body_pairs(mujoco, model, qpos)
+    added = False
+    for first, second in coupled_pairs:
+        if [first, second] in excluded_pairs or (first, second) not in touching:
+            continue
+        excluded_pairs.append([first, second])
+        exclude = spec.add_exclude()
+        exclude.name = f"{first}|{second}"
+        exclude.bodyname1, exclude.bodyname2 = first, second
+        added = True
+    if added:
+        model = spec.compile()
     _verify_damping_is_resolvable(mujoco, model, qpos)
     _verify_gains_are_resolvable(mujoco, model, qpos, actuator_applied)
     closure_violation = _closure_violation(mujoco, model, qpos)

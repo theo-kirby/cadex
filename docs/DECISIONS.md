@@ -31205,3 +31205,51 @@ coupled model could be exported before ADR-473, so no retained bundle had one.
   That needs its own unit and its own ADR.
 - Not measured yet: whether MJX 3.10 in the training venv honours
   `equality/joint`. It must be measured before any gripper training.
+
+## ADR-475 — A coupling excludes contact only where its parts already touch (2026-10-01)
+
+**Context.** The builder excluded contact between the two components of every
+joint, couplings included, on the reasoning that "a coupling exists precisely
+because we are not simulating tooth contact". That holds for meshed wheels and
+a nut on its thread, whose collision shapes overlap by construction. It does
+not hold for two parts a coupling keeps apart. ADR-474 left the ot11 grip
+probe's geared jaws passing through each other: on the frozen seeds, 1102,
+1105 and 1110 segment 1 are targets where the coupled jaws overlap by 0.5–4.3 mm,
+and the draw accepted them because the jaws had no contact to refuse.
+
+**Decision.** A pin-like joint (revolute, slider, ball, fixed, cylindrical)
+still excludes its pair unconditionally. A coupling's pair (`gears`, `belt`,
+`screw`) is excluded only if MuJoCo reports the two bodies in contact at the
+solved pose; otherwise they collide. The test is the model's own contact pass
+at `qpos_solved`, so it uses the declared shapes, margins and contact groups,
+and the exclusions it adds are listed in `contact_exclusions` like any other.
+No new vocabulary: an author who wants meshed wheels excluded gives them
+shapes that touch, and an author who wants jaws to collide keeps them apart.
+
+Rejected: an authored per-coupling switch. It adds a keyword for a fact the
+solved geometry already states, and the fourth-behaviour rung asks for no new
+code path.
+
+**Consequences.**
+- `test_dynamics_goal_coupled.py::test_the_overlapping_grip_targets_are_refused_for_contact`
+  fails on the old builder, with no refused attempt at all, and on the new one
+  every implementation (engine, reference runner, trainer) refuses 1102, 1105
+  and 1110 segment 1 for jaw contact and draws again. The ADR-474 draw test now
+  asserts that no accepted target overlaps. A third test pins both sides of the
+  rule: meshed boxes on a 2:1 gear train stay excluded, the jaws do not.
+- Only coupled models move. Every uncoupled model, export and digest is
+  unchanged. Coupled models could not be exported before ADR-473, so no
+  retained bundle or policy names one. A coupled pair with no collision shapes
+  is no longer listed in `contact_exclusions`, which changes nothing it
+  simulates.
+- A non-touching coupled pair now goes through the MJX collision-kind check
+  at export, where it used to be skipped.
+- **Measured, not fixed here:** with contact live, the probe gripper commanded
+  fully closed (−20°) is unstable. The jaws meet near −11.5°, and over 4 s the
+  joints swing to 244° with up to 10 mm of jaw penetration. The coupling itself
+  is the first cause: with contact disabled the same command overshoots the
+  ±20° limits to 63.8° before settling, and with the coupling disabled the jaw
+  holds −20° cleanly. A soft `equality/joint` row on two 17 g jaws, a
+  22.9 N·m/rad servo and joint limits on both sides do not agree. Excluding
+  the jaws only hid this. It must be diagnosed before any gripper is trained,
+  alongside whether MJX 3.10 honours `equality/joint`.
