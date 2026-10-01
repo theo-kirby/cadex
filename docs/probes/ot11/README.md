@@ -1495,3 +1495,88 @@ needs a new pre-registered session. That session's prompt would tell the
 agent what ADR-465 changed, and that rounds 1–3's reward curves came from
 the wrong physics. A session cannot hand the agent that fact mid-way
 without changing its registered prompt.
+
+### Walk round 4: `r4-anglesonly`, the first on the fixed trainer, stands still
+
+| run | seed | settings | budget | ended | evaluated policy | seeds passed |
+|---|---|---|---|---|---|---|
+| `r4-anglesonly` | 31 | 780 it × 2048 envs | 2,390 s | **finished**, all 780 iterations, 2,183 s | `d2dcaf39…` (final, iteration 780) | **0 of 10** |
+
+GPU wall time: 2,183 s. The process loaded `abae5da0…`, the ADR-465
+trainer, and every checkpoint and the final policy record that digest. The
+file was not edited until after the run ended (ADR-466 landed after it). The
+training reward per step was −1.57 at the start and −0.53 at the best
+iteration (777). **On the evaluation seeds the same policy scores −0.67 to
+−0.14 per step.** That is the first walk round whose training reward lies
+inside the range the engine measures. Rounds 1–3 trained at +1.2 to +2.5
+and evaluated at −3.1 to −1.2.
+
+**The evaluation is valid.** The script's spec block equals
+`retained/walk-spec-block.txt` at the evaluated revision `ce8d1963…`, which
+differs from the registered `fbb2237e…` only in the declared policy digest.
+The model is `ade106a6…`. The report is
+`evaluations/ce8d19639f13-d2dcaf39ba21/evaluation.json`, and the receipt is
+[`retained/p4-quad-1-r4-evaluation.json`](retained/p4-quad-1-r4-evaluation.json).
+
+| predicate | seeds failing | range |
+|---|---|---|
+| W3 tracks speed | 10 | speed ratio −0.004 to 0.088: it **stands still** |
+| W5-steps, W5-share | 10 | 0 steps on every foot of every seed |
+| W6, W9 | 10 | no steps to measure |
+| W7 slip | 10 | 0.82–1.06 of a foot's (millimetre-scale) travel |
+| W8-high duty factor | 10 | 1.00: every foot on the floor the whole time |
+| W10 in the floor | 10 | −0.131 to −0.085 hip heights, standing still |
+| W1, W2 | 1 | 1101 tips 0.5 s after its shove (step 220, 38.8°) |
+
+W4 passes on every seed (heading ≤ 18°, lateral ≤ 0.14), because the robot
+does not go anywhere. The knee joint-speed cost is −2.4 over seed 1102's
+episode, against −323 in round 3, so the chatter is gone. The reward terms
+that dominate are now `sink` (−937 on seed 1102) and `speed_error` (−379),
+against an alive total of 1,500. The film of seed 1101 is the
+[overview](p4-quad-1-walk-r4-seed-1101-overview.png) and the
+[detail](p4-quad-1-walk-r4-seed-1101-detail.png). The robot stands square
+on its four feet until its shove, then rolls onto its side.
+
+**Two readings this round raises, measured but not yet explained.**
+- **W10 fails on a robot standing still.** All ten seeds' feet reach 8.2 to
+  12.7 mm below the floor on 7.5 mm-radius feet. The agent's closing report
+  attributes this to the 5–10 mm reset drop plus static sink, and calls W10
+  possibly unreachable with this contact. That is the agent's hypothesis,
+  not a measurement. If a policy at rest cannot pass a frozen predicate, the
+  evaluation is in question, and that outranks training. So the next unit
+  is to measure where in the episode each foot's lowest frame falls,
+  without changing W10.
+- **W7 exceeds 1.0 on seeds 1104 and 1109.** Slip is measured on the
+  contact point and travel on the foot centre. On a foot that only rocks in
+  place, the first can exceed the second. The spec's verdict is not
+  affected: a foot that does not step fails W5 anyway.
+
+**The agent's closing report credits the closed gap to the wrong cause.**
+It says that removing the joint-rate and gyro inputs closed the
+training/evaluation gap. Round 4 also moved to the ADR-465 trainer, so the
+two causes are confounded. ADR-465's parity measurement had already shown
+that the old trainer walked the r2 policy forwards while the engine walked
+it backwards. The agent could not know that, because session 1's
+registered prompt predates ADR-465.
+
+### Walk session 1 closes at 0 of 10 over four runs; session 2 is pre-registered
+
+Session 1 ended after one turn of 11,137 s and 64 tool calls, with four runs
+trained and evaluated and none passing. The summary is
+[`retained/p4-quad-1-rounds.json`](retained/p4-quad-1-rounds.json). GPU wall
+time over the four runs was 1,542 + 2,251 + 2,381 + 2,183 = 8,357 s.
+
+Session 2 is registered in
+[`retained/p4-quad-1-s2-preregistration.json`](retained/p4-quad-1-s2-preregistration.json),
+before launch, on the same project, mechanism, spec block and driver. It has
+a new first prompt,
+[`prompts/walk.s2.loop.prompt.txt`](prompts/walk.s2.loop.prompt.txt). The
+prompt states ADR-465: rounds 1–3's reward curves came from physics the
+engine does not run, their evaluations stand, and round 4 is the only round
+whose curve and evaluation describe the same machine. It also states that
+round 4 changed two things at once. It does not say how to reward a gait.
+The session allows at most three more runs (seven in the ledger), of
+2,400 s at most each, with `--stop-on-collapse`, over two turns. The shared
+continue prompt still says "four runs in total". A second turn is not
+expected, but if one happens and stops at once, that is the driver's limit,
+not the agent's choice.

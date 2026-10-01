@@ -1,0 +1,53 @@
+{
+  "schema": "ot11-rounds-preregistration-v1",
+  "behaviour": "walk",
+  "session": 2,
+  "criteria": [
+    "P4",
+    "R1"
+  ],
+  "counts_for": "P4 rounds only; R1 is judged on a later pre-registered confirmation evaluation, registered only if a round passes on all ten seeds",
+  "project": "ot11-quad-1",
+  "project_head": "9618cc0ca22d21b29fdd50ce0461f28745cf555c",
+  "accepted_revision_before": "ce8d19639f13e556e201de42ed933ff2ff11e247302b44b4c69600c7c9317300",
+  "model_sha256": "ade106a6b7d636a972ae90909f6344096c46446022e87a9357d94f88f2cc31a5",
+  "motivation": "session 1's four runs are spent and all failed 0/10 (rounds 1-3 on the pre-ADR-465 trainer; r4-anglesonly, the only run on the fixed trainer, stands still: W5-steps 0, W8-high 1.0, W3 -0.004..0.088). Session 1's registered prompt could not tell the agent about ADR-465, and its closing report credits r4's closed train/eval gap to the input change alone; this session's prompt states ADR-465 and the confound",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "driver": {
+    "file": "runner/rounds.py",
+    "sha256": "a6a2a5b1794a79f1e74b712fc7749ed703c3ed85a2542862dcb53c128d822234"
+  },
+  "first_prompt": {
+    "file": "walk.s2.loop.prompt.txt",
+    "sha256": "545f36cdc9adcffad27e7ddeb241356a0a54dae58a00489336aeefb8dd77e430"
+  },
+  "continue_prompt": {
+    "file": "continue.loop.prompt.txt",
+    "sha256": "970d16e7cb055cd481ba3c814f4c33bc4cf5854ef2b8adb755ec42b9799f6e3a",
+    "known_conflict": "its text says 'four runs ... in total'; a resumed turn would read that as already spent. Session 1 ran all four runs in its first turn, so a second turn is not expected; if one happens and stops at once, that is recorded as the driver's limit, not as the agent's choice"
+  },
+  "spec_block": {
+    "file": "retained/walk-spec-block.txt",
+    "sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900"
+  },
+  "trainer": {
+    "file": "training/cadex_train.py",
+    "rule": "ADR-465 and ADR-466 (digest at import); a run's trainer_sha256 now names the code it ran"
+  },
+  "max_runs_total": 7,
+  "max_runs_this_session": 3,
+  "max_turns": 2,
+  "per_run": {
+    "budget_s_max": 2400,
+    "stop_on_collapse": true,
+    "seed_rule": "the product agent chooses it at train_start; train_start refuses any of 1101-1110",
+    "registered_by": "train_start writes runs/<run>/registration.json and a train_registered ledger row before launch"
+  },
+  "wall_clock_bound": "2 turns; at most 3 runs of at most 2400 s each; one GPU job at a time (machine training lock)",
+  "stop_rule": "an evaluation passes on every seed, or the ledger reaches 7 evaluations with every run ended, or 2 turns have ended",
+  "supervision": "rounds.py --max-runs 7 --max-turns 2 under setsid, outliving the actor's session; each training run under its own cadex_cli.loop supervisor",
+  "mechanism": "fixed for the session: the spec's HIP_MM, WEIGHT_N and SPEC_LIFT are this model's",
+  "after": "after each evaluation the script's spec block is compared with retained/walk-spec-block.txt; a difference voids that evaluation",
+  "registered_at": "2026-10-01T00:38:58Z"
+}

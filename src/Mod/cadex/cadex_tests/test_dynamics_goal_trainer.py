@@ -253,6 +253,29 @@ def test_a_policy_says_how_its_goals_were_drawn_and_a_goalless_one_says_nothing(
     assert "goal_pool" not in quiet["training"]["hyperparameters"]
 
 
+def test_a_policy_names_the_trainer_that_ran_not_the_file_on_disk_when_it_saved(
+        tmp_path) -> None:
+    """``training.trainer_sha256`` is the digest of the code the process
+    loaded. ot11's ``r3-nochatter`` started on the pre-ADR-465 trainer, the
+    fix was written to disk mid-run, and every checkpoint saved after that
+    claimed the fixed trainer's digest, because the file was hashed at save
+    time (ADR-466)."""
+
+    import importlib.util
+
+    copied = tmp_path / "cadex_train.py"
+    copied.write_bytes(TRAINER.read_bytes())
+    loaded = hashlib.sha256(copied.read_bytes()).hexdigest()
+    module_spec = importlib.util.spec_from_file_location("cadex_train_copy", copied)
+    module = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module)
+
+    copied.write_bytes(copied.read_bytes() + b"\n# edited while a run was training\n")
+    prepared = made()
+    header = _header(module, prepared["bundle"], prepared)
+    assert header["training"]["trainer_sha256"] == loaded
+
+
 def test_a_warm_start_across_a_changed_goal_is_refused() -> None:
     """A goal is part of the observation vector's meaning, so it is not one
     of the keys a curriculum step may move (ADR-161)."""

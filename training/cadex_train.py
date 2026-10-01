@@ -65,6 +65,11 @@ TASK_SCHEMA = "cadex-training-task-v1"
 POLICY_SCHEMA = "cadex-policy-v1"
 POLICY_MAGIC = b"CXPOLICY1\n"
 
+#: The digest of the code this process runs, taken once at import. Hashing
+#: the file at save time instead let a run that straddled an edit stamp its
+#: later checkpoints with code it never executed (ADR-466).
+TRAINER_SHA256 = hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest()
+
 #: Which fields of an action row have to agree for a policy to belong to a
 #: bundle. The engine's ``CadexDynamics._POLICY_ACTION_FIELDS``, copied here
 #: because this file may not import it, and pinned equal by
@@ -2387,9 +2392,7 @@ def policy_header(
             "space": "pre_activation",
         },
         "training": {
-            "trainer_sha256": hashlib.sha256(
-                Path(__file__).resolve().read_bytes()
-            ).hexdigest(),
+            "trainer_sha256": TRAINER_SHA256,
             "seed": int(options.seed),
             # ADR-160. Written as its own key as well as appearing in
             # ``hyperparameters`` below, because this is the one an

@@ -30786,3 +30786,37 @@ under float32.
   `pixi.toml` or `requirements.txt`. `test_dynamics_policy_trainer`'s
   deferred-import list names `mujoco.mjx._src`, which is inside the pinned
   wheel. Nothing removed.
+
+## ADR-466 — A policy's `trainer_sha256` is the trainer the process loaded, hashed once at import (2026-10-01)
+
+**Context.** `policy_header` wrote `training.trainer_sha256` as
+`hashlib.sha256(Path(__file__).read_bytes())`, computed each time a policy
+or checkpoint was saved. ot11's `r3-nochatter` started at 23:01:31Z on the
+pre-ADR-465 trainer (`8e06e1b0…`). The fix was written to disk at 23:11:26Z,
+while the run was still training. Its checkpoints at iterations 100 and 200
+record `8e06e1b0…`. Every later checkpoint, including the evaluated `best`,
+records `abae5da0…`, the fixed trainer, although the process that wrote them
+never ran it. ADR-465's consequence that "runs from before and after are told
+apart by their bytes" therefore did not hold for any run that straddled an
+edit.
+
+**Decision.** The trainer hashes its own source once, at import, into
+`TRAINER_SHA256`, and `policy_header` writes that constant. Python reads a
+module's source when it imports it, so the digest at import is the digest of
+the code that runs. `test_a_policy_names_the_trainer_that_ran_not_the_file_on_disk_when_it_saved`
+loads a copy of the trainer, rewrites the copy on disk, and requires the
+header to carry the digest from import. It fails on the old code.
+
+**Consequences.**
+- From this commit, `trainer_sha256` is evidence of the code a run executed.
+- Policies saved before it are unchanged. For `r3-nochatter` the digest
+  field is wrong from checkpoint 300 on. Its trainer is established by its
+  process start time, as `docs/probes/ot11/README.md` records. If all of a run's
+  checkpoints record one digest, the file was not edited between its first
+  and last save. The old field cannot show an edit made between the run's
+  start and its first save.
+- The fix is applied only after `r4-anglesonly` ended. A save-time hash
+  would have stamped round 4's final save with the edited file's digest.
+- One constant is added, and one expression is replaced by it. No engine,
+  protocol, payload or shell file changes, and no dependency is added.
+  Nothing removed.
