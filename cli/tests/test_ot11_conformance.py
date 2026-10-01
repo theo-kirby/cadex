@@ -145,5 +145,5 @@ def test_the_receipt_names_every_deviation_and_the_report_explains_them():
         assert deviating[index] == ["goal hip_heights_per_s [0.599999, 0.999998] != frozen [0.6, 1]"]
     report = (PROBE / "REPORT.md").read_text(encoding="utf-8")
     section = report.split("## Every evaluation", 1)[1].split("## Every judge score", 1)[0]
-    assert "Thirty-one of the 35 conform" in section
+    assert "Thirty-two of the 36 conform" in section
     assert "rows 1 and 2" in section and "rows 20 and 21" in section

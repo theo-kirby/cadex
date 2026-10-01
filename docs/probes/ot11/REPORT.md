@@ -97,7 +97,7 @@ and in no total. No run was in progress when this was last regenerated.
 
 ## Every evaluation
 
-Thirty-five evaluations are stored across the five ot11 projects, every one
+Thirty-six evaluations are stored across the five ot11 projects, every one
 written by `cadex evaluate` or the agent's `evaluate` tool (the same code)
 into the project's `evaluations/<key>/evaluation.json`.
 [`runner/eval_ledger.py`](runner/eval_ledger.py) reads those files, and the
@@ -115,7 +115,7 @@ receipt's `contract_deviations` is what
 the spec each evaluation resolved (seeds, episode length, every predicate's
 id, metric and bound, the reset tilt and lift, each shove's force in body
 weights, its window, direction and duration, and the goal) with
-[`contract.json`](contract.json). Thirty-one of the 35 conform. Two kinds of
+[`contract.json`](contract.json). Thirty-two of the 36 conform. Two kinds of
 deviation exist, and both were already recorded by hand. In rows 1 and 2,
 ot10's `w2-2` is read without W3 and the lateral half of W4, because its
 task has no commanded speed to track (*README*, P1). In rows 20 and 21,
@@ -160,6 +160,7 @@ that made both void under the session's mechanism rule and led to ADR-468.
 | 33 | walk | `ot11-quad-1` | `a11861cc1e14-8c94fcd21f0e` | `r21b-r19-continue final` | fail | 2 of 10 | W5-share 2, W7 8, W8-low 1, W9 1 | horizon 10 | yes |
 | 34 | walk | `ot11-quad-1` | `da95bfa94936-e91a397134ac` | `r22-gentle-contact25 final` | fail | 6 of 10 | W2 1, W7 2, W8-low 2, W9 1 | horizon 10 | yes |
 | 35 | walk | `ot11-quad-1` | `7df101b06548-5aaf21e70e63` | `r24-r19-vw005 it 900` | pass | 10 of 10 | — | horizon 10 | yes |
+| 36 | walk | `ot11-quad-1` | `r1-confirm-1` | `r24-r19-vw005 it 900` | pass | 10 of 10 | — | horizon 10 | yes |
 
 **How to read it.**
 - **Rows 1–4 are P1's known negatives**, read before any ot11 training
@@ -349,13 +350,26 @@ that made both void under the session's mechanism rule and led to ADR-468.
   pre-registered confirmation, and no judge has seen it
   ([filmstrip, seed 1101](p4-quad-1-walk-r24-seed-1101-overview.png),
   [detail](p4-quad-1-walk-r24-seed-1101-detail.png)).
+- **Row 36 is R1's confirmation evaluation**, pre-registered in
+  [`retained/r1-confirm-1-registration.json`](retained/r1-confirm-1-registration.json)
+  (commit `5841202e`) before it ran, and run once. It holds row 35's
+  policy (5aaf21e7) at row 35's revision (7df101b0), on the frozen seeds,
+  and reads the same numbers: every seed's metrics equal row 35's. Before
+  it ran, a fresh engine reopened the project through `cadex export` and
+  rebuilt the same revision. The model hashed to 6cecfa2d with no
+  `margin=` or `gap=`, the task to db670704, and the policy verified to
+  5aaf21e7 (witness error 1.2 × 10⁻⁷ against 10⁻⁴). `contact_offsets` is
+  empty, the spec hashes to the registered 25adaa1e, and
+  `runner/conformance.py` names no deviation
+  ([`retained/r1-confirm-1-evaluation.json`](retained/r1-confirm-1-evaluation.json)).
+  The judge's bar is met on 1101, 1105 and 1110 (*Every judge score*).
 - `r9-steelfoot` has no row, because it never trained (see *Every
   failure*).
 
 ## Every judge score
 
-Twelve blind-judge scores exist: three seeds on each of the two known
-negatives and the two confirmation evaluations. Every one is three calls of
+Fifteen blind-judge scores exist: three seeds on each of the two known
+negatives and the three confirmation evaluations. Every one is three calls of
 `claude-opus-5-5` with no fallback, and each trait's score is the median of
 the three. The bar, frozen in [`README.md`](README.md), is a total of at
 least 9 of 12 with no trait under 2, on each judged seed. The receipts are
@@ -365,24 +379,34 @@ least 9 of 12 with no trait under 2, on each judged seed. The receipts are
 
 | # | judged | behaviour | seed | V1 | V2 | V3 | V4 | total | meets bar | evaluation's verdict |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 1 | `r2-confirm-1` | reach | 1101 | 3 | 3 | 3 | 3 | 12 | yes | pass |
-| 2 | `r2-confirm-1` | reach | 1105 | 3 | 3 | 3 | 3 | 12 | yes | pass |
-| 3 | `r2-confirm-1` | reach | 1110 | 3 | 3 | 3 | 3 | 12 | yes | pass |
-| 4 | `r3-confirm-1` | balance | 1101 | 3 | 3 | 3 | 3 | 12 | yes | pass |
-| 5 | `r3-confirm-1` | balance | 1105 | 3 | 3 | 3 | 3 | 12 | yes | pass |
-| 6 | `r3-confirm-1` | balance | 1110 | 2 | 3 | 3 | 3 | 11 | yes | pass |
-| 7 | `robin` | balance | 1101 | 0 | 1 | 0 | 1 | 2 | no | fail |
-| 8 | `robin` | balance | 1105 | 1 | 1 | 2 | 1 | 5 | no | fail |
-| 9 | `robin` | balance | 1110 | 0 | 1 | 0 | 1 | 2 | no | fail |
-| 10 | `w2-2` | walk | 1101 | 1 | 2 | 0 | 1 | 4 | no | fail |
-| 11 | `w2-2` | walk | 1105 | 1 | 1 | 0 | 1 | 3 | no | fail |
-| 12 | `w2-2` | walk | 1110 | 1 | 2 | 0 | 1 | 4 | no | fail |
+| 1 | `r1-confirm-1` | walk | 1101 | 3 | 3 | 2 | 2 | 10 | yes | pass |
+| 2 | `r1-confirm-1` | walk | 1105 | 3 | 3 | 2 | 3 | 11 | yes | pass |
+| 3 | `r1-confirm-1` | walk | 1110 | 3 | 3 | 3 | 3 | 12 | yes | pass |
+| 4 | `r2-confirm-1` | reach | 1101 | 3 | 3 | 3 | 3 | 12 | yes | pass |
+| 5 | `r2-confirm-1` | reach | 1105 | 3 | 3 | 3 | 3 | 12 | yes | pass |
+| 6 | `r2-confirm-1` | reach | 1110 | 3 | 3 | 3 | 3 | 12 | yes | pass |
+| 7 | `r3-confirm-1` | balance | 1101 | 3 | 3 | 3 | 3 | 12 | yes | pass |
+| 8 | `r3-confirm-1` | balance | 1105 | 3 | 3 | 3 | 3 | 12 | yes | pass |
+| 9 | `r3-confirm-1` | balance | 1110 | 2 | 3 | 3 | 3 | 11 | yes | pass |
+| 10 | `robin` | balance | 1101 | 0 | 1 | 0 | 1 | 2 | no | fail |
+| 11 | `robin` | balance | 1105 | 1 | 1 | 2 | 1 | 5 | no | fail |
+| 12 | `robin` | balance | 1110 | 0 | 1 | 0 | 1 | 2 | no | fail |
+| 13 | `w2-2` | walk | 1101 | 1 | 2 | 0 | 1 | 4 | no | fail |
+| 14 | `w2-2` | walk | 1105 | 1 | 1 | 0 | 1 | 3 | no | fail |
+| 15 | `w2-2` | walk | 1110 | 1 | 2 | 0 | 1 | 4 | no | fail |
 
-The judge and the spec agree on all twelve: it fails both negatives and
-passes both confirmations. Its known limit is recorded in the contract: the
-still-frame judge does not see `w2-2`'s slip (ADR-460, ADR-461), which W7
-measures. **No ot11 walk policy has been judged**, because none has passed
-the spec; the judge is run on a confirmation evaluation, and walk has none.
+The judge and the spec agree on all fifteen: it fails both negatives and
+passes all three confirmations. Its known limit is recorded in the contract:
+the still-frame judge does not see `w2-2`'s slip (ADR-460, ADR-461), which
+W7 measures. **The first walking gait it has judged is R1's confirmation**
+(rows 1–3, 10, 11 and 12 of 12). Every V3 under 3 names the body pitching
+or turning, at 4.54 s and 7.26 s on 1101 (the shove at 3.88 s) and near
+5.08 s on 1105. That is tilt W2 measures and passes: 1101 reaches 24.0°
+and turns 8.1°, 1105 reaches 7.3°, against W2's 30° (6.5–24.2° over all
+ten, the thinnest margin in the spec). One call on 1105 scored V2 at 2,
+saying the frames "can't fully rule out slipping"; W7 measures slip at
+0.081–0.111 against 0.15, and is authoritative for it (ADR-463). Neither
+is a contradiction: the judge never fails a seed the spec passes.
 
 ## Every revision the agent made, and why
 
@@ -433,8 +457,8 @@ the rows suggest.
 ## Every failure
 
 Each item names its receipt.
-- **Thirty of 35 evaluations failed** (every row above except 5, 6, 11,
-  12 and 35), and four of them are void: rows 20 and 21 on a scale digit, rows
+- **Thirty of 36 evaluations failed** (every row above except 5, 6, 11,
+  12, 35 and 36), and four of them are void: rows 20 and 21 on a scale digit, rows
   25 and 26 for R1 on their foot contact margins.
 - **Two runs collapsed** and were stopped by `--stop-on-collapse`:
   `r1-clearance` after 569 iterations and `r7-relswing` after 538
@@ -569,7 +593,8 @@ Each item names its receipt.
 
 What is still wrong or unmeasured at this revision, each with its receipt.
 A defect fixed by decision is under *Every failure*, not here.
-- **R1 is not met.** No pre-registered walk confirmation exists yet. Rows
+- **R1's measured bar is reached by row 36, its pre-registered
+  confirmation, and the owner ticks it; this page does not.** Rows
   13–28 of *Every evaluation* pass 0 of 10, row 29 passes 1 of 10
   (seed 1108), row 30 passes 2 of 10 (seeds 1102 and 1108), row 31
   passes 9 of 10 (all but 1109), row 32 passes 0 of 10, row 33 passes
@@ -603,12 +628,13 @@ A defect fixed by decision is under *Every failure*, not here.
   first run, `r23-r19-clip05` (row 30), was stopped by the agent with no
   policy (above). Its second, `r24-r19-vw005`, warm from r19 with the
   value-loss weight at 0.05, passes 10 of 10 (row 35), and the agent ended
-  the session on it with `walk_r24.cxpolicy` declared. No confirmation
-  evaluation is registered yet: R1 needs one, pre-registered and committed
-  with the judge's bar before it runs, on this revision.
-- **No walking gait has been judged.** The judge runs on a confirmation
-  evaluation, and walk has none yet (row 35 is not one); its scores on a gait that steps are
-  unmeasured (*Every judge score*).
+  the session on it with `walk_r24.cxpolicy` declared. R1's confirmation
+  ([`retained/r1-confirm-1-registration.json`](retained/r1-confirm-1-registration.json),
+  committed before it ran) reopened and verified that revision through
+  `cadex export`, then passed 10 of 10 (row 36) and met the judge's bar
+  on all three judged seeds (10, 11 and 12 of 12). What stays a defect is
+  how thin the tilt margin is: four seeds reach 23.9–24.2° against W2's
+  30°, after a shove of at most 0.2 body weights.
 - **The judge does not see stepping or slip.** Its manner score gave
   `w2-2` "real steps" on all eighteen calls on seeds 1101 and 1110, while
   W5 and W7 failed them (ADR-460, ADR-461, ADR-463;

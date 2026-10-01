@@ -1047,9 +1047,118 @@
    },
    "film": "ready",
    "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "r1-confirm-1",
+   "written_at": 1790880858.2198548,
+   "label": "ot11 walk contract",
+   "weights": "walk_r24.cxpolicy",
+   "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+   "trained_by": "r24-r19-vw005 it 900",
+   "run_started_at": 1790875249.383855,
+   "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+   "verdict": "pass",
+   "seeds": 10,
+   "passed": 10,
+   "failed": 0,
+   "void": 0,
+   "failing_predicates": {},
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
   }
  ],
  "judges": [
+  {
+   "receipt": "judge-r1-confirm-1-seed-1101.json",
+   "label": "r1-confirm-1",
+   "behaviour": "walk",
+   "model": "claude-opus-5-5",
+   "seed": 1101,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 2,
+    "V4": 2
+   },
+   "total": 10,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+   "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+   "evaluations": [
+    "ot11-quad-1/7df101b06548-5aaf21e70e63",
+    "ot11-quad-1/r1-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-r1-confirm-1-seed-1105.json",
+   "label": "r1-confirm-1",
+   "behaviour": "walk",
+   "model": "claude-opus-5-5",
+   "seed": 1105,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 2,
+    "V4": 3
+   },
+   "total": 11,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+   "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+   "evaluations": [
+    "ot11-quad-1/7df101b06548-5aaf21e70e63",
+    "ot11-quad-1/r1-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-r1-confirm-1-seed-1110.json",
+   "label": "r1-confirm-1",
+   "behaviour": "walk",
+   "model": "claude-opus-5-5",
+   "seed": 1110,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+   },
+   "total": 12,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+   "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+   "evaluations": [
+    "ot11-quad-1/7df101b06548-5aaf21e70e63",
+    "ot11-quad-1/r1-confirm-1"
+   ]
+  },
   {
    "receipt": "judge-r2-confirm-1-seed-1101.json",
    "label": "r2-confirm-1",

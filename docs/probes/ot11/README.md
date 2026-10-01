@@ -2667,3 +2667,85 @@ flat past about 3 mm, the swing pay grows with height, and a linear term
 keeps the speed cost's slope up to the command. When r14 is evaluated, its
 publication runs `rest_height.py` again: a 1.5 mm margin passes this
 reading only if a foot that bears load reads at or under 1.0 mm.
+
+## R1's confirmation evaluation: walk on `ot11-quad-1`
+
+This is the evaluation R1 is judged on. It is not a loop round.
+
+**Pre-registered first.** `retained/r1-confirm-1-registration.json` was
+committed (`5841202e`) before anything ran. It fixes:
+
+- the policy, `5aaf21e7…` (`r24-r19-vw005`'s iteration-900 checkpoint,
+  which the product agent declared as `walk_r24.cxpolicy`), and the
+  accepted revision `7df101b0…`;
+- the task `db670704…`, the model `6cecfa2d…` and the spec `25adaa1e…`
+  (the spec r24's round evaluation held);
+- the spec-block rule: byte-identical to `retained/walk-spec-block.txt`
+  (`487416af…`) except `HIP_MM` and `WEIGHT_N`, which equal the rig;
+- the void rule for contact: a non-empty `contact_offsets`, or any
+  `margin=` or `gap=` in the evaluated model, voids the evaluation for R1,
+  and W10 stays frozen (owner, 2026-10-01);
+- the ten frozen seeds 1101–1110, W1–W10 and the pass rule;
+- the judge's runner digest, the judged seeds 1101, 1105 and 1110, three
+  calls a seed, the bar, and the contract's walk detail sheet (from 5.0 s,
+  0.04 s apart);
+- the reopen, the evaluation and the judge commands, and that it is run
+  once.
+
+**Reopened and verified through the supported path.** A fresh engine ran
+`cadex export --project ot11-quad-1`, which reopened the project and
+rebuilt the accepted revision `7df101b0…` (exit 0). The exported model
+hashed to `6cecfa2d…` with no `margin=` or `gap=`, and the task to
+`db670704…`. The declared policy verified to `5aaf21e7…`, with a witness
+error of 1.2 × 10⁻⁷ against a tolerance of 10⁻⁴ over 32 samples.
+
+**The spec: pass, 10 of 10 seeds.** No seed was void, every episode ran
+the full 10.0 s and ended by truncation, and `contact_offsets` is empty.
+The spec hashed to the registered digest, and `runner/conformance.py`
+names no deviation from `contract.json`. Every seed's metrics equal those
+of r24's round evaluation (`evaluations/7df101b06548-5aaf21e70e63`).
+Receipt: `retained/r1-confirm-1-evaluation.json` (no paths).
+
+| seed | W2 tilt (≤ 30°) | W3 speed (0.75–1.25) | W5 fewest steps (≥ 4) | W6 clearance, HH (≥ 0.08) | W7 slip (≤ 0.15) | W8 duty (0.40–0.85) | W9 (≤ 1.5) | W10 lowest, HH (≥ −0.05) |
+|---|---|---|---|---|---|---|---|---|
+| 1101 | 24.0° | 0.994 | 9 | 0.288 | 0.109 | 0.44–0.61 | 1.22 | -0.017 |
+| 1102 | 21.7° | 0.955 | 10 | 0.292 | 0.094 | 0.52–0.52 | 1.30 | -0.012 |
+| 1103 | 10.9° | 1.000 | 11 | 0.284 | 0.081 | 0.46–0.58 | 1.09 | -0.012 |
+| 1104 | 24.2° | 1.008 | 9 | 0.297 | 0.111 | 0.45–0.57 | 1.22 | -0.013 |
+| 1105 | 7.3° | 0.998 | 11 | 0.286 | 0.081 | 0.49–0.55 | 1.09 | -0.015 |
+| 1106 | 11.1° | 0.996 | 11 | 0.279 | 0.091 | 0.52–0.53 | 1.18 | -0.013 |
+| 1107 | 23.9° | 0.997 | 11 | 0.280 | 0.088 | 0.47–0.55 | 1.00 | -0.019 |
+| 1108 | 6.8° | 0.995 | 12 | 0.275 | 0.093 | 0.51–0.53 | 1.08 | -0.016 |
+| 1109 | 24.2° | 0.990 | 8 | 0.286 | 0.103 | 0.47–0.57 | 1.25 | -0.015 |
+| 1110 | 6.5° | 0.981 | 11 | 0.297 | 0.084 | 0.50–0.53 | 1.00 | -0.015 |
+
+**The judge: the bar is met on every judged seed.** There were three calls
+a seed, nine in all. Every call returned a score from `claude-opus-5-5`,
+and none was refused or retried. Receipts:
+`retained/judge-r1-confirm-1-seed-*.json`.
+
+| seed | calls (V1 V2 V3 V4) | medians | total | bar (≥ 9, none under 2) |
+|---|---|---|---|---|
+| 1101 | 3322, 3322, 3322 | 3 3 2 2 | 10 | **met** |
+| 1105 | 3223, 3323, 3323 | 3 3 2 3 | 11 | **met** |
+| 1110 | 3333, 3333, 3323 | 3 3 3 3 | 12 | **met** |
+
+**The spec and the judge agree.** Both say pass, so there is no
+contradiction to diagnose. Every V3 or V4 under 3 names the body pitching
+or turning: at 4.54 s and 7.26 s on 1101, after its shove at 3.88 s, and
+near 5.08 s on 1105. That is tilt and heading, which W2 and W4 measure:
+1101 reaches 24.0° of tilt and 8.1° of heading, and 1105 reaches 7.3°.
+Both pass, but four seeds (1101, 1104, 1107, 1109) reach 23.9–24.2°
+against W2's 30°, which is the thinnest margin in the spec. One call on
+1105 scored V2 at 2 because the frames "can't fully rule out slipping".
+W7 measures slip at 0.081–0.111 against 0.15, and it is authoritative for
+slip (ADR-463).
+
+![R1 confirmation overview, seed 1101](r1-confirm-1-seed-1101-overview.png)
+![R1 confirmation detail, seed 1101](r1-confirm-1-seed-1101-detail.png)
+
+**R1's measured bar is reached** by this confirmation. Every seed passes
+W1–W10 on a model with no contact offset. Every judged seed meets the
+judge's bar. The policy was installed, verified and reopened through
+`cadex`. Every earlier run and evaluation is published in REPORT.md. The
+owner ticks R1; this page does not.

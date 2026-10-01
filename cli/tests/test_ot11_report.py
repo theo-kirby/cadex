@@ -174,7 +174,7 @@ def _load_eval_ledger():
 
 def test_evaluation_table_is_the_receipt():
     rows = _table("## Every evaluation")
-    assert len(rows) == len(EVALS["evaluations"]) == 35
+    assert len(rows) == len(EVALS["evaluations"]) == 36
     for index, (row, ev) in enumerate(zip(rows, EVALS["evaluations"]), 1):
         failing = ", ".join(f"{k} {v}" for k, v in ev["failing_predicates"].items()) or "—"
         assert row == [
@@ -199,7 +199,7 @@ def test_evaluation_table_is_the_receipt():
 
 def test_judge_table_is_the_receipt():
     rows = _table("## Every judge score")
-    assert len(rows) == len(EVALS["judges"]) == 12
+    assert len(rows) == len(EVALS["judges"]) == 15
     for index, (row, judge) in enumerate(zip(rows, EVALS["judges"]), 1):
         m = judge["medians"]
         assert row == [
@@ -235,9 +235,9 @@ def test_failure_counts_are_the_receipts():
     evaluations = EVALS["evaluations"]
     failed = [i for i, ev in enumerate(evaluations, 1) if ev["verdict"] == "fail"]
     passed = [i for i, ev in enumerate(evaluations, 1) if ev["verdict"] == "pass"]
-    assert len(failed) == 30 and passed == [5, 6, 11, 12, 35]
-    assert "Thirty of 35 evaluations failed" in section
-    assert "except 5, 6, 11,\n  12 and 35" in section
+    assert len(failed) == 30 and passed == [5, 6, 11, 12, 35, 36]
+    assert "Thirty of 36 evaluations failed" in section
+    assert "except 5, 6, 11,\n  12, 35 and 36" in section
     collapsed = [run["run"] for run in RUNS["runs"] if run["state"] == "collapsed"]
     assert collapsed == ["r1-clearance", "r7-relswing"]
     assert sum(run["state"] == "budget_exhausted" for run in RUNS["runs"]) == 8
