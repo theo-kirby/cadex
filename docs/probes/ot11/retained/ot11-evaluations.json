@@ -878,6 +878,29 @@
     "tipped": 1
    },
    "film": "ready"
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "35122157a90f-de546ddd91e1",
+   "written_at": 1790862358.3988597,
+   "label": "ot11 walk contract",
+   "weights": "walk_r19.cxpolicy",
+   "policy_sha256": "de546ddd91e184e6a2c424b143c548876f5d59cbcb8a2be2c26992b0f7afb3af",
+   "trained_by": "r19-contact-sync final",
+   "run_started_at": 1790859991.1949656,
+   "accepted_revision": "35122157a90f84e5b81ab9c016c67ce8583b703b86620ed97dee78c915e40442",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 9,
+   "failed": 1,
+   "void": 0,
+   "failing_predicates": {
+    "W9": 1
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready"
   }
  ],
  "judges": [
