@@ -100,7 +100,8 @@ operator, including you, reads first.
   so it is the only machine where a run can train a policy and check the result.
   Work in `~/cadex` there, in a tmux session of its own. nt1 to nt3 ran on the
   Mac (`mmini`) and could not train.
-- **Naming:** `ot<n>` -- Ouroboros Test. Runs are no longer nights: one may start
+- **Naming:** `orun<n>`, from orun1 (2026-10-02). ot1 to ot11 were `ot<n>`,
+  Ouroboros Test; nt1 to nt3 before them. Runs are not nights: one may start
   in the afternoon and go for two days, so never name one for a time of day.
 - **Harnesses:** ot9 uses `claude-opus-5-5` for every Ouroboros role and
   product-agent call, with no fallback. See `.ouroboros/config.yml`. Verify

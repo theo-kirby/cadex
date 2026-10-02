@@ -1,198 +1,200 @@
-# Goal: a training and evaluation loop that works for any behaviour
+# Goal: robots that look engineered, judged the way the owner judges them
 
-Verified against source: 2026-09-29. Operator charter for ot11, following
-ot10 (`docs/probes/ot10/REPORT.md`) and ot9 (`docs/probes/ot9/REPORT.md`).
+Verified against source: 2026-10-02. Operator charter for orun1, following
+ot11 (`.ouroboros/history/ot11.md`) and ot10 (`docs/probes/ot10/REPORT.md`).
 The human owns this file; unattended roles never edit it.
 
 ## Mission
 
-Cadex can design a robot, see it, present it and train a policy on it. What
-it cannot do yet is tell a good behaviour from a bad one, or improve a
-policy on purpose.
+ot10 gave Cadex robots a finish: a light shell, round joints, one accent,
+a studio render on the dark floor. The owner's verdict is that they now
+*look finished* but are not well *designed*. The quadruped is a rounded
+box with four legs, its motor pods look stuck on, and most hexapods look
+bad. Servos, boards, sensors and feet are handled as things to hide or
+bolt on, not as the design.
 
-ot10's quadruped passed the gait check (`walked = true`) and shuffled.
-ot9's Robin balanced and wandered. In both cases the reward and the check
-said yes, and the owner's eye said no.
+Before this run the operator measured what the owner wants instead of
+writing more rules (`docs/probes/orun1/README.md`). 55 designs (7 robot
+types × 8 design theses) were rated blind by the owner. The short version:
+- the three Nos are all the same archetype: a soft rounded box with a
+  visor face and dot eyes, over stubby limbs;
+- a face costs points (47 designs had one, mean 1.43 of 3; the 8 without,
+  2.00);
+- the Loves read as **engineered machines**: visible structure, real
+  actuators and electronics laid out with order, fasteners and panels as
+  detail, no mascot face;
+- "clean exposed mechanism" is the strongest thesis (2.14), "creature" and
+  "the agent's own choice" the weakest;
+- hexapods are the weakest type (1.14).
 
-Build a **task-agnostic training and evaluation pipeline**, and a loop in
-which the product agent:
-- designs a task: its reward, its observations, its terminations, and a
-  success spec that is separate from the reward;
-- trains a policy under a bounded budget;
-- evaluates the policy against that spec on frozen seeds;
-- watches the result, diagnoses it from measurements, then redesigns and
-  retrains.
-
-Prove the pipeline on three different behaviours, on three different
-mechanisms:
-- **walking with real steps**, on a quadruped;
-- **reaching**, on an arm, to targets placed at random;
-- **balancing in place**, on a balancer, including recovery from a shove.
-
-Nothing in the pipeline may be walking-specific. Closing a hand or moving
-an arm must go through the same path.
+`docs/DESIGN-LANGUAGE.md` currently prescribes the losing archetype ("one
+soft body primitive with a face"; hardware is "never an exposed case or a
+bare board"). This run replaces the design language from the evidence, makes
+the product design from the inside out with real parts, and proves the
+result with a judge that agrees with the owner on designs it never saw.
 
 Priority, in order:
-1. The evaluation is trustworthy (P1, P2).
-2. The loop exists (P3, P4).
-3. The three behaviours pass (R1–R3).
+1. A judge the owner would trust (D1).
+2. The design language and the product changed (D2, D3, F1).
+3. New designs that clear the bar from plain prompts (D4).
 
-Keep the 72-hour ceiling and two-accepted-done stop. Every Ouroboros role and
-headless product-agent call uses `claude-opus-5-5`, with no model fallback.
+This run trains no policy. Keep the 72-hour ceiling and the
+two-accepted-done stop. Every Ouroboros role and headless product-agent
+call uses `claude-opus-5-5`, with no model fallback.
+
+## Owner-revisable assumptions
+
+The owner rated without notes and has not yet confirmed three readings.
+Until this section changes, the run works to these:
+- **A1. Both the face and the soft pillow-box body are out**, not only the
+  face. A focal sensor (camera, range sensor, a sensor slot) may sit where
+  a face was, as a real part.
+- **A2. One family, two finishes.** "Engineered" covers both an exposed,
+  ordered mechanism (the balancer and biped Loves) and an enclosed but
+  panelled hard-surface body (the quadruped Love). The product agent picks
+  per robot and says why; a soft one-piece consumer shell is no longer the
+  default.
+- **A3. Accent stays small and functional:** horn caps, a cradle, feet,
+  a cable, a status light. Not stripes, not decoration.
 
 ## Done criteria
 
 Each criterion needs a causally parented record with measured evidence.
 The human owns the checkboxes; roles report results and do not tick them.
 
-- [ ] **P1. Each behaviour has a frozen evaluation contract, and it catches
-  the known failures.**
-  - `docs/probes/ot11/README.md` freezes the following for walk, reach and
-    balance, before any ot11 training run:
-    - **a success spec:** measurable predicates on a rollout trace,
-      independent of the reward;
-    - **ten or more evaluation seeds**, with the reset variation and
-      disturbances;
-    - **a pass rule:** every seed must pass, unless the spec states a
-      per-seed rate with its reason;
-    - **a blind video judge:** a fresh model call that sees the frozen
-      rubric, the task's one-paragraph intent and filmstrip frames of the
-      rollout on the dark prototype floor, and nothing else;
-    - **the judge's pass bar.**
-  - **Known negatives are measured before anything new is trained:**
-    - ot10's `w2-2` shuffle must fail the walk spec, and must fail it for
-      the right reason (stepping, foot clearance or slip), not by accident.
-    - ot9's Robin policy is measured against the balance spec. If it
-      wanders, the spec must say so.
-  - Changing a frozen item later is a recorded decision that re-evaluates
-    every earlier policy.
-  - **The spec and the judge each have a job (owner, 2026-09-30).**
-    - Where the success spec measures a property (slip, stepping, foot
-      clearance, drift, heading, reach error), the spec is authoritative
-      for it.
-    - A judge blind spot on a measured property, such as the still-frame
-      judge not seeing w2-2's slip (ADR-460, ADR-461), is recorded in the
-      contract as a known limit. It does not block P1, and it does not call
-      for more judge probes.
-    - The judge's job is what the spec cannot measure: whether the
-      behaviour reads as the intended one at all, and gross failures such
-      as falling, flailing or the wrong motion.
-    - The judge's bar still applies to R1–R3. Where the judge contradicts a
-      measured predicate, the predicate wins, and the disagreement is
-      recorded.
-- [ ] **P2. The product evaluates any policy against its task's spec.**
-  - The success spec is declared in xscript alongside the task, and is
-    documented in `docs/XSCRIPT.md`.
-  - One command evaluates an accepted policy on its frozen seeds. It writes
-    a report into the project with:
-    - pass or fail per seed and per predicate;
-    - the reward decomposed term by term;
-    - termination causes;
-    - behaviour metrics;
-    - the video and a filmstrip, on the dark floor.
-  - The behaviour metrics include at least:
-    - **gait:** step count, foot clearance, foot slip, duty factor and
-      commanded-velocity tracking;
-    - **reach:** final error, time to target and overshoot;
-    - **balance:** tilt, drift from the start position, heading and the
-      time to recover from a shove.
-  - The review dashboard shows the report. Tests pin every metric on
-    fixtures that pass and fail, and the w2-2 shuffle is one of the failing
-    fixtures.
-- [ ] **P3. A task can say where to go.**
-  - A task can sample a goal per episode (and optionally change it during
-    the episode), such as a reach target or a commanded velocity. The
-    policy observes the goal, the reward and the spec can name it, and it
-    is recorded in the trace.
-  - The trainer and the engine's rollout agree on it exactly, and a test
-    fails if they drift apart.
-  - Training stays offboard: nothing in the engine imports JAX or MJX.
-- [ ] **P4. The product agent runs the loop, and it is the same loop for
-  every behaviour.**
-  - Through the ordinary product path, the agent can:
-    - author or revise a task, its reward and its spec;
-    - start bounded training;
-    - read the progress, the evaluation report and the filmstrip;
-    - decide the next revision.
-  - This run chooses the architecture and records it in an ADR. Whatever
-    it is, the loop takes no walking-specific branch. `cadex walk` becomes
-    one use of it, or is retired in its favour, and the ADR says which.
-  - The transcripts must show, for at least one behaviour, three or more
-    rounds of design, train, evaluate and revise. Each revision must be
-    motivated by a measurement from the previous evaluation, and the next
-    evaluation must show whether it helped.
-- [ ] **R1. A quadruped walks with real steps.**
-  - The final pre-registered confirmation evaluation passes the frozen walk
-    spec on every evaluation seed, and meets the video judge's bar.
-  - The policy is installed, verified and reopened through the supported
-    path, on an accepted design. That design may be one of ot10's, copied
-    into a new `ot11-*` project.
-  - Every earlier training run and evaluation is published, including the
-    failures.
-  - **Feet in the floor are a physics defect, not a design choice (owner,
-    2026-10-01).**
-    - Stepping feet that sink 7–15 mm into the floor on 7.5 mm feet (round
-      11, W10) are a defect in the exported contact physics: contact
-      stiffness, damping, timestep or solver settings in the product's
-      MJCF.
-    - The actor diagnoses and fixes it in the product, with a regression
-      test that fails before the fix and a before/after measurement of
-      penetration under a stepping load. It is also checked against the
-      engine and the trainer, so the two still agree.
-    - A contact `margin`, `gap` or any other setting that holds geometry
-      off the floor, or that moves the measured foot surface, does not
-      count as passing W10. That holds whoever authors it.
-    - A policy evaluated on a model that uses one is void for R1, and is
-      reported as void.
-    - W10's threshold stays frozen.
-- [ ] **R2. An arm reaches targets placed at random.**
-  - Under a goal-sampling task (P3), the final pre-registered confirmation
-    evaluation meets the frozen reach spec on every seed, and meets the
-    judge's bar.
-  - The spec covers tolerance, time and overshoot, over targets the policy
-    never trained on.
-  - The mechanism may be an earlier arm (Heron, ot6–ot8) or a new one
-    designed by the product agent.
-- [ ] **R3. A balancer balances in place and recovers from a shove.**
-  - The final pre-registered confirmation evaluation passes the frozen
-    balance spec on every seed: upright, within position and heading
-    bounds, and recovering from the declared shoves.
-  - The judge's bar is met.
-  - Robin (ot8/ot9) or a new balancer is copied into an `ot11-*` project.
-    Robin's baseline policy is the ot9 one, and it stays read-only.
+- [ ] **F1. A project that was accepted always reopens.**
+  - Three sweep projects (`digestbug-balancer-b-motors-in-body`,
+    `digestbug-balancer-d-product-shell`, `digestbug-hexapod-h-free`, in the
+    projects directory beside the sweep ones) refuse to open with "The
+    restore pass digest does not match the accepted digest." Rebuilding an
+    accepted script gives a different digest from the one accepted.
+  - Diagnose the cause, fix it in the product, and add a regression test
+    that fails before the fix. Two of the three had been resumed after an
+    interrupted turn; whether that matters is part of the diagnosis.
+  - After the fix, all three open and render at their accepted revision,
+    or the report says exactly why one cannot and what the product now does
+    instead of refusing.
+  - Work on copies named `orun1-*`; the originals stay read-only.
+- [ ] **D1. A frozen judge agrees with the owner on designs it never saw.**
+  - `docs/probes/orun1/ratings.json` is the owner's ground truth and is
+    never edited. Its `dev` designs are for building the judge; its
+    `heldout` designs are for measuring it.
+  - Before any held-out measurement, `docs/probes/orun1/README.md` (below
+    the marker) freezes a **judge version**: model (`claude-opus-5-5`),
+    prompt, inputs, the comparison form (pairwise, ranking or rubric: the
+    run decides), the number of calls and how they are aggregated.
+  - **Inputs are images only**, rendered by the product from the design's
+    project at its accepted revision on the dark prototype floor: the hero
+    and any `look` views the version names. The judge never sees a thesis,
+    the agent's notes, a project or file name, the owner's verdicts or
+    another design's verdict.
+  - **The bar, on the held-out set:**
+    - pairwise order agreement of **80% or more** over every held-out pair
+      whose owner verdicts differ by two levels or more (Love against Meh or
+      No, Like against No);
+    - every held-out Love ranked above every held-out No;
+    - Kendall's tau over all held-out pairs, reported with its pair count.
+  - **Each judge version is measured on the held-out set once.** A new
+    version needs a recorded change motivated by dev results, never by
+    held-out ones. Every version and every held-out measurement is published,
+    including the failures.
+  - **Baseline:** ot10's frozen judge (rubric T1–T7,
+    `docs/probes/ot10/README.md`) is measured on the same held-out pairs
+    with the same metric, and reported beside the new one.
+  - The judge's prompt never reaches the product agent.
+- [ ] **D2. The design language says what the owner rated, and the product
+  teaches it.**
+  - `docs/DESIGN-LANGUAGE.md` is rewritten, and the overlay the product
+    agent reads (`Mod/cadex/CadexAgentGuidance.md`) with it, on A1–A3 and the
+    ratings.
+    - Every rule cites its evidence: sweep design ids and their verdicts, or
+      the owner's words in this charter. A rule with no evidence is either
+      removed or marked as the operator's or the run's own judgement.
+    - The rules the ratings contradict go: the mandated face, the
+      single soft body primitive, "never an exposed case or a bare board",
+      "split lines are the only surface detail". Each removal is an ADR.
+  - **Inside out is the procedure, not a hint:** choose the actuators,
+    controller, power, battery, sensors and the cable path; place them; then
+    design the structure that carries them, and only then any panels or
+    covers. Feet, sensors, fasteners and cable runs are designed parts, not
+    leftovers.
+  - Neither the guidance nor any product prompt quotes the owner's ratings,
+    shows a sweep render, or contains the judge's prompt. The agent learns
+    the direction only as written rules.
+  - The ot10 rubric is retired or rewritten, and an ADR says which. D1's
+    frozen judge is this run's authority.
+- [ ] **D3. The product can design with the parts these robots need, and
+  can tell when a part is not held.**
+  - The catalog gains, with a datasheet source, true dimensions, mounting
+    features and a bay, as the existing servos and boards have:
+    - a serial bus servo of the STS3215 class;
+    - a single-board computer larger than the Pi Zero (a Pi 4 or 5 class
+      board or a compute module carrier);
+    - a camera module and a range sensor (time-of-flight class);
+    - a wheel and tyre set and a rubber foot pad;
+    - anything else the D4 transcripts show the agent reaching for and not
+      finding, with the transcript cited.
+  - **A mounting check.** The product reports, for every purchased part,
+    which printed part holds it and by what (screws, a bay, a clip, a
+    horn). A part held by nothing, or held only by being inside a shell, is
+    reported. The product agent sees this report in every build reply.
+    Tests pin it on a fixture that passes and one that fails.
+- [ ] **D4. Plain prompts produce designs that clear the owner's bar.**
+  - **Plain prompts, frozen before generation** in the README: one per type
+    (quadruped, hexapod, biped, 5-axis arm, 3-axis arm, two-wheeled
+    balancer, and one wildcard of the agent's choosing). Each names the
+    type, its joint count, "design only" and nothing about style. The style
+    must come from the product's guidance, not the prompt.
+  - Each design is a fresh `orun1-*` project at the final product
+    revision. It is accepted, its static and swept fit pass, its purchased
+    parts are all from the catalog, and every one of them passes D3's
+    mounting check.
+  - **The bar, judged by D1's frozen version** that met the held-out bar:
+    - each new design wins the majority of its pairwise comparisons against
+      the sweep designs of the same type that the owner rated Like or Love;
+    - the new hexapod is held to the same bar, with no exemption.
+  - **Confirmation, not fishing.** One pre-registered confirmation turn per
+    type at the final revision counts. Every earlier attempt is published.
+    A second confirmation of a type needs a recorded product change between
+    the two.
+  - The final set (hero, concept sheet and the judge's result for each)
+    is committed under `docs/probes/orun1/final/` for the owner to review.
 - [ ] **C1. Regressions and a closing report are complete.**
   - Both full suites pass at the final revision, plus the packaged
     lifecycle gate for any engine or payload change.
-  - `docs/probes/ot11/REPORT.md` lists every training run with its settings,
-    its budget and the GPU time spent, and every evaluation and judge score.
-    It also covers every revision the agent made and why, every failure,
-    and the remaining defects.
+  - `docs/probes/orun1/REPORT.md` covers:
+    - F1's cause and fix;
+    - every judge version and its held-out result beside the ot10
+      baseline;
+    - the design language diff, rule by rule, with its evidence;
+    - the catalog additions;
+    - every D4 attempt, its fit and mounting results and its judge results;
+    - the remaining defects.
   - Reconcile, then claim done for critic review without ticking the owner
     boxes.
 
 ## Horizon ladder
 
 - **short-term:**
-  1. Write P1's contract and measure w2-2 and Robin against it before
-     building anything.
-  2. Declare the success spec in xscript, and add the evaluation command
-     and report with the three metric families (P2).
-  3. Goal sampling in the task, the trainer and the rollout (P3).
-  4. The filmstrip and the frozen video judge, run on the known negatives.
+  1. F1: diagnose and fix the digest bug on copies, with its regression.
+  2. Measure ot10's judge on the held-out set as the baseline before
+     building anything new.
+  3. Build judge versions on the dev set, freeze one, and measure it on the
+     held-out set (D1).
 - **medium-term:**
-  1. Build the loop (P4), with bounded training runs the agent can start,
-     watch and stop.
-  2. Balance first. It is the closest to passing, and it proves the loop
-     end to end.
-  3. Then reach, which proves goal sampling. Then walking, which is the
-     hardest.
-  4. Diagnose every failed evaluation before the next revision. Let the
-     agent revise the mechanism where the measurement points to it.
+  1. Rewrite the design language and the overlay (D2), each rule with its
+     evidence.
+  2. Catalog additions and the mounting check (D3).
+  3. Freeze the plain prompts. Run trial designs and judge them; diagnose
+     each weak one from its renders and the judge's comparisons, then change
+     the product's guidance or tooling, never the prompt.
+  4. Hexapods last and hardest: the worst-rated type, and the one the owner
+     named.
 - **long-term:**
-  1. A fourth behaviour through the same loop with no new code path, such
-     as a gripper closing on a target pose. This is a direction, not a bar.
-  2. Sim-to-real readiness: actuator limits, sensor noise and latency in
-     the task, with results reported against them.
+  1. The D4 confirmation set, and the closing report.
+  2. A presentation pass on the final set: concept sheets that show the
+     inside-out layout (an exploded or cutaway view of where each part sits).
+     This is a direction, not a bar.
   3. Keep every gate green and every doc true. Keep `STATE.md` reconciled.
 
 ## Constraints
@@ -200,59 +202,41 @@ The human owns the checkboxes; roles report results and do not tick them.
 **Standing:**
 - Obey AGENTS.md, the licensing rules and the process boundaries. `cli/` is
   LGPL: copy nothing from `shell/`.
-- Training stays offboard in `training/`, on its own pinned requirements.
-  JAX and MJX never enter the engine or a payload.
+- Training stays offboard in `training/`. JAX and MJX never enter the
+  engine or a payload.
 - Never commit secrets, machine paths, private hostnames, build outputs,
   full transcripts, policy binaries or rollout traces.
 - Do not hand-edit `STATE.md`, `PLAN.md`, `ROADMAP.md` or state nodes.
-- Keep earlier projects read-only (hex, ot5–ot10). Work on copies, each
-  under a new `ot11-*` name.
+- Keep earlier projects read-only (hex, ot5–ot11, every `sweep-*` and
+  `digestbug-*`). Work on copies, each under a new `orun1-*` name.
 
 **This run:**
-- **Only the product agent authors what R1–R3 count:** the tasks, the
-  rewards, the success specs it trains against, and any change to a
-  mechanism.
-  - The actor builds the pipeline, the tools, the metrics, the judge and
-    the prompts.
-  - The actor never hand-tunes a reward, a spec or a policy that a
-    criterion counts.
-  - The frozen P1 contract is the evaluation authority. It is the actor's,
-    written before any training.
-- **The reward never judges itself.** A success spec may not be a threshold
-  on the task's own reward. Evaluation seeds are never training seeds.
-- **Pre-register every training run before it starts:** its settings, its
-  seed, its wall-clock budget and its stop rule.
-  - Keep `--stop-on-collapse` on.
-  - One GPU training job at a time on this machine, unless an ADR shows
-    that two fit.
-  - A run with no budget stated is not started.
-- **Keep product turns and training jobs supervised.**
-  - Keep them inside one iteration, or under a supervisor that outlives
-    the actor's session (ot10's hexapod-9 died with its actor).
-  - A killed job is recorded as an interruption, not an attempt.
-- **Use confirmation evaluations, not "one failure fails forever".**
-  - Each R criterion is judged on its final pre-registered confirmation
-    evaluation at the final revision.
-  - Every earlier attempt is published, but it does not count against the
-    final one.
-  - Never re-run a confirmation to fish for a pass. A second confirmation
-    needs a recorded product change between the two.
-- **Videos and filmstrips use the dark prototype floor** (ADR-444).
-  - Committed images are PNG, 300 KB or less each, under
-    `docs/probes/ot11/`.
-  - Videos live in the projects and are never committed.
-- ot10's A7 (design aesthetics beyond the bar) stays parked. Do not spend
-  this run on robot looks.
+- **The product agent authors every design D4 counts.** The actor builds the
+  guidance, the catalog, the checks, the judge and the tools. It never
+  hand-edits a design, a render or a prompt that a criterion counts.
+- **The owner's ratings are ground truth and are never edited.** The
+  held-out set is never used to choose or tune anything.
+- **No reference image enters the product or the repo.** `reference/` stays
+  local and gitignored. A rule may name a reference file, as ADR-411 did; it
+  may not copy or describe the image into a prompt.
+- **Design turns are supervised.** Keep them inside one iteration, or under
+  a supervisor that outlives the actor's session. A killed turn or a usage
+  limit is an interruption, not an attempt.
+- **Renders and concept sheets use the dark prototype floor** (ADR-444).
+  Committed images are PNG, 300 KB or less each, under
+  `docs/probes/orun1/`.
+- **This run trains nothing.** Designs must still export and pass their fit
+  checks, so a later run can train them.
 - No role starts, stops or restarts the loop or signals its process.
 
 ## Question policy
 
 - Resolve reversible choices autonomously, using the smallest measured step
   towards the highest-ranked open criterion.
-- The evaluation outranks the loop, and the loop outranks the behaviours.
-  A policy that passes an evaluation you do not trust has not passed.
-- When an evaluation and the video judge disagree, record both and diagnose
-  the disagreement before training again.
+- The judge outranks the design language, and the design language outranks
+  the designs. A design that passes a judge you do not trust has not passed.
+- Where A1–A3 and a measurement disagree, record both and follow A1–A3. They
+  are the owner's to change.
 - Code and accepted artifacts outrank docs. Update the docs with the
   behaviour they describe.
 - A harness or usage limit is not an attempt: keep the receipt and wait for
@@ -263,25 +247,23 @@ The human owns the checkboxes; roles report results and do not tick them.
 ## Exhaustion policy
 
 `report_done`.
-- Once P1–P4, R1–R3 and C1 have evidence, write the closing report,
-  reconcile and claim done. Two consecutive critic acceptances stop the run.
+- Once F1, D1–D4 and C1 have evidence, write the closing report, reconcile
+  and claim done. Two consecutive critic acceptances stop the run.
 - Do not claim done while any criterion is unmet unless the 72-hour ceiling
   has arrived. Until then, work the highest-ranked open criterion, then the
   long-term rung.
 - If the ceiling arrives first, report the highest bar reached and every
-  failed run and seed. Do not redefine success.
+  failed attempt. Do not redefine success.
 
 ## Quality bar
 
 - Run `pixi run test-engine` and `pixi run python -m pytest cli/tests` at
-  the final revision.
+  the final revision. Run the CLI suite with the GPU hidden.
 - For protocol or payload changes, rebuild and stage, then run the packaged
   lifecycle gate. Report skips and failures as such.
-- Trainer changes are tested from the training venv as well as under pixi,
-  as `training/README.md` describes.
 - A product fix needs a regression test that fails before it.
-- Every behaviour claim cites an evaluation report and its seeds, never a
-  reward curve alone.
+- Every design claim cites its project, its accepted revision and the
+  judge version that scored it.
 - Record each unit with its State Impact. Direction changes, new APIs and
   removals also earn ADR entries.
 

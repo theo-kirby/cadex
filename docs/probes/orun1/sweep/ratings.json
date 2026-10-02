@@ -1,0 +1,1552 @@
+{
+ "schema": "orun1-owner-ratings-v1",
+ "rated": "2026-10-02",
+ "rater": "owner",
+ "scale": {
+  "love": 3,
+  "like": 2,
+  "meh": 1,
+  "no": 0
+ },
+ "procedure": "blind: designs shuffled within category, labelled by category and number only; thesis and notes revealed after the verdict",
+ "model": "claude-opus-5-5",
+ "effort": "medium",
+ "briefs": {
+  "common": "This is a DESIGN-ONLY study: do not declare a training task, policy or rollout. Use real parts from the catalog (servos, boards, battery, fasteners) at their true size, placed where they would really go, and make every printed part printable. Design from the inside out: choose and pack the components first (actuators, controller, IMU, power, battery, wiring path), then shape the structure and shell around them. Present it well: use the shell/mechanism/accent appearance roles and refine with `look` until it is the best-looking version of this idea you can make. When you finish, end your reply with a section headed DESIGN NOTES: the thesis in one sentence, the 3-5 key decisions you made and why, and the one thing you would change next.",
+  "categories": {
+   "quadruped": "Design a quadruped walking robot (two or three servos per leg, your choice).",
+   "hexapod": "Design a hexapod walking robot (two or three servos per leg, your choice).",
+   "arm5": "Design a five-axis desktop robot arm with a gripper (five joints plus the gripper).",
+   "arm3": "Design a three-axis desktop robot arm with a simple end effector.",
+   "biped": "Design a biped walking robot (at least three servos per leg: hip, knee, ankle).",
+   "balancer": "Design a two-wheeled self-balancing robot (gearmotors driving two wheels, IMU, an upright body that must balance).",
+   "wildcard": "Design a small robot with an unusual body plan of your choosing (for example a snake, a wheel-leg hybrid, a desk companion with an expressive head, a crab, a tail-balancing hopper). Pick the body plan that best shows off the design thesis below."
+  },
+  "theses": {
+   "a-servo-joint": "Design thesis: THE SERVO IS THE JOINT. Hobby-kit honesty in the spirit of Petoi Bittle: each servo's horn axis is the pivot, limbs are slim brackets that clip directly to horns, minimal extra structure, nothing bolted on as an afterthought.",
+   "b-motors-in-body": "Design thesis: MOTORS IN THE BODY. In the spirit of Spot and Unitree Go2: cluster actuators in the torso or at the root of each limb so limbs stay slim and light; drive distal joints with linkages, pushrods or belts rather than putting a motor box out on the limb.",
+   "c-exposed-mechanism": "Design thesis: CLEAN EXPOSED MECHANISM. A visible structural frame with servos, boards and wiring laid out with industrial order and symmetry, like a well-made lab or research robot. Nothing hidden, everything deliberate and aligned.",
+   "d-product-shell": "Design thesis: CONSUMER PRODUCT SHELL. One continuous, soft, friendly shell that hides the mechanism, few split lines, generous radii, like Anki Vector or Sony aibo. Mechanism only shows at the joints.",
+   "e-hard-surface": "Design thesis: PANELLED HARD-SURFACE. Chamfered plates, deliberate seams and panel lines, fasteners used as detail, a crisp sci-fi industrial look with clear visual hierarchy.",
+   "f-creature": "Design thesis: CREATURE ANATOMY. Borrow proportions and cues from a real animal: shoulders and haunches, a head or face, tapered limbs, a posture with intent. It should read as alive at a glance.",
+   "g-minimal": "Design thesis: MINIMAL GEOMETRY. Very few primitives, strict proportions and alignment, one accent colour, in the spirit of Dieter Rams and Braun. Every line justified, nothing decorative.",
+   "h-free": "Design thesis: YOUR OWN. Choose the design direction you believe would make the most beautiful, believable version of this robot, state it explicitly, and commit to it fully."
+  }
+ },
+ "designs": [
+  {
+   "id": "arm3-a-servo-joint",
+   "category": "arm3",
+   "thesis": "a-servo-joint",
+   "blind_label": "arm3 3",
+   "owner_verdict": "meh",
+   "image": "arm3-a-servo-joint.png",
+   "components": 25,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x10-socket": 4,
+    "bolt/m2x6-socket": 2,
+    "servo/mg90s": 3,
+    "servo_horn/mg90s-double_arm": 3
+   },
+   "palette": {
+    "accent": "#FF6B1A",
+    "mechanism": "#2A2C30",
+    "shell": "#ECE6DA"
+   },
+   "agent_design_notes": "- **Thesis:** each servo's horn axis is the pivot, and each limb is a single printed part that clips onto a horn, with no extra structure.\n- **Key decisions:**\n  - **Three MG90S servos and a fixed stylus instead of a gripper.** The servos keep the arm slim like a Bittle kit; my estimate of the shoulder load (about 35 N\u00b7mm) is roughly a fifth of stall torque. A gripper would have needed a fourth servo and bracket, which is exactly the structure the thesis avoids.\n  - **Stacked base:** battery at the bottom, then the electronics deck, then the hanging yaw servo. This keeps the 64 g battery low and behind the arm's forward reach, so the footprint is set by the battery.\n  - **Drums instead of boxes:** a housing that follows the servo case just reads as a servo box, so the turret is a D-drum and the elbow housing is a drum on the elbow axis. Each joint then reads as one round form.\n  - **Two tones:** a cream base and turret against graphite moving links, with one orange tip.\n  - **Blends can't hit the servos:** after rounding the edges, the servo's own catalog shape is subtracted from its housing. A blend can then never push into the servo's tab seat, which happened twice before this rule.\n- **Next change:** route the servo leads through a hollow path at the yaw axis and give the cover a battery hatch. Right now the leads have no path into the base, and changing the battery means removing the cover.\n\nDECISION: Three MG90S micro servos (yaw, shoulder, elbow) and a fixed stylus as end effector; no gripper servo, to keep the arm Bittle-slim. Estimated shoulder load ~35 N\u00b7mm against 176\u2013215 N\u00b7mm stall.\nDECISION: Untethered. ESP32 DevKitC drives the three servos directly (no PCA9685), powered by a GEA2S1000 2S LiPo through a Pololu D36V50F6 6 V regulator. BNO085 lies flat on the base deck with X forward, to sense the base being knocked or tilted.\nDECISION: Base stack: floor tray with battery tunnel, electronics deck at z = 18.5, yaw servo hanging by its tabs from bosses under the cover top (case top flush with the cover at z = 48).\nDECISION: Turret is a D-section drum (radius 19) whose lower edge covers the yaw horn. The elbow housing is a drum on the elbow axis with radius equal to the hub. Box housings were rejected because they read as bare servo cases.\nDECISION: Each limb housing is split at the servo tab plane into body plus cap, fastened by M2 screws through the tab holes with counterbored heads. Each servo's catalog body is subtracted from its housing after blending so a blend cannot enter the tab seat.\nDECISION: Palette is cream shell (#ECE6DA) for cover and turret, graphite mechanism (#2A2C30) for floor, visor and links, and orange accent (#FF6B1A) on the stylus tip only.\nDECISION: Joint limits are yaw \u00b190\u00b0, shoulder \u00b160\u00b0, elbow \u221280\u00b0 (up) to +45\u00b0 (down). At +70\u00b0 the elbow hit the shoulder servo and turret, so the limit was narrowed. All three ranges pass the 10\u00b0 sweep.\nNOTE actuators: Yaw, shoulder and elbow are each one MG90S (catalog: 1.8\u20132.2 kg\u00b7cm stall, 176\u2013215 N\u00b7mm; 0.08\u20130.10 s/60\u00b0) with a double-arm horn inside a printed hub of radius 18. All run at 6 V from a D36V50F6 fed by the 2S pack. No dynamics or damping were modelled (design-only study, no training task).\nNOTE sensors: A BNO085 sits flat on the base deck at x 16\u201341, y \u221227 to \u22124, z 21.5, X axis forward (+X, toward the visor). It senses base tilt and knocks only. The servos have no position feedback; joint angles are commanded open-loop.\nNOTE rejected: An 8 mm fillet on both turret drum edges pulled the bottom edge in to an 11 mm radius, exposing the cover opening and thinning the wall at the horn tips to 1.2 mm. Only the crown edge gets the large radius now.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007, ADR-008 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 60fc4d2.",
+   "project": "sweep-arm3-a-servo-joint",
+   "split": "heldout"
+  },
+  {
+   "id": "arm3-b-motors-in-body",
+   "category": "arm3",
+   "thesis": "b-motors-in-body",
+   "blind_label": "arm3 6",
+   "owner_verdict": "like",
+   "image": "arm3-b-motors-in-body.png",
+   "components": 22,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m3x10-socket": 2,
+    "bolt/m3x16-socket": 1,
+    "servo/mg90s": 2,
+    "servo/mg996r": 1,
+    "servo_horn/mg90s-single_arm": 2
+   },
+   "palette": {
+    "accent": "#FF6A2B",
+    "mechanism": "#2A2C30",
+    "shell": "#ECE6DA"
+   },
+   "agent_design_notes": "**Thesis:** Every motor lives in the body: one in the base for yaw, two in the shoulder turret, all on a common shoulder axis. A slim parallelogram pushrod carries the elbow motion out, so the arm itself is just light printed links.\n\n**Key decisions:**\n1. **Coaxial shoulder layout.** Two MG90S servos sit in matching rounded cylinders on either side of a central slot. One drives the upper arm directly; the other drives a 40 mm crank, and the pushrod repeats that crank angle at the elbow. The elbow mass stays at the shoulder, and the forearm's angle doesn't change when the shoulder moves.\n2. **Stacked link planes.** The upper arm, the forearm/crank and the pushrod each sit in their own slice across the arm's width, about 1 mm apart, so the linkage can't collide with itself. The 40 mm crank radius keeps the pushrod at least about 23 mm from the shoulder hubs across the whole range.\n3. **Low, heavy base.** The 2S battery lies flat under the MG996R yaw servo. The ESP32, PCA9685 servo driver and 6 V regulator stand on posts or ribs that touch each board's back face, and the IMU sits on four posts. All of it is under a 2.4 mm shell with 22 mm corner radii that rests on a dark plinth.\n4. **Joints as caps.** Each driven link's hub is an 18 mm disc cut around its servo horn, so the horns read as round hubs and no servo case shows.\n5. **Colour by role.** Bone for the shell and links, graphite for the crank, pushrod, visor and plinth, and orange only on the stylus tip.\n\n**What I'd change next:** Add a second parallelogram to keep the stylus vertical at every pose, and model the pushrod pins as real hinges once the loop can be swept, so motion fit is measured instead of sampled at two corners.\n\nDECISION: Three motors in the body (MG996R yaw in the base, two MG90S coaxial in the shoulder turret); the elbow is driven by a 40 mm crank and parallelogram pushrod rather than a servo on the arm.\nDECISION: The pushrod's two pins are ball joints because all-hinge loops were rejected by the solver as over-constrained. Motion fit was checked by rebuilding at the shoulder_deg/elbow_deg range corners, since the engine's sweep can't run closed loops.\nDECISION: Untethered: 2S 1000 mAh LiPo flat and central under the yaw servo, 6 V Pololu D36V50F6 regulator, ESP32 controller, PCA9685 servo driver, BNO085 IMU on posts in the base.\nDECISION: The end effector is a fixed orange touchscreen stylus at the forearm tip (no fourth actuator); the face is a dark visor set into the base front.\nNOTE actuators: yaw = MG996R (10.8 Nm\u00b7cm-class, ~11 kg\u00b7cm at 6 V, 0.15 s/60\u00b0) in the base, driving the turret neck directly on its spline. Shoulder = MG90S (2.2 kg\u00b7cm at 6.6 V) in the left turret cylinder, horn inside the upper-arm hub. Elbow = MG90S in the right turret cylinder driving a 40 mm crank; a pushrod parallel to the 110 mm upper arm gives the forearm the crank's absolute angle. Range: shoulder 50\u201380\u00b0, forearm \u221235 to \u22125\u00b0. Servo tabs sit on printed seats; the tab screws aren't modelled yet.\nNOTE sensors: BNO085 IMU on 4 posts on top of the base's internal block, X forward (+X, toward the visor). It detects bumps and tilt of the desk unit. No joint encoders: the servos are stock, with no potentiometer read-back.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted d834169.",
+   "project": "sweep-arm3-b-motors-in-body",
+   "split": "dev"
+  },
+  {
+   "id": "arm3-c-exposed-mechanism",
+   "category": "arm3",
+   "thesis": "c-exposed-mechanism",
+   "blind_label": "arm3 5",
+   "owner_verdict": "like",
+   "image": "arm3-c-exposed-mechanism.png",
+   "components": 53,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x6-socket": 11,
+    "bolt/m3x6-socket": 3,
+    "servo/mg90s": 4,
+    "servo_horn/mg90s-single_arm": 4
+   },
+   "palette": {
+    "accent": "#FF6A1A",
+    "mechanism": "#2A2C31",
+    "shell": "#E8E6E1"
+   },
+   "agent_design_notes": "**Thesis:** a lab arm whose structure, servos, boards and wiring are all on show, made orderly by one repeated joint design, mirrored forks and a harness run in lanes.\n\n**Key decisions:**\n1. **Symmetric forks around offset housings.** The idle-plate gap was solved so both plates sit symmetrically about the arm's centre plane even though each servo case hangs to one side. That gives the arm a balanced front view without hiding any servo.\n2. **One joint design everywhere.** Every axis has the same hub, cap and pivot screw, and the next servo's housing is fused into the link, so the arm reads as a single designed system rather than brackets bolted together.\n3. **The electronics layout follows the wiring.** Each board is oriented so its header faces the board it connects to, and the battery moved back to open a cable corridor behind the PCA9685.\n4. **Authored wire routes instead of automatic routing.** The automatic routes crossed at their breakouts and dipped into the boards. Fixed orthogonal routes with one height per wire never collide and look like a wiring loom.\n5. **Two colours plus one accent.** Warm white for printed parts, graphite for bought parts, and orange only on the joint caps and gripper pads, so the eye goes to the joints and the gripper.\n\n**What I'd change next:** route the four servo leads from the PCA9685 up the arm through a cable chain beside the forks. That's the last wiring the thesis promises and doesn't yet deliver.\n\nDECISION: Three-axis arm (yaw, shoulder, elbow) plus a one-servo beak gripper, all on catalog MG90S servos; every joint is a mirrored fork plate pair around a printed servo housing, with an M3 pivot screw on the idle side.\nDECISION: Servo tab screws are left out because the catalog MG90S tabs have no modelled holes; the housings keep M2 pilot holes and seat the flange on printed pads.\nDECISION: The harness uses authored orthogonal waypoints with corner arcs and one height layer per wire, rather than search-routed bundles, which crossed at breakouts and penetrated boards.\nDECISION: Joint limits are absolute travel (elevation 40-115 deg, elbow fold 40-120 deg, yaw \u00b190, gripper 35 deg) re-expressed about the built presentation pose.\nDECISION: The BNO085 sits on the deck with X forward for base tilt and bump sensing; the controller is an ESP32 with a PCA9685 servo driver, powered by a 2S LiPo through a D36V50F6 regulator at 6 V. Design study only: no task, policy or rollout.\nNOTE actuators: Four MG90S servos: yaw (vertical, in the deck pedestal), shoulder (on the turntable), elbow (in the upper arm), gripper (in the forearm). Stall torque 176.5 N\u00b7mm at 4.8 V and 215.7 N\u00b7mm at 6.6 V; 0.08 s/60\u00b0 at 6 V. With upper_len 85 and fore_len 75, the estimated shoulder load is about 0.7 kg\u00b7cm, roughly a 3x margin. No joint_dynamics is declared because there is no task.\nNOTE sensors: BNO085 (Adafruit 4754) on the deck's left wing with X along +X (forward); it reads base orientation and bumps. No joint encoders: the MG90S servos report no position.\nNOTE rejected: part.bundle with search routing failed: conductors crossed at breakouts, wires dipped into boards, and a cable that avoided the full deck plus earlier cables exceeded the 1 MB per-output definition limit. Densifying waypoints along the segments made MakePipeShell fail; quadratic corner arcs of about 3 mm worked.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 7a75610.",
+   "project": "sweep-arm3-c-exposed-mechanism",
+   "split": "dev"
+  },
+  {
+   "id": "arm3-d-product-shell",
+   "category": "arm3",
+   "thesis": "d-product-shell",
+   "blind_label": "arm3 4",
+   "owner_verdict": "like",
+   "image": "arm3-d-product-shell.png",
+   "components": 39,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 6,
+    "bolt/m3x12-socket": 4,
+    "bolt/m3x30-socket": 2,
+    "servo/mg90s": 3,
+    "servo_horn/mg90s-cross": 3
+   },
+   "palette": {
+    "accent": "#FF7A3D",
+    "mechanism": "#2B2D31",
+    "shell": "#ECE8E1"
+   },
+   "agent_design_notes": "- **Thesis:** one soft, friendly shell (dome base, ball head, rounded arm) where the only mechanism you see is the matching orange caps at each joint.\n- **Key decisions:**\n  - All three axes use MG90S servos. The arm load is about 0.04 N\u00b7m against a 0.18\u20130.21 N\u00b7m stall rating, which kept every joint compact enough for one cap design.\n  - Each servo goes into its part from the side with no split, and the cheek disc of the next part covers the opening. So the cheeks hide the cases and become the joint feature.\n  - The battery lies flat on the very bottom, with the boards on a deck above it. That keeps the centre of mass low and the base a single dome.\n  - The face is a graphite visor with orange eyes on the fixed base, so the face doesn't swing away with the arm.\n  - The upper arm is open at the front with a back spine. That turned an elbow that collided at +20\u00b0 into a clean \u00b160\u00b0 range.\n- **What I'd change next:** route the servo leads through a hollow, off-centre slip channel in the yaw hub and declare the harness with `boards`/`nets`. Right now nothing in the design shows how wires pass the rotating joints.\n\nDECISION: Three MG90S micro servos (yaw, shoulder, elbow) with cross horns, chosen over an MG996R shoulder: the arm moment is about 0.04 N\u00b7m against 0.18\u20130.21 N\u00b7m stall, and the catalog only offers horns for the micro family.\nDECISION: Each servo slides into a side-opening `.bay()` pocket in its own part (turret, forearm) and is covered by the 24 mm-radius cheek disc of the next link. The cheeks are the joint caps, with orange accent discs over the horns.\nDECISION: The upper arm is two shell halves split at y=0, joined by two M3x30 through a back spine at x<-11 with an open front. Chosen over a full-width bridge, which collided with the forearm at +20\u00b0 of elbow travel.\nDECISION: Untethered. 2S 1000 mAh battery flat on the chassis plate, D36V50F6 6 V regulator, ESP32 driving the three servos directly (no PCA9685), BNO085 on the deck with X forward.\nDECISION: The face is a graphite visor split from the base dome front (56 x 18 mm) with two orange eyes. It sits on the fixed base rather than the turret.\nDECISION: Joint limits yaw \u00b190, shoulder -30..+60, elbow -60..+60 deg. The sweep found the forearm meeting the turret at +70 deg of elbow.\nNOTE actuators: yaw, shoulder and elbow are each an MG90S (1.8 kg\u00b7cm at 4.8 V / 2.2 kg\u00b7cm at 6.6 V, 0.08 s/60\u00b0 at 6 V), powered at 6 V from a D36V50F6 regulator. Each case is held by two M2x8 screws through its tabs into printed ledges cut to shank diameter (thread-forming). Horns are welded to the driven part: the turret for yaw, the upper_arm_p half for shoulder and elbow. Idle sides run on printed R4 pins in R4.2 bores. No joint_dynamics declared (design-only).\nNOTE sensors: BNO085 (Adafruit 4754) sits on the base deck at x -27.5..-2.1, y -35.4..-12.5, with its X axis along body +X. It is not near the yaw axis. No joint encoders: stock MG90S pots are not tapped.\nNOTE rejected: filleting the turret/forearm after fusing the tab ledges into the bay left 0.011 mm\u00b3 overlaps with the servo; narrowing the ledges to \u00b15.6 then segfaulted the OCC fillet (ChFi3d PerformTwoCorner). The fix was to fillet before cutting the bay, then fuse the ledges. A fillet of 1.0 on the upper arm also crashed; 1.5 works.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted bc2afbb.",
+   "project": "sweep-arm3-d-product-shell",
+   "split": "heldout"
+  },
+  {
+   "id": "arm3-e-hard-surface",
+   "category": "arm3",
+   "thesis": "e-hard-surface",
+   "blind_label": "arm3 1",
+   "owner_verdict": "meh",
+   "image": "arm3-e-hard-surface.png",
+   "components": 36,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x6-socket": 14,
+    "bolt/m3x10-socket": 2,
+    "servo/mg90s": 3,
+    "servo_horn/mg90s-cross": 3
+   },
+   "palette": {
+    "accent": "#FF6A1A",
+    "mechanism": "#2A2D32",
+    "shell": "#E4E0D6"
+   },
+   "agent_design_notes": "**Thesis:** A crisp panelled desk arm, with a bone-coloured shell for the structure, graphite for the parts that move or hold hardware, and orange only where it touches the world (the light bar and the tool tip).\n\n**Key decisions:**\n1. **Packed from the inside out.** The battery sits low at the rear as a counterweight to the reach, the boards fill the side bays, and the yaw servo sits under the turntable. The base is just big enough to hold them.\n2. **Colour by role.** The shell and links are bone, the turret, servo pods and sleeve are graphite, and orange is limited to two small features.\n3. **Panel language from real seams.** The base's transverse and waist seams, the turntable ring, the hub seam ring and the screwed back covers are all real part boundaries or fastener features, not decoration.\n4. **One joint cap everywhere.** Every joint has the same 14 mm cap, so each axis reads as a single repeated feature.\n5. **Chamfers instead of fillets.** Chamfers give the hard-surface look and still meet the sharp-edge bar.\n\n**What I'd change next:** Run cable channels from the turret down through the yaw axis into the base. Then add a wired harness with `nets` so the wiring path is designed rather than assumed.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 56010c5.",
+   "project": "sweep-arm3-e-hard-surface",
+   "split": "dev"
+  },
+  {
+   "id": "arm3-f-creature",
+   "category": "arm3",
+   "thesis": "f-creature",
+   "blind_label": "arm3 2",
+   "owner_verdict": "meh",
+   "image": "arm3-f-creature.png",
+   "components": 27,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x6-socket": 6,
+    "servo/mg90s": 3,
+    "servo_horn/mg90s-single_arm": 3
+   },
+   "palette": {
+    "accent": "#E86A2A",
+    "mechanism": "#2A2C30",
+    "shell": "#E8E2D4"
+   },
+   "agent_design_notes": "**\n\nThesis: a desktop arm that reads as a seated heron \u2014 haunches, chest, a long neck and a beaked face \u2014 with its three servos hidden inside the body and the joints shown as round ear-like caps.\n\nKey decisions:\n1. **All three axes use the MG90S.** It is the only servo family with catalog horns. Its 216 N\u00b7mm stall torque is about five times the roughly 44 N\u00b7mm the shoulder needs to hold the neck and head out horizontally.\n2. **The neck straddles the body and the head on both sides.** The bones and discs pass outside the body and head, so each servo sits on the centre line, both sides of every joint look the same, and the discs hide the servos' insertion windows.\n3. **The face is the front of the head, split off as a graphite part.** It spans the whole front of the head (about 31 \u00d7 26 mm), carries the orange eyes and the beak, and gives one strong focal point.\n4. **All the heavy parts live in the grounded base.** The battery, controller and regulator sit low in the base, so the moving parts are light and the battery steadies the arm.\n5. **The head is a rounded block, not a loft.** My lofted head broke when the servo pocket was cut from it, so I replaced it.\n\nNext change: shell the solid neck bones and body (2 mm walls) and add a printed thrust ring under the yaw joint, to cut mass and take the load off the yaw servo.\n\nDECISION: Desktop arm \"Heron\": grounded graphite stand, bone-coloured body/neck/head shell, graphite face and beak, orange accent caps and eyes (three materials).\nDECISION: All three axes are MG90S. Shoulder and elbow sit on the centre line, and two-sided neck bones straddle the body and head with horn hubs on +Y and idler pins on \u2212Y.\nDECISION: Untethered: the 2S battery, the D36V50F6 6 V regulator and the ESP32 sit in the grounded base. No PCA9685, because the ESP32 drives three servos directly. No IMU, because the base is fixed to the desk and no orientation sensing is needed.\nDECISION: Design-only study: no task, policy or rollout declared.\nDECISION: Servos are screwed through their own tabs with M2\u00d76 screws. Screws are welded to the servo; the host carries a 2.1 mm pilot (declared 0.04 mm gap) plus a \u00d84.4 driver-access counterbore hidden under the cheek discs or the body.\nNOTE actuators: yaw, shoulder and elbow are MG90S running at 6 V from the D36V50F6. Assumed stall torque 216 N\u00b7mm at 6.6 V (177 N\u00b7mm at 4.8 V) and speed 0.08 s/60\u00b0 at 6 V. Estimated shoulder holding load \u224844 N\u00b7mm with the neck horizontal. Ranges: yaw \u00b190\u00b0, shoulder \u221250\u2026+45\u00b0 about a 65\u00b0 rest elevation, elbow \u00b145\u00b0. No dynamics or damping is declared, because this is design-only.\nNOTE sensors: none declared. The arm is grounded, so there is no IMU. Joint encoders would need the servo potentiometers tapped out, which is not done here.\nNOTE rejected: a superellipse loft for the head broke when the servo pocket was cut from it, and the fit check counted the whole elbow horn inside the head. I replaced it with a filleted box split into head and face. A sphere fused onto the tail tip did not blend and read as a knob; tapering the haunch loft to a 1.2 mm end ring works instead.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 6c320ef.",
+   "project": "sweep-arm3-f-creature",
+   "split": "dev"
+  },
+  {
+   "id": "arm3-g-minimal",
+   "category": "arm3",
+   "thesis": "g-minimal",
+   "blind_label": "arm3 7",
+   "owner_verdict": "meh",
+   "image": "arm3-g-minimal.png",
+   "components": 30,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 6,
+    "bolt/m3x10-countersunk": 3,
+    "servo/mg90s": 3,
+    "servo_horn/mg90s-cross": 3
+   },
+   "palette": {
+    "accent": "#F05A16",
+    "mechanism": "#2A2A2B",
+    "shell": "#ECEAE4"
+   },
+   "agent_design_notes": "**Thesis:** a drum, a block and two equal bars, with one dark disc on every axis and one orange point where the arm touches the work.\n**Key decisions:**\n1. **Inside out.** The battery lies flat at the bottom of the drum, and each servo hangs from the face of the part that carries it. The shells then followed from the layout rather than being drawn first.\n2. **One joint vocabulary.** Every hub has the same radius and carries the same dark disc. The disc also covers the horn\u2011screw access hole, so it has a job and isn't decoration. The elbow gets a matching disc on its back face so both sides read alike.\n3. **Strict alignment.** The forearm's inner face lies in the same plane as the turret flat. The turret top sits 3 mm above the shoulder hub. The home pose is a right angle: upper arm vertical, forearm horizontal.\n4. **Taper only where the load does.** The upper arm keeps a constant section because it has to carry the elbow servo. The forearm tapers in plan (46 mm to 18 mm) and in depth (19.8 mm to 12 mm) down to the stylus.\n5. **Three materials, roles by colour.** Warm white for shells, graphite for caps, plinth and stylus, and Braun orange on the 7 mm tip only.\n\n**Next change:** I would move the arm's plane closer to the yaw axis, for example with a narrower turret or the shoulder servo turned edge\u2011on. That would end the side\u2011by\u2011side offset that makes the top view asymmetric.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted faa4814.",
+   "project": "sweep-arm3-g-minimal",
+   "split": "dev"
+  },
+  {
+   "id": "arm3-h-free",
+   "category": "arm3",
+   "thesis": "h-free",
+   "blind_label": "arm3 8",
+   "owner_verdict": "meh",
+   "image": "arm3-h-free.png",
+   "components": 28,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 6,
+    "servo/mg90s": 3,
+    "servo_horn/mg90s-single_arm": 3
+   },
+   "palette": {
+    "accent": "#E0572A",
+    "mechanism": "#2B2E33",
+    "shell": "#E8E2D6"
+   },
+   "agent_design_notes": "**Thesis:** a calm desk companion, half lamp and half heron: a heavy pebble base holds all the weight, and the arm on top is light, symmetric and tapers to one bright point.\n\n**Key decisions:**\n1. **Battery directly under the yaw servo.** The heaviest part sits low and central, which steadies a long arm. The cost is a taller base (49 mm), so the dome became the main shape rather than something to hide.\n2. **Nested, symmetric yokes instead of links hanging off one side.** Each driven link has two cheeks that straddle the part it hinges on. One cheek carries the servo horn; the other turns on a printed pin. The arm is mirror-symmetric, every joint looks the same from both sides, and a single cap design (an 18.5 mm lobe with a 12 mm orange disc) serves every joint.\n3. **Link shapes are a side profile intersected with a top profile, both smooth curves.** This tapers each link in width and depth at once. Switching the outlines to smooth curves removed the creases the first straight-line version left.\n4. **Three MG90S servos rather than larger MG996Rs.** The arm is light enough for them, all three share one housing and cap size, and only the micro servo has a horn in the catalog.\n5. **Colour follows role.** Bone for the shells, graphite for the turret and plinth, and orange only on the joint caps, the eye and the nib.\n\n**Next change:** split the upper arm and forearm along their centre plane so the servos can actually be fitted and screwed in. The design note asks for limbs split where the servo goes in; these are still single solids. The split would also let me hollow the links to a 2 mm wall, which takes load off the shoulder servo.\n\nDECISION: Three MG90S servos (yaw, shoulder, elbow) chosen over MG996R for one shared housing/cap size and catalog horns; the light printed arm stays well inside the 215 N\u00b7mm stall torque.\nDECISION: Battery placed flat and central under the yaw servo, with a bottom hatch; ESP32 at the front, BNO085 on the +Y side with X forward, D36V50F6 regulator at the rear, all in printed bays cut with .bay().\nDECISION: Upper arm and forearm are mirror-symmetric yokes: the horn is on the +Y cheek, a printed \u00d88 pin turns in a \u00d88.3 bore on the \u2212Y cheek, and the horn screw holds the yoke from sliding sideways.\nDECISION: Joint limits yaw \u00b190\u00b0, shoulder \u221235/+40\u00b0, elbow \u221260/+15\u00b0, set from the exact-solid sweep (the elbow fold hits the upper arm past about +20\u00b0).\nDECISION: Palette is shell #E8E2D6, mechanism #2B2E33, accent #E0572A (joint discs, turret eye, stylus nib).\nNOTE actuators: yaw, shoulder and elbow are each an MG90S (13.4 g, 176\u2013216 N\u00b7mm stall, 0.08\u20130.10 s/60\u00b0) running at 6 V from the D36V50F6. Tabs rest on printed ledges and are fixed with 2\u00d7 M2\u00d78 screws in \u00d82.0 pilot holes. Single-arm horns are buried in the link hubs. No actuator dynamics declared (design-only).\nNOTE sensors: one BNO085 (Adafruit 4754) on 4 printed posts in the base, +Y side, X axis along the forward +X, for detecting knocks and tilt of the base. No joint encoders; the servos are stock.\nNOTE rejected: filleting every dome edge lifted the dome rim 0.11 mm off the plinth (the weld no longer touched), and fusing a restoring band failed in OCC. The dome hole edges are left sharp until they can be picked out for a fillet (they are BSpline edges, not circles).\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted fd96a2c.",
+   "project": "sweep-arm3-h-free",
+   "split": "heldout"
+  },
+  {
+   "id": "arm5-a-servo-joint",
+   "category": "arm5",
+   "thesis": "a-servo-joint",
+   "blind_label": "arm5 5",
+   "owner_verdict": "like",
+   "image": "arm5-a-servo-joint.png",
+   "components": 45,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 12,
+    "servo/mg90s": 6,
+    "servo_horn/mg90s-cross": 6
+   },
+   "palette": {
+    "accent": "#F26B1D",
+    "mechanism": "#2B2D31",
+    "shell": "#ECE6DA"
+   },
+   "agent_design_notes": "- **Thesis:** the servo is the joint \u2014 each MG90S lives inside the link it carries, and the next link is a slim bracket whose round cap clips straight onto that servo's horn.\n- **Brackets on alternating sides:** this keeps each joint single-sided like a kit, and puts neighbouring links in separate planes so every joint clears its whole range. Ranges: yaw \u00b190\u00b0, shoulder \u00b180\u00b0, elbow \u00b1100\u00b0, wrist pitch \u00b190\u00b0, wrist roll \u00b190\u00b0, gripper \u22126\u00b0 to 30\u00b0.\n- **Battery and boards in the base:** the 64 g battery sits at the bottom, boards stand on the deck around the yaw servo, and the IMU lies flat at the front. Keeping the heaviest parts in the base gives a slim arm and a steady footprint.\n- **MG90S at every joint:** one part number, real torque limits, and true to the Bittle spirit. The cost is the thin shoulder margin above.\n- **Colours by role:** bone white for printed forms, graphite for the visor, hubs and base foot ring, and orange only on the finger pads.\n\nDECISION: All six axes use catalog MG90S micro servos with cross horns. Each servo sits in a pod cut from its own bay with fused tab pads and two M2\u00d78 screws, and each child link's cap clips over the parent servo's horn.\nDECISION: Pitch brackets alternate between +Y and \u2212Y (shoulder +Y, elbow \u2212Y, wrist +Y, gripper +Y) so links pass in separate planes; the measured sweep passes at 10\u00b0 steps.\nDECISION: The machine runs untethered from a 2S LiPo in a tunnel at the bottom of the base, through a 6 V regulator. The ESP32, PCA9685, regulator and BNO085 IMU (X forward) sit on the deck around the yaw servo cradle.\nDECISION: This is a design-only study, so no task, policy or rollout is declared and no servo potentiometer is tapped for joint sensing.\nNOTE actuators: J1 base yaw, J2 shoulder, J3 elbow, J4 wrist pitch, J5 wrist roll and J6 gripper are all MG90S: stall torque 176.5 N\u00b7mm at 4.8 V and 215.7 N\u00b7mm at 6.6 V, 0.08 s/60\u00b0 at 6 V, powered at 6 V from the D36V50F6. I estimate about 1.3 kg\u00b7cm static load on the shoulder at full horizontal reach (my estimate, not measured), so the shoulder is the weak joint. No joint_dynamics are declared yet.\nNOTE sensors: The BNO085 lies flat on the base deck at x 18\u201343 mm with its X axis along world +X (the front). On an arm with a fixed base it would mainly sense base tilt and knocks. Stock servos report no joint angle back.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted cf74d73.",
+   "project": "sweep-arm5-a-servo-joint",
+   "split": "dev"
+  },
+  {
+   "id": "arm5-b-motors-in-body",
+   "category": "arm5",
+   "thesis": "b-motors-in-body",
+   "blind_label": "arm5 6",
+   "owner_verdict": "meh",
+   "image": "arm5-b-motors-in-body.png",
+   "components": 35,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m4x10-socket": 4,
+    "servo/mg90s": 3,
+    "servo/mg996r": 3
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "mechanism": "#2B2D31",
+    "shell": "#E9E6DF"
+   },
+   "agent_design_notes": "**Thesis:** the heavy actuators live in the base and turret, and belts carry the motion out along the arm, so the limbs stay slim, light hollow beams.\n- **Shoulder and elbow servos face each other in the turret pods.** The elbow is belt-driven from the shoulder axis, so the upper arm carries no motor and the turret is the arm's body.\n- **The wrist-pitch servo sits at the root of the forearm, not at the wrist.** Its weight stays close to the elbow and it drives the wrist through a belt inside the forearm.\n- **Only the two micro servos ride in the hand.** Wrist roll and grip need a motor out there, and at 13 g each, MG90S servos are as light as the catalog offers.\n- **The battery is flat and central under the base servo, with the boards around it in the base.** This keeps the heaviest part low, the turret free to rotate, and the wiring short.\n- **All joints share one design:** the same orange cap marks every axis, and the elbow can only lift from its home position (\u221275\u00b0 to +10\u00b0). The motion check showed that bending it down by 15\u00b0 or more drove the forearm into the upper arm.\n\n**Next change:** reshape the wrist and hand into one tapered, rounded form with real curved fingers. At the same time, bolt every servo through its mounting tabs and split the pods and housings so the parts can actually be assembled.\n\nDECISION: Motors in the body: base rotation, shoulder and elbow are MG996R servos in the base and turret, and the elbow is driven by a belt inside the upper arm from a pulley on the shoulder axis.\nDECISION: The wrist-pitch MG90S sits at the root of the forearm and drives the wrist by a belt; only the wrist-roll and gripper MG90S servos ride in the hand.\nDECISION: The 2S LiPo lies flat and central under the base-rotation servo; the ESP32, PCA9685, D36V50F6 regulator and BNO085 IMU (X forward) sit in printed pockets on the base floor tray.\nDECISION: Joint limits: base rotation \u00b190\u00b0, shoulder \u00b160\u00b0, elbow \u221275\u00b0 to +10\u00b0 (bending down hits the upper arm), wrist pitch \u00b160\u00b0, wrist roll \u00b190\u00b0, gripper \u221215\u00b0 to +8\u00b0; all six pass the motion check at 15\u00b0 steps.\nDECISION: Palette is bone shell, graphite mechanism and orange accent on the joint caps and gripper jaw; the arm has no face element.\nNOTE actuators: MG996R \u00d73 (base rotation, shoulder, elbow-via-belt; stall 1079 N\u00b7mm at 6 V, 0.15 s/60\u00b0) and MG90S \u00d73 (wrist pitch via forearm belt, wrist roll, gripper; stall 176\u2013216 N\u00b7mm). Belts are modelled as 1:1 GT2-style loops (pulley r 8 mm at the elbow, r 6 mm at the wrist). No damping or dynamics declared; this is a design-only study.\nNOTE sensors: BNO085 on the base floor at (42, \u221211.4, 7) mm with X along the arm's forward +X. No joint encoders declared.\nNOTE rejected: A wrist-pitch servo in the turret driving through two belt stages with an idler at the elbow was dropped as too complex. Putting it at the forearm root forces an off-centre belt plane and a lopsided housing on the \u2212Y side.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 6d408cb.",
+   "project": "sweep-arm5-b-motors-in-body",
+   "split": "dev"
+  },
+  {
+   "id": "arm5-c-exposed-mechanism",
+   "category": "arm5",
+   "thesis": "c-exposed-mechanism",
+   "blind_label": "arm5 4",
+   "owner_verdict": "like",
+   "image": "arm5-c-exposed-mechanism.png",
+   "components": 37,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "servo/mg90s": 3,
+    "servo/mg996r": 3,
+    "servo_horn/mg90s-double_arm": 3
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "mechanism": "#2A2C30",
+    "shell": "#E6E3DC"
+   },
+   "agent_design_notes": "**Thesis:** A desk-sized research arm whose frame, servos, boards and wiring are all on show, ordered and symmetric, like a well-made lab instrument.\n\n**Key decisions:**\n1. **Forks that straddle each servo, built from the servo outward.** Each servo sits in a printed cradle at the end of one link, and the next link straddles it as a two-sided fork. The fork sides sit 1 mm off the servo case and are equal on both sides, so every joint is balanced and you can see how it works.\n2. **One joint language.** The same orange cap marks both faces of every pitch joint and the top of the jaw, so the joints read as one system.\n3. **Electronics as a display.** The four boards sit in a row on standoffs, and the wires run in tidy squared-off paths at stepped heights so none cross. The orange power wires stand out from the dark signal wires.\n4. **Weight low.** The battery sits inside the plinth under the board deck, and the yaw servo hangs through the deck by its tabs, which keeps the centre of mass low and toward the back.\n\n**One thing to change next:** put two meshing gears in the gripper so both jaws close symmetrically, and add printed horn adapters for the MG996R joints. The wrist and gripper blocks are still the most boxy shapes, so that is where the next round of shaping should go.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted 5d38670.",
+   "project": "sweep-arm5-c-exposed-mechanism",
+   "split": "dev"
+  },
+  {
+   "id": "arm5-d-product-shell",
+   "category": "arm5",
+   "thesis": "d-product-shell",
+   "blind_label": "arm5 3",
+   "owner_verdict": "like",
+   "image": "arm5-d-product-shell.png",
+   "components": 61,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "bearing/623": 3,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 8,
+    "bolt/m3x10-socket": 1,
+    "bolt/m3x8-socket": 2,
+    "bolt/m4x10-socket": 8,
+    "servo/mg90s": 4,
+    "servo/mg996r": 2,
+    "servo_horn/mg90s-cross": 4
+   },
+   "palette": {
+    "accent": "#FF7A3D",
+    "mechanism": "#2E3135",
+    "shell": "#EDEAE3"
+   },
+   "agent_design_notes": "**Thesis:** One soft, bone-white form with a friendly visor face, where the only dark parts are the joint caps, the face and the fingers.\n\n**Key decisions:**\n1. **Forks over every pitch joint.** Each link straddles the joint below it, with the servo inside the inner link: drive on one side, a bearing on the other. This keeps the arm symmetric and lets the identical caps cover both sides, so no servo case or horn shows.\n2. **Each link splits at its servo's tab plane.** The body half carries the tab ledges, the other half is a cover. That gives a flat face to print on, a sensible assembly order, and a single honest split line.\n3. **The face is on the turret.** It turns with the arm, so the robot looks where it reaches. The visor covers about 72% of the head's width and about 28% of its height.\n4. **Heavy parts low and central.** The battery sits at the back of the base, opposite where the arm reaches; the boards sit beside the yaw servo.\n5. **MG90S at the elbow instead of an MG996R.** It keeps the arm slim and halves the shoulder load, but leaves only about 2\u00d7 torque margin at the elbow.\n\n**Next change:** Round the wrist and arm seams properly, by building the links as offset thin shells instead of solid lofts, and swap the elbow to an MG996R so it has real payload margin.\n\nDECISION: Desk arm is MG996R yaw + MG996R shoulder + four MG90S (elbow, wrist pitch, wrist roll, gripper); fork joints with spline drive on +Y and a 623 bearing + M3 bolt idler on \u2212Y.\nDECISION: Every servo-carrying link splits at its servo's tab plane into body (tab ledges) and cover; covers and bodies are bone shell, caps/collar/visor/fingers graphite, eyes the only accent.\nDECISION: Face (dark visor + two accent eyes) on the turret front at +X so it turns with the arm; IMU fixed in the base with X forward.\nDECISION: Joint limits set from swept clearance: yaw \u00b1150, shoulder \u221260\u202660, elbow \u221290\u202625, wrist pitch \u00b170, roll \u00b1150, gripper 0\u202630 degrees.\nDECISION: Design-only study \u2014 no task, policy or rollout declared; the robot still carries its battery, regulator, ESP32, PCA9685 and BNO085.\nNOTE actuators: yaw and shoulder MG996R (1078 N\u00b7mm stall at 6 V), estimated shoulder worst-case load \u2248280 N\u00b7mm; elbow/wrist/roll/gripper MG90S (176\u2013216 N\u00b7mm), elbow load \u2248110 N\u00b7mm so only about 2\u00d7 margin. MG996R hubs are cut straight to the 5.9 mm spline because the catalog has no 25T horn; a real build needs a metal 25T disc horn. MG90S joints use the catalog cross horn sunk into a hub of radius horn reach + 1.8 mm.\nNOTE sensors: BNO085 sits flat in the base plinth pocket at x 41.5\u201367 mm, X axis along the robot's +X (face direction); it reads base tilt and bumps only. No joint encoders are declared.\nNOTE rejected: blanket fillet of split halves crashed OCCT (segfault in ChFi3d) on the upper arm/forearm and gave invalid cuts on the wrist loft; only the turret and hand halves are rounded. Cutting a link with a bearing body leaves its bore as an isolated pin, so cut a plain r=OD/2 pocket. A loft ending flush on a prism plus a fuse blend gave empty cuts; use a single ruled three-section loft.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 732c1cc.",
+   "project": "sweep-arm5-d-product-shell",
+   "split": "heldout"
+  },
+  {
+   "id": "arm5-e-hard-surface",
+   "category": "arm5",
+   "thesis": "e-hard-surface",
+   "blind_label": "arm5 1",
+   "owner_verdict": "meh",
+   "image": "arm5-e-hard-surface.png",
+   "components": 54,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2.5x8-socket": 10,
+    "bolt/m3x10-socket": 4,
+    "bolt/m4x12-socket": 4,
+    "servo/mg90s": 3,
+    "servo/mg996r": 3,
+    "servo_horn/mg90s-double_arm": 3
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "mechanism": "#2B2E33",
+    "shell": "#D9DBDD"
+   },
+   "agent_design_notes": ". It also asks me to continue and finish, which I can't do without changing the design. If you want it finished, tell me to go ahead and I'll write the arm script.\n\nAs it stands, there is no arm. The accepted revision is only a catalog probe: it publishes the bare catalog bodies and bays for the boards and battery, plus two bolts. It places no assembly, so no fit, sweep or appearance check has run, I haven't looked at it with `look`, and the probe script declares no parameters yet. The notes below describe the design I had laid out from the measured catalog dimensions, not geometry that exists.\n\nDESIGN NOTES:\n\n**Thesis:** A crisp, panelled desk arm: light chamfered shell links, each servo sealed inside a housing that closes with a dark screwed-on cover panel, and the visible screws and round joint caps as the only detail.\n\n**Key decisions:**\n- **Servos by load.** MG996R (about 11 kg\u00b7cm) for base yaw, shoulder and elbow. MG90S for wrist pitch, wrist roll and the gripper, because they use the catalog double-arm horn, which the driven part's round hub cap can be cut around. No catalog horn exists for the MG996R, so the hubs on those three joints would grip its 25-tooth spline with a printed bore. I'd declare that 0.04 mm gap as a deliberate clearance, and the honest upgrade is an aluminium disc horn.\n- **Battery low and central.** The 2S LiPo lies on the floor tray directly under the base servo, at x \u221248 to 24 mm and z 4 to 17. Around it go the ESP32 (+Y side), the PCA9685 (\u2212Y side), the 6 V regulator (rear) and the BNO085 (front, its X axis forward). Each sits in a pocket cut with its own `.bay()`. That keeps the heaviest part on the yaw axis and puts the base deck at 46 mm.\n- **One housing pattern for every servo.** Each servo sits in a chamfered housing grown from its `.bay()`, split at the bottom of the case, and closed by a graphite cover panel held with two M2.5 socket screws. Repeated at all five joints, those panels and screws give the hard-surface look its rhythm and also explain how each servo goes in.\n- **Pitch joints as symmetric forks.** Each servo is centred in its housing (shaft offsets of 18.3 mm for the MG996R and 14.2 mm for the MG90S), so the next link's fork plates sit 1 mm clear on both sides. One side is a spline hub, the other an idler stub, and both get the same round cap, so each joint reads alike from either side. Working layout: shoulder axis at z 88 mm, an upper arm of 110 mm and a forearm of 100 mm.\n- **Palette.** Warm light-grey shell, graphite for the mechanism, covers and face, and orange only on the cap rims and a status bar in the base's front visor panel. The visor is the face, on +X where the IMU points.\n\n**What I'd change next:** Build the skeleton and get every fit and sweep check passing before any styling. The tightest point is the wrist roll housing: it has to sit at least 21.5 mm from the wrist-pitch axis, which makes the wrist about 53 mm long. Turning the wrist-pitch servo so its case runs along the forearm, or using a lower-profile servo there, would shorten the arm's nose and noticeably improve its proportions.\nBase stage built. Fixing the two fit failures (regulator overlapping battery, servo seated 0.5 mm high), then adding the arm.Fixing link cutters (re-cutting servo pockets and hub bores after the link solids are fused) and reversing the elbow range.All 1081 pairs clear and all six joints sweep clean. Now looking at it.Sound skeleton; the weakest read is the joints \u2014 bare shell discs. Adding one accent ring design on every pitch/gripper hub face so the joints read as deliberate features.I built the five-axis desktop arm with its gripper. The engine accepted it with every fit check passing: all 1431 component pairs are clear and all six joints sweep their full ranges without contact. It is a static design study: no motion task, policy or rollout is declared. I looked at it from the front, back and three-quarter views. The orange cap rings make each joint easy to pick out, but the panel lines are still thin, so the hard-surface look is only partly there.\n\n**What it is:**\n- **Base:** a chamfered hood (140 \u00d7 120 \u00d7 46 mm) on a dark tray. The tray has pockets for the battery and all four boards, each cut with the part's own `.bay()`:\n  - **Battery:** the 2S LiPo sits low, under the base servo.\n  - **ESP32 controller:** on the +Y side.\n  - **PCA9685 servo driver:** on the \u2212Y side.\n  - **Regulator:** the Pololu 6 V unit sits at the back.\n  - **BNO085 IMU:** at the front, X axis forward.\n- **Fasteners:** four M3 screws hold the deck down, and four M4 screws mount the base servo.\n- **Joints:**\n  - **Base yaw:** MG996R in the deck, turning a 46 mm turntable.\n  - **Shoulder and elbow:** MG996R, each in a chamfered housing.\n  - **Wrist pitch, wrist roll and gripper:** MG90S, each in a chamfered housing, driving through the catalog double-arm horn.\n- **Housings:** each one closes with a graphite cover panel held by two sunk M2.5 screws. On the shoulder, elbow and wrist-pitch joints, that panel also carries the idler stub for the fork plates.\n- **Gripper:** one fixed jaw and one moving finger hinged on the gripper servo.\n- **Face:** a graphite visor panel with an orange light bar on the front of the base.\n\n**Measures:** hardware is 0.25% of the silhouette (bar \u2264 20%), sharp outside edges are 19% (bar \u2264 25%), and there are three materials.\n\n**Parameters you can sweep:** `base_len`, `base_wid`, `chamfer`, `wall`, `turntable_r`, `upper_len` and `forearm_len`. I only built and checked the default values, so a sweep should re-read the fit report at each setting.\n\nDECISION: Servos are sized by load: MG996R for base yaw, shoulder and elbow; MG90S for wrist pitch, wrist roll and gripper, so those three can use the catalog double-arm horn.\nDECISION: All six servo housings follow one pattern, built from the servo's `.bay()` and split at the bottom of the case. A graphite cover with two sunk M2.5 screws closes each one, and on the pitch joints that cover also carries the idler stub. The repeated panel is the hard-surface detail.\nDECISION: The MG996R joints have no catalog horn, so their printed hubs grip the 25-tooth spline with a bore 0.05 mm larger than the spline. That fit is declared as a 0.04 mm clearance; a real build would bond in an aluminium disc horn.\nDECISION: The battery sits on the floor tray under the base servo, on the yaw axis, with the boards around it. The face is a graphite visor with an orange light bar on +X, the same direction the IMU's X axis points.\nDECISION: Joint ranges are set from the measured sweep: shoulder \u00b175\u00b0, elbow \u221290\u00b0 to +30\u00b0, wrist pitch \u00b180\u00b0, wrist roll \u00b190\u00b0, gripper \u22127\u00b0 to +25\u00b0.\nDECISION: Screws thread into clearance holes that stand in for heat-set inserts. The inserts themselves are not modelled.\nNOTE actuators: The base yaw, shoulder and elbow use MG996R servos (stall 1079 N\u00b7mm at 6 V, 0.15 s/60\u00b0); their printed hubs grip the spline directly. Wrist pitch, wrist roll and gripper use MG90S servos (stall 216 N\u00b7mm at 6.6 V) driving through the double-arm horn. Shoulder axis is at z 90 mm, upper arm 110 mm, forearm 100 mm, wrist roll axis 55 mm past the wrist pitch axis. No joint damping is declared, because this is a design-only study.\nNOTE sensors: The BNO085 sits flat on the base tray at the front, X axis forward, measuring base orientation. The servos report nothing back, and no joint encoders are declared.\n\nDESIGN NOTES:\n**Thesis:** A clean, panelled desk arm: light chamfered links, each servo sealed behind a graphite cover panel with visible sunk screws, and orange cap rings marking every joint.\n\n**Key decisions:**\n- **Inside-out packing.** The battery sits low on the yaw axis with the boards arranged around it in pockets cut from their bays. That keeps the mass central and the base only 46 mm tall.\n- **One housing pattern repeated five times.** It gives the design its rhythm and also shows how each servo goes in and comes out.\n- **Symmetric forks.** Each servo is centred in its housing so the next link's fork plates sit 1 mm clear on both sides, which is why every joint sweeps its full range cleanly.\n- **Clear visual hierarchy.** Light grey for structure, graphite for panels and hardware, and orange only on the cap rings and the light bar.\n\n**Next change:** Turn the panel idea into real seams. Cut shallow V-grooves around the link surfaces and a chamfered break line where each cover meets its housing. I'd also replace the boxy gripper and fixed jaw with tapered, chamfered jaw plates. Those are the parts that look crudest now.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted b778574.",
+   "project": "sweep-arm5-e-hard-surface",
+   "split": "dev"
+  },
+  {
+   "id": "arm5-f-creature",
+   "category": "arm5",
+   "thesis": "f-creature",
+   "blind_label": "arm5 8",
+   "owner_verdict": "meh",
+   "image": "arm5-f-creature.png",
+   "components": 24,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "servo/mg90s": 3,
+    "servo/mg996r": 3,
+    "servo_horn/mg90s-single_arm": 3
+   },
+   "palette": {
+    "accent": "#E46A2A",
+    "mechanism": "#2B2D31",
+    "shell": "#ECE6DA"
+   },
+   "agent_design_notes": "- **Thesis:** a desktop arm that reads as a heron stalking prey: haunch-like pebble base, hunched shoulders, an S-neck drawn back to strike, and a head whose lower beak is the gripper.\n- **Key decisions:**\n  - **The gripper is the beak.** Making the jaw servo drive the lower mandible gives the arm a face for free. The eyes sit on the side facing forward (+X).\n  - **The limbs are lofts with a slot cut out, not plates bolted together.** Each neck segment is one tapered superellipse loft. A cylindrical slot is cut where it straddles the joint below, so the forks and the cap discs read as one form.\n  - **The servo face is flush with its holder and covered by the joint disc.** All servo cases are hidden, and every joint shows the same round cap.\n  - **Mass is low and to the rear.** The battery and boards lie flat in the pebble, under and behind the yaw axis, against the forward-reaching head.\n- **What I'd change next:** add the real servo tab screws (M3 for MG996R, M2 for MG90S) with insert bosses, so each servo is actually fastened rather than held by a rigid joint across a 0.5 mm gap. I'd also smooth the faceted forearm section.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted cbf2959.",
+   "project": "sweep-arm5-f-creature",
+   "split": "dev"
+  },
+  {
+   "id": "arm5-g-minimal",
+   "category": "arm5",
+   "thesis": "g-minimal",
+   "blind_label": "arm5 7",
+   "owner_verdict": "love",
+   "image": "arm5-g-minimal.png",
+   "components": 48,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 6,
+    "bolt/m3x12-socket": 12,
+    "servo/mg90s": 3,
+    "servo/mg996r": 3,
+    "servo_horn/mg90s-cross": 3
+   },
+   "palette": {
+    "accent": "#E2572B",
+    "mechanism": "#3A3B3D",
+    "shell": "#ECEAE4"
+   },
+   "agent_design_notes": "**Thesis:** A Braun-style instrument made from one drum, one column and four rounded blocks, where the only colour marks where the arm turns.\n**Key decisions:**\n1. **Two-plane layout.** Each 42 mm-deep servo housing is one plain rounded section, and the arm parts alternate side to side; the gripper's roll axis lies in plane B.\n2. **Packed from the inside out.** I placed the six servos and five electronics parts first, then sized the base (radius 80) and every arm section to their pockets plus 2\u20133 mm walls.\n3. **One joint radius per servo size (23 mm and 20 mm), with the same flush 12 mm orange cap at each tilt axis.** The rounded joint ends are the form; there is no decoration.\n4. **Graphite only on the jaws.** They read as the tool against an all-white body.\n5. **Seams only where parts actually separate:** tub and lid, the servo covers, and the wrist-roll gap.\n\n**Next change:** Taper the forearm in depth as well as height and shorten the wrist block by tucking the roll servo closer to the wrist tilt horn. The forearm and wrist currently look slightly long and boxy next to the shoulder column.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007, ADR-008 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted c41faea.",
+   "project": "sweep-arm5-g-minimal",
+   "split": "dev"
+  },
+  {
+   "id": "arm5-h-free",
+   "category": "arm5",
+   "thesis": "h-free",
+   "blind_label": "arm5 2",
+   "owner_verdict": "meh",
+   "image": "arm5-h-free.png",
+   "components": 28,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "servo/ds3218": 1,
+    "servo/mg90s": 3,
+    "servo/mg996r": 2,
+    "servo_horn/mg90s-cross": 3
+   },
+   "palette": {
+    "accent": "#E8692E",
+    "mechanism": "#2A2C31",
+    "shell": "#ECE7DE"
+   },
+   "agent_design_notes": "**Thesis:** a calm, Scandinavian-industrial desk arm, like a small cobot: one warm-white family of rounded pods and tapered beams, graphite only where the mechanism works (the plinth foot, the jaw, the hubs' insides), and one orange accent marking each actuated axis and the fingertips.\n\n**Key decisions:**\n1. **Everything heavy goes in the base.** The battery, all four boards and the yaw servo live in the base and are hidden. The base's 64 g of battery is the counterweight, and nothing purchased shows in the silhouette.\n2. **The links alternate sides.** The upper arm is offset to +Y and the forearm sits back on the centre plane. Each link can cantilever off a single servo, yet the gripper still works on the yaw axis instead of drifting sideways.\n3. **Each servo is chosen by its load.** The DS3218 (about 1.86 N\u00b7m stall) is at the shoulder, MG996Rs at yaw and elbow, and MG90Ss at the wrist and gripper. That keeps the weight and size of the distal joints small.\n4. **Joints are marked, not cases.** The shoulder and elbow cases are recessed behind face plates, micro horns are buried in round hubs, and the same orange disc caps each pitch axis and the jaw pivot. The result reads as joints rather than servo boxes.\n\n**What I'd change next:** I'd replace the box-section pods at the wrist and hand with one continuous lofted wrist \"knuckle\". I'd also add a 6801 thin-section bearing under the turntable, so the yaw servo's spline doesn't carry the arm's tipping moment.\n\nDECISION: Design-only study: no task, policy or rollout declared. The arm runs untethered from a 2S LiPo through a D36V50F6 6 V regulator, with an ESP32 and a PCA9685 driving six servos and a BNO085 IMU in the base (X forward) for tilt/bump detection.\nDECISION: Actuators: yaw MG996R, shoulder DS3218, elbow MG996R, wrist pitch, wrist roll and gripper MG90S with cross horns. The two big servos couple through printed hubs bored for the 25T spline.\nDECISION: The links alternate sides of the centre plane (turret centred, upper arm offset to +Y, forearm and wrist back near y=0), so every joint is single-sided and needs no idler bearings.\nDECISION: Palette: shell #ECE7DE, mechanism #2A2C31, accent #E8692E. The accent is used only on the joint caps and the fingertip pads.\nDECISION: Joint limits: yaw \u00b1150\u00b0, shoulder \u00b160\u00b0, elbow \u221260..45\u00b0, wrist \u00b180\u00b0, roll \u00b190\u00b0, grip \u22124..25\u00b0. All are swept clean at 15\u00b0 steps.\nNOTE actuators: yaw MG996R (0.92\u20131.08 N\u00b7m stall), shoulder DS3218 (1.86\u20132.11 N\u00b7m), elbow MG996R, wrist pitch, roll and gripper MG90S (0.18\u20130.22 N\u00b7m), all fed 6 V from a D36V50F6. No dynamics model or damping is declared, because this is a design-only study.\nNOTE sensors: one BNO085 (Adafruit 4754) on posts in the rear of the base at (-67,-12,8), X along the arm's +X. No joint encoders: the servo potentiometers are not tapped out.\nNOTE rejected: a yoke (clevis) shoulder and elbow was dropped in favour of single-sided hubs with links alternating sides, which halves the printed joint geometry. Recessing the micro-servo case tops was dropped because the 19 mm-thick pods cannot hold a 14 mm face-plate hole.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 54a6b62.",
+   "project": "sweep-arm5-h-free",
+   "split": "heldout"
+  },
+  {
+   "id": "balancer-a-servo-joint",
+   "category": "balancer",
+   "thesis": "a-servo-joint",
+   "blind_label": "balancer 8",
+   "owner_verdict": "meh",
+   "image": "balancer-a-servo-joint.png",
+   "components": 29,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x4-socket": 7,
+    "bolt/m2x8-countersunk": 4,
+    "gearmotor/pololu-2367": 2
+   },
+   "palette": {
+    "accent": "#FF6B1F",
+    "mechanism": "#2A2C31",
+    "shell": "#ECE6DC"
+   },
+   "agent_design_notes": "- **Thesis:** each actuator's output shaft is the joint itself: the wheel hub fits straight onto the N20's D-shaft, and an orange cap marks each driven axis, with no separate axle, bearing or bracket.\n- **Key decisions:**\n  - **Battery straight above the axle.** It keeps the mass centred over the wheels, and the high centre of mass slows how fast the robot falls, which makes balancing easier.\n  - **Shell split at the axle plane.** Each half prints flat on its split face, and the motor bosses come through it at the seam to locate both halves.\n  - **IMU low on the motor block.** It sits close to the pivot, so the accelerometer picks up less sideways jolt when the body tips.\n  - **One pill shape with one face.** The body is a single rounded form, the visor is the only feature on it, and the only accents are the two eyes and the two hub caps.\n- **What I'd change next:** add a real DRV8833-class motor driver to the catalog, put it in the reserved space on the back, and route the wiring harness with `nets`.\n\nDECISION: Concept \"Pebble\": one heavily rounded bone pill body (R12 corners) on two 68 mm wheels, a dark recessed visor with two orange eyes facing +X, palette bone shell / graphite mechanism / orange accent.\nDECISION: The thesis \"the servo is the joint\" is applied to the gearmotors: each wheel hub fits directly onto the N20 D-shaft (\u00d83.2 bore over the \u00d83 shaft, 0.05 mm running clearance declared), with no extra axle, bearing or bracket.\nDECISION: The 2S battery stands upright directly above the axle rather than low, to keep the mass centred over the wheels and slow the inverted pendulum's fall for balancing.\nDECISION: The shell is split at the X=0 axle plane into front and back halves, located by the 9 mm motor bosses and fixed with flush countersunk M2 bolts from below.\nDECISION: No motor driver is placed because the catalog has no DC H-bridge board; space is reserved on the back of the sleeve, below the regulator. The N20 M1.6 face screws are not modelled because the catalog's smallest bolt is M2.\nDECISION: Design-only study: no task, policy or rollout is declared.\nNOTE actuators: Two Pololu 2367 N20 gearmotors (100:1, 6 V, 220 rpm no-load, ~92 N\u00b7mm stall), coaxial along world Y with the axle at z = wheel_r; front faces at y=\u00b129 screw to chassis bosses; wheels on revolute joints axle_l and axle_r. A 68 mm wheel gives ~780 mm/s top speed at no load.\nNOTE sensors: BNO085 (Adafruit 4754) mounted flat on top of the motor block, 10 mm above the axle and centred on it; board +X = robot forward, +Z up; four M2x4 bolts into \u00d83.2 heat-insert holes. It is the sole balance sensor (tilt and pitch rate). Wiring path: battery leads exit at the top of the sleeve and run over it to the regulator on the back; motor leads leave the motor rears at the centreline and run up through the IMU window.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted cccd850.",
+   "project": "sweep-balancer-a-servo-joint",
+   "split": "dev"
+  },
+  {
+   "id": "balancer-b-motors-in-body",
+   "category": "balancer",
+   "thesis": "b-motors-in-body",
+   "blind_label": "balancer 4",
+   "owner_verdict": "meh",
+   "image": "balancer-b-motors-in-body.png",
+   "components": 26,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m3x30-socket": 2,
+    "bolt/m3x6-socket": 2,
+    "gearmotor/pololu-2367": 2,
+    "heat_insert/m3-standard": 4
+   },
+   "palette": {
+    "accent": "#FF6B1F",
+    "mechanism": "#2A2C30",
+    "shell": "#E9E4D8"
+   },
+   "agent_design_notes": "- **Thesis:** every actuator lives in the body, so the wheels carry nothing but a hub, a tyre and a cap.\n- **Motors on the axle, inside the pod.** For a balancer the wheels are the only limbs. Burying both gearmotors in the pod on the axle line means no motor box sits on a wheel and nothing needs a linkage.\n- **Battery upright, centred over the axle, just above the motors.** It's the heaviest part (64 g), so this keeps the centre of mass on the axle, fore and aft. I put it at mid-height rather than as low as possible, because an inverted pendulum with its mass higher falls more slowly and is easier to balance.\n- **Pod, core and hood.** The pod carries the motors and is visible as the dark lower band. The hidden core is a cradle with drop-in bays. The thin hood shell opens downwards, so its rim is the print face. All three print flat-side down with vertical bays and no bad overhangs.\n- **One face, one accent.** The graphite visor fills 70% of the front's width and 27% of the body's height. Orange appears only on the eyes and the wheel caps, so the eyes are easy to find.\n- **Next change:** model the wiring harness from the battery through the regulator to the ESP32 and the motor driver. The robot also needs a motor driver board (an H-bridge such as a DRV8833), which the catalog doesn't have yet, and I'd add it before calling the robot complete.\n\nDECISION: Two-wheeled balancer with both Pololu 2367 N20 gearmotors inside the lower pod, coaxial with the wheels and driving them directly. I chose this over belts or linkages because the wheels are the only \"limbs\", and it keeps them to hub, tyre and cap.\nDECISION: The 2S 1000 mAh battery stands upright on the axle centreline, above the motors, to keep the centre of mass over the axle fore and aft. I chose this over the lowest possible position because a higher centre of mass slows the fall and makes balancing easier.\nDECISION: The structure is a graphite pod (motors), a hidden printed core (battery, ESP32, regulator and IMU bays that load from the top) and a bone hood shell 2 mm thick with 1 mm clearance. The pod and hood share one rounded-box outline, split by a single seam.\nDECISION: The BNO085 IMU is mounted vertically on core standoffs with its X axis forward (+X). The face is a graphite visor with two orange eyes, split from the hood's front.\nDECISION: Fasteners are M3 socket bolts into M3 heat-set inserts. Because the catalog insert has no thread bore, each bolt is drawn stopping at the insert's face and declared as a contact.\nDECISION: This is a design-only study: no task, policy, rollout or physics bodies are declared, and the wiring harness is not modelled yet.\nNOTE actuators: The wheels are driven directly by Pololu 2367 N20 gearmotors (100:1, 6 V; 220 rpm no-load; 92 Nmm theoretical stall; 9.5 g), whose shafts go straight into the hub bores. That gives about 0.9 m/s top speed on 40 mm-radius wheels. Wheel joints are revolute about Y at the axle height (= wheel_r), limited to \u00b1180\u00b0 only so the engine can sweep them. No joint damping or actuator model is declared yet. The hub bore is modelled round with 0.12 mm clearance; the real part needs a D-bore or set screw.\nNOTE sensors: The BNO085 (Adafruit 4754) is mounted vertically on four core standoffs on the +Y side wall. Its X axis points along body forward (+X), its Y axis up and its Z axis toward -Y; it measures orientation and rotation rate for balancing. No assembly.sensor is declared yet, because this is a design-only study.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted 8a25c5b.",
+   "project": "sweep-balancer-b-motors-in-body",
+   "split": "dev"
+  },
+  {
+   "id": "balancer-c-exposed-mechanism",
+   "category": "balancer",
+   "thesis": "c-exposed-mechanism",
+   "blind_label": "balancer 7",
+   "owner_verdict": "love",
+   "image": "balancer-c-exposed-mechanism.png",
+   "components": 41,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2.5x6-socket": 4,
+    "bolt/m2.5x9-socket": 4,
+    "bolt/m2x5-socket": 3,
+    "bolt/m3x10-socket": 4,
+    "bolt/m3x8-socket": 6,
+    "gearmotor/pololu-2367": 2
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "mechanism": "#2A2C30",
+    "shell": "#E6E3DC"
+   },
+   "agent_design_notes": "- **Thesis:** a balancing robot as a precise lab instrument. You can see every part, and every part sits on a centreline, is held by its own screws, and has its colour set by its role.\n- **Key decisions:**\n  - **Inside-out packing:** the motors go back to back in one axle tube, so the inner width (56 mm) was set by motor length and battery width before the frame was drawn.\n  - **Upright battery behind the spine:** this splits the build into a power side at the back and a logic side at the front, with one short, visible pair of power leads crossing between them.\n  - **Frame depth matches the wheel:** the cheeks' rounded bottom stays inside the tyres at any tilt, so the frame can't touch the ground before the wheels do.\n  - **Fastening as visible order:** three evenly spaced M3 screws per cheek, two pairs on the cradle, and bezel screws at the corners.\n  - **The controller is the face:** the orange bezel is the single deliberate focal point, instead of a decorative visor.\n- **What I'd change next:** add a DC motor driver board (e.g. a DRV8833) on the spine's back face, below the battery cradle, with the motor leads running up through the tube slot. Without it the robot can't drive its wheels.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 20437ac.",
+   "project": "sweep-balancer-c-exposed-mechanism",
+   "split": "dev"
+  },
+  {
+   "id": "balancer-d-product-shell",
+   "category": "balancer",
+   "thesis": "d-product-shell",
+   "blind_label": "balancer 6",
+   "owner_verdict": "like",
+   "image": "balancer-d-product-shell.png",
+   "components": 19,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m3x10-countersunk": 2,
+    "gearmotor/pololu-2367": 2
+   },
+   "palette": {
+    "accent": "#2EC4D6",
+    "mechanism": "#2A2C31",
+    "shell": "#ECE7DF"
+   },
+   "agent_design_notes": "- **Thesis:** a balancing robot that reads as one friendly, continuous appliance, a warm-white crowned pebble on a dark base, where the only machinery you see is the two wheels, framed as hub-capped joints.\n- **Key decisions:**\n  - **One hood and one horizontal seam.** The seam sits at 46 mm, and the chassis below it is a dark base band, the way Vector's dark lower body works. So the split reads as intentional two-tone styling rather than a part line.\n  - **Pack inside-out around a single solid core.** All six purchased parts sit in bay-cut pockets in one printed chassis that fills the hood with a 1 mm gap. That keeps the hood a pure 2 mm skin with no internal bosses.\n  - **Battery upright and as low as it goes.** The 72 mm pack can't lie flat across a 70 mm body, so it stands on the floor behind the axle. The boards and IMU in front offset its weight, and the IMU sits near the body's centre of mass.\n  - **The face is a recessed dark panel with accent eyes**, not a slot. It fills 56% of the body's width and 30% of its height, so it reads from across a room.\n  - **Wheels as the joint caps.** The tyre, hub and cap are separate prints in graphite, shell white and cyan. A hub boss runs back to 0.6 mm from the body so no bare shaft shows.\n- **What I'd change next:** loft the hood as a superellipse cage instead of a filleted box, with a slight taper toward the top and a visor that follows the curved front. The silhouette is still recognisably a rounded box, and that would make it truly pebble-like.\n\nDECISION: Hood is one 2 mm crowned rounded box (R14, crown R120) split once at z=46 from a graphite base band; the seam is the only surface line, over a multi-panel shell, for an Anki-Vector-style continuous form.\nDECISION: All electronics live in one printed chassis core that fills the hood with a 1 mm gap, each part in a `.bay()` pocket with its own insertion channel (battery from the top, boards from the front, motors from below), over separate brackets.\nDECISION: Drive is two Pololu 2367 N20 100:1 gearmotors on a 36 mm axle with 72 mm wheels; the battery stands upright behind the axle because its 72 mm length cannot lie across a 70 mm body.\nDECISION: Design-only study, so no training task, policy, rollout or dynamics bodies are declared; the wheel revolutes carry \u00b1180\u00b0 limits only so the clearance sweep covers them.\nDECISION: Palette: shell #ECE7DF, mechanism #2A2C31, accent #2EC4D6 (cyan), used for the eyes and hub caps only.\nNOTE actuators: Wheels are driven by Pololu 2367 N20 gearmotors (100.37:1, 6 V: 220 rpm no-load, stall 92 N\u00b7mm, 0.67 A stall), shaft along \u00b1Y at z=wheel_r. No joint damping or actuator is declared yet (design-only); a future balancing task should use velocity/motor actuators bounded by the 92 N\u00b7mm stall torque.\nNOTE sensors: A BNO085 (Adafruit 4754) lies flat at z\u224847 over the motors, sensor X = body +X (forward) and Z up, which gives orientation and rate for balancing. The wheels have no encoders: the N20 2367 has no encoder, so wheel speed would need the extended-shaft encoder variant.\nNOTE rejected: A flat battery across the axle was rejected because the 72 mm pack plus its 16 mm lead room needs a body wider than 89 mm. The ESP32 was laid across the body (long axis on Y) because standing it upright would stack 56 mm of bay over the IMU.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 015c6db.",
+   "project": "sweep-balancer-d-product-shell",
+   "split": "heldout"
+  },
+  {
+   "id": "balancer-e-hard-surface",
+   "category": "balancer",
+   "thesis": "e-hard-surface",
+   "blind_label": "balancer 1",
+   "owner_verdict": "like",
+   "image": "balancer-e-hard-surface.png",
+   "components": 39,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x4-socket": 4,
+    "bolt/m2x5-socket": 10,
+    "bolt/m3x10-socket": 6,
+    "gearmotor/pololu-2367": 2
+   },
+   "palette": {
+    "accent": "#FF5B1F",
+    "mechanism": "#2A2D33",
+    "shell": "#E4DFD3"
+   },
+   "agent_design_notes": "**Thesis:** a single chamfered column split into a bone hood and a graphite pod, where every seam, plate and visible screw is something you would need to take it apart.\n\n**Key decisions**\n1. **Battery stands upright behind the spine.** The 72 mm pack can't lie across a 61 mm body. Standing it on end keeps it low and on the centreline, and lets the hood stay narrow.\n2. **IMU on the spine's flank, not its face.** Mounted face-forward, its X axis would point up. On the flank its X axis points forward, and it sits near the centre of mass at about z = 72 mm.\n3. **The pod and hood share one outline.** The body reads as one column, not stacked plates, and the colour change happens only at the seam.\n4. **Screws are the detail.** The side-plate, visor and hub-cap screws each hold a real part, so nothing on the surface is decoration.\n5. **One chamfer system.** The body edges use 7 mm chamfers and the small parts 0.8\u20131.5 mm. This keeps the look crisp and every face printable within 45\u00b0.\n\n**What I'd change next:** add an H-bridge motor driver bay with its wiring harness, and make the hub bores D-shaped to grip the motor shafts.\n\nDECISION: Packed inside-out. N20 Pololu 2367 gearmotors sit back to back at the axle, the 2S battery stands upright behind a central spine, and the ESP32 and D36V50F6 regulator sit in pockets cut from their bays on the spine's front. The BNO085 is on spine-flank standoffs with its X axis forward.\nDECISION: The catalog has no DC motor driver (H-bridge). The robot is shown without one and is not yet able to run; the empty slot on the \u2212Y side of the spine is where one would go. The wiring harness is not modelled.\nDECISION: The gearmotors' M1.6 mounting holes are drilled through the pod walls with no screws placed, because the catalog's smallest bolt is M2. The skid plate holds the motors in.\nDECISION: Palette is bone shell #E4DFD3, graphite mechanism #2A2D33 and orange accent #FF5B1F. Orange is used only on the visor bar and hub caps.\nDECISION: Wheel hub bores are round, 3.2 mm over the 3 mm D-shaft. A 0.05 mm clearance is declared between each hub and its motor.\nDECISION: Design-only study, as asked: no task, policy or rollout was declared.\nNOTE actuators: Two Pololu 2367 N20 100:1 gearmotors with the axle at z = wheel_r. At 6 V they give 220 rpm no-load and 92 N\u00b7mm stall torque, about 2.7 N at the tyre with the 34 mm wheel radius. No joint damping was set because this study has no dynamics model.\nNOTE sensors: The BNO085 (Adafruit 4754) stands vertically on four M2 standoffs on the spine's +Y flank at x \u221214\u202611, z 61\u202684, with its X axis along body +X. It would supply orientation and gyro rate to a later balancing task.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted a53fbcc.",
+   "project": "sweep-balancer-e-hard-surface",
+   "split": "heldout"
+  },
+  {
+   "id": "balancer-f-creature",
+   "category": "balancer",
+   "thesis": "f-creature",
+   "blind_label": "balancer 3",
+   "owner_verdict": "like",
+   "image": "balancer-f-creature.png",
+   "components": 24,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "gearmotor/pololu-2367": 2
+   },
+   "palette": {
+    "accent": "#E8962E",
+    "mechanism": "#2A2C30",
+    "shell": "#E8E1D2"
+   },
+   "agent_design_notes": "- **Thesis:** a balancing robot that reads as a small owl standing on its haunches, alert, with the machine hidden inside a bird.\n- **Key decisions:**\n  - The wheels are the owl's legs and haunches. A width-limited egg body sits between them, and the shoulders and head get wider only above the wheel tops.\n  - The upright LiPo spine with the boards on its flanks keeps the body narrow enough to sit inside the wheels, with the mass high and central for an inverted pendulum.\n  - One focal face: a graphite heart-shaped disc recessed into the bone head, with amber domed eyes and beak as the only saturated colour besides the hub caps.\n  - Graphite wings and tail are separate printed parts conformed to the body, so they read as feathers laid over the egg.\n- **Next change:** add an H-bridge board (DRV8833-class) and route its harness. Then give the head a slight forward tilt and the tufts a swept-back curve, so the posture reads as an owl looking at you rather than standing to attention.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 8d95fa5.",
+   "project": "sweep-balancer-f-creature",
+   "split": "heldout"
+  },
+  {
+   "id": "balancer-g-minimal",
+   "category": "balancer",
+   "thesis": "g-minimal",
+   "blind_label": "balancer 5",
+   "owner_verdict": "meh",
+   "image": "balancer-g-minimal.png",
+   "components": 32,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x1.57-socket": 3,
+    "bolt/m2x1.6-socket": 4,
+    "bolt/m3x37.3-socket": 2,
+    "gearmotor/pololu-2367": 2,
+    "heat_insert/m2-short": 7,
+    "heat_insert/m3-standard": 2
+   },
+   "palette": {
+    "accent": "#E4561E",
+    "mechanism": "#2A2A2A",
+    "shell": "#E9E5DC"
+   },
+   "agent_design_notes": "**Thesis:** a balancing robot reduced to one rounded block, two discs, one lens and one orange dot, so every visible line has a job.\n\n**Key decisions:**\n1. **One seam:** the body is a single rounded box split only where the front edge radius starts. That one line is also the joint between the front cover and the chassis.\n2. **Wheels and IMU set the layout:** the wheel radius sets the axle height, and the whole body sits within one wheel radius of the axle, so it can never touch the ground at any tilt. The IMU sits flat with its X axis pointing forward.\n3. **Heavy parts low and close to the axle:** the motors are on the axle and the battery stands just above the floor against the back wall. Only the lightweight boards are high up. The ESP32 is placed so its antenna points up toward the top.\n4. **One accent colour, with a reason:** orange is used only on the hub caps, which are the only parts that turn.\n5. **Hidden fasteners:** the only screws you can see are the two recessed M3 heads on the back face.\n\n**What I'd change next:** fit encoder-equipped N20 motors and replace the press-fit spine with two screws through the side walls. Today the spine is held only by its fit between the walls and by the front cover clamping it, which is the weakest joint in the build.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted 2f16247.",
+   "project": "sweep-balancer-g-minimal",
+   "split": "dev"
+  },
+  {
+   "id": "balancer-h-free",
+   "category": "balancer",
+   "thesis": "h-free",
+   "blind_label": "balancer 2",
+   "owner_verdict": "like",
+   "image": "balancer-h-free.png",
+   "components": 22,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m3x30-socket": 4,
+    "gearmotor/pololu-2367": 2
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "mechanism": "#2A2C30",
+    "shell": "#E7E2D6"
+   },
+   "agent_design_notes": "- **Thesis:** a small, friendly lantern of a robot: one soft bone-coloured body on a graphite base, standing between two large wheels and looking out through a dark visor with two warm orange eyes.\n- **Key decisions:**\n  1. **Battery as the spine.** It stands upright on the axle line, so the heaviest part is central and the body can stay a narrow 70 mm.\n  2. **Seam as the only surface detail.** The pod and hood share one outline and corner radius, so the robot reads as a single rounded form with no vents or panels.\n  3. **IMU on the axle line.** It sits flat in the core's base, X forward, about 8 mm above the axle, where the balance measurement is cleanest.\n  4. **Proportions from the first look.** It looked like a fridge on casters, so I made the wheels bigger (r38\u219242) and the body shorter (top 160\u2192152).\n  5. **One accent colour.** Orange appears only on the eyes and hub caps, so it ties the face to the wheels without decorating anything else.\n- **Next change:** add a catalog dual H-bridge in a bay on the core and declare the wiring harness (battery \u2192 regulator \u2192 ESP32/driver \u2192 motors, plus the IMU I2C link).\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007, ADR-008 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted df5a084.",
+   "project": "sweep-balancer-h-free",
+   "split": "dev"
+  },
+  {
+   "id": "biped-a-servo-joint",
+   "category": "biped",
+   "thesis": "a-servo-joint",
+   "blind_label": "biped 8",
+   "owner_verdict": "no",
+   "image": "biped-a-servo-joint.png",
+   "components": 40,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x6-socket": 12,
+    "servo/mg90s": 6,
+    "servo_horn/mg90s-double_arm": 6
+   },
+   "palette": {
+    "accent": "#FF6B1A",
+    "mechanism": "#2A2C31",
+    "shell": "#ECE6DA"
+   },
+   "agent_design_notes": "**Thesis:** Each hobby servo is the joint it drives: its case is part of one limb and its horn is pressed into the next limb's round hub. Nothing else makes a joint.\n**Key decisions:**\n1. **Hip servo in the thigh.** The hip servo rides in the thigh instead of the body. That keeps the body free for the battery and boards and makes each thigh simply two servos end to end.\n2. **Alternating servo directions.** The cases alternate direction (hip and ankle face in, knee faces out), so all three servos share one 45 mm band. The shin and foot hubs sit on opposite sides, so every joint swings through its full range without touching.\n3. **One round cap everywhere.** The same 17.6 mm-radius hub, sized from the horn's reach, is repeated at every joint, which is what makes the leg read as a chain of joints.\n4. **Heavy parts low and centred.** The battery lies flat right above the hips, the IMU is in the pelvis under it, and the boards ride on a deck above. The hood covers all of it.\n\n**Next change:** add ankle-roll servos (four per leg) so the robot can shift its weight sideways properly, and redraw the thigh's lead-exit slot as a deliberate cable channel.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 619f3af.",
+   "project": "sweep-biped-a-servo-joint",
+   "split": "dev"
+  },
+  {
+   "id": "biped-b-motors-in-body",
+   "category": "biped",
+   "thesis": "b-motors-in-body",
+   "blind_label": "biped 3",
+   "owner_verdict": "like",
+   "image": "biped-b-motors-in-body.png",
+   "components": 66,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 12,
+    "bolt/m3x10-socket": 6,
+    "bolt/m3x6-socket": 4,
+    "bolt/m3x8-socket": 2,
+    "bolt/m4x20-socket": 4,
+    "servo/mg90s": 6,
+    "servo_horn/mg90s-single_arm": 6
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "shell": "#E9E6DF"
+   },
+   "agent_design_notes": "**Thesis:** every motor lives in the torso and the limbs are only printed links, so a hand-sized biped gets slim, light legs like Spot's or Go2's.\n\n**Key decisions:**\n1. **Servo triangle per side.** Hip, knee and ankle servos sit in a triangle around the hip axis, so their 36 mm caps clear each other and the cluster fits in a 96 mm body. The battery lies flat underneath and the boards fill the middle well and the top deck.\n2. **Pushrods instead of motors on the limb.** The knee uses a crank-rod-lever four-bar; the ankle uses a long tendon-like rod to a heel lever. The pushrods sit in their own layer between the shank on the inside and the thigh on the outside, 0.6 mm apart, so they never cross the beams.\n3. **Fasteners that do real work.** M3 bolts are the pins, M4 bolts are the knee and ankle axles, M2 bolts hold the servo tabs, M3 bolts hold the belly plate. Each printed part has a flat print face and is split where a part inserts (chassis halves at the mid-plane, toe caps).\n4. **Form language.** One bone helmet with hip fairings concentric to the joint axes. A dark visor covers about 59% of the front width. Orange appears only on the toes.\n\n**What I'd change next:** make the knee drive a true parallelogram, with an idler crank on the hip axis, gear- or link-driven from the knee servo. That removes the knee-hip coupling that now limits the coordinated swing to about \u00b18\u00b0. The same idler arrangement, with a bellcrank at the knee, would hold the foot level on its own.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 0c21178.",
+   "project": "sweep-biped-b-motors-in-body",
+   "split": "dev"
+  },
+  {
+   "id": "biped-c-exposed-mechanism",
+   "category": "biped",
+   "thesis": "c-exposed-mechanism",
+   "blind_label": "biped 4",
+   "owner_verdict": "love",
+   "image": "biped-c-exposed-mechanism.png",
+   "components": 68,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2.5x8-socket": 8,
+    "bolt/m2x6-socket": 3,
+    "bolt/m4x12-socket": 24,
+    "servo/mg996r": 6
+   },
+   "palette": {
+    "accent": "#FF6A1A",
+    "mechanism": "#2B2D31",
+    "shell": "#E4E0D8"
+   },
+   "agent_design_notes": "**Thesis:** a clean, exposed lab biped where every servo, board, screw and wire is visible and sits on a symmetric grid.\n**Key decisions:**\n1. **Inside out.** I fixed the servo, battery and board positions first and grew the frame around them. The battery's 72 mm length set the torso depth, and the hip servo bays set its width.\n2. **One repeated joint module.** The same sleeve, hub and orange cap at all six joints gives the legs a rhythm and keeps them easy to read.\n3. **Mass kept low and central.** The battery sits between the hips, the IMU at the deck centre and the regulator on the rear wall, so the whole layout mirrors about the centre plane.\n4. **A face without hiding the mechanism.** One dark visor with two lenses sits at the front, and the battery window below it reads as a mouth.\n5. **Wiring as a feature.** Parallel I\u00b2C arcs and an orange power loop, each landing on a real catalog pad.\n\n**What I'd change next:** add a bearing on the inner side of each joint, opposite the spline. Right now every link hangs off one side of its servo, which is the main structural weakness. A second bearing would also put the same disc on both faces of each joint.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 8d3c540.",
+   "project": "sweep-biped-c-exposed-mechanism",
+   "split": "heldout"
+  },
+  {
+   "id": "biped-d-product-shell",
+   "category": "biped",
+   "thesis": "d-product-shell",
+   "blind_label": "biped 6",
+   "owner_verdict": "meh",
+   "image": "biped-d-product-shell.png",
+   "components": 49,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x6-socket": 12,
+    "servo/mg90s": 6,
+    "servo_horn/mg90s-double_arm": 6
+   },
+   "palette": {
+    "accent": "#3FD6E6",
+    "mechanism": "#34373D",
+    "shell": "#ECE6DA"
+   },
+   "agent_design_notes": "- **Thesis:** One friendly white dome with a dark visor face hides all the electronics and the hips, and the mechanism shows only as matching graphite joint hubs on simple soft legs.\n- **Key decisions:**\n  - **Packed from the inside out.** The battery stands on edge in a narrow keel and the boards lie flat on a deck under the dome. That kept the leg spacing at 42 mm, so a single dome can cover everything.\n  - **Two servos in each thigh pod.** The pod is a rounded tapered capsule split at the servo tab plane and closed with M2 screws. The thighs become clean soft forms instead of brackets.\n  - **Each driven part's hub is its joint cap.** The same dark radius-18 disc appears at hip, knee and ankle, so the horns are hidden and the joints read as deliberate features.\n  - **One focal face.** A recessed graphite visor, 66 \u00d7 28 mm, about 58% of the body width, with two cyan eyes as the only accent. It reads clearly from the front against the white shell.\n  - **Feet as smooth shoes.** A rounded shoe holds the ankle servo, sitting on a dark sole pad, which gives the legs a definite end instead of a bar.\n- **Next change:** Replace the flat-sided dark keel with a rounded second shell piece, a soft belly pan that joins the dome at one seam. It is the one boxy shape still visible between the legs.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 91b5fae.",
+   "project": "sweep-biped-d-product-shell",
+   "split": "heldout"
+  },
+  {
+   "id": "biped-e-hard-surface",
+   "category": "biped",
+   "thesis": "e-hard-surface",
+   "blind_label": "biped 7",
+   "owner_verdict": "like",
+   "image": "biped-e-hard-surface.png",
+   "components": 58,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2.5x8-socket": 12,
+    "bolt/m2x12-socket": 12,
+    "servo/mg90s": 6,
+    "servo_horn/mg90s-cross": 6
+   },
+   "palette": {
+    "accent": "#FF5A1F",
+    "mechanism": "#2B2E34",
+    "shell": "#D3D6DA"
+   },
+   "agent_design_notes": "**Thesis:** a crisp sci-fi industrial walker, made of chamfered light-grey plates over a graphite chassis, where seams, socket-head bolts and orange axle caps are the only surface detail.\n\n1. **Servos live in the limbs, not the torso.** Each hip servo sits in the top of its thigh and turns a horn locked into a hub on the chassis side. That frees the torso to be sized by the battery and boards alone (94 \u00d7 64 mm), and keeps both hip servos out of each other's way.\n2. **Inboard/outboard alternation.** Hip and ankle horns face inward and the knee horn faces outward. This puts every printed limb beside the one it drives, keeps each leg to one ~40 mm column, and lets every joint sweep \u00b160\u201390\u00b0 without clashing.\n3. **One hub design.** The hubs are sized to hide the whole servo top face as well as the horn. My first version (11.8 mm) left the servo case showing at the knee, which was the worst flaw in the first renders.\n4. **Inside-out packing.** The battery's own keep-out shape, including room for its leads, set the chassis depth. The deck area needed by the PCA9685 and ESP32 set its width. The IMU and regulator sit on printed posts between the battery and the deck, and the hood's bolts go into corner bosses placed to avoid every board.\n5. **Colour by role.** Light grey is used for the hood and the limb armour, graphite for the chassis, visor, feet and the visible hardware, and orange only on the eye and the six axle caps.\n\n**What I'd change next:** add a hip roll (side-to-side) servo per leg. Right now the legs only swing forward and back, so the robot can't shift its weight from one foot to the other, which a real walking gait needs. It would also break up the flat thigh slab with a second visible joint.\n\nDECISION: Use the MG90S servo (micro family, the only one with catalog horns) for all six joints. It gives 2.2 kg\u00b7cm, enough for a ~350 g robot with 60 mm leg segments.\nDECISION: Each hip servo sits in the top of its thigh and drives a horn fixed in a 16.5 mm hub on the chassis side. Joints alternate inboard/outboard (hip and ankle horns inward, knee outward), so each leg stays in one column.\nDECISION: One joint design for every axis: a 16.5 mm hub disc on the driven part, cut to the catalog horn, sized to cover the servo's whole top face across the sweep, with a 7 mm orange cap on top.\nDECISION: Torso is a chamfered light-grey hood (2.4 mm wall, rim on the chassis, M2.5 bolts into corner bosses) over a bevelled graphite chassis tub. The face is a recessed graphite visor 48 \u00d7 24 mm with an orange eye strip, facing +X.\nDECISION: Design-only study, as asked: no physics model, task, policy or rollout is declared. The robot is untethered, so the battery, regulator, IMU, controller and servo driver are all included.\nDECISION: Palette: shell #D3D6DA, mechanism #2B2E34, accent #FF5A1F. Accent is used only on the eye and the six axle caps.\nNOTE actuators: Six MG90S servos (stall 1.8 kg\u00b7cm at 4.8 V / 2.2 kg\u00b7cm at 6.6 V, 0.08\u20130.10 s per 60\u00b0) power hip, knee and ankle pitch on each leg, all at 6 V from the Pololu D36V50F6 regulator via the PCA9685. Joint limits are hip \u00b160\u00b0, knee \u00b190\u00b0, ankle \u00b145\u00b0 (parameters hip_range, knee_range, ankle_range). All were swept clear in 15\u00b0 steps. No damping is modelled because there is no physics model; add servo.joint_dynamics when a task is declared.\nNOTE actuators: The servos sit in pockets cut to their catalog keep-out shape, with 0.5 mm clearance, and are held only by M2\u00d712 screws through their tabs, so the fit check reports them as \"not touching\" their housings. Crush ribs in the pockets would give real contact.\nNOTE sensors: The BNO085 IMU sits flat at the chassis centre (x \u221212.7..12.7, z 151) on four printed posts, with its X axis along body +X (forward, same direction as the visor). No servo position feedback (encoders) is declared yet; tapping the servo potentiometers would be needed if a policy is ever to read joint angles.\nNOTE rejected: Housing both hip servos inside the torso was rejected because two 28.4 mm-deep servo cases on one axis need a torso about 120 mm wide. An 11.8 mm hub (horn reach plus a 1.6 mm wall) was rejected because it left the knee and ankle servo case tops visible.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted cc24724.",
+   "project": "sweep-biped-e-hard-surface",
+   "split": "heldout"
+  },
+  {
+   "id": "biped-f-creature",
+   "category": "biped",
+   "thesis": "f-creature",
+   "blind_label": "biped 5",
+   "owner_verdict": "meh",
+   "image": "biped-f-creature.png",
+   "components": 46,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x5-socket": 7,
+    "bolt/m2x6-socket": 4,
+    "bolt/m2x8-socket": 6,
+    "servo/mg90s": 6,
+    "servo_horn/mg90s-double_arm": 6
+   },
+   "palette": {
+    "accent": "#FF6A13",
+    "mechanism": "#2A2C30",
+    "shell": "#E9E4D8"
+   },
+   "agent_design_notes": "- **Thesis:** a bird-like chick robot that reads as alive because of an egg body leaning forward, a dark face with two bright eyes, haunch-like hip caps, backward-bending legs and splayed three-toed feet.\n- **Key decisions:**\n  1. **Electronics packed first, around the hips.** The battery sits just above the hip servos and the boards are stacked above it, which keeps the mass low and centred over the feet.\n  2. **One column per leg.** All three servos on a side share one case-top plane, which keeps the stance narrow and lets one joint-cap design hide every horn.\n  3. **Body shell with its rim just above the hips.** The flanks are notched round the hip caps, so the hips stay clear through their whole swing while the dark pelvis band reads as an intended seam.\n  4. **One face element.** A dark oval mask fills about 60% of the front width, with orange eyes as the only accent colour.\n- **What I'd change next:** give each leg pod its own thin shell-coloured calf and thigh cover, lofted and tapering towards the foot. Seen from the front, the inboard pods still read as rounded servo boxes rather than muscle.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 4685291.",
+   "project": "sweep-biped-f-creature",
+   "split": "heldout"
+  },
+  {
+   "id": "biped-g-minimal",
+   "category": "biped",
+   "thesis": "g-minimal",
+   "blind_label": "biped 1",
+   "owner_verdict": "like",
+   "image": "biped-g-minimal.png",
+   "components": 47,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 12,
+    "servo/mg90s": 6,
+    "servo_horn/mg90s-cross": 6
+   },
+   "palette": {
+    "accent": "#E4581C",
+    "mechanism": "#2E2F31",
+    "shell": "#E9E6DF"
+   },
+   "agent_design_notes": "**Thesis:** the robot is drawn from one shape, a stadium whose round ends are exactly the joint discs, plus one rounded box and one orange dot, so every visible curve marks an axis or encloses a part.\n\n**Key decisions:**\n1. **Inside out.** The battery's lead room (89 mm) sets the torso height, and two servo depths set its width. Every link is the smallest stadium that wraps an MG90S pocket with a 2 mm wall, so no dimension is arbitrary.\n2. **Alternating layers instead of U-brackets.** Thighs sit outside and shins inside, and each servo shaft points at the next link. That gives one-sided horn joints with a 1 mm running gap, and no extra pivots or bearings.\n3. **Constant 36 mm link width.** Every joint carries the same servo, so tapering is impossible without hiding a case. The uniform column of equal discs is the Rams gesture.\n4. **Three materials, strictly by role.** Warm white for forms, graphite for the visor, joint discs and soles, and one Braun-orange eye. Splitting the foot into a white ankle block and a graphite sole fixed the only graphite-on-graphite disc.\n5. **ESP32 drives the six servos directly** through its LEDC PWM channels, so the PCA9685 servo driver is left out. One less board.\n\n**What I'd change next:** add a hip-roll servo per leg. A pitch-only biped can't shift its weight sideways, so it can only shuffle. A roll servo would make a real gait possible at the cost of about 30 mm of torso height.\n\nDECISION: Pitch-only 3-DOF legs (hip, knee, ankle) on MG90S, with alternating thigh-outside / shin-inside layers so each joint is a one-sided horn hub with a 1 mm running gap, chosen over U-yoke brackets for fewer parts.\nDECISION: Links are constant-section stadiums (end radius 18 mm, concentric with the joint axes) rather than tapered beams, because every joint carries the same servo pocket; the foot is a separate graphite pill-shaped sole pad.\nDECISION: Torso is a two-piece printed chassis split at the hip axis inside a 2.4 mm hood that slides down past the hip servos through slots hidden behind the thigh discs; battery stands vertically behind the hip axis, ESP32 is in front, IMU and regulator sit centrally above the hip servos.\nDECISION: No PCA9685: the ESP32 LEDC drives the six servos directly.\nDECISION: Design-only study: no task, policy, rollout or physics bodies declared, at the caller's request.\nDECISION: Palette is shell #E9E6DF, mechanism #2E2F31, accent #E4581C; the single orange element is the eye in the visor.\nNOTE actuators: Six MG90S servos (stall 176 N\u00b7mm at 4.8 V, 216 N\u00b7mm at 6.6 V; 0.08 s/60\u00b0 at 6 V), powered at 6 V from the Pololu D36V50F6. Joint limits: hip \u00b135\u00b0 (shin top clears the torso rim by about 2 mm at 35\u00b0), knee \u22125\u202690\u00b0, ankle \u00b130\u00b0. Each servo has two M2\u00d78 bolts at spec mount_holes, head on the tab top (servo z \u22127.5) and shank into a printed ledge whose top touches the tab underside (servo z \u22129.9); the tab holes are modelled at 2.2 mm. Estimated total mass is about 300 g; the knee worst case in a crouch is about 1 kg\u00b7cm against 2.2 kg\u00b7cm stall. No joint damping declared yet (design only).\nNOTE sensors: BNO085 (Adafruit 4754) lies flat in the upper chassis at hip+24 mm on four 2.2 mm posts, board X along body +X (forward) and Z up, near the torso centroid. No encoders: stock MG90S servos report nothing, so joint angles would need potentiometer taps if a policy is trained later.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted 672a68a.",
+   "project": "sweep-biped-g-minimal",
+   "split": "dev"
+  },
+  {
+   "id": "biped-h-free",
+   "category": "biped",
+   "thesis": "h-free",
+   "blind_label": "biped 2",
+   "owner_verdict": "no",
+   "image": "biped-h-free.png",
+   "components": 47,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 12,
+    "servo/mg90s": 6,
+    "servo_horn/mg90s-single_arm": 6
+   },
+   "palette": {
+    "accent": "#FF6A2B",
+    "mechanism": "#2A2C31",
+    "shell": "#ECE7DF"
+   },
+   "agent_design_notes": "**Thesis:** a calm, friendly consumer robot: one soft white hood with a dark visor, on waisted legs where every joint shows as the same dark disc.\n\n**Key decisions:**\n1. **Hood over the hips.** The shell's lower edge sits 2 mm above the hip axis, so the legs come out from under the body instead of holding up a box. This only works because I checked that the thigh tops stay inside the hood's front and back walls across the \u00b160\u00b0 hip range.\n2. **One joint cap, everywhere.** The cap is a disc whose radius is the horn's 16 mm reach plus a 1.6 mm wall, and the same disc closes the hip, knee and ankle. It hides the horn and gives the leg a repeated three-beat rhythm from the side.\n3. **Servo-first legs.** Each leg part is a pill shaped around its MG90S servo bays, with 2 mm walls and support ledges under the screw tabs. The hip servos facing the centreline keep the stance narrow.\n4. **Electronics packed low and central.** The battery lies flat at the bottom of the chassis. The IMU is at the deck centre facing forward. The two larger boards stand upright at the front and back.\n5. **Restraint in colour.** White for the body, dark grey for the joints, feet and face, orange only for the eyes.\n\n**What I would change next:** add ankle-roll servos and taper the feet. The legs keep a nearly constant 31 mm depth because every servo case is that size. The flat foot plates are the weakest-looking part, and without ankle roll the robot cannot shift its weight sideways to walk well.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 1d7ee41.",
+   "project": "sweep-biped-h-free",
+   "split": "heldout"
+  },
+  {
+   "id": "hexapod-a-servo-joint",
+   "category": "hexapod",
+   "thesis": "a-servo-joint",
+   "blind_label": "hexapod 1",
+   "owner_verdict": "meh",
+   "image": "hexapod-a-servo-joint.png",
+   "components": 61,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m3x12-socket": 2,
+    "nut/m3-hex": 2,
+    "servo/mg90s": 12,
+    "servo_horn/mg90s-cross": 12
+   },
+   "palette": {
+    "accent": "#EE6A1F",
+    "mechanism": "#2A2C31",
+    "shell": "#E8E2D4"
+   },
+   "agent_design_notes": "**Thesis:** each MG90S's horn axis is the joint, and the printed parts are just hubs that clip to horns, with a rounded body shell hiding everything else.\n\n**Key decisions:**\n1. **Two servos per leg (12 MG90S).** That fits one 16-channel servo driver and keeps each leg to one hip housing and one leg part, close to Bittle's simplicity. The cost is no separate knee: the knee bend is fixed in the leg.\n2. **Cross horns everywhere.** Their 10.2 mm reach allows 12.5 mm joint caps, small enough that the leg's cap sits below the tray through its whole range.\n3. **Coxa servos hang shaft-down in a 9.9 mm tray** with their mounting tabs resting on a ledge. The hip parts swing under a flat tray, so they can't hit the shell, and the battery fits between the middle servos.\n4. **Body shell, tray and visor are rounded boxes, not lofted surfaces.** The lofted version ran past the engine's 300 CPU-second limit, mostly in the fit check.\n5. **Hip spacing raised to 66 mm and hip swing limited to \u00b120\u00b0.** At 60 mm and \u00b125\u00b0, a rear leg hit the middle hip.\n\n**One thing I'd change next:** angle the front and rear hips about 30\u00b0 outward and let them swing further. All six legs currently point straight sideways, which makes it read as a rectangle, and splaying them would give a more insect-like stance and a longer stride. I'd also replace the threaded shell bolts with a snap-fit rim so the fit check comes back fully clean.\n\nDECISION: Hexapod with 2 DOF per leg (coxa yaw + femur lift), 12 \u00d7 MG90S with catalog cross horns; each servo's horn is the pivot and the printed hip/leg parts clip directly to horns.\nDECISION: Silhouette is one heavily rounded box shell (bone #E8E2D4) over a graphite belly tray, with a graphite visor at +X as the face; foot caps are the only orange (#EE6A1F) accent.\nDECISION: Coxa servos hang shaft-down in the belly tray, their tabs resting on a ledge at the tab face; the battery lies flat in the tray centre; ESP32, PCA9685, BNO085 (X forward) and D36V50F6 sit on a deck above the servo cases.\nDECISION: All six hips point straight sideways (no yaw offset); leg_pitch 66 mm and coxa_range \u00b120\u00b0 to clear neighbouring hips in the sweep.\nDECISION: Design-only study: no task, policy or rollout is declared, and no wiring harness (nets) is modelled yet.\nDECISION: The shell is held by 2 M3x12 bolts from under the belly into captive M3 nuts in shell tabs; the engine reports bolt/nut as intersecting because the bolt is modelled at full diameter and the nut bore at thread-core size; left as is.\nNOTE actuators: 12 \u00d7 MG90S (stall 176 N\u00b7mm at 4.8 V, 216 N\u00b7mm at 6.6 V, 0.08 s/60\u00b0 at 6 V), powered from the 2S LiPo through the Pololu D36V50F6 at 6 V and driven by the PCA9685. Coxa joints are limited to \u00b120\u00b0, femur joints to \u00b130\u00b0. No joint damping is declared because no dynamics are run; add servo.joint_dynamics if a task is added later.\nNOTE sensors: BNO085 on the deck at about (8..33, -27..-4) mm, board X along body +X, for orientation and rotation rate. No joint encoders: the servo potentiometers are not tapped out.\nNOTE rejected: Lofted superellipse body shell and tray (cage rings with exponent 5) were dropped because building them plus the fit check passed the engine's 300 CPU-second limit, with 63 s on the tray/shell pair alone. Blended fuses on the leg lofts cost about 17 s per leg and were removed.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted b6ceb48.",
+   "project": "sweep-hexapod-a-servo-joint",
+   "split": "dev"
+  },
+  {
+   "id": "hexapod-b-motors-in-body",
+   "category": "hexapod",
+   "thesis": "b-motors-in-body",
+   "blind_label": "hexapod 5",
+   "owner_verdict": "like",
+   "image": "hexapod-b-motors-in-body.png",
+   "components": 63,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "servo/mg90s": 12,
+    "servo_horn/mg90s-cross": 12
+   },
+   "palette": {
+    "accent": "#F26B1D",
+    "mechanism": "#2B2D31",
+    "shell": "#E8E3D7"
+   },
+   "agent_design_notes": "- **Thesis:** every actuator lives in the torso or at the hip root, and a crank\u2013pushrod parallelogram carries lift out to slim, motorless legs.\n- **Key decisions:**\n  - **Stacked turret.** The lift servo is enclosed in the carrier that the hip-yaw servo turns, so it rides with the yaw but never leaves the body.\n  - **Parallelogram drive.** Equal 14 mm cranks give a 1:1 femur angle with no gearing, and it keeps the limb a single printed arch with only a hub and lever at the root.\n  - **Three-layer body.** Tub, mechanism band and dome put the battery lowest and the boards high under the lid. The band lets the hips swing \u00b125\u00b0 freely, and the orange caps make the drive the visual feature.\n  - **Clean catalog boundary.** The pedestal and carrier pockets are cut from each part's bay, with seat pads under the servo tabs so every weld actually touches.\n- **What I'd change next:** close the mechanism band with a flexible or segmented skirt between tub and dome. This would hide the carriers and dust-proof the lift drive. It would also make the body read as one pebble rather than a lid on a tray.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 7e00e07.",
+   "project": "sweep-hexapod-b-motors-in-body",
+   "split": "dev"
+  },
+  {
+   "id": "hexapod-c-exposed-mechanism",
+   "category": "hexapod",
+   "thesis": "c-exposed-mechanism",
+   "blind_label": "hexapod 3",
+   "owner_verdict": "like",
+   "image": "hexapod-c-exposed-mechanism.png",
+   "components": 82,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 24,
+    "bolt/m3x10-socket": 6,
+    "servo/mg90s": 12,
+    "servo_horn/mg90s-cross": 12
+   },
+   "palette": {
+    "accent": "#FF6B1A",
+    "mechanism": "#2A2D31",
+    "shell": "#E9E6DF"
+   },
+   "agent_design_notes": "DECISION: Exposed-mechanism hexapod. The silhouette is one rounded tray with six blended servo pods and a deck above for the electronics. Servo cases are left visible between white brackets on purpose, as this variant asks; the round hub caps, the double-sided femur discs and the tapered legs carry the form.\nDECISION: Palette is bone shell #E9E6DF, graphite mechanism #2A2D31 and orange accent #FF6B1A. The accent is used only on the eyes and foot caps.\nDECISION: Face is a graphite recessed panel on +X with two orange eyes, chosen so it doesn't disappear into the shell or the hardware.\nDECISION: The machine runs untethered and carries its own controller, servo driver, IMU and power. The 2S LiPo and the D36V50F6 6 V regulator sit low on the tray floor; the ESP32, PCA9685 and BNO085 are on the deck.\nDECISION: Sweep step is 20\u00b0, over 15\u00b0. At 15\u00b0 the engine ran out of time on `femur_rr`; at 20\u00b0 all 12 limited joints are swept and pass.\nNOTE actuators: There are 12 MG90S servos, 2 per leg: a hip (coxa) servo in a chassis pod, limited to \u00b1coxa_limit (25\u00b0), and a femur servo in the hip bracket, limited to \u00b1femur_limit (35\u00b0). Each drives through a catalog cross horn sitting inside the driven part's hub. The femur's back side runs on an M3x10 pivot bolt. No servo.joint_dynamics or task has been declared yet; add them before training.\nNOTE sensors: The BNO085 (Adafruit 4754) sits on the deck near the body centre and is grounded to the chassis frame. Its X axis is meant to point along body +X, and it gives orientation and rotation rate. No joint encoders are declared, because stock MG90S servos report nothing back.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted 6153831.",
+   "project": "sweep-hexapod-c-exposed-mechanism",
+   "split": "heldout"
+  },
+  {
+   "id": "hexapod-d-product-shell",
+   "category": "hexapod",
+   "thesis": "d-product-shell",
+   "blind_label": "hexapod 6",
+   "owner_verdict": "meh",
+   "image": "hexapod-d-product-shell.png",
+   "components": 59,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "servo/mg90s": 12,
+    "servo_horn/mg90s-cross": 12
+   },
+   "palette": {
+    "accent": "#FF8A3D",
+    "mechanism": "#2B2D31",
+    "shell": "#ECE8E1"
+   },
+   "agent_design_notes": "- **Thesis:** a friendly product body that hides the mechanism, like Anki Vector: one soft white shell over a dark deck, where the only machinery you see is the round joint caps and the feet.\n- **Two servos per leg, 12 in total (MG90S).** I chose this over three per leg because each knee servo can then lie flat inside a low pod tucked under the shell's edge, so the shell stays compact. A PCA9685 drives all 12 from the ESP32.\n- **Rounded-box shell instead of a lofted pebble.** The lofted shape I tried first ran past the build's CPU limit during fit checking. The rounded box is made of simple surfaces, checks quickly, and gives a flat front where the visor reads as a face, like Vector's screen.\n- **Servos hang shaft-down from the deck, which everything mounts to.** The hip servo tabs rest exactly on the deck top. Everything above the deck stays still, so nothing moving ever comes near the shell, and the hip caps are hidden under the body.\n- **Battery low in the middle.** It sits in a belly pocket under the deck, between the hips, 44 mm off the ground, with the boards stacked above it.\n- **Next change:** make the shell rise into a softer, taller top and lighten the dark knee pods. They are the heaviest dark shapes after the visor and pull the eye away from the face.\n\nDECISION: Hexapod with 2 servos per leg (hip yaw shaft-down in the deck, knee pitch flat in a coxa pod), 12x MG90S driven by a PCA9685 from an ESP32-DevKitC; untethered with a 2S 1000 mAh LiPo through a Pololu D36V50F6 6 V regulator.\nDECISION: Body shell is an analytic rounded box (plan corner R55, crown roll R24, 2 mm wall), not a lofted superellipse: the lofted one exceeded the 300 CPU-s fit-check budget.\nDECISION: Palette is shell #ECE8E1 (shell, legs), mechanism #2B2D31 (deck, coxa pods, visor, feet), accent #FF8A3D (eyes, knee caps); the face is a graphite visor with amber eyes on the flat +X front.\nDECISION: Motion sweep runs at a 25 degree step; finer steps exceed the CPU budget. knee_x was raised to 37 mm so lifted front legs (-30 degrees) clear the deck corner.\nDECISION: Design-only study: no task, policy or rollout is declared, and no wiring harness is modelled (deck has cable pass-through holes only).\nNOTE actuators: 12x MG90S (1.8 kg-cm at 4.8 V, 2.2 at 6.6 V, 0.08 s/60 deg at 6 V). Hip joints yaw \u00b125 deg about vertical axes at z=62 (shaft face), knee joints pitch \u00b130 deg about horizontal tangential axes 18 mm below and 37 mm outboard of the hip; -30 is leg lift. Cross horns sit inside 16 mm-radius printed hub caps. No dynamics/damping declared (design-only).\nNOTE sensors: BNO085 (Adafruit 4754) on four 5 mm standoffs at the deck centre, X along body +X (forward), Z up; no sensor channels declared because there is no task. Hobby servos give no position feedback.\nNOTE rejected: A lofted superellipse shell with 4-5 rings, made with thicken or as an outer-minus-inner loft, built correctly but pushed the static fit check past 300 CPU-s (shell vs chassis took 29-83 s alone). Changing the leg loft's middle section (lowering the arch apex) made a cut return 2 solids; moving knee_x outboard cleared the deck instead.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 082149c.",
+   "project": "sweep-hexapod-d-product-shell",
+   "split": "heldout"
+  },
+  {
+   "id": "hexapod-e-hard-surface",
+   "category": "hexapod",
+   "thesis": "e-hard-surface",
+   "blind_label": "hexapod 7",
+   "owner_verdict": "meh",
+   "image": "hexapod-e-hard-surface.png",
+   "components": 55,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m3x12-socket": 4,
+    "servo/mg90s": 12,
+    "servo_horn/mg90s-double_arm": 12
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "mechanism": "#2B2E33",
+    "shell": "#D8DBD6"
+   },
+   "agent_design_notes": "- **Thesis:** A crisp, panelled sci-fi crawler: a dark chamfered chassis slab topped by a faceted light canopy with an orange visor, with drum-capped joints and tapered octagonal legs.\n- **Key decisions:**\n  1. **Hip servos stand vertically, with their length pointing inward.** That way their pockets stick out only about 16 mm past each hip axis, and the round joint cap covers both the pocket and the horn.\n  2. **The lift servo's carrier is a heavily chamfered block with a matching disc on its outer face.** Each knee reads as a deliberate drum joint rather than a bare servo, and the femur hub on the other side doubles as the cap over the horn.\n  3. **The canopy is a cut-out shell with roof seams, and the visor is split off from it.** The seams and the split line are the panel lines. The four M3 bolts on the front and rear lugs are left visible as fastener detail.\n  4. **Each leg is one loft between two octagonal sections that taper in both width and depth** (18\u00d78 mm at the hip down to 9\u00d75 mm at the foot), so it narrows from every angle. It ends in an orange foot pad that is its own printed part.\n  5. **All electronics fit in a 56 \u00d7 52 mm footprint inside the tub and under the canopy.** This keeps the battery low and central, and leaves the canopy clear of every joint cap through the full swing.\n- **What I'd change next:** The dark tub is still the biggest and plainest surface. I would break it up into a separate chamfered belly plate and side armour panels, bolted on with visible screws, so it carries as much detail as the canopy.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted ede4397.",
+   "project": "sweep-hexapod-e-hard-surface",
+   "split": "heldout"
+  },
+  {
+   "id": "hexapod-f-creature",
+   "category": "hexapod",
+   "thesis": "f-creature",
+   "blind_label": "hexapod 4",
+   "owner_verdict": "meh",
+   "image": "hexapod-f-creature.png",
+   "components": 76,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 24,
+    "servo/mg90s": 12,
+    "servo_horn/mg90s-cross": 12
+   },
+   "palette": {
+    "accent": "#FF7A1A",
+    "mechanism": "#2A2C31",
+    "shell": "#D9CCB0"
+   },
+   "agent_design_notes": "- **Thesis:** a hexapod built like a beetle \u2014 a wide abdomen, a taller thorax, a round head with a dark face and two orange eyes, and spider-like legs that rise to a high knee and taper to a dark foot \u2014 so it reads as an animal before it reads as a machine.\n- **Hip servos inverted under the belly:** each hip servo hangs spline-down from the chassis, so the leg pods ride beneath the body like an insect's leg bases. This keeps the carapace one clean shell, with no holes for the legs.\n- **Lift servos lie flat:** each lift servo lies flat inside its leg pod with the long side of its case pointing inward. That keeps the pods low enough to stay clear of the belly at every hip angle.\n- **Inside out:** the battery is lowest and central, the boards sit on a top deck, and the IMU is at the centre facing forward. Every part sits in a pocket cut with its own `.bay()`, and the servos rest on ledges and screws at their real tab positions.\n- **Colour by role:** the shell colour (bone) covers the carapace, leg pods and legs; graphite is used for the face, feet and hardware; orange appears only on the eyes. One 12 mm cap design covers every horn.\n- **What I'd change next:** I'd blend the boxy leg pods into the legs (a single swept limb root) and give the thorax a domed top, so the two body segments read as muscle rather than two pillows.\n\nDECISION: Concept is a beetle-like hexapod: abdomen + taller thorax as one carapace shell (rounded boxes, offsets exact), a round head with a split graphite face and two orange accent eyes, legs with a raised knee tapering to TPU ball feet.\nDECISION: Two MG90S servos per leg. The hip servo is mounted spline-down under the chassis belly; the lift servo lies flat in a filleted leg pod with its case pointing inward. Both are fastened by their own tabs on M2x8 screws into printed ledges.\nDECISION: Single-arm horn rejected for the cross horn (10.2 mm reach), so every joint cap is a 12 mm disc that hides the horn completely.\nDECISION: Body built from analytic primitives (rounded boxes + sphere) instead of a superellipse loft cage: the loft made the exact fit checks exceed the 300 CPU-second limit.\nDECISION: Defaults femur_z=-14 and splay_rear=35 chosen so the rear legs clear the belly plate through the full \u00b125\u00b0 hip sweep.\nDECISION: Untethered, design-only: it carries an ESP32, PCA9685, BNO085 (centred, X forward) and a 2S 1000 mAh LiPo (low, central, rear-loading) through a D36V50F6 6 V regulator. No wiring harness, task or policy is declared.\nNOTE actuators: 12x MG90S (catalog mg90s, 1.8-2.2 kg\u00b7cm stall, 0.08-0.10 s/60\u00b0). Hip servos are inverted at (\u00b156|0, \u00b127, 0) with the spline down, range \u00b125\u00b0. Lift servos sit at a radial offset of femur_r (33 mm) and femur_z (-14 mm) in each leg frame with the spline tangential, range \u00b130\u00b0. Cross horns sit under 12 mm printed hub caps. No joint_dynamics declared yet (design-only); add servo.joint_dynamics before any training.\nNOTE sensors: BNO085 (Adafruit 4754) at (-11.5,-11.43,31) on the chassis deck with X forward, the IMU for orientation and rotation rate. No joint encoders are modelled; stock MG90S pots would need tapping out for joint feedback.\nNOTE rejected: A lofted superellipse carapace (section_cage) looked better, but its exact fit checks against the legs ran over the 300 CPU-second budget, and part.offset on it took 235 s. Inner and outer cages with different station sets also poked through each other.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 400235c.",
+   "project": "sweep-hexapod-f-creature",
+   "split": "heldout"
+  },
+  {
+   "id": "hexapod-g-minimal",
+   "category": "hexapod",
+   "thesis": "g-minimal",
+   "blind_label": "hexapod 2",
+   "owner_verdict": "no",
+   "image": "hexapod-g-minimal.png",
+   "components": 60,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m3x12-countersunk": 4,
+    "bolt/m3x8-socket": 4,
+    "servo/mg90s": 12,
+    "servo_horn/mg90s-double_arm": 12
+   },
+   "palette": {
+    "accent": "#E8601C",
+    "mechanism": "#2D2E30",
+    "shell": "#E8E5DE"
+   },
+   "agent_design_notes": "**Thesis:** one rounded white body on a thin dark base, six identical legs built from a disc, a narrowing beam and a ball foot, and one orange dot that marks the front.\n\n**Key decisions:**\n1. **Pack from the inside out.** The base plate is exactly as thick as the servo's case-top-to-tab distance, so the battery and the hip servos set the body's height and the plate doubles as the servo mount.\n2. **One shape vocabulary.** The rounded rectangle (body), the pill (face) and the circle (19 mm joint caps, round hip end of the pods, ball feet) each serve a function, and there is no surface detail beyond the seam between shell and base.\n3. **Colour follows role.** White for the outer forms, graphite for joints, face and feet, and orange used once, on the eye.\n4. **Mirrored legs.** Left/right and front/rear mirroring makes handed parts come out handed, and the leg plates are placed so the sweep stays clean.\n5. **The legs narrow in both directions.** The beam goes from 24 \u00d7 7.5 mm at the knee to 10 \u00d7 5.2 mm at the foot and ends in a separate dark foot, never a cut-off bar.\n\n**What I would change next:** make the dark pods less boxy and give the twelve servo leads a real channel. A smaller pod with a rounded outer end, plus a lead groove into the base plate, would remove the last element that still reads as a case and complete the wiring path, which is not yet modelled.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007, ADR-008, ADR-009 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 36921c0.",
+   "project": "sweep-hexapod-g-minimal",
+   "split": "dev"
+  },
+  {
+   "id": "quadruped-a-servo-joint",
+   "category": "quadruped",
+   "thesis": "a-servo-joint",
+   "blind_label": "quadruped 8",
+   "owner_verdict": "like",
+   "image": "quadruped-a-servo-joint.png",
+   "components": 59,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x6-socket": 4,
+    "bolt/m2x8-socket": 4,
+    "servo/mg90s": 8,
+    "servo_horn/mg90s-double_arm": 8
+   },
+   "palette": {
+    "accent": "#FF6A1F",
+    "mechanism": "#2A2C31",
+    "shell": "#E9E3D6"
+   },
+   "agent_design_notes": "**Thesis:** each MG90S's output horn is the pivot, and each limb is a printed bracket screwed straight onto that horn, with no linkages and no extra structure.\n\n1. **Two servos per leg (8 total), the knee servo carried inside its thigh.** This is the Bittle layout: the only moving parts are servos and the brackets on their horns. The cost is width, since every servo is 28.4 mm deep along its shaft, so the stance is 147 mm wide on a 66 mm body.\n2. **Hip servos face each other, 4 mm apart across the centreline.** That is the narrowest the body can be with both hip shafts pointing sideways. The wall over each servo face is 2 mm and the thigh hub runs 1 mm off it.\n3. **One joint design throughout.** An 18 mm hub swallows each horn in a pocket cut from the horn itself, with an orange 10 mm cap on the outer face. Both joints of every leg read the same.\n4. **Everything heavy sits low and central.** The battery is on the floor, the boards are on the deck, and the IMU is about 2 mm from the centre. One hood hides all of it, so the only surface detail is the seam and the visor.\n5. **The fasteners are real.** Screw holes are line-to-line with the M2 shank, so every weld actually touches. The hip screws go in through holes in the side wall that the thigh hubs cover.\n\n**Next change:** narrow the stance. I'd turn the knee servos so their cases tuck under the body edge, and move the shins inboard of the thigh pods. That brings the width from 147 mm towards 110 mm, which would give the robot a more compact, dog-like stance.\n\nDECISION: Quadruped with 2 MG90S per leg (8 total). Hip servos sit in the body with their shafts along \u00b1Y; the knee servo is carried inside the thigh pod, Bittle style. Chosen over 3-DOF legs to keep the \"servo is the joint\" thesis with minimal structure.\nDECISION: Silhouette is one rounded pill body (157\u00d766\u00d742 mm, corners R8, top edges R10, bottom edges R6), split at z=26 mm into chassis tub and hood. The face is a graphite visor (50\u00d716 mm) with two orange eyes on +X, the same direction as the IMU's X axis.\nDECISION: Palette is bone shell #E9E3D6 (body, thighs), graphite mechanism #2A2C31 (shins, visor, covers, deck) and orange accent #FF6A1F (joint caps, feet, eyes).\nDECISION: The standing pose is the solved pose: thigh at 40\u00b0, shin angle solved so each foot lands under its hip. The robot is untethered and carries an ESP32, PCA9685, BNO085, Pololu D36V50F6 and a Gens Ace 2S 1000 mAh pack. No training task, policy or rollout is declared, because this is a design-only study.\nDECISION: Screws are modelled line-to-line with the M2 shank in plastic (no tap-drill overlap), so the welded screw pairs touch without intersecting. The visor resting on the chassis rim and each horn on its spline are declared contacts.\nNOTE actuators: 8\u00d7 MG90S (13.4 g; 1.8 kg\u00b7cm at 4.8 V, 2.2 kg\u00b7cm at 6.6 V; 0.08 s/60\u00b0 at 6 V) on 6 V from the D36V50F6. The hips are driven straight from the horn, with the thigh plate screwed to a double-arm horn. Each knee servo sits in its thigh pod with the shaft pointing outward, and the shin hub is screwed to its horn. Joint limits are \u00b130\u00b0 (hip) and \u00b140\u00b0 (knee) about the standing pose. No dynamics or damping is declared because the study is design-only.\nNOTE sensors: BNO085 (Adafruit 4754) on the deck at x\u22482 mm from the body centre, board X along body +X, Z up. It is the only onboard sensor. The servos have no feedback, so joint angles would need potentiometer taps before a policy could read them.\nNOTE rejected: Rejected a knee servo whose case tucks inward under the body: it would hit the body bottom past roughly \u00b145\u00b0 of hip swing. Also rejected a stadium-shaped knee pod the full width of the thigh, which read as a box stuck onto a plate; it was replaced by a teardrop pod tangent to the knee hub.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 0a586c3.",
+   "project": "sweep-quadruped-a-servo-joint",
+   "split": "dev"
+  },
+  {
+   "id": "quadruped-b-motors-in-body",
+   "category": "quadruped",
+   "thesis": "b-motors-in-body",
+   "blind_label": "quadruped 3",
+   "owner_verdict": "like",
+   "image": "quadruped-b-motors-in-body.png",
+   "components": 74,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 16,
+    "bolt/m3x10-socket": 8,
+    "bolt/m3x12-socket": 4,
+    "servo/mg90s": 8,
+    "servo_horn/mg90s-single_arm": 8
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "mechanism": "#2A2C30",
+    "shell": "#E9E5DC"
+   },
+   "agent_design_notes": "- **Thesis:** All eight servos sit inside the body, so each leg is just a slim graphite thigh, a pushrod and a shank; no motor box hangs on a limb.\n- **Two servos per leg (MG90S, 2.2 kg\u00b7cm).** The hip servo drives the thigh directly. The knee servo sits about 42 mm inboard and drives the knee through a 14 mm crank, an 89 mm pushrod and a 14 mm lever above the knee. A third servo per leg would have meant a motor out on the leg or a much wider body. At an estimated ~0.4 kg (about 100 g per leg) the standing hip load is roughly 15% of stall torque.\n- **Packed from the inside out.** The servos stand vertically in a row along each side wall, cut into the printed tub with their catalog bays, seated on printed ledges and held by M2 screws through their tabs. That leaves a 34 mm channel down the middle. The battery lies flat in railed bays on the floor (low and central). The PCA9685, BNO085 IMU (centred, X forward) and ESP32 sit on a deck above it, and the 6 V regulator on a bridge above the IMU. Wires run along that channel.\n- **Layered pivots.** The thigh and crank hubs share the plane nearest the body, the shank sits one plane out, and the rod one plane further. Every pivot is an M3 bolt threaded into one part, with a 0.2 mm clearance hole in the other and a 0.3 mm head gap. This is why the rod can cross over the hip cap without clashing.\n- **One body form, one set of radii.** The body is a single 18 mm-radius rounded box: a tub with a thin hood on top. A smaller R12 corner had left a crease, so I made all edges R18 and lengthened the body by 10 mm so the hip servo corners stay inside the rounding. Both servo shafts on each leg are covered by the same 17.6 mm cap design.\n- **Next change:** Tie the knee motor to the hip axis with a true parallelogram, by riding the crank on a hip bearing or using a belt. Right now the knee angle shifts with the hip angle (up to about 85\u00b0 across the range), which a controller has to undo. It would also make the linkage easier to verify.\n\nDECISION: Two DOF per leg (hip pitch plus knee via a pushrod 4-bar), both MG90S servos per leg inside the body; no third servo, to keep limbs free of motors.\nDECISION: Battery 2S 1000 mAh flat on the tub floor; ESP32, PCA9685, BNO085 (centred, X forward) on a deck above it; D36V50F6 6 V regulator on a bridge over the IMU.\nDECISION: The engine's motion sweep cannot handle closed 4-bar loops, so the pose_hip/pose_crank parameters solve the linkage in the script and place the parts; motion fit is checked by sweeping those, and only the four corners were checked.\nDECISION: Screw and pin holes are cut at the bolts' nominal diameter, because threads aren't modelled and smaller tap holes register as intersections; the bolt is welded to the part it threads into and has a 0.2 mm clearance hole in the part that turns.\nDECISION: The body is a single R18 rounded box (tub plus a 2 mm hood seamed 18 mm above the hip axis), body_len 194 so hip servo corners stay inside the rounding.\nDECISION: Design-only study: no task, policy or rollout declared.\nNOTE actuators: 8x MG90S (13.4 g, 1.8\u20132.2 kg\u00b7cm stall, 0.08\u20130.10 s/60\u00b0) at 6 V from a D36V50F6. Hip servo at x=\u00b172 drives the thigh directly through a single-arm horn (cap R17.6). Knee servo at x=\u00b130 drives a 14 mm crank \u2192 89.3 mm rod \u2192 14 mm lever on the shank; knee angle is coupled to hip angle (\u0394knee from \u221270\u00b0 to +85\u00b0 over hip \u221240..25 and crank \u00b135). Joint limits: hip \u221240..+25 (rear-left sense, mirrored front), crank \u00b135. No joint_dynamics declared (design-only).\nNOTE sensors: BNO085 centred at the body origin on the electronics deck, X along body +X; no joint encoders (stock MG90S, no feedback).\nNOTE rejected: The engine's clearance sweep refuses closed or coupled joint graphs, so loop joints come back \"incomplete\"; posing parameters with in-script 4-bar closure replace it for motion checks. Separate R12 plan corners with an R18 crown left a visible crease; a single R18 radius fixed it.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 046fbdb.",
+   "project": "sweep-quadruped-b-motors-in-body",
+   "split": "heldout"
+  },
+  {
+   "id": "quadruped-c-exposed-mechanism",
+   "category": "quadruped",
+   "thesis": "c-exposed-mechanism",
+   "blind_label": "quadruped 4",
+   "owner_verdict": "like",
+   "image": "quadruped-c-exposed-mechanism.png",
+   "components": 67,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x6-socket": 11,
+    "bolt/m3x8-socket": 6,
+    "servo/mg90s": 8,
+    "servo_horn/mg90s-double_arm": 8
+   },
+   "palette": {
+    "accent": "#FF6A1A",
+    "mechanism": "#2A2C30",
+    "shell": "#E9E5DC"
+   },
+   "agent_design_notes": "**Thesis:** every working part (servos, boards, battery and wiring) stays in view, laid out symmetrically on one rounded printed frame, so the order of the mechanism is the decoration.\n1. **Two MG90S servos per leg, mirrored front-to-back and left-to-right, knees pointing inward.** One set of printed leg parts serves all four corners as true mirror images, and the inward knees keep the stance compact.\n2. **Electronics in a single row on the centreline (controller, IMU, driver, regulator), with the battery flat underneath.** The IMU sits at the body centre with its X axis forward, and the heaviest part rides low and central.\n3. **Exposure is cut, not left raw.** Every exposed case sits inside a printed housing and shows through a deliberate window: the thigh windows show the knee servos, the side slots show the tub's inside, and the side windows the hip servos sit in are covered by the thighs.\n4. **One joint language.** The same 17.6 mm orange cap sits on all eight axes, and the hubs are cut around their horns, so no bare horn arm shows.\n5. **Wiring in authored lanes.** The bus pairs run side by side, and where two runs cross in plan view they pass at different heights.\n\n**Next change:** add the servo leads, combed in along the deck edges to the PCA9685 headers, and the battery lead through a grommet to the regulator. That would complete the wiring the thesis promises.\n\nDECISION: MG90S micro servos, 2 per leg (hip pitch + knee pitch), 8 total; chosen over 3-DOF legs to keep the frame compact and the layout readable.\nDECISION: Body is one rounded open tub with a screwed deck. The hip servos sit in tub bays with tab blocks and M2 pilot holes, the battery lies on the tub floor, and the boards sit on deck standoffs with M2 heat-set insert holes.\nDECISION: Knees point inward on all four legs; every printed leg part is built once for front-left and mirrored across both centre planes.\nDECISION: Deck wiring is swept along authored orthogonal lanes with exact 3 mm bends; part.cable/part.bundle auto-routing was dropped because its splines overshot and crossed.\nDECISION: Palette is bone shell #E9E5DC, graphite mechanism #2A2C30 and orange accent #FF6A1A; the accent is used only on joint caps and the servo V+ wire.\nDECISION: Design-only study; no task, policy or rollout is declared, as the brief asked.\nNOTE actuators: 8x MG90S (catalog mg90s), 1.8 kg\u00b7cm at 4.8 V and 2.2 kg\u00b7cm at 6.6 V, 0.08 s/60\u00b0 at 6 V. Fed 6 V from the Pololu D36V50F6 through the PCA9685 V+ terminal. Hip axes at (\u00b165, \u00b136, 93.4) mm; knees at 48 mm along the thigh, 35\u00b0 from vertical in stance. Joint limits \u00b135\u00b0 about stance. No dynamics or damping declared (design-only).\nNOTE sensors: BNO085 (Adafruit 4754) at the deck centre, X along body +X, on 4 mm standoffs. It is on the I\u00b2C bus chained ESP32 \u2192 PCA9685 (JP4) \u2192 PCA9685 (JP3) \u2192 IMU. No joint encoders.\nNOTE rejected: part.cable auto-search and part.bundle twisted pairs both produced crossing or board-intersecting wires on the deck, and dense waypoint lists made BRepOffsetAPI_MakePipeShell fail. Hand-built line+arc paths swept with part.sweep are what works here.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted e6d016e.",
+   "project": "sweep-quadruped-c-exposed-mechanism",
+   "split": "heldout"
+  },
+  {
+   "id": "quadruped-d-product-shell",
+   "category": "quadruped",
+   "thesis": "d-product-shell",
+   "blind_label": "quadruped 1",
+   "owner_verdict": "meh",
+   "image": "quadruped-d-product-shell.png",
+   "components": 67,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 16,
+    "servo/mg90s": 8,
+    "servo_horn/mg90s-cross": 8
+   },
+   "palette": {
+    "accent": "#2FC7C0",
+    "mechanism": "#2A2C31",
+    "shell": "#ECE8E1"
+   },
+   "agent_design_notes": "**Thesis:** one soft, continuous pill body with a single seam and a dark lens face, where the only mechanism you see is round joint hubs, dark feet and teal accent caps.\n\n**Key decisions:**\n1. **Pack from the inside out.** I placed every catalog part at its real size first, then cut the chassis and thighs around their pockets. The battery goes lowest so the weight sits low and central; the IMU goes at the centre of the body frame.\n2. **One seam on the body.** The split sits 8 mm above the hip axis, so the thigh hubs hide it at the sides and it reads as a deliberate lid line on a single form.\n3. **Knee servo inside the thigh.** The knee is driven directly, so the thigh grows around the servo and nothing hangs beside the leg. That makes thick, aibo-like thigh pods, which suit the friendly look.\n4. **Fillet whole parts, not chosen edges.** A 0.8 mm round on every edge of each printed part acts as a seam reveal. It brought sharp edges from 35% to 22.6%; the inner thigh half skips it to stay within the CPU limit.\n5. **Real fixings throughout.** The bolts, tab seats and board posts mean every rigid connection is physically made, not just declared.\n\n**What I'd change next:** slim the stance, which is 162 mm wide. Moving the knee servos into the body and driving the knees through a short linkage would cut the thighs from 35 mm to about 15 mm thick, a better leg-to-body proportion.\n\nDECISION: Two degrees of freedom per leg (hip pitch + knee pitch) on 8 MG90S servos, the knee servo housed inside the thigh; chosen over three per leg to keep the shell compact and the thighs one smooth pod.\nDECISION: Body is a single 170\u00d788\u00d764 mm rounded box (20 mm corner radius) split once, 8 mm above the hip axis, into a solid chassis tub and a 2 mm hood. The battery loads through a bottom hatch and rests on it.\nDECISION: Face is a dark visor lens on the +X nose (60\u00d734 mm) with two teal eyes; the palette is warm white shell #ECE8E1, graphite mechanism #2A2C31 and teal accent #2FC7C0.\nDECISION: Servos are fastened with catalog M2\u00d78 bolts through their tabs into printed seats, and the bolt/servo and horn/servo pairs are declared as contacts; chosen over servos floating in clearance pockets.\nDECISION: The swept-fit step is 15\u00b0 because a 10\u00b0 step plus filleted thigh halves exceeded the 300 CPU-second build limit; the inner thigh half is not filleted for the same reason.\nDECISION: Design-only study as requested: no training task, policy or rollout declared; the robot is untethered, so it carries an ESP32, a PCA9685, a BNO085, a D36V50F6 regulator and the 2S LiPo.\nNOTE actuators: 8 MG90S servos (1.8\u20132.2 kg\u00b7cm stall, 0.08 s/60\u00b0 at 6 V) are fed 6 V from a Pololu D36V50F6 off a 2S LiPo. Hip servos sit in chassis slots with their shafts along \u00b1Y at z = Hc and x = \u00b1hip_x. Knee servos sit in the thighs, shafts pointing inboard, at z = Hc \u2212 thigh_len. Joint limits are hip \u00b130\u00b0 and knee \u00b145\u00b0. No joint damping is declared, since there is no dynamics task.\nNOTE sensors: A BNO085 sits flat at body centre (x \u221212.7\u202612.7, z = Hc \u2212 8) with its X axis along body +X, ready to be declared as the orientation and rotation-rate sensor if a walking task is added. The stock servos have no position feedback unless the potentiometer is tapped out.\nNOTE rejected: A full-length hip drum on the thigh read as a separate shelf, so the thigh became one exponent-4 loft with a crown. Loft rings with mixed exponents looked lumpy, and sparse rings made a waist that exposed the knee servo case, so I added constant-section rings at 35% and 70% of the thigh length. Filleting the visor after cutting the eye holes made it intersect the eyes, so it is filleted before the cut.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted dd4f269.",
+   "project": "sweep-quadruped-d-product-shell",
+   "split": "dev"
+  },
+  {
+   "id": "quadruped-e-hard-surface",
+   "category": "quadruped",
+   "thesis": "e-hard-surface",
+   "blind_label": "quadruped 2",
+   "owner_verdict": "love",
+   "image": "quadruped-e-hard-surface.png",
+   "components": 81,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 16,
+    "bolt/m3x10-socket": 6,
+    "bolt/m3x20-socket": 8,
+    "bolt/m3x8-socket": 8,
+    "servo/mg90s": 8,
+    "servo_horn/mg90s-single_arm": 8
+   },
+   "palette": {
+    "accent": "#FF6B1A",
+    "mechanism": "#2B2E34",
+    "shell": "#D9D5CC"
+   },
+   "agent_design_notes": "**Thesis:** A chamfered, two-tone armoured hull with hip drums and bolted knee pods, where every seam, groove and socket-head bolt is a real joint between printed parts, so the hardware is the decoration.\n\n**Key decisions:**\n1. **The hull is the intersection of three chamfered outlines.** This gives the faceted, machined look the brief asks for, where a single rounded box would not. Splitting it into a dark tub and a light lid at the seam sets the main visual hierarchy.\n2. **The layout started from the parts inside.** The battery's bay, including lead room, set where the hips go (\u00b154 mm), and that set the body length. The boards stack on a deck above the battery, and the IMU and regulator hang from the lid roof.\n3. **Each layer of the leg has its own plane across the body.** The hip drum, the shin and the knee pod sit at different distances out from the body side. That is why the full joint sweep finds no collision, and it also makes the pod read as armour bolted over the knee servo.\n4. **Fasteners are both structure and detail.** The seam, dorsal-plate, pod and foot bolts all come from the catalog, sit where they would on a real robot, and are visible on purpose. The servo tab screws are the real mounting, hidden under the drums.\n5. **Accent is used sparingly.** Orange appears only on the eye-bar and the feet, so the face and the ground contacts are what draw the eye.\n\n**Next change:** The knee pods stick out 42 mm past each side of the body, which makes the stance wide and the front view top-heavy. I would turn the knee servo so its case lies along the thigh, or move to a shorter-bodied servo. That would pull the pods in toward the body and give the shins more mass to match the chunky thighs.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted 9a0576a.",
+   "project": "sweep-quadruped-e-hard-surface",
+   "split": "heldout"
+  },
+  {
+   "id": "quadruped-f-creature",
+   "category": "quadruped",
+   "thesis": "f-creature",
+   "blind_label": "quadruped 5",
+   "owner_verdict": "meh",
+   "image": "quadruped-f-creature.png",
+   "components": 55,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 16,
+    "servo/mg90s": 8,
+    "servo_horn/mg90s-single_arm": 8
+   },
+   "palette": {
+    "accent": "#E8672A",
+    "mechanism": "#2A2C30",
+    "shell": "#E9DFCB"
+   },
+   "agent_design_notes": "- **Thesis:** a small fox-hound whose body is a single bone-coloured skin over all the hardware: alert, head-up and stepping forward, with its joints showing as round shoulder and knee caps rather than as servos.\n- **Key decisions:**\n  - **Inside out.** The battery goes lowest, the boards sit flat above it, the IMU sits at the centre of mass, and the hip servos are pocketed at the ends. That sets the torso's length (about 190 mm) and depth before any shaping.\n  - **Knee servos turned inward** into rounded thigh pods. This keeps the stance narrow and gives the upper leg a muscular mass, at the cost of making the belly clearance depend on how far the hip swings.\n  - **Shell arches over the hip caps.** The joint caps read as shoulders and haunches, the shell clears them through the whole sweep, and the shell rim stays flat for printing.\n  - **Head raised** (`head_lift` 34 mm) with a large dark face mask and orange eyes. This is what makes it read as alive from the front.\n- **Next change:** give the rear legs real haunch anatomy instead of a mirror of the front. That means a bigger rear thigh pod and cap, a longer shin with a hock angle, and a shell rim that sweeps up toward the ends (printed on the back, or split into two pieces) to get rid of the square panel ends.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted bfed747.",
+   "project": "sweep-quadruped-f-creature",
+   "split": "dev"
+  },
+  {
+   "id": "quadruped-g-minimal",
+   "category": "quadruped",
+   "thesis": "g-minimal",
+   "blind_label": "quadruped 7",
+   "owner_verdict": "meh",
+   "image": "quadruped-g-minimal.png",
+   "components": 77,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pca9685-adafruit-rev-c": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x5-socket": 11,
+    "bolt/m2x8-socket": 16,
+    "servo/mg90s": 8,
+    "servo_horn/mg90s-cross": 8
+   },
+   "palette": {
+    "accent": "#E8551E",
+    "mechanism": "#38393B",
+    "shell": "#ECEAE4"
+   },
+   "agent_design_notes": "- **Thesis:** One white rounded slab, four vertical tapered legs, one round graphite cap at each of the eight joints and one orange dot, with nothing on the surface except the seams between printed parts.\n- **Decision 1, packed from the inside out:** The hip servos sit at the corners with their leads pointing up. That makes the body exactly as tall as one servo (40 mm chassis, 42 mm shell). The battery is in the middle at the very bottom, and the boards are on one deck above it.\n- **Decision 2, every joint looks the same:** Each driven part's hub is a 12 mm disc around the horn (horn reach 10.2 mm plus wall), with a graphite cap over the horn screw. It sits in a 1.5 mm ring gap in the body shell or the leg cover, like a Braun control dial.\n- **Decision 3, the legs are split to hide the servos:** A white cover plate the shape of the thigh hides the knee servo bay. The thigh-and-cover seam is the only surface detail on the legs. The shins taper to 60% in both width and depth, keep one flat face to print on, and end in graphite balls.\n- **Decision 4, colour by role:** Bone shell, graphite for the joint caps, face panel and feet, and the orange used only for the eye. The face panel is 63% of the front's width and 48% of its height.\n- **What I'd change next:** Get rid of the hanging knee pods. Moving the knee servos into the body and driving the shins through a pushrod would make the legs thin blades and free the hip from its \u00b135\u00b0 limit.\n\nDECISION: Two servos per leg (hip pitch + knee pitch, all axes along Y), MG90S micro servos, eight in total, chosen over three per leg to keep the silhouette minimal; walking turns come from gait asymmetry.\nDECISION: The body is a 161 \u00d7 70 \u00d7 42 mm R8 rounded slab shell over a hidden graphite chassis. Its length is set so each shell hip opening (r 13.5) sits on the flat side, not the corner.\nDECISION: Knee servos sit in the thighs with their case tops flush to the outer face, retained by a thigh-shaped cover plate (declared contact). The case extends inward into a pod under the belly, and that pod limits the hip to \u00b135\u00b0.\nDECISION: Palette: shell #ECEAE4, mechanism #38393B, accent #E8551E (eye only). The face is a recessed graphite panel 44 \u00d7 20 mm on the +X front.\nDECISION: Design-only study: no task or policy declared. Power goes 2S LiPo \u2192 D36V50F6 6 V \u2192 PCA9685 servo rail; the ESP32 drives the PCA9685 over I\u00b2C, and the BNO085 sits on the deck with X forward.\nNOTE actuators: Hip pitch and knee pitch on each leg are MG90S (catalog mg90s): stall 176.5 N\u00b7mm at 4.8 V and 215.7 N\u00b7mm at 6.6 V, 0.08 s/60\u00b0 at 6 V, 180\u00b0 travel, run at 6 V from the D36V50F6. Joint limits are hip \u00b135\u00b0 (clearance of the knee pod to the body underside) and knee \u00b190\u00b0. No damping was declared because there is no dynamics/task yet; use servo.joint_dynamics when a task is added.\nNOTE sensors: BNO085 (Adafruit 4754) sits on the board deck, PCB corner at (12, \u221226, 20.6) mm in the body frame, centre about (24.7, \u221214.6) mm, X axis along body +X (towards the face), screwed down with 4 \u00d7 M2 onto chassis posts. No joint encoders: stock MG90S pots are not tapped.\nNOTE rejected: Three things were dropped. A 136 mm body with hips at the corners: the 13.5 mm shell openings broke through the front corners. Knee servos with their case outward: legs about 150 mm wide. Straight cover knee holes at r 13.5: they split the cover plate in two, so the cover now has a 4 mm spline hole and the shin hub sits 1 mm outside it.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted f786b20.",
+   "project": "sweep-quadruped-g-minimal",
+   "split": "heldout"
+  },
+  {
+   "id": "quadruped-h-free",
+   "category": "quadruped",
+   "thesis": "h-free",
+   "blind_label": "quadruped 6",
+   "owner_verdict": "meh",
+   "image": "quadruped-h-free.png",
+   "components": 52,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x6-socket": 16,
+    "servo/mg90s": 8,
+    "servo_horn/mg90s-double_arm": 8
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "mechanism": "#2D3035",
+    "shell": "#ECE7DC"
+   },
+   "agent_design_notes": "**Thesis:** a quadruped that reads as a small animal rather than a machine, with the hardware packed inside and only the caps showing at the joints.\n\n**Key decisions:**\n1. **Packing first.** The four hip servos sit at the body corners with their long sides up, the battery lies flat on the floor between them and the boards sit on a deck above it. This made the body a compact 47 mm-tall shell whose belly sits just 16.5 mm below the hip axis, which is what lets the legs look long.\n2. **Knee servos tucked inward.** Each knee servo lives in a pod under the belly instead of hanging outboard, so each leg adds only 17 mm per side. The cost is the hip travel, which the pod's floor clearance limits to \u00b120\u00b0.\n3. **One cap design for every joint.** Each hub is horn reach plus a 1.6 mm wall, cut with the horn itself, and it is the same at every hip and knee. All horns and case tops are hidden, and the joints become the leg's visual rhythm.\n4. **Legs taper in both directions.** The thigh and shank are lofted from superellipse sections; the shank narrows from 20 \u00d7 7.5 mm to 10 \u00d7 5 mm and ends in a separate orange TPU foot, so the legs read as limbs rather than bars.\n5. **Colour follows role.** Bone shell, graphite mechanism and visor, and orange only on the four feet.\n\n**What I'd change next:** the knee pods. They still read as dark rounded boxes under the belly from the front, and a little of the servo shows through the hip slots at the front corners. Next I'd give each pod a cover in the shell colour, lofted into the thigh, and tighten those corner slots.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted 4fc8587.",
+   "project": "sweep-quadruped-h-free",
+   "split": "dev"
+  },
+  {
+   "id": "wildcard-a-servo-joint",
+   "category": "wildcard",
+   "thesis": "a-servo-joint",
+   "blind_label": "wildcard 8",
+   "owner_verdict": "like",
+   "image": "wildcard-a-servo-joint.png",
+   "components": 51,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 12,
+    "servo/mg90s": 6,
+    "servo_horn/mg90s-single_arm": 6
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "mechanism": "#2A2C31",
+    "shell": "#ECE6DA"
+   },
+   "agent_design_notes": "- **Thesis:** every servo's horn axis is the snake's joint, and one identical printed bracket-plus-cradle, repeated at 90\u00b0 turns, is the whole body.\n- **Decision 1 \u2013 a snake of identical modules.** This body plan shows the thesis most purely: there are no limbs or linkages, only servo, horn, bracket, repeat. One printed part covers every joint.\n- **Decision 2 \u2013 the horn disc doubles as the joint cap.** The \u00d835 disc (horn reach + 1.6 mm wall) has the horn sunk into it, covers the servo's top and leaves 1 mm of air above the case. A matching disc on the idler side makes both faces of each joint read the same.\n- **Decision 3 \u2013 the head and tail hold everything else.** The 36 mm-wide battery can't fit in a 17 mm module, so it goes in the tail. The controller and IMU go in the head, where the heading reference belongs. Both pods open downward onto a graphite plate, so they print flat on their rims.\n- **Decision 4 \u2013 no PCA9685 servo driver.** The ESP32's own PWM (LEDC) channels drive all six servos directly, so the extra board isn't needed.\n- **What I'd change next:** round the cradle boxes into the bracket necks so the modules read less like servo boxes. I'd also add screw bosses holding the jaw and belly plates to their hoods, and route a real servo-lead harness down the spine with `nets(...)`.\n\nDECISION: The body plan is a 6-joint modular snake. Every module is one identical printed cradle-plus-U-bracket, turned 90\u00b0 about the spine from its neighbour, so the joints alternate pitch and yaw. This makes the thesis literal: the horn axis is the pivot and the bracket clips straight onto the horn.\nDECISION: Each joint cap is the bracket's \u00d835.2 hub disc, sized to the horn's 16 mm reach plus a 1.6 mm wall, with the horn cut into it. A matching disc covers the idler side, and an orange \u00d812 cap sits on each disc. The flat discs of the yaw joints are the ground contacts.\nDECISION: The ESP32 DevKitC and BNO085 (X axis pointing forward) sit in the head on a graphite jaw plate. The 2S 1000 mAh LiPo and the D36V50F6 regulator sit in the tail on a graphite belly plate. The battery goes at the tail because no module is wide enough for it; it is carried low on the belly.\nDECISION: No PCA9685 is fitted, because the ESP32's own PWM (LEDC) channels drive the six servos directly. No harness is declared yet; servo leads leave through the bay lead room and run along the spine.\nDECISION: This is a design-only study, so there is no task, policy, rollout or physics bodies.\nDECISION: Palette is bone shell #ECE6DA, graphite mechanism #2A2C31 and orange accent #F26A1B. The accent is used only on the 12 joint caps.\nNOTE actuators: Six MG90S servos (1.8\u20132.2 kg\u00b7cm stall, 0.08\u20130.10 s/60\u00b0), one per joint, with joint i's axis = Rx(90\u00b0\u00b7i)\u00b7Z at x = \u221244\u00b7i mm. Joint limits are \u00b180\u00b0 and were swept in 20\u00b0 steps. Each single-arm horn is welded into the disc of the bracket ahead (the owner) and touches the spline top; the idler side is a printed \u00d86 pin in a \u00d86.4 hole, with 0.15 mm clearance declared per joint pair. Tabs are held by M2\u00d78 socket screws. No dynamics or damping has been modelled yet.\nNOTE sensors: A BNO085 (Adafruit 4754) is on four posts on the head's jaw plate, at x from \u221218 to +7.4 mm, with its X axis along the snake's forward +X. It is the heading and orientation reference for the head frame. Servo position feedback would need potentiometer taps, which are not declared.\nNOTE rejected: An earlier version cut the cradle tab holes at tap-drill size (\u00d81.6), which made the M2 screws intersect the cradle in the fit check, so the holes are now clearance-size and cut with the bolt bodies. Placing purchased parts with component placements left their unplaced sources drawn at the origin, where one showed as a horn sticking out of the head. They are now built in world pose with lib origin/direction instead. A tail cavity ring placed behind the previous ring folded the loft, so the cavity now ends at the last body ring.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted f93b974.",
+   "project": "sweep-wildcard-a-servo-joint",
+   "split": "dev"
+  },
+  {
+   "id": "wildcard-b-motors-in-body",
+   "category": "wildcard",
+   "thesis": "b-motors-in-body",
+   "blind_label": "wildcard 1",
+   "owner_verdict": "like",
+   "image": "wildcard-b-motors-in-body.png",
+   "components": 43,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x8-socket": 8,
+    "bolt/m3x10-socket": 2,
+    "bolt/m3x8-socket": 4,
+    "servo/mg90s": 4,
+    "servo_horn/mg90s-single_arm": 4
+   },
+   "palette": {
+    "accent": "#FF6A1A",
+    "mechanism": "#2B2E33",
+    "shell": "#ECE7DE"
+   },
+   "agent_design_notes": "- **Thesis:** all four motors live in the body and reach the far end of the leg through a parallelogram pushrod, so each leg is just three slim printed beams.\n- **Key decisions:**\n  - **Cassie-style biped.** The long, motorless legs make \"motors in the body\" obvious at a glance in a way a quadruped would not.\n  - **Parallelogram knee drive.** It makes the shin's angle equal the crank angle, which keeps the control mapping simple and puts the pushrod on show as a deliberate graphite feature.\n  - **One plane per link outboard of the body.** It rules out link-to-link collisions without any per-pose checking.\n  - **One cap design throughout.** The hip cap, crank and knee disc are all the same \u00d836 disc, with an orange inlay on the two servo-driven caps, so the joints read as one designed family.\n  - **Heaviest parts low, sensor central.** The battery sits low under the hip servos and the IMU on the deck at the body's centre line, so the mass is where it steadies the robot.\n- **What I'd change next:** shorten the body (about 120 mm long now). Turning the knee servos to stand vertically behind the hip servos would make the egg more compact. I'd also close the dark crescent visible around each cap by tightening the shell's cap openings to the cap.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007, ADR-008 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted ace43f0.",
+   "project": "sweep-wildcard-b-motors-in-body",
+   "split": "heldout"
+  },
+  {
+   "id": "wildcard-c-exposed-mechanism",
+   "category": "wildcard",
+   "thesis": "c-exposed-mechanism",
+   "blind_label": "wildcard 3",
+   "owner_verdict": "meh",
+   "image": "wildcard-c-exposed-mechanism.png",
+   "components": 36,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x6-socket": 6,
+    "servo/mg90s": 3,
+    "servo_horn/mg90s-double_arm": 3
+   },
+   "palette": {
+    "accent": "#F26A1B",
+    "mechanism": "#2B2D31",
+    "shell": "#ECE9E2"
+   },
+   "agent_design_notes": "**Thesis:** a desk companion built like a lab instrument, with every servo, board and wire left in view and laid out on a grid.\n\nI built **Lumen**, a 3-axis desk companion. The engine's checks pass: all 630 component pairs clear at the build pose, and the full motion sweep passes on all three joints (pan \u00b190\u00b0, shoulder \u00b150\u00b0, neck \u00b140\u00b0). A design-only study, as you asked: no task, policy or rollout is declared.\n\n- **Mechanism:** three MG90S servos (pan, shoulder pitch, head nod), each screwed down by its own tabs with two M2 screws into a printed cradle.\n- **Electronics:** an ESP32 DevKitC, BNO085 IMU (X axis forward), Pololu 6 V regulator and 2S 1000 mAh LiPo, all inlaid in a rounded base tray. The battery is held by two mirrored printed straps.\n- **Wiring:** eight wires, declared in an editable `nets` table. Logic power runs behind the pan pedestal and the I\u00b2C pair in front of it, both at deck +3 mm. The battery leads run higher and the IMU supply bridges over the I\u00b2C pair.\n- **Face:** one graphite lens with an orange iris on the +X face of the head: 32 mm, about 57% of the head's width and 80% of its height.\n- **Render measures:** hardware is 14% of the silhouette and 21% of printed outside edge is left sharp, both under their limits, with three materials.\n\nThings that are simplified or not modelled:\n- **Servo leads:** none of the three servos' leads are drawn.\n- **Wire ends:** each conductor stops 0.6 mm down its plated hole with no solder joint. The engine reports the six wires welded to a board as sitting 0.02\u20130.035 mm off it rather than touching.\n- **Screws:** the M2 screws sit in 2.4 mm clearance holes. A real build would use the servo's self-tapping screws in about 1.6 mm pilot holes.\n- **Wire routing:** the wires follow my own fixed lanes, not the auto-router. The `nets` table still enables or disables each wire, but moving a board by slider will not re-route its wire.\n- **Physics:** there is no physics model, so no masses are assigned.\n\nYou can sweep these parameters: `arm_length`, `pan_x`, `base_length`, `base_width`, `base_thick`, `base_corner`, `hub_radius`, `plate`, `head_w`, `head_d`, `head_h`, `eye_dia`, `cap_radius`, `round_big`, `round_small`, `pan_limit`, `shoulder_limit`, `neck_limit`. I checked fit only at the current values, not across their ranges.\n\n**Key decisions:**\n1. **Lamp-style 3-axis neck rather than a walker.** One tall, symmetric mechanism shows every actuator from one viewpoint, with nothing shelled over.\n2. **Robotis-style U-forks.** Each joint is driven by a horn on one side and pivots on a printed idler pin on the other. Matching orange caps on both sides make every axis read as a deliberate hub.\n3. **Inside-out deck layout.** The battery sits low at the rear. The ESP32 is on one side and the regulator and IMU on the other, each board turned so its pin row faces the centre, which is what lets the wires run in short parallel lanes.\n4. **Authored cable lanes.** The auto-router let wires cross, and waypoint splines overshot into the deck. True line-and-arc runs at set heights give the industrial order the thesis asks for, and they fit cleanly.\n5. **Servos exposed above their tabs.** The cradles wrap only the lower body, so each case top, tab and screw is on show.\n\n**What I would change next:** route the three servo leads (pan out through the pedestal's lead slot; shoulder and neck down the arm plates in printed clips), add solder joints at every wire end, and give the solved pose a lamp-like lean so it has character at rest.\n\nDECISION: Body plan is a desk companion with a lamp-like 3-axis neck (pan, shoulder pitch, head nod) on a rounded base tray; chosen over walkers because it shows every actuator and board from one view, which is the exposed-mechanism thesis.\nDECISION: Palette is warm-white shell #ECE9E2 for all printed structure, graphite #2B2D31 for purchased hardware, wires and the eye lens, and signal-orange #F26A1B only for the four joint caps and the iris.\nDECISION: Pitch joints are U-forks: the servo horn sits inside an 8 mm hub on +Y, and the -Y plate turns on a printed \u00d88 idler pin with a declared 0.3 mm running clearance; fork plates are symmetric about y=0, with the servo case top at y=13.55.\nDECISION: The harness uses authored orthogonal lanes with 1.5 mm bends, swept by a lane() helper instead of part.cable, because both auto-routing and waypoint splines produced crossings or overshoot; nets() still declares every connection.\nDECISION: Board orientation is chosen for the wiring: ESP32 at roll -90 on the -Y side and IMU/regulator at roll 0 on the +Y side, so every connected pin row faces the centre line; the IMU X axis stays on +X.\nDECISION: Design-only and untethered, as requested: controller, IMU, regulator and battery are placed as catalog parts, but no physics masses, task, policy or rollout are declared.\nNOTE actuators: Three MG90S micro servos (lib \"mg90s\"): pan about world Z at (pan_x, 0, base_thick+19.4), shoulder and neck about world Y at z_sh and z_sh+arm_length. Stall torque is 176.5 N\u00b7mm at 4.8 V and 215.7 N\u00b7mm at 6.6 V; speed is 0.10 s/60\u00b0 at 4.8 V and 0.08 s/60\u00b0 at 6.0 V. Powered from the D36V50F6 6 V rail. Rough holding load: neck about 25 N\u00b7mm (head about 60 g at about 40 mm), shoulder about 60 N\u00b7mm worst case at full lean, so at least 3x margin. No joint_dynamics declared because there is no physics model; add servo.joint_dynamics() if a task is ever declared.\nNOTE sensors: BNO085 (Adafruit 4754) inlaid in the base on the +Y side at origin (18.6, 16, base_thick), roll 0, so sensor X is forward (+X) and Z is up. It reads orientation and rotation rate for tap and tilt detection; I2C to ESP32 IO32 (SDA) / IO33 (SCL), powered from ESP32 3V3 with ground from the regulator's GND_B. No servo encoders, since the stock MG90S has no position feedback.\nNOTE rejected: Auto-routed part.cable/part.bundle harness was dropped because separate groups shared corridors and crossed, and chaining earlier cables into avoid blew the definition past 1 MB. Waypoint part.cable was dropped because its spline overshoots at tight 90\u00b0 corners into the deck and sweeps inside-out. The working approach is lane(): lines plus true arcs, swept with part.sweep.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 0306f31.",
+   "project": "sweep-wildcard-c-exposed-mechanism",
+   "split": "heldout"
+  },
+  {
+   "id": "wildcard-d-product-shell",
+   "category": "wildcard",
+   "thesis": "d-product-shell",
+   "blind_label": "wildcard 4",
+   "owner_verdict": "meh",
+   "image": "wildcard-d-product-shell.png",
+   "components": 26,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2.5x10-socket": 4,
+    "bolt/m2x8-socket": 4,
+    "bolt/m3x20-socket": 1,
+    "servo/mg90s": 2,
+    "servo_horn/mg90s-cross": 2
+   },
+   "palette": {
+    "accent": "#FF7A2F",
+    "mechanism": "#2A2C31",
+    "shell": "#ECE7DF"
+   },
+   "agent_design_notes": "**Thesis:** a desk robot with one continuous, friendly shell over a hidden mechanism, where the only machine parts you can see are the two joints.\n\n**Key decisions:**\n1. **Body plan: an expressive head on a still body.** The body never moves, so it can be one unbroken pebble with a single seam where it meets the base plate. All the personality goes into the head's turn and tilt.\n2. **Packed from the inside out.** The battery lies flat at the bottom. The motor that turns the head sits on a deck right above it. The boards stand upright along the sides, where the dome is still wide. This kept the dome low and allowed a 4 mm wall gap everywhere.\n3. **Joints shown on purpose.** The neck collar and hub are dark, sitting in a ring cut into the top of the shell. On the head, the same orange cap covers both sides, the motor side and the screw-axle side, so the joint reads as a deliberate feature rather than exposed hardware.\n4. **Face as a separate dark part.** The screen is its own graphite part filling the front opening, about two-thirds of the head's width and half its height, with orange eyes set into it. It reads clearly from the front with no surface detail added.\n5. **Printability.** The body shell prints standing on its bottom edge. The head prints face-down on the flat rim of its front opening. The screen, eyes and caps are separate flat parts, each printed in its own colour.\n\n**Next change:** replace the stretched-sphere dome with a rounder, boxier shape built from cross-sections. That would give more room inside at the shoulders and a flatter top that echoes the head. It would also get rid of the faint lumpy shading the current curved surface shows in the renders.\n\nDECISION: The body plan is a desk companion with a still pebble body and a head that turns and tilts, chosen because it lets one continuous shell hide everything, with only the neck collar and the head-side caps showing.\nDECISION: The palette is warm white shell #ECE7DF, graphite #2A2C31 for the base plate, neck and face screen, and orange #FF7A2F only for the eyes and the two joint caps.\nDECISION: The robot runs untethered: an ESP32 drives the two servos directly, so there is no PCA9685 servo driver. Power is a 2S 1000 mAh LiPo through a Pololu D36V50F6 6 V regulator, and a BNO085 IMU is fixed to the body deck with its X axis forward.\nDECISION: The head tilt is limited to \u00b120\u00b0 and the head is mounted 42 mm above the turning shaft (`neck_rise` 42), so the corners of the head clear the dome through the whole tilt (checked every 5\u00b0).\nDECISION: This is a design-only study: no task, policy, rollout or physics bodies are declared.\nNOTE actuators: The head turn is an MG90S standing upright in a chassis tower on the deck above the battery (shaft at z\u224848.9 mm). Its cross horn is captured inside the neck hub (r 14 mm), and it is screwed down through its tabs with 2\u00d7 M2x8. The head tilt is an MG90S lying along +Y inside the neck, with its case top at y=30 and the tilt axis at z\u224890.9 mm. Its horn is captured inside the head's +Y boss, it is screwed down with 2\u00d7 M2x8, and the -Y side pivots on an M3x20 screw threaded into the neck. Stall torque is 1.8 kg\u00b7cm at 4.8 V and 2.2 kg\u00b7cm at 6.6 V; speed is 0.10 s/60\u00b0 at 4.8 V. Ranges: turn \u00b190\u00b0, tilt \u00b120\u00b0. No joint damping was modelled (design-only).\nNOTE sensors: The BNO085 (Adafruit 4754) sits flat on four 3 mm studs on the chassis deck, its corner at (16.8, -11.43, 23) mm and its X axis along body +X (forward). It measures body orientation and turn rate. There are no joint encoders; the stock servos give no position feedback.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted 2565fb7.",
+   "project": "sweep-wildcard-d-product-shell",
+   "split": "heldout"
+  },
+  {
+   "id": "wildcard-e-hard-surface",
+   "category": "wildcard",
+   "thesis": "e-hard-surface",
+   "blind_label": "wildcard 6",
+   "owner_verdict": "like",
+   "image": "wildcard-e-hard-surface.png",
+   "components": 43,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "bearing/623": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2.5x25-socket": 4,
+    "bolt/m2x6-socket": 11,
+    "bolt/m2x8-socket": 4,
+    "bolt/m3x10-socket": 4,
+    "bolt/m3x14-socket": 1,
+    "servo/mg90s": 2,
+    "servo_horn/mg90s-cross": 2
+   },
+   "palette": {
+    "accent": "#FF6A13",
+    "mechanism": "#2A2D32",
+    "shell": "#D8D3C6"
+   },
+   "agent_design_notes": "- **Thesis:** a sentry turret built only from chamfered plates, with exposed fasteners and deliberate seams, ordered as bone shell, then graphite structure, then one orange signal colour.\n- **Inside-out packing:** the battery sits low in a tunnel under the pan servo's saddle and the boards stand on edge, which sets the plinth's size and proportions.\n- **Split helmet:** splitting at the tilt axis is what lets the head close around the horn hub and the bearing, and the split doubles as the main seam.\n- **Fasteners as detail:** real catalog socket screws hold the plinth corners, the helmet corners and the visor; that visor plate is the face.\n- **One cap design:** the same orange disc covers every actuated axis, so the joints read as features.\n- **One chamfer language:** 3\u20134 mm chamfers on major edges and 1 mm on trim, with the inner cavities chamfered to match so the corners stay solid.\n\n**Next change:** the yoke cheeks are still flat graphite slabs. I'd give them a tapered section and an inset panel around the cap, and route the tilt servo's wires down through a hollow cheek into the plinth.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted 3d1940a.",
+   "project": "sweep-wildcard-e-hard-surface",
+   "split": "dev"
+  },
+  {
+   "id": "wildcard-f-creature",
+   "category": "wildcard",
+   "thesis": "f-creature",
+   "blind_label": "wildcard 5",
+   "owner_verdict": "like",
+   "image": "wildcard-f-creature.png",
+   "components": 37,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x10-socket": 8,
+    "servo/mg90s": 4,
+    "servo_horn/mg90s-double_arm": 4
+   },
+   "palette": {
+    "accent": "#F2A541",
+    "mechanism": "#2B2D31",
+    "shell": "#8DB580"
+   },
+   "agent_design_notes": "- **Thesis:** a small robot should read as an animal: one lofted body with haunches, a lowered head and eyes on top, sitting in a crouch that looks ready to spring.\n- **Body from cross-sections:** the body is a single loft of rounded-box sections tied to the hip and shoulder positions. The hump, the lowered head and the hips are the silhouette, and the shell and chassis are lofted from the same sections, so the 1 mm gap between them holds everywhere.\n- **Joints read as anatomy:** each joint is a hub disc plus a ball, with an amber dome on the servo axis. The joints look like a frog's hips and shoulders, and the servo horn and screw are hidden under the dome.\n- **Everything packed inside:** the battery sits low on a screw-on belly hatch, the controller and IMU stack at the centre, and the regulator goes in the head. The chassis splits at the servo shafts so the servos drop in from above.\n- **What I'd change next:** turn the big dark nose mask into a wide frog mouth band (a slanted split line around the snout), and add the wiring harness and catalog masses.\n\nDECISION: Body plan is a crouched frog quadruped (\"Hopper\") with 4 \u00d7 MG90S at the shoulders and hips; a frog's folded haunch reads as alive with only one actuator per leg.\nDECISION: The body is one loft of rounded-box sections tied to hip_x and shoulder_x. The shell interior (2.4 mm in) and the chassis outside (shell_t + shell_gap in) are lofted from the same sections shrunk inward, rather than with part.offset, which ran past the CPU limit on the lofted body.\nDECISION: The chassis splits at the servo shaft plane (servo_z) so the servos drop in. The battery rests on a separate belly hatch that also seats the shell rim, and the regulator lives in the head.\nDECISION: The ESP32 drives the 4 servos directly, so there is no PCA9685. The robot is untethered on the 2S LiPo through the 6 V regulator. No harness (nets) is declared yet.\nDECISION: Each joint cap is the outer dome (amber) of the limb's joint ball, concentric with the servo axis, with a 1.6 mm driver hole to the horn screw.\nDECISION: The joint sweep step is 25\u00b0 (three poses per joint); 5\u201310\u00b0 steps with filleted parts ran past the 300 s build limit.\nNOTE actuators: 4 \u00d7 MG90S (1.8 kg\u00b7cm at 4.8 V, i.e. 176.5 N\u00b7mm; 0.10 s per 60\u00b0), shafts along \u00b1Y at z=servo_z, hips at hip_x (case rolled 180\u00b0 so it points to the body centre) and shoulders at shoulder_x. Each has a double-arm horn captured in the limb hub (hub radius = horn reach 16 mm + hub_wall), and the limits are \u00b1swing (25\u00b0). No joint_dynamics or actuator declared yet (design-only). Front tab screw (mount hole 0) stops 0.35 mm short of chassis material; only the rear screw bites.\nNOTE sensors: BNO085 IMU (Adafruit 4754) flat on four posts in the upper chassis at the body centre, board X = body +X (forward). No sensors are declared in the assembly yet; servo pots are not tapped.\nNOTE rejected: part.offset of the lofted body (CPU limit), filleting the mask (opened a 0.011 mm gap at its weld to the shell), and a 5\u00b0 sweep step together with filleted chassis and shell (wall-clock timeout).\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md, docs/rejected.md.\ncommitted 67b903c.",
+   "project": "sweep-wildcard-f-creature",
+   "split": "dev"
+  },
+  {
+   "id": "wildcard-g-minimal",
+   "category": "wildcard",
+   "thesis": "g-minimal",
+   "blind_label": "wildcard 2",
+   "owner_verdict": "like",
+   "image": "wildcard-g-minimal.png",
+   "components": 22,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2x6-socket": 4,
+    "bolt/m3x10-countersunk": 3,
+    "bolt/m3x14-socket": 1,
+    "servo/sg90": 2,
+    "servo_horn/sg90-single_arm": 2
+   },
+   "palette": {
+    "accent": "#E8601C",
+    "mechanism": "#2A2A2C",
+    "shell": "#E8E5DE"
+   },
+   "agent_design_notes": "- **Thesis:** a desk companion made of a cylinder, a sphere and two rounded-top arms, where every visible line is either a joint or the face.\n- **Key decisions:**\n  - **Sphere head centred on the tilt axis.** It looks the same at every tilt angle, so the clearance never changes and the motion reads as pure.\n  - **Colour follows function.** Everything that moves or senses is graphite, the body is white, and only the pupil is orange, like the single coloured switch on a Braun radio.\n  - **The fork arm's rounded top is the joint cap.** The 18 mm-radius top hides the horn and the hinge bolt, and the arm width equals the cap's diameter, so each arm is one continuous shape rather than a bar with a disc stuck on.\n  - **Parts were packed first.** Servo depth plus battery height set the 48 mm base height, and the servo envelope plus the 45\u00b0 print limit set the head's flat sides and face plane.\n  - **The only surface detail is seams.** These are the dark base-plate line, the turntable gap and the ring around the face; there are no vents and no visible screws on the shell.\n- **What I'd change next:** I'd make the base about 8 mm lower, which would give a calmer proportion. That means turning the pan servo so it lies down, driving the turntable through a short output shaft, and giving the tilt servo's cable a real channel down through the turntable's centre.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted f03da90.",
+   "project": "sweep-wildcard-g-minimal",
+   "split": "heldout"
+  },
+  {
+   "id": "wildcard-h-free",
+   "category": "wildcard",
+   "thesis": "h-free",
+   "blind_label": "wildcard 7",
+   "owner_verdict": "meh",
+   "image": "wildcard-h-free.png",
+   "components": 30,
+   "catalog_counts": {
+    "battery/gensace-gea2s100045d": 1,
+    "bearing/623": 1,
+    "board/bno085-adafruit-4754": 1,
+    "board/esp32-devkitc-v4": 1,
+    "board/pololu-d36v50f6": 1,
+    "bolt/m2.5x12-countersunk": 4,
+    "bolt/m2.5x8-socket": 4,
+    "bolt/m2x6-socket": 2,
+    "bolt/m2x8-socket": 2,
+    "bolt/m3x10-socket": 1,
+    "servo/mg90s": 2,
+    "servo_horn/mg90s-double_arm": 2
+   },
+   "palette": {
+    "accent": "#FF6B3D",
+    "mechanism": "#2A2C30",
+    "shell": "#E9E3D8"
+   },
+   "agent_design_notes": "- **Thesis:** a robot should read as one calm, smooth object \u2014 a river stone with a face \u2014 where the only visible mechanism is the deliberate graphite fork and its round joint caps, and everything else is hidden inside.\n- **Key decisions:**\n  1. **Inside out.** The battery lies flat on the sole as low ballast. The boards sit on a deck that follows the shell's inside, with the pan servo standing in the middle. That stack is what set the pebble's 60 mm height and its squircle footprint, which is wider than an ellipse at the corners where the ESP32 sits.\n  2. **The fork is the only visible mechanism.** Its round cap and two matching ear hubs are the joint caps, so pan and tilt read as features rather than hardware.\n  3. **The tilt servo sits in the head and drives the fork through its horn,** with a bearing pivot opposite. Both sides of the joint look alike and the head stays clean.\n  4. **Three colours by role:** a bone stone, graphite for the sole, fork and visor, and coral only for the eyes.\n  5. **A dark sole under the stone.** Its seam is the shell's print face, and the screws go in from underneath, so no fastener shows.\n- **What I'd change next:** give the tilt servo's lead a real path, as a hollow channel down the back of a fork arm and through the neck cap. I'd also taper the fork arms in both directions so they read less like a bent bar.\nrecorded ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-007 in DECISIONS.md.\nwrote docs/actuators.md, docs/sensors.md.\ncommitted 6f08f2e.",
+   "project": "sweep-wildcard-h-free",
+   "split": "heldout"
+  }
+ ]
+}
