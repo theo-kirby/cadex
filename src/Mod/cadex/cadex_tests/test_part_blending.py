@@ -272,36 +272,31 @@ def test_the_probe_cap_is_reported_rather_than_hidden() -> None:
     assert "cap" in str(caught.value)
 
 
-def test_a_capped_partial_blend_does_not_depend_on_the_kernels_edge_order() -> None:
-    """ADR-476: the same shape enumerated in another order blends the same edges.
+def test_a_capped_partial_blend_searches_in_the_order_the_design_was_accepted_in() -> None:
+    """ADR-477: the partition walks the kernel's order, not a sorted one.
 
-    A boolean's result lists its edges in an order that is not fixed across
-    processes. With the partition stopping at the call cap, kernel order chose
-    which edges a ``skip`` blend kept, so ``digestbug-balancer-b`` rebuilt its
-    accepted script with 19 of 165 tub edges rounded instead of 20 and could
-    not be reopened. Each edge carries its own measurement here, wherever it
-    sits in the list.
+    ADR-476 sorted the search by measured geometry, curve type first. Every
+    B-spline edge then came before every line, and on a part whose B-spline
+    edges are the ones that cannot take the radius (a fillet run over a
+    boolean's seams), the 48-call cap was spent rejecting them one by one
+    and no edge was blended: ``sweep-arm3-a-servo-joint``, accepted with a
+    partial ``skip`` fillet, refused to reopen with "no edge in the selection
+    could be blended". Six of the 26 held-out sweep designs refused that way
+    or downstream of it, and eleven more reopened with fillets the owner had
+    not rated. Kernel order is the order the accepted attempt searched in.
     """
 
-    edges = _edges(256)
-    measured = dict(zip(edges, _details(edges)))
-    impossible = set(edges[::2])
-
-    def blended(order):
-        shape = _FakeShape(impossible=impossible, ceiling=-1.0)
-        result = worker._blend(
-            shape, "fillet", order, [measured[edge] for edge in order], 1.0,
-            on_failure="skip",
-        )
-        assert isinstance(result, _Built)
-        return set(result.edges)
-
-    forward = blended(edges)
-    assert len(forward) < len(edges) - len(impossible)  # the cap really binds
-    shuffled = list(edges)
-    __import__("random").Random(7).shuffle(shuffled)
-    assert blended(list(reversed(edges))) == forward
-    assert blended(shuffled) == forward
+    edges = _edges(244)
+    impossible = set(edges[::8])
+    details = [
+        {**row, "geometry_type": "BSplineCurve" if edge in impossible else "Line"}
+        for edge, row in zip(edges, _details(edges))
+    ]
+    shape = _FakeShape(impossible=impossible, ceiling=-1.0)
+    result = worker._blend(shape, "fillet", edges, details, 1.0, on_failure="skip")
+    assert isinstance(result, _Built)
+    assert result.edges and not set(result.edges) & impossible
+    assert list(result.edges) == [edge for edge in edges if edge in set(result.edges)]
 
 
 def test_a_long_refusal_list_is_counted_not_dumped() -> None:

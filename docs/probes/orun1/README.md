@@ -98,3 +98,53 @@ Like 12/11, Meh 13/12, No 2/1. The split was fixed before orun1 started.
 How the run may use it is the charter's rule (D1).
 
 <!-- orun1: the run's contract and results go below this line. -->
+
+## The split, counted
+
+The paragraph above says 27 dev and 28 held-out. Counting `ratings.json`
+gives **29 dev and 26 held-out** (Love 2/2, Like 12/11, Meh 13/12, No 2/1;
+the per-verdict figures above are right and their sums are not). The file
+is ground truth and is not edited; every number below uses the counted
+split. The held-out set has 26 designs, so 325 pairs, of which **37**
+differ by two levels or more (Love × Meh 24, Love × No 2, Like × No 11).
+
+## D1 baseline: ot10's frozen judge on the held-out set (pre-registered)
+
+**This is the baseline, not a judge version.** It is ot10's instrument run
+unchanged, so that every orun1 judge version has a number to beat. It is
+measured once, its result is published whatever it is, and nothing about it
+is tuned: no prompt, rubric, reference, view or aggregation changes after
+the first held-out call. It is not a candidate for D1's frozen judge.
+
+- **Judge.** `docs/probes/ot10/runner/judge.py` exactly as frozen by
+  `docs/probes/ot10/README.md` (rubric sha256 `1c81caa2…`, the ten core
+  references, `claude-opus-5-5`, effort `high`, three calls, median per
+  trait, total 0–21). The runner is imported, not copied.
+- **Inputs.** For each of the 26 held-out designs, a copy of its sweep
+  project at `~/cadex-projects/orun1-ho-<id>` (the originals stay
+  read-only; `cadex render` re-accepts, ADR-476). The renders are ot10's
+  set: the 1024 px studio hero from `cadex render`, then the `look` views
+  `iso`, `iso_back`, `front`, `right`, `top` at the look tool's size, drawn
+  by the bridge's own `look` (dark prototype floor for the hero). The judge
+  sees them as `candidate-N.png` only.
+- **Score.** A design's score is its ot10 total (sum of the seven trait
+  medians).
+- **Pairwise agreement.** Over the 37 held-out pairs whose owner verdicts
+  differ by two levels or more, a pair agrees when the higher-rated design
+  has the strictly higher total. **A tie is a disagreement.** Ties are also
+  counted and reported. The bar is 80%.
+- **Love over No.** Every held-out Love's total is strictly above every
+  held-out No's total (2 × 1 = 2 pairs).
+- **Kendall's tau.** τ-b between owner verdict (0–3) and total over all
+  325 held-out pairs, reported with the count of concordant, discordant and
+  tied pairs.
+- **Harness.** A judge harness failure (a reply that fails to parse twice),
+  a usage limit or a refusal is not a score. Such a design is re-run; if
+  it still cannot be scored, it is reported as missing and every metric
+  names the pairs it drops.
+- **Machinery.** `runner/render_set.py` draws one design's inputs from its
+  copy. Per-design scores go to `baseline/<id>-score.json` and the summary
+  to `baseline/summary.json`.
+- **Status.** Not yet run. The first attempt to draw inputs found that ADR-476
+  had stopped six held-out designs reopening and changed the fillets on eleven
+  more. ADR-477 reverts that. Nothing has been sent to the judge.

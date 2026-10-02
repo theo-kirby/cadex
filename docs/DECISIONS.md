@@ -31288,7 +31288,7 @@ often the defect showed: `d` opened alone and refused when three opens ran in
 parallel.
 
 **Decision.**
-- When the whole selection fails, `_blend` searches it in a canonical order:
+- *(Withdrawn by ADR-477: the sort refused six held-out sweep designs and is reverted.)* When the whole selection fails, `_blend` searches it in a canonical order:
   geometry type, centre, length and radius rounded to the micrometre, then
   the full canonical detail as a tie-break (`_blend_canonical_order`). Which
   edges a partial blend keeps is now a function of the shape, not of the
@@ -31340,3 +31340,53 @@ consulted first.
   `test_cadexd_lifecycle.py::test_the_accepted_recipe_reopens_when_the_kernel_rebuilds_it_differently`,
   which also pins the refusal when the accepted request is missing. The
   changed-script refusal test now asserts the recipe verdict too.
+
+## ADR-477 — A partial blend searches in the kernel's order again; ADR-476's sort is withdrawn (2026-10-02)
+
+**Context.** ADR-476 sorted a failing blend's edges by measured geometry
+(curve type first) before the capped partition search, so that which edges a
+`skip` or `reduce` blend kept would not depend on the process. It was measured
+on the three `digestbug-*` copies only. Drawing the D1 baseline's inputs, the
+next unit opened fresh copies of the 26 held-out sweep designs:
+
+| engine | open | of which `matched_by: recipe` | refused |
+|---|---|---|---|
+| before ADR-476 (`7e55ffed`) | 25 | 0 | 1 (`wildcard-b`, digest) |
+| ADR-476 (`44889478`) | 20 | 11 | 6 |
+
+Five of the six refusals were "api.fillet: no edge in the selection could be
+blended at that radius". On `arm3-a-servo-joint` the sort put all of the
+selection's B-spline edges first. Those were the ones that could not take the
+0.6 mm radius, and the 48-call cap went on rejecting 22 of them, so 0 of 244
+edges were blended. The sixth (`wildcard-h-free`) was a `fuse` that came
+back as four solids downstream of a changed blend. The eleven recipe matches
+reopened, but with fillets the owner had not rated, and the owner's ratings
+are D1's ground truth.
+
+**Decision.** The partition walks `selected` in the kernel's order, as it did
+before ADR-476. `_blend_order_key` and `_blend_canonical_order` are deleted,
+and so is the measured-order retry of a kept set. ADR-476's other half stays:
+a rebuild that keeps a different subset reopens through the recipe path with
+`drifted_outputs` named, which is what actually reopened the three
+digestbug projects.
+
+**Measured.** Every one of the 55 sweep designs and the three digestbug
+copies was opened from a fresh copy, eight at a time: 55 opened (48 exact,
+3 `geometry`, 4 `recipe`, including `digestbug-balancer-b` and
+`digestbug-hexapod-h-free`). Of the three that did not, two were the 300 s
+domain timeout under that load, and the third (`digestbug-balancer-d`) hit the
+probe's **15 s clock**. That is the remaining defect: it made 10 calls in 15 s
+under load, probed no edge, and refused. Run one at a time, all three opened: `hexapod-c` exact, `wildcard-f`
+by recipe, and `digestbug-balancer-d` on 4 of 4 fresh copies. So **58 of
+58 open unloaded.** A partial blend bounded by wall-clock time is still
+load-dependent. This ADR does not change the clock.
+
+**Consequences.**
+- `test_part_blending.py::test_a_capped_partial_blend_does_not_depend_on_the_kernels_edge_order`
+  pinned the withdrawn sort and is replaced by
+  `test_a_capped_partial_blend_searches_in_the_order_the_design_was_accepted_in`,
+  which fails on ADR-476's source with the arm3 refusal.
+- ADR-476's lifecycle regression (`test_the_accepted_recipe_reopens_when_the_kernel_rebuilds_it_differently`)
+  is unchanged and passes.
+- No protocol change. The fast path and every built blend's edge order are as
+  before ADR-476.
