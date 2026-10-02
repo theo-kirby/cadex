@@ -36,7 +36,11 @@ def hero(project: Path, out: Path) -> dict:
     done = subprocess.run([str(REPO / 'cadex'), 'render', '--project', str(project), '--json'],
                           capture_output=True, text=True, timeout=3600)
     if done.returncode != 0:
-        raise RuntimeError(f'cadex render exited {done.returncode}: {done.stderr[-600:]}')
+        try:
+            reason = json.loads(done.stdout).get('error')
+        except ValueError:
+            reason = done.stdout[-600:]
+        raise RuntimeError(f'cadex render exited {done.returncode}: {reason or done.stderr[-600:]}')
     envelope = json.loads(done.stdout)
     shutil.copyfile(project / 'review/render/hero.png', out / 'hero.png')
     return envelope

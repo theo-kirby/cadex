@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "c486dfd5834ecbe576384e55feca6678ffcff11fd334485514d33d4052b33a90"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "b9612e4c912890d8fb9968cf2960deb238c850e4bc288081e85cff51ec7db015"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "77c7ba2aa5da7708a113d727b43c8fc4730b09d897bfbe64f6a7a38a54b608bd"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "0a74c7ac75d23240369a4b64363477f7481707599c308c4c8ddaa4fdc64212cc"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "bc1eb653209de31bd04b90e8b4247ce401dba9c297047656c32e0bd75d4f77c6"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "0679975f17b0ec8c96c45e8966607d63ab56137df661a9cd2d5da6253c56ad49"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 3,
+    "T4": 2,
+    "T5": 3,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 18,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "One continuous rounded shell hides all the hardware; the mechanism shows only as the dark base band, the tyres and a short pale axle stub."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell and dark charcoal mechanism are used by role, with one teal accent placed on the eyes and wheel hubs."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Both visible rotation axes, the wheel axles, have the same round teal hub cap centred on the axis."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft rounded box with generous top radii, but the wheels are separate flat discs on thin axle stubs rather than parts that merge into the body."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A large dark visor with two teal eyes gives a clear front and a friendly character at a glance, and the upright two-wheeled silhouette is recognisable."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the wheels act as distinct feet, but there are no limbs that taper to them."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Lighting shows the curvature well from a good three-quarter angle with clean edges, but the grid floor is not a seamless studio backdrop and there is no soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"One continuous rounded shell hides all the hardware; the mechanism shows only as the dark base band, the tyres and a short pale axle stub.\"}, \"T2\": {\"score\": 3, \"reason\": \"Off-white shell and dark charcoal mechanism are used by role, with one teal accent placed on the eyes and wheel hubs.\"}, \"T3\": {\"score\": 3, \"reason\": \"Both visible rotation axes, the wheel axles, have the same round teal hub cap centred on the axis.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft rounded box with generous top radii, but the wheels are separate flat discs on thin axle stubs rather than parts that merge into the body.\"}, \"T5\": {\"score\": 3, \"reason\": \"A large dark visor with two teal eyes gives a clear front and a friendly character at a glance, and the upright two-wheeled silhouette is recognisable.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the wheels act as distinct feet, but there are no limbs that taper to them.\"}, \"T7\": {\"score\": 2, \"reason\": \"Lighting shows the curvature well from a good three-quarter angle with clean edges, but the grid floor is not a seamless studio backdrop and there is no soft contact shadow.\"}}",
+      "session_id": "0f67e159-45da-4330-95e9-a5a8dbfbf012",
+      "duration_ms": 18025,
+      "num_turns": 17,
+      "total_cost_usd": 0.1187694,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2209,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1187694,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 475,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous rounded shell hides every servo and board, and the mechanism appears only as a dark base band and the wheel hubs."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The off-white shell and dark charcoal mechanism are used by role, and one saturated teal accent is placed deliberately on the eyes and wheel hubs."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Both rotation axes are shown by the same round feature: a recessed white hub with a teal cap, centred in a dark tyre."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft rounded box with generous radii and the tyres are rounded, but the wheels sit apart on visible axle stubs rather than merging into the body."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A large dark visor with two teal eyes gives a clear front and a friendly character at a glance, and the silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the large wheels act as distinct feet with a balanced stance, but there are no limbs and nothing tapers."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Smooth antialiased shading shows the curvature from a good three-quarter angle, but the dark grid backdrop has no seamless studio sweep or soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous rounded shell hides every servo and board, and the mechanism appears only as a dark base band and the wheel hubs.\"}, \"T2\": {\"score\": 3, \"reason\": \"The off-white shell and dark charcoal mechanism are used by role, and one saturated teal accent is placed deliberately on the eyes and wheel hubs.\"}, \"T3\": {\"score\": 3, \"reason\": \"Both rotation axes are shown by the same round feature: a recessed white hub with a teal cap, centred in a dark tyre.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft rounded box with generous radii and the tyres are rounded, but the wheels sit apart on visible axle stubs rather than merging into the body.\"}, \"T5\": {\"score\": 3, \"reason\": \"A large dark visor with two teal eyes gives a clear front and a friendly character at a glance, and the silhouette is easy to recognise.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the large wheels act as distinct feet with a balanced stance, but there are no limbs and nothing tapers.\"}, \"T7\": {\"score\": 2, \"reason\": \"Smooth antialiased shading shows the curvature from a good three-quarter angle, but the dark grid backdrop has no seamless studio sweep or soft contact shadow.\"}}",
+      "session_id": "b34c5d5d-187f-48a4-a85a-baf3b6b738a7",
+      "duration_ms": 16890,
+      "num_turns": 17,
+      "total_cost_usd": 0.1158586,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2074,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1158586,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 337,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "One continuous white shell covers all the hardware, and the mechanism shows only as a deliberate dark lower band and dark tyres."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "White shell and dark charcoal are used consistently by role, with one saturated teal accent placed only on the eyes and the wheel hub caps."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "The only rotation axes are the two wheel axles, and both are styled the same way as concentric round hubs with matching teal caps."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft rounded box with generous radii, but the wheels are separate parts that do not merge into it, and the vertical edges have only moderate radii."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A large dark visor with two teal eyes gives a clear front and a friendly character at a glance, and the upright two-wheel silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and balanced on distinct wheel 'feet', but there are no limbs that taper towards them."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "It is shaded so the curvature reads, from a good three-quarter angle, but it sits on a dark CAD grid with no seamless backdrop or contact shadow, and the view is high rather than low."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"One continuous white shell covers all the hardware, and the mechanism shows only as a deliberate dark lower band and dark tyres.\"},\n\"T2\": {\"score\": 3, \"reason\": \"White shell and dark charcoal are used consistently by role, with one saturated teal accent placed only on the eyes and the wheel hub caps.\"},\n\"T3\": {\"score\": 3, \"reason\": \"The only rotation axes are the two wheel axles, and both are styled the same way as concentric round hubs with matching teal caps.\"},\n\"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft rounded box with generous radii, but the wheels are separate parts that do not merge into it, and the vertical edges have only moderate radii.\"},\n\"T5\": {\"score\": 3, \"reason\": \"A large dark visor with two teal eyes gives a clear front and a friendly character at a glance, and the upright two-wheel silhouette is easy to recognise.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The body is compact and balanced on distinct wheel 'feet', but there are no limbs that taper towards them.\"},\n\"T7\": {\"score\": 2, \"reason\": \"It is shaded so the curvature reads, from a good three-quarter angle, but it sits on a dark CAD grid with no seamless backdrop or contact shadow, and the view is high rather than low.\"}}\n```",
+      "session_id": "293a079b-03d3-4d53-8c5d-a0c3be132697",
+      "duration_ms": 22096,
+      "num_turns": 17,
+      "total_cost_usd": 0.1218094,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2361,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1218094,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 607,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "balancer-d-product-shell",
+  "receipt": {
+    "project": "orun1-ho-balancer-d-product-shell",
+    "accepted_revision": "021a46c07a738614e8d34115953df805ffa99dd9e82102e32a6923693d60e4dd",
+    "look_revision": "021a46c07a738614e8d34115953df805ffa99dd9e82102e32a6923693d60e4dd",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

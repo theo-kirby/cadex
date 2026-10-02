@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "833be912f312fde5692e4b850337addc75ee906bb9dbcf5263085ff396ca80df"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "4d0d0d6c596b9f6cc3a1438e64e38dec76f43251fb3d150886aabad797895f3d"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "820a985fc40e6fe16eb96c89451f50d7ea312bb2928c85a349068611cbe70489"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "fe7f2f35ee5b6a525ded263e664dc6dab387076c23376c1a896928ce8d75d869"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "313ecad9aacb0c9bd9340f046f7afb06104f16fd72fee26e78f08a38d758fe9e"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "f4b9c60a0dda2a8f2976a399c23455483a5827001c2b299ba40158729dc12a84"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 3,
+    "T3": 3,
+    "T4": 1,
+    "T5": 2,
+    "T6": 2,
+    "T7": 1
+  },
+  "total": 14,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The body and leg segments are fully covered in white shells and no servo cases or boards show, but the legs are separate blocks rather than continuous shells, and screw heads are visible on the body."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "White is used for the shell and dark grey for the mechanism, and the only accent is orange, placed on the joint caps and the face slot."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every hip, knee and ankle axis has the same round orange cap, and these sit on round bosses or dark rings centred on each axis."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a chamfered rectangular box and the legs are box-section bars with small edge breaks, so it still reads as boxes and plates rather than soft primitives."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor panel with an orange slot gives the robot a front, but the face is small and generic and doesn't give strong character at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the dark plate feet are distinct, but the legs are nearly uniform bars that hardly taper."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The render is shaded but plain: a dark grid background, no contact shadow, a high isometric angle and orthographic views, with little studio polish."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"The body and leg segments are fully covered in white shells and no servo cases or boards show, but the legs are separate blocks rather than continuous shells, and screw heads are visible on the body.\"}, \"T2\": {\"score\": 3, \"reason\": \"White is used for the shell and dark grey for the mechanism, and the only accent is orange, placed on the joint caps and the face slot.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every hip, knee and ankle axis has the same round orange cap, and these sit on round bosses or dark rings centred on each axis.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a chamfered rectangular box and the legs are box-section bars with small edge breaks, so it still reads as boxes and plates rather than soft primitives.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor panel with an orange slot gives the robot a front, but the face is small and generic and doesn't give strong character at a glance.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the dark plate feet are distinct, but the legs are nearly uniform bars that hardly taper.\"}, \"T7\": {\"score\": 1, \"reason\": \"The render is shaded but plain: a dark grid background, no contact shadow, a high isometric angle and orthographic views, with little studio polish.\"}}",
+      "session_id": "02d0fc33-e424-416d-b254-2c8e61590c83",
+      "duration_ms": 24119,
+      "num_turns": 17,
+      "total_cost_usd": 0.127984,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2675,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.127984,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 938,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A white and dark two-part shell closes in the body and white covers wrap the leg links, but the boxy leg covers, the dark hip cylinders showing through gaps and the exposed screw heads look more like hardware than a seamless, fully hidden mechanism."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Light grey shell and dark grey mechanism are applied consistently by role, and one saturated orange accent is placed deliberately on the joint caps and the face slot."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most axes are marked by round orange caps or dark discs, and the knee has a proper round boss, but the hip ends of the thighs are square boxes and the joint treatment changes between hip, knee and ankle."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body and leg segments are rectangular boxes with small chamfers, so it still reads as boxes and bars rather than soft primitives with large radii."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor panel with an orange slit gives the robot a front, but it is a generic slot on a box and gives little character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the feet are distinct flat pads, but the legs keep a nearly uniform section and do not clearly taper towards the foot."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Clean antialiased shading from a reasonable three-quarter angle, but on a dark grid floor with no contact shadow, and several views are flat orthographic shots."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A white and dark two-part shell closes in the body and white covers wrap the leg links, but the boxy leg covers, the dark hip cylinders showing through gaps and the exposed screw heads look more like hardware than a seamless, fully hidden mechanism.\"}, \"T2\": {\"score\": 3, \"reason\": \"Light grey shell and dark grey mechanism are applied consistently by role, and one saturated orange accent is placed deliberately on the joint caps and the face slot.\"}, \"T3\": {\"score\": 2, \"reason\": \"Most axes are marked by round orange caps or dark discs, and the knee has a proper round boss, but the hip ends of the thighs are square boxes and the joint treatment changes between hip, knee and ankle.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body and leg segments are rectangular boxes with small chamfers, so it still reads as boxes and bars rather than soft primitives with large radii.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor panel with an orange slit gives the robot a front, but it is a generic slot on a box and gives little character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the feet are distinct flat pads, but the legs keep a nearly uniform section and do not clearly taper towards the foot.\"}, \"T7\": {\"score\": 2, \"reason\": \"Clean antialiased shading from a reasonable three-quarter angle, but on a dark grid floor with no contact shadow, and several views are flat orthographic shots.\"}}",
+      "session_id": "d31feac8-3784-48ed-a178-be62dc28db15",
+      "duration_ms": 22441,
+      "num_turns": 17,
+      "total_cost_usd": 0.1259586,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2579,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1259586,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 783,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "Light shells enclose the body and every leg segment, so no servo cases or boards show, and the mechanism appears only as the dark belly band, hip rings and ankle discs."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Light grey is used for the shell and dark charcoal for the mechanism and feet, with a single orange accent placed on the joint caps and the face slot."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every hip, knee and ankle axis has the same round orange cap concentric with it, often backed by a round boss or dark ring, so all the joints read as deliberate features."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a chamfered rectangular box and the limbs are flat-sided bars with small edge bevels, so it still reads as boxes and plates rather than soft primitives."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor slot with an orange bar sets a front, but it is a small, generic slot on one end of the box and gives little character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the dark plate feet are distinct, but the legs are near-uniform bars that barely taper toward the feet."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The robot is shaded but plain, on a dark grid floor with no contact shadow or seamless backdrop, and is seen from a high isometric or orthographic angle rather than a low three-quarter hero view."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"Light shells enclose the body and every leg segment, so no servo cases or boards show, and the mechanism appears only as the dark belly band, hip rings and ankle discs.\"}, \"T2\": {\"score\": 3, \"reason\": \"Light grey is used for the shell and dark charcoal for the mechanism and feet, with a single orange accent placed on the joint caps and the face slot.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every hip, knee and ankle axis has the same round orange cap concentric with it, often backed by a round boss or dark ring, so all the joints read as deliberate features.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a chamfered rectangular box and the limbs are flat-sided bars with small edge bevels, so it still reads as boxes and plates rather than soft primitives.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor slot with an orange bar sets a front, but it is a small, generic slot on one end of the box and gives little character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the dark plate feet are distinct, but the legs are near-uniform bars that barely taper toward the feet.\"}, \"T7\": {\"score\": 1, \"reason\": \"The robot is shaded but plain, on a dark grid floor with no contact shadow or seamless backdrop, and is seen from a high isometric or orthographic angle rather than a low three-quarter hero view.\"}}",
+      "session_id": "02daa286-4cc4-47c3-be22-856d77fd7a44",
+      "duration_ms": 21763,
+      "num_turns": 17,
+      "total_cost_usd": 0.1237494,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2458,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1237494,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 677,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "biped-e-hard-surface",
+  "receipt": {
+    "project": "orun1-ho-biped-e-hard-surface",
+    "accepted_revision": "5f18bb42dccda2c0ce0446aec722aefe4c883ce7dc09c1e32230a337ffac05a0",
+    "look_revision": "5f18bb42dccda2c0ce0446aec722aefe4c883ce7dc09c1e32230a337ffac05a0",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}
