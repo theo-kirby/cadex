@@ -1766,6 +1766,49 @@ def _blend_edge_names(edges: list[Any], details: list[Mapping[str, Any]],
     return names
 
 
+def _blend_order_key(detail: Mapping[str, Any]) -> tuple[Any, ...]:
+    """Where an edge sorts, from what it measures rather than where it sits.
+
+    Rounded to the micrometre the fingerprint keys use, so the last-bit drift
+    ``part.offset`` leaves in coordinates (ADR-389) does not reorder two edges
+    a micrometre apart; the full canonical detail breaks any tie that leaves.
+    """
+
+    def rounded(value: Any) -> Any:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return round(float(value), 3)
+        if isinstance(value, (list, tuple)):
+            return tuple(rounded(item) for item in value)
+        return 0.0
+
+    return (
+        str(detail.get("geometry_type") or ""),
+        rounded(detail.get("center_mm") or ()),
+        rounded(detail.get("length_mm", 0.0)),
+        rounded(detail.get("radius_mm", 0.0)),
+        json.dumps(detail, sort_keys=True, default=str),
+    )
+
+
+def _blend_canonical_order(
+    selected: list[Any], details: list[Mapping[str, Any]]
+) -> tuple[list[Any], list[Mapping[str, Any]]]:
+    """The selection in an order the kernel's enumeration cannot move.
+
+    A boolean's result enumerates its edges in an order that is not fixed
+    across processes. The partition below is greedy and stops at a call cap,
+    so in kernel order *which* edges a ``skip`` or ``reduce`` blend keeps was a
+    function of the process, and an accepted design rebuilt with different
+    fillets and refused to reopen (ADR-476). Sorting by measured geometry first
+    makes the partial blend a function of the shape alone.
+    """
+
+    if len(details) != len(selected):
+        return selected, details
+    order = sorted(range(len(selected)), key=lambda index: _blend_order_key(details[index]))
+    return [selected[index] for index in order], [details[index] for index in order]
+
+
 def _blend(
     shape: Any,
     operation: str,
@@ -1790,13 +1833,20 @@ def _blend(
     if probe.attempt(selected, distance):
         return probe.result
 
+    # The search walks the edges in measured order (ADR-476); every blend it
+    # builds still passes them in kernel order, because the order a fillet is
+    # given is the order its result enumerates (ADR-025).
+    kernel_order = {id(edge): index for index, edge in enumerate(selected)}
+    search, search_details = _blend_canonical_order(selected, details)
+
     # The radius search runs FIRST, and the order is a measurement rather
     # than a preference: on the wolf the partition ate the whole budget and
     # the refusal came back with no workable radius at all -- which is the
     # one number a model can act on without re-selecting anything.
     workable = _blend_largest_radius(probe, selected, distance)
-    accepted, rejected, unprobed = _blend_partition(probe, selected, distance)
-    refused_names = _blend_edge_names(rejected, details, selected)
+    accepted, rejected, unprobed = _blend_partition(probe, search, distance)
+    accepted = sorted(accepted, key=lambda edge: kernel_order[id(edge)])
+    refused_names = _blend_edge_names(rejected, search_details, search)
     report: dict[str, Any] = {
         "requested_distance_mm" if operation == "chamfer" else "requested_radius_mm":
             float(distance),
@@ -1850,7 +1900,13 @@ def _blend(
             return result
 
     if on_failure in {"skip", "reduce"} and accepted:
-        probe.attempt(accepted, distance)
+        if not probe.attempt(accepted, distance):
+            # The partition proved this set in measured order; kernel order
+            # is only preferred, never required.
+            measured = {id(edge): index for index, edge in enumerate(search)}
+            probe.attempt(
+                sorted(accepted, key=lambda edge: measured[id(edge)]), distance
+            )
         result = probe.result
         if result is not None:
             _record_blend(diagnostics, operation, {

@@ -272,6 +272,38 @@ def test_the_probe_cap_is_reported_rather_than_hidden() -> None:
     assert "cap" in str(caught.value)
 
 
+def test_a_capped_partial_blend_does_not_depend_on_the_kernels_edge_order() -> None:
+    """ADR-476: the same shape enumerated in another order blends the same edges.
+
+    A boolean's result lists its edges in an order that is not fixed across
+    processes. With the partition stopping at the call cap, kernel order chose
+    which edges a ``skip`` blend kept, so ``digestbug-balancer-b`` rebuilt its
+    accepted script with 19 of 165 tub edges rounded instead of 20 and could
+    not be reopened. Each edge carries its own measurement here, wherever it
+    sits in the list.
+    """
+
+    edges = _edges(256)
+    measured = dict(zip(edges, _details(edges)))
+    impossible = set(edges[::2])
+
+    def blended(order):
+        shape = _FakeShape(impossible=impossible, ceiling=-1.0)
+        result = worker._blend(
+            shape, "fillet", order, [measured[edge] for edge in order], 1.0,
+            on_failure="skip",
+        )
+        assert isinstance(result, _Built)
+        return set(result.edges)
+
+    forward = blended(edges)
+    assert len(forward) < len(edges) - len(impossible)  # the cap really binds
+    shuffled = list(edges)
+    __import__("random").Random(7).shuffle(shuffled)
+    assert blended(list(reversed(edges))) == forward
+    assert blended(shuffled) == forward
+
+
 def test_a_long_refusal_list_is_counted_not_dumped() -> None:
     edges = _edges(128)
     shape = _FakeShape(impossible=set(edges[:40]), ceiling=-1.0)

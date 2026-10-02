@@ -31253,3 +31253,90 @@ code path.
   22.9 N·m/rad servo and joint limits on both sides do not agree. Excluding
   the jaws only hid this. It must be diagnosed before any gripper is trained,
   alongside whether MJX 3.10 honours `equality/joint`.
+
+## ADR-476 — A partial blend sorts its edges, and an accepted recipe reopens when the kernel rebuilds it differently (2026-10-02)
+
+**Context.** Three sweep projects (`digestbug-balancer-b-motors-in-body`,
+`digestbug-balancer-d-product-shell`, `digestbug-hexapod-h-free`) refused every
+open with "The restore pass digest does not match the accepted digest." Each
+`script.py` is byte-identical to its accepted revision's source and the engine
+code had not changed since acceptance. Working on `orun1-*` copies, every
+output was compared between the accepted attempt and a restored one. Only the
+kernel fingerprint differed, and never the definition. Two causes:
+
+1. **Partial blends depended on the kernel's edge order.** `part.fillet(...,
+   on_failure="skip")` with no edge selector probes the whole edge list
+   greedily and stops at 48 kernel calls. A boolean's result lists its edges
+   in an order that is not fixed across processes, so a different subset was
+   probed and kept on every rebuild. On balancer-b's `tub` the result was 20, 19
+   and 31 of 165 edges in three runs, with up to 3.6 mm vertex moves (whole
+   fillets appearing and disappearing). Even with a fixed order, the kernel's
+   verdict on a marginal subset still varied once: `frame` kept 36 edges in one
+   process and 37 in the next.
+2. **`part.offset` moved vertices.** The hexapod's `shell` (`fillet ∘ cut ∘
+   offset`) kept its topology and bounding box. Its volume moved in the fourth
+   decimal, and 3 of its 92 vertices moved 4.5–4.9 µm, about 40 times their
+   own BREP tolerance. ADR-421's fingerprint assumed the vertex set stayed
+   bit-identical. Here it did not.
+
+The resumed interrupted turns were not a cause. The source run on restore is
+the accepted source, and the rebuild drifted the same way on a copy with no
+session. (The hexapod's accepted attempt is staged under a different
+revision directory, `c5c63c30…`, from its accepted revision `94759ef5…`. The
+store records the path, so restore reads it correctly.) Load affected only how
+often the defect showed: `d` opened alone and refused when three opens ran in
+parallel.
+
+**Decision.**
+- When the whole selection fails, `_blend` searches it in a canonical order:
+  geometry type, centre, length and radius rounded to the micrometre, then
+  the full canonical detail as a tie-break (`_blend_canonical_order`). Which
+  edges a partial blend keeps is now a function of the shape, not of the
+  process's enumeration. Every blend it *builds* still passes the edges in
+  kernel order: the order a fillet is given is the order its result
+  enumerates, so sorting the one-call fast path re-indexed every filleted
+  output against ADR-025's golden (`test_subshape_enumeration` caught it). The
+  fast path is unchanged. A kept set that refuses in kernel order is retried
+  in measured order before giving up.
+- `open_project`'s restore pass takes one last opinion before refusing. If the
+  accepted and the restored attempt ran the same source and settings
+  (`param_values`, mounts, cages, nets, boards, inputs), and every output has
+  the same name, domain, type and canonical definition
+  (`staged_recipe_digest`), the open succeeds with `matched_by: "recipe"` and
+  `drifted_outputs`, the outputs whose geometry differs
+  (`staged_drifted_outputs`). The accepted digest, attempt and candidate stay
+  pinned, and nothing is re-accepted or learned. A missing request or result on
+  either side still refuses, and so does a changed script.
+
+**What this gives up.** The restore pass no longer proves that a rebuild is
+bit-reproducible. It proves that the rebuild ran the accepted recipe, and it
+names what the kernel made differently. An engine change that alters geometry
+for an unchanged recipe now opens with those outputs named, where it used to
+refuse. The byte digest and the geometry digest are unchanged and are still
+consulted first.
+
+**Consequences.**
+- Sorting changes which edges any cap-bound partial blend keeps. Every
+  accepted design that relied on one rebuilds those outputs differently once,
+  and opens through the recipe path with them named. Measured on the three
+  copies: balancer-b `frame` and `tub`; balancer-d `base`, `core` and `hood`;
+  the hexapod `chassis`, the six `coxa_*` and `shell`. Designs whose blends
+  all succeed in one call are untouched, bytes and ordinals both.
+- `open_project` re-accepts nothing, but `cadex render` does: it asks for a
+  display through `rebuild`, which is an accepting op (ADR-303, as ADR-389
+  noted). Once a drifted project has been rendered, its accepted digest and
+  attempt are the rendered rebuild's, at the same accepted revision. On a
+  fresh copy of balancer-d, three renders in a row all succeeded and left the
+  accepted digest at `c01707f1…`, then `4b2126ce…`, then `c01707f1…`. Its rebuild
+  still alternates between two kernel answers after the sort, so the next
+  open goes through the recipe path again. Whether a display rebuild should
+  re-accept a drifted model is left open. This ADR does not change it.
+- `CadexdProtocol`'s `restore` gains the optional key `drifted_outputs`, and
+  `docs/INTEGRATION.md` moves with it. The shell's client reads
+  `matches_accepted` and does not change.
+- Regressions that fail on the old source:
+  `test_part_blending.py::test_a_capped_partial_blend_does_not_depend_on_the_kernels_edge_order`
+  and
+  `test_cadexd_lifecycle.py::test_the_accepted_recipe_reopens_when_the_kernel_rebuilds_it_differently`,
+  which also pins the refusal when the accepted request is missing. The
+  changed-script refusal test now asserts the recipe verdict too.

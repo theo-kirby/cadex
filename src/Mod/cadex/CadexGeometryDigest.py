@@ -294,3 +294,83 @@ def staged_geometry_digest(staging: Path) -> str:
     if not isinstance(outputs, list):
         raise ValueError(f"{staging}/result.json declares no output list.")
     return project_geometry_digest(staging, outputs)
+
+
+#: The request fields that, with the source, make a rebuild *the same recipe*:
+#: everything a person or the agent can set. Budgets, the document and the
+#: engine's own API surface are left out on purpose; none of them is the
+#: design.
+RECIPE_REQUEST_KEYS = (
+    "source",
+    "param_values",
+    "mount_values",
+    "cage_values",
+    "net_values",
+    "board_values",
+    "inputs",
+)
+
+
+def _staged_payloads(staging: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    request = json.loads((staging / "request.json").read_text(encoding="utf-8"))
+    result = json.loads((staging / "result.json").read_text(encoding="utf-8"))
+    if not isinstance(request, dict) or not isinstance(result, dict):
+        raise ValueError(f"{staging} must keep one request and one result object.")
+    outputs = result.get("outputs")
+    if not isinstance(outputs, list):
+        raise ValueError(f"{staging}/result.json declares no output list.")
+    return request, outputs
+
+
+def staged_recipe_digest(staging: Path) -> str:
+    """SHA-256 over what one retained attempt was *asked* to build.
+
+    The request's settable fields and, per output, its name, domain, type and
+    canonical definition -- and no kernel measurement at all. Two attempts
+    that agree here ran the same script with the same settings and produced
+    the same outputs by the same recipe; whatever still differs between them
+    the kernel decided (ADR-476).
+    """
+
+    request, outputs = _staged_payloads(staging)
+    material = {
+        "schema": "cadex-project-recipe-digest-v1",
+        "request": {key: request.get(key) for key in RECIPE_REQUEST_KEYS},
+        "outputs": sorted(
+            (
+                str(item.get("name") or ""),
+                str(item.get("domain") or ""),
+                str(item.get("type") or ""),
+                hashlib.sha256(
+                    canonical_json(item.get("definition") or {}).encode("utf-8")
+                ).hexdigest(),
+            )
+            for item in outputs
+        ),
+    }
+    return hashlib.sha256(canonical_json(material).encode("utf-8")).hexdigest()
+
+
+def staged_drifted_outputs(accepted: Path, restored: Path) -> list[str]:
+    """Names of the outputs whose geometry entry differs between two attempts.
+
+    The same per-output entries :func:`project_geometry_digest` hashes, kept
+    apart so a reply can say *which* outputs the kernel rebuilt differently
+    rather than only that something did.
+    """
+
+    def entries(staging: Path) -> dict[str, dict[str, Any]]:
+        _request, outputs = _staged_payloads(staging)
+
+        def brep_entry(_item: dict[str, Any], path: Path) -> dict[str, str]:
+            return {"shape_geometry_sha256": brep_geometry_fingerprint(path)}
+
+        return {
+            entry["output_name"]: entry
+            for entry in _entries(staging, outputs, brep_entry, derived_artifact_bytes=False)
+        }
+
+    before, after = entries(accepted), entries(restored)
+    return sorted(
+        name for name in set(before) | set(after) if before.get(name) != after.get(name)
+    )
